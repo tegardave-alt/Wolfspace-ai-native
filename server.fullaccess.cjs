@@ -19,7 +19,8 @@ const os   = require('os');
 const path = require('path');
 const { execSync, spawn } = require('child_process');
 
-const CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, 'config.json'), 'utf8'));
+const CONFIG_PATH = path.join(__dirname, 'config.json');
+const CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
 const HOST = (CONFIG.server && CONFIG.server.host) || '127.0.0.1';
 const PORT = (CONFIG.server && CONFIG.server.port) || 8090;
 const HTML = path.join(__dirname, 'public', 'index.html');
@@ -207,9 +208,9 @@ function runByLang(lang, code) {
 
 // ── Model client + orchestration ──
 const SYS = [
-  'You are a helpful, precise coding assistant. Answer concisely. Put code in fenced blocks with a language tag (```python, ```javascript).',
-  'Your code is auto-run in a NON-INTERACTIVE sandbox with NO stdin: never use input(), prompt(), sys.stdin, or readline — they will crash with EOF.',
-  'Instead, demonstrate with hardcoded example values and prove it works with a few assert statements, then print the results.',
+  'You are Quantum, a friendly assistant. Chat naturally and answer in plain text.',
+  'Do NOT write code unless the user explicitly asks for code or gives a programming task. A greeting like "hi" gets a short friendly reply — never code.',
+  'If you do write code, use one fenced block tagged with the language; it runs in a sandbox with no stdin, so avoid input().',
 ].join(' ');
 function buildPrompt(hist) {
   let p = `<|im_start|>system\n${SYS}<|im_end|>\n`;
@@ -235,13 +236,14 @@ function askFIM(port, prefix, suffix, reg) {
   });
 }
 
-// Streaming model call; forwards each token via onToken. reg() exposes the
-// request so the caller can destroy() it on cancel.
-function askModelStream(port, prompt, onToken, reg) {
+// Streaming local-model call via llama-server's OpenAI-compatible chat endpoint.
+// Using /v1/chat/completions lets llama.cpp apply EACH model's own chat template
+// (from the GGUF), so Qwen/Llama/Phi/Gemma all honor the system prompt correctly.
+// `messages` is [{role, content}, ...]. reg() exposes the request for cancel.
+function askModelStream(port, messages, onToken, reg) {
   return new Promise((resolve, reject) => {
-    const body = JSON.stringify({ prompt, n_predict: 1024, temperature: 0.3, top_p: 0.9,
-      repeat_penalty: 1.2, stop: ['<|im_end|>', '<|endoftext|>'], stream: true });
-    const r = http.request({ hostname: '127.0.0.1', port, path: '/completion', method: 'POST',
+    const body = JSON.stringify({ messages, stream: true, temperature: 0.3, top_p: 0.9, max_tokens: 1024, cache_prompt: true });
+    const r = http.request({ hostname: '127.0.0.1', port, path: '/v1/chat/completions', method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: 600000 },
       s => {
         let acc = '', buf = '';
@@ -249,7 +251,8 @@ function askModelStream(port, prompt, onToken, reg) {
           buf += chunk.toString(); const lines = buf.split('\n'); buf = lines.pop();
           for (const line of lines) {
             const m = line.match(/^data:\s*(.*)$/); if (!m) continue;
-            try { const j = JSON.parse(m[1]); if (j.content) { acc += j.content; onToken(j.content); } } catch {}
+            if (m[1] === '[DONE]') continue;
+            try { const j = JSON.parse(m[1]); const t = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content; if (t) { acc += t; onToken(t); } } catch {}
           }
         });
         s.on('end', () => resolve(acc));
@@ -411,6 +414,15 @@ function askCloudStream(cloud, work, onToken, reg) {
   });
 }
 
+// Kill whatever process is LISTENING on a TCP port (to stop a model's llama-server).
+function killPort(port) {
+  try {
+    const out = execSync('netstat -ano', { encoding: 'utf8' });
+    const pids = new Set(out.split('\n').filter(l => l.includes(':' + port) && /LISTENING/i.test(l)).map(l => l.trim().split(/\s+/).pop()).filter(p => p && p !== '0'));
+    for (const pid of pids) { try { execSync('taskkill /F /PID ' + pid, { stdio: 'ignore' }); } catch (e) {} }
+  } catch (e) {}
+}
+
 // ── Agent mode: multi-step tool loop in a real workspace, model-agnostic ──
 const WORKSPACE = path.join(__dirname, 'workspace');
 try { fs.mkdirSync(WORKSPACE, { recursive: true }); } catch {}
@@ -475,7 +487,48 @@ function runInWorkspace(lang, code) {
   }
 }
 
-const server = http.createServer((req, res) => {
+// ── HuggingFace model browser / downloader ──
+function hfGetJson(p) {
+  return new Promise((resolve, reject) => {
+    const r = https.request({ hostname: 'huggingface.co', path: p, headers: { 'User-Agent': 'Quantum' } }, s => {
+      let d = ''; s.on('data', c => d += c); s.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
+    });
+    r.on('error', reject); r.end();
+  });
+}
+const AVATAR_CACHE = new Map();   // author -> avatarUrl|null
+async function hfAvatar(name) {
+  if (AVATAR_CACHE.has(name)) return AVATAR_CACHE.get(name);
+  let url = null;
+  for (const ep of ['/api/organizations/' + name + '/avatar', '/api/users/' + name + '/avatar']) {
+    try { const j = await hfGetJson(ep); if (j && j.avatarUrl) { url = j.avatarUrl; break; } } catch (e) {}
+  }
+  AVATAR_CACHE.set(name, url); return url;
+}
+function hfDownload(urlStr, dest, onProgress, reg) {
+  return new Promise((resolve, reject) => {
+    const get = (u) => {
+      let o; try { o = new URL(u); } catch (e) { return reject(e); }
+      const rq = https.get({ hostname: o.hostname, path: o.pathname + o.search, headers: { 'User-Agent': 'Quantum' } }, s => {
+        if (s.statusCode >= 300 && s.statusCode < 400 && s.headers.location) {
+          s.resume(); const loc = s.headers.location;
+          return get(loc.startsWith('http') ? loc : ('https://' + o.hostname + loc));
+        }
+        if (s.statusCode !== 200) { s.resume(); return reject(new Error('HTTP ' + s.statusCode)); }
+        const total = parseInt(s.headers['content-length'] || '0', 10); let got = 0;
+        const f = fs.createWriteStream(dest);
+        s.on('data', c => { got += c.length; onProgress(got, total); });
+        s.on('error', reject); f.on('error', reject); f.on('finish', () => f.close(() => resolve()));
+        s.pipe(f);
+      });
+      rq.on('error', reject);
+      if (reg) reg(rq);
+    };
+    get(urlStr);
+  });
+}
+
+const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
@@ -501,10 +554,98 @@ const server = http.createServer((req, res) => {
     return res.end(JSON.stringify(out));
   }
 
-  // List configured models (UI builds the dropdown from this)
+  // HuggingFace: search GGUF models
+  if (req.method === 'GET' && (req.url || '').startsWith('/hf/search')) {
+    const q = new URL('http://x' + req.url).searchParams.get('q') || '';
+    try {
+      const data = await hfGetJson('/api/models?search=' + encodeURIComponent(q) + '&filter=gguf&limit=24&sort=downloads&direction=-1&full=true');
+      const arr = Array.isArray(data) ? data : [];
+      const authors = [...new Set(arr.map(m => (m.id || '').split('/')[0]).filter(Boolean))];
+      await Promise.all(authors.map(a => hfAvatar(a)));
+      const SKIP = new Set(['gguf', 'transformers', 'text-generation', 'conversational', 'safetensors', 'endpoints_compatible', 'autotrain_compatible', 'text-generation-inference']);
+      const out = arr.map(m => {
+        const author = (m.id || '').split('/')[0];
+        const tags = (m.tags || []).filter(t => !t.includes(':') && !SKIP.has(t)).slice(0, 3);
+        return { id: m.id, author, downloads: m.downloads || 0, likes: m.likes || 0,
+          avatar: AVATAR_CACHE.get(author) || null, pipeline: m.pipeline_tag || '',
+          library: m.library_name || '', updated: m.lastModified || m.createdAt || '', gated: !!m.gated, tags };
+      });
+      res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(out));
+    } catch (e) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
+    return;
+  }
+  // HuggingFace: list .gguf files of a repo (with sizes)
+  if (req.method === 'GET' && (req.url || '').startsWith('/hf/files')) {
+    const id = new URL('http://x' + req.url).searchParams.get('id') || '';
+    try {
+      const tree = await hfGetJson('/api/models/' + id + '/tree/main');
+      const out = (Array.isArray(tree) ? tree : []).filter(f => f.type !== 'directory' && /\.gguf$/i.test(f.path || '')).map(f => ({ path: f.path, size: f.size || 0 }));
+      res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify(out));
+    } catch (e) { res.writeHead(200, { 'Content-Type': 'application/json' }); res.end(JSON.stringify({ error: e.message })); }
+    return;
+  }
+  // HuggingFace: download a GGUF → register in config → launch llama-server (SSE progress)
+  if (req.method === 'POST' && req.url === '/hf/download') {
+    let body = ''; req.on('data', c => body += c);
+    req.on('end', async () => {
+      let id, file, name; try { ({ id, file, name } = JSON.parse(body)); } catch (e) { res.writeHead(400); return res.end('bad json'); }
+      res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+      const ev = o => { if (!res.writableEnded) res.write('data: ' + JSON.stringify(o) + '\n\n'); };
+      let cancelled = false, dlReq = null, dest = null;
+      res.on('close', () => { if (!res.writableFinished) { cancelled = true; if (dlReq) { try { dlReq.destroy(); } catch (e) {} } } });
+      try {
+        const modelDir = CONFIG.modelDir || path.dirname(CONFIG_PATH);
+        const base = path.basename(file);
+        dest = path.join(modelDir, base);
+        const srcUrl = 'https://huggingface.co/' + id + '/resolve/main/' + file.split('/').map(encodeURIComponent).join('/');
+        let lastPct = -1, lastT = 0;
+        await hfDownload(srcUrl, dest, (got, total) => {
+          const pct = total ? Math.floor(got / total * 100) : 0; const now = Date.now();
+          if (pct !== lastPct && now - lastT > 300) { lastPct = pct; lastT = now; ev({ t: 'progress', pct, got, total }); }
+        }, (rq) => { dlReq = rq; });
+        const used = new Set((CONFIG.models || []).map(m => m.port));
+        let port = 8085; while (used.has(port)) port++;
+        const entry = { name: name || base.replace(/\.gguf$/i, ''), file: base, url: srcUrl, port };
+        CONFIG.models.push(entry);
+        try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(CONFIG, null, 2)); } catch (e) {}
+        const serverExe = path.join(modelDir, 'llama-server.exe');
+        const ctx = (CONFIG.llama && CONFIG.llama.ctxSize) || 2048, threads = (CONFIG.llama && CONFIG.llama.threads) || 2;
+        try { spawn(serverExe, ['-m', dest, '--host', '127.0.0.1', '--port', String(port), '--ctx-size', String(ctx), '--threads', String(threads), '--mlock'], { detached: true, stdio: 'ignore' }).unref(); } catch (e) {}
+        ev({ t: 'done', model: { name: entry.name, port } });
+      } catch (e) { if (cancelled) { try { if (dest) fs.rmSync(dest, { force: true }); } catch (e2) {} } else ev({ t: 'err', m: e.message }); }
+      if (!res.writableEnded) res.end();
+    });
+    return;
+  }
+
+  // List configured models (UI builds the dropdown from this) — with on-disk size
   if (req.method === 'GET' && req.url === '/models') {
+    const md = CONFIG.modelDir || '';
+    const out = (CONFIG.models || []).map(m => {
+      let size = 0; try { if (m.file) size = fs.statSync(path.join(md, m.file)).size; } catch (e) {}
+      return { name: m.name, port: m.port, default: !!m.default, file: m.file || '', size };
+    });
     res.writeHead(200, { 'Content-Type': 'application/json' });
-    return res.end(JSON.stringify(CONFIG.models.map(m => ({ name: m.name, port: m.port, default: !!m.default }))));
+    return res.end(JSON.stringify(out));
+  }
+
+  // Delete a model: stop its llama-server, remove from config, delete the .gguf file
+  if (req.method === 'POST' && req.url === '/model/delete') {
+    let body = ''; req.on('data', c => body += c);
+    req.on('end', () => {
+      let port; try { ({ port } = JSON.parse(body)); } catch (e) { res.writeHead(400); return res.end('bad json'); }
+      const idx = (CONFIG.models || []).findIndex(m => String(m.port) === String(port));
+      if (idx < 0) { res.writeHead(404, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify({ error: 'model tidak ditemukan' })); }
+      const m = CONFIG.models[idx];
+      killPort(m.port);
+      CONFIG.models.splice(idx, 1);
+      try { fs.writeFileSync(CONFIG_PATH, JSON.stringify(CONFIG, null, 2)); } catch (e) {}
+      let deleted = false;
+      try { if (m.file) { fs.rmSync(path.join(CONFIG.modelDir || '', m.file), { force: true }); deleted = true; } } catch (e) {}
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ ok: true, deleted, name: m.name }));
+    });
+    return;
   }
 
   // Chat: stream tokens + auto run/fix loop (SSE)
@@ -535,7 +676,7 @@ const server = http.createServer((req, res) => {
           if (i > 1) ev({ t: 'retry', n: i });
           reply = await (cloud && cloud.key
             ? askCloudStream(cloud, work, tok => ev({ t: 'tok', c: tok }), r => { curReq = r; })
-            : askModelStream(port || CONFIG.models[0].port, buildPrompt(work), tok => ev({ t: 'tok', c: tok }), r => { curReq = r; }));
+            : askModelStream(port || CONFIG.models[0].port, [{ role: 'system', content: SYS }, ...work], tok => ev({ t: 'tok', c: tok }), r => { curReq = r; }));
           if (cancelled) break;
           const cb = extractCode(reply);
           if (!cb) { run = null; break; }
@@ -583,7 +724,7 @@ const server = http.createServer((req, res) => {
           if (cloud && cloud.key) {
             reply = await askCloudStream({ ...cloud, system: AGENT_SYS }, convo, tok => ev({ t: 'tok', c: tok }), r => { curReq = r; });
           } else {
-            reply = await askModelStream(port || CONFIG.models[0].port, buildPromptWith(AGENT_SYS, convo), tok => ev({ t: 'tok', c: tok }), r => { curReq = r; });
+            reply = await askModelStream(port || CONFIG.models[0].port, [{ role: 'system', content: AGENT_SYS }, ...convo], tok => ev({ t: 'tok', c: tok }), r => { curReq = r; });
           }
           if (cancelled) break;
           convo.push({ role: 'assistant', content: reply });

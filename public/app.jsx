@@ -14,6 +14,19 @@ const Icon = {
   play: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M7 5l12 7-12 7V5z" fill="currentColor"/></svg>),
   pencil: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M14.5 5.5l4 4M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
   loader: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M12 3a9 9 0 109 9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>),
+  sun: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2"/><path d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>),
+  moon: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z" stroke="currentColor" strokeWidth="2" strokeLinejoin="round"/></svg>),
+};
+const HubIcon = {
+  back: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M15 6l-6 6 6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  search: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><circle cx="10.5" cy="10.5" r="6.5" stroke="currentColor" strokeWidth="2"/><path d="M15.5 15.5L20 20" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>),
+  download: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M12 3v12m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  check: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  loader: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M12 3a9 9 0 109 9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>),
+  star: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M12 2l2.9 6.3L22 9.2l-5 4.6 1.3 6.9L12 17.5l-6.3 3.2L7 13.8 2 9.2l7.1-.9L12 2z" fill="currentColor"/></svg>),
+  dl: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M12 5v10m0 0l-3-3m3 3l3-3M6 17h12" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>),
+  hf: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M7.5 7.5a2.5 2.5 0 015 0v3h-5v-3zm4 0a2.5 2.5 0 015 0v3h-5v-3zm-5 5h5v4a2 2 0 01-2 2h-1a2 2 0 01-2-2v-4zm6 0h5v4a2 2 0 01-2 2h-1a2 2 0 01-2-2v-4z" fill="currentColor"/></svg>),
+  empty: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><rect x="3" y="5" width="18" height="14" rx="3" stroke="currentColor" strokeWidth="2"/><path d="M8 12h8M10 15h4" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>),
 };
 function BrandMark({ className }) { return (<span className={"brand-mark " + (className || "")}><Icon.spark style={{ color: "#fff" }} /></span>); }
 
@@ -53,7 +66,7 @@ async function streamChat(reqBody, onText, signal){
 }
 
 /* ----------------------------- Top bar ----------------------------- */
-function TopBar({ models, modelVal, setModelVal, compare, setCompare, compareVal, setCompareVal, panelOpen, setPanelOpen, onReset, status }) {
+function TopBar({ models, modelVal, setModelVal, compare, setCompare, compareVal, setCompareVal, panelOpen, setPanelOpen, onReset, status, theme, setTheme }) {
   return (
     <header className="topbar">
       <button className={"brand-btn" + (panelOpen ? " open" : "")} onClick={() => setPanelOpen(!panelOpen)}>
@@ -78,14 +91,71 @@ function TopBar({ models, modelVal, setModelVal, compare, setCompare, compareVal
         </div>
       )}
       <div className="tb-spacer" />
+      <button className="theme-toggle" title="Ganti tema" onClick={()=>setTheme(theme==="dark"?"light":"dark")}>{theme==="dark"?<Icon.sun/>:<Icon.moon/>}</button>
     </header>
   );
 }
 
+/* ----------------------------- HuggingFace models ----------------------------- */
+function fmtSize(b){ if(!b) return ""; const gb=b/1073741824; return gb>=1 ? gb.toFixed(2)+" GB" : (b/1048576).toFixed(0)+" MB"; }
+function HFModels({ onSaved }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const [sel, setSel] = useState("");
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState(null);
+  const [msg, setMsg] = useState("");
+  const search = async () => { const t=q.trim(); if(!t) return; setMsg("mencari…"); setResults([]); setSel(""); setFiles([]);
+    try { const r = await (await fetch("/hf/search?q="+encodeURIComponent(t))).json(); if(r.error) throw new Error(r.error); setResults(r); setMsg(r.length?"":"tidak ada hasil"); }
+    catch(e){ setMsg("gagal: "+e.message); } };
+  const pick = async (id) => { setSel(id); setFiles([]); setMsg("memuat file…");
+    try { const r = await (await fetch("/hf/files?id="+encodeURIComponent(id))).json(); if(r.error) throw new Error(r.error); setFiles(r); setMsg(r.length?"":"tak ada file .gguf di repo ini"); }
+    catch(e){ setMsg("gagal: "+e.message); } };
+  const download = async (file) => { if(busy) return; setBusy(true); setProg(0); setMsg("mengunduh "+file.split("/").pop()+"…");
+    try {
+      const res = await fetch("/hf/download",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:sel,file})});
+      const reader=res.body.getReader(); const dec=new TextDecoder(); let buf="";
+      while(true){ const {done,value}=await reader.read(); if(done) break; buf+=dec.decode(value,{stream:true}); const lines=buf.split("\n"); buf=lines.pop();
+        for(const line of lines){ const m=line.match(/^data:\s*(.*)$/); if(!m) continue; let j; try{ j=JSON.parse(m[1]); }catch(e){ continue; }
+          if(j.t==="progress") setProg(j.pct);
+          else if(j.t==="done"){ setMsg("✓ "+j.model.name+" diunduh & dijalankan (port "+j.model.port+"). Tunggu ~30 dtk, lalu pilih di dropdown Model."); onSaved && onSaved(); }
+          else if(j.t==="err") setMsg("gagal: "+j.m);
+        } }
+    } catch(e){ setMsg("gagal: "+e.message); }
+    setBusy(false); setProg(null);
+  };
+  return (
+    <div className="hf">
+      <label className="field-label">Model HuggingFace</label>
+      <div className="hf-search">
+        <input className="input" value={q} onChange={(e)=>setQ(e.target.value)} placeholder="cari GGUF… (mis. qwen coder)" onKeyDown={(e)=>{ if(e.key==="Enter") search(); }} />
+        <button className="btn btn-primary" onClick={search}>Cari</button>
+      </div>
+      {results.length>0 && (
+        <div className="hf-res">{results.map((m)=>(
+          <button key={m.id} className={"hf-item"+(sel===m.id?" sel":"")} onClick={()=>pick(m.id)}>
+            {m.id}<br/><span className="meta">↓ {m.downloads.toLocaleString()} · ♥ {m.likes}</span>
+          </button>
+        ))}</div>
+      )}
+      {sel && files.map((f)=>{ const heavy=f.size>4*1073741824; return (
+        <div className="hf-file" key={f.path}>
+          <span className="nm">{f.path.split("/").pop()}</span>
+          <span className={"sz"+(heavy?" heavy":"")}>{fmtSize(f.size)}{heavy?" ⚠":""}</span>
+          <button className="hf-dl" disabled={busy} onClick={()=>download(f.path)}>Unduh</button>
+        </div>
+      ); })}
+      {prog!==null && <div className="hf-bar"><div style={{width:prog+"%"}} /></div>}
+      {msg && <div className="hf-msg">{msg}</div>}
+    </div>
+  );
+}
+
 /* ----------------------------- Settings panel ----------------------------- */
-function SettingsPanel({ onClose, onSaved, onVisualPicker }) {
+function SettingsPanel({ onClose, onSaved, onVisualPicker, onOpenHub }) {
   const stored = getCloud();
-  const [cfgOpen, setCfgOpen] = useState(true);
+  const [cfgOpen, setCfgOpen] = useState(false);
   const [key, setKey] = useState("");
   const [provider, setProvider] = useState(stored ? (stored.baseUrl ? "custom" : stored.provider) : "auto");
   const [model, setModelName] = useState(stored ? (keyish(stored.model) ? "" : stored.model) : "");
@@ -161,7 +231,8 @@ function SettingsPanel({ onClose, onSaved, onVisualPicker }) {
             )}
           </div>
           <div className="panel-section"><label className="field-label">Alat</label>
-            <button className="tool-btn" onClick={onVisualPicker}><span className="tool-ico"><Icon.target style={{width:15,height:15}} /></span>Visual Picker<Icon.arrow className="chev" style={{ width: 16, height: 16 }} /></button>
+            <button className="tool-btn" onClick={onOpenHub}><span className="tool-ico" style={{background:"rgba(255,157,0,0.16)",color:"#ff9d00"}}><HubIcon.hf style={{width:15,height:15}} /></span>Model Hub — Hugging Face<Icon.arrow className="chev" style={{ width: 16, height: 16 }} /></button>
+            <button className="tool-btn" style={{marginTop:8}} onClick={onVisualPicker}><span className="tool-ico"><Icon.target style={{width:15,height:15}} /></span>Visual Picker<Icon.arrow className="chev" style={{ width: 16, height: 16 }} /></button>
           </div>
           <div className="panel-footer">— ruang untuk fitur lain —</div>
         </div>
@@ -348,6 +419,143 @@ function useVisualPicker(){
   },[]);
 }
 
+/* ----------------------------- Model Hub view (real HF) ----------------------------- */
+const HUB_CATS = [
+  { key:"all", label:"Semua", q:"gguf" }, { key:"code", label:"Code", q:"coder gguf" },
+  { key:"chat", label:"Chat", q:"instruct gguf" }, { key:"small", label:"Kecil", q:"1b gguf" },
+  { key:"qwen", label:"Qwen", q:"qwen gguf" }, { key:"llama", label:"Llama", q:"llama gguf" },
+];
+function iconColorFor(s){ const c=["blue","purple","green","orange","red"]; let h=0; for(const ch of s) h=(h*31+ch.charCodeAt(0))>>>0; return c[h%c.length]; }
+function fmtN(n){ return n>=1e6?(n/1e6).toFixed(1)+"M":n>=1e3?(n/1e3).toFixed(1)+"k":(""+n); }
+function fmtDate(iso){ if(!iso) return ""; try { return new Date(iso).toLocaleDateString("id-ID",{year:"numeric",month:"short"}); } catch(e){ return ""; } }
+function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
+  const [q, setQ] = useState("");
+  const [cat, setCat] = useState("all");
+  const [results, setResults] = useState([]);
+  const [loading, setLoading] = useState(false);
+  const [msg, setMsg] = useState("");
+  const [dl, setDl] = useState({});
+  const [local, setLocal] = useState([]);
+  const ctrls = useRef({});
+  const loadLocal = useCallback(async () => { try { setLocal(await (await fetch("/models")).json()); } catch(e){} }, []);
+  useEffect(() => { loadLocal(); }, [loadLocal]);
+  const stop = (id) => { const c = ctrls.current[id]; if(c){ try{ c.abort(); }catch(e){} } setDl(d=>({ ...d, [id]:{ state:"idle" } })); };
+  const delModel = async (port) => { if(!window.confirm("Hapus model ini dari disk?")) return; try { await fetch("/model/delete",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ port }) }); } catch(e){} loadLocal(); onChanged && onChanged(); };
+  const [sizes, setSizes] = useState({});       // id -> {bytes, quant}  (the q4 download size)
+  const sizeReq = useRef(0);
+  const resolveSizes = useCallback(async (list) => {
+    const token = ++sizeReq.current;
+    for (const m of list) {
+      if (token !== sizeReq.current) return;     // a newer search started — stop
+      try {
+        const files = await (await fetch("/hf/files?id=" + encodeURIComponent(m.id))).json();
+        if (Array.isArray(files) && files.length) {
+          const pick = files.find(f=>/q4_k_m/i.test(f.path)) || files.find(f=>/q4/i.test(f.path)) || files.slice().sort((a,b)=>a.size-b.size)[0];
+          const quant = ((pick.path.match(/q\d[a-z0-9_]*|f16|bf16/i) || [])[0] || "").toLowerCase();
+          setSizes(s => ({ ...s, [m.id]: { bytes: pick.size, quant } }));
+        } else setSizes(s => ({ ...s, [m.id]: { bytes: 0 } }));
+      } catch(e) {}
+    }
+  }, []);
+  const doSearch = useCallback(async (query) => {
+    setLoading(true); setMsg("");
+    try { const r = await (await fetch("/hf/search?q=" + encodeURIComponent(query))).json(); if(r.error) throw new Error(r.error); setResults(r); setSizes({}); resolveSizes(r); if(!r.length) setMsg("Tidak ada model."); }
+    catch(e){ setResults([]); setMsg("Gagal memuat: " + e.message); }
+    setLoading(false);
+  }, [resolveSizes]);
+  useEffect(() => { const c = HUB_CATS.find(x=>x.key===cat) || HUB_CATS[0]; doSearch(q.trim() || c.q); }, [cat]);
+  const submit = () => { const c = HUB_CATS.find(x=>x.key===cat) || HUB_CATS[0]; doSearch(q.trim() || c.q); };
+  const download = async (id) => {
+    if (dl[id] && (dl[id].state==="downloading"||dl[id].state==="resolving")) return;
+    setDl(d=>({ ...d, [id]:{ state:"resolving", progress:0 } }));
+    try {
+      const files = await (await fetch("/hf/files?id=" + encodeURIComponent(id))).json();
+      if (files.error || !files.length) { setDl(d=>({ ...d, [id]:{ state:"idle" } })); setMsg('Repo "'+id+'" tak punya file .gguf — coba repo berakhiran "-GGUF".'); return; }
+      const pick = files.find(f=>/q4_k_m/i.test(f.path)) || files.find(f=>/q4/i.test(f.path)) || files.slice().sort((a,b)=>a.size-b.size)[0];
+      setDl(d=>({ ...d, [id]:{ state:"downloading", progress:0 } }));
+      const ctrl = new AbortController(); ctrls.current[id] = ctrl;
+      const res = await fetch("/hf/download",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ id, file:pick.path }), signal: ctrl.signal });
+      const reader=res.body.getReader(); const dec=new TextDecoder(); let buf="";
+      while(true){ const {done,value}=await reader.read(); if(done) break; buf+=dec.decode(value,{stream:true}); const lines=buf.split("\n"); buf=lines.pop();
+        for(const line of lines){ const m=line.match(/^data:\s*(.*)$/); if(!m) continue; let j; try{ j=JSON.parse(m[1]); }catch(e){ continue; }
+          if(j.t==="progress") setDl(d=>({ ...d, [id]:{ state:"downloading", progress:j.pct } }));
+          else if(j.t==="done"){ setDl(d=>({ ...d, [id]:{ state:"done", progress:100, port:j.model.port } })); loadLocal(); onChanged && onChanged(); }
+          else if(j.t==="err"){ setDl(d=>({ ...d, [id]:{ state:"idle" } })); setMsg("Gagal unduh: "+j.m); }
+        } }
+    } catch(e){ if(e.name!=="AbortError"){ setDl(d=>({ ...d, [id]:{ state:"idle" } })); setMsg("Gagal: "+e.message); } }
+  };
+  return (
+    <div className="hub">
+      <header className="hub-header">
+        <button className="hub-back" onClick={onBack}><HubIcon.back /> Kembali</button>
+        <span className="tb-divider" />
+        <div className="hub-title-group"><span className="hub-hf-mark"><HubIcon.hf /></span><span className="hub-title">Model Hub</span><span className="hub-subtitle">Hugging Face · GGUF</span></div>
+        <div className="tb-spacer" />
+        <button className="theme-toggle" onClick={()=>setTheme(theme==="dark"?"light":"dark")}>{theme==="dark"?<Icon.sun/>:<Icon.moon/>}</button>
+      </header>
+      <div className="hub-body"><div className="hub-inner">
+        {local.length > 0 && (
+          <div className="hub-local">
+            <div className="hub-local-title">📦 Model Terunduh ({local.length})</div>
+            {local.map(m => (
+              <div className="hub-local-row" key={m.port}>
+                <div className="hub-local-info"><b>{m.name}</b><span>{m.size ? fmtSize(m.size) : ""} · port {m.port}</span></div>
+                <button className="m-use-btn" onClick={()=>onUse(m.port)}>Gunakan</button>
+                <button className="hub-del" onClick={()=>delModel(m.port)}>Hapus</button>
+              </div>
+            ))}
+          </div>
+        )}
+        <div className="hub-controls">
+          <div className="hub-search"><HubIcon.search /><input placeholder="Cari model GGUF… (llama, coder, qwen, phi)" value={q} onChange={e=>setQ(e.target.value)} onKeyDown={e=>{ if(e.key==="Enter") submit(); }} /></div>
+        </div>
+        <div className="hub-filters">{HUB_CATS.map(c=><button key={c.key} className={"hub-filter"+(cat===c.key?" active":"")} onClick={()=>{ setQ(""); setCat(c.key); }}>{c.label}</button>)}</div>
+        {loading ? (
+          <div className="hub-empty"><HubIcon.loader className="spin" /><div>Memuat dari Hugging Face…</div></div>
+        ) : results.length ? (
+          <div className="hub-grid">{results.map(m=>{ const d=dl[m.id]||{}; const st=d.state||"idle"; const author=m.id.split("/")[0]||"?"; const name=m.id.split("/").pop();
+            return (
+            <div className="m-card" key={m.id}>
+              <div className="m-card-head">
+                {m.avatar
+                  ? <img className="m-card-logo" src={m.avatar} alt={author} loading="lazy" onError={(e)=>{ e.target.style.display="none"; e.target.nextSibling.style.display="grid"; }} />
+                  : null}
+                <div className={"m-card-icon "+iconColorFor(author)} style={{display: m.avatar?"none":"grid"}}>{author[0].toUpperCase()}</div>
+                <div className="m-card-info"><div className="m-card-name">{name}</div><div className="m-card-id">{m.id}</div></div>
+              </div>
+              {(m.pipeline || (m.tags && m.tags.length) || m.library) && (
+                <div className="m-card-tags">
+                  {m.pipeline && <span className={"m-tag "+(/code/i.test(m.pipeline)?"code":"gen")}>{m.pipeline}</span>}
+                  {m.library && <span className="m-tag-soft">{m.library}</span>}
+                  {(m.tags||[]).slice(0,2).map(t=><span className="m-tag-soft" key={t}>{t}</span>)}
+                  {m.gated && <span className="m-tag-soft">🔒 gated</span>}
+                </div>
+              )}
+              <div className="m-card-meta">
+                <span><HubIcon.dl style={{width:12,height:12}} /> {fmtN(m.downloads)} unduhan</span>
+                <span><HubIcon.star style={{width:12,height:12,color:"var(--brand)"}} /> {fmtN(m.likes)}</span>
+                {m.updated && <span>↻ {fmtDate(m.updated)}</span>}
+                {sizes[m.id]
+                  ? <span><code>{sizes[m.id].bytes ? ("⬇ " + fmtSize(sizes[m.id].bytes) + (sizes[m.id].quant ? " · " + sizes[m.id].quant : "")) : "—"}</code></span>
+                  : <span style={{opacity:.5}}>⬇ menghitung…</span>}
+              </div>
+              {st==="downloading" && <div className="m-progress"><div className="m-progress-bar"><div className="m-progress-fill" style={{width:(d.progress||0)+"%"}} /></div><div className="m-progress-info"><span>Mengunduh…</span><span>{Math.round(d.progress||0)}%</span></div></div>}
+              <div className="m-card-foot">
+                {st==="done" ? (<><span className="m-done-badge"><HubIcon.check /> Terunduh</span><button className="m-use-btn active" onClick={()=>onUse(d.port)}>Gunakan</button><button className="hub-del" onClick={()=>delModel(d.port)}>Hapus</button></>)
+                 : st==="downloading" ? (<><button className="m-dl-btn" disabled><HubIcon.loader className="spin" /> Mengunduh…</button><button className="hub-del" onClick={()=>stop(m.id)}>Stop</button></>)
+                 : st==="resolving" ? <button className="m-dl-btn" disabled><HubIcon.loader className="spin" /> Menyiapkan…</button>
+                 : <button className="m-dl-btn" onClick={()=>download(m.id)}><HubIcon.download /> Download</button>}
+              </div>
+            </div>); })}</div>
+        ) : (
+          <div className="hub-empty"><HubIcon.empty /><div>{msg || "Ketik untuk mencari model."}</div></div>
+        )}
+        {msg && results.length>0 && <div className="hf-msg" style={{marginTop:14}}>{msg}</div>}
+      </div></div>
+    </div>
+  );
+}
+
 /* ----------------------------- App ----------------------------- */
 const SUGGESTIONS = ["Contoh syntax Python", "Buatkan fungsi rekursif Python dengan assert", "Jelaskan async/await", "Tulis is_prime(n) + tes"];
 function App() {
@@ -360,14 +568,17 @@ function App() {
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   const [status, setStatus] = useState("memuat model…");
+  const [view, setView] = useState("chat");
+  const [theme, setTheme] = useState(() => { try { return localStorage.getItem("quantum_theme") || "dark"; } catch(e){ return "dark"; } });
   const scrollRef = useRef(null);
   const ctrlRef = useRef(null);
   const startPicker = useVisualPicker();
+  useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem("quantum_theme", theme); } catch(e){} }, [theme]);
 
   const loadModels = useCallback(async () => {
     let list = [];
     try { list = await (await fetch("/models")).json(); } catch(e) {}
-    const opts = list.map(m => ({ value:String(m.port), label:m.name, default:m.default }));
+    const opts = list.map(m => ({ value:String(m.port), label:m.name + (m.size ? " · " + fmtSize(m.size) : ""), default:m.default }));
     const cloud = getCloud();
     if (cloud && cloud.key) opts.push({ value:"cloud", label:"☁ "+cloud.name+" ("+cloud.model+") ·"+cloud.key.slice(-4) });
     if (!opts.length) opts.push({ value:"", label:"tidak ada model", disabled:true });
@@ -419,23 +630,31 @@ function App() {
 
   return (
     <div className="app">
-      <TopBar models={models} modelVal={modelVal} setModelVal={setModelVal}
-        compare={compare} setCompare={setCompare} compareVal={compareVal} setCompareVal={setCompareVal}
-        panelOpen={panelOpen} setPanelOpen={setPanelOpen} onReset={reset} status={status} />
-      {panelOpen && <SettingsPanel onClose={()=>setPanelOpen(false)} onSaved={loadModels} onVisualPicker={()=>{ setPanelOpen(false); startPicker(); }} />}
-      <div className="chat-scroll" ref={scrollRef}>
-        {messages.length === 0 ? (
-          <div className="empty">
-            <span className="glyph"><Icon.spark style={{ color:"#fff" }} /></span>
-            <h2>Mulai ngobrol dengan Quantum</h2>
-            <p>Minta kode — contoh, refactor, atau penjelasan. Kode dijalankan & diverifikasi di CPU Anda.</p>
-            <div className="empty-chips">{SUGGESTIONS.map(s=><button className="chip" key={s} onClick={()=>doSend(s)}>{s}</button>)}</div>
+      {panelOpen && <SettingsPanel onClose={()=>setPanelOpen(false)} onSaved={loadModels} onVisualPicker={()=>{ setPanelOpen(false); startPicker(); }} onOpenHub={()=>{ setPanelOpen(false); setView("hub"); }} />}
+      <div className="page-container">
+        <div className={"page chat-page " + (view==="chat" ? "active" : "exit")}>
+          <TopBar models={models} modelVal={modelVal} setModelVal={setModelVal}
+            compare={compare} setCompare={setCompare} compareVal={compareVal} setCompareVal={setCompareVal}
+            panelOpen={panelOpen} setPanelOpen={setPanelOpen} onReset={reset} status={status} theme={theme} setTheme={setTheme} />
+          <div className="chat-scroll" ref={scrollRef}>
+            {messages.length === 0 ? (
+              <div className="empty">
+                <span className="glyph"><Icon.spark style={{ color:"#fff" }} /></span>
+                <h2>Start building something great with Quantum</h2>
+                <p>Minta kode — contoh, refactor, atau penjelasan. Kode dijalankan & diverifikasi di CPU Anda.</p>
+                <div className="empty-chips">{SUGGESTIONS.map(s=><button className="chip" key={s} onClick={()=>doSend(s)}>{s}</button>)}</div>
+              </div>
+            ) : (
+              <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onAiEdit={aiEditCode} busy={busy} />)}</div>
+            )}
           </div>
-        ) : (
-          <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onAiEdit={aiEditCode} busy={busy} />)}</div>
-        )}
+          <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} />
+        </div>
+        <div className={"page hub-page " + (view==="hub" ? "active" : "enter")}>
+          {view === "hub" && <ModelHubView onBack={()=>setView("chat")} theme={theme} setTheme={setTheme} onChanged={loadModels}
+            onUse={(port)=>{ if(port) setModelVal(String(port)); loadModels(); setView("chat"); }} />}
+        </div>
       </div>
-      <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} />
     </div>
   );
 }

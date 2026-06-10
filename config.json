@@ -1,7 +1,13 @@
 {
-  "server": { "host": "127.0.0.1", "port": 8090 },
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8090
+  },
   "modelDir": "C:/llama-cpp",
-  "llama": { "threads": 2, "ctxSize": 2048 },
+  "llama": {
+    "threads": 2,
+    "ctxSize": 2048
+  },
   "ghostPort": 8083,
   "_ghostPort_note": "model that powers gray inline ghost-text (pakai 3B juga karena hanya 3B yang dipasang)",
   "runners": {
@@ -21,6 +27,12 @@
       "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf?download=true",
       "port": 8083,
       "default": true
+    },
+    {
+      "name": "VertaLily-1.2-1B-Q4_K_M-stable",
+      "file": "VertaLily-1.2-1B-Q4_K_M-stable.gguf",
+      "url": "https://huggingface.co/VLTX/VertaLily-1.2-1B-GGUF/resolve/main/VertaLily-1.2-1B-Q4_K_M-stable.gguf",
+      "port": 8085
     }
   ]
 }
