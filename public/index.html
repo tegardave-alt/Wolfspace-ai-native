@@ -1,0 +1,29 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Quantum</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com" />
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link href="https://fonts.googleapis.com/css2?family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet" />
+  <link rel="stylesheet" href="/styles.css" />
+</head>
+<body>
+  <div id="root"></div>
+  <script src="https://unpkg.com/react@18.3.1/umd/react.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.development.js" crossorigin="anonymous"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.29.0/babel.min.js" crossorigin="anonymous"></script>
+  <!-- Monaco (VS Code editor) — bundled locally, real highlighting + autocomplete -->
+  <script src="/vendor/monaco/vs/loader.js"></script>
+  <script>
+    window.MonacoEnvironment = { getWorkerUrl: function(){
+      return 'data:text/javascript;charset=utf-8,' + encodeURIComponent(
+        "self.MonacoEnvironment={baseUrl:'" + location.origin + "/vendor/monaco/'};" +
+        "importScripts('" + location.origin + "/vendor/monaco/vs/base/worker/workerMain.js');"); } };
+    require.config({ paths: { vs: '/vendor/monaco/vs' } });
+    window.monacoReady = new Promise(function(res){ require(['vs/editor/editor.main'], function(){ res(window.monaco); }); });
+  </script>
+  <script type="text/babel" src="/app.jsx"></script>
+</body>
+</html>
