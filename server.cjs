@@ -155,11 +155,14 @@ function runJS(code) {
 }
 
 // ── Execute Python as a script via subprocess (full access, import anything) ──
+// Force UTF-8 I/O so generated Python that prints ✓/✗/emoji doesn't crash with
+// UnicodeEncodeError under Windows' legacy cp1252 stdout codec.
+const PY_ENV = { ...process.env, PYTHONIOENCODING: 'utf-8', PYTHONUTF8: '1' };
 function runPy(code) {
   if (USE_SANDBOX) return runSandboxed('python', code);
   fs.writeFileSync(TMP_PY, code, 'utf8');
   try {
-    const out = execSync(`python "${TMP_PY}"`, { timeout: EXEC_TIMEOUT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+    const out = execSync(`python "${TMP_PY}"`, { timeout: EXEC_TIMEOUT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: PY_ENV });
     return { ok: true, output: out };
   } catch (e) {
     return { ok: false, output: (e.stdout || '').toString(), error: ((e.stderr || '') + '').trim() || e.message };
@@ -608,7 +611,7 @@ function runInWorkspace(lang, code) {
     }
     if (l === 'python' || l === 'py') {
       fs.writeFileSync(path.join(WORKSPACE, '_run.py'), code, 'utf8');
-      return { ok: true, output: execSync(`python "_run.py"`, { cwd: WORKSPACE, timeout: EXEC_TIMEOUT, encoding: 'utf8', stdio: ['pipe','pipe','pipe'], env: process.env }) };
+      return { ok: true, output: execSync(`python "_run.py"`, { cwd: WORKSPACE, timeout: EXEC_TIMEOUT, encoding: 'utf8', stdio: ['pipe','pipe','pipe'], env: PY_ENV }) };
     }
     return { ok: false, error: `RUN supports python or javascript (got "${lang}")` };
   } catch (e) {
