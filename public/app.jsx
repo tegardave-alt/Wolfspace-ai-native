@@ -669,8 +669,15 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
 /* ----------------------------- Canvas (live web/app split view) ----------------------------- */
 // Detect web/app output in a reply and assemble ONE previewable HTML document.
 function buildPreview(text){
-  const blocks = parseBlocks(text).filter(b => b.type === "code");
-  const find = (re) => blocks.find(b => re.test((b.lang||"").toLowerCase()));
+  const t = text || "";
+  // Tolerant fence scan: capture closed blocks AND a still-streaming trailing one.
+  const blocks = [];
+  const re = /```([\w+#.-]*)[^\n]*\n([\s\S]*?)```/g; let m;
+  while((m = re.exec(t))) blocks.push({ lang:(m[1]||"").toLowerCase(), code:m[2] });
+  const tail = t.slice(re.lastIndex);
+  const om = tail.match(/```([\w+#.-]*)[^\n]*\n([\s\S]*)$/);
+  if(om && om[2]) blocks.push({ lang:(om[1]||"").toLowerCase(), code:om[2] });
+  const find = (re2) => blocks.find(b => re2.test(b.lang||""));
   let html = find(/^html$/);
   const css = find(/^css$/), js = find(/^(js|javascript|jsx)$/);
   // also treat any block whose body looks like an HTML document/fragment as web
@@ -733,6 +740,8 @@ function CanvasPanel({ project, onClose }){
 
 /* ----------------------------- App ----------------------------- */
 const SUGGESTIONS = ["Contoh syntax Python", "Buatkan fungsi rekursif Python dengan assert", "Jelaskan async/await", "Tulis is_prime(n) + tes"];
+const CANVAS_BUILDING = '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">'+
+  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">QUANTUM</div><div style="margin-top:10px;font-size:15px">membangun antarmuka…</div></div></body></html>';
 function App() {
   const [models, setModels] = useState([{value:"",label:"memuat…",disabled:true}]);
   const [modelVal, setModelVal] = useState("");
@@ -808,15 +817,19 @@ function App() {
       } catch(e){ if(e.name!=="AbortError") setStatus("error: "+e.message); else setStatus("dibatalkan"); }
     } else {
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
+      if (canvasAuto) setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately
+      let lastCanvasT = 0;
       try {
         const res = await streamChat(reqFor(modelVal,getCloud(),newHist),(t,run)=>{
           setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:t,run}; return c; });
+          if (canvasAuto) { const now = Date.now(); if (now - lastCanvasT > 450) { const p = buildPreview(t); if (p.has) { lastCanvasT = now; setCanvas({ doc: p.doc, run: null }); } } }
         }, ctrl.signal);
         setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:res.text,run:res.run}; return c; });
         setHistory(h => [...h, { role:"assistant", content: res.text }]);
         setStatus(res.run ? (res.run.ok ? "✓ verified" : "⚠ not passing") : "ready");
-        const proj = buildPreview(res.text);              // web/app output → open the live Canvas
-        if (proj.has) { lastProject.current = { doc: proj.doc, run: res.run }; if (canvasAuto) setCanvas(lastProject.current); }
+        const proj = buildPreview(res.text);              // finalize the live Canvas
+        if (proj.has) { lastProject.current = { doc: proj.doc, run: res.run }; setCanvas({ doc: proj.doc, run: res.run }); }
+        else if (canvasAuto) setCanvas(null);             // no web produced → close the empty split
       } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); } else setStatus("dibatalkan"); }
     }
     ctrlRef.current=null; setBusy(false);
