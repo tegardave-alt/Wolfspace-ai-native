@@ -105,6 +105,13 @@ function errForModel(e) {
   const s = (e || '').trim(); if (!s) return '';
   return s.length <= 700 ? s : (s.slice(0, 160) + '\n…\n' + s.slice(-520));
 }
+// Detect code that launches an external process / interactive shell / REPL.
+// Such code can pop up a SEPARATE window (e.g. an interactive Python `>>>`),
+// so we don't auto-run it in the verify loop.
+function launchesShell(code) {
+  const s = code || '';
+  return /\bos\.system\s*\(|\bos\.popen\s*\(|\bsubprocess\s*\.|\bcode\.interact\s*\(|\bpty\.\w|require\(\s*['"]child_process['"]\s*\)|\bchild_process\b|\.spawn\s*\(|\.exec(File|FileSync|Sync)?\s*\(|\bPopen\s*\(/.test(s);
+}
 
 // ── Execution sandbox (Docker) — gate #1 for serving untrusted/other-user code ──
 const SANDBOX_IMAGE = 'quantum-sandbox';
@@ -145,7 +152,7 @@ function runJS(code) {
   try {
     // Run with the same runtime (bun/node), from this project dir so
     // `require('<dep>')` resolves our node_modules.
-    const out = execSync(`"${JS_RUNTIME}" "${src}"`, { cwd: __dirname, timeout: EXEC_TIMEOUT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: process.env });
+    const out = execSync(`"${JS_RUNTIME}" "${src}"`, { cwd: __dirname, timeout: EXEC_TIMEOUT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: process.env, windowsHide: true });
     res = { ok: true, output: out };
   } catch (e) {
     res = { ok: false, output: (e.stdout || '').toString(), error: ((e.stderr || '') + '').trim() || e.message };
@@ -162,7 +169,7 @@ function runPy(code) {
   if (USE_SANDBOX) return runSandboxed('python', code);
   fs.writeFileSync(TMP_PY, code, 'utf8');
   try {
-    const out = execSync(`python "${TMP_PY}"`, { timeout: EXEC_TIMEOUT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: PY_ENV });
+    const out = execSync(`python "${TMP_PY}"`, { timeout: EXEC_TIMEOUT, encoding: 'utf8', stdio: ['pipe', 'pipe', 'pipe'], env: PY_ENV, windowsHide: true });
     return { ok: true, output: out };
   } catch (e) {
     return { ok: false, output: (e.stdout || '').toString(), error: ((e.stderr || '') + '').trim() || e.message };
@@ -175,7 +182,7 @@ const RUN = CONFIG.runners || {};
 let jediProc = null, jediBuf = '', jediQueue = [];
 function startJedi() {
   try {
-    jediProc = spawn('python', [path.join(__dirname, 'jedi_worker.py')], { stdio: ['pipe', 'pipe', 'pipe'] });
+    jediProc = spawn('python', [path.join(__dirname, 'jedi_worker.py')], { stdio: ['pipe', 'pipe', 'pipe'], windowsHide: true });
     jediProc.stdout.on('data', d => {
       jediBuf += d.toString();
       let i;
@@ -867,6 +874,15 @@ const server = http.createServer(async (req, res) => {
           const corrected = reconcileLang(lang, cb.code); // fix obvious mislabels (e.g. JS tagged python)
           const wasFixed = corrected !== lang;
           if (wasFixed) { dlog('chat', 'warn', 'language tag corrected', { from: lang, to: corrected }); lang = corrected; }
+          if (launchesShell(cb.code)) {                   // don't auto-run code that spawns a separate window/shell
+            run = { ok: false, skipped: true, language: lang,
+              error: 'Eksekusi otomatis dilewati: kode menjalankan proses/shell eksternal (dapat membuka jendela terpisah, mis. Python interaktif). Jalankan manual bila memang diperlukan.' };
+            run.quality = analyzeCode(lang, cb.code);
+            run.quality.notes.unshift({ sev: 'error', msg: 'kode menjalankan proses/shell eksternal — dilewati otomatis' });
+            dlog('chat', 'warn', 'auto-run skipped: launches external process', { lang });
+            ev({ t: 'run', run });
+            break;
+          }
           run = runByLang(lang, cb.code);
           run.language = lang;
           run.quality = analyzeCode(lang, cb.code);       // code-intelligence verdict alongside execution
