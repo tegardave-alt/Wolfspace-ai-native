@@ -81,6 +81,19 @@ function analyzeCode(lang, code) {
   return { score: Math.max(0, Math.min(100, score)), hasTest, lines: L, notes };
 }
 
+// Models sometimes mislabel a fenced block (e.g. tag JS as "python"). When the
+// body unambiguously contradicts the tag, correct the runtime so it still runs.
+// Conservative: only override when one language's signals are present and the
+// other's are absent.
+function reconcileLang(lang, code) {
+  const src = code || '';
+  const js = /(^|\n)\s*(\/\/|const\s|let\s|var\s|function\s|=>|console\.|document\.|require\(|export\s|import\s.+\sfrom\s)/.test(src);
+  const py = /(^|\n)\s*(def\s|class\s+\w+\s*[:(]|print\(|elif\s|#|from\s+\w+\s+import|import\s+\w+\s*$)/m.test(src);
+  if (lang === 'python' && js && !py) return 'javascript';
+  if (lang === 'javascript' && py && !js) return 'python';
+  return lang;
+}
+
 // ── Execution sandbox (Docker) — gate #1 for serving untrusted/other-user code ──
 const SANDBOX_IMAGE = 'quantum-sandbox';
 function hasDocker() { try { execSync('docker version', { stdio: 'ignore', timeout: 8000 }); return true; } catch (e) { return false; } }
@@ -834,11 +847,15 @@ const server = http.createServer(async (req, res) => {
           const cb = extractCode(reply);
           if (!cb) { run = null; break; }
           const raw = (cb.lang || '').toLowerCase();
-          const lang = ALIAS[raw] || raw;                 // use the EXPLICIT fence tag only
+          let lang = ALIAS[raw] || raw;                   // start from the explicit fence tag
           if (!RUNNABLE.has(lang)) { run = null; break; } // untagged prose / html / etc -> show, don't auto-run
+          const corrected = reconcileLang(lang, cb.code); // fix obvious mislabels (e.g. JS tagged python)
+          const wasFixed = corrected !== lang;
+          if (wasFixed) { dlog('chat', 'warn', 'language tag corrected', { from: lang, to: corrected }); lang = corrected; }
           run = runByLang(lang, cb.code);
           run.language = lang;
           run.quality = analyzeCode(lang, cb.code);       // code-intelligence verdict alongside execution
+          if (wasFixed) run.quality.notes.unshift({ sev: 'warn', msg: `tag fence salah — dijalankan sebagai ${lang}` });
           dlog('chat', run.ok ? 'info' : 'warn', 'verify', { lang, ok: run.ok, attempt: i, quality: run.quality.score, notes: run.quality.notes.length });
           ev({ t: 'run', run });
           if (run.ok) break;
@@ -969,7 +986,8 @@ const server = http.createServer(async (req, res) => {
       let r;
       try {
         const { language, code } = JSON.parse(body);
-        const lang = detectLang(language, code || '');
+        let lang = detectLang(language, code || '');
+        lang = reconcileLang(lang, code || '');
         r = runByLang(lang, code);
         r.language = lang;
         r.quality = analyzeCode(lang, code || '');
