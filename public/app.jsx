@@ -439,11 +439,7 @@ function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
             <div className="composer-menu">
               <button className="cm-item" onClick={()=>notYet("Upload attachment")}><i>{MI.upload}</i><span className="cm-lbl"><b>Upload attachment</b><small>file, image, video, audio</small></span></button>
               <div className="cm-sep" />
-              <button className="cm-item" onClick={()=>notYet("Deep Research")}><i>{MI.research}</i> Deep Research</button>
-              <button className="cm-item" onClick={()=>notYet("Create Image")}><i>{MI.image}</i> Create Image</button>
-              <button className="cm-item" onClick={()=>notYet("Create Video")}><i>{MI.video}</i> Create Video</button>
               <button className={"cm-item"+(canvasAuto?" active":"")} onClick={webDev}><i>{MI.webdev}</i> Web Dev{canvasAuto?<span className="cm-on">aktif</span>:null}</button>
-              <button className="cm-item" onClick={()=>notYet("Slides")}><i>{MI.slides}</i> Slides</button>
               <div className="cm-sep" />
               <button className="cm-item" onClick={()=>notYet("More")}><i>{MI.more}</i> More <span className="cm-caret">›</span></button>
             </div>
