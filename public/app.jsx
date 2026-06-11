@@ -403,7 +403,7 @@ function Message({ msg, onAiEdit, busy }) {
 }
 
 /* ----------------------------- Composer ----------------------------- */
-function Composer({ onSend, onCancel, busy }) {
+function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
   const [val, setVal] = useState("");
   const ref = useRef(null);
   const grow = () => { const el=ref.current; if(!el) return; el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,180)+"px"; };
@@ -411,14 +411,17 @@ function Composer({ onSend, onCancel, busy }) {
   return (
     <div className="composer-wrap">
       <div className="composer">
-        <textarea ref={ref} rows={1} value={val} placeholder="Ask for code…"
+        <button className={"composer-tool"+(canvasAuto?" on":"")} title="Canvas — buka preview live (split) untuk hasil web/app" onClick={onToggleCanvas}>
+          <Icon.spark style={{width:14,height:14}} /> Canvas
+        </button>
+        <textarea ref={ref} rows={1} value={val} placeholder="Ask for code… (aktifkan Canvas untuk web/app dev)"
           onChange={(e)=>{ setVal(e.target.value); grow(); }}
           onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); submit(); } }} />
         <button className={"send-btn"+(busy?" cancel":"")} onClick={busy?onCancel:submit} disabled={!busy && !val.trim()}>
           {busy ? "Cancel" : <>Send <Icon.send /></>}
         </button>
       </div>
-      <div className="composer-hint"><kbd>Enter</kbd> kirim · <kbd>Shift</kbd>+<kbd>Enter</kbd> baris baru</div>
+      <div className="composer-hint"><kbd>Enter</kbd> kirim · <kbd>Shift</kbd>+<kbd>Enter</kbd> baris baru{canvasAuto?<> · <b style={{color:"var(--brand)"}}>Canvas aktif</b></>:null}</div>
     </div>
   );
 }
@@ -574,6 +577,68 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
   );
 }
 
+/* ----------------------------- Canvas (live web/app split view) ----------------------------- */
+// Detect web/app output in a reply and assemble ONE previewable HTML document.
+function buildPreview(text){
+  const blocks = parseBlocks(text).filter(b => b.type === "code");
+  const find = (re) => blocks.find(b => re.test((b.lang||"").toLowerCase()));
+  const html = find(/^html$/), css = find(/^css$/), js = find(/^(js|javascript|jsx)$/);
+  const domJs = js && /document\.|window\.|innerHTML|appendChild|querySelector|getElementById|React|createRoot/.test(js.code);
+  const isWeb = !!html || (!!css && !!js) || domJs;
+  if(!isWeb) return { has:false };
+  let doc;
+  if(html){
+    doc = html.code;
+    if(css && !/<style/i.test(doc)){
+      doc = /<\/head>/i.test(doc) ? doc.replace(/<\/head>/i, "<style>\n"+css.code+"\n</style></head>") : ("<style>\n"+css.code+"\n</style>\n"+doc);
+    }
+    if(js && !/<script/i.test(doc)){
+      doc = /<\/body>/i.test(doc) ? doc.replace(/<\/body>/i, "<script>\n"+js.code+"\n<\/script></body>") : (doc+"\n<script>\n"+js.code+"\n<\/script>");
+    }
+  } else {
+    doc = '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+      (css?("<style>\n"+css.code+"\n</style>"):"")+'</head><body>'+
+      (js?("<script>\n"+js.code+"\n<\/script>"):"")+'</body></html>';
+  }
+  return { has:true, doc };
+}
+
+function CanvasPanel({ project, onClose }){
+  const [tab, setTab] = useState("preview");
+  const [doc, setDoc] = useState(project.doc);
+  const [nonce, setNonce] = useState(0);
+  useEffect(()=>{ setDoc(project.doc); setNonce(n=>n+1); }, [project.doc]);
+  const run = project.run, q = run && run.quality;
+  const openTab = () => { const w = window.open(); if(w){ w.document.open(); w.document.write(doc); w.document.close(); } };
+  return (
+    <div className="canvas">
+      <div className="canvas-head">
+        <span className="canvas-title"><Icon.spark style={{width:14,height:14}} /> Canvas</span>
+        <div className="canvas-tabs">
+          <button className={tab==="preview"?"active":""} onClick={()=>setTab("preview")}>Preview</button>
+          <button className={tab==="code"?"active":""} onClick={()=>setTab("code")}>Code</button>
+        </div>
+        <span className="tb-spacer" />
+        <button className="canvas-icon" title="Muat ulang" onClick={()=>setNonce(n=>n+1)}>↻</button>
+        <button className="canvas-icon" title="Buka di tab baru" onClick={openTab}>⇱</button>
+        <button className="canvas-icon canvas-close" title="Tutup" onClick={onClose}>✕</button>
+      </div>
+      <div className="canvas-body">
+        {tab==="preview"
+          ? <iframe key={nonce} className="canvas-frame" sandbox="allow-scripts allow-modals allow-forms allow-popups" srcDoc={doc} title="preview" />
+          : <textarea className="canvas-code" value={doc} spellCheck={false} onChange={e=>setDoc(e.target.value)} />}
+      </div>
+      <div className="canvas-foot">
+        {run ? <span className={"verdict-mini "+(run.ok?"ok":"bad")}>{run.ok?"✓ logika terverifikasi":"⚠ belum lolos"}</span>
+             : <span className="verdict-mini">● live preview</span>}
+        {q ? <span className={"q-mini "+(q.score>=85?"q-hi":q.score>=60?"q-mid":"q-lo")}>kualitas {q.score}</span> : null}
+        <span className="tb-spacer" />
+        <span className="canvas-hint">edit di tab Code → preview live</span>
+      </div>
+    </div>
+  );
+}
+
 /* ----------------------------- App ----------------------------- */
 const SUGGESTIONS = ["Contoh syntax Python", "Buatkan fungsi rekursif Python dengan assert", "Jelaskan async/await", "Tulis is_prime(n) + tes"];
 function App() {
@@ -588,8 +653,25 @@ function App() {
   const [status, setStatus] = useState("memuat model…");
   const [view, setView] = useState("chat");
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("quantum_theme") || "dark"; } catch(e){ return "dark"; } });
+  const [canvas, setCanvas] = useState(null);          // {doc, run} when the split Canvas is open
+  const [canvasAuto, setCanvasAuto] = useState(false); // toggled from the composer
+  const [canvasPct, setCanvasPct] = useState(46);      // canvas width % (draggable divider)
+  const lastProject = useRef(null);
   const scrollRef = useRef(null);
   const ctrlRef = useRef(null);
+  const toggleCanvas = () => setCanvasAuto(v => {
+    const nv = !v;
+    if (nv && lastProject.current) setCanvas(lastProject.current);   // turning on reopens last web output
+    if (!nv) setCanvas(null);                                        // turning off closes the split
+    return nv;
+  });
+  const onDividerDown = (e) => {
+    e.preventDefault();
+    const move = (ev) => { const w = window.innerWidth; const pct = Math.min(72, Math.max(28, (w - ev.clientX) / w * 100)); setCanvasPct(pct); };
+    const up = () => { document.removeEventListener("mousemove", move); document.removeEventListener("mouseup", up); document.body.style.userSelect = ""; };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", move); document.addEventListener("mouseup", up);
+  };
   const startPicker = useVisualPicker();
   useEffect(() => { document.documentElement.dataset.theme = theme; try { localStorage.setItem("quantum_theme", theme); } catch(e){} }, [theme]);
 
@@ -635,6 +717,8 @@ function App() {
         setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:res.text,run:res.run}; return c; });
         setHistory(h => [...h, { role:"assistant", content: res.text }]);
         setStatus(res.run ? (res.run.ok ? "✓ verified" : "⚠ not passing") : "ready");
+        const proj = buildPreview(res.text);              // web/app output → open the live Canvas
+        if (proj.has) { lastProject.current = { doc: proj.doc, run: res.run }; if (canvasAuto) setCanvas(lastProject.current); }
       } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); } else setStatus("dibatalkan"); }
     }
     ctrlRef.current=null; setBusy(false);
@@ -654,19 +738,27 @@ function App() {
           <TopBar models={models} modelVal={modelVal} setModelVal={setModelVal}
             compare={compare} setCompare={setCompare} compareVal={compareVal} setCompareVal={setCompareVal}
             panelOpen={panelOpen} setPanelOpen={setPanelOpen} onReset={reset} status={status} theme={theme} setTheme={setTheme} />
-          <div className="chat-scroll" ref={scrollRef}>
-            {messages.length === 0 ? (
-              <div className="empty">
-                <span className="glyph"><Icon.spark style={{ color:"#fff" }} /></span>
-                <h2>Start building something great with Quantum</h2>
-                <p>Minta kode — contoh, refactor, atau penjelasan. Kode dijalankan & diverifikasi di CPU Anda.</p>
-                <div className="empty-chips">{SUGGESTIONS.map(s=><button className="chip" key={s} onClick={()=>doSend(s)}>{s}</button>)}</div>
+          <div className="chat-split">
+            <div className="chat-col" style={{ flex: canvas ? ("1 1 " + (100 - canvasPct) + "%") : "1 1 100%" }}>
+              <div className="chat-scroll" ref={scrollRef}>
+                {messages.length === 0 ? (
+                  <div className="empty">
+                    <span className="glyph"><Icon.spark style={{ color:"#fff" }} /></span>
+                    <h2>Start building something great with Quantum</h2>
+                    <p>Minta kode — contoh, refactor, atau penjelasan. Kode dijalankan & diverifikasi di CPU Anda.</p>
+                    <div className="empty-chips">{SUGGESTIONS.map(s=><button className="chip" key={s} onClick={()=>doSend(s)}>{s}</button>)}</div>
+                  </div>
+                ) : (
+                  <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onAiEdit={aiEditCode} busy={busy} />)}</div>
+                )}
               </div>
-            ) : (
-              <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onAiEdit={aiEditCode} busy={busy} />)}</div>
-            )}
+              <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} canvasAuto={canvasAuto} onToggleCanvas={toggleCanvas} />
+            </div>
+            {canvas && <div className="split-divider" onMouseDown={onDividerDown} />}
+            {canvas && <div className="canvas-col" style={{ flex: "0 0 " + canvasPct + "%" }}>
+              <CanvasPanel project={canvas} onClose={()=>{ setCanvas(null); setCanvasAuto(false); }} />
+            </div>}
           </div>
-          <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} />
         </div>
         <div className={"page hub-page " + (view==="hub" ? "active" : "enter")}>
           {view === "hub" && <ModelHubView onBack={()=>setView("chat")} theme={theme} setTheme={setTheme} onChanged={loadModels}
