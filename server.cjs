@@ -94,6 +94,18 @@ function reconcileLang(lang, code) {
   return lang;
 }
 
+// Error text helpers. Tracebacks put the ACTUAL error on the LAST line, so naive
+// head-truncation hides it. These keep the meaningful tail (and a bit of head).
+function errTail(e) {
+  const s = (e || '').trim(); if (!s) return '';
+  const lines = s.split('\n').filter(Boolean);
+  return lines.slice(-2).join(' | ').slice(-240);
+}
+function errForModel(e) {
+  const s = (e || '').trim(); if (!s) return '';
+  return s.length <= 700 ? s : (s.slice(0, 160) + '\n…\n' + s.slice(-520));
+}
+
 // ── Execution sandbox (Docker) — gate #1 for serving untrusted/other-user code ──
 const SANDBOX_IMAGE = 'quantum-sandbox';
 function hasDocker() { try { execSync('docker version', { stdio: 'ignore', timeout: 8000 }); return true; } catch (e) { return false; } }
@@ -297,7 +309,7 @@ function runByLang(lang, code) {
   }
   dlog('exec', r.ok ? 'info' : 'warn', `run ${lang}`, {
     ok: !!r.ok, ms: Date.now() - t0, bytes: (code || '').length,
-    sandbox: USE_SANDBOX, error: r.ok ? undefined : (r.error || '').slice(0, 200),
+    sandbox: USE_SANDBOX, error: r.ok ? undefined : errTail(r.error),
   });
   return r;
 }
@@ -860,7 +872,7 @@ const server = http.createServer(async (req, res) => {
           ev({ t: 'run', run });
           if (run.ok) break;
           work.push({ role: 'assistant', content: reply });
-          work.push({ role: 'user', content: `The code failed when run:\n${(run.error || '').slice(0, 400)}\nFix it. Output only the corrected code block.` });
+          work.push({ role: 'user', content: `The code failed when run. Here is the real error (the actual cause is on the last line):\n${errForModel(run.error)}\nFix the root cause and output only the corrected code block.` });
         }
         if (!cancelled) { ev({ t: 'done', reply, run, attempts }); dlog('chat', 'info', 'chat done', { attempts, verified: !!(run && run.ok), quality: run && run.quality ? run.quality.score : null }); }
       } catch (e) { if (!cancelled) { ev({ t: 'err', m: e.message }); dlog('chat', 'error', 'chat error', { error: e.message }); } }
