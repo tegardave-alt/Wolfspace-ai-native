@@ -277,6 +277,52 @@ const MLANG = { js:"javascript", javascript:"javascript", node:"javascript", ts:
   rust:"rust", kotlin:"kotlin", html:"html", css:"css", json:"json", bash:"shell", sh:"shell", shell:"shell", sql:"sql", yaml:"yaml", markdown:"markdown" };
 function mLang(l){ return MLANG[(l||"").toLowerCase()] || "plaintext"; }
 
+// Per-language monogram badge (color + short symbol) — clean, no heavy logo assets.
+const LANG_META = {
+  python:    { l:"Python",     s:"Py",  c:"#3776AB" },
+  javascript:{ l:"JavaScript", s:"JS",  c:"#F7DF1E", d:1 },
+  typescript:{ l:"TypeScript", s:"TS",  c:"#3178C6" },
+  bash:      { l:"Bash",       s:">_",  c:"#4EAA25" },
+  go:        { l:"Go",         s:"Go",  c:"#00ADD8" },
+  c:         { l:"C",          s:"C",   c:"#5C6BC0" },
+  cpp:       { l:"C++",        s:"C+",  c:"#00599C" },
+  java:      { l:"Java",       s:"Jv",  c:"#E76F00" },
+  php:       { l:"PHP",        s:"php", c:"#777BB4" },
+  rust:      { l:"Rust",       s:"Rs",  c:"#D9844B" },
+  kotlin:    { l:"Kotlin",     s:"Kt",  c:"#7F52FF" },
+  html:      { l:"HTML",       s:"<>",  c:"#E34F26" },
+  css:       { l:"CSS",        s:"#",   c:"#1572B6" },
+  json:      { l:"JSON",       s:"{}",  c:"#A0A6B0" },
+};
+function LangBadge({ m }){ return <span className="lang-badge" style={{ background:m.c, color:m.d?"#111":"#fff" }}>{m.s}</span>; }
+function LangSelect({ value, onChange }){
+  const [open, setOpen] = useState(false);
+  const ref = useRef(null);
+  useEffect(() => {
+    if(!open) return;
+    const h = (e) => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
+  }, [open]);
+  const meta = (l) => LANG_META[l] || { l, s:(l||"?").slice(0,2), c:"#7c8aa0" };
+  const cur = meta(value);
+  return (
+    <div className="lang-select" ref={ref}>
+      <button className="lang-trigger" onClick={()=>setOpen(o=>!o)} title="Pilih bahasa">
+        <LangBadge m={cur} /><span className="lang-name">{cur.l}</span><Icon.chev className="chev" style={{width:13,height:13}} />
+      </button>
+      {open && (
+        <div className="lang-menu">
+          {LANGS.map(l => { const m = meta(l); return (
+            <button key={l} className={"lang-opt"+(l===value?" active":"")} onClick={()=>{ onChange(l); setOpen(false); }}>
+              <LangBadge m={m} /><span>{m.l}</span>{l===value?<Icon.check style={{width:13,height:13,marginLeft:"auto"}} />:null}
+            </button>
+          ); })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function CodeBlock({ lang, code, onAiEdit, busy }) {
   const [copied, setCopied] = useState(false);
   const [language, setLanguage] = useState((lang || "python").toLowerCase());
@@ -331,7 +377,7 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
         </button>
         <button className="ctb-btn ctb-ai" onClick={()=>setAiOpen(o=>!o)}><Icon.spark style={{width:13,height:13}} /> AI Edit</button>
         <button className={"ctb-btn"+(copied?" copied":"")} onClick={copyCode}>{copied?<Icon.check/>:<Icon.copy/>} {copied?"Copied":"Copy"}</button>
-        <div className="ctb-lang"><select value={language} onChange={(e)=>setLanguage(e.target.value)}>{LANGS.map(l=><option key={l} value={l}>{l}</option>)}</select><Icon.chev className="chev" style={{width:14,height:14}} /></div>
+        <LangSelect value={language} onChange={setLanguage} />
       </div>
       {aiOpen && (
         <div className="ai-panel">
