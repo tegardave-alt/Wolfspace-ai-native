@@ -1,0 +1,9 @@
+# Build the Quantum execution sandbox image.
+# Prereq: Docker Desktop installed and running.
+$ErrorActionPreference = 'Stop'
+$here = $PSScriptRoot
+Write-Host "Building quantum-sandbox image..." -ForegroundColor Cyan
+docker build -t quantum-sandbox "$here"
+Write-Host ""
+Write-Host "Done. Enable it by adding to config.json:  `"sandbox`": true" -ForegroundColor Green
+Write-Host "Then restart Quantum. Python/JS code will run isolated in containers." -ForegroundColor DarkGray

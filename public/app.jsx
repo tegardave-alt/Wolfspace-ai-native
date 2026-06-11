@@ -58,6 +58,7 @@ async function streamChat(reqBody, onText, signal){
     buf+=dec.decode(value,{stream:true}); const lines=buf.split("\n"); buf=lines.pop();
     for(const line of lines){ const mm=line.match(/^data:\s*(.*)$/); if(!mm) continue; let j; try{ j=JSON.parse(mm[1]); }catch(e){ continue; }
       if(j.t==="tok"){ acc+=j.c; onText(acc,run); }
+      else if(j.t==="retry"){ acc=""; run=null; onText(acc,run); }   // new fix attempt → drop the previous failed one
       else if(j.t==="run"){ run=j.run; onText(acc,run); }
       else if(j.t==="done"){ run=j.run||run; onText(acc,run); }
       else if(j.t==="err"){ acc+="\n["+j.m+"]"; onText(acc,run); }

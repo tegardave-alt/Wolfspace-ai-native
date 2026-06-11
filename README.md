@@ -1,137 +1,100 @@
 # ⚛️ Quantum
 
-**A local AI coding chat that doesn't just *generate* code — it *runs* it to prove it works.**
+**A local, open-source AI coding chat that _proves_ its code by actually running it.**
 
-Every other local-LLM chat hands you text and trusts it. Quantum treats the model as an
-untrusted guesser and the **CPU as the judge**: generated code is executed automatically,
-and if it fails, the error is fed back to the model to fix — looping until it actually runs.
+Most AI coding tools hand you code and hope it works. Quantum treats the model as an
+**untrusted guesser** and your **CPU as the judge**: generated code is executed and tested
+automatically, and if it fails, the error is fed back to the model to fix — looping until it
+genuinely runs.
 
-```
-You: write a python function is_prime(n) with a couple of asserts
+> **model guesses → your CPU runs it → pass / fail (real)**
 
-⚛️ Quantum
-  def is_prime(n):
-      if n < 2: return False
-      for d in range(2, int(n**0.5)+1):
-          if n % d == 0: return False
-      return True
-  assert is_prime(7) and not is_prime(8)
-  print("ok")
-  ──────────────────────────────────────
-  ▶ Run   ⧉ Copy code        python
-  ✓ ran (exit 0) • python
-  ok
-                                        ✓ verified (1x)
-```
-
-The model only **guesses** code (it can be wrong — that's how LLMs work). The terminal,
-wired straight to the CPU, is the only thing that knows what the code **actually does**.
-Quantum puts the two together.
+You don't get a smarter model. You get **output you can trust**, because it was proven by
+execution, not by appearance.
 
 ---
 
-## Why this matters
+## Why Quantum
 
-An LLM predicts the next token. For prose, "plausible" is good enough. For **code**,
-plausible ≠ correct — and the model has no way to know the difference, because it has no
-CPU inside it. Quantum closes that gap:
+- ✅ **Verified, not vibes.** Every code answer is run; you see real stdout/stderr and a
+  `✓ verified` / `⚠ not passing` verdict — not "looks right."
+- 🔌 **Any model.** Bring your own API key — Quantum auto-detects the provider
+  (OpenAI, Claude, Qwen, DeepSeek, GitHub Models, Groq, OpenRouter, Gemini, or any
+  OpenAI-compatible endpoint). Or run **local GGUF models** via llama.cpp.
+- 🤗 **Model Hub.** Search Hugging Face, see real logos + download size, download a GGUF,
+  and run it — all from the app.
+- 🧪 **Compare models.** Send one prompt to two models side by side; both get auto-verified.
+- ✏️ **Real editor.** Monaco (VS Code's editor) for every code block — edit in place, re-run,
+  or ask the AI to revise.
+- 🔒 **Local-first.** Runs on your machine, with your keys. Nothing leaves your computer
+  except the model API calls you opt into.
 
-```
-model  ──▶  generated code  ──▶  CPU runs it  ──▶  pass / fail (real)
- guess        (untrusted)         (ground truth)     │
-   ▲                                                  │ if fail, feed error back
-   └──────────────────────────────────────────────────┘  and retry
-```
+---
 
-You don't get a smarter model — you get **output you can trust**, because it was proven by
-execution, not by appearance.
-
-## Features
-
-- 🧠 **Multiple local models** — pick by speed/quality from a dropdown (configurable).
-- ⚡ **Streaming** — tokens appear live.
-- ▶️ **Run button** on every code block — real stdout/stderr, no sandboxed pretending.
-- 🔁 **Auto-verify loop** — generated code is run; on error, the model fixes it (≤3x), silently.
-- ⧉ **Copy** code or output in one click.
-- ⏹ **Cancel** — the Send button becomes Cancel mid-generation; stops instantly.
-- 🔒 **100% local** — no API keys, no data leaves your machine.
-
-Runs **Python, JavaScript, C, C++, Go, Java, PHP, Rust, and Kotlin** today — each via its real
-compiler/interpreter, producing genuine stdout/stderr (no sandboxed pretending). **HTML/CSS**
-render live in an iframe preview. The executor is easy to extend to more languages.
-
-## Requirements
-
-- **[Node.js](https://nodejs.org) 18+**
-- **[Python](https://python.org)** (for running Python code blocks)
-- **[llama.cpp](https://github.com/ggml-org/llama.cpp)** `llama-server` (the setup script fetches a Windows build for you)
-- ~4 GB disk for the models, ~4 GB RAM. CPU-only is fine (no GPU needed).
-
-## Quickstart (Windows)
-
-```powershell
-git clone https://github.com/<you>/quantum && cd quantum
-npm install                          # (no deps yet, but standard)
-powershell scripts/setup.ps1         # downloads llama.cpp + models (~4 GB, one time)
-powershell scripts/start-models.ps1     # launch the model servers
-npm start                            # http://127.0.0.1:8090
-```
-
-Open **http://127.0.0.1:8090** and ask for code.
-
-### Linux / macOS
-
-Install `llama.cpp` (so `llama-server` is on your PATH), set `modelDir` in `config.json`
-to a local path, then:
+## Quickstart
 
 ```bash
-bash scripts/setup.sh           # downloads the models
-bash scripts/start-models.sh    # launch model servers
+git clone https://github.com/<you>/quantum && cd quantum
+npm start                      # -> http://127.0.0.1:8090
+```
+
+Open **http://127.0.0.1:8090**, click **⚛️ Quantum** (top-left) -> paste any **cloud API key**
+-> ask for code. It runs and verifies automatically. That's it.
+
+**Requirements:** [Node.js](https://nodejs.org) 18+ (or [Bun](https://bun.sh)).
+Python is optional (only to execute Python snippets). No build step — the UI is served as-is.
+
+### Optional: run models locally (offline, no API key)
+
+Local models use [llama.cpp](https://github.com/ggml-org/llama.cpp). One-time setup downloads
+`llama-server` + a small CPU-friendly model:
+
+```powershell
+powershell scripts/setup.ps1          # Windows: fetches llama.cpp + models
+powershell scripts/start-models.ps1   # launch the local model servers
 npm start
 ```
 
-## Configuration — `config.json`
-
-Everything is driven by one file. Add/remove models, change ports, paths, threads:
-
-```json
-{
-  "server": { "host": "127.0.0.1", "port": 8090 },
-  "modelDir": "C:/llama-cpp",
-  "llama": { "threads": 4, "ctxSize": 2048 },
-  "models": [
-    { "name": "Quantum 3B (smart)", "file": "...q4_k_m.gguf", "url": "https://...", "port": 8083, "default": true }
-  ]
-}
+```bash
+bash scripts/setup.sh                 # Linux/macOS
+bash scripts/start-models.sh
+npm start
 ```
 
-The UI builds its model dropdown from this list automatically.
+Then pick a local model from the dropdown, or open the **Model Hub** to download more from
+Hugging Face.
+
+---
+
+## Languages
+
+Runs **Python** and **JavaScript** out of the box (JS via your Node/Bun runtime). Quantum also
+runs **C, C++, Go, Java, PHP, Rust, and Kotlin** if their compilers are on your PATH — point to
+them under `runners` in `config.json`. HTML/CSS preview live in an iframe.
 
 ## How it works
 
-| Layer | Role | In Quantum |
-|-------|------|------------|
-| **Generator** (untrusted) | guesses code | local model via `llama-server` |
-| **Bridge** | run generated code, feed results back | `server.cjs` (`/chat` loop) |
-| **Judge** (ground truth) | says what the code actually does | the CPU (`vm` / subprocess) |
+| Layer | Role |
+|-------|------|
+| **Generator** (untrusted) | guesses code — a local model via `llama-server`, or a cloud API |
+| **Bridge** (`server.cjs`) | streams tokens, extracts the code block, runs it, feeds errors back to retry |
+| **Judge** (ground truth) | says what the code actually does — your CPU (subprocess) |
 
-`server.cjs` streams tokens from the model, extracts the code block, runs it, and — if it
-crashes — sends the error back to the model and retries. You only ever see the final,
-execution-checked result.
+Configure everything in `config.json`: models/ports, local model dir, language runners.
+Cloud keys live in the browser (localStorage) or server-side in `cloud-keys.json` (gitignored).
 
-## Honest limits
+## Security
 
-- The model is still a small local model — it can be wrong; verification is what catches it.
-- **"Runs" ≠ "logically correct."** Auto-verify catches crashes/errors. To check *correctness*,
-  ask the model to include `assert`s (a spec). The CPU tells you *what happened*; your spec
-  defines *what should happen*.
-- Code execution happens on your machine (it's a local dev tool, like running a file yourself).
-- Complex code with external dependencies/IO needs more setup than a self-contained snippet.
+Quantum runs generated code **on your machine, with your permissions** — like other local AI
+coding tools. Keep it bound to `127.0.0.1`; **don't expose the server to a network.** A
+sandboxed execution mode (Docker) for multi-user/hosted use is in `sandbox/` (opt-in).
+
+## Roadmap
+
+- Sandboxed execution (Docker) for safe multi-user / hosted deployments
+- MCP tool connections (filesystem, web, etc.)
+- Richer verification (tests-as-spec, coverage)
 
 ## License
 
 MIT — see [LICENSE](LICENSE).
-
----
-
-*Models guess. CPUs prove. Quantum bridges the two.*

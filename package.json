@@ -1,12 +1,15 @@
 {
   "name": "quantum",
   "version": "0.1.0",
-  "description": "A local AI coding chat that verifies generated code by actually running it.",
+  "description": "A local, open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
   "main": "server.cjs",
+  "type": "commonjs",
+  "bin": { "quantum": "server.cjs" },
   "scripts": {
     "start": "node server.cjs"
   },
-  "keywords": ["llm", "local", "code", "verification", "llama.cpp", "qwen", "execution"],
+  "keywords": ["ai", "llm", "coding-assistant", "code-execution", "verification", "local-first", "llama.cpp", "byok", "gguf", "huggingface"],
   "license": "MIT",
-  "engines": { "node": ">=18" }
+  "engines": { "node": ">=18" },
+  "repository": { "type": "git", "url": "https://github.com/<you>/quantum" }
 }

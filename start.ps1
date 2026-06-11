@@ -33,7 +33,7 @@ $toolDirs = @(
 )
 $env:PATH = ($toolDirs -join ';') + ';' + $env:PATH
 Start-Sleep -Seconds 2
-Start-Process -FilePath $bun -ArgumentList 'server.fullaccess.cjs' -WorkingDirectory $root -WindowStyle Hidden
+Start-Process -FilePath $bun -ArgumentList 'server.cjs' -WorkingDirectory $root -WindowStyle Hidden
 Write-Host ""
 Write-Host "Quantum -> http://127.0.0.1:$($cfg.server.port)" -ForegroundColor Green
 Write-Host "Model perlu ~20-30 detik untuk siap. Stop semua:  Get-Process llama-server,bun | Stop-Process -Force" -ForegroundColor DarkGray
