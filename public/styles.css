@@ -428,6 +428,7 @@ input, textarea, select { font-family: inherit; }
 .cm-sep { height:1px; background:var(--line,#1f2733); margin:5px 8px; }
 
 /* language picker with per-language badges */
+.lang-logo { width:18px; height:18px; flex:none; object-fit:contain; display:block; }
 .lang-badge { display:inline-grid; place-items:center; min-width:22px; height:18px; padding:0 4px; border-radius:5px; font-size:10px; font-weight:800; letter-spacing:.2px; flex:none; font-family:ui-monospace,Consolas,monospace; }
 .lang-select { position:relative; }
 .lang-trigger { display:inline-flex; align-items:center; gap:7px; background:var(--surface-2,#11151c); border:1px solid var(--line-strong,#26303c); color:var(--text,#e6edf3); border-radius:8px; padding:4px 8px; font-size:12px; cursor:pointer; transition:border-color .15s; }

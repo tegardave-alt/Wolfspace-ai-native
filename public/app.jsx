@@ -294,7 +294,14 @@ const LANG_META = {
   css:       { l:"CSS",        s:"#",   c:"#1572B6" },
   json:      { l:"JSON",       s:"{}",  c:"#A0A6B0" },
 };
-function LangBadge({ m }){ return <span className="lang-badge" style={{ background:m.c, color:m.d?"#111":"#fff" }}>{m.s}</span>; }
+const LANG_LOGOS = new Set(["python","javascript","typescript","bash","go","c","cpp","java","php","rust","kotlin","html","css"]);
+function LangIcon({ lang }){
+  const m = LANG_META[lang] || { l:lang, s:(lang||"?").slice(0,2), c:"#7c8aa0" };
+  if(LANG_LOGOS.has(lang))
+    return <img className="lang-logo" src={"/vendor/lang/"+lang+".svg"} alt={m.l} loading="lazy"
+      onError={(e)=>{ const sp=document.createElement("span"); sp.className="lang-badge"; sp.style.background=m.c; sp.style.color=m.d?"#111":"#fff"; sp.textContent=m.s; e.target.replaceWith(sp); }} />;
+  return <span className="lang-badge" style={{ background:m.c, color:m.d?"#111":"#fff" }}>{m.s}</span>;
+}
 function LangSelect({ value, onChange }){
   const [open, setOpen] = useState(false);
   const ref = useRef(null);
@@ -308,13 +315,13 @@ function LangSelect({ value, onChange }){
   return (
     <div className="lang-select" ref={ref}>
       <button className="lang-trigger" onClick={()=>setOpen(o=>!o)} title="Pilih bahasa">
-        <LangBadge m={cur} /><span className="lang-name">{cur.l}</span><Icon.chev className="chev" style={{width:13,height:13}} />
+        <LangIcon lang={value} /><span className="lang-name">{cur.l}</span><Icon.chev className="chev" style={{width:13,height:13}} />
       </button>
       {open && (
         <div className="lang-menu">
           {LANGS.map(l => { const m = meta(l); return (
             <button key={l} className={"lang-opt"+(l===value?" active":"")} onClick={()=>{ onChange(l); setOpen(false); }}>
-              <LangBadge m={m} /><span>{m.l}</span>{l===value?<Icon.check style={{width:13,height:13,marginLeft:"auto"}} />:null}
+              <LangIcon lang={l} /><span>{m.l}</span>{l===value?<Icon.check style={{width:13,height:13,marginLeft:"auto"}} />:null}
             </button>
           ); })}
         </div>
