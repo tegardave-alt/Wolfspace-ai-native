@@ -403,25 +403,63 @@ function Message({ msg, onAiEdit, busy }) {
 }
 
 /* ----------------------------- Composer ----------------------------- */
+// Line icons for the composer "+" menu (match the reference design).
+const svg = (p) => <svg viewBox="0 0 24 24" width="19" height="19" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">{p}</svg>;
+const MI = {
+  plus:   svg(<><path d="M12 5v14"/><path d="M5 12h14"/></>),
+  upload: svg(<><path d="M12 15V4"/><path d="M8 8l4-4 4 4"/><path d="M4 15v3a2 2 0 002 2h12a2 2 0 002-2v-3"/></>),
+  research: svg(<><path d="M22 10L12 5 2 10l10 5 10-5z"/><path d="M6 12v4c0 1.1 2.7 3 6 3s6-1.9 6-3v-4"/></>),
+  image:  svg(<><rect x="3" y="4" width="18" height="16" rx="2"/><circle cx="8.5" cy="9.5" r="1.5"/><path d="M21 16l-5-5L5 20"/></>),
+  video:  svg(<><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M10 9l5 3-5 3V9z"/></>),
+  webdev: svg(<><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 10l-2 2 2 2"/><path d="M15 10l2 2-2 2"/></>),
+  slides: svg(<><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4"/><path d="M8 20h8"/></>),
+  more:   svg(<><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>),
+};
 function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
   const [val, setVal] = useState("");
+  const [menu, setMenu] = useState(false);
+  const [soon, setSoon] = useState("");
   const ref = useRef(null);
+  const wrapRef = useRef(null);
   const grow = () => { const el=ref.current; if(!el) return; el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,180)+"px"; };
   const submit = () => { const v=val.trim(); if(!v||busy) return; onSend(v); setVal(""); requestAnimationFrame(()=>{ if(ref.current) ref.current.style.height="auto"; }); };
+  useEffect(() => {
+    if(!menu) return;
+    const h = (e) => { if(wrapRef.current && !wrapRef.current.contains(e.target)) setMenu(false); };
+    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
+  }, [menu]);
+  const webDev = () => { setMenu(false); onToggleCanvas(); };
+  const notYet = (name) => { setMenu(false); setSoon(name + " — segera hadir"); setTimeout(()=>setSoon(""), 2600); };
   return (
     <div className="composer-wrap">
       <div className="composer">
-        <button className={"composer-tool"+(canvasAuto?" on":"")} title="Canvas — buka preview live (split) untuk hasil web/app" onClick={onToggleCanvas}>
-          <Icon.spark style={{width:14,height:14}} /> Canvas
-        </button>
-        <textarea ref={ref} rows={1} value={val} placeholder="Ask for code… (aktifkan Canvas untuk web/app dev)"
+        <div className="composer-add-wrap" ref={wrapRef}>
+          <button className={"composer-add"+(menu?" open":"")} title="Tambah" onClick={()=>setMenu(m=>!m)}>{MI.plus}</button>
+          {menu && (
+            <div className="composer-menu">
+              <button className="cm-item" onClick={()=>notYet("Upload attachment")}><i>{MI.upload}</i><span className="cm-lbl"><b>Upload attachment</b><small>file, image, video, audio</small></span></button>
+              <div className="cm-sep" />
+              <button className="cm-item" onClick={()=>notYet("Deep Research")}><i>{MI.research}</i> Deep Research</button>
+              <button className="cm-item" onClick={()=>notYet("Create Image")}><i>{MI.image}</i> Create Image</button>
+              <button className="cm-item" onClick={()=>notYet("Create Video")}><i>{MI.video}</i> Create Video</button>
+              <button className={"cm-item"+(canvasAuto?" active":"")} onClick={webDev}><i>{MI.webdev}</i> Web Dev{canvasAuto?<span className="cm-on">aktif</span>:null}</button>
+              <button className="cm-item" onClick={()=>notYet("Slides")}><i>{MI.slides}</i> Slides</button>
+              <div className="cm-sep" />
+              <button className="cm-item" onClick={()=>notYet("More")}><i>{MI.more}</i> More <span className="cm-caret">›</span></button>
+            </div>
+          )}
+        </div>
+        <textarea ref={ref} rows={1} value={val} placeholder="How can I help you today?"
           onChange={(e)=>{ setVal(e.target.value); grow(); }}
           onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); submit(); } }} />
         <button className={"send-btn"+(busy?" cancel":"")} onClick={busy?onCancel:submit} disabled={!busy && !val.trim()}>
           {busy ? "Cancel" : <>Send <Icon.send /></>}
         </button>
       </div>
-      <div className="composer-hint"><kbd>Enter</kbd> kirim · <kbd>Shift</kbd>+<kbd>Enter</kbd> baris baru{canvasAuto?<> · <b style={{color:"var(--brand)"}}>Canvas aktif</b></>:null}</div>
+      <div className="composer-hint">
+        {soon ? <b style={{color:"var(--brand)"}}>{soon}</b>
+              : <><kbd>Enter</kbd> kirim · <kbd>Shift</kbd>+<kbd>Enter</kbd> baris baru{canvasAuto?<> · <b style={{color:"var(--brand)"}}>Web Dev (Canvas) aktif</b></>:null}</>}
+      </div>
     </div>
   );
 }
