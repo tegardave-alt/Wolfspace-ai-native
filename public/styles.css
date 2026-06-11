@@ -410,6 +410,8 @@ input, textarea, select { font-family: inherit; }
 .q-mini.q-mid { background:rgba(251,191,36,.12); color:#fbbf24; }
 .q-mini.q-lo { background:rgba(248,113,113,.12); color:#f87171; }
 .canvas-hint { color:var(--text-faint,#5b6776); }
+.open-canvas-btn { margin-top:8px; display:inline-flex; align-items:center; gap:6px; font-size:12px; font-weight:600; padding:6px 12px; border-radius:9px; cursor:pointer; background:rgba(94,234,212,.12); border:1px solid rgba(94,234,212,.4); color:var(--brand,#5eead4); }
+.open-canvas-btn:hover { background:rgba(94,234,212,.2); }
 /* composer "+" button + popup menu (opens upward) */
 .composer-add-wrap { position:relative; align-self:flex-end; flex:none; }
 .composer-add { width:36px; height:36px; border-radius:10px; border:1px solid var(--line-strong,#26303c); background:var(--surface-2,#11151c); color:var(--text-muted,#8b98a9); display:grid; place-items:center; cursor:pointer; transition:all .15s; }

@@ -432,7 +432,7 @@ function Verdict({ run }) {
     </div>
   );
 }
-function Message({ msg, onAiEdit, busy }) {
+function Message({ msg, onAiEdit, busy, onOpenCanvas }) {
   if (msg.role === "user") return (<div className="msg user"><span className="msg-role">you</span><div className="bubble-user">{msg.text}</div></div>);
   if (msg.role === "compare") return (
     <div className="msg model"><span className="msg-role">bandingkan</span>
@@ -447,10 +447,12 @@ function Message({ msg, onAiEdit, busy }) {
       </div>
     </div>
   );
+  const web = msg.text ? buildPreview(msg.text) : { has:false };
   return (
     <div className="msg model"><span className="msg-role">model</span>
       <div className="bubble-model">{msg.text ? <Blocks text={msg.text} onAiEdit={onAiEdit} busy={busy} /> : <div className="typing"><span/><span/><span/></div>}</div>
       <Verdict run={msg.run} />
+      {web.has && onOpenCanvas && <button className="open-canvas-btn" onClick={()=>onOpenCanvas(msg.text, msg.run)}><Icon.spark style={{width:13,height:13}} /> Buka di Canvas (split)</button>}
     </div>
   );
 }
@@ -669,7 +671,10 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
 function buildPreview(text){
   const blocks = parseBlocks(text).filter(b => b.type === "code");
   const find = (re) => blocks.find(b => re.test((b.lang||"").toLowerCase()));
-  const html = find(/^html$/), css = find(/^css$/), js = find(/^(js|javascript|jsx)$/);
+  let html = find(/^html$/);
+  const css = find(/^css$/), js = find(/^(js|javascript|jsx)$/);
+  // also treat any block whose body looks like an HTML document/fragment as web
+  if(!html) html = blocks.find(b => /<!doctype html|<html[\s>]|<head[\s>]|<body[\s>]|<div[\s>]|<style[\s>]|<canvas[\s>]/i.test(b.code||""));
   const domJs = js && /document\.|window\.|innerHTML|appendChild|querySelector|getElementById|React|createRoot/.test(js.code);
   const isWeb = !!html || (!!css && !!js) || domJs;
   if(!isWeb) return { has:false };
@@ -752,6 +757,12 @@ function App() {
     if (!nv) setCanvas(null);                                        // turning off closes the split
     return nv;
   });
+  const openCanvas = (text, run) => {                                // manual open from a message
+    const p = buildPreview(text); if(!p.has) return;
+    lastProject.current = { doc:p.doc, run };
+    setCanvas({ doc:p.doc, run });
+    setCanvasAuto(true);
+  };
   const onDividerDown = (e) => {
     e.preventDefault();
     const move = (ev) => { const w = window.innerWidth; const pct = Math.min(72, Math.max(28, (w - ev.clientX) / w * 100)); setCanvasPct(pct); };
@@ -836,7 +847,7 @@ function App() {
                     <div className="empty-chips">{SUGGESTIONS.map(s=><button className="chip" key={s} onClick={()=>doSend(s)}>{s}</button>)}</div>
                   </div>
                 ) : (
-                  <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onAiEdit={aiEditCode} busy={busy} />)}</div>
+                  <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onAiEdit={aiEditCode} busy={busy} onOpenCanvas={openCanvas} />)}</div>
                 )}
               </div>
               <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} canvasAuto={canvasAuto} onToggleCanvas={toggleCanvas} />
