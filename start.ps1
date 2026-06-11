@@ -1,39 +1,54 @@
-# Quantum - jalankan model server + web server sekaligus (Windows, pakai Bun)
+# Quantum launcher (Windows): starts local model servers (if any) + the web server.
+# Portable: picks bun or node from PATH; only adds toolchain dirs that actually exist.
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
-$cfg = Get-Content (Join-Path $root 'config.json') -Raw | ConvertFrom-Json
-$dir = $cfg.modelDir
-$serverExe = Join-Path $dir 'llama-server.exe'
-$bun = "C:\Users\dave\AppData\Local\Programs\Qwen\resources\bun\bun.exe"
+$cfg  = Get-Content (Join-Path $root 'config.json') -Raw | ConvertFrom-Json
+$dir  = $cfg.modelDir
+$serverExe = $null
+if ($dir) { $serverExe = Join-Path $dir 'llama-server.exe' }
 
-# 1) Model server (llama.cpp) untuk tiap model di config
-foreach ($m in $cfg.models) {
+# 1) Local model servers (llama.cpp). Skipped entirely if llama-server is not present.
+if ($serverExe -and (Test-Path $serverExe)) {
+  foreach ($m in $cfg.models) {
     $path = Join-Path $dir $m.file
-    if (-not (Test-Path $path)) { Write-Host "[skip] $($m.name): model belum diunduh" -ForegroundColor DarkGray; continue }
+    if (-not (Test-Path $path)) { Write-Host "[skip] $($m.name): model file not found" -ForegroundColor DarkGray; continue }
     $up = $false
     try { $up = (Invoke-WebRequest "http://127.0.0.1:$($m.port)/health" -TimeoutSec 2 -UseBasicParsing).StatusCode -eq 200 } catch {}
-    if ($up) { Write-Host "[ok] $($m.name) sudah jalan di :$($m.port)" -ForegroundColor Green; continue }
+    if ($up) { Write-Host "[ok] $($m.name) already running on :$($m.port)" -ForegroundColor Green; continue }
     Start-Process -FilePath $serverExe -WindowStyle Hidden -ArgumentList @(
-        '-m', $path, '--host', '127.0.0.1', '--port', "$($m.port)", '--ctx-size', "$($cfg.llama.ctxSize)", '--threads', "$($cfg.llama.threads)", '--mlock'
+      '-m', $path, '--host', '127.0.0.1', '--port', "$($m.port)", '--ctx-size', "$($cfg.llama.ctxSize)", '--threads', "$($cfg.llama.threads)", '--mlock'
     )
     Write-Host "[start] $($m.name) -> http://127.0.0.1:$($m.port)" -ForegroundColor Cyan
+  }
+} else {
+  Write-Host "[info] llama-server not found in modelDir; local models skipped. Cloud models still work." -ForegroundColor DarkGray
 }
 
-# 2) Quantum web server (Bun, pengganti Node)
-# Tambahkan semua toolchain ke PATH agar server.cjs bisa memanggil 'python' dll.
-# (uv python diutamakan sebelum stub WindowsApps)
-$toolDirs = @(
-    'C:\Users\dave\AppData\Roaming\uv\python\cpython-3.12.10-windows-x86_64-none',  # python
-    'C:\langs\mingw64\bin',                                                          # gcc/g++ (+ linker Rust)
-    'C:\langs\go\bin',                                                               # go
-    'C:\langs\jdk-21.0.11+10\bin',                                                   # java/javac
-    'C:\langs\php',                                                                  # php
-    'C:\langs\kotlinc\bin',                                                          # kotlinc
-    'C:\Users\dave\.cargo\bin'                                                       # rustc/cargo
+# 2) Optional language toolchains: prepend only the dirs that exist on THIS machine.
+$maybeTools = @(
+  "$env:APPDATA\uv\python\cpython-3.12.10-windows-x86_64-none",
+  'C:\langs\mingw64\bin', 'C:\langs\go\bin', 'C:\langs\jdk-21.0.11+10\bin',
+  'C:\langs\php', 'C:\langs\kotlinc\bin', "$env:USERPROFILE\.cargo\bin"
 )
-$env:PATH = ($toolDirs -join ';') + ';' + $env:PATH
+$tools = $maybeTools | Where-Object { Test-Path $_ }
+if ($tools) { $env:PATH = ($tools -join ';') + ';' + $env:PATH }
+
+# 3) Web server: prefer bun, then node, then a bundled bun fallback.
+$runtime = $null
+foreach ($c in @('bun', 'node')) {
+  $cmd = Get-Command $c -ErrorAction SilentlyContinue
+  if ($cmd) { $runtime = $cmd.Source; break }
+}
+if (-not $runtime) {
+  $bundled = "$env:LOCALAPPDATA\Programs\Qwen\resources\bun\bun.exe"
+  if (Test-Path $bundled) { $runtime = $bundled }
+}
+if (-not $runtime) { Write-Host "ERROR: install Node.js (https://nodejs.org) or Bun first." -ForegroundColor Red; exit 1 }
+
 Start-Sleep -Seconds 2
-Start-Process -FilePath $bun -ArgumentList 'server.cjs' -WorkingDirectory $root -WindowStyle Hidden
+Start-Process -FilePath $runtime -ArgumentList 'server.cjs' -WorkingDirectory $root -WindowStyle Hidden
+$port = 8090
+if ($cfg.server.port) { $port = $cfg.server.port }
 Write-Host ""
-Write-Host "Quantum -> http://127.0.0.1:$($cfg.server.port)" -ForegroundColor Green
-Write-Host "Model perlu ~20-30 detik untuk siap. Stop semua:  Get-Process llama-server,bun | Stop-Process -Force" -ForegroundColor DarkGray
+Write-Host "Quantum -> http://127.0.0.1:$port  (runtime: $(Split-Path $runtime -Leaf))" -ForegroundColor Green
+Write-Host "Stop everything:  Get-Process llama-server,bun,node | Stop-Process -Force" -ForegroundColor DarkGray
