@@ -55,9 +55,11 @@ function startBackend() {
   // Node/Bun needed on the user's machine, and the code executor inherits it too).
   // Dev: prefer bun/node from PATH.
   let cmd, env2 = env;
+  // server.cjs is asarUnpack'd, so run it from the real (unpacked) folder.
+  const runDir = app.isPackaged ? ROOT.replace('app.asar', 'app.asar.unpacked') : ROOT;
   if (app.isPackaged) { cmd = process.execPath; env2 = { ...env, ELECTRON_RUN_AS_NODE: '1' }; }
   else { cmd = findRuntime(); }
-  procs.push(spawn(cmd, ['server.cjs'], { cwd: ROOT, stdio: 'ignore', env: env2 }));
+  procs.push(spawn(cmd, ['server.cjs'], { cwd: runDir, stdio: 'ignore', env: env2 }));
 }
 
 function waitReady(cb, tries = 60) {

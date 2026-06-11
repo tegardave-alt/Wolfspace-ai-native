@@ -29,8 +29,8 @@
   "build": {
     "appId": "com.quantum.app",
     "productName": "Quantum",
-    "asar": false,
     "files": ["electron/**", "server.cjs", "public/**", "config.json", "package.json"],
+    "asarUnpack": ["server.cjs", "public/**", "config.json"],
     "extraMetadata": {
       "main": "electron/main.js"
     },
