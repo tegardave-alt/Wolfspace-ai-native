@@ -369,3 +369,17 @@ input, textarea, select { font-family: inherit; }
 .hub-del:hover { background:rgba(248,113,113,0.12); border-color:rgba(248,113,113,0.3); }
 .hub-empty { text-align:center; padding:60px 20px; color:var(--text-muted); font-size:14px; }
 .hub-empty svg { width:40px; height:40px; color:var(--text-faint); margin-bottom:14px; }
+
+/* ── Code-intelligence quality verdict ── */
+.verdict-wrap { display:flex; flex-direction:column; gap:6px; }
+.quality { font-size:12px; border-radius:var(--r-sm,8px); padding:6px 10px; border:1px solid var(--line-strong,#26303c); }
+.quality .q-score { font-weight:600; }
+.quality .q-tag { opacity:.65; margin-left:5px; }
+.q-hi  { background:rgba(94,234,212,0.08);  border-color:rgba(94,234,212,0.30); }
+.q-mid { background:rgba(251,191,36,0.08);  border-color:rgba(251,191,36,0.30); }
+.q-lo  { background:rgba(248,113,113,0.08); border-color:rgba(248,113,113,0.30); }
+.q-notes { margin:6px 0 0; padding-left:16px; }
+.q-notes li { margin:2px 0; }
+.q-error { color:#f87171; }
+.q-warn  { color:#fbbf24; }
+.q-info  { opacity:.8; }

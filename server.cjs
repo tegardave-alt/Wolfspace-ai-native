@@ -32,6 +32,55 @@ const EXEC_TIMEOUT = (CONFIG.execTimeout) || 120000;
 // We reuse it to execute generated JS so there is no hard dependency on `node`.
 const JS_RUNTIME = process.execPath;
 
+// ════════════════════════════════════════════════════════════════════════
+// Debug bus — a single event log wired through ALL of Quantum's logic.
+// Every meaningful step (model call, execution, retry, cloud request, error)
+// emits a structured event. Events live in a ring buffer, stream live to any
+// /debug viewer, and append to a log file. Toggle with config.debug = false.
+// ════════════════════════════════════════════════════════════════════════
+const DEBUG_ON  = CONFIG.debug !== false;
+const LOG_FILE  = path.join(os.tmpdir(), 'quantum-debug.log');
+const LOG_RING  = [];                 // recent events, in memory
+const LOG_MAX   = 800;
+const debugSubs = new Set();          // live SSE writers
+let _evSeq = 0;
+function dlog(cat, level, msg, data) {
+  const e = { seq: ++_evSeq, t: Date.now(), cat, level, msg, data: data === undefined ? null : data };
+  LOG_RING.push(e); if (LOG_RING.length > LOG_MAX) LOG_RING.shift();
+  const line = 'data: ' + JSON.stringify(e) + '\n\n';
+  for (const w of debugSubs) { try { w(line); } catch (_) {} }
+  try { fs.appendFileSync(LOG_FILE, JSON.stringify(e) + '\n'); } catch (_) {}
+  if (DEBUG_ON && level === 'error') console.error(`[quantum:${cat}] ${msg}`, data && data.error ? data.error : '');
+  return e;
+}
+
+// ════════════════════════════════════════════════════════════════════════
+// Code intelligence — static quality analysis (heuristics, zero dependencies).
+// Quantum already proves code RUNS; this judges how WELL it is written and
+// surfaces actionable notes + a 0–100 score alongside the execution verdict.
+// ════════════════════════════════════════════════════════════════════════
+function analyzeCode(lang, code) {
+  const notes = [], add = (sev, msg) => notes.push({ sev, msg });
+  const src = code || '', lines = src.split('\n'), L = lines.length;
+  if (lang === 'python' && /\binput\s*\(/.test(src)) add('error', 'memakai input() — sandbox tanpa stdin, akan gagal (EOFError)');
+  if (/\b(eval|exec)\s*\(/.test(src)) add('warn', 'memakai eval/exec — hindari demi keamanan & kejelasan');
+  if (/\b(TODO|FIXME|XXX)\b/.test(src)) add('warn', 'ada TODO/FIXME — kode tampak belum selesai');
+  if (lang === 'python') {
+    if (/except\s*:/.test(src)) add('warn', 'bare "except:" — tangkap exception yang spesifik');
+    if (/except[^\n:]*:\s*\n\s*pass\b/.test(src)) add('warn', '"except ...: pass" — menelan error diam-diam');
+    if (L > 15 && !/\b(def|class)\s+\w+/.test(src)) add('info', 'kode panjang tanpa fungsi — pertimbangkan pecah jadi fungsi');
+    if (/\bdef\s+\w+/.test(src) && !/"""|'''/.test(src)) add('info', 'fungsi tanpa docstring');
+  } else if (lang === 'javascript') {
+    if (/\bvar\s+\w/.test(src)) add('info', 'gunakan let/const, bukan var');
+    if (/[^=!<>]==[^=]/.test(src)) add('info', 'gunakan === / !== (perbandingan ketat)');
+  }
+  const hasTest = /\bassert\b|console\.assert|expect\s*\(/.test(src);
+  let score = 100;
+  for (const n of notes) score -= n.sev === 'error' ? 25 : n.sev === 'warn' ? 10 : 4;
+  if (!hasTest && L > 8) { score -= 6; add('info', 'tanpa assertion/self-test — sulit dibuktikan benar'); }
+  return { score: Math.max(0, Math.min(100, score)), hasTest, lines: L, notes };
+}
+
 // ── Execution sandbox (Docker) — gate #1 for serving untrusted/other-user code ──
 const SANDBOX_IMAGE = 'quantum-sandbox';
 function hasDocker() { try { execSync('docker version', { stdio: 'ignore', timeout: 8000 }); return true; } catch (e) { return false; } }
@@ -217,20 +266,27 @@ function detectLang(lang, code) {
   return 'javascript';
 }
 
-// Single dispatch used by both /run and /chat
+// Single dispatch used by both /run and /chat — every execution is logged.
 function runByLang(lang, code) {
+  const t0 = Date.now();
+  let r;
   switch (lang) {
-    case 'python':     return runPy(code);
-    case 'javascript': return runJS(code);
-    case 'c':          return runC(code);
-    case 'cpp':        return runCpp(code);
-    case 'go':         return runGo(code);
-    case 'java':       return runJava(code);
-    case 'php':        return runPhp(code);
-    case 'rust':       return runRust(code);
-    case 'kotlin':     return runKotlin(code);
-    default:           return { ok: false, error: `no runtime for "${lang}" — edit & highlight only` };
+    case 'python':     r = runPy(code); break;
+    case 'javascript': r = runJS(code); break;
+    case 'c':          r = runC(code); break;
+    case 'cpp':        r = runCpp(code); break;
+    case 'go':         r = runGo(code); break;
+    case 'java':       r = runJava(code); break;
+    case 'php':        r = runPhp(code); break;
+    case 'rust':       r = runRust(code); break;
+    case 'kotlin':     r = runKotlin(code); break;
+    default:           r = { ok: false, error: `no runtime for "${lang}" — edit & highlight only` };
   }
+  dlog('exec', r.ok ? 'info' : 'warn', `run ${lang}`, {
+    ok: !!r.ok, ms: Date.now() - t0, bytes: (code || '').length,
+    sandbox: USE_SANDBOX, error: r.ok ? undefined : (r.error || '').slice(0, 200),
+  });
+  return r;
 }
 
 // ── Model client + orchestration ──
@@ -239,6 +295,21 @@ const SYS = [
   'Do NOT write code unless the user explicitly asks for code or gives a programming task. A greeting like "hi" gets a short friendly reply — never code.',
   'If you do write code, use one fenced block tagged with the language; it runs in a sandbox with no stdin, so avoid input().',
 ].join(' ');
+// Quality-focused system prompt, used when the request is a programming task.
+const CODE_SYS = [
+  'You are Quantum, an expert programming assistant whose code is JUDGED BY EXECUTION.',
+  'Write CLEAN, CORRECT code: descriptive names, handle edge cases and errors, prefer the standard library.',
+  'Output EXACTLY ONE fenced code block tagged with its language — no alternative versions.',
+  'The sandbox has NO stdin: never use input()/prompt()/sys.stdin (they crash with EOF); use hardcoded values.',
+  'INCLUDE a short self-test using assertions that prints a clear success line, so the CPU can prove it works.',
+  'Keep prose outside the code block to one or two sentences.',
+].join(' ');
+const CODE_HINT = /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|refactor|optimi[sz]e|sort|parse|regex|api|loop|array|string|hitung|kalkulator)\b/i;
+function isCodingTask(work) {
+  for (let i = work.length - 1; i >= 0; i--) if (work[i].role === 'user') return CODE_HINT.test(work[i].content || '');
+  return false;
+}
+function pickSystem(work) { return isCodingTask(work) ? CODE_SYS : SYS; }
 function buildPrompt(hist) {
   let p = `<|im_start|>system\n${SYS}<|im_end|>\n`;
   for (const t of hist) p += `<|im_start|>${t.role}\n${t.content}<|im_end|>\n`;
@@ -269,6 +340,8 @@ function askFIM(port, prefix, suffix, reg) {
 // `messages` is [{role, content}, ...]. reg() exposes the request for cancel.
 function askModelStream(port, messages, onToken, reg) {
   return new Promise((resolve, reject) => {
+    const t0 = Date.now();
+    dlog('model', 'info', 'local model start', { port, messages: messages.length });
     const body = JSON.stringify({ messages, stream: true, temperature: 0.3, top_p: 0.9, max_tokens: 1024, cache_prompt: true });
     const r = http.request({ hostname: '127.0.0.1', port, path: '/v1/chat/completions', method: 'POST',
       headers: { 'Content-Type': 'application/json', 'Content-Length': Buffer.byteLength(body) }, timeout: 600000 },
@@ -282,9 +355,10 @@ function askModelStream(port, messages, onToken, reg) {
             try { const j = JSON.parse(m[1]); const t = j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content; if (t) { acc += t; onToken(t); } } catch {}
           }
         });
-        s.on('end', () => resolve(acc));
+        s.on('end', () => { dlog('model', 'info', 'local model end', { port, ms: Date.now() - t0, chars: acc.length }); resolve(acc); });
       });
-    r.on('error', reject); r.on('timeout', () => { r.destroy(); reject(new Error('model timeout')); });
+    r.on('error', e => { dlog('model', 'error', 'local model error', { port, error: e.message }); reject(e); });
+    r.on('timeout', () => { dlog('model', 'error', 'local model timeout', { port }); r.destroy(); reject(new Error('model timeout')); });
     if (reg) reg(r);
     r.write(body); r.end();
   });
@@ -421,10 +495,12 @@ function askCloudStream(cloud, work, onToken, reg) {
       openaiCompatible();
     }
     headers['content-length'] = Buffer.byteLength(body);
+    const t0 = Date.now();
+    dlog('cloud', 'info', 'cloud model start', { provider, model, host });
 
     const r = https.request({ hostname: host, path, method: 'POST', headers, timeout: 600000 }, s => {
       let acc = '', buf = '', errBody = '';
-      if (s.statusCode >= 400) { s.on('data', c => errBody += c); s.on('end', () => reject(new Error(`${provider} ${s.statusCode}: ${errBody.slice(0, 300)}`))); return; }
+      if (s.statusCode >= 400) { s.on('data', c => errBody += c); s.on('end', () => { dlog('cloud', 'error', 'cloud model http error', { provider, model, status: s.statusCode, body: errBody.slice(0, 200) }); reject(new Error(`${provider} ${s.statusCode}: ${errBody.slice(0, 300)}`)); }); return; }
       s.on('data', chunk => {
         buf += chunk.toString(); const lines = buf.split('\n'); buf = lines.pop();
         for (const line of lines) {
@@ -433,9 +509,10 @@ function askCloudStream(cloud, work, onToken, reg) {
           try { const j = JSON.parse(m[1]); const t = extract(j); if (t) { acc += t; onToken(t); } } catch {}
         }
       });
-      s.on('end', () => resolve(acc));
+      s.on('end', () => { dlog('cloud', 'info', 'cloud model end', { provider, model, ms: Date.now() - t0, chars: acc.length }); resolve(acc); });
     });
-    r.on('error', reject); r.on('timeout', () => { r.destroy(); reject(new Error('cloud timeout')); });
+    r.on('error', e => { dlog('cloud', 'error', 'cloud model error', { provider, error: e.message }); reject(e); });
+    r.on('timeout', () => { dlog('cloud', 'error', 'cloud model timeout', { provider }); r.destroy(); reject(new Error('cloud timeout')); });
     if (reg) reg(r);
     r.write(body); r.end();
   });
@@ -555,10 +632,56 @@ function hfDownload(urlStr, dest, onProgress, reg) {
   });
 }
 
+// Minimal live debug viewer (no deps) — open http://127.0.0.1:PORT/debug
+const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>Quantum · Debug</title>
+<style>
+ body{margin:0;background:#0b0d11;color:#cbd5e1;font:13px/1.5 ui-monospace,Consolas,monospace}
+ header{position:sticky;top:0;background:#11151c;padding:10px 14px;border-bottom:1px solid #1f2733;display:flex;gap:10px;align-items:center}
+ header b{color:#5eead4} input{background:#0b0d11;border:1px solid #2a3441;color:#cbd5e1;padding:4px 8px;border-radius:6px}
+ button{background:#1f2733;border:1px solid #2a3441;color:#cbd5e1;padding:4px 10px;border-radius:6px;cursor:pointer}
+ .row{padding:3px 14px;border-bottom:1px solid #131922;white-space:pre-wrap;word-break:break-word}
+ .t{color:#64748b} .cat{display:inline-block;min-width:54px;color:#93c5fd}
+ .info{} .warn{color:#fbbf24} .error{color:#f87171}
+ .d{color:#7c8aa0}
+</style></head><body>
+<header><b>⚛ Quantum Debug</b><span id="n">0</span> event<input id="f" placeholder="filter (cat/msg)…"><button onclick="document.getElementById('log').innerHTML='';">clear</button></header>
+<div id="log"></div>
+<script>
+ var log=document.getElementById('log'),f=document.getElementById('f'),n=document.getElementById('n'),c=0;
+ function fmt(t){return new Date(t).toLocaleTimeString();}
+ function add(e){
+   if(f.value && !((e.cat+' '+e.msg).toLowerCase().includes(f.value.toLowerCase()))) return;
+   var d=e.data?(' '+JSON.stringify(e.data)):'';
+   var div=document.createElement('div');div.className='row '+e.level;
+   div.innerHTML='<span class="t">'+fmt(e.t)+'</span> <span class="cat">'+e.cat+'</span> '+e.msg+'<span class="d">'+d+'</span>';
+   log.appendChild(div); c++; n.textContent=c;
+   window.scrollTo(0,document.body.scrollHeight);
+ }
+ var es=new EventSource('/debug/stream');
+ es.onmessage=function(m){try{add(JSON.parse(m.data));}catch(_){}};
+</script></body></html>`;
+
 const server = http.createServer(async (req, res) => {
   res.setHeader('Access-Control-Allow-Origin', '*');
   res.setHeader('Access-Control-Allow-Headers', 'Content-Type');
   if (req.method === 'OPTIONS') { res.writeHead(204); return res.end(); }
+
+  // ── Request trace + debug endpoints ──
+  const _path = (req.url || '/').split('?')[0];
+  if (req.method === 'POST' && _path !== '/complete' && _path !== '/pycomplete') dlog('http', 'info', 'POST ' + _path);
+  if (req.method === 'GET' && _path === '/debug/log') {
+    res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(LOG_RING));
+  }
+  if (req.method === 'GET' && _path === '/debug/stream') {
+    res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
+    const w = s => { if (!res.writableEnded) res.write(s); };
+    for (const e of LOG_RING.slice(-120)) w('data: ' + JSON.stringify(e) + '\n\n');
+    debugSubs.add(w); req.on('close', () => debugSubs.delete(w));
+    return;
+  }
+  if (req.method === 'GET' && _path === '/debug') {
+    res.writeHead(200, { 'Content-Type': 'text/html; charset=utf-8' }); return res.end(DEBUG_VIEWER);
+  }
 
   // Detect a key's provider by probing each candidate's /models endpoint
   if (req.method === 'POST' && req.url === '/detect-key') {
@@ -695,15 +818,18 @@ const server = http.createServer(async (req, res) => {
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
       const ev = o => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); };
       const work = (history || []).slice();
+      const useCloud = !!(cloud && cloud.key);
+      const sys = pickSystem(work);                       // code-quality prompt for programming tasks
       let reply = '', run = null, attempts = 0;
+      dlog('chat', 'info', 'chat start', { mode: useCloud ? (cloud.provider || 'cloud') : 'local', coding: isCodingTask(work) });
       try {
         for (let i = 1; i <= 3; i++) {
           if (cancelled) break;
           attempts = i;
-          if (i > 1) ev({ t: 'retry', n: i });
-          reply = await (cloud && cloud.key
-            ? askCloudStream(cloud, work, tok => ev({ t: 'tok', c: tok }), r => { curReq = r; })
-            : askModelStream(port || CONFIG.models[0].port, [{ role: 'system', content: SYS }, ...work], tok => ev({ t: 'tok', c: tok }), r => { curReq = r; }));
+          if (i > 1) { ev({ t: 'retry', n: i }); dlog('chat', 'info', 'retry', { attempt: i }); }
+          reply = await (useCloud
+            ? askCloudStream({ ...cloud, system: cloud.system || sys }, work, tok => ev({ t: 'tok', c: tok }), r => { curReq = r; })
+            : askModelStream(port || CONFIG.models[0].port, [{ role: 'system', content: sys }, ...work], tok => ev({ t: 'tok', c: tok }), r => { curReq = r; }));
           if (cancelled) break;
           const cb = extractCode(reply);
           if (!cb) { run = null; break; }
@@ -712,13 +838,15 @@ const server = http.createServer(async (req, res) => {
           if (!RUNNABLE.has(lang)) { run = null; break; } // untagged prose / html / etc -> show, don't auto-run
           run = runByLang(lang, cb.code);
           run.language = lang;
+          run.quality = analyzeCode(lang, cb.code);       // code-intelligence verdict alongside execution
+          dlog('chat', run.ok ? 'info' : 'warn', 'verify', { lang, ok: run.ok, attempt: i, quality: run.quality.score, notes: run.quality.notes.length });
           ev({ t: 'run', run });
           if (run.ok) break;
           work.push({ role: 'assistant', content: reply });
           work.push({ role: 'user', content: `The code failed when run:\n${(run.error || '').slice(0, 400)}\nFix it. Output only the corrected code block.` });
         }
-        if (!cancelled) ev({ t: 'done', reply, run, attempts });
-      } catch (e) { if (!cancelled) ev({ t: 'err', m: e.message }); }
+        if (!cancelled) { ev({ t: 'done', reply, run, attempts }); dlog('chat', 'info', 'chat done', { attempts, verified: !!(run && run.ok), quality: run && run.quality ? run.quality.score : null }); }
+      } catch (e) { if (!cancelled) { ev({ t: 'err', m: e.message }); dlog('chat', 'error', 'chat error', { error: e.message }); } }
       if (!res.writableEnded) res.end();
     });
     return;
@@ -844,6 +972,7 @@ const server = http.createServer(async (req, res) => {
         const lang = detectLang(language, code || '');
         r = runByLang(lang, code);
         r.language = lang;
+        r.quality = analyzeCode(lang, code || '');
       } catch (e) { r = { ok: false, error: 'bad request: ' + e.message }; }
       res.writeHead(200, { 'Content-Type': 'application/json' });
       res.end(JSON.stringify(r));

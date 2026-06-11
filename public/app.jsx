@@ -360,7 +360,24 @@ function Blocks({ text, onAiEdit, busy }) {
 }
 function Verdict({ run }) {
   if (!run) return null;
-  return <div className={"verdict " + (run.ok ? "ok" : "bad")}>{run.ok ? "✓ terverifikasi (exit 0)" : "⚠ belum lolos"}</div>;
+  const q = run.quality;
+  const tier = !q ? "" : q.score >= 85 ? "q-hi" : q.score >= 60 ? "q-mid" : "q-lo";
+  return (
+    <div className="verdict-wrap">
+      <div className={"verdict " + (run.ok ? "ok" : "bad")}>{run.ok ? "✓ terverifikasi (exit 0)" : "⚠ belum lolos"}</div>
+      {q && (
+        <div className={"quality " + tier}>
+          <span className="q-score">kualitas {q.score}/100</span>
+          {q.hasTest ? <span className="q-tag">· ada self-test</span> : null}
+          {q.notes && q.notes.length > 0 && (
+            <ul className="q-notes">
+              {q.notes.map((n, i) => <li key={i} className={"q-" + n.sev}>{n.msg}</li>)}
+            </ul>
+          )}
+        </div>
+      )}
+    </div>
+  );
 }
 function Message({ msg, onAiEdit, busy }) {
   if (msg.role === "user") return (<div className="msg user"><span className="msg-role">you</span><div className="bubble-user">{msg.text}</div></div>);
