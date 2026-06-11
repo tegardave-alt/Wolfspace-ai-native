@@ -50,8 +50,14 @@ function startBackend() {
       }
     }
   }
-  // Web server (separate process, real JS runtime)
-  procs.push(spawn(findRuntime(), ['server.cjs'], { cwd: ROOT, stdio: 'ignore', env }));
+  // Web server (separate process with a real JS runtime).
+  // Packaged: reuse Electron itself as Node via ELECTRON_RUN_AS_NODE (no system
+  // Node/Bun needed on the user's machine, and the code executor inherits it too).
+  // Dev: prefer bun/node from PATH.
+  let cmd, env2 = env;
+  if (app.isPackaged) { cmd = process.execPath; env2 = { ...env, ELECTRON_RUN_AS_NODE: '1' }; }
+  else { cmd = findRuntime(); }
+  procs.push(spawn(cmd, ['server.cjs'], { cwd: ROOT, stdio: 'ignore', env: env2 }));
 }
 
 function waitReady(cb, tries = 60) {
@@ -64,6 +70,7 @@ function createWindow() {
   const win = new BrowserWindow({
     width: 1200, height: 820, minWidth: 720, minHeight: 520,
     backgroundColor: '#0b0d11', title: 'Quantum', autoHideMenuBar: true,
+    icon: path.join(__dirname, '..', 'public', 'icon.ico'),
   });
   win.loadURL('http://127.0.0.1:' + PORT + '/');
   // open real external links in the system browser, not inside the app

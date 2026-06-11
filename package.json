@@ -4,15 +4,48 @@
   "description": "A local, open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
   "main": "server.cjs",
   "type": "commonjs",
-  "bin": { "quantum": "server.cjs" },
+  "bin": {
+    "quantum": "server.cjs"
+  },
   "scripts": {
     "start": "node server.cjs",
-    "app": "electron electron/main.js"
+    "app": "electron electron/main.js",
+    "dist": "electron-builder --win"
   },
   "keywords": ["ai", "llm", "coding-assistant", "code-execution", "verification", "local-first", "llama.cpp", "byok", "gguf", "huggingface", "electron"],
   "license": "MIT",
-  "engines": { "node": ">=18" },
-  "repository": { "type": "git", "url": "https://github.com/<you>/quantum" },
-  "devDependencies": { "electron": "^33.2.0" },
-  "trustedDependencies": ["electron"]
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/<you>/quantum"
+  },
+  "devDependencies": {
+    "electron": "^33.2.0",
+    "electron-builder": "25.1.8"
+  },
+  "trustedDependencies": ["electron", "electron-builder"],
+  "build": {
+    "appId": "com.quantum.app",
+    "productName": "Quantum",
+    "asar": false,
+    "files": ["electron/**", "server.cjs", "public/**", "config.json", "package.json"],
+    "extraMetadata": {
+      "main": "electron/main.js"
+    },
+    "directories": {
+      "output": "dist-app"
+    },
+    "win": {
+      "target": "nsis",
+      "icon": "public/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "shortcutName": "Quantum"
+    }
+  }
 }
