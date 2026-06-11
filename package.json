@@ -6,10 +6,13 @@
   "type": "commonjs",
   "bin": { "quantum": "server.cjs" },
   "scripts": {
-    "start": "node server.cjs"
+    "start": "node server.cjs",
+    "app": "electron electron/main.js"
   },
-  "keywords": ["ai", "llm", "coding-assistant", "code-execution", "verification", "local-first", "llama.cpp", "byok", "gguf", "huggingface"],
+  "keywords": ["ai", "llm", "coding-assistant", "code-execution", "verification", "local-first", "llama.cpp", "byok", "gguf", "huggingface", "electron"],
   "license": "MIT",
   "engines": { "node": ">=18" },
-  "repository": { "type": "git", "url": "https://github.com/<you>/quantum" }
+  "repository": { "type": "git", "url": "https://github.com/<you>/quantum" },
+  "devDependencies": { "electron": "^33.2.0" },
+  "trustedDependencies": ["electron"]
 }
