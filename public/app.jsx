@@ -294,7 +294,7 @@ const LANG_META = {
   css:       { l:"CSS",        s:"#",   c:"#1572B6" },
   json:      { l:"JSON",       s:"{}",  c:"#A0A6B0" },
 };
-const LANG_LOGOS = new Set(["python","javascript","typescript","bash","go","c","cpp","java","php","rust","kotlin","html","css"]);
+const LANG_LOGOS = new Set(["python","javascript","typescript","bash","go","c","cpp","java","php","rust","kotlin","html","css","json"]);
 function LangIcon({ lang }){
   const m = LANG_META[lang] || { l:lang, s:(lang||"?").slice(0,2), c:"#7c8aa0" };
   if(LANG_LOGOS.has(lang))
