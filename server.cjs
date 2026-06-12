@@ -112,6 +112,14 @@ function launchesShell(code) {
   const s = code || '';
   return /\bos\.system\s*\(|\bos\.popen\s*\(|\bsubprocess\s*\.|\bcode\.interact\s*\(|\bpty\.\w|require\(\s*['"]child_process['"]\s*\)|\bchild_process\b|\.spawn\s*\(|\.exec(File|FileSync|Sync)?\s*\(|\bPopen\s*\(/.test(s);
 }
+// JavaScript meant for the BROWSER (React/JSX, ES modules, DOM) — must NOT be run
+// as a Node script (it would crash). It belongs in the Canvas preview instead.
+function isBrowserJs(code) {
+  const s = code || '';
+  return /^\s*import\s.+\sfrom\s+['"]/m.test(s) || /\bexport\s+default\b/.test(s) ||
+         /from\s+['"]react['"]/.test(s) || /\b(useState|useEffect|ReactDOM|createRoot)\b/.test(s) ||
+         /\bdocument\.\w|\bwindow\.\w/.test(s);
+}
 
 // ── Execution sandbox (Docker) — gate #1 for serving untrusted/other-user code ──
 const SANDBOX_IMAGE = 'quantum-sandbox';
@@ -874,6 +882,10 @@ const server = http.createServer(async (req, res) => {
           const corrected = reconcileLang(lang, cb.code); // fix obvious mislabels (e.g. JS tagged python)
           const wasFixed = corrected !== lang;
           if (wasFixed) { dlog('chat', 'warn', 'language tag corrected', { from: lang, to: corrected }); lang = corrected; }
+          if (lang === 'javascript' && isBrowserJs(cb.code)) {   // browser/React/DOM code → preview in Canvas, don't run in Node
+            dlog('chat', 'info', 'browser JS — preview in Canvas, not executed in Node', {});
+            run = null; break;
+          }
           if (launchesShell(cb.code)) {                   // don't auto-run code that spawns a separate window/shell
             run = { ok: false, skipped: true, language: lang,
               error: 'Eksekusi otomatis dilewati: kode menjalankan proses/shell eksternal (dapat membuka jendela terpisah, mis. Python interaktif). Jalankan manual bila memang diperlukan.' };

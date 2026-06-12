@@ -667,6 +667,35 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
 }
 
 /* ----------------------------- Canvas (live web/app split view) ----------------------------- */
+// Wrap a React/JSX component into a self-contained HTML doc that renders it,
+// using the locally-bundled React + ReactDOM + Babel (works offline).
+function reactDoc(code, cssCode){
+  let src = (code||"")
+    .replace(/^\s*import\s.+;?\s*$/mg, "")                          // drop ESM imports (React is global)
+    .replace(/export\s+default\s+function\s+(\w+)/, "function $1")
+    .replace(/export\s+default\s+class\s+(\w+)/, "class $1")
+    .replace(/export\s+default\s+/, "var __default__ = ")
+    .replace(/export\s+(const|let|var|function|class)\s+/g, "$1 ");
+  let name = (code.match(/export\s+default\s+function\s+(\w+)/)||[])[1]
+          || (code.match(/export\s+default\s+(\w+)\s*;?/)||[])[1]
+          || (code.match(/function\s+([A-Z]\w*)\s*\(/)||[])[1]
+          || (code.match(/(?:const|let|var)\s+([A-Z]\w*)\s*=/)||[])[1]
+          || "App";
+  if(/var __default__ =/.test(src)) name = "__default__";
+  const o = location.origin;
+  return '<!doctype html><html><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">'+
+    '<script src="'+o+'/vendor/react.production.min.js"><\/script>'+
+    '<script src="'+o+'/vendor/react-dom.production.min.js"><\/script>'+
+    '<script src="'+o+'/vendor/babel.min.js"><\/script>'+
+    '<style>body{font-family:system-ui,-apple-system,sans-serif;margin:0;padding:16px}'+(cssCode||"")+'</style></head>'+
+    '<body><div id="root"></div>'+
+    '<script type="text/babel" data-presets="react">'+
+    'const {useState,useEffect,useRef,useMemo,useCallback,useContext,Fragment}=React;\n'+
+    src+'\n'+
+    'try{ReactDOM.createRoot(document.getElementById("root")).render(React.createElement('+name+'));}'+
+    'catch(e){document.getElementById("root").innerHTML="<pre style=\\"color:#c00;white-space:pre-wrap\\">"+(e&&e.message||e)+"</pre>";}'+
+    '<\/script></body></html>';
+}
 // Detect web/app output in a reply and assemble ONE previewable HTML document.
 function buildPreview(text){
   const t = text || "";
@@ -682,6 +711,9 @@ function buildPreview(text){
   const css = find(/^css$/), js = find(/^(js|javascript|jsx)$/);
   // also treat any block whose body looks like an HTML document/fragment as web
   if(!html) html = blocks.find(b => /<!doctype html|<html[\s>]|<head[\s>]|<body[\s>]|<div[\s>]|<style[\s>]|<canvas[\s>]/i.test(b.code||""));
+  // React/JSX component → render with the local React+Babel harness
+  const react = js && (/from\s+['"]react['"]/.test(js.code) || /\b(useState|useEffect|ReactDOM|createRoot)\b/.test(js.code) || /export\s+default/.test(js.code) || /<[A-Z][\w]*[\s/>]/.test(js.code));
+  if(react && !html) return { has:true, doc: reactDoc(js.code, css && css.code) };
   const domJs = js && /document\.|window\.|innerHTML|appendChild|querySelector|getElementById|React|createRoot/.test(js.code);
   const isWeb = !!html || (!!css && !!js) || domJs;
   if(!isWeb) return { has:false };
