@@ -12,7 +12,19 @@
     "app": "electron electron/main.js",
     "dist": "electron-builder --win"
   },
-  "keywords": ["ai", "llm", "coding-assistant", "code-execution", "verification", "local-first", "llama.cpp", "byok", "gguf", "huggingface", "electron"],
+  "keywords": [
+    "ai",
+    "llm",
+    "coding-assistant",
+    "code-execution",
+    "verification",
+    "local-first",
+    "llama.cpp",
+    "byok",
+    "gguf",
+    "huggingface",
+    "electron"
+  ],
   "license": "MIT",
   "engines": {
     "node": ">=18"
@@ -25,12 +37,25 @@
     "electron": "^33.2.0",
     "electron-builder": "25.1.8"
   },
-  "trustedDependencies": ["electron", "electron-builder"],
+  "trustedDependencies": [
+    "electron",
+    "electron-builder"
+  ],
   "build": {
     "appId": "com.quantum.app",
     "productName": "Quantum",
-    "files": ["electron/**", "server.cjs", "public/**", "config.json", "package.json"],
-    "asarUnpack": ["server.cjs", "public/**", "config.json"],
+    "files": [
+      "electron/**",
+      "server.cjs",
+      "public/**",
+      "config.json",
+      "package.json"
+    ],
+    "asarUnpack": [
+      "server.cjs",
+      "public/**",
+      "config.json"
+    ],
     "extraMetadata": {
       "main": "electron/main.js"
     },
@@ -47,5 +72,10 @@
       "allowToChangeInstallationDirectory": true,
       "shortcutName": "Quantum"
     }
+  },
+  "dependencies": {
+    "@xterm/xterm": "^6.0.0",
+    "node-pty": "^1.1.0",
+    "xterm": "^5.3.0"
   }
 }
