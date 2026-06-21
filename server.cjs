@@ -2115,7 +2115,19 @@ const server = http.createServer(async (req, res) => {
               }
             }
           }
-          if (!act || act.kind === 'done') { ev({ t: 'adone', steps: step, summary: act ? act.body : reply }); break; }
+          // Verifikasi anti-halu: DONE hanya boleh jika ada eksekusi yang OK.
+          // Kalau model mengirim DONE tanpa bukti eksekusi sukses, kita tolak.
+          if (!act || act.kind === 'done') {
+            // implicitRun = hanya true kalau kita menjalankan code block dari model.
+            const verified = !!(implicitRun && result && result.ok);
+            if (!verified) {
+              ev({ t: 'adone', steps: step, summary: 'DONE ditolak: belum ada verifikasi eksekusi yang sukses (ok=false atau tidak ada run). Lanjutkan agent.' });
+              convo.push({ role: 'user', content: 'DONE ditolak karena belum terverifikasi. Tolong lanjutkan pekerjaan dan pastikan hasil akhir divalidasi dengan menjalankan test/assert sehingga CPU memberi ok=true.' });
+              continue;
+            }
+            ev({ t: 'adone', steps: step, summary: act ? act.body : reply });
+            break;
+          }
 
           let result;
           if (act.kind === 'list') {
