@@ -1460,6 +1460,7 @@ function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
   const lastGoodRef = useRef(null);                        // last source that compiled OK (for revert)
   const fixCountRef = useRef(0);                            // auto-fix attempts spent on the current source
   const [files, setFiles]             = useState(project.files || null);  // explorer files (Code tab)
+  const [showSDKInfo, setShowSDKInfo] = useState(false);  // Flutter SDK info panel
   const iframeRef = useRef(null);
   const isFlutter = !!project.flutter;
 
