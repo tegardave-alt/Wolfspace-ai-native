@@ -82,9 +82,6 @@ input, textarea, select { font-family: inherit; }
 .sidebar.collapsed .sb-toggle,
 .sidebar.collapsed .sb-item { width: 36px; height: 36px; gap: 0; padding: 0; justify-content: center; }
 
-/* Riwayat Chat list in sidebar */
-.sb-history-list { display: flex; flex-direction: column; gap: 1px; padding: 2px 4px; max-height: 220px; overflow-y: auto; }
-.sidebar.collapsed .sb-history-list { display: none; }
 .sb-history-empty { font-size: 11px; color: var(--subtle,#6b7280); padding: 8px 10px; text-align: center; }
 .sb-history-item { display: flex; align-items: center; gap: 4px; padding: 7px 10px; border-radius: 7px; cursor: pointer; }
 .sb-history-item:hover { background: var(--surface-2, #11151c); }
