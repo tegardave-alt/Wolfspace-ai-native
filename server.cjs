@@ -2376,6 +2376,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Flutter doctor — diagnose Flutter setup
+  if (req.method === 'GET' && req.url === '/flutter/doctor') {
+    try {
+      const { execSync } = require('child_process');
+      let output = null, error = null;
+      if (FLUTTER_BIN) {
+        try {
+          output = execSync('"'+FLUTTER_BIN+'" doctor', { timeout: 30000, encoding: 'utf8', windowsHide: true, maxBuffer: 1024*1024 });
+        } catch(e) { output = e.stdout || ''; error = (e.stderr || '').slice(0,500) || e.message; }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ found: !!FLUTTER_BIN, path: FLUTTER_BIN, output, error }));
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ found: false, path: null, output: null, error: e.message }));
+    }
+    return;
+  }
+
   // Flutter build — compile source to APK (or appbundle/web)
   if (req.method === 'POST' && req.url === '/flutter/build') {
     let body = '';
