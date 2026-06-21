@@ -1652,6 +1652,11 @@ function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
               <path d="M10 2l4 4"/>
             </svg>
           </button>
+          <button className={"canvas-icon"+(showSDKInfo?" flutter-drag-active":"")} title="SDK Info" onClick={()=>setShowSDKInfo(v=>!v)}>
+            <svg viewBox="0 0 16 16" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.5">
+              <rect x="2" y="3" width="12" height="10" rx="1.5"/><path d="M7 7h2M7 9h2"/><circle cx="8" cy="6" r=".5" fill="currentColor"/>
+            </svg>
+          </button>
         </>}
 
         {/* Non-flutter (console/terminal) — just reload */}
