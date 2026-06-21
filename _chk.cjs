@@ -4,20 +4,15 @@ const fp = path.join(__dirname, 'server.cjs');
 let src = fs.readFileSync(fp, 'utf-8');
 
 const marker = '// Flutter build — compile source to APK (or appbundle/web)';
-console.log('Marker index:', src.indexOf(marker));
-
 const insertAt = src.indexOf(marker);
-const searchFrom = Math.max(0, insertAt - 80);
-const before = src.substring(searchFrom, insertAt);
-console.log('Before marker:', JSON.stringify(before));
 
-const lastClose = src.lastIndexOf('  }\n\n', insertAt);
-console.log('lastClose:', lastClose, 'searchFrom:', searchFrom);
-
-if (lastClose >= searchFrom) {
-  const afterClose = lastClose + 4;
-  const code = `
-  // Flutter SDK info — version, path, status
+// CRLF aware — file uses \r\n
+const beforeMarker = src.substring(Math.max(0, insertAt - 200), insertAt);
+// Find the last `  }\r\n\r\n  ` before marker
+const lastClose = beforeMarker.lastIndexOf('  }\r\n\r\n  ');
+if (lastClose >= 0) {
+  const afterClose = Math.max(0, insertAt - 200) + lastClose + 6; // past `  }\r\n\r\n  `
+  const code = `  // Flutter SDK info — version, path, status
   if (req.method === 'GET' && req.url === '/flutter/sdk-info') {
     try {
       const { execSync } = require('child_process');
@@ -39,17 +34,15 @@ if (lastClose >= searchFrom) {
 `;
   src = src.substring(0, afterClose) + code + src.substring(afterClose);
   fs.writeFileSync(fp, src, 'utf-8');
-  console.log('OK — inserted sdk-info endpoint');
+  console.log('OK');
 } else {
-  // Try different pattern
-  console.log('Trying different pattern...');
-  // Look for `    return;\n  }\n\n` before marker
-  const altClose = src.lastIndexOf('    return;\n  }\n\n', insertAt);
+  console.log('FAIL — trying simpler pattern');
+  // Just find `    return;\r\n  }\r\n\r\n`
+  const altClose = beforeMarker.lastIndexOf('    return;\r\n  }\r\n\r\n  ');
   console.log('altClose:', altClose);
   if (altClose >= 0) {
-    const afterAlt = altClose + 14; // past `    return;\n  }\n\n`
-    const code = `
-  // Flutter SDK info — version, path, status
+    const afterAlt = Math.max(0, insertAt - 200) + altClose + 19;
+    const code = `  // Flutter SDK info — version, path, status
   if (req.method === 'GET' && req.url === '/flutter/sdk-info') {
     try {
       const { execSync } = require('child_process');
@@ -71,8 +64,8 @@ if (lastClose >= searchFrom) {
 `;
     src = src.substring(0, afterAlt) + code + src.substring(afterAlt);
     fs.writeFileSync(fp, src, 'utf-8');
-    console.log('OK — inserted sdk-info endpoint (alt)');
+    console.log('OK (alt)');
   } else {
-    console.log('ERROR: all patterns failed');
+    console.log('FAIL');
   }
 }
