@@ -1776,7 +1776,7 @@ function Sidebar({ collapsed, setCollapsed, view, setView, onNewChat, onVisualPi
     </button>
   );
   
-  useEffect(()=>{ if(collapsed) setShowHistory(false); }, [collapsed, setShowHistory]);
+  
   return (
     <aside className={"sidebar"+(collapsed?" collapsed":"")}>
       <div className="sb-head">
