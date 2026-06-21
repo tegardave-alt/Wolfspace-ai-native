@@ -1391,6 +1391,56 @@ function CodeExplorer({ files, onEdit }){
   );
 }
 
+/* ---------- Flutter SDK Info Panel ---------- */
+function FlutterSDKInfo({ isFlutter }){
+  const [info, setInfo] = useState(null);
+  const [doctor, setDoctor] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState(null);
+  const [showDoctor, setShowDoctor] = useState(false);
+  const fetchInfo = useCallback(()=>{
+    setLoading(true); setErr(null);
+    fetch('/flutter/sdk-info').then(r=>r.json()).then(d=>{ setInfo(d); setLoading(false); }).catch(e=>{ setErr(e.message); setLoading(false); });
+  }, []);
+  const fetchDoctor = useCallback(()=>{
+    setLoading(true); setErr(null);
+    fetch('/flutter/doctor').then(r=>r.json()).then(d=>{ setDoctor(d); setShowDoctor(true); setLoading(false); }).catch(e=>{ setErr(e.message); setLoading(false); });
+  }, []);
+  useEffect(()=>{ fetchInfo(); }, [fetchInfo]);
+  return (
+    <div className="flutter-sdk-panel">
+      <div className="fsdk-head">
+        <span className="fsdk-title"><svg viewBox="0 0 24 24" width="14" height="14" fill="none" stroke="currentColor" strokeWidth="1.8"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 10l-2 2 2 2"/><path d="M15 10l2 2-2 2"/></svg> Flutter SDK</span>
+        <button className="fsdk-refresh" title="Refresh" onClick={fetchInfo}>↻</button>
+      </div>
+      {loading && !info && <div className="fsdk-loading">Memuat…</div>}
+      {err && <div className="fsdk-err">{err}</div>}
+      {info && <>
+        <div className="fsdk-row">
+          <span className="fsdk-label">Status</span>
+          <span className={"fsdk-val "+(info.found?"fsdk-ok":"fsdk-miss")}>{info.found ? "SDK ditemukan" : "SDK tidak ditemukan"}</span>
+        </div>
+        {info.path && <div className="fsdk-row"><span className="fsdk-label">Path</span><span className="fsdk-val fsdk-path" title={info.path}>{info.path}</span></div>}
+        {info.version && <div className="fsdk-row"><span className="fsdk-label">Versi</span><span className="fsdk-val">{info.version}</span></div>}
+        <div className="fsdk-actions">
+          {isFlutter && <button className="fsdk-btn" onClick={()=>fetch('/flutter/compile',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({source:''})}).catch(()=>{})}>Compile ulang</button>}
+          <button className="fsdk-btn" onClick={fetchDoctor} disabled={loading}>Flutter Doctor</button>
+          <a className="fsdk-link" href="https://flutter.dev/docs" target="_blank" rel="noreferrer">Dokumentasi ↗</a>
+        </div>
+        {showDoctor && doctor && (
+          <div className="fsdk-doctor">
+            <div className="fsdk-doctor-head">
+              <span>flutter doctor</span>
+              <button className="fsdk-doctor-close" onClick={()=>setShowDoctor(false)}>✕</button>
+            </div>
+            <pre className="fsdk-doctor-out">{(doctor.output||'') || (doctor.error||'Tidak ada output')}</pre>
+          </div>
+        )}
+      </>}
+    </div>
+  );
+}
+
 function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
   const [tab, setTab]           = useState("preview");
   const [doc, setDoc]           = useState(project.doc || FLUTTER_COMPILING);
