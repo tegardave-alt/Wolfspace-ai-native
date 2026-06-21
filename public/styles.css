@@ -101,7 +101,7 @@ input, textarea, select { font-family: inherit; }
   background: var(--surface-1, #0f1318); border: 1px solid var(--line, #1f2733); border-radius: 14px; padding: 22px; }
 
 /* Top bar */
-.topbar { display: flex; align-items: center; gap: 14px; height: 58px; padding: 0 18px;
+.topbar { display: flex; align-items: center; gap: 10px; height: 46px; padding: 0 14px;
   border-bottom: 1px solid var(--line); background: rgba(11,13,17,0.72); backdrop-filter: blur(14px);
   position: relative; z-index: 40; flex-shrink: 0; }
 .brand-btn { display: flex; align-items: center; gap: 9px; padding: 7px 11px 7px 8px; border-radius: var(--r-pill); transition: background .15s ease; }
