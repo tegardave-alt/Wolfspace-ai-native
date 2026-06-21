@@ -3,7 +3,7 @@ const fs = require('fs');
 const path = require('path');
 const os = require('os');
 const util = require('util');
-const { exec } = require('child_process');
+const { exec, spawn } = require('child_process');
 const execP = util.promisify(exec);
 const { dlog } = require('./debug.cjs');
 const { runByLang, detectLang } = require('./runners.cjs');
@@ -286,7 +286,7 @@ const SELF_TOOLS = [
 
 // ── Core tool dispatcher ──
 // Returns string (sync) or Promise<{ok,output[,edited]}> for async tools like web_search
-function runSelfTool(name, args) {
+function runSelfTool(name, args, emit) {
   try {
     if (name === 'list') return { ok: true, output: qList() };
     if (name === 'glob') return { ok: true, output: qGlob(args.pattern) };
@@ -296,7 +296,9 @@ function runSelfTool(name, args) {
       const dest = qResolve(args.path, true);
       const old = fs.readFileSync(dest, 'utf8');
       if (!old.includes(args.old_string)) return { ok: false, output: 'old_string tidak ditemukan di file — read ulang & salin persis.' };
+      if (args.old_string === args.new_string) return { ok: false, output: 'NOOP: old_string sama dengan new_string — edit dibatalkan.' };
       const patched = old.replace(args.old_string, args.new_string);
+      if (old === patched) return { ok: false, output: 'NOOP: replace tidak mengubah konten (old_string tidak match atau sudah sama).' };
       fs.writeFileSync(dest, patched, 'utf8');
       return qSyntaxOk(dest).then(chk => {
         if (!chk.ok) { fs.writeFileSync(dest, old, 'utf8'); return { ok: false, output: 'DITOLAK (sintaks rusak, dikembalikan):\n' + chk.error }; }
@@ -321,14 +323,38 @@ function runSelfTool(name, args) {
       if (args.cwd) {
         try { const resolved = resolveDiskPath(args.cwd); const st = fs.statSync(resolved); if (st.isDirectory()) cwd = resolved; } catch {}
       }
-      // Async to avoid blocking the event loop — yields control during long commands
+      // Use spawn for streaming output — no more execSync blocking
       return new Promise(resolve => {
-        exec(cmd, { cwd, timeout: 60000, encoding: 'utf8', windowsHide: true, shell: 'powershell.exe', maxBuffer: 200 * 1024 }, (error, stdout, stderr) => {
-          if (error) {
-            resolve({ ok: false, output: 'exit ' + (error.code||'?') + ':\n' + ((stderr || stdout || '').trim() || error.message).slice(0, 4000) });
+        const child = spawn('cmd.exe', ['/d', '/c', cmd], {
+          cwd,
+          windowsHide: true,
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        });
+        let stdout = '', stderr = '', timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; child.kill(); }, 60000);
+        child.stdout.on('data', chunk => {
+          const text = chunk.toString();
+          stdout += text;
+          if (emit) emit({ t: 'act', kind: 'bash', arg: cmd.slice(0, 60), ok: true, output: text.slice(0, 1000) });
+        });
+        child.stderr.on('data', chunk => {
+          const text = chunk.toString();
+          stderr += text;
+          if (emit) emit({ t: 'act', kind: 'bash', arg: cmd.slice(0, 60), ok: true, output: text.slice(0, 1000) });
+        });
+        child.on('close', code => {
+          clearTimeout(timer);
+          if (timedOut) return resolve({ ok: false, output: 'TIMEOUT (60s): ' + cmd.slice(0, 100) });
+          const full = (stdout || stderr || '').trim();
+          if (code !== 0 && stderr) {
+            resolve({ ok: false, output: 'exit ' + code + ':\n' + (stderr.trim() || stdout.trim() || '(no output)').slice(0, 4000) });
           } else {
-            resolve({ ok: true, output: (stdout || '(exit 0)').slice(0, 4000) });
+            resolve({ ok: true, output: full.slice(0, 4000) || '(exit ' + code + ')' });
           }
+        });
+        child.on('error', err => {
+          clearTimeout(timer);
+          resolve({ ok: false, output: 'spawn error: ' + err.message });
         });
       });
     }

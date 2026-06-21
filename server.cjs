@@ -1,4 +1,4 @@
-﻿﻿#!/usr/bin/env node
+#!/usr/bin/env node
 'use strict';
 // DEBUG: capture full stack for Maximum call stack errors
 process.on('uncaughtException', (err) => {
@@ -54,6 +54,9 @@ const LOG_FILE  = path.join(os.tmpdir(), 'quantum-debug.log');
 const LOG_RING  = [];                 // recent events, in memory
 const LOG_MAX   = 800;
 const debugSubs = new Set();          // live SSE writers
+
+// Precision debugging via trace system
+const trace = require('./agent/trace.cjs');
 let _evSeq = 0;
 function dlog(cat, level, msg, data) {
   const e = { seq: ++_evSeq, t: Date.now(), cat, level, msg, data: data === undefined ? null : data };
@@ -580,7 +583,7 @@ function isCodingTask(work) {
   for (const i = work.length - 1; i >= 0; i--) if (work[i].role === 'user') return CODE_HINT.test(work[i].content || '');
   return false;
 }
-function pickSystem(work) { return isCodingTask(work) ? CODE_SYS : SYS; }
+function pickSystem(work, webdev) { return webdev ? WEBDEV_SYS : isCodingTask(work) ? CODE_SYS : SYS; }
 // Web Dev (Canvas) mode: every reply MUST be one complete Flutter app Ã¢â‚¬â€ the
 // Canvas compiles ```dart locally and renders it; HTML/prose gives a broken
 // "page of code text" instead of a UI.
@@ -816,8 +819,9 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     let host = cfg.host, path = cfg.path, port = null, headers = { 'content-type': 'application/json' }, body, extract;
     const openaiCompatible = () => {
       headers['authorization'] = 'Bearer ' + cloud.key;
-      body = JSON.stringify({ model, stream: true, messages: [{ role: 'system', content: sys }, ...work] });
-      extract = j => { try { return j.choices[0].delta.content || ''; } catch { return ''; } };
+      const mt = /deepseek|reason/i.test(model) ? 16384 : 8192;
+      body = JSON.stringify({ model, stream: true, max_tokens: mt, messages: [{ role: 'system', content: sys }, ...work] });
+      extract = j => { try { const d = j.choices[0].delta; return (d.content || d.reasoning_content || ''); } catch { return ''; } };
     };
 
     if (cloud.baseUrl) {                          // custom OpenAI-compatible endpoint (any sk- provider)
@@ -1247,11 +1251,12 @@ function _askCloudToolsOnce(cloud, messages) {
     if (cloud.baseUrl) { try { const u = new URL(cloud.baseUrl.replace(/\/+$/, '') + '/chat/completions'); host = u.hostname; p = u.pathname + (u.search || ''); port = u.port || undefined; transport = (u.protocol === 'http:') ? http : https; } catch {} }
     // max_tokens caps runaway rambling (some models write essays instead of a tool call),
     // which keeps each agent step fast. Tool calls + short answers fit easily.
-    const body = JSON.stringify({ model, messages, tools: SELF_TOOLS, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: 4096 });
+    const isReasoning = /deepseek|reason/i.test(model);
+    const body = JSON.stringify({ model, messages, tools: SELF_TOOLS, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: isReasoning ? 16384 : 8192 });
     const headers = { 'content-type': 'application/json', authorization: 'Bearer ' + cloud.key, 'content-length': Buffer.byteLength(body) };
     const r = transport.request({ hostname: host, port, path: p, method: 'POST', headers, timeout: 300000 }, s => {
       const bad = s.statusCode >= 400;
-      let buf = '', errBody = '', content = ''; const tcs = [];
+      let buf = '', errBody = '', content = '', reasoning = ''; const tcs = [];
       s.on('data', c => {
         if (bad) { errBody += c; return; }
         buf += c; let nl;
@@ -1261,6 +1266,7 @@ function _askCloudToolsOnce(cloud, messages) {
           let j; try { j = JSON.parse(m[1]); } catch { continue; }
           const delta = j.choices && j.choices[0] && j.choices[0].delta; if (!delta) continue;
           if (delta.content) content += delta.content;
+          else if (delta.reasoning_content) reasoning += delta.reasoning_content;
           if (delta.tool_calls) for (const t of delta.tool_calls) {
             const i = t.index || 0;
             if (!tcs[i]) tcs[i] = { id: t.id || ('call_' + i), type: 'function', function: { name: '', arguments: '' } };
@@ -1279,7 +1285,7 @@ function _askCloudToolsOnce(cloud, messages) {
           } catch (_) {}
           return reject(new Error(provider + ' ' + s.statusCode + ': ' + errBody.slice(0, 300)));
         }
-        resolve({ role: 'assistant', content: content || null, tool_calls: tcs.filter(Boolean) });
+          resolve({ role: 'assistant', content: content || (reasoning || null), tool_calls: tcs.filter(Boolean) });
       });
     });
     r.on('error', reject); r.on('timeout', () => r.destroy(new Error('timeout')));
@@ -1303,7 +1309,7 @@ async function askCloudTools(cloud, messages) {
 }
 
 // Execute one validated tool call. Returns { ok, output, edited }.
-function runSelfTool(name, args) {
+function runSelfTool(name, args, emit) {
   try {
     if (name === 'list') return { ok: true, output: qList() };
     if (name === 'glob') return { ok: true, output: qGlob(args.pattern) };
@@ -1313,7 +1319,9 @@ function runSelfTool(name, args) {
       const dest = qResolve(args.path, true);
       const old = fs.readFileSync(dest, 'utf8');
       if (!old.includes(args.old_string)) return { ok: false, output: 'old_string tidak ditemukan di file \u2014 read ulang & salin persis.' };
+      if (args.old_string === args.new_string) return { ok: false, output: 'NOOP: old_string sama dengan new_string \u2014 edit dibatalkan.' };
       const patched = old.replace(args.old_string, args.new_string);
+      if (old === patched) return { ok: false, output: 'NOOP: replace tidak mengubah konten (old_string tidak match atau sudah sama).' };
       fs.writeFileSync(dest, patched, 'utf8');
       return qSyntaxOk(dest).then(chk => {
         if (!chk.ok) { fs.writeFileSync(dest, old, 'utf8'); return { ok: false, output: 'DITOLAK (sintaks rusak, dikembalikan):\n' + chk.error }; }
@@ -1339,14 +1347,38 @@ function runSelfTool(name, args) {
       if (args.cwd) {
         try { const resolved = resolveDiskPath(args.cwd); const st = fs.statSync(resolved); if (st.isDirectory()) cwd = resolved; } catch {}
       }
-      // Async to avoid blocking the event loop â€” yields control during long commands
+      // Use spawn for streaming output — no blocking
       return new Promise(resolve => {
-        exec(cmd, { cwd, timeout: 60000, encoding: 'utf8', windowsHide: true, shell: 'powershell.exe', maxBuffer: 200 * 1024, env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' } }, (error, stdout, stderr) => {
-          if (error) {
-            resolve({ ok: false, output: 'exit ' + (error.code||'?') + ':\n' + ((stderr || stdout || '').trim() || error.message).slice(0, 4000) });
+        const child = spawn('cmd.exe', ['/d', '/c', cmd], {
+          cwd,
+          windowsHide: true,
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+        });
+        let stdout = '', stderr = '', timedOut = false;
+        const timer = setTimeout(() => { timedOut = true; child.kill(); }, 60000);
+        child.stdout.on('data', chunk => {
+          const text = chunk.toString();
+          stdout += text;
+          if (emit) emit({ t: 'act', kind: 'bash', arg: cmd.slice(0, 60), ok: true, output: text.slice(0, 1000) });
+        });
+        child.stderr.on('data', chunk => {
+          const text = chunk.toString();
+          stderr += text;
+          if (emit) emit({ t: 'act', kind: 'bash', arg: cmd.slice(0, 60), ok: true, output: text.slice(0, 1000) });
+        });
+        child.on('close', code => {
+          clearTimeout(timer);
+          if (timedOut) return resolve({ ok: false, output: 'TIMEOUT (60s): ' + cmd.slice(0, 100) });
+          const full = (stdout || stderr || '').trim();
+          if (code !== 0 && stderr) {
+            resolve({ ok: false, output: 'exit ' + code + ':\n' + (stderr.trim() || stdout.trim() || '(no output)').slice(0, 4000) });
           } else {
-            resolve({ ok: true, output: (stdout || '(exit 0)').slice(0, 4000) });
+            resolve({ ok: true, output: full.slice(0, 4000) || '(exit ' + code + ')' });
           }
+        });
+        child.on('error', err => {
+          clearTimeout(timer);
+          resolve({ ok: false, output: 'spawn error: ' + err.message });
         });
       });
     }
@@ -1671,6 +1703,32 @@ const server = http.createServer(async (req, res) => {
   // Ã¢â€â‚¬Ã¢â€â‚¬ Request trace + debug endpoints Ã¢â€â‚¬Ã¢â€â‚¬
   const _path = (req.url || '/').split('?')[0];
   if (req.method === 'POST' && _path !== '/complete' && _path !== '/pycomplete') dlog('http', 'info', 'POST ' + _path);
+  
+  // Debug: list recent runs
+  if (req.method === 'GET' && _path === '/debug/runs') {
+    const runs = trace.listRuns(30);
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(runs));
+  }
+  
+  // Debug: get run timeline by ID
+  if (req.method === 'GET' && _path.startsWith('/debug/runs/')) {
+    const runId = (req.url || '').split('/').pop();
+    const timeline = trace.getRunTimeline(runId);
+    if (!timeline) { res.writeHead(404); return res.end(JSON.stringify({ error: 'run not found' })); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(timeline));
+  }
+  
+  // Debug: export bundle for reproduction
+  if (req.method === 'GET' && _path.startsWith('/debug/export/')) {
+    const runId = (req.url || '').split('/').pop();
+    const bundle = trace.exportBundle(runId, { includeConfig: true });
+    if (!bundle) { res.writeHead(404); return res.end(JSON.stringify({ error: 'run not found' })); }
+    res.writeHead(200, { 'Content-Type': 'application/json' });
+    return res.end(JSON.stringify(bundle));
+  }
+  
   if (req.method === 'GET' && _path === '/debug/log') {
     res.writeHead(200, { 'Content-Type': 'application/json' }); return res.end(JSON.stringify(LOG_RING));
   }
@@ -2287,6 +2345,86 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Flutter build — compile source to APK (or appbundle/web)
+  if (req.method === 'POST' && req.url === '/flutter/build') {
+    let body = '';
+    req.on('data', c => body += c);
+    req.on('end', async () => {
+      try {
+        const { source, target } = JSON.parse(body);
+        const buildTarget = target === 'apk' ? 'apk' : target === 'appbundle' ? 'appbundle' : 'web';
+        dlog('flutter', 'info', 'build request', { chars: (source||'').length, target: buildTarget });
+
+        if (!FLUTTER_BIN) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart Quantum.' }));
+          return;
+        }
+
+        const tmpProj  = path.join(os.tmpdir(), 'quantum-flutter-proj');
+        const libDir = path.join(tmpProj, 'lib');
+        if (!fs.existsSync(libDir)) {
+          res.writeHead(200, { 'Content-Type': 'application/json' });
+          res.end(JSON.stringify({ error: 'Project belum di-compile. Jalankan compile dulu.' }));
+          return;
+        }
+        fs.writeFileSync(path.join(libDir, 'main.dart'), source, 'utf8');
+
+        let cmd;
+        if (buildTarget === 'apk') {
+          cmd = `"${FLUTTER_BIN}" build apk --release`;
+        } else if (buildTarget === 'appbundle') {
+          cmd = `"${FLUTTER_BIN}" build appbundle --release`;
+        } else {
+          cmd = `"${FLUTTER_BIN}" build web --release --no-tree-shake-icons --no-wasm-dry-run --pwa-strategy=none`;
+        }
+
+        dlog('flutter', 'info', 'running flutter build', { cmd: cmd.slice(0,100) });
+        const t0 = Date.now();
+        await new Promise((resolve, reject) => {
+          const { exec } = require('child_process');
+          exec(cmd, { timeout: 300000, windowsHide: true, cwd: tmpProj, maxBuffer: 32*1024*1024 },
+            (err, stdout, stderr) => {
+              if (err) { err.stdout = stdout; err.stderr = stderr; reject(err); }
+              else resolve();
+            });
+        });
+
+        let outputPath = '';
+        if (buildTarget === 'apk') {
+          const apkDir = path.join(tmpProj, 'build', 'app', 'outputs', 'flutter-apk');
+          if (fs.existsSync(apkDir)) {
+            const files = fs.readdirSync(apkDir);
+            const apk = files.find(f => f.endsWith('.apk'));
+            if (apk) outputPath = path.join(apkDir, apk);
+          } else {
+            outputPath = 'APK generated (location unknown, check flutter build output)';
+          }
+        } else if (buildTarget === 'appbundle') {
+          const aabDir = path.join(tmpProj, 'build', 'app', 'outputs', 'bundle', 'release');
+          if (fs.existsSync(aabDir)) {
+            const files = fs.readdirSync(aabDir);
+            const aab = files.find(f => f.endsWith('.aab'));
+            if (aab) outputPath = path.join(aabDir, aab);
+          } else {
+            outputPath = 'AAB generated (location unknown, check flutter build output)';
+          }
+        } else {
+          outputPath = path.join(tmpProj, 'build', 'web', 'index.html');
+        }
+
+        dlog('flutter', 'info', 'build OK', { ms: Date.now()-t0, output: outputPath });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ output: outputPath }));
+      } catch (e) {
+        dlog('flutter', 'error', 'build failed', { err: e.message });
+        res.writeHead(200, { 'Content-Type': 'application/json' });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   // Flutter drag-to-move: AI updates Dart source based on drag delta
   if (req.method === 'POST' && req.url === '/flutter/move') {
     let body = '';
@@ -2633,6 +2771,28 @@ Rules:
 // When required as a module (by core.js / the IPC layer), expose the logic instead
 // of opening a port Ã¢â‚¬â€ see docs/A2UI-DESIGN.md step 1.
 if (require.main === module) {
+  server.on('error', (err) => {
+    if (err.code === 'EADDRINUSE') {
+      console.error(`\n  Port ${PORT} sudah dipakai. Mencoba matikan proses lama...`);
+      try {
+        const { execSync } = require('child_process');
+        if (process.platform === 'win32') {
+          const out = execSync(`netstat -ano | findstr "LISTENING" | findstr ":${PORT}"`, { encoding: 'utf8', timeout: 5000 });
+          const match = out.match(/(\d+)\s*$/m);
+          if (match) { execSync(`taskkill /F /PID ${match[1]}`, { stdio: 'ignore', timeout: 3000 }); }
+        } else {
+          execSync(`lsof -ti:${PORT} | xargs kill -9 2>/dev/null`, { stdio: 'ignore', timeout: 5000 });
+        }
+        setTimeout(() => server.listen(PORT, HOST), 500);
+      } catch (e) {
+        console.error(`  Gagal: ${e.message}. Coba start ulang dengan "dev.bat"`);
+        process.exit(1);
+      }
+    } else {
+      console.error('Server error:', err);
+      process.exit(1);
+    }
+  });
   server.listen(PORT, HOST, () => {
     console.log(`\n  Quantum  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`);
   });

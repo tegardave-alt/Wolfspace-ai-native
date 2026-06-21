@@ -1,0 +1,49 @@
+{
+  "type": "scaffold",
+  "background": "#0b1220",
+  "state": { "display": "0" },
+  "body": {
+    "type": "padding", "all": 16,
+    "child": {
+      "type": "column",
+      "cross": "stretch",
+      "children": [
+        { "type": "spacer" },
+        { "type": "container", "color": "#111c33", "radius": 18, "padding": 24, "width": 999,
+          "child": { "type": "text", "text": "${display}", "fontSize": 48, "color": "#ffffff", "bold": true } },
+        { "type": "sizedbox", "height": 18 },
+        { "type": "row", "children": [
+          { "type": "button", "label": "C", "color": "#ef4444", "onTap": { "set": "display", "to": "0" } },
+          { "type": "button", "label": "(", "color": "#334155", "onTap": { "append": "display", "text": "(" } },
+          { "type": "button", "label": ")", "color": "#334155", "onTap": { "append": "display", "text": ")" } },
+          { "type": "button", "label": "÷", "color": "#f59e0b", "onTap": { "append": "display", "text": "÷" } }
+        ] },
+        { "type": "row", "children": [
+          { "type": "button", "label": "7", "color": "#1e293b", "onTap": { "append": "display", "text": "7" } },
+          { "type": "button", "label": "8", "color": "#1e293b", "onTap": { "append": "display", "text": "8" } },
+          { "type": "button", "label": "9", "color": "#1e293b", "onTap": { "append": "display", "text": "9" } },
+          { "type": "button", "label": "×", "color": "#f59e0b", "onTap": { "append": "display", "text": "×" } }
+        ] },
+        { "type": "row", "children": [
+          { "type": "button", "label": "4", "color": "#1e293b", "onTap": { "append": "display", "text": "4" } },
+          { "type": "button", "label": "5", "color": "#1e293b", "onTap": { "append": "display", "text": "5" } },
+          { "type": "button", "label": "6", "color": "#1e293b", "onTap": { "append": "display", "text": "6" } },
+          { "type": "button", "label": "−", "color": "#f59e0b", "onTap": { "append": "display", "text": "−" } }
+        ] },
+        { "type": "row", "children": [
+          { "type": "button", "label": "1", "color": "#1e293b", "onTap": { "append": "display", "text": "1" } },
+          { "type": "button", "label": "2", "color": "#1e293b", "onTap": { "append": "display", "text": "2" } },
+          { "type": "button", "label": "3", "color": "#1e293b", "onTap": { "append": "display", "text": "3" } },
+          { "type": "button", "label": "+", "color": "#f59e0b", "onTap": { "append": "display", "text": "+" } }
+        ] },
+        { "type": "row", "children": [
+          { "type": "button", "label": "⌫", "color": "#64748b", "onTap": { "backspace": "display" } },
+          { "type": "button", "label": "0", "color": "#1e293b", "onTap": { "append": "display", "text": "0" } },
+          { "type": "button", "label": ".", "color": "#1e293b", "onTap": { "append": "display", "text": "." } },
+          { "type": "button", "label": "=", "color": "#22c55e", "onTap": { "eval": "display" } }
+        ] },
+        { "type": "spacer" }
+      ]
+    }
+  }
+}

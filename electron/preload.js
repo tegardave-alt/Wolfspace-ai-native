@@ -18,7 +18,7 @@ contextBridge.exposeInMainWorld('quantum', {
     const id = 'qs_' + (++seq) + '_' + Date.now();
     const handler = (_e, m) => {
       if (m.id !== id) return;
-      if (m.done) { ipcRenderer.removeListener('quantum:chunk', handler); if (onDone) onDone(); }
+      if (m.done || m.data?.done) { ipcRenderer.removeListener('quantum:chunk', handler); if (onDone) onDone(); }
       else onChunk(m.data);
     };
     ipcRenderer.on('quantum:chunk', handler);

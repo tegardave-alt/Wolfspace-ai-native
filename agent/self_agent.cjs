@@ -136,7 +136,11 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
         if (callCounts[sig] > 10) return { stop: true };
 
         if (/^(edit|write)$/i.test(tc.function.name)) ensureBackup();
-        const r = await runSelfTool(tc.function.name, args);
+        // Emit "running" immediately for bash so frontend shows activity right away
+        if (tc.function.name === 'bash') {
+          emit({ t: 'act', kind: 'bash', arg: args.command || '', ok: true, output: '⟳ running…' });
+        }
+        const r = await runSelfTool(tc.function.name, args, emit);
         if (r.edited) edits++;
         // For edits, also include hunk info so frontend can show diff hunks
         const extra = {};

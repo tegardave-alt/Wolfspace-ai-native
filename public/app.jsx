@@ -1,4 +1,4 @@
-const { useState, useRef, useEffect, useCallback } = React;
+const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 /* ----------------------------- Icons ----------------------------- */
 const Icon = {
@@ -50,6 +50,16 @@ function parseBlocks(text){
   return out;
 }
 function reqFor(modelVal, cloud, history, webdev){ const b = (modelVal==="cloud" && cloud) ? { history, cloud } : { history, port: modelVal }; if(webdev) b.webdev = true; return b; }
+// Verify HTTP server is running (only for browser users, not Electron)
+async function checkServerHealth() {
+  if (IPC) return true;  // Electron: uses IPC, no HTTP needed
+  try {
+    const r = await fetch("/", { method: "HEAD", timeout: 2000 });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
 // Parse an SSE stream from a fetch Response, calling onEvent(parsedJSON) per line.
 async function pumpSSE(r, signal, onEvent){
   const reader=r.body.getReader(); const dec=new TextDecoder(); let buf="";
@@ -84,30 +94,57 @@ async function streamSelfAgent(reqBody, onEvent, signal){
       if(signal) signal.addEventListener("abort",()=>{ cancel(); resolve(); }); });
     return;
   }
-  const r = await fetch("/self-agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(reqBody),signal});
-  await pumpSSE(r, signal, onEvent);
+  try {
+    const r = await fetch("/self-agent",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(reqBody),signal});
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    await pumpSSE(r, signal, onEvent);
+  } catch(e) {
+    if (e instanceof TypeError && e.message.includes('Failed to fetch')) {
+      throw new Error('Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder quantum\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app');
+    }
+    throw e;
+  }
+}
+
+
+/* ----------------------------- Model Interface (collapsible dropdown) ----------------------------- */
+function ModelInterface({ models, modelVal, setModelVal }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const handle = (e) => { if (ref.current && !ref.current.contains(e.target)) setOpen(false); };
+    document.addEventListener('mousedown', handle);
+    return () => document.removeEventListener('mousedown', handle);
+  }, []);
+  const current = models.find(m => m.value === modelVal);
+  const label = current ? current.label : modelVal;
+  return (
+    <div className="model-interface" ref={ref}>
+      <button className="mi-trigger" onClick={() => setOpen(!open)} title={label}>
+        <span className="mi-label">{label}</span>
+        <Icon.chev className={"mi-chev" + (open ? " open" : "")} style={{ width: 14, height: 14 }} />
+      </button>
+      {open && (
+        <div className="mi-panel">
+          {models.map((m) => (
+            <div key={m.value}
+              className={"mi-opt" + (m.value === modelVal ? " active" : "") + (m.disabled ? " disabled" : "")}
+              onClick={() => { if (!m.disabled) { setModelVal(m.value); setOpen(false); } }}>
+              {m.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
 }
 
 /* ----------------------------- Top bar ----------------------------- */
-function TopBar({ models, modelVal, setModelVal, compare, setCompare, compareVal, setCompareVal, panelOpen, setPanelOpen, onReset, status, theme, setTheme }) {
+function TopBar({ models, modelVal, setModelVal, panelOpen, setPanelOpen, onReset, status, theme, setTheme }) {
   return (
     <header className="topbar">
-      <span className="tb-label model-select">
-        <select value={modelVal} onChange={(e) => setModelVal(e.target.value)}>
-          {models.map((m) => <option key={m.value} value={m.value} disabled={m.disabled}>{m.label}</option>)}
-        </select>
-        <Icon.chev className="chev" style={{ width: 15, height: 15 }} />
-      </span>
-      <button className="tb-btn" onClick={onReset}><Icon.reset /> Reset</button>
-      <button className={"compare" + (compare ? " on" : "")} onClick={() => setCompare(!compare)}><span className="toggle" />Bandingkan</button>
-      {compare && (
-        <div className="model-select">
-          <select value={compareVal} onChange={(e) => setCompareVal(e.target.value)}>
-            {models.map((m) => <option key={m.value} value={m.value} disabled={m.disabled}>{m.label}</option>)}
-          </select>
-          <Icon.chev className="chev" style={{ width: 15, height: 15 }} />
-        </div>
-      )}
+      <ModelInterface models={models} modelVal={modelVal} setModelVal={setModelVal} />
+
       <div className="tb-spacer" />
 
     </header>
@@ -171,7 +208,7 @@ function HFModels({ onSaved }) {
 }
 
 /* ----------------------------- Settings (full page) ----------------------------- */
-function SettingsView({ onBack, onSaved }) {
+function SettingsView({ onBack, onSaved, onCloudChanged }) {
   const stored = getCloud();
   const [key, setKey] = useState("");
   const [provider, setProvider] = useState(stored ? (stored.baseUrl ? "custom" : stored.provider) : "auto");
@@ -205,13 +242,13 @@ function SettingsView({ onBack, onSaved }) {
       .then(r=>r.json()).then(()=>setHint("Tersimpan (browser + server): " + prov + " ·" + k.slice(-4) + " → " + mdl))
       .catch(()=>setHint("Tersimpan di browser: " + prov + " ·" + k.slice(-4) + " → " + mdl));
     onSaved();
+    onCloudChanged(); // Trigger model list reload
   };
-  const clear = () => { setCloudLS(null); setKey(""); setModelName(""); setBaseUrl(""); setProvider("auto"); setHint("Dihapus."); onSaved(); };
+  const clear = () => { setCloudLS(null); setKey(""); setModelName(""); setBaseUrl(""); setProvider("auto"); setHint("Dihapus."); onSaved(); onCloudChanged(); };
 
   return (
     <div className="hub">
       <header className="hub-header">
-        <button className="hub-back" onClick={onBack}><HubIcon.back /> Kembali</button>
         <span className="tb-divider" />
         <div className="hub-title-group">
           <span className="hub-hf-mark" style={{background:"rgba(94,234,212,.14)",color:"#5eead4"}}>{SB.key({width:16,height:16})}</span>
@@ -219,7 +256,7 @@ function SettingsView({ onBack, onSaved }) {
           <span className="hub-subtitle">Cloud BYOK · bawa key sendiri</span>
         </div>
         <div className="tb-spacer" />
-        {stored && <span className="tag">aktif ·{(stored.key?stored.key.slice(-4):"server")}</span>}
+
       </header>
       <div className="hub-body"><div className="hub-inner settings-inner">
         <div className="settings-card">
@@ -360,9 +397,17 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
     if (!window.monacoReady) return;
     window.monacoReady.then((monaco) => {
       if (disposed || !hostRef.current) return;
+      // One-time fix: kill Monaco's blue outline (always-on via .monaco-editor rule in editor.main.css)
+      if (!document.getElementById('monaco-outline-fix')) {
+        const s = document.createElement('style');
+        s.id = 'monaco-outline-fix';
+        s.textContent = '.monaco-editor { outline: none !important; outline-offset: 0 !important; }';
+        document.head.appendChild(s);
+      }
       const ed = monaco.editor.create(hostRef.current, { value: code, language: mLang(language), theme: "vs-dark",
         automaticLayout: true, minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: "on",
-        renderLineHighlight: "none", tabSize: 4, scrollbar: { alwaysConsumeMouseWheel: false }, padding: { top: 8, bottom: 8 }, wordWrap: "off" });
+        renderLineHighlight: "none", tabSize: 4, scrollbar: { alwaysConsumeMouseWheel: false }, padding: { top: 8, bottom: 8 }, wordWrap: "off",
+        domReadOnly: false, readOnly: false, autoDetectHighContrast: false });
       edRef.current = ed; setEdReady(true);
       const fit = () => { if (!hostRef.current) return; hostRef.current.style.height = Math.min(Math.max(ed.getContentHeight(), 38), 540) + "px"; ed.layout(); };
       ed.onDidContentSizeChange(fit); fit();
@@ -417,12 +462,224 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
   );
 }
 
+function parseMermaidFlowchart(code) {
+  const lines = String(code || "")
+    .split(/\r?\n/)
+    .map(line => line.trim())
+    .filter(line => line && !/^%%/.test(line) && !/^(flowchart|graph)\b/i.test(line));
+
+  const nodes = new Map();
+  const edges = [];
+
+  const getNode = (id) => {
+    if (!nodes.has(id)) {
+      nodes.set(id, { id, label: id, shape: "rect", order: nodes.size });
+    }
+    return nodes.get(id);
+  };
+
+  const parseNode = (token) => {
+    const raw = String(token || "").trim();
+    if (!raw) return null;
+    const m = raw.match(/^([A-Za-z0-9_:-]+)\s*(?:\[\[([\s\S]+)\]\]|\[([\s\S]+)\]|\(\(([\s\S]+)\)\)|\(([^()]+)\)|\{([\s\S]+)\})?$/);
+    const id = m ? m[1] : raw.replace(/[^A-Za-z0-9_:-]/g, "_");
+    const node = getNode(id);
+    if (m) {
+      const label = m[2] || m[3] || m[4] || m[5] || m[6];
+      if (label) node.label = label.trim();
+      if (m[2]) node.shape = "subroutine";
+      else if (m[4]) node.shape = "circle";
+      else if (m[5]) node.shape = "round";
+      else if (m[6]) node.shape = "diamond";
+      else if (m[3]) node.shape = "rect";
+    }
+    return node;
+  };
+
+  for (const line of lines) {
+    const edgeMatch = line.match(/^(.*?)\s*(?:--\s*([^>-]+?)\s*-->|-+>|\.->)\s*(.*)$/);
+    if (!edgeMatch) {
+      const nodeOnly = parseNode(line);
+      if (nodeOnly) getNode(nodeOnly.id);
+      continue;
+    }
+    const from = parseNode(edgeMatch[1]);
+    const label = (edgeMatch[2] || "").trim();
+    const to = parseNode(edgeMatch[3]);
+    if (from && to) edges.push({ from: from.id, to: to.id, label });
+  }
+
+  if (!nodes.size) return null;
+
+  const incoming = new Map();
+  const outgoing = new Map();
+  for (const n of nodes.keys()) { incoming.set(n, 0); outgoing.set(n, []); }
+  for (const e of edges) {
+    incoming.set(e.to, (incoming.get(e.to) || 0) + 1);
+    outgoing.get(e.from).push(e.to);
+  }
+
+  const level = new Map();
+  const queue = [];
+  for (const [id, deg] of incoming.entries()) {
+    if (deg === 0) { level.set(id, 0); queue.push(id); }
+  }
+  if (!queue.length) {
+    const first = nodes.keys().next().value;
+    level.set(first, 0);
+    queue.push(first);
+  }
+
+  const processed = new Set();
+  while (queue.length) {
+    const cur = queue.shift();
+    if (processed.has(cur)) continue;
+    processed.add(cur);
+    const curLevel = level.get(cur) || 0;
+    const nextLevel = curLevel + 1;
+    for (const nxt of outgoing.get(cur) || []) {
+      const oldLevel = level.get(nxt);
+      if (oldLevel === undefined || oldLevel < nextLevel) {
+        level.set(nxt, nextLevel);
+      }
+      if (!processed.has(nxt)) {
+        queue.push(nxt);
+      }
+    }
+  }
+
+  for (const id of nodes.keys()) {
+    if (!level.has(id)) level.set(id, 0);
+  }
+
+  const layers = [];
+  for (const [id, lv] of level.entries()) {
+    if (!layers[lv]) layers[lv] = [];
+    layers[lv].push(id);
+  }
+  layers.forEach(layer => layer.sort((a, b) => nodes.get(a).order - nodes.get(b).order));
+
+  const fontSize = 14;
+  const padX = 18;
+  const padY = 12;
+  const gapX = 42;
+  const gapY = 54;
+  const layerGap = 86;
+  const measure = (label) => Math.max(96, Math.min(260, label.length * 8.5 + padX * 2));
+
+  const positioned = new Map();
+  let maxWidth = 0;
+  let maxHeight = 0;
+  for (let ly = 0; ly < layers.length; ly++) {
+    const layer = layers[ly] || [];
+    let rowWidth = 0;
+    const sizes = layer.map(id => ({ id, w: measure(nodes.get(id).label), h: 54 }));
+    rowWidth = sizes.reduce((sum, item) => sum + item.w, 0) + Math.max(0, sizes.length - 1) * gapX;
+    let x = Math.max(24, (Math.max(0, rowWidth) ? 0 : 0));
+    const topY = 28 + ly * layerGap;
+    const startX = 24;
+    let cursorX = startX;
+    for (const item of sizes) {
+      positioned.set(item.id, { x: cursorX, y: topY, w: item.w, h: item.h, layer: ly });
+      cursorX += item.w + gapX;
+      maxWidth = Math.max(maxWidth, cursorX);
+      maxHeight = Math.max(maxHeight, topY + item.h);
+    }
+  }
+
+  return { nodes, edges, positioned, width: Math.max(360, maxWidth + 24), height: Math.max(120, maxHeight + 28), fontSize, padX, padY };
+}
+
+function MermaidBlock({ code }) {
+  const diagram = useMemo(() => parseMermaidFlowchart(code), [code]);
+  if (!diagram) {
+    return <pre className="code-fallback" style={{ margin:0, padding:"10px 14px", overflow:"auto", color:"#cbd5e1", background:"#0d1117", font:"13px/1.6 ui-monospace,Consolas,monospace", whiteSpace:"pre" }}>{code}</pre>;
+  }
+
+  const { nodes, edges, positioned, width, height, fontSize, padX, padY } = diagram;
+
+  const edgePath = (from, to) => {
+    const a = positioned.get(from);
+    const b = positioned.get(to);
+    if (!a || !b) return "";
+    const x1 = a.x + a.w / 2;
+    const y1 = a.y + a.h;
+    const x2 = b.x + b.w / 2;
+    const y2 = b.y;
+    const midY = y1 + Math.max(20, (y2 - y1) * 0.42);
+    return `M ${x1} ${y1} C ${x1} ${midY}, ${x2} ${midY}, ${x2} ${y2}`;
+  };
+
+  return (
+    <div className="mermaid-block">
+      <div className="code-head">
+        <span className="code-dots"><span style={{background:"#ff5f57"}}/><span style={{background:"#febc2e"}}/><span style={{background:"#28c840"}}/></span>
+        <span className="code-lang">mermaid</span><span className="lang-spacer" />
+      </div>
+      <div className="mermaid-canvas" style={{ overflowX: "auto", padding: "10px 12px 14px" }}>
+        <svg width={width} height={height} viewBox={`0 0 ${width} ${height}`} role="img" aria-label="Mermaid flowchart">
+          <defs>
+            <marker id="mermaid-arrow" markerWidth="10" markerHeight="10" refX="8" refY="5" orient="auto" markerUnits="strokeWidth">
+              <path d="M 0 0 L 10 5 L 0 10 z" fill="#8fb3ff" />
+            </marker>
+          </defs>
+          <rect x="0" y="0" width={width} height={height} rx="14" fill="#0d1117" />
+          {edges.map((e, idx) => {
+            const a = positioned.get(e.from);
+            const b = positioned.get(e.to);
+            if (!a || !b) return null;
+            const path = edgePath(e.from, e.to);
+            const midX = (a.x + a.w / 2 + b.x + b.w / 2) / 2;
+            const midY = (a.y + a.h + b.y) / 2 - 8;
+            return (
+              <g key={idx}>
+                <path d={path} fill="none" stroke="#8fb3ff" strokeWidth="1.8" markerEnd="url(#mermaid-arrow)" opacity="0.95" />
+                {e.label ? <text x={midX} y={midY} textAnchor="middle" fontSize="11" fill="#9fb7d9" style={{ paintOrder: "stroke", stroke: "#0d1117", strokeWidth: 3 }}>{e.label}</text> : null}
+              </g>
+            );
+          })}
+          {Array.from(nodes.values()).map((node) => {
+            const p = positioned.get(node.id);
+            if (!p) return null;
+            const cx = p.x + p.w / 2;
+            const cy = p.y + p.h / 2;
+            const label = node.label || node.id;
+            const commonStroke = node.shape === "diamond" ? "#93c5fd" : "#5eead4";
+            return (
+              <g key={node.id}>
+                {node.shape === "diamond" ? (
+                  <polygon points={`${cx},${p.y} ${p.x + p.w},${cy} ${cx},${p.y + p.h} ${p.x},${cy}`} fill="#111827" stroke={commonStroke} strokeWidth="2" />
+                ) : node.shape === "circle" ? (
+                  <ellipse cx={cx} cy={cy} rx={Math.max(48, p.w / 2)} ry={p.h / 2} fill="#111827" stroke={commonStroke} strokeWidth="2" />
+                ) : node.shape === "subroutine" ? (
+                  <>
+                    <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="14" fill="#111827" stroke={commonStroke} strokeWidth="2" />
+                    <line x1={p.x + 10} y1={p.y} x2={p.x + 10} y2={p.y + p.h} stroke={commonStroke} strokeWidth="1.4" />
+                    <line x1={p.x + p.w - 10} y1={p.y} x2={p.x + p.w - 10} y2={p.y + p.h} stroke={commonStroke} strokeWidth="1.4" />
+                  </>
+                ) : (
+                  <rect x={p.x} y={p.y} width={p.w} height={p.h} rx="14" fill="#111827" stroke={commonStroke} strokeWidth="2" />
+                )}
+                <text x={cx} y={cy + 5} textAnchor="middle" fontSize={fontSize} fill="#e5e7eb" fontWeight="600">
+                  {label}
+                </text>
+              </g>
+            );
+          })}
+        </svg>
+      </div>
+    </div>
+  );
+}
+
 /* ----------------------------- Message ----------------------------- */
 function Blocks({ text, onAiEdit, busy }) {
   const blocks = parseBlocks(text);
   if (!blocks.length) return <div className="typing"><span/><span/><span/></div>;
   return blocks.map((b,i) => b.type==="code"
-    ? <CodeBlock key={i} lang={b.lang} code={b.code} onAiEdit={onAiEdit} busy={busy} />
+    ? (b.lang && /^(mermaid|mmd)$/i.test(b.lang)
+      ? <MermaidBlock key={i} code={b.code} />
+      : <CodeBlock key={i} lang={b.lang} code={b.code} onAiEdit={onAiEdit} busy={busy} />)
     : <p key={i} dangerouslySetInnerHTML={{ __html: b.html }} />);
 }
 function Verdict({ run }) {
@@ -449,23 +706,22 @@ function Verdict({ run }) {
 function Message({ msg, onAiEdit, busy, onOpenCanvas }) {
   if (msg.role === "user") return (<div className="msg user"><span className="msg-role">you</span><div className="bubble-user">{msg.text}</div></div>);
   if (msg.role === "agent") return (<div className="msg model"><span className="msg-role">agent</span><AgentSteps run={msg.agent||{}} onAiEdit={onAiEdit} busy={busy} /></div>);
-  if (msg.role === "compare") return (
-    <div className="msg model"><span className="msg-role">bandingkan</span>
-      <div className="cmp-grid">
-        {["a","b"].map((s)=>(
-          <div className="cmp-col" key={s}>
-            <div className="cmp-head">{s.toUpperCase()} · {msg[s].label}</div>
-            <div className="bubble-model">{msg[s].text ? <Blocks text={msg[s].text} onAiEdit={onAiEdit} busy={busy} /> : <div className="typing"><span/><span/><span/></div>}</div>
-            <Verdict run={msg[s].run} />
-          </div>
-        ))}
-      </div>
-    </div>
-  );
   const web = msg.text ? buildPreview(msg.text) : { has:false };
+  const [expanded, setExpanded] = useState(false);
+  const THRESH = 1000; // characters threshold to collapse
+  const isLong = (msg.text || "").length > THRESH;
   return (
     <div className="msg model"><span className="msg-role">model</span>
-      <div className="bubble-model">{msg.text ? <Blocks text={msg.text} onAiEdit={onAiEdit} busy={busy} /> : <div className="typing"><span/><span/><span/></div>}</div>
+      <div className="bubble-model" style={{ maxHeight: (!expanded && isLong) ? 220 : 'none', overflow: (!expanded && isLong) ? 'hidden' : 'visible' }}>
+        {msg.text ? <Blocks text={msg.text} onAiEdit={onAiEdit} busy={busy} /> : <div className="typing"><span/><span/><span/></div>}
+      </div>
+      {isLong && (
+        <div style={{ marginTop: 6 }}>
+          <button className="open-canvas-btn" onClick={() => setExpanded(e => !e)} style={{ padding: '4px 8px', fontSize: 12 }}>
+            {expanded ? 'Tampilkan lebih sedikit' : 'Tampilkan selengkapnya'}
+          </button>
+        </div>
+      )}
       <Verdict run={msg.run} />
       {web.has && onOpenCanvas && <button className="open-canvas-btn" onClick={()=>onOpenCanvas(msg.text, msg.run)}><Icon.spark style={{width:13,height:13}} /> Buka di Canvas (split)</button>}
     </div>
@@ -492,7 +748,15 @@ function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
   const ref = useRef(null);
   const wrapRef = useRef(null);
   const grow = () => { const el=ref.current; if(!el) return; el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,180)+"px"; };
-  const submit = () => { const v=val.trim(); if(!v||busy) return; onSend(v); setVal(""); requestAnimationFrame(()=>{ if(ref.current) ref.current.style.height="auto"; }); };
+  
+  console.log('[Composer] render, busy:', busy, 'val:', val);
+  
+  const submit = () => { const v=val.trim(); console.log('[Composer submit] busy:', busy, 'v:', v); if(!v||busy) return; console.log('[Composer submit] calling onSend with:', v); onSend(v); console.log('[Composer submit] setting val to empty string'); setVal(""); console.log('[Composer submit] val after setVal:', val); requestAnimationFrame(()=>{ if(ref.current) ref.current.style.height="auto"; }); };
+  
+  // Debug val changes
+  useEffect(() => {
+    console.log('[Composer] val changed to:', val);
+  }, [val]);
   useEffect(() => {
     if(!menu) return;
     const h = (e) => { if(wrapRef.current && !wrapRef.current.contains(e.target)) setMenu(false); };
@@ -507,16 +771,19 @@ function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
           <button className={"composer-add"+(menu?" open":"")} title="Tambah" onClick={()=>setMenu(m=>!m)}>{MI.plus}</button>
           {menu && (
             <div className="composer-menu">
-              <button className="cm-item" onClick={()=>notYet("Upload attachment")}><i>{MI.upload}</i><span className="cm-lbl"><b>Upload attachment</b><small>file, image, video, audio</small></span></button>
+              <button className="cm-item" onClick={()=>{setMenu(false); document.getElementById('folder-upload-input')?.click();}}><i>{MI.upload}</i><span className="cm-lbl"><b>Upload attachment</b><small>file, image, video, audio</small></span></button>
+              <input id="folder-upload-input" type="file" webkitdirectory="" directory="" multiple style={{display:'none'}} onChange={(e)=>{ const files=Array.from(e.target.files||[]); if(files.length){ onSend('[Uploaded '+files.length+' file(s)]'); } e.target.value=''; }} />
               <div className="cm-sep" />
               <button className={"cm-item"+(canvasAuto?" active":"")} onClick={webDev}><i>{MI.webdev}</i> Web Dev{canvasAuto?<span className="cm-on">aktif</span>:null}</button>
             </div>
           )}
         </div>
         <textarea ref={ref} rows={1} value={val} placeholder="How can I help you today?"
-          onChange={(e)=>{ setVal(e.target.value); grow(); }}
-          onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); submit(); } }} />
-        <button className={"send-btn"+(busy?" cancel":"")} onClick={busy?onCancel:submit} disabled={!busy && !val.trim()}>
+          onChange={(e)=>{ console.log('[Textarea] value changed:', e.target.value); setVal(e.target.value); grow(); }}
+          onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); console.log('[Textarea] Enter pressed, calling submit'); submit(); } }}
+          onFocus={()=>console.log('[Textarea] focused')}
+          onBlur={()=>console.log('[Textarea] blurred')} />
+        <button className={"send-btn"+(busy?" cancel":"")} onClick={busy?onCancel:submit} disabled={!busy && !val.trim()} onClickCapture={(e)=>{console.log('[Send button] clicked, busy:', busy, 'disabled:', !busy && !val.trim());}}>
           {busy ? "Cancel" : <>Send <Icon.send /></>}
         </button>
       </div>
@@ -753,7 +1020,6 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
           <button className={source==="hf"?"active":""} onClick={()=>setSource("hf")}>Hugging Face</button>
           <button className={source==="ollama"?"active":""} onClick={()=>setSource("ollama")}>Ollama</button>
         </div>
-        <button className="theme-toggle" onClick={()=>setTheme(theme==="dark"?"light":"dark")}>{theme==="dark"?<Icon.sun/>:<Icon.moon/>}</button>
       </header>
       <div className="hub-body"><div className="hub-inner">
         {local.length > 0 && (
@@ -1131,6 +1397,8 @@ function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
   const [nonce, setNonce]       = useState(0);
   const [flutterErr, setFlutterErr]   = useState(null);
   const [compiling, setCompiling]     = useState(false);
+  const [building, setBuilding]       = useState(false);
+  const [buildOutput, setBuildOutput] = useState(null);
   const [dragMode, setDragMode]       = useState(false);
   const [dragStatus, setDragStatus]   = useState(null);
   const [fSel, setFSel]               = useState(null);   // selected flutter widget {elementText, elementTag}
@@ -1195,6 +1463,27 @@ function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
       return d;
     })
     .catch(e=>{ setCompiling(false); setFlutterErr(e.message); });
+  }
+
+  function buildApk(src, target = 'apk') {
+    setFlutterErr(null);
+    setBuildOutput(null);
+    setBuilding(true);
+    return fetch('/flutter/build', {
+      method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ source: src, target })
+    })
+    .then(r=>r.json())
+    .then(d=>{
+      setBuilding(false);
+      if(d.error){
+        setFlutterErr(d.error);
+      } else if(d.output){
+        setBuildOutput(d.output);
+      }
+      return d;
+    })
+    .catch(e=>{ setBuilding(false); setFlutterErr(e.message); });
   }
 
   // The compiled app iframe is same-origin (/flutter-app/...) — inject the
@@ -1294,6 +1583,9 @@ function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
         {/* Flutter toolbar */}
         {isFlutter && <>
           <button className="canvas-icon" title="Compile ulang" disabled={compiling} onClick={()=>compileDart(dartSource||project.flutter)}>↻</button>
+          <button className="canvas-icon" title={building?"Membangun…":"Build APK"} disabled={compiling||building} onClick={()=>buildApk(dartSource||project.flutter,'apk')}>
+            {building?'⏳':'📦'}
+          </button>
           <button
             className={"canvas-icon flutter-drag-btn"+(dragMode?" flutter-drag-active":"")}
             title={dragMode?"Nonaktifkan Edit Visual":"Edit Visual — pilih & seret widget"}
@@ -1333,6 +1625,21 @@ function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
                 setDartSource(good); setFlutterErr(null); clearFSel();
                 compileDart(good);   // server caches the last good build → instant
               }}>↩ Kembalikan versi yang berfungsi</button>
+            )}
+          </div>
+        </div>
+      )}
+
+      {/* Flutter build output */}
+      {isFlutter && buildOutput && (
+        <div className="flutter-err-panel" style={{borderColor:'#22c55e'}}>
+          <span className="flutter-err-icon" style={{color:'#22c55e'}}>✓</span>
+          <div style={{flex:1,minWidth:0}}>
+            <pre className="flutter-err-pre" style={{color:'#22c55e'}}>{buildOutput}</pre>
+            {buildOutput.endsWith('.apk') && (
+              <span style={{fontSize:11,color:'#60a5fa',cursor:'pointer'}} onClick={()=>navigator.clipboard.writeText(buildOutput)}>
+                📋 salin path
+              </span>
             )}
           </div>
         </div>
@@ -1422,7 +1729,7 @@ function StudioFrame({ source, onClose }){
   const bust = useRef("/studio/?v=" + Date.now());   // cache-bust so Electron never serves a stale studio build
   const beacon = (m,n)=>{ try{ fetch("/dbg?src=react&m="+encodeURIComponent(m)+(n!=null?"&n="+n:"")); }catch(_){} };
   const send = useCallback(()=>{
-    try{ if(srcRef.current){ ref.current.contentWindow.postMessage({ quantumSource: srcRef.current }, '*'); beacon("sent source", srcRef.current.length); } }catch(_){}
+    try{ if(srcRef.current){ ref.current.contentWindow.postMessage({ quantumSource: srcRef.current, quantumUi: srcRef.current }, '*'); beacon("sent source", srcRef.current.length); } }catch(_){}
   }, []);
   // keep latest source and push it. The studio iframe needs ~1-2s to boot before
   // its message listener exists, so retry for a few seconds (studio dedupes).
@@ -1539,8 +1846,92 @@ function cleanAgentText(s){
     .replace(/\n*\s*\bdone\b\s*$/i,"")            // trailing standalone DONE
     .trim();
 }
+function ToolOutput({ text, ok, kind, arg }) {
+  const [edReady, setEdReady] = useState(false);
+  const hostRef = useRef(null);
+  const edRef = useRef(null);
+  // detect language from tool kind + file extension + content
+  const language = useMemo(() => {
+    if (kind === 'read' && arg) {
+      const ext = (arg||'').split('.').pop().toLowerCase();
+      const langMap = {
+        js:'javascript',jsx:'javascript',ts:'typescript',tsx:'typescript',
+        py:'python',rb:'ruby',go:'go',rs:'rust',java:'java',c:'c',cpp:'cpp',
+        dart:'dart',php:'php',yml:'yaml',yaml:'yaml',json:'json',xml:'xml',
+        html:'html',css:'css',md:'markdown',sql:'sql',sh:'shell',bash:'shell',
+        ps1:'powershell',cjs:'javascript',mjs:'javascript',kt:'kotlin',swift:'swift',
+      };
+      return langMap[ext] || 'plaintext';
+    }
+    if (text) {
+      if (/^(?:import|export|const|let|var|function|class|async|await|require)\b/m.test(text)) return 'javascript';
+      if (/^(?:def |class |import |from |print\b)/m.test(text)) return 'python';
+      if (/^(?:fn |pub |let |mut |impl |enum |struct )/m.test(text)) return 'rust';
+      if (/^(?:func |package |import |fmt\.)/m.test(text)) return 'go';
+      if (/^</m.test(text) && /<\/?[a-z]/i.test(text)) return 'html';
+      if (/^\{/m.test(text) || /"[^"]*"\s*:/m.test(text)) return 'json';
+      if (/^(?:#!|\$ |npm |git |cd |ls |echo |cat )/m.test(text)) return 'shell';
+    }
+    return 'plaintext';
+  }, [kind, arg, text]);
+  // create Monaco editor
+  useEffect(() => {
+    let disposed = false;
+    let retries = 0;
+    if (!window.monacoReady) return;
+    window.monacoReady.then((monaco) => {
+      if (disposed || !hostRef.current) return;
+      const tryCreate = () => {
+        if (disposed || !hostRef.current) return;
+        try {
+          const ed = monaco.editor.create(hostRef.current, {
+            value: text || "", language, theme: "vs-dark",
+            automaticLayout: true, minimap: { enabled: false },
+            scrollBeyondLastLine: false, fontSize: 12, lineNumbers: "on",
+            renderLineHighlight: "none", tabSize: 2,
+            scrollbar: { alwaysConsumeMouseWheel: false },
+            padding: { top: 6, bottom: 6 }, wordWrap: "on",
+            readOnly: true, domReadOnly: true,
+            contextmenu: false, folding: true,
+            glyphMargin: false, lineDecorationsWidth: 0, lineNumbersMinChars: 1,
+          });
+          edRef.current = ed; setEdReady(true);
+          const fit = () => {
+            if (!hostRef.current) return;
+            hostRef.current.style.height = Math.min(Math.max(ed.getContentHeight(), 28), 400) + "px";
+            ed.layout();
+          };
+          ed.onDidContentSizeChange(fit); fit();
+        } catch(e) {
+          if (retries < 10) {
+            retries++;
+            if (hostRef.current) hostRef.current.style.display = "block";
+            setTimeout(tryCreate, 0);
+          } else {
+            setEdReady(false);
+          }
+        }
+      };
+      tryCreate();
+    });
+    return () => { disposed = true; if (edRef.current) { edRef.current.dispose(); edRef.current = null; } };
+  }, [language]);
+  // follow text changes
+  useEffect(() => {
+    const ed = edRef.current;
+    if (ed && ed.getValue() !== text) ed.setValue(text || "");
+  }, [text]);
+  return (
+    <div className={"ar-out"+(ok?"":" err")}>
+      <div className="ar-out-mona-host" ref={hostRef} style={{ display: edReady ? "block" : "none" }} />
+      {!edReady && <pre style={{ margin:0, font:"inherit", color:"inherit", background:"transparent", whiteSpace:"pre-wrap", wordBreak:"break-word", maxHeight:200, overflowY:"auto" }}>{text}</pre>}
+    </div>
+  );
+}
+
 function AgentSteps({ run, onAiEdit, busy }){
   // run = { events:[...], thinking, busy, summary, done, error, backup, editCount, run }
+  const [expanded, setExpanded] = useState({});
   const acts = (run.events || []).filter(e => e.type === "act" || e.type === "err");
   const summary = cleanAgentText(run.summary);
   // Plain answer (no tools used) → render like a normal chat reply (code blocks +
@@ -1562,14 +1953,17 @@ function AgentSteps({ run, onAiEdit, busy }){
       </div>
       <div className="agent-steps">
         {acts.map((e,i)=> e.type==="err" ? (
-          <div key={i} className="agent-row fail"><span className="ar-line"><span className="ar-verb">error</span><span className="ar-arg">{e.m}</span></span></div>
+          <div key={i} className="agent-row fail"><div className="ar-line"><span className="ar-header"><span className="ar-verb">error</span><span className="ar-arg">{e.m}</span></span></div></div>
         ) : (
           <div key={i} className={"agent-row "+(e.ok?"ok":"fail")}>
-            <span className="ar-line">
-              <span className="ar-verb">{({list:"List",glob:"Glob",read:"Read",grep:"Grep",edit:"Edit",write:"Write",run:"Run",bash:"Bash"})[e.kind]||e.kind}</span>
-              {e.arg ? <span className="ar-arg">{e.arg}</span> : null}
-            </span>
-            {e.output ? <div className={"ar-out"+(e.ok?"":" err")}>{e.output.slice(0,400)}</div> : null}
+            <div className={"ar-line"+(expanded[i]?" expanded":"")} onClick={()=>setExpanded(prev=>({...prev,[i]:!prev[i]}))}>
+              <span className="ar-header">
+                <span className="ar-chev">{expanded[i]?"▼":"▶"}</span>
+                <span className="ar-verb">{({list:"List",glob:"Glob",read:"Read",grep:"Grep",edit:"Edit",write:"Write",run:"Run",bash:"Bash"})[e.kind]||e.kind}</span>
+                {e.arg ? <span className="ar-arg">{e.arg}</span> : null}
+              </span>
+              {e.output && expanded[i] ? <ToolOutput text={e.output} ok={e.ok} kind={e.kind} arg={e.arg} /> : null}
+            </div>
           </div>
         ))}
         {run.busy ? (
@@ -1597,8 +1991,8 @@ const CANVAS_BUILDING = '<!doctype html><html><head><meta charset="utf-8"></head
 function App() {
   const [models, setModels] = useState([{value:"",label:"memuat…",disabled:true}]);
   const [modelVal, setModelVal] = useState("");
-  const [compareVal, setCompareVal] = useState("");
-  const [compare, setCompare] = useState(false);
+  const [cloudVersion, setCloudVersion] = useState(0); // Trigger reload when cloud config changes
+
   const [panelOpen, setPanelOpen] = useState(false);
   const [messages, setMessages] = useState([]);
   const [history, setHistory] = useState([]);
@@ -1665,8 +2059,11 @@ function App() {
   });
   const openCanvas = (text, run) => {                                // manual open from a message
     const p = buildPreview(text); if(!p.has) return;
-    lastProject.current = { doc:p.doc, run };
-    setCanvas({ doc:p.doc, run });
+    const state = p.flutter
+      ? { flutter: p.source, doc: FLUTTER_COMPILING, files: p.files }
+      : { doc: p.doc || FLUTTER_COMPILING, run };
+    lastProject.current = state;
+    setCanvas(state);
     setCanvasAuto(true);
   };
   const onDividerDown = (e) => {
@@ -1690,11 +2087,14 @@ function App() {
       const provs = await (await fetch("/cloud-providers")).json();
       if (Array.isArray(provs) && provs.length) {
         const pick = provs.find(p=>p.provider==="opencode") || provs.find(p=>p.provider==="nvidia") || provs.find(p=>p.provider==="gemini") || provs.find(p=>p.provider==="puter") || provs[0];
-        // server config is the source of truth — always sync provider+model (so a
-        // server-side model change, e.g. → claude-sonnet-4, shows up in the UI).
-        if (!cloud || cloud.provider !== pick.provider || cloud.model !== pick.model) {
-          cloud = { provider: pick.provider, name: pick.name, model: pick.model };
-          setCloudLS(cloud);
+        // Only override if the user hasn't explicitly set a local key or custom baseUrl.
+        // If they have, we respect their choice.
+        const hasUserConfig = cloud && (cloud.key || cloud.baseUrl);
+        if (!hasUserConfig) {
+          if (!cloud || cloud.provider !== pick.provider || cloud.model !== pick.model) {
+            cloud = { provider: pick.provider, name: pick.name, model: pick.model };
+            setCloudLS(cloud);
+          }
         }
       }
     } catch(e) {}
@@ -1704,10 +2104,17 @@ function App() {
     setModels(opts);
     const def = hasCloud ? "cloud" : (opts.find(o=>o.default)||opts[0]).value;
     setModelVal(v => v && opts.some(o=>o.value===v) ? v : def);
-    setCompareVal(v => v && opts.some(o=>o.value===v) ? v : (opts.find(o=>o.value!==def)||opts[0]).value);
     setStatus(hasCloud ? "cloud: "+(cloud.name||cloud.provider) : (opts.length?"siap":"jalankan start-models"));
+  }, [cloudVersion]);
+  useEffect(() => { loadModels(); }, [cloudVersion]);
+  // Warn if server isn't running (for browser users, not Electron)
+  useEffect(() => {
+    if (!IPC) {
+      checkServerHealth().then(ok => {
+        if (!ok) setStatus("⚠ Jalankan 'npm start' di terminal");
+      });
+    }
   }, []);
-  useEffect(() => { loadModels(); }, [loadModels]);
   useEffect(() => { const el=scrollRef.current; if(el) el.scrollTop=el.scrollHeight; }, [messages]);
 
   const labelOf = (v) => (models.find(m=>m.value===v)||{}).label || v;
@@ -1718,6 +2125,7 @@ function App() {
     const newHist = [...history, { role:"user", content }];
     setHistory(newHist);
     setBusy(true); setStatus("typing…");
+    console.log('[doSend] Setting busy=true, content:', content);
     const ctrl = new AbortController(); ctrlRef.current = ctrl;
     // ONE smart chat: with a tool-capable cloud, the model itself decides (tool_choice
     // auto) whether to just answer (normal chat) or use tools (a command/edit) — like
@@ -1725,16 +2133,7 @@ function App() {
     const _cl = getCloud();
     const _localCloud = _cl && _cl.baseUrl && /(127\.0\.0\.1|localhost)/.test(_cl.baseUrl);
     const useAgent = modelVal==="cloud" && !_localCloud;
-    if (compare) {
-      setMessages(m => [...m, { role:"user", text: display||content }, { role:"compare", a:{label:labelOf(modelVal),text:"",run:null}, b:{label:labelOf(compareVal),text:"",run:null} }]);
-      const upd = (side,t,run)=> setMessages(m=>{ const c=m.slice(); const last={...c[c.length-1]}; last[side]={...last[side],text:t,run}; c[c.length-1]=last; return c; });
-      try {
-        setStatus("A…"); const ra = await streamChat(reqFor(modelVal,getCloud(),newHist),(t,run)=>upd("a",t,run),ctrl.signal); upd("a",ra.text,ra.run);
-        setStatus("B…"); const rb = await streamChat(reqFor(compareVal,getCloud(),newHist),(t,run)=>upd("b",t,run),ctrl.signal); upd("b",rb.text,rb.run);
-        setHistory(h => [...h, { role:"assistant", content: ra.text }]);
-        setStatus("bandingkan: A "+(ra.run&&ra.run.ok?"✓":"–")+" vs B "+(rb.run&&rb.run.ok?"✓":"–"));
-      } catch(e){ if(e.name!=="AbortError") setStatus("error: "+e.message); else setStatus("dibatalkan"); }
-    } else if (!canvasAuto && !useAgent) {
+    if (!canvasAuto && !useAgent) {
       // Bridge / local model: plain conversational chat (text streaming, no function-calling).
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
       try {
@@ -1743,23 +2142,47 @@ function App() {
         }, ctrl.signal);
         setHistory(h=>[...h,{role:"assistant",content:res.text}]);
         setStatus("siap");
-      } catch(e){ if(e.name!=="AbortError") setStatus("error: "+e.message); else setStatus("dibatalkan"); }
+        // Auto-buka Studio jika response berisi A2UI spec
+        if (res.text && !canvasAuto) {
+          const proj = buildPreview(res.text);
+          if (proj.has && proj.flutter) {
+            const fstate = { flutter: proj.source, doc: FLUTTER_COMPILING, files: proj.files };
+            lastProject.current = fstate; setCanvas(fstate); setCanvasAuto(true);
+          }
+        }
+        console.log('[doSend] Setting busy=false (normal chat complete)');
+        setBusy(false); // Reset busy state after stream completes
+      } catch(e){ if(e.name!=="AbortError") setStatus("error: "+e.message); else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (normal chat error)'); setBusy(false); }
     } else if (!canvasAuto) {
       // Agentic chat (like Claude Code): the model answers OR uses tools to edit
       // Quantum's own source. The live process renders as a clean timeline.
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"agent", agent:{ events:[], busy:true } }]);
       const upd = (patch)=> setMessages(m=>{ const c=m.slice(); const last={...c[c.length-1]}; last.agent={...last.agent,...patch}; c[c.length-1]=last; return c; });
-      const evlist = []; let think = "";
+      const evlist = []; let think = ""; let adoneSent = false; let hadError = false;
       try {
         await streamSelfAgent({ history:newHist, cloud:getCloud(), port:modelVal }, (j)=>{
           if(j.t==="backup") upd({ backup:j.dir });
           else if(j.t==="step"){ think=""; upd({ step:j.n, thinking:"" }); }
           else if(j.t==="tok"){ think+=j.c; upd({ thinking:think }); }
           else if(j.t==="act"){ think=""; evlist.push({type:"act",kind:j.kind,arg:j.arg,ok:j.ok,output:j.output}); upd({ events:[...evlist], thinking:"" }); }
-          else if(j.t==="adone"){ upd({ busy:false, done:true, summary:j.summary, editCount:j.edits, backup:j.backup, run:j.run }); setHistory(h=>[...h,{role:"assistant",content:j.summary||""}]); }
-          else if(j.t==="err"){ evlist.push({type:"err",m:j.m}); upd({ events:[...evlist], busy:false, error:true }); }
+          else if(j.t==="adone"){ adoneSent = true; upd({ busy:false, done:true, summary:j.summary, editCount:j.edits, backup:j.backup, run:j.run }); setHistory(h=>[...h,{role:"assistant",content:j.summary||""}]); }
+          else if(j.t==="err"){ hadError = true; evlist.push({type:"err",m:j.m}); upd({ events:[...evlist], busy:false, error:true }); }
         }, ctrl.signal);
       } catch(e){ if(e.name!=="AbortError") upd({ busy:false, error:true, events:[...evlist,{type:"err",m:e.message}] }); }
+      console.log('[doSend] Setting busy=false (agent stream complete)');
+      // If no "adone" event was sent, provide a default summary based on events
+      if (!adoneSent) {
+        if (!hadError) {
+          const summary = evlist.length > 0 
+            ? `Selesai. ${evlist.length} operasi dieksekusi.` 
+            : "Selesai. Tidak ada operasi yang dilakukan.";
+          upd({ busy:false, done:true, summary });
+          setHistory(h=>[...h,{role:"assistant",content:summary}]);
+        } else {
+          upd({ busy:false });
+        }
+      }
+      setBusy(false); // Always reset global busy state after agent stream completes, regardless of events
       setStatus("siap");
     } else {
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
@@ -1779,6 +2202,8 @@ function App() {
         setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:res.text,run:res.run}; return c; });
         setHistory(h => [...h, { role:"assistant", content: res.text }]);
         setStatus(res.run ? (res.run.ok ? "✓ verified" : "⚠ not passing") : "ready");
+        console.log('[doSend] Setting busy=false (canvas auto complete)');
+        setBusy(false); // Reset busy state after stream completes
         const proj = buildPreview(res.text);              // finalize the live Canvas
         if (proj.has) {
           if (proj.flutter) {
@@ -1792,7 +2217,7 @@ function App() {
           // No web/flutter content but code WAS executed — show the terminal in Canvas
           setCanvas({ doc: consoleDoc(res.run), run: res.run });
         } else if (canvasAuto) setCanvas(null);
-      } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); } else setStatus("dibatalkan"); }
+      } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); console.log('[doSend] Setting busy=false (canvas auto error)'); setBusy(false); } else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (canvas auto abort)'); setBusy(false); }
     }
     ctrlRef.current=null; setBusy(false);
   };
@@ -1812,7 +2237,7 @@ function App() {
       "✦ Auto-fix Flutter ("+flutterFixRef.current+"/2): "+firstErr
     );
   };
-  const cancel = () => { if(ctrlRef.current) ctrlRef.current.abort(); };
+  const cancel = () => { console.log('[cancel] Aborting and setting busy=false'); if(ctrlRef.current) ctrlRef.current.abort(); setBusy(false); setStatus("dibatalkan"); };
   const reset = () => { setMessages([]); setHistory([]); setBusy(false); setStatus("ready"); };
   const saveChat = () => {
     if (messages.length === 0) return;
@@ -1845,7 +2270,6 @@ function App() {
       <div className="page-container">
         <div className={"page chat-page " + (view==="chat" ? "active" : "exit")}>
           <TopBar models={models} modelVal={modelVal} setModelVal={setModelVal}
-            compare={compare} setCompare={setCompare} compareVal={compareVal} setCompareVal={setCompareVal}
             panelOpen={panelOpen} setPanelOpen={setPanelOpen} onReset={reset} status={status} theme={theme} setTheme={setTheme} />
           <div className="chat-split">
             <div className="chat-col" style={{ flex: canvas ? ("1 1 " + (100 - canvasPct) + "%") : "1 1 100%" }}>
@@ -1875,7 +2299,7 @@ function App() {
             onUse={(port)=>{ if(port) setModelVal(String(port)); loadModels(); setView("chat"); }} />}
         </div>
         <div className={"page hub-page " + (view==="settings" ? "active" : "enter")}>
-          {view === "settings" && <SettingsView onBack={()=>setView("chat")} onSaved={loadModels} />}
+          {view === "settings" && <SettingsView onBack={()=>setView("chat")} onSaved={loadModels} onCloudChanged={()=>setCloudVersion(v=>v+1)} />}
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@
     (function(){
       var q = window.quantum;
       if (!(q && q.ipc)) return;                       // plain browser: keep native fetch
-      var STREAM = /\/(hf|ollama)\/download|^\/debug\/stream/;   // endpoints that stream SSE (downloads + live debug log)
+      var STREAM = /\/(hf|ollama)\/download/;          // endpoints that stream SSE progress
       var _f = window.fetch.bind(window);
       window.fetch = function(u, o){
         o = o || {};
@@ -52,9 +52,11 @@
     // so it must come from the protocol — otherwise the editor never loads (blank code).
     var MB = location.origin;
     window.MonacoEnvironment = { getWorkerUrl: function(){
-      return 'data:text/javascript;charset=utf-8,' + encodeURIComponent(
-        "self.MonacoEnvironment={baseUrl:'" + MB + "/vendor/monaco/'};" +
-        "importScripts('" + MB + "/vendor/monaco/vs/base/worker/workerMain.js');"); } };
+      return URL.createObjectURL(new Blob([
+        "self.MonacoEnvironment={baseUrl:'" + MB + "/vendor/monaco/'};",
+        "importScripts('" + MB + "/vendor/monaco/vs/base/worker/workerMain.js');"
+      ], { type: 'application/javascript' }));
+    } };
     require.config({ paths: { vs: MB + '/vendor/monaco/vs' } });
     window.monacoReady = new Promise(function(res){ require(['vs/editor/editor.main'], function(){ res(window.monaco); }); });
   </script>

@@ -146,7 +146,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     const openaiCompatible = () => {
       headers['authorization'] = 'Bearer ' + cloud.key;
       body = JSON.stringify({ model, stream:true, messages:[{role:'system',content:sys||''},...work] });
-      extract = j => { try { return j.choices && j.choices[0] && j.choices[0].delta && j.choices[0].delta.content || ''; } catch { return ''; } };
+      extract = j => { try { const d = j.choices && j.choices[0] && j.choices[0].delta; return (d && (d.content || d.reasoning_content)) || ''; } catch { return ''; } };
     };
     if (cloud.baseUrl) {
       try { const u = new URL(cloud.baseUrl.replace(/\/+$/,'') + '/chat/completions'); host = u.hostname; path = u.pathname + (u.search||''); if (u.port) port = parseInt(u.port); }
@@ -245,20 +245,22 @@ function _askCloudToolsOnce(cloud, messages, tools) {
     if (aliases && aliases[model.toLowerCase()]) model = aliases[model.toLowerCase()];
     let host = cfg.host, p = cfg.path, port, transport = https;
     if (cloud.baseUrl) { try { const u = new URL(cloud.baseUrl.replace(/\/+$/, '') + '/chat/completions'); host = u.hostname; p = u.pathname + (u.search || ''); port = u.port || undefined; transport = (u.protocol === 'http:') ? http : https; } catch (_) {} }
-    const body = JSON.stringify({ model, messages, tools: tools, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: 4096 });
+    const isReasoning = /deepseek|reason/i.test(model);
+    const body = JSON.stringify({ model, messages, tools: tools, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: isReasoning ? 16384 : 4096 });
     const headers = { 'content-type': 'application/json', authorization: 'Bearer ' + cloud.key, 'content-length': Buffer.byteLength(body) };
     const r = transport.request({ hostname: host, port, path: p, method: 'POST', headers, timeout: 300000 }, s => {
       const bad = s.statusCode >= 400;
-      let buf = '', errBody = '', content = ''; const tcs = [];
+      let buf = '', errBody = '', content = '', reasoning = ''; const tcs = [];
       s.on('data', c => {
         if (bad) { errBody += c; return; }
         buf += c; let nl;
         while ((nl = buf.indexOf('\n')) >= 0) {
           const line = buf.slice(0, nl).trim(); buf = buf.slice(nl + 1);
           const m = line.match(/^data:\s*(.*)$/); if (!m || m[1] === '[DONE]') continue;
-          let j; try { j = JSON.parse(m[1]); } catch (_) { continue; }
+          let j; try { j = JSON.parse(m[1]); } catch { continue; }
           const delta = j.choices && j.choices[0] && j.choices[0].delta; if (!delta) continue;
           if (delta.content) content += delta.content;
+          else if (delta.reasoning_content) reasoning += delta.reasoning_content;
           if (delta.tool_calls) for (const t of delta.tool_calls) {
             const i = t.index || 0;
             if (!tcs[i]) tcs[i] = { id: t.id || ('call_' + i), type: 'function', function: { name: '', arguments: '' } };
@@ -275,7 +277,7 @@ function _askCloudToolsOnce(cloud, messages, tools) {
           } catch (_) {}
           return reject(new Error(provider + ' ' + s.statusCode + ': ' + errBody.slice(0, 300)));
         }
-        resolve({ role: 'assistant', content: content || null, tool_calls: tcs.filter(Boolean) });
+        resolve({ role: 'assistant', content: content || (reasoning || null), tool_calls: tcs.filter(Boolean) });
       });
     });
     r.on('error', reject); r.on('timeout', () => r.destroy(new Error('timeout')));

@@ -1,0 +1,726 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Quantum</title>
+<style>
+  :root { --bg:#0d1117; --panel:#161b22; --border:#30363d; --txt:#e6edf3; --dim:#8b949e; --accent:#2f81f7; --user:#1f6feb22; }
+  * { box-sizing:border-box; }
+  body { margin:0; font-family:-apple-system,Segoe UI,Roboto,sans-serif; background:var(--bg); color:var(--txt); height:100vh; display:flex; flex-direction:column; }
+  header { display:flex; gap:12px; align-items:center; padding:10px 16px; background:var(--panel); border-bottom:1px solid var(--border); }
+  header h1 { font-size:15px; margin:0; font-weight:600; }
+  select, button { background:#21262d; color:var(--txt); border:1px solid var(--border); border-radius:6px; padding:6px 10px; font-size:13px; cursor:pointer; }
+  select:hover, button:hover { border-color:var(--accent); }
+  #status { font-size:12px; color:var(--dim); margin-left:auto; }
+  #chat { flex:1; overflow-y:auto; padding:18px; display:flex; flex-direction:column; gap:14px; }
+  .msg { max-width:1100px; width:fit-content; padding:10px 14px; border-radius:10px; white-space:pre-wrap; word-break:break-word; line-height:1.5; font-size:14px; }
+  .user { background:var(--user); border:1px solid #1f6feb55; align-self:flex-end; max-width:680px; }
+  .bot  { background:var(--panel); border:1px solid var(--border); align-self:stretch; width:100%; }
+  .bot pre, .user pre { background:#0d1117; border:1px solid var(--border); border-radius:6px; padding:10px; overflow-x:auto; margin:8px 0; }
+  .cb { margin:8px 0; }
+  .cb pre { margin:0; border-bottom-left-radius:0; border-bottom-right-radius:0; }
+  .cbbar { display:flex; align-items:center; gap:8px; background:#0d1117; border:1px solid var(--border); border-top:none; border-radius:0 0 6px 6px; padding:5px 8px; }
+  .runbtn { background:#238636; border:none; color:#fff; font-weight:600; font-size:12px; padding:3px 12px; border-radius:5px; cursor:pointer; }
+  .runbtn:hover { background:#2ea043; }
+  .runbtn:disabled { opacity:.6; cursor:wait; }
+  .copybtn { background:#21262d; border:1px solid var(--border); color:var(--dim); font-size:12px; padding:3px 10px; border-radius:5px; cursor:pointer; }
+  .copybtn:hover { color:var(--txt); border-color:var(--accent); }
+  .copyout { float:right; font-size:11px !important; padding:1px 8px !important; }
+  .runlang { font-size:11px; color:var(--dim); }
+  .langsel { background:#21262d; color:var(--dim); border:1px solid var(--border); border-radius:5px; font-size:11px; padding:2px 6px; cursor:pointer; }
+  .langsel:hover { color:var(--txt); border-color:var(--accent); }
+  .editbtn { background:#21262d; border:1px solid var(--border); color:var(--accent); font-size:12px; padding:3px 10px; border-radius:5px; cursor:pointer; }
+  .editbtn:hover { border-color:var(--accent); }
+  .editpanel { display:flex; flex-direction:column; gap:6px; padding:8px; border:1px solid var(--accent); border-top:none; background:#0d1117; }
+  .editins { background:#0d1117; color:var(--txt); border:1px solid var(--border); border-radius:5px; padding:6px 8px; font-size:13px; font-family:inherit; min-height:44px; resize:vertical; }
+  .editins:focus { outline:none; border-color:var(--accent); }
+  .editgo { background:var(--accent); border:none; color:#fff; font-weight:600; }
+  .runout { margin-top:6px; border-radius:6px; overflow:hidden; border:1px solid var(--border); }
+  .runhdr { font-size:12px; font-weight:600; padding:5px 10px; }
+  .okrun { background:#1a3a1a; color:#3fb950; }
+  .errrun { background:#3a1a1a; color:#f85149; }
+  .runout pre.ro { margin:0; border:none; border-radius:0; background:#0d1117; font-size:13px; }
+  .runout pre.ro.err { color:#ff7b72; }
+  .rodim { padding:6px 10px; font-size:12px; color:var(--dim); background:#0d1117; }
+  .runout .htmlprev { width:100%; height:340px; border:none; background:#fff; display:block; }
+  .role { font-size:11px; color:var(--dim); margin-bottom:4px; }
+  footer { display:flex; gap:8px; padding:12px 16px; background:var(--panel); border-top:1px solid var(--border); }
+  #input { flex:1; resize:vertical; background:#0d1117; color:var(--txt); border:1px solid var(--border); border-radius:8px; padding:10px 12px; font-size:14px; font-family:inherit; height:84px; min-height:46px; max-height:300px; line-height:1.5; }
+  #input:focus { outline:none; border-color:var(--accent); }
+  #send { padding:0 20px; background:var(--accent); border:none; font-weight:600; min-width:96px; }
+  #send.cancel { background:#da3633; }
+  #send.cancel:hover { background:#f85149; }
+  .hint { font-size:11px; color:var(--dim); padding:0 16px 8px; }
+  .cb .qmonaco { border:1px solid var(--border); border-bottom:none; border-radius:6px 6px 0 0; overflow:hidden; min-height:40px; }
+  .brand { position:relative; }
+  #brandBtn { background:transparent; border:none; font-size:15px; font-weight:600; color:var(--txt); padding:4px 6px; cursor:pointer; }
+  #brandBtn:hover { color:var(--accent); border:none; }
+  .menu { position:absolute; top:36px; left:0; z-index:50; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:14px; width:340px; max-width:calc(100vw - 32px); min-height:460px; max-height:82vh; overflow-y:auto; box-shadow:0 12px 32px #000b; display:flex; flex-direction:column; gap:9px; }
+  .menu-h { font-size:14px; font-weight:700; padding-bottom:2px; }
+  .menu-div { border-top:1px solid var(--border); margin:4px 0; }
+  .menu-spacer { flex:1; min-height:8px; }
+  .menu input { min-width:0; }
+  #model { max-width:240px; text-overflow:ellipsis; }
+  /* Visual Picker */
+  .vp-on, .vp-on * { cursor:crosshair !important; }
+  .vp-hover  { outline:2px solid var(--accent) !important; outline-offset:-2px; }
+  .vp-picked { outline:2px solid #d29922 !important; outline-offset:-2px; }
+  .vp-tray { position:fixed; right:16px; bottom:120px; width:340px; max-width:calc(100vw - 32px); max-height:64vh; overflow:auto; background:var(--panel); border:1px solid var(--border); border-radius:10px; padding:10px; z-index:200; display:none; flex-direction:column; gap:8px; box-shadow:0 10px 30px #000b; }
+  .vp-head { display:flex; justify-content:space-between; align-items:center; font-size:13px; cursor:move; user-select:none; }
+  .vp-head::before { content:'⠿'; margin-right:6px; color:var(--dim); }
+  #vpCount { font-size:12px; color:var(--dim); }
+  .vp-item { border:1px solid var(--border); border-radius:6px; padding:6px; display:flex; flex-direction:column; gap:4px; }
+  .vp-sel { font-size:11px; color:var(--accent); font-family:monospace; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; cursor:help; }
+  .vp-note { background:#0d1117; color:var(--txt); border:1px solid var(--border); border-radius:5px; padding:5px; font-size:12px; font-family:inherit; resize:vertical; min-height:32px; }
+  .vp-rm { align-self:flex-end; font-size:11px; padding:2px 8px; }
+  .vp-hint { font-size:11px; color:var(--dim); }
+  .menu-title { font-size:11px; font-weight:600; color:var(--dim); text-transform:uppercase; letter-spacing:.05em; }
+  .menu input { background:#0d1117; color:var(--txt); border:1px solid var(--border); border-radius:6px; padding:7px 9px; font-size:13px; font-family:inherit; }
+  .menu input:focus { outline:none; border-color:var(--accent); }
+  .menu-hint { font-size:12px; color:var(--dim); min-height:16px; overflow-wrap:anywhere; }
+  /* typing / loading indicator */
+  .typing { display:inline-flex; gap:5px; align-items:center; padding:4px 2px; }
+  .typing span { width:7px; height:7px; border-radius:50%; background:var(--dim); animation:tdot 1.2s infinite ease-in-out; }
+  .typing span:nth-child(2){ animation-delay:.18s; }
+  .typing span:nth-child(3){ animation-delay:.36s; }
+  @keyframes tdot { 0%,80%,100%{ opacity:.25; transform:translateY(0);} 40%{ opacity:1; transform:translateY(-4px);} }
+  .typing-lbl { font-size:12px; color:var(--dim); margin-left:6px; }
+  /* rich markdown in messages */
+  .body .md-h { margin:10px 0 4px; font-weight:600; line-height:1.3; }
+  .body h1.md-h{font-size:20px} .body h2.md-h{font-size:17px} .body h3.md-h{font-size:15px}
+  .body h4.md-h,.body h5.md-h,.body h6.md-h{font-size:14px}
+  .body .md-ul,.body .md-ol { margin:4px 0; padding-left:22px; }
+  .body .md-ul li,.body .md-ol li { margin:2px 0; }
+  .body .md-p { margin:0; }
+  .body code { background:#0d1117; border:1px solid var(--border); border-radius:4px; padding:1px 5px; font-size:13px; }
+  .body a { color:var(--accent); }
+  .caret { display:inline-block; width:7px; height:14px; background:var(--accent); margin-left:2px; vertical-align:text-bottom; animation:blink 1s step-end infinite; }
+  @keyframes blink { 50%{ opacity:0; } }
+  /* agent action cards */
+  .act { margin:8px 0; border:1px solid var(--border); border-radius:6px; overflow:hidden; }
+  .act .acth { font-size:12px; font-weight:600; padding:5px 10px; background:#0d1117; }
+  .act.ok .acth { color:#3fb950; } .act.bad .acth { color:#f85149; }
+  .act pre { margin:0; padding:8px 10px; background:#0d1117; font-size:12px; overflow-x:auto; }
+  .menu-row { display:flex; gap:6px; }
+  .menu-row button { flex:1; }
+</style>
+<!-- Monaco (VS Code's editor) — real IDE autocomplete (static analysis, NO AI model),
+     bundled locally for full offline use. Code blocks fall back to plain text if it fails. -->
+<script src="/vendor/monaco/vs/loader.js"></script>
+<script>
+  window.MonacoEnvironment = {
+    getWorkerUrl: function(){
+      return 'data:text/javascript;charset=utf-8,' + encodeURIComponent(
+        "self.MonacoEnvironment={baseUrl:'" + location.origin + "/vendor/monaco/'};" +
+        "importScripts('" + location.origin + "/vendor/monaco/vs/base/worker/workerMain.js');");
+    }
+  };
+  require.config({ paths: { vs: '/vendor/monaco/vs' } });
+  require(['vs/editor/editor.main'], function(){ /* window.monaco now available */ });
+</script>
+</head>
+<body>
+<header>
+  <div class="brand">
+    <button id="brandBtn" title="Pengaturan & API key">⚛️ Quantum ▾</button>
+    <div id="brandMenu" class="menu" style="display:none">
+      <div class="menu-h">⚛️ Quantum</div>
+      <div class="menu-title">Cloud API key</div>
+      <input id="apiKey" type="password" autocomplete="new-password" name="quantum-apikey-field" data-lpignore="true" data-1p-ignore data-form-type="other" placeholder="Tempel API key apa saja…">
+      <select id="apiProvider">
+        <option value="auto">Provider: Auto-deteksi</option>
+        <option value="openai">OpenAI</option>
+        <option value="qwen">Qwen (DashScope)</option>
+        <option value="deepseek">DeepSeek</option>
+        <option value="github">GitHub Models (token github_pat_/ghp_)</option>
+        <option value="groq">Groq</option>
+        <option value="openrouter">OpenRouter</option>
+        <option value="anthropic">Anthropic (Claude)</option>
+        <option value="gemini">Gemini</option>
+        <option value="custom">OpenAI-compatible (URL custom)</option>
+      </select>
+      <input id="apiBase" type="text" autocomplete="off" placeholder="Base URL, mis. https://host/v1" style="display:none">
+      <button id="apiDetectBtn">🔍 Deteksi provider dari key</button>
+      <input id="apiModel" type="text" autocomplete="off" placeholder="Model (opsional — mis. qwen, coder, gpt-4o)">
+      <div id="apiDetect" class="menu-hint">Qwen & OpenAI sama-sama pakai sk-… → pilih provider manual.</div>
+      <div class="menu-row">
+        <button id="apiSave">Simpan</button>
+        <button id="apiClear">Hapus</button>
+      </div>
+      <div class="menu-div"></div>
+      <div class="menu-title">Alat</div>
+      <button id="vpToggle">🎯 Visual Picker</button>
+      <div class="menu-spacer"></div>
+      <div class="menu-hint" style="text-align:center;opacity:.45">— ruang untuk fitur lain —</div>
+    </div>
+  </div>
+  <label style="font-size:13px;color:var(--dim)">Model:</label>
+  <select id="model"></select>
+  <button id="clear">Reset</button>
+  <label style="display:none"><input type="checkbox" id="agentMode"> 🤖 Agent</label>
+  <label style="font-size:13px;color:var(--dim);cursor:pointer"><input type="checkbox" id="compareMode" style="vertical-align:middle"> ⚖️ Bandingkan</label>
+  <select id="compareModel" style="display:none"></select>
+  <span id="status">checking…</span>
+</header>
+<div id="chat"></div>
+<footer>
+  <textarea id="input" rows="3" placeholder="Ask for code…  (Shift+Enter for a new line)"></textarea>
+  <button id="send">Send</button>
+</footer>
+
+<script>
+let history = [];           // {role, content}
+let busy = false;
+// Languages: edit/highlight for all (Monaco); HTML/CSS/JSON/TS get real IntelliSense;
+// only RUNNABLE ones execute; HTML previews in an iframe.
+const LANGS = [
+  ['python','Python'], ['javascript','JavaScript'], ['typescript','TypeScript'],
+  ['html','HTML'], ['css','CSS'], ['json','JSON'], ['yaml','YAML'],
+  ['c','C'], ['cpp','C++'], ['go','Go'], ['java','Java'],
+  ['kotlin','Kotlin'], ['rust','Rust'], ['ruby','Ruby'], ['php','PHP'],
+  ['sql','SQL'], ['shell','Shell'], ['markdown','Markdown']
+];
+const RUNNABLE = new Set(['python','javascript','c','cpp','go','java','php','rust','kotlin']);
+const LANG_ALIAS = { py:'python', js:'javascript', node:'javascript', ts:'typescript',
+  'c++':'cpp', cxx:'cpp', cc:'cpp', golang:'go', yml:'yaml', sh:'shell', bash:'shell', md:'markdown' };
+const KNOWN_LANGS = new Set(LANGS.map(l=>l[0]));
+function normLang(lang, code){
+  let ln = LANG_ALIAS[lang] || (lang||'');
+  if(!KNOWN_LANGS.has(ln)) ln = /(^|\n)\s*(def |import |print\(|class \w+:|elif )/.test(code||'') ? 'python' : 'javascript';
+  return ln;
+}
+const $ = id => document.getElementById(id);
+const chat = $('chat');
+const modelSel = $('model');
+// Auto-scroll only when the user is already near the bottom (don't yank them down while reading up).
+let stick = true;
+chat.addEventListener('scroll', ()=>{ stick = chat.scrollHeight - chat.scrollTop - chat.clientHeight < 60; });
+function scrollIfStick(){ if(stick) chat.scrollTop = chat.scrollHeight; }
+
+function esc(s){ return s.replace(/[&<>]/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;'}[c])); }
+function b64enc(s){ return btoa(unescape(encodeURIComponent(s))); }   // utf8-safe
+function b64dec(s){ return decodeURIComponent(escape(atob(s))); }
+const inlineCode = s => s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+
+// Inline markdown: `code`, **bold**, *italic*, [text](url)
+function mdInline(s){
+  s = esc(s);
+  s = s.replace(/`([^`\n]+)`/g, '<code>$1</code>');
+  s = s.replace(/\*\*([^*\n]+)\*\*/g, '<strong>$1</strong>');
+  s = s.replace(/(^|[^*])\*([^*\n]+)\*/g, '$1<em>$2</em>');
+  s = s.replace(/\[([^\]]+)\]\((https?:\/\/[^)\s]+)\)/g, '<a href="$2" target="_blank" rel="noopener">$1</a>');
+  return s;
+}
+// Block markdown: headings, bullet/numbered lists, paragraphs
+function mdBlocks(text){
+  const lines = text.split('\n'); let html=''; let ul=false, ol=false;
+  const close=()=>{ if(ul){html+='</ul>';ul=false;} if(ol){html+='</ol>';ol=false;} };
+  for(const line of lines){
+    let m;
+    if((m=line.match(/^\s*(#{1,6})\s+(.*)$/))){ close(); const l=m[1].length; html+=`<h${l} class="md-h">${mdInline(m[2])}</h${l}>`; }
+    else if((m=line.match(/^\s*[-*+]\s+(.*)$/))){ if(!ul){close();html+='<ul class="md-ul">';ul=true;} html+=`<li>${mdInline(m[1])}</li>`; }
+    else if((m=line.match(/^\s*\d+\.\s+(.*)$/))){ if(!ol){close();html+='<ol class="md-ol">';ol=true;} html+=`<li>${mdInline(m[1])}</li>`; }
+    else if(line.trim()===''){ close(); }
+    else { close(); html+=`<div class="md-p">${mdInline(line)}</div>`; }
+  }
+  close(); return html;
+}
+// Full render: fenced ```code``` blocks (Run + Copy) + rich markdown; live-previews an unclosed fence while streaming
+function render(text){
+  let out = ''; let last = 0; const re = /```(\w*)\n?([\s\S]*?)```/g; let m;
+  while((m = re.exec(text))){
+    out += mdBlocks(text.slice(last, m.index));
+    const lang = (m[1]||'').toLowerCase();
+    const code = m[2].replace(/\n$/,'');
+    const ln = normLang(lang, code);
+    const opts = LANGS.map(([v,t])=>`<option value="${v}"${ln===v?' selected':''}>${t}</option>`).join('');
+    out += `<div class="cb" data-lang="${ln}" data-code="${b64enc(code)}">`+
+           `<pre>${esc(code)}</pre>`+
+           `<div class="cbbar"><button class="runbtn">▶ Run</button>`+
+           `<button class="editbtn" title="Ubah kode ini dengan AI">✦ Edit</button>`+
+           `<button class="copybtn" data-copy="${b64enc(code)}">⧉ Copy code</button>`+
+           `<select class="langsel" title="Change language">${opts}</select></div>`+
+           `<div class="runout" style="display:none"></div></div>`;
+    last = re.lastIndex;
+  }
+  const tail = text.slice(last); const open = tail.indexOf('```');
+  if(open >= 0){ out += mdBlocks(tail.slice(0, open)); const rest = tail.slice(open).replace(/^```(\w*)\n?/, ''); out += `<pre>${esc(rest)}</pre>`; }
+  else out += mdBlocks(tail);
+  return out;
+}
+function addMsg(role, text){
+  const div = document.createElement('div');
+  div.className = 'msg ' + (role==='user'?'user':'bot');
+  div.innerHTML = `<div class="role">${role==='user'?'you':'model'}</div><div class="body">${render(text)}</div>`;
+  chat.appendChild(div);
+  chat.scrollTop = chat.scrollHeight;
+  return div.querySelector('.body');
+}
+
+// Cloud key handling — provider is auto-detected from the key prefix
+const PROVIDERS = [
+  ['github_pat_', 'github', 'GitHub Models'], ['ghp_', 'github', 'GitHub Models'],
+  ['sk-ant-', 'anthropic', 'Claude'], ['sk-or-', 'openrouter', 'OpenRouter'],
+  ['gsk_', 'groq', 'Groq'], ['AIza', 'gemini', 'Gemini'], ['sk-', 'openai', 'OpenAI'],
+];
+const CLOUD_DEFAULT_MODEL = { anthropic:'claude', openai:'gpt-4o',
+  openrouter:'anthropic/claude-opus-4-8', groq:'llama', qwen:'qwen', deepseek:'chat', github:'gpt-4o', gemini:'gemini-2.0-flash', custom:'gpt-4o' };
+const PROVIDER_LABELS = { openai:'OpenAI', qwen:'Qwen', groq:'Groq', openrouter:'OpenRouter', anthropic:'Claude', deepseek:'DeepSeek', github:'GitHub Models', gemini:'Gemini', custom:'Custom' };
+function detectProvider(key){
+  key = (key||'').trim();
+  for(const [pre, prov, name] of PROVIDERS) if(key.startsWith(pre)) return { provider:prov, name };
+  return key ? { provider:'openai', name:'OpenAI (default)' } : null;
+}
+function keyish(s){ return /^(sk-|gsk_|AIza)/.test((s||'').trim()); }   // looks like an API key, not a model
+function getCloud(){ try { return JSON.parse(localStorage.getItem('quantum_cloud')||'null'); } catch { return null; } }
+function setCloud(c){ if(c) localStorage.setItem('quantum_cloud', JSON.stringify(c)); else localStorage.removeItem('quantum_cloud'); }
+
+// Build the model dropdown from /models, then health-check each
+async function loadModels(){
+  let models = [];
+  try { models = await (await fetch('/models')).json(); } catch {}
+  modelSel.innerHTML = '';
+  for(const mdl of models){
+    const o = document.createElement('option');
+    o.value = mdl.port; o.textContent = mdl.name; if(mdl.default) o.selected = true;
+    modelSel.appendChild(o);
+  }
+  const cloud = getCloud();
+  if(cloud && cloud.key){
+    if(!cloud.model || keyish(cloud.model)){ cloud.model = CLOUD_DEFAULT_MODEL[cloud.provider] || 'default'; setCloud(cloud); }  // repair: never keep a token as model
+    const o = document.createElement('option');
+    o.value = 'cloud'; o.textContent = `☁ ${cloud.name} (${cloud.model}) ·${(cloud.key||'').slice(-4)}`; o.selected = true;  // last 4 of key = which key is active
+    modelSel.appendChild(o);
+  }
+  for(const o of [...modelSel.options]){
+    if(o.value === 'cloud' || o.value.startsWith('srv:')) continue;  // cloud options aren't local llama ports
+    try{ const r = await fetch(`http://127.0.0.1:${o.value}/health`); if(!r.ok) throw 0; }
+    catch{ o.disabled = true; o.textContent += ' — down'; }
+  }
+  const cur = modelSel.selectedOptions[0];
+  const isCloudOpt = cur && (cur.value === 'cloud' || cur.value.startsWith('srv:'));
+  $('status').textContent = isCloudOpt ? `cloud: ${cur.textContent.replace('☁ ','')}`
+    : (cur && !cur.disabled) ? 'ready' : 'no model server — run start-models';
+  // mirror options into the compare (B) dropdown; default B to a different option than A
+  const cmp = $('compareModel');
+  if(cmp){ cmp.innerHTML = modelSel.innerHTML;
+    const opts = [...cmp.options]; const other = opts.find(o => o.value !== modelSel.value && !o.disabled);
+    if(other) cmp.value = other.value;
+  }
+}
+
+function showRun(out, j){
+  const ok = j.ok;
+  const txt = (j.output||'') + (j.error ? ('\n'+j.error) : '');
+  const copyBtn = txt.trim() ? `<button class="copybtn copyout" data-copy="${b64enc(txt)}">⧉ Copy output</button>` : '';
+  let html = `<div class="runhdr ${ok?'okrun':'errrun'}">${ok?'✓ ran (exit 0)':'✗ runtime error'}${j.language?' • '+j.language:''}${copyBtn}</div>`;
+  if(j.output) html += `<pre class="ro">${esc(j.output)}</pre>`;
+  if(j.error)  html += `<pre class="ro err">${esc(j.error)}</pre>`;
+  if(ok && !j.output && !j.error) html += `<div class="rodim">(no output — code is valid &amp; ran without error)</div>`;
+  out.innerHTML = html;
+}
+
+// Gray ghost-text (Copilot-style) powered by the fast "ghost" model (FIM).
+// Registered once; debounced + cancellable so it only fires when you pause typing.
+// Real Python autocomplete via Jedi (static analysis, library-aware, NO model).
+// Replaces the slow 0.5B AI ghost for Python; instant like a standard IDE.
+let _pyOn = false;
+function registerPython(){
+  if(_pyOn || !window.monaco) return;
+  try{
+    monaco.languages.registerCompletionItemProvider('python', {
+      triggerCharacters: ['.', '_'],
+      provideCompletionItems: async (model, position)=>{
+        const word = model.getWordUntilPosition(position);
+        const range = new monaco.Range(position.lineNumber, word.startColumn, position.lineNumber, word.endColumn);
+        let comps = [];
+        try{
+          const r = await fetch('/pycomplete', { method:'POST', headers:{'Content-Type':'application/json'},
+            body: JSON.stringify({ code: model.getValue(), line: position.lineNumber, column: position.column-1 }) });
+          comps = await r.json();
+        }catch(e){ return { suggestions: [] }; }
+        const K = monaco.languages.CompletionItemKind;
+        const kind = t => ({ function:K.Function, class:K.Class, module:K.Module, instance:K.Variable,
+          keyword:K.Keyword, statement:K.Variable, param:K.Variable, property:K.Property, path:K.File }[t] || K.Text);
+        return { suggestions: comps.map(c=>({ label:c.name, kind:kind(c.type), insertText:c.name, range })) };
+      }
+    });
+    _pyOn = true;
+    console.log('[python] Jedi completion registered');
+  }catch(e){ console.warn('[python] failed:', e); }
+}
+
+// Turn finished code blocks into Monaco editors (VS Code's editor): real IDE
+// autocomplete (static analysis, no AI) + gray ghost-text (local model), editable.
+function upgradeCodeBlocks(scope){
+  if(!window.monaco) return;
+  registerPython();
+  scope.querySelectorAll('.cb').forEach(cb=>{
+    if(cb._editor) return;                      // already upgraded
+    const pre = cb.querySelector('pre'); if(!pre) return;
+    const language = cb.dataset.lang || 'javascript';   // already a valid Monaco language id
+    const holder = document.createElement('div'); holder.className = 'qmonaco';
+    pre.replaceWith(holder);
+    const editor = monaco.editor.create(holder, {
+      value: b64dec(cb.dataset.code), language, theme:'vs-dark',
+      automaticLayout:true, minimap:{enabled:false}, scrollBeyondLastLine:false,
+      fontSize:13, lineNumbers:'on', renderLineHighlight:'none', tabSize:4,
+      scrollbar:{ alwaysConsumeMouseWheel:false }, padding:{ top:6, bottom:6 },
+      suggest:{ preview:true, showStatusBar:false }   // inline ghost preview of the top static suggestion (no model)
+    });
+    const setH = ()=>{ holder.style.height = Math.min(Math.max(editor.getContentHeight(),40),440)+'px'; editor.layout(); };
+    editor.onDidContentSizeChange(setH); setH();
+    cb._editor = editor;
+  });
+}
+// Read a block's CURRENT code (edited value if it has an editor).
+function cbCode(cb){ return cb._editor ? cb._editor.getValue() : b64dec(cb.dataset.code); }
+
+// Run button: HTML -> live preview; runnable -> execute on CPU; others -> edit-only.
+async function execCb(cb){
+  const lang = cb.dataset.lang;
+  const out = cb.querySelector('.runout');
+  out.style.display='block';
+  if(lang === 'html'){                      // render HTML/CSS/JS live in an iframe
+    out.innerHTML = '<div class="runhdr okrun">▶ HTML preview</div>';
+    const f = document.createElement('iframe');
+    f.className = 'htmlprev'; f.srcdoc = cbCode(cb);
+    out.appendChild(f);
+    return { ok:true };
+  }
+  if(!RUNNABLE.has(lang)){                   // css/yaml/kotlin/rust/... : no runtime here
+    out.innerHTML = `<div class="runhdr errrun">"${lang}" — edit &amp; highlight only (no runtime installed)</div>`;
+    return { ok:false };
+  }
+  out.innerHTML='<div class="rodim">⏳ running on CPU…</div>';
+  let j;
+  try{
+    const r = await fetch('/run', { method:'POST', headers:{'Content-Type':'application/json'},
+      body: JSON.stringify({ language: lang, code: cbCode(cb) }) });
+    j = await r.json();
+  }catch(err){ j = { ok:false, error:'could not reach server: '+err.message }; }
+  showRun(out, j);
+  return j;
+}
+
+// Send button: 2-mode (Send / Cancel)
+let currentCtrl = null;
+function setMode(b){
+  busy = b;
+  const btn = $('send');
+  if(b){ btn.textContent = '■ Cancel'; btn.classList.add('cancel'); }
+  else { btn.textContent = 'Send'; btn.classList.remove('cancel'); }
+}
+function cancel(){ if(currentCtrl) currentCtrl.abort(); }
+
+function modelLabel(sel, v){ const o=[...sel.options].find(x=>x.value===v); return o?o.textContent.replace(' — down',''):v; }
+function reqFor(v, hist){ return v==='cloud' ? { history:hist, cloud:getCloud() }
+  : v.startsWith('srv:') ? { history:hist, cloud:{ provider:v.slice(4) } }
+  : { history:hist, port:(v && !isNaN(v) && Number(v) > 0) ? v : undefined }; }
+
+// Stream one /chat (or /agent) response into bodyEl. Reusable by single + compare modes.
+// Returns { reply, run, attempts, ms }. Uses a shared currentCtrl so Cancel aborts the active call.
+async function streamInto(endpoint, reqBody, bodyEl){
+  const ctrl = new AbortController(); currentCtrl = ctrl;
+  const t0 = performance.now();
+  let acc='', finalReply='', finalRun=null, finalAttempts=1, cur='', stepsHtml='';
+  const agent = endpoint === '/agent';
+  bodyEl.innerHTML = '<div class="typing"><span></span><span></span><span></span></div>';
+  try{
+    const r = await fetch(endpoint, { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify(reqBody), signal: ctrl.signal });
+    const reader = r.body.getReader(); const dec = new TextDecoder(); let buf='';
+    while(true){
+      const {done, value} = await reader.read(); if(done) break;
+      buf += dec.decode(value, {stream:true}); const lines = buf.split('\n'); buf = lines.pop();
+      for(const line of lines){
+        const m = line.match(/^data:\s*(.*)$/); if(!m) continue;
+        let j; try{ j = JSON.parse(m[1]); }catch{ continue; }
+        if(j.t === 'tok'){ acc += j.c;
+          if(agent){ cur += j.c; bodyEl.innerHTML = stepsHtml + render(cur); } else { bodyEl.innerHTML = render(acc); }
+          const cr=document.createElement('span'); cr.className='caret'; bodyEl.appendChild(cr); scrollIfStick(); }
+        else if(j.t === 'step'){ if(agent && cur.trim()){ stepsHtml += render(cur); cur=''; } }
+        else if(j.t === 'act'){ stepsHtml += render(cur) +
+            `<div class="act ${j.ok?'ok':'bad'}"><div class="acth">▶ ${(j.kind||'').toUpperCase()} ${esc(j.arg||'')} ${j.ok?'✓':'✗'}</div><pre>${esc((j.output||'').slice(0,1500))}</pre></div>`;
+          cur=''; bodyEl.innerHTML = stepsHtml; scrollIfStick(); }
+        else if(j.t === 'adone'){ stepsHtml += render(cur); cur=''; bodyEl.innerHTML = stepsHtml; finalReply = acc; }
+        else if(j.t === 'retry'){ acc=''; bodyEl.innerHTML = `<div class="typing"><span></span><span></span><span></span></div><span class="typing-lbl">memperbaiki kode (percobaan ${j.n}/3)…</span>`; }
+        else if(j.t === 'run'){ finalRun = j.run; const cb = bodyEl.querySelector('.cb');
+          if(cb){ showRun(cb.querySelector('.runout'), j.run); cb.querySelector('.runout').style.display='block'; } }
+        else if(j.t === 'done'){ finalReply = j.reply; finalRun = j.run || finalRun; finalAttempts = j.attempts; }
+        else if(j.t === 'err'){
+          const m = j.m || '';
+          const friendly = /ECONNREFUSED|127\.0\.0\.1/.test(m)
+            ? '⚠️ Model lokal tidak berjalan. Jalankan model dulu (start-models) atau pilih ☁ cloud.'
+            : /ENOTFOUND|ECONNRESET|ETIMEDOUT/.test(m)
+            ? '⚠️ Gagal terhubung — periksa koneksi atau server model.'
+            : `error: ${m}`;
+          acc += `\n${friendly}`; bodyEl.innerHTML = render(acc); }
+      }
+    }
+  }catch(e){
+    if(e.name === 'AbortError'){ bodyEl.innerHTML += '<div class="rodim">⏹ dibatalkan</div>'; }
+    else { bodyEl.innerHTML = render('[error: '+e.message+' — server jalan?]'); }
+  }
+  bodyEl.querySelectorAll('.caret').forEach(c=>c.remove());
+  upgradeCodeBlocks(bodyEl); scrollIfStick();
+  return { reply: finalReply || acc, run: finalRun, attempts: finalAttempts, ms: Math.round(performance.now()-t0) };
+}
+function verdictHtml(r){
+  const v = r.run ? (r.run.ok ? `<span style="color:#3fb950">✓ terverifikasi</span>` : `<span style="color:#f85149">⚠ belum lolos</span>`) : `<span style="color:var(--dim)">tanpa kode</span>`;
+  return `<div class="role" style="margin-top:6px">${v} · ${(r.ms/1000).toFixed(1)}s${r.run?` · ${r.attempts}x`:''}</div>`;
+}
+
+// Inline "✦ Edit": type an instruction on a code block, AI regenerates it (Cursor-style).
+function openEditPanel(cb){
+  if(cb._editPanel){ cb._editPanel.remove(); cb._editPanel=null; return; }
+  const p=document.createElement('div'); p.className='editpanel';
+  p.innerHTML=`<textarea class="editins" placeholder="Instruksi perubahan… (mis. tambah error handling, ubah ke async, beri komentar)"></textarea>`+
+    `<div class="menu-row"><button class="editgo">✦ Generate</button><button class="editcancel">Batal</button></div>`;
+  cb.appendChild(p); cb._editPanel=p;
+  const ta=p.querySelector('.editins'); ta.focus();
+  p.querySelector('.editcancel').onclick=()=>{ p.remove(); cb._editPanel=null; };
+  p.querySelector('.editgo').onclick=()=>{ const ins=ta.value.trim(); if(!ins||busy) return; p.remove(); cb._editPanel=null; editCode(cb, ins); };
+  ta.addEventListener('keydown', e=>{ if(e.key==='Enter'&&!e.shiftKey){ e.preventDefault(); p.querySelector('.editgo').click(); } });
+}
+async function editCode(cb, instruction){
+  const code = cbCode(cb), lang = cb.dataset.lang || 'text';
+  const userMsg = `Ubah kode berikut sesuai instruksi. Kembalikan HANYA satu blok kode hasil (bertag bahasa ${lang}), tanpa penjelasan panjang.\n`+
+    `Instruksi: ${instruction}\n\n\`\`\`${lang}\n${code}\n\`\`\``;
+  setMode(true);
+  addMsg('user', `✦ Ubah (${lang}): ${instruction}`);
+  history.push({ role:'user', content:userMsg });
+  const bodyEl = addMsg('assistant', '');
+  $('status').textContent = 'mengubah kode…';
+  const r = await streamInto('/chat', reqFor(modelSel.value, history), bodyEl);
+  history.push({ role:'assistant', content:r.reply });
+  $('status').textContent = r.run ? (r.run.ok ? `✓ verified (${r.attempts}x)` : '⚠ not passing') : 'ready';
+  currentCtrl=null; setMode(false); $('input').focus();
+}
+
+async function send(){
+  const text = $('input').value.trim();
+  if(!text || busy) return;
+  setMode(true); $('input').value = '';
+  addMsg('user', text); history.push({role:'user', content:text});
+  const endpoint = $('agentMode').checked ? '/agent' : '/chat';
+  const vA = modelSel.value;
+
+  if($('compareMode').checked){                       // ⚖️ A/B: same prompt to two models, both auto-verified
+    const vB = $('compareModel').value;
+    const wrap = document.createElement('div'); wrap.className='msg bot'; wrap.style.cssText='display:flex;gap:10px;align-items:flex-start';
+    const mk = (tag,v)=>{ const c=document.createElement('div'); c.style.cssText='flex:1;min-width:0;border:1px solid var(--border);border-radius:8px;padding:8px';
+      c.innerHTML=`<div class="role">${tag} · ${esc(modelLabel(modelSel,v))}</div><div class="body"></div>`; return c; };
+    const colA = mk('A', vA), colB = mk('B', vB); wrap.append(colA, colB); chat.appendChild(wrap); scrollIfStick();
+    $('status').textContent = 'membandingkan A…';
+    const ra = await streamInto(endpoint, reqFor(vA, history), colA.querySelector('.body'));
+    colA.insertAdjacentHTML('beforeend', verdictHtml(ra));
+    $('status').textContent = 'membandingkan B…';
+    const rb = await streamInto(endpoint, reqFor(vB, history), colB.querySelector('.body'));
+    colB.insertAdjacentHTML('beforeend', verdictHtml(rb));
+    history.push({ role:'assistant', content: ra.reply });     // keep A as the canonical thread
+    $('status').textContent = `bandingkan: A ${ra.run&&ra.run.ok?'✓':'–'} vs B ${rb.run&&rb.run.ok?'✓':'–'}`;
+  } else {
+    const bodyEl = addMsg('assistant', '');
+    $('status').textContent = 'typing…';
+    const r = await streamInto(endpoint, reqFor(vA, history), bodyEl);
+    history.push({ role:'assistant', content: r.reply });
+    $('status').textContent = r.run ? (r.run.ok ? `✓ verified (${r.attempts}x · ${(r.ms/1000).toFixed(1)}s)` : `⚠ not passing (${r.attempts}x)`) : 'ready';
+  }
+  currentCtrl = null; setMode(false); $('input').focus();
+}
+
+$('send').onclick = ()=>{ if(busy) cancel(); else send(); };
+$('input').addEventListener('keydown', e=>{ if(e.key==='Enter' && !e.shiftKey){ e.preventDefault(); if(!busy) send(); } });
+$('clear').onclick = ()=>{ history=[]; chat.innerHTML=''; $('input').focus(); };
+modelSel.onchange = ()=>{ $('status').textContent = 'model: '+modelSel.selectedOptions[0].text; };
+$('compareMode').onchange = (e)=>{ $('compareModel').style.display = e.target.checked ? '' : 'none'; };
+
+chat.addEventListener('click', async e=>{
+  const cbtn = e.target.closest('.copybtn');
+  if(cbtn){
+    const cb = cbtn.closest('.cb');
+    // "Copy code" copies the edited value; "Copy output" copies the stored output
+    const text = (cb && cb._editor && !cbtn.classList.contains('copyout')) ? cb._editor.getValue() : b64dec(cbtn.dataset.copy);
+    try{ await navigator.clipboard.writeText(text);
+      const o = cbtn.textContent; cbtn.textContent = '✓ copied'; setTimeout(()=>cbtn.textContent=o, 1200); }
+    catch(err){ cbtn.textContent = 'failed'; }
+    return;
+  }
+  const ebtn = e.target.closest('.editbtn');
+  if(ebtn){ openEditPanel(ebtn.closest('.cb')); return; }
+  const btn = e.target.closest('.runbtn');
+  if(!btn) return;
+  btn.disabled = true;
+  await execCb(btn.closest('.cb'));
+  btn.disabled = false;
+});
+
+// Language selector: switch a code block's language (Monaco highlight + executor)
+chat.addEventListener('change', e=>{
+  const sel = e.target.closest('.langsel');
+  if(!sel) return;
+  const cb = sel.closest('.cb');
+  cb.dataset.lang = sel.value;                       // Run uses this
+  if(cb._editor && window.monaco)
+    monaco.editor.setModelLanguage(cb._editor.getModel(), sel.value);   // editor highlight
+});
+
+// ── Brand menu (API key entry) ──
+const brandBtn = $('brandBtn'), brandMenu = $('brandMenu'), apiKey = $('apiKey'),
+      apiModel = $('apiModel'), apiDetect = $('apiDetect'), apiProvider = $('apiProvider'), apiBase = $('apiBase');
+const HINT = apiDetect.textContent;
+function toggleBase(){ apiBase.style.display = (apiProvider.value === 'custom') ? 'block' : 'none'; }
+apiProvider.onchange = toggleBase;
+function refreshMenuFromStore(){
+  const c = getCloud();
+  if(c){
+    apiKey.value = '';                                                   // never re-show the token
+    apiKey.placeholder = `Key tersimpan (…${c.key.slice(-4)}) — kosongkan untuk tetap pakai`;
+    apiProvider.value = (c.baseUrl ? 'custom' : c.provider) || 'auto';
+    apiBase.value = c.baseUrl || '';
+    apiModel.value = keyish(c.model) ? '' : (c.model || '');             // never put a token in the model box
+    apiDetect.textContent = `provider ${c.provider} ·${c.key.slice(-4)} · aktif`;
+  } else {
+    apiKey.value = ''; apiModel.value = ''; apiBase.value=''; apiProvider.value='auto'; apiKey.placeholder = 'Tempel API key apa saja…';
+    apiDetect.textContent = HINT;
+  }
+  toggleBase();
+}
+brandBtn.onclick = (e)=>{ e.stopPropagation(); const open = brandMenu.style.display === 'none';
+  brandMenu.style.display = open ? 'flex' : 'none'; if(open) refreshMenuFromStore(); };
+document.addEventListener('click', e=>{ if(!brandMenu.contains(e.target) && e.target !== brandBtn) brandMenu.style.display='none'; });
+apiKey.addEventListener('input', ()=>{
+  const d = detectProvider(apiKey.value);
+  apiDetect.textContent = d ? `Terdeteksi: ${d.name}` : HINT;
+});
+$('apiSave').onclick = ()=>{
+  const existing = getCloud();
+  const typedKey = apiKey.value.trim();
+  const key = typedKey || (existing && existing.key);                    // revise model without re-pasting the key
+  if(!key){ apiDetect.textContent = 'Masukkan API key dulu.'; return; }
+  // Provider: explicit choice wins over prefix auto-detect (Qwen & OpenAI both use sk-).
+  const sel = apiProvider.value, base = apiBase.value.trim();
+  let provider, name, baseUrl;
+  if(sel === 'auto'){ const d = detectProvider(key); provider = d.provider; name = d.name; }
+  else if(sel === 'custom'){ provider = 'custom'; name = 'Custom'; baseUrl = base; if(!base){ apiDetect.textContent = 'Isi Base URL untuk provider custom.'; return; } }
+  else { provider = sel; name = PROVIDER_LABELS[sel] || sel; }
+  let model = apiModel.value.trim();
+  if(existing && existing.provider !== provider) model = '';             // switched provider → drop the old provider's model
+  if(!model || keyish(model)) model = CLOUD_DEFAULT_MODEL[provider] || 'gpt-4o';  // don't accept a key as the model
+  setCloud({ key, provider, name, model, baseUrl });                     // token stays here; backend resolves aliases + baseUrl
+  apiDetect.textContent = `Tersimpan: ${provider} ·${key.slice(-4)} → ${model}`;  // confirm exactly which key is active
+  loadModels();
+};
+$('apiClear').onclick = ()=>{
+  setCloud(null); apiKey.value=''; apiModel.value=''; apiBase.value=''; apiProvider.value='auto'; toggleBase(); apiDetect.textContent = HINT;
+  loadModels();
+};
+// Probe the key against providers to find its real owner (handles sk- collisions)
+$('apiDetectBtn').onclick = async ()=>{
+  const stored = getCloud();
+  const key = apiKey.value.trim() || (stored && stored.key);
+  if(!key){ apiDetect.textContent = 'Tempel API key dulu.'; return; }
+  apiDetect.textContent = '🔍 Mendeteksi provider…';
+  try{
+    const d = await (await fetch('/detect-key', { method:'POST', headers:{'Content-Type':'application/json'}, body: JSON.stringify({ key }) })).json();
+    apiProvider.value = (PROVIDER_LABELS[d.provider] ? d.provider : 'auto'); toggleBase();
+    apiDetect.textContent = d.verified ? `✓ Terdeteksi & terverifikasi: ${d.name}` : `Tebakan: ${d.name} (tidak terverifikasi — key mungkin salah/expired)`;
+  }catch(e){ apiDetect.textContent = 'Deteksi gagal: ' + e.message; }
+};
+
+// ── Visual Picker (personal tool): click UI elements, annotate, copy a fix request ──
+(function(){
+  const tray = document.createElement('div'); tray.className = 'vp-tray vp-ui'; tray.id = 'vpTray';
+  tray.innerHTML =
+    `<div class="vp-head"><b>🎯 Visual Picker</b><span id="vpCount">0 dipilih</span></div>
+     <div id="vpList"></div>
+     <div class="menu-row"><button id="vpCopy" class="vp-ui">Salin untuk Claude</button><button id="vpSendChat" class="vp-ui">Kirim ke chat</button></div>
+     <div class="menu-row"><button id="vpClear" class="vp-ui">Bersihkan</button><button id="vpDone" class="vp-ui">Selesai</button></div>
+     <div class="vp-hint">Klik = pilih · dobel-klik = edit teks · Esc = keluar</div>`;
+  document.body.appendChild(tray);
+  const list = tray.querySelector('#vpList'), count = tray.querySelector('#vpCount');
+  // Drag the tray by its header so it never blocks the chat input.
+  const head = tray.querySelector('.vp-head'); let drag = null;
+  head.addEventListener('mousedown', e=>{
+    const r = tray.getBoundingClientRect();
+    drag = { dx: e.clientX - r.left, dy: e.clientY - r.top };
+    tray.style.right='auto'; tray.style.bottom='auto'; tray.style.left=r.left+'px'; tray.style.top=r.top+'px';
+    e.preventDefault();
+  });
+  window.addEventListener('mousemove', e=>{ if(!drag) return;
+    let x = Math.max(4, Math.min(e.clientX - drag.dx, innerWidth  - tray.offsetWidth - 4));
+    let y = Math.max(4, Math.min(e.clientY - drag.dy, innerHeight - 40));
+    tray.style.left=x+'px'; tray.style.top=y+'px';
+  });
+  window.addEventListener('mouseup', ()=> drag=null);
+  let picking = false, hover = null;
+  const picked = [];  // {el, sel, note}
+
+  const isUI = el => !el || (el.closest && el.closest('.vp-ui')) || el === document.body || el === document.documentElement;
+  function selectorFor(el){
+    if(el.id) return '#'+el.id;
+    const path = []; let e = el;
+    while(e && e.nodeType===1 && path.length<4 && e!==document.body){
+      let s = e.tagName.toLowerCase();
+      if(typeof e.className==='string'){ const c = e.className.trim().split(/\s+/).filter(x=>x && !x.startsWith('vp-'))[0]; if(c) s += '.'+c; }
+      const p = e.parentNode;
+      if(p){ const sib=[...p.children].filter(x=>x.tagName===e.tagName); if(sib.length>1) s += `:nth-of-type(${sib.indexOf(e)+1})`; }
+      path.unshift(s); e = e.parentNode;
+    }
+    return path.join(' > ');
+  }
+  function onMove(e){ if(!picking) return; const el=e.target; if(isUI(el)){ if(hover){hover.classList.remove('vp-hover');hover=null;} return; }
+    if(hover&&hover!==el) hover.classList.remove('vp-hover'); hover=el; el.classList.add('vp-hover'); }
+  function onClick(e){ if(!picking||isUI(e.target)) return; e.preventDefault(); e.stopPropagation();
+    const el=e.target, i=picked.findIndex(p=>p.el===el);
+    if(i>=0){ picked[i].el.classList.remove('vp-picked'); picked.splice(i,1); }
+    else { el.classList.add('vp-picked'); picked.push({el, sel:selectorFor(el), note:''}); }
+    render(); }
+  function onDbl(e){ if(!picking||isUI(e.target)) return; e.preventDefault(); e.stopPropagation();
+    const el=e.target; const on=el.getAttribute('contenteditable')==='true';
+    el.setAttribute('contenteditable', on?'false':'true'); if(!on) el.focus(); }
+  function onKey(e){ if(e.key==='Escape'&&picking) stop(); }
+  function render(){
+    count.textContent = picked.length+' dipilih'; list.innerHTML='';
+    picked.forEach((p,idx)=>{
+      const row=document.createElement('div'); row.className='vp-item vp-ui';
+      const sel=document.createElement('div'); sel.className='vp-sel'; sel.title=p.sel; sel.textContent=(idx+1)+'. '+p.sel;
+      sel.onmouseenter=()=>p.el.classList.add('vp-hover'); sel.onmouseleave=()=>p.el.classList.remove('vp-hover');
+      const ta=document.createElement('textarea'); ta.className='vp-note vp-ui'; ta.placeholder='Apa yang ingin diubah?'; ta.value=p.note;
+      ta.addEventListener('input',ev=>p.note=ev.target.value);
+      const rm=document.createElement('button'); rm.className='vp-rm vp-ui'; rm.textContent='hapus';
+      rm.onclick=()=>{ p.el.classList.remove('vp-picked'); picked.splice(idx,1); render(); };
+      row.append(sel,ta,rm); list.appendChild(row);
+    });
+  }
+  function payload(){
+    return picked.map((p,idx)=>{
+      const cs=getComputedStyle(p.el);
+      const styles=['color','background-color','font-size','font-weight','padding','margin','display','width','border']
+        .map(k=>`${k}: ${cs.getPropertyValue(k)}`).join('; ');
+      const html=(p.el.outerHTML||'').replace(/ ?vp-(picked|hover)/g,'').slice(0,400);
+      return `### Elemen ${idx+1}\n- selector: \`${p.sel}\`\n- permintaan: ${p.note||'(belum diisi)'}\n- styles: ${styles}\n- html:\n\`\`\`html\n${html}\n\`\`\``;
+    }).join('\n\n');
+  }
+  function start(){ picking=true; tray.style.display='flex'; document.body.classList.add('vp-on');
+    document.addEventListener('mouseover',onMove,true); document.addEventListener('click',onClick,true);
+    document.addEventListener('dblclick',onDbl,true); document.addEventListener('keydown',onKey,true); }
+  function stop(){ picking=false; if(hover){hover.classList.remove('vp-hover');hover=null;} document.body.classList.remove('vp-on');
+    document.removeEventListener('mouseover',onMove,true); document.removeEventListener('click',onClick,true);
+    document.removeEventListener('dblclick',onDbl,true); document.removeEventListener('keydown',onKey,true); }
+  tray.querySelector('#vpCopy').onclick = async ()=>{ if(!picked.length) return;
+    try{ await navigator.clipboard.writeText('Tolong perbaiki elemen UI berikut:\n\n'+payload());
+      const b=tray.querySelector('#vpCopy'), o=b.textContent; b.textContent='✓ tersalin'; setTimeout(()=>b.textContent=o,1200);}catch{} };
+  tray.querySelector('#vpSendChat').onclick = ()=>{ if(!picked.length) return; $('input').value='Perbaiki elemen UI berikut:\n\n'+payload(); stop(); $('input').focus(); };
+  tray.querySelector('#vpClear').onclick = ()=>{ picked.forEach(p=>p.el.classList.remove('vp-picked')); picked.length=0; render(); };
+  tray.querySelector('#vpDone').onclick = stop;
+  window.__vpToggle = ()=>{ picking ? stop() : start(); };
+})();
+$('vpToggle').onclick = ()=>{ brandMenu.style.display='none'; window.__vpToggle(); };
+
+loadModels();
+$('input').focus();
+</script>
+</body>
+</html>

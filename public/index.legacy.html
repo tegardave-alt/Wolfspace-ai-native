@@ -417,7 +417,7 @@ function cancel(){ if(currentCtrl) currentCtrl.abort(); }
 function modelLabel(sel, v){ const o=[...sel.options].find(x=>x.value===v); return o?o.textContent.replace(' — down',''):v; }
 function reqFor(v, hist){ return v==='cloud' ? { history:hist, cloud:getCloud() }
   : v.startsWith('srv:') ? { history:hist, cloud:{ provider:v.slice(4) } }
-  : { history:hist, port:(v && !isNaN(v) && Number(v) > 0) ? v : undefined }; }
+  : { history:hist, port:v }; }
 
 // Stream one /chat (or /agent) response into bodyEl. Reusable by single + compare modes.
 // Returns { reply, run, attempts, ms }. Uses a shared currentCtrl so Cancel aborts the active call.
@@ -448,14 +448,7 @@ async function streamInto(endpoint, reqBody, bodyEl){
         else if(j.t === 'run'){ finalRun = j.run; const cb = bodyEl.querySelector('.cb');
           if(cb){ showRun(cb.querySelector('.runout'), j.run); cb.querySelector('.runout').style.display='block'; } }
         else if(j.t === 'done'){ finalReply = j.reply; finalRun = j.run || finalRun; finalAttempts = j.attempts; }
-        else if(j.t === 'err'){
-          const m = j.m || '';
-          const friendly = /ECONNREFUSED|127\.0\.0\.1/.test(m)
-            ? '⚠️ Model lokal tidak berjalan. Jalankan model dulu (start-models) atau pilih ☁ cloud.'
-            : /ENOTFOUND|ECONNRESET|ETIMEDOUT/.test(m)
-            ? '⚠️ Gagal terhubung — periksa koneksi atau server model.'
-            : `error: ${m}`;
-          acc += `\n${friendly}`; bodyEl.innerHTML = render(acc); }
+        else if(j.t === 'err'){ acc += `\n[error: ${j.m}]`; bodyEl.innerHTML = render(acc); }
       }
     }
   }catch(e){

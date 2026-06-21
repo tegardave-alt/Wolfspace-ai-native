@@ -97,10 +97,11 @@ function startBackend() {
   // by the renderer through Electron IPC (see registerIpc). Zero open ports.
 }
 
+// OBSOLETE: In Electron mode, server runs in-process via core.js IPC, no HTTP port.
+// This function was used for web-server startup detection and is no longer needed.
 function waitReady(cb, tries = 60) {
-  const ping = () => http.get({ host: '127.0.0.1', port: PORT, path: '/', timeout: 1500 }, r => { r.resume(); cb(); })
-    .on('error', () => { if (--tries <= 0) cb(); else setTimeout(ping, 500); });
-  ping();
+  // No-op: IPC-based backend is ready immediately after core() initialization.
+  cb();
 }
 
 function createWindow() {
@@ -155,10 +156,10 @@ function apiCall({ method = 'GET', path = '/', body = null, headers = {} } = {})
 
 // Streaming variant of apiCall: each res.write becomes an IPC chunk (for SSE
 // endpoints like model downloads). Cancel destroys res â†’ handler's res.on('close').
-function apiStream({ method = 'GET', path = '/', body = null } = {}, emit, ctl = {}) {
+function apiStream({ method = 'GET', path = '/', body = null, headers = {} } = {}, emit, ctl = {}) {
   return new Promise((resolve) => {
     const req = new PassThrough();
-    req.method = method; req.url = path; req.headers = { 'content-type': 'application/json' };
+    req.method = method; req.url = path; req.headers = { 'content-type': 'application/json', ...headers };
     const res = new Writable();
     res.statusCode = 200; res._h = {}; res.writableEnded = false; res.writableFinished = false;
     res.setHeader = (k, v) => { res._h[String(k).toLowerCase()] = v; };
