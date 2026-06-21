@@ -1764,6 +1764,7 @@ function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
               ? <CodeExplorer files={files} onEdit={onFileEdit} />
               : <textarea className="canvas-code" value={doc} spellCheck={false} onChange={e=>setDoc(e.target.value)} />)}
       </div>
+      {showSDKInfo && <FlutterSDKInfo isFlutter={isFlutter} />}
       <div className="canvas-foot">
         {isFlutter
           ? <span className="verdict-mini" style={{color:'#54c5f8'}}>Flutter · SDK lokal</span>
