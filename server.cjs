@@ -2357,7 +2357,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Flutter build — compile source to APK (or appbundle/web)
+  // Flutter build (from source) — compile source to APK (or appbundle/web)
   if (req.method === 'POST' && req.url === '/flutter/build') {
     let body = '';
     req.on('data', c => body += c);
