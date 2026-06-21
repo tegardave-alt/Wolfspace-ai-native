@@ -1775,6 +1775,8 @@ function Sidebar({ collapsed, setCollapsed, view, setView, onNewChat, onVisualPi
       {badge && <span className="sb-badge">{badge}</span>}
     </button>
   );
+  // auto-tutup riwayat ketika sidebar di-collapse
+  useEffect(()=>{ if(collapsed) setShowHistory(false); }, [collapsed, setShowHistory]);
   return (
     <aside className={"sidebar"+(collapsed?" collapsed":"")}>
       <div className="sb-head">
