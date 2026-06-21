@@ -82,6 +82,10 @@ input, textarea, select { font-family: inherit; }
 .sidebar.collapsed .sb-toggle,
 .sidebar.collapsed .sb-item { width: 36px; height: 36px; gap: 0; padding: 0; justify-content: center; }
 
+/* Riwayat Chat list in sidebar */
+.sb-history-list { display: flex; flex-direction: column; gap: 1px; padding: 2px 4px; max-height: 220px; overflow-y: auto; }
+.sidebar.collapsed .sb-history-list { display: none; }
+
 /* API Key full page — card centered in the hub body */
 .settings-inner { display: flex; justify-content: center; padding-top: 18px; }
 .settings-card { width: 100%; max-width: 520px; display: flex; flex-direction: column; gap: 12px;
