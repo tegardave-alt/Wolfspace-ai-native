@@ -1775,8 +1775,6 @@ function Sidebar({ collapsed, setCollapsed, view, setView, onNewChat, onVisualPi
       {badge && <span className="sb-badge">{badge}</span>}
     </button>
   );
-  
-  
   return (
     <aside className={"sidebar"+(collapsed?" collapsed":"")}>
       <div className="sb-head">
