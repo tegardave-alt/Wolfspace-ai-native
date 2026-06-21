@@ -1955,7 +1955,7 @@ function AgentSteps({ run, onAiEdit, busy }){
       </div>
       <div className="agent-steps">
         {acts.map((e,i)=> e.type==="err" ? (
-          <div key={i} className="agent-row fail"><div className="ar-line"><span className="ar-header"><span className="ar-verb">error</span><span className="ar-arg">{e.m}</span><span className="ar-dot err" /></span></div></div>
+          <div key={i} className="agent-row fail"><div className="ar-line"><span className="ar-header"><span className="ar-verb">error</span><span className="ar-arg">{e.m}</span></span></div></div>
         ) : (
           <div key={i} className={"agent-row "+(e.ok?"ok":"fail")}>
             <div className={"ar-line"+(expanded[i]?" expanded":"")} onClick={()=>setExpanded(prev=>({...prev,[i]:!prev[i]}))}>
@@ -1963,7 +1963,6 @@ function AgentSteps({ run, onAiEdit, busy }){
                 <span className="ar-chev">{expanded[i]?"▼":"▶"}</span>
                 <span className="ar-verb">{({list:"List",glob:"Glob",read:"Read",grep:"Grep",edit:"Edit",write:"Write",run:"Run",bash:"Bash"})[e.kind]||e.kind}</span>
                 {e.arg ? <span className="ar-arg">{e.arg}</span> : null}
-                <span className={"ar-dot "+(e.ok?"done":"err")} />
               </span>
               {e.output && expanded[i] ? <ToolOutput text={e.output} ok={e.ok} kind={e.kind} arg={e.arg} /> : null}
             </div>
