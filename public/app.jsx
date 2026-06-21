@@ -1804,8 +1804,10 @@ function Sidebar({ collapsed, setCollapsed, view, setView, onNewChat, onVisualPi
           ) : (
             savedChats.slice().reverse().map(chat => (
               <div key={chat.id} className="sb-history-item" onClick={()=>restoreChat(chat)}>
-                <span className="sb-history-title">{chat.title || "Chat"}</span>
-                <span className="sb-history-date">{new Date(chat.savedAt).toLocaleDateString("id",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span>
+                <div className="sb-history-info">
+                  <span className="sb-history-title">{chat.title || "Chat"}</span>
+                  <span className="sb-history-date">{new Date(chat.savedAt).toLocaleDateString("id",{day:"numeric",month:"short",hour:"2-digit",minute:"2-digit"})}</span>
+                </div>
                 <button className="sb-history-del" title="Hapus" onClick={(e)=>{ e.stopPropagation(); deleteChat(chat.id); }}>✕</button>
               </div>
             ))
