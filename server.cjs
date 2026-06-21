@@ -2357,6 +2357,25 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+    // Flutter SDK info — version, path, status
+  if (req.method === 'GET' && req.url === '/flutter/sdk-info') {
+    try {
+      const { execSync } = require('child_process');
+      let version = null;
+      if (FLUTTER_BIN) {
+        try {
+          version = execSync('"'+FLUTTER_BIN+'" --version', { timeout: 10000, encoding: 'utf8', windowsHide: true }).split('\n')[0].trim();
+        } catch(_) { version = '(error)'; }
+      }
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ found: !!FLUTTER_BIN, path: FLUTTER_BIN, version }));
+    } catch (e) {
+      res.writeHead(200, { 'Content-Type': 'application/json' });
+      res.end(JSON.stringify({ found: false, path: null, version: null, error: e.message }));
+    }
+    return;
+  }
+
   // Flutter build — compile source to APK (or appbundle/web)
   if (req.method === 'POST' && req.url === '/flutter/build') {
     let body = '';
