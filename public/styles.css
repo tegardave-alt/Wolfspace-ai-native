@@ -610,6 +610,32 @@ input, textarea, select { font-family: inherit; }
 .fsize-val { min-width:30px; text-align:center; font:11px ui-monospace,Consolas,monospace; color:var(--text-faint,#5b6776); }
 .fsize-val.on { color:#54c5f8; font-weight:700; }
 
+/* Flutter SDK Info Panel */
+.flutter-sdk-panel { border-bottom:1px solid var(--line,#1f2733); background:var(--surface-2,#11151c); font-size:12px; max-height:240px; overflow-y:auto; }
+.fsdk-head { display:flex; align-items:center; gap:8px; padding:7px 10px; border-bottom:1px solid var(--line,#1f2733); }
+.fsdk-title { font-size:11px; font-weight:700; color:#54c5f8; display:flex; align-items:center; gap:5px; letter-spacing:.4px; }
+.fsdk-refresh { margin-left:auto; width:20px; height:20px; border-radius:4px; border:0; background:transparent; color:var(--text-faint,#5b6776); cursor:pointer; font-size:13px; line-height:1; display:grid; place-items:center; }
+.fsdk-refresh:hover { color:var(--text,#e6edf3); background:rgba(255,255,255,.05); }
+.fsdk-loading { padding:10px; text-align:center; color:var(--text-faint,#5b6776); font-size:11px; }
+.fsdk-err { padding:8px 10px; color:#f87171; font-size:11px; }
+.fsdk-row { display:flex; align-items:center; gap:8px; padding:4px 10px; }
+.fsdk-label { color:var(--text-faint,#5b6776); min-width:48px; flex-shrink:0; font-size:11px; }
+.fsdk-val { color:var(--text-muted,#8b98a9); font-family:ui-monospace,Consolas,monospace; font-size:11px; word-break:break-all; }
+.fsdk-ok { color:#34d399; font-weight:600; }
+.fsdk-miss { color:#f87171; font-weight:600; }
+.fsdk-path { max-width:260px; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.fsdk-actions { display:flex; gap:6px; padding:6px 10px 8px; flex-wrap:wrap; }
+.fsdk-btn { font-size:11px; font-weight:600; padding:4px 10px; border-radius:5px; border:1px solid var(--line,#1f2733); background:var(--surface-1,#0f1318); color:var(--text-muted,#8b98a9); cursor:pointer; }
+.fsdk-btn:hover { color:var(--text,#e6edf3); border-color:rgba(94,234,212,.4); }
+.fsdk-btn:disabled { opacity:.5; cursor:default; }
+.fsdk-link { font-size:11px; color:#54c5f8; text-decoration:none; align-self:center; }
+.fsdk-link:hover { text-decoration:underline; }
+.fsdk-doctor { border-top:1px solid var(--line,#1f2733); }
+.fsdk-doctor-head { display:flex; align-items:center; gap:8px; padding:5px 10px; font-size:11px; font-weight:600; color:var(--text-muted,#8b98a9); }
+.fsdk-doctor-close { margin-left:auto; width:18px; height:18px; border-radius:4px; border:0; background:transparent; color:var(--text-faint,#5b6776); cursor:pointer; font-size:11px; line-height:1; display:grid; place-items:center; }
+.fsdk-doctor-close:hover { color:var(--danger,#f87171); }
+.fsdk-doctor-out { margin:0; padding:6px 10px 10px; font:10.5px/1.5 ui-monospace,Consolas,monospace; color:var(--text-faint,#5b6776); white-space:pre-wrap; word-break:break-all; max-height:140px; overflow-y:auto; background:#0b0d11; }
+
 /* Visual Picker */
 .picker-btn { position:relative; }
 .picker-btn.picker-active { background:rgba(94,234,212,.18); border-color:var(--brand,#5eead4); color:var(--brand,#5eead4); }
