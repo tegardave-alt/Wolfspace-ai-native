@@ -65,6 +65,8 @@ async function chatStream({ history, port, cloud, webdev }, emit, ctl) {
   return streamPromise
     .then(full => {
       dlog('chat', 'info', 'stream completed', { length: full.length });
+      // In Web Dev mode, A2UI JSON is rendered client-side — skip server-side code execution.
+      if (webdev) return { ok: true, info: 'webdev mode - client-side A2UI rendering' };
       return runReply(full, history, emit);
     })
     .catch(onError);
