@@ -1545,11 +1545,17 @@ class _A2UIViewState extends State<A2UIView> {
   @override
   Widget build(BuildContext context) {
     final root = widget.spec['root'] ?? widget.spec;
-    // Use Material (not nested MaterialApp) to provide proper context for Scaffold
-    // without creating a duplicate navigator/overlay that conflicts with the outer app.
-    return Material(
-      color: const Color(0xFFF8FAFC),
-      child: _buildNode(root),
+    // Light-theme MaterialApp provides proper ancestor widgets (ScaffoldMessenger,
+    // Navigator) that Scaffold needs. Brightness.light prevents the black-screen
+    // bug the old Brightness.dark version caused.
+    return MaterialApp(
+      debugShowCheckedModeBanner: false,
+      theme: ThemeData(
+        brightness: Brightness.light,
+        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5EEAD4), brightness: Brightness.light),
+        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
+      ),
+      home: _buildNode(root),
     );
   }
 }
