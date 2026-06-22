@@ -784,7 +784,7 @@ const PROBE = {
   anthropic:  { host:'api.anthropic.com',                 path:'/v1/models',                    auth:'anthropic' },
   github:     { host:'models.inference.ai.azure.com',     path:'/models',                       auth:'bearer' },
   gemini:     { host:'generativelanguage.googleapis.com', path:'/v1beta/models?key=KEY',        auth:'query' },
-  opencode:   { host:'opencode.ai',                        path:'/zen/v1/models',                 auth:'bearer' },
+  opencode:   { host:'opencode.ai',                        path:'/zen/go/v1/models',              auth:'bearer' },
   nvidia:     { host:'integrate.api.nvidia.com',          path:'/v1/models',                    auth:'bearer' },
 };
 function candidatesFor(key) {

@@ -713,7 +713,7 @@ const CLOUD = {
   github:     { host: 'models.inference.ai.azure.com',     path: '/chat/completions',           model: 'gpt-4o' },
   gemini:     { host: 'generativelanguage.googleapis.com', path: '/v1beta/openai/chat/completions', model: 'gemini-2.5-flash' },
   nvidia:     { host: 'integrate.api.nvidia.com',          path: '/v1/chat/completions',        model: 'nvidia/nemotron-3-super-120b-a12b' },
-  opencode:   { host: 'opencode.ai',                        path: '/zen/v1/chat/completions',     model: 'deepseek-v4-flash-free' },
+  opencode:   { host: 'opencode.ai',                        path: '/zen/go/v1/chat/completions',   model: 'deepseek-v4-flash' },
   puter:      { host: 'api.puter.com',                     path: '/puterai/openai/v1/chat/completions', model: 'claude-sonnet-4' },
 };
 // Short, friendly model names Ã¢â€ â€™ full provider model IDs. Type "llama", get the real ID.
@@ -767,7 +767,7 @@ const PROBE = {
   anthropic:  { host:'api.anthropic.com',                 path:'/v1/models',                    auth:'anthropic' },
   github:     { host:'models.inference.ai.azure.com',     path:'/models',                       auth:'bearer' },
   gemini:     { host:'generativelanguage.googleapis.com', path:'/v1beta/models?key=KEY',        auth:'query' },
-  opencode:   { host:'opencode.ai',                        path:'/zen/v1/models',                 auth:'bearer' },
+  opencode:   { host:'opencode.ai',                        path:'/zen/go/v1/models',              auth:'bearer' },
   nvidia:     { host:'integrate.api.nvidia.com',          path:'/v1/models',                    auth:'bearer' },
 };
 function candidatesFor(key) {

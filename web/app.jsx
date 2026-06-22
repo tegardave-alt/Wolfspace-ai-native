@@ -32,7 +32,7 @@ function BrandMark({ className }) { return (<span className={"brand-mark " + (cl
 
 /* ----------------------------- Backend glue ----------------------------- */
 const PREFIXES = [["github_pat_","github","GitHub Models"],["ghp_","github","GitHub Models"],["sk-ant-","anthropic","Claude"],["sk-or-","openrouter","OpenRouter"],["gsk_","groq","Groq"],["AIza","gemini","Gemini"],["nvapi-","nvidia","NVIDIA"],["sk-UUa","opencode","OpenCode"],["sk-","openai","OpenAI"]];
-const CLOUD_DEFAULT = { anthropic:"claude", openai:"gpt-4o", openrouter:"anthropic/claude-opus-4-8", groq:"llama", qwen:"qwen", deepseek:"chat", github:"gpt-4o", gemini:"gemini-2.0-flash", nvidia:"nvidia/nemotron-3-super-120b-a12b", opencode:"deepseek-v4-flash-free", puter:"claude-sonnet-4", custom:"gpt-4o" };
+const CLOUD_DEFAULT = { anthropic:"claude", openai:"gpt-4o", openrouter:"anthropic/claude-opus-4-8", groq:"llama", qwen:"qwen", deepseek:"chat", github:"gpt-4o", gemini:"gemini-2.0-flash", nvidia:"nvidia/nemotron-3-super-120b-a12b", opencode:"deepseek-v4-flash", puter:"claude-sonnet-4", custom:"gpt-4o" };
 const PROVIDER_LABELS = { openai:"OpenAI", qwen:"Qwen", groq:"Groq", openrouter:"OpenRouter", anthropic:"Claude", deepseek:"DeepSeek", github:"GitHub Models", gemini:"Gemini", nvidia:"NVIDIA", opencode:"OpenCode", puter:"Puter", custom:"Custom" };
 const PROVIDER_OPTS = ["auto","openai","qwen","deepseek","github","groq","openrouter","anthropic","gemini","nvidia","opencode","puter","custom"];
 function detectPrefix(key){ key=(key||"").trim(); for(const [p,prov,name] of PREFIXES) if(key.startsWith(p)) return {provider:prov,name}; return key?{provider:"openai",name:"OpenAI"}:null; }
