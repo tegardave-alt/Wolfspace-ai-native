@@ -2339,7 +2339,7 @@ function App() {
                 {messages.length === 0 ? (
                   <div className="empty">
                     <span className="glyph"><Icon.spark style={{ color:"#fff" }} /></span>
-                    <h2>Start building something great with Quantum</h2>
+                    <h2>Enjoy development</h2>
                     <div className="empty-chips">{SUGGESTIONS.map(s=><button className="chip" key={s} onClick={()=>doSend(s)}>{s}</button>)}</div>
                   </div>
                 ) : (
