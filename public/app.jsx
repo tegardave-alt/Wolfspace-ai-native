@@ -1266,7 +1266,13 @@ function flutterDragScript() {
 })();`;
 }
 
-// Placeholder while the model is still writing the Dart block (no compile yet)
+// Placeholder while the model is still writing the A2UI JSON spec (no render yet)
+const A2UI_STREAMING = '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
+  '<style>body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1117;font-family:system-ui;color:#54c5f8;flex-direction:column;gap:12px}'+
+  '.dots span{animation:b 1.2s infinite;display:inline-block}.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}'+
+  '@keyframes b{0%,80%,100%{opacity:.25}40%{opacity:1}}p{font-size:13px;opacity:.75}</style></head>'+
+  '<body><div class="dots" style="font-size:26px"><span>●</span> <span>●</span> <span>●</span></div><p>menerima spesifikasi A2UI dari model…</p></body></html>';
+// Fallback: if a model wrongly returns ```dart instead of A2UI JSON
 const FLUTTER_STREAMING = '<!DOCTYPE html><html><head><meta charset="UTF-8">'+
   '<style>body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1117;font-family:system-ui;color:#54c5f8;flex-direction:column;gap:12px}'+
   '.dots span{animation:b 1.2s infinite;display:inline-block}.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}'+
@@ -2119,7 +2125,7 @@ function App() {
   const openCanvas = (text, run) => {                                // manual open from a message
     const p = buildPreview(text); if(!p.has) return;
     const state = p.flutter
-      ? { flutter: p.source, doc: FLUTTER_COMPILING, files: p.files }
+      ? { flutter: p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: p.files }
       : { doc: p.doc || FLUTTER_COMPILING, run };
     lastProject.current = state;
     setCanvas(state);
@@ -2201,12 +2207,12 @@ function App() {
         }, ctrl.signal);
         setHistory(h=>[...h,{role:"assistant",content:res.text}]);
         setStatus("siap");
-        // Auto-buka Studio jika response berisi A2UI spec
-        if (res.text && !canvasAuto) {
+        // Auto-buka Studio jika response berisi A2UI spec (hanya jika Web Dev sudah aktif)
+        if (res.text && canvasAuto) {
           const proj = buildPreview(res.text);
           if (proj.has && proj.flutter) {
-            const fstate = { flutter: proj.source, doc: FLUTTER_COMPILING, files: proj.files };
-            lastProject.current = fstate; setCanvas(fstate); setCanvasAuto(true);
+            const fstate = { flutter: proj.source, doc: proj.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: proj.files };
+            lastProject.current = fstate; setCanvas(fstate);
           }
         }
         console.log('[doSend] Setting busy=false (normal chat complete)');
@@ -2253,7 +2259,7 @@ function App() {
           { const now = Date.now(); if (now - lastCanvasT > 450) {
             const p = canvasAuto ? buildPreview(t) : { has:false };          // web/flutter preview only in Web Dev mode
             if (p.has) { lastCanvasT = now; setCanvas(p.flutter
-              ? { doc: FLUTTER_STREAMING, run: null, files: p.files }         // flutter: NEVER compile mid-stream — wait for done (one build per generation)
+              ? { doc: p.a2ui ? A2UI_STREAMING : FLUTTER_STREAMING, run: null, files: p.files }  // A2UI: instant render; Dart: wait for stream done
               : { doc: p.doc, run: null, files: p.files }); }                 // web: live preview is cheap, keep it
             else if (run) { lastCanvasT = now; setCanvas({ doc: consoleDoc(run), run }); }   // any executed code → live terminal view
           } }
@@ -2261,12 +2267,10 @@ function App() {
         setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:res.text,run:res.run}; return c; });
         setHistory(h => [...h, { role:"assistant", content: res.text }]);
         setStatus(res.run ? (res.run.ok ? "✓ verified" : "⚠ not passing") : "ready");
-        console.log('[doSend] Setting busy=false (canvas auto complete)');
-        setBusy(false); // Reset busy state after stream completes
         const proj = buildPreview(res.text);              // finalize the live Canvas
         if (proj.has) {
           if (proj.flutter) {
-            const fstate = { flutter: proj.source, doc: FLUTTER_COMPILING, files: proj.files };
+            const fstate = { flutter: proj.source, doc: proj.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: proj.files };
             lastProject.current = fstate; setCanvas(fstate);
           } else {
             const wstate = { doc: proj.doc, run: res.run, files: proj.files };
