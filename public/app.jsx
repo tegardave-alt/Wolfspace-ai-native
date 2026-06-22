@@ -2276,6 +2276,7 @@ function App() {
         setHistory(h => [...h, { role:"assistant", content: res.text }]);
         setStatus(res.run ? (res.run.ok ? "✓ verified" : "⚠ not passing") : "ready");
         const proj = buildPreview(res.text);              // finalize the live Canvas
+        console.log('[doSend] final buildPreview:', proj.has ? (proj.flutter ? 'flutter/a2ui' : 'web') : 'none');
         if (proj.has) {
           if (proj.flutter) {
             const fstate = { flutter: proj.source, doc: proj.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: proj.files };
@@ -2287,7 +2288,7 @@ function App() {
         } else if (res.run) {
           // No web/flutter content but code WAS executed — show the terminal in Canvas
           setCanvas({ doc: consoleDoc(res.run), run: res.run });
-        } else if (canvasAuto) setCanvas(null);
+        } else if (canvasAuto && !canvas?.flutter) setCanvas(null);  // only close if no A2UI was detected during streaming
       } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); console.log('[doSend] Setting busy=false (canvas auto error)'); setBusy(false); } else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (canvas auto abort)'); setBusy(false); }
     }
     ctrlRef.current=null; setBusy(false);
