@@ -2220,7 +2220,7 @@ function App() {
         setHistory(h=>[...h,{role:"assistant",content:res.text}]);
         setStatus("siap");
         // Auto-buka Studio jika response berisi A2UI spec (hanya jika Web Dev sudah aktif)
-        if (res.text && canvasAuto) {
+        if (res.text && canvasAutoRef.current) {
           const proj = buildPreview(res.text);
           if (proj.has && proj.flutter) {
             const fstate = { flutter: proj.source, doc: proj.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: proj.files };
