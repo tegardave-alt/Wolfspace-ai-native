@@ -2186,7 +2186,6 @@ function App() {
 
   const doSend = async (content, display) => {
     if (!content || busy) return;
-    if (!display || !display.startsWith("✦ Auto-fix")) flutterFixRef.current = 0;  // user turn resets the auto-fix budget
     const newHist = [...history, { role:"user", content }];
     setHistory(newHist);
     setBusy(true); setStatus("typing…");
