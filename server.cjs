@@ -313,7 +313,11 @@ let FLUTTER_LAST_SOURCE = null;   // source of the last successful build (result
 // Apply <<<<ORIGINAL/====/>>>> hunks by literal string replacement; null on any miss.
 const { fillCloudKey } = require('./agent/cloud.cjs');
 function applyHunks(src, reply) {
-  const re = /<<<<ORIGINAL\r?\n([\s\S]*?)\r?\n====\r?\n([\s\S]*?)\r?\n>>>>/g;
+  const re = /<<<<ORIGINAL\r?
+([\s\S]*?)\r?
+====\r?
+([\s\S]*?)\r?
+>>>>/g;
   const hunks = []; let m;
   while ((m = re.exec(reply))) hunks.push({ orig: m[1], repl: m[2] });
   if (!hunks.length) return null;
@@ -584,9 +588,8 @@ function isCodingTask(work) {
   return false;
 }
 function pickSystem(work, webdev) { return webdev ? WEBDEV_SYS : isCodingTask(work) ? CODE_SYS : SYS; }
-// Web Dev (Canvas) mode: every reply MUST be one complete Flutter app Ã¢â‚¬â€ the
-// Canvas compiles ```dart locally and renders it; HTML/prose gives a broken
-// "page of code text" instead of a UI.
+// Web Dev (Canvas) mode: every reply MUST be ONE A2UI JSON spec inside a
+// ```json fenced block. The Studio iframe renders it instantly — no Dart, no compile.
 const WEBDEV_SYS = [
   'You are Quantum UI Builder using A2UI (server-driven UI). The user is in visual app mode: your ENTIRE answer must be ONE A2UI spec inside a single ```json fenced block. It renders instantly as a Flutter app Ã¢â‚¬â€ NO Dart, NO compile, NO HTML.',
   'The spec is a JSON object. The root has "type" (usually "scaffold") and optionally "state" (an object of initial values).',
