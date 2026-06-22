@@ -141,11 +141,19 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     if (!model || /^(sk-|gsk_|AIza)/.test(model)) model = cfg.model;
     const aliases = MODEL_ALIASES[provider];
     if (aliases && aliases[model.toLowerCase()]) model = aliases[model.toLowerCase()];
-    const sys = cloud.system || undefined; // will fall back to global SYS in chat layer
+    // Extract system message from work array (chat.cjs prepends it as first element).
+    // cloud.system overrides only if explicitly set; otherwise use the work[0] system message.
+    let workMsgs = work;
+    let sysFromWork = '';
+    if (work && work.length > 0 && work[0].role === 'system') {
+      sysFromWork = work[0].content || '';
+      workMsgs = work.slice(1); // strip system message from the message list
+    }
+    const sys = cloud.system || sysFromWork || undefined;
     let host = cfg.host, path = cfg.path, port = null, headers = { 'content-type':'application/json' }, body, extract;
     const openaiCompatible = () => {
       headers['authorization'] = 'Bearer ' + cloud.key;
-      body = JSON.stringify({ model, stream:true, messages:[{role:'system',content:sys||''},...work] });
+      body = JSON.stringify({ model, stream:true, messages:[{role:'system',content:sys||''},...workMsgs] });
       extract = j => { try { const d = j.choices && j.choices[0] && j.choices[0].delta; return (d && (d.content || d.reasoning_content)) || ''; } catch { return ''; } };
     };
     if (cloud.baseUrl) {
@@ -155,11 +163,11 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     } else if (provider === 'anthropic') {
       headers['x-api-key'] = cloud.key;
       headers['anthropic-version'] = '2023-06-01';
-      body = JSON.stringify({ model, max_tokens:4096, system:sys||'', stream:true, thinking:{type:'adaptive'}, messages: work.map(m=>({role:m.role,content:m.content})) });
+      body = JSON.stringify({ model, max_tokens:4096, system:sys||'', stream:true, thinking:{type:'adaptive'}, messages: workMsgs.map(m=>({role:m.role,content:m.content})) });
       extract = j => (j.type==='content_block_delta' && j.delta && j.delta.type==='text_delta') ? j.delta.text : '';
     } else if (provider === 'gemini') {
       path = `/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(cloud.key)}`;
-      body = JSON.stringify({ systemInstruction:{parts:[{text:sys||''}]}, contents: work.map(m=>({role:m.role==='assistant'?'model':'user', parts:[{text:m.content}]})) });
+      body = JSON.stringify({ systemInstruction:{parts:[{text:sys||''}]}, contents: workMsgs.map(m=>({role:m.role==='assistant'?'model':'user', parts:[{text:m.content}]})) });
       extract = j => { try { return j.candidates[0].content.parts.map(p=>p.text||'').join(''); } catch { return ''; } };
     } else {
       openaiCompatible();
