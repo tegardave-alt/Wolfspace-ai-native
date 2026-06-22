@@ -1507,11 +1507,13 @@ class _A2UIViewState extends State<A2UIView> {
         }
       case 'animated_list':
       case 'staggered_list':
+        final listKids = _kids(n['children']);
         return AnimationLimiter(child: Column(children:
-          AnimationConfiguration.staggeredList(
-            position: 0, duration: const Duration(milliseconds: 375),
-            child: _node(n['child'])).children.map((c) => SlideAnimation(
-              verticalOffset: 50, child: FadeInAnimation(child: c))).toList()));
+          List.generate(listKids.length, (i) =>
+            AnimationConfiguration.staggeredList(
+              position: i, duration: const Duration(milliseconds: 375),
+              child: SlideAnimation(verticalOffset: 50,
+                child: FadeInAnimation(child: listKids[i]))))));
       case 'svg':
         return n['url'] != null ? SvgPicture.network('${n['url']}', height: _d(n['height']), width: _d(n['width']), color: _color(n['color'])) : const SizedBox.shrink();
       case 'cached_image':
