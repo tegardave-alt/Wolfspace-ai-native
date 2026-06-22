@@ -1537,24 +1537,10 @@ class _A2UIViewState extends State<A2UIView> {
   @override
   Widget build(BuildContext context) {
     final root = widget.spec['root'] ?? widget.spec;
-    return Theme(
-      data: ThemeData(
-        useMaterial3: true,
-        brightness: Brightness.light,
-        colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5EEAD4), brightness: Brightness.light),
-        scaffoldBackgroundColor: const Color(0xFFF8FAFC),
-        appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF5EEAD4), foregroundColor: Color(0xFF06231F), elevation: 0),
-        cardTheme: const CardThemeData(elevation: 2, margin: EdgeInsets.all(0)),
-        inputDecorationTheme: InputDecorationTheme(
-          filled: true,
-          fillColor: Color(0xFFF1F5F9),
-          border: OutlineInputBorder(borderRadius: BorderRadius.circular(8), borderSide: BorderSide.none),
-          contentPadding: EdgeInsets.symmetric(horizontal: 12, vertical: 10),
-        ),
-      ),
-      // Build the root (Scaffold) directly — never wrap it in the edit-selection
-      // GestureDetector/Container (that broke its background fill → gray). Child
-      // nodes are still wrapped for selection via _node() inside _buildNode().
+    // Use Material (not nested MaterialApp) to provide proper context for Scaffold
+    // without creating a duplicate navigator/overlay that conflicts with the outer app.
+    return Material(
+      color: const Color(0xFFF8FAFC),
       child: _buildNode(root),
     );
   }
