@@ -2263,7 +2263,8 @@ function App() {
       setStatus("siap");
     } else {
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
-      if (canvasAuto && !canvasRef.current) _setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately (only first time)
+      const prevCanvas = canvasRef.current;                           // save in case we need to restore
+      if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately
       let lastCanvasT = 0;
       try {
         const res = await streamChat(reqFor(modelVal,getCloud(),newHist,canvasAuto),(t,run)=>{
@@ -2292,7 +2293,10 @@ function App() {
         } else if (res.run) {
           // No web/flutter content but code WAS executed — show the terminal in Canvas
           _setCanvas({ doc: consoleDoc(res.run), run: res.run });
-        } else if (canvasAuto && !canvasRef.current?.flutter) { /* no A2UI — keep previous canvas state (close only if never had one) */ if (!canvasRef.current) _setCanvas(null); }
+        } else if (canvasAuto) {
+          // No A2UI and no code run — restore previous canvas (if any), otherwise close
+          if (prevCanvas?.flutter) _setCanvas(prevCanvas); else _setCanvas(null);
+        }
       } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); console.log('[doSend] Setting busy=false (canvas auto error)'); setBusy(false); } else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (canvas auto abort)'); setBusy(false); }
     }
     ctrlRef.current=null; setBusy(false);
