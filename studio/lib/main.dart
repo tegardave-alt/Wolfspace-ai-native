@@ -1545,6 +1545,8 @@ class _A2UIViewState extends State<A2UIView> {
   @override
   Widget build(BuildContext context) {
     final root = widget.spec['root'] ?? widget.spec;
+    final rootType = root is Map ? '${root['type'] ?? 'unknown'}' : 'not-map';
+    _beacon('render root type: $rootType, keys: ${root is Map ? (root as Map).keys.join(',') : 'N/A'}');
     // Light-theme MaterialApp provides proper ancestor widgets (ScaffoldMessenger,
     // Navigator) that Scaffold needs. Brightness.light prevents the black-screen
     // bug the old Brightness.dark version caused.
