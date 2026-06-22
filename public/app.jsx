@@ -2127,10 +2127,10 @@ function App() {
   const toggleCanvas = () => setCanvasAuto(v => {
     const nv = !v;
     if (nv) {
-      if (lastProject.current) setCanvas(lastProject.current);   // turning on reopens last web output
-      else setCanvas({ doc: CANVAS_BUILDING, run: null });       // show split immediately even without prior content
+      if (lastProject.current) _setCanvas(lastProject.current);   // turning on reopens last web output
+      else _setCanvas({ doc: CANVAS_BUILDING, run: null });       // show split immediately even without prior content
     }
-    if (!nv) { setCanvas(null); lastProject.current = null; }    // turning off closes the split AND clears cached result
+    if (!nv) { _setCanvas(null); lastProject.current = null; }    // turning off closes the split AND clears cached result
     return nv;
   });
   const openCanvas = (text, run) => {                                // manual open from a message
@@ -2139,7 +2139,7 @@ function App() {
       ? { flutter: p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: p.files }
       : { doc: p.doc || FLUTTER_COMPILING, run };
     lastProject.current = state;
-    setCanvas(state);
+    _setCanvas(state);
     setCanvasAuto(true);
   };
   const onDividerDown = (e) => {
