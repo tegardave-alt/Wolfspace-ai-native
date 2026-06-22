@@ -2126,7 +2126,7 @@ function App() {
   const lastProject = useRef(null);
   const scrollRef = useRef(null);
   const ctrlRef = useRef(null);
-  const toggleCanvas = () => setCanvasAuto(v => {
+  const toggleCanvas = () => _setCanvasAuto(v => {
     const nv = !v;
     if (nv) {
       if (lastProject.current) _setCanvas(lastProject.current);   // turning on reopens last web output
@@ -2142,7 +2142,7 @@ function App() {
       : { doc: p.doc || FLUTTER_COMPILING, run };
     lastProject.current = state;
     _setCanvas(state);
-    setCanvasAuto(true);
+    _setCanvasAuto(true);
   };
   const onDividerDown = (e) => {
     e.preventDefault();
@@ -2353,8 +2353,8 @@ function App() {
             {canvas && <div className="split-divider" onMouseDown={onDividerDown} />}
             {canvas && <div className="canvas-col" style={{ flex: "0 0 " + canvasPct + "%" }}>
               {canvas.flutter
-                ? <StudioFrame source={canvas.flutter} onClose={()=>{ _setCanvas(null); setCanvasAuto(false); lastProject.current = null; }} />
-                : <CanvasPanel project={canvas} modelVal={modelVal} onClose={()=>{ _setCanvas(null); setCanvasAuto(false); lastProject.current = null; }} />}
+                ? <StudioFrame source={canvas.flutter} onClose={()=>{ _setCanvas(null); _setCanvasAuto(false); lastProject.current = null; }} />
+                : <CanvasPanel project={canvas} modelVal={modelVal} onClose={()=>{ _setCanvas(null); _setCanvasAuto(false); lastProject.current = null; }} />}
             </div>}
           </div>
         </div>
