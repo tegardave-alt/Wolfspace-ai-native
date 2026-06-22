@@ -2263,7 +2263,6 @@ function App() {
       setStatus("siap");
     } else {
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
-      const prevCanvas = canvasRef.current;                           // save in case we need to restore
       if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately
       let lastCanvasT = 0;
       try {
