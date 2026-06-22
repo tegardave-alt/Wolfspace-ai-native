@@ -2222,7 +2222,7 @@ function App() {
           const proj = buildPreview(res.text);
           if (proj.has && proj.flutter) {
             const fstate = { flutter: proj.source, doc: proj.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: proj.files };
-            lastProject.current = fstate; setCanvas(fstate);
+            lastProject.current = fstate; _setCanvas(fstate);
           }
         }
         console.log('[doSend] Setting busy=false (normal chat complete)');
