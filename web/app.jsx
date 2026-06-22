@@ -2028,18 +2028,18 @@ function App() {
   const ctrlRef = useRef(null);
   const toggleCanvas = () => setCanvasAuto(v => {
     const nv = !v;
-    if (nv && lastProject.current) setCanvas(lastProject.current);   // turning on reopens last web output
-    else if (nv) setCanvas({ doc: CANVAS_BUILDING, run: null });     // no previous project → show placeholder
-    if (!nv) setCanvas(null);                                        // turning off closes the split
+    if (nv && lastProject.current) _setCanvas(lastProject.current);   // turning on reopens last web output
+    else if (nv) _setCanvas({ doc: CANVAS_BUILDING, run: null });     // no previous project → show placeholder
+    if (!nv) _setCanvas(null);                                        // turning off closes the split
     return nv;
   });
   const openCanvas = (text, run) => {                                // manual open from a message
     const p = buildPreview(text); if(!p.has) return;
     const state = p.flutter
-      ? { flutter: p.source, doc: FLUTTER_COMPILING, files: p.files }
+      ? { flutter: p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: p.files }
       : { doc: p.doc || FLUTTER_COMPILING, run };
     lastProject.current = state;
-    setCanvas(state);
+    _setCanvas(state);
     setCanvasAuto(true);
   };
   const onDividerDown = (e) => {
