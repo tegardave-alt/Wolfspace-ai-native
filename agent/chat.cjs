@@ -28,15 +28,18 @@ async function chatStream({ history, port, cloud, webdev }, emit, ctl) {
       const dspy = require('./dspy_tool.cjs');
       for (let i = enhanced.length - 1; i >= 0; i--) {
         if (enhanced[i].role === 'user' && enhanced[i].content) {
-          const opt = await dspy.run({ prompt: enhanced[i].content, context: 'Web Dev (A2UI) — improve this prompt to generate better Flutter UI specs. Make it specific about layout, state, actions, colors, and interactivity.' });
+          console.log('[chat] Web Dev mode: calling DSpy to optimize user prompt...');
+          const opt = await dspy.run({ prompt: enhanced[i].content, context: 'Web Dev (A2UI) — improve this prompt to generate better Flutter UI specs. Make it specific about layout, state, actions, colors, and interactivity.', cloud });
           if (opt.ok && opt.output && opt.output.length > enhanced[i].content.length) {
-            dlog('chat', 'info', 'DSpy optimized user prompt in webdev mode', { before: enhanced[i].content.length, after: opt.output.length });
+            console.log('[chat] DSpy optimization applied:', enhanced[i].content.length, '->', opt.output.length, 'chars');
             enhanced = enhanced.map((m, idx) => idx === i ? { ...m, content: opt.output } : m);
+          } else {
+            console.log('[chat] DSpy optimization not applied:', opt.ok ? 'output shorter than original' : opt.output);
           }
           break; // only optimize the last user message
         }
       }
-    } catch (_) { dlog('chat', 'warn', 'DSpy optimization skipped', { err: _.message }); }
+    } catch (_) { console.log('[chat] DSpy optimization error:', _.message); dlog('chat', 'warn', 'DSpy optimization skipped', { err: _.message }); }
   }
   const messages = [{ role: 'system', content: sys }, ...enhanced];
   console.log('[chat] chatStream started', { historyLen: enhanced.length, useCloud: !!(cloud && cloud.key), port, webdev: !!webdev });
