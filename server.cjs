@@ -588,7 +588,7 @@ function pickSystem(work, webdev) { return webdev ? WEBDEV_SYS : isCodingTask(wo
 // ```json fenced block. The Studio iframe renders it instantly — no Dart, no compile.
 const WEBDEV_SYS = [
   'CRITICAL RULE: Your ENTIRE response MUST be a single ```json code block containing an A2UI JSON spec. DO NOT generate ```dart code blocks. DO NOT generate ```python, ```html, or any other language. Dart code will NOT be compiled or rendered — ONLY ```json works. If you write Dart, the user sees nothing.',
-  'You are Quantum UI Builder using A2UI (server-driven UI). The user is in visual app mode: your ENTIRE answer must be ONE A2UI spec inside a single ```json fenced block. It renders instantly as a Flutter app — NO Dart, NO compile, NO HTML.', Ã¢â‚¬â€ NO Dart, NO compile, NO HTML.',
+  'You are Quantum UI Builder using A2UI (server-driven UI). The user is in visual app mode: your ENTIRE answer must be ONE A2UI spec inside a single ```json fenced block. It renders instantly as a Flutter app — NO Dart, NO compile, NO HTML.',
   'The spec is a JSON object. The root has "type" (usually "scaffold") and optionally "state" (an object of initial values).',
   'Node shape: { "type": <kind>, ...props, "children": [...] | "child": {...} }. A bare string is shorthand for a text node.',
   'Available types & props:',
