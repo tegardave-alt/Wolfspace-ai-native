@@ -29,7 +29,7 @@ async function chatStream({ history, port, cloud, webdev }, emit, ctl) {
       for (let i = enhanced.length - 1; i >= 0; i--) {
         if (enhanced[i].role === 'user' && enhanced[i].content) {
           console.log('[chat] Web Dev mode: calling DSpy to optimize user prompt...');
-          const opt = await dspy.run({ prompt: enhanced[i].content, context: 'Web Dev (A2UI) — improve this prompt to generate better Flutter UI specs. Make it specific about layout, state, actions, colors, and interactivity.', cloud });
+          const opt = await dspy.run({ prompt: enhanced[i].content, context: 'Web Dev (A2UI) — improve this prompt to generate a Flutter UI spec in A2UI JSON format (NOT Dart code). Make it specific about layout, state, actions, colors, and interactivity. The model MUST output a single ```json block.', cloud });
           if (opt.ok && opt.output && opt.output.length > enhanced[i].content.length) {
             console.log('[chat] DSpy optimization applied:', enhanced[i].content.length, '->', opt.output.length, 'chars');
             enhanced = enhanced.map((m, idx) => idx === i ? { ...m, content: opt.output } : m);
