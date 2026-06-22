@@ -2168,7 +2168,7 @@ function App() {
           { const now = Date.now(); if (now - lastCanvasT > 450) {
             const p = canvasAuto ? buildPreview(t) : { has:false };          // web/flutter preview only in Web Dev mode
             if (p.has) { lastCanvasT = now; setCanvas(p.flutter
-              ? { doc: FLUTTER_STREAMING, run: null, files: p.files }         // flutter: NEVER compile mid-stream — wait for done (one build per generation)
+              ? { flutter: p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_STREAMING, run: null, files: p.files }  // A2UI: instant render with source; Dart: wait for stream done
               : { doc: p.doc, run: null, files: p.files }); }                 // web: live preview is cheap, keep it
             else if (run) { lastCanvasT = now; setCanvas({ doc: consoleDoc(run), run }); }   // any executed code → live terminal view
           } }
