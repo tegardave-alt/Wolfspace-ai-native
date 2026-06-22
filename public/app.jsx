@@ -1309,6 +1309,9 @@ function buildPreview(text){
   if(om && om[2]) blocks.push({ lang:(om[1]||"").toLowerCase(), code:om[2], open:true });  // fence belum ditutup = masih streaming
   const find = (re2) => blocks.find(b => re2.test(b.lang||""));
 
+  // DEBUG: log found blocks
+  console.log('[buildPreview] blocks found:', blocks.map(b => ({ lang: b.lang, len: b.code?.length || 0, starts: b.code?.trim().slice(0, 20) })));
+
   // Backend blocks (shown in the Code explorer under backend/, never previewed)
   const pyB  = find(/^(py|python)$/);
   const sqlB = find(/^sql$/);
@@ -1322,9 +1325,12 @@ function buildPreview(text){
   // program just wastes a build on a guaranteed syntax error.
   // A2UI: a ```json block that is a UI spec → render instantly in the studio (no compile).
   const jsonB = find(/^(json|a2ui)$/);
+  console.log('[buildPreview] jsonB:', jsonB ? { lang: jsonB.lang, len: jsonB.code?.length, starts: jsonB.code?.trim().slice(0, 50) } : null);
   if(jsonB && jsonB.code){
     const s = jsonB.code.trim();
-    if(s.startsWith("{") && /"type"\s*:|"root"\s*:/.test(s))
+    const hasType = /"type"\s*:|"root"\s*:/.test(s);
+    console.log('[buildPreview] JSON check: startsWith={', s.startsWith('{'), '}, hasType:', hasType);
+    if(s.startsWith("{") && hasType)
       return { has:true, flutter:true, a2ui:true, source: s, streaming: !!jsonB.open,
                files:[{ path:"ui.json", lang:"json", code:s }, ...backendFiles] };
   }
