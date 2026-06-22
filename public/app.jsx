@@ -49,7 +49,7 @@ function parseBlocks(text){
   else if(tail.trim()) out.push({type:"text",html:mdToHtml(tail)});
   return out;
 }
-function reqFor(modelVal, cloud, history, webdev){ const b = (modelVal==="cloud" && cloud) ? { history, cloud } : { history, port: modelVal }; if(webdev) b.webdev = true; return b; }
+function reqFor(modelVal, cloud, history, webdev){ const b = (modelVal==="cloud" && cloud) ? { history, cloud } : { history, port: modelVal }; if(webdev){ b.webdev = true; if(b.history&&b.history.length){ const i=b.history.length-1,last=b.history[i]; if(last&&last.role==='user'&&!last.content.includes('```json')){ const R='\n\n⚠️ CRITICAL: Your ENTIRE answer must be a SINGLE ```json block containing an A2UI spec. NEVER write ```dart. Dart code is NOT rendered. Output ONLY ```json.'; b.history=[...b.history.slice(0,i),{...last,content:last.content+R}]; } } } return b; }
 // Verify HTTP server is running (only for browser users, not Electron)
 async function checkServerHealth() {
   if (IPC) return true;  // Electron: uses IPC, no HTTP needed
