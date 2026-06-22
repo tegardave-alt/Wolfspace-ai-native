@@ -2292,7 +2292,7 @@ function App() {
         } else if (res.run) {
           // No web/flutter content but code WAS executed — show the terminal in Canvas
           _setCanvas({ doc: consoleDoc(res.run), run: res.run });
-        } else if (canvasAuto && !canvasRef.current?.flutter) { /* keep previous canvas state — don't close */ }
+        } else if (canvasAuto && !canvasRef.current?.flutter) { _setCanvas(null); /* close if never had A2UI (first msg failed) */ }
       } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); console.log('[doSend] Setting busy=false (canvas auto error)'); setBusy(false); } else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (canvas auto abort)'); setBusy(false); }
     }
     ctrlRef.current=null; setBusy(false);
