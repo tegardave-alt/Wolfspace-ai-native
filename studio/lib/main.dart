@@ -296,11 +296,12 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
     try { html.HttpRequest.request('/dbg?src=studio&m=${Uri.encodeComponent(m)}${n != null ? '&n=$n' : ''}'); } catch (_) {}
   }
 
-  // dart:html turns a postMessage'd JS object into a Dart Map (structured clone),
-  // so read Map keys first; fall back to js_util for genuine JS objects.
+  // Access a property from a postMessage event data.
+  // Flutter Web (dart2js) delivers postMessage data as JS types (JSObject, JSString, …),
+  // NOT Dart types, so always convert via dartify to get proper Dart values.
   dynamic _prop(dynamic o, String k) {
     try { if (o is Map) return o[k]; } catch (_) {}
-    try { return jsutil.getProperty(o, k); } catch (_) { return null; }
+    try { final v = jsutil.getProperty(o, k); return jsutil.dartify(v); } catch (_) { return null; }
   }
 
   void _onMessage(html.MessageEvent e) {
