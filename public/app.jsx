@@ -2078,7 +2078,7 @@ function App() {
     const _setCanvas = (v) => { canvasRef.current = v; setCanvas(v); };
   const [canvasAuto, setCanvasAuto] = useState(false); // toggled from the composer
   const canvasAutoRef = useRef(false);                  // mirror for stale-closure-safe reads
-  const _setCanvasAuto = (v) => { canvasAutoRef.current = v; setCanvasAuto(v); };
+  const _setCanvasAuto = (v) => { setCanvasAuto(prev => { const next = typeof v === 'function' ? v(prev) : v; canvasAutoRef.current = next; return next; }); };
   const [canvasPct, setCanvasPct] = useState(46);      // canvas width % (draggable divider)
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalInput, setTerminalInput] = useState("");
