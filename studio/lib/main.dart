@@ -259,16 +259,21 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
     _previewFrame.onLoad.listen((_) { if (_editMode) _injectOverlay(); });
     _msgSub = html.window.onMessage.listen(_onMessage);
     // Restore the last A2UI so reopening the studio (fresh iframe) still has a UI to edit.
+    bool restored = false;
     try {
       final saved = html.window.localStorage['quantum_a2ui'];
       if (saved != null && saved.isNotEmpty) {
         final spec = jsonDecode(saved);
-        if (spec is Map) { _uiJson = Map<String, dynamic>.from(spec); _phase = Phase.done; }
-      } else {
-        // First launch — load the calculator demo
-        Future.microtask(() => _loadCalculatorExample());
+        if (spec is Map) { _uiJson = Map<String, dynamic>.from(spec); _phase = Phase.done; restored = true; }
       }
-    } catch (_) {}
+    } catch (_) {
+      // Corrupted localStorage entry — clear it so next save works.
+      try { html.window.localStorage.remove('quantum_a2ui'); } catch (__) {}
+    }
+    if (!restored) {
+      // No valid saved A2UI — load the calculator demo on first frame.
+      Future.microtask(() => _loadCalculatorExample());
+    }
     // Handshake: tell the parent (React shell) we're ready to receive source.
     // Posted a few times in case the parent's listener attaches slightly later.
     void announce() { try { jsutil.callMethod(jsutil.getProperty(html.window, 'parent'), 'postMessage', [jsutil.jsify({'quantumStudioReady': true}), '*']); } catch (_) {} }
