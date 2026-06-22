@@ -1976,6 +1976,8 @@ function App() {
   useEffect(()=>{ try{ localStorage.setItem("quantum_sb", sbCollapsed?"1":"0"); }catch(e){} }, [sbCollapsed]);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("quantum_theme") || "dark"; } catch(e){ return "dark"; } });
   const [canvas, setCanvas] = useState(null);          // {doc, run} when the split Canvas is open
+  const canvasRef = useRef(null);                       // mirror ref for stale-closure-safe reads
+  const _setCanvas = (v) => { canvasRef.current = v; setCanvas(v); };
   const [canvasAuto, setCanvasAuto] = useState(false); // toggled from the composer
   const [canvasPct, setCanvasPct] = useState(46);      // canvas width % (draggable divider)
   const [terminalOpen, setTerminalOpen] = useState(false);
