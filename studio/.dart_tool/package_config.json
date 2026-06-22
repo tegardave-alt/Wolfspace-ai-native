@@ -146,12 +146,6 @@
       "languageVersion": "3.9"
     },
     {
-      "name": "glassmorphism",
-      "rootUri": "file:///C:/Users/dave/AppData/Local/Pub/Cache/hosted/pub.dev/glassmorphism-3.0.0",
-      "packageUri": "lib/",
-      "languageVersion": "2.12"
-    },
-    {
       "name": "google_fonts",
       "rootUri": "file:///C:/Users/dave/AppData/Local/Pub/Cache/hosted/pub.dev/google_fonts-6.3.3",
       "packageUri": "lib/",
@@ -324,12 +318,6 @@
       "rootUri": "file:///C:/langs/flutter/bin/cache/pkg/sky_engine",
       "packageUri": "lib/",
       "languageVersion": "3.10"
-    },
-    {
-      "name": "smooth_page_indicator",
-      "rootUri": "file:///C:/Users/dave/AppData/Local/Pub/Cache/hosted/pub.dev/smooth_page_indicator-1.2.1",
-      "packageUri": "lib/",
-      "languageVersion": "2.12"
     },
     {
       "name": "source_span",
