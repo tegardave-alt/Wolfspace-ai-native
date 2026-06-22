@@ -150,6 +150,8 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       workMsgs = work.slice(1); // strip system message from the message list
     }
     const sys = cloud.system || sysFromWork || undefined;
+    console.log('[cloud] system prompt:', sys ? `${sys.length} chars, starts: ${sys.slice(0,80)}...` : 'EMPTY!');
+    console.log('[cloud] work messages:', workMsgs.length, 'msgs, roles:', workMsgs.map(m=>m.role).join(','));
     let host = cfg.host, path = cfg.path, port = null, headers = { 'content-type':'application/json' }, body, extract;
     const openaiCompatible = () => {
       headers['authorization'] = 'Bearer ' + cloud.key;
