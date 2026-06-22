@@ -236,10 +236,10 @@ function fillCloudKey(cloud) {
     cloud.baseUrl = CLOUD_KEYS[cloud.provider].baseUrl;
   }
   if (cloud.baseUrl && /:8085(\/|$)/.test(cloud.baseUrl)) cloud.baseUrl = undefined;
-  // Auto-fix: if opencode baseUrl missing /zen/, use the correct one from CLOUD_KEYS
+  // Auto-fix: if opencode baseUrl missing /zen/, use the correct one from CLOUD_KEYS or CLOUD table
   if (cloud.provider === 'opencode' || (cloud.baseUrl && /opencode\.ai/i.test(cloud.baseUrl))) {
     if (!cloud.baseUrl || !/\/zen\//.test(cloud.baseUrl)) {
-      const correct = (CLOUD_KEYS.opencode && CLOUD_KEYS.opencode.baseUrl) || 'https://opencode.ai/zen/v1';
+      const correct = (CLOUD_KEYS.opencode && CLOUD_KEYS.opencode.baseUrl) || ('https://' + CLOUD.opencode.host + CLOUD.opencode.path.replace(/\/chat\/completions$/, ''));
       if (cloud.baseUrl !== correct) { cloud.baseUrl = correct; cloud.provider = 'opencode'; }
     }
   }
