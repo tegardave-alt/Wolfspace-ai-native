@@ -2124,8 +2124,11 @@ function App() {
   const ctrlRef = useRef(null);
   const toggleCanvas = () => setCanvasAuto(v => {
     const nv = !v;
-    if (nv && lastProject.current) setCanvas(lastProject.current);   // turning on reopens last web output
-    if (!nv) { setCanvas(null); lastProject.current = null; }        // turning off closes the split AND clears cached result
+    if (nv) {
+      if (lastProject.current) setCanvas(lastProject.current);   // turning on reopens last web output
+      else setCanvas({ doc: CANVAS_BUILDING, run: null });       // show split immediately even without prior content
+    }
+    if (!nv) { setCanvas(null); lastProject.current = null; }    // turning off closes the split AND clears cached result
     return nv;
   });
   const openCanvas = (text, run) => {                                // manual open from a message
