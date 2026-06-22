@@ -313,11 +313,7 @@ let FLUTTER_LAST_SOURCE = null;   // source of the last successful build (result
 // Apply <<<<ORIGINAL/====/>>>> hunks by literal string replacement; null on any miss.
 const { fillCloudKey } = require('./agent/cloud.cjs');
 function applyHunks(src, reply) {
-  const re = /<<<<ORIGINAL\r?
-([\s\S]*?)\r?
-====\r?
-([\s\S]*?)\r?
->>>>/g;
+  const re = new RegExp('<<<<ORIGINAL\\r?\\n([\\s\\S]*?)\\r?\\n====\\r?\\n([\\s\\S]*?)\\r?\\n>>>>', 'g');
   const hunks = []; let m;
   while ((m = re.exec(reply))) hunks.push({ orig: m[1], repl: m[2] });
   if (!hunks.length) return null;
