@@ -1447,7 +1447,7 @@ function FlutterSDKInfo({ isFlutter }){
   );
 }
 
-function CanvasPanel({ project, onClose, onAutoFix, modelVal }){
+function CanvasPanel({ project, onClose, modelVal }){
   const [tab, setTab]           = useState("preview");
   const [doc, setDoc]           = useState(project.doc || FLUTTER_COMPILING);
   const [nonce, setNonce]       = useState(0);
