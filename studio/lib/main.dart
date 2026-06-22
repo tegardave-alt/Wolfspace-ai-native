@@ -1428,17 +1428,19 @@ class _A2UIViewState extends State<A2UIView> {
           child: _node(n['child']));
       case 'glass':
       case 'glassmorphism':
-        return GlassmorphicContainer(
+        return Container(
           width: _d(n['width']) ?? 200, height: _d(n['height']) ?? 100,
           padding: n['padding'] != null ? EdgeInsets.all(_d(n['padding']) ?? 12) : const EdgeInsets.all(12),
-          borderRadius: _d(n['radius']) ?? 16,
-          blur: _d(n['blur']) ?? 10,
-          border: 1,
-          linearGradient: LinearGradient(colors: [
-            (_color(n['color']) ?? Colors.white).withOpacity(0.2),
-            (_color(n['color']) ?? Colors.white).withOpacity(0.05),
-          ]),
-          borderGradient: LinearGradient(colors: [Colors.white.withOpacity(0.3), Colors.white.withOpacity(0.1)]),
+          decoration: BoxDecoration(
+            borderRadius: BorderRadius.circular(_d(n['radius']) ?? 16),
+            gradient: LinearGradient(
+              begin: Alignment.topLeft, end: Alignment.bottomRight,
+              colors: [
+                (_color(n['color']) ?? Colors.white).withValues(alpha: 0.2),
+                (_color(n['color']) ?? Colors.white).withValues(alpha: 0.05),
+              ]),
+            border: Border.all(color: Colors.white.withValues(alpha: 0.2)),
+          ),
           child: n['child'] != null ? _node(n['child']) : null);
       case 'circular_progress':
       case 'circular':
