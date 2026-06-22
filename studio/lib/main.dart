@@ -19,7 +19,7 @@ import 'package:fl_chart/fl_chart.dart';
 import 'package:flutter_svg/flutter_svg.dart';
 import 'package:cached_network_image/cached_network_image.dart';
 import 'package:flutter_staggered_grid_view/flutter_staggered_grid_view.dart';
-import 'package:smooth_page_indicator/smooth_page_indicator.dart';
+import 'package:smooth_page_indicator/smooth_page_indicator.dart' hide SlideEffect, ScaleEffect;
 import 'package:flutter_spinkit/flutter_spinkit.dart';
 
 void main() => runApp(const StudioApp());
