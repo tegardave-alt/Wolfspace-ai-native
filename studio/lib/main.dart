@@ -112,7 +112,7 @@ class StudioApp extends StatelessWidget {
           centerTitle: false,
           titleTextStyle: TextStyle(color: _text, fontSize: 14, fontWeight: FontWeight.w600),
         ),
-        cardTheme: CardTheme(
+        cardTheme: CardThemeData(
           color: _bg2,
           elevation: 1,
           margin: EdgeInsets.all(8),
@@ -156,9 +156,9 @@ class StudioApp extends StatelessWidget {
           ),
         ),
         iconButtonTheme: IconButtonThemeData(
-          style: IconButton.styleFrom(foregroundColor: _muted, splashRadius: 18),
+          style: IconButton.styleFrom(foregroundColor: _muted),
         ),
-        tabBarTheme: TabBarTheme(
+        tabBarTheme: TabBarThemeData(
           labelColor: _brand,
           unselectedLabelColor: _muted,
           indicatorColor: _brand,
@@ -199,7 +199,7 @@ class StudioApp extends StatelessWidget {
           textStyle: TextStyle(color: _text, fontSize: 11),
           padding: EdgeInsets.symmetric(horizontal: 10, vertical: 6),
         ),
-        dialogTheme: DialogTheme(
+        dialogTheme: DialogThemeData(
           backgroundColor: _bg2,
           shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(16)),
           titleTextStyle: TextStyle(color: _text, fontSize: 16, fontWeight: FontWeight.w600),
@@ -1544,7 +1544,7 @@ class _A2UIViewState extends State<A2UIView> {
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5EEAD4), brightness: Brightness.light),
         scaffoldBackgroundColor: const Color(0xFFF8FAFC),
         appBarTheme: const AppBarTheme(backgroundColor: Color(0xFF5EEAD4), foregroundColor: Color(0xFF06231F), elevation: 0),
-        cardTheme: const CardTheme(elevation: 2, margin: EdgeInsets.all(0)),
+        cardTheme: const CardThemeData(elevation: 2, margin: EdgeInsets.all(0)),
         inputDecorationTheme: InputDecorationTheme(
           filled: true,
           fillColor: Color(0xFFF1F5F9),
