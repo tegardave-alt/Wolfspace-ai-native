@@ -2123,7 +2123,7 @@ function App() {
           const proj = buildPreview(res.text);
           if (proj.has && proj.flutter) {
             const fstate = { flutter: proj.source, doc: FLUTTER_COMPILING, files: proj.files };
-            lastProject.current = fstate; setCanvas(fstate); setCanvasAuto(true);
+            lastProject.current = fstate; _setCanvas(fstate); setCanvasAuto(true);
           }
         }
         console.log('[doSend] Setting busy=false (normal chat complete)');
@@ -2162,17 +2162,17 @@ function App() {
       setStatus("siap");
     } else {
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
-      if (canvasAuto) setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately
+      if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately
       let lastCanvasT = 0;
       try {
         const res = await streamChat(reqFor(modelVal,getCloud(),newHist,canvasAuto),(t,run)=>{
           setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:t,run}; return c; });
           { const now = Date.now(); if (now - lastCanvasT > 450) {
             const p = canvasAuto ? buildPreview(t) : { has:false };          // web/flutter preview only in Web Dev mode
-            if (p.has) { lastCanvasT = now; setCanvas(p.flutter
+            if (p.has) { lastCanvasT = now; _setCanvas(p.flutter
               ? { flutter: p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_STREAMING, run: null, files: p.files }  // A2UI: instant render with source; Dart: wait for stream done
               : { doc: p.doc, run: null, files: p.files }); }                 // web: live preview is cheap, keep it
-            else if (run) { lastCanvasT = now; setCanvas({ doc: consoleDoc(run), run }); }   // any executed code → live terminal view
+            else if (run) { lastCanvasT = now; _setCanvas({ doc: consoleDoc(run), run }); }   // any executed code → live terminal view
           } }
         }, ctrl.signal);
         setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:res.text,run:res.run}; return c; });
@@ -2184,15 +2184,15 @@ function App() {
         if (proj.has) {
           if (proj.flutter) {
             const fstate = { flutter: proj.source, doc: FLUTTER_COMPILING, files: proj.files };
-            lastProject.current = fstate; setCanvas(fstate);
+            lastProject.current = fstate; _setCanvas(fstate);
           } else {
             const wstate = { doc: proj.doc, run: res.run, files: proj.files };
-            lastProject.current = wstate; setCanvas(wstate);
+            lastProject.current = wstate; _setCanvas(wstate);
           }
         } else if (res.run) {
           // No web/flutter content but code WAS executed — show the terminal in Canvas
-          setCanvas({ doc: consoleDoc(res.run), run: res.run });
-        } else if (canvasAuto) setCanvas(null);
+          _setCanvas({ doc: consoleDoc(res.run), run: res.run });
+        } else if (canvasAuto && !canvasRef.current?.flutter) _setCanvas(null);  // only close if no A2UI was detected during streaming
       } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); console.log('[doSend] Setting busy=false (canvas auto error)'); setBusy(false); } else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (canvas auto abort)'); setBusy(false); }
     }
     ctrlRef.current=null; setBusy(false);
