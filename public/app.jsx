@@ -2119,7 +2119,7 @@ function App() {
   const toggleCanvas = () => setCanvasAuto(v => {
     const nv = !v;
     if (nv && lastProject.current) setCanvas(lastProject.current);   // turning on reopens last web output
-    if (!nv) setCanvas(null);                                        // turning off closes the split
+    if (!nv) { setCanvas(null); lastProject.current = null; }        // turning off closes the split AND clears cached result
     return nv;
   });
   const openCanvas = (text, run) => {                                // manual open from a message
