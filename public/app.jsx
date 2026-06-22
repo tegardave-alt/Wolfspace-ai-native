@@ -2263,7 +2263,7 @@ function App() {
       setStatus("siap");
     } else {
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
-      if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately
+      if (canvasAuto && !canvasRef.current) _setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately (only first time)
       let lastCanvasT = 0;
       try {
         const res = await streamChat(reqFor(modelVal,getCloud(),newHist,canvasAuto),(t,run)=>{
