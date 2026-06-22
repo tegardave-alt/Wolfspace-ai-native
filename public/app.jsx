@@ -2339,8 +2339,8 @@ function App() {
             {canvas && <div className="split-divider" onMouseDown={onDividerDown} />}
             {canvas && <div className="canvas-col" style={{ flex: "0 0 " + canvasPct + "%" }}>
               {canvas.flutter
-                ? <StudioFrame source={canvas.flutter} onClose={()=>{ setCanvas(null); setCanvasAuto(false); }} />
-                : <CanvasPanel project={canvas} modelVal={modelVal} onClose={()=>{ setCanvas(null); setCanvasAuto(false); }} />}
+                ? <StudioFrame source={canvas.flutter} onClose={()=>{ setCanvas(null); setCanvasAuto(false); lastProject.current = null; }} />
+                : <CanvasPanel project={canvas} modelVal={modelVal} onClose={()=>{ setCanvas(null); setCanvasAuto(false); lastProject.current = null; }} />}
             </div>}
           </div>
         </div>
