@@ -31,7 +31,7 @@ const pty = require('node-pty');
 
 const CONFIG_PATH = path.join(__dirname, 'config.json');
 const CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, 'utf8'));
-const HOST = (CONFIG.server && CONFIG.server.host) || '127.0.0.1';
+const HOST = (CONFIG.server && CONFIG.server.host) || '0.0.0.0';
 const PORT = (CONFIG.server && CONFIG.server.port) || 8090;
 const HTML = path.join(__dirname, 'public', 'index.html');
 const TMP_PY = path.join(os.tmpdir(), '_quantum_run.py');
