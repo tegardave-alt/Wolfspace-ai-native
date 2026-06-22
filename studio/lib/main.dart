@@ -1546,18 +1546,35 @@ class _A2UIViewState extends State<A2UIView> {
   Widget build(BuildContext context) {
     final root = widget.spec['root'] ?? widget.spec;
     final rootType = root is Map ? '${root['type'] ?? 'unknown'}' : 'not-map';
-    print('[A2UIView] root type: $rootType, keys: ${root is Map ? (root as Map).keys.join(',') : 'N/A'}');
+    final rootKeys = root is Map ? (root as Map).keys.join(',') : 'N/A';
+    print('[A2UIView] root type: $rootType, keys: $rootKeys');
     // Light-theme MaterialApp provides proper ancestor widgets (ScaffoldMessenger,
     // Navigator) that Scaffold needs. Brightness.light prevents the black-screen
     // bug the old Brightness.dark version caused.
     return MaterialApp(
-      debugShowCheckedModeBanner: false,
+      debugShowCheckedModeBanner: true, // Show banner to confirm MaterialApp is rendering
       theme: ThemeData(
         brightness: Brightness.light,
         colorScheme: ColorScheme.fromSeed(seedColor: const Color(0xFF5EEAD4), brightness: Brightness.light),
         scaffoldBackgroundColor: const Color(0xFFF8FAFC),
       ),
-      home: _buildNode(root),
+      home: Stack(
+        children: [
+          _buildNode(root),
+          // Debug overlay to show root type
+          Positioned(
+            top: 0, left: 0, right: 0,
+            child: Container(
+              color: Colors.red.withOpacity(0.8),
+              padding: const EdgeInsets.all(8),
+              child: Text(
+                'ROOT: $rootType | KEYS: $rootKeys',
+                style: const TextStyle(color: Colors.white, fontSize: 12, fontWeight: FontWeight.bold),
+              ),
+            ),
+          ),
+        ],
+      ),
     );
   }
 }
