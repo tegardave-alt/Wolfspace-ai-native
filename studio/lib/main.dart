@@ -1390,6 +1390,134 @@ class _A2UIViewState extends State<A2UIView> {
       case 'list':
         return ListView(padding: const EdgeInsets.all(8), children: _kids(n['children']));
       case 'divider': return const Divider();
+      // ── Enhanced widgets from new packages ──
+      case 'google_text':
+      case 'gtext':
+        final font = '${n['font'] ?? 'poppins'}';
+        return Text(_interp('${n['text'] ?? ''}'),
+          textAlign: _textAlign(n['align']),
+          style: GoogleFonts.getFont(font,
+            fontSize: _d(n['fontSize']) ?? 14, color: _color(n['color']),
+            letterSpacing: _d(n['letterSpacing']), height: _d(n['lineHeight']),
+            fontStyle: n['italic'] == true ? FontStyle.italic : FontStyle.normal,
+            fontWeight: _weight(n['weight'], n['bold'])));
+      case 'auto_text':
+      case 'autotext':
+        return AutoSizeText(_interp('${n['text'] ?? ''}'),
+          maxLines: (n['maxLines'] ?? 3), minFontSize: _d(n['minFontSize']) ?? 10,
+          textAlign: _textAlign(n['align']),
+          style: TextStyle(fontSize: _d(n['fontSize']) ?? 14, color: _color(n['color']),
+            fontWeight: _weight(n['weight'], n['bold'])));
+      case 'animated':
+      case 'animate':
+        final child = _node(n['child']);
+        final dur = (_d(n['duration']) ?? 400).toInt();
+        final delay = (_d(n['delay']) ?? 0).toInt();
+        final effects = <Effect>[];
+        if (n['fadeIn'] == true) effects.add(FadeEffect(duration: Duration(milliseconds: dur)));
+        if (n['slideUp'] == true) effects.add(SlideEffect(begin: const Offset(0, 0.3), end: Offset.zero, duration: Duration(milliseconds: dur)));
+        if (n['slideDown'] == true) effects.add(SlideEffect(begin: const Offset(0, -0.3), end: Offset.zero, duration: Duration(milliseconds: dur)));
+        if (n['scale'] == true) effects.add(ScaleEffect(begin: const Offset(0.8, 0.8), end: const Offset(1, 1), duration: Duration(milliseconds: dur)));
+        if (n['shake'] == true) effects.add(ShakeEffect(duration: Duration(milliseconds: dur)));
+        if (n['blur'] == true) effects.add(BlurEffect(begin: const Offset(8, 8), end: Offset.zero, duration: Duration(milliseconds: dur)));
+        return child.animate(delay: Duration(milliseconds: delay)).animate(onPlay: (c) => c.repeat(), effects: effects.isEmpty ? [FadeEffect(duration: Duration(milliseconds: dur))] : effects);
+      case 'shimmer':
+        return Shimmer.fromColors(
+          baseColor: _color(n['baseColor']) ?? const Color(0xFFE0E0E0),
+          highlightColor: _color(n['highlightColor']) ?? const Color(0xFFF5F5F5),
+          child: _node(n['child']));
+      case 'glass':
+      case 'glassmorphism':
+        return GlassmorphicContainer(
+          width: _d(n['width']) ?? 200, height: _d(n['height']) ?? 100,
+          padding: n['padding'] != null ? EdgeInsets.all(_d(n['padding']) ?? 12) : const EdgeInsets.all(12),
+          borderRadius: _d(n['radius']) ?? 16,
+          blur: _d(n['blur']) ?? 10,
+          border: 1,
+          linearGradient: LinearGradient(colors: [
+            (_color(n['color']) ?? Colors.white).withOpacity(0.2),
+            (_color(n['color']) ?? Colors.white).withOpacity(0.05),
+          ]),
+          borderGradient: LinearGradient(colors: [Colors.white.withOpacity(0.3), Colors.white.withOpacity(0.1)]),
+          child: n['child'] != null ? _node(n['child']) : null);
+      case 'circular_progress':
+      case 'circular':
+        final cv = n['bind'] != null ? _d(_state[n['bind']]) : _d(n['value']);
+        return CircularProgressIndicator(
+          value: cv, color: _color(n['color']),
+          strokeWidth: _d(n['strokeWidth']) ?? 4,
+          backgroundColor: _color(n['trackColor']) ?? const Color(0x22000000));
+      case 'linear_percent':
+        final lpv = (n['bind'] != null ? _d(_state[n['bind']]) : _d(n['value'])) ?? 0.5;
+        return LinearPercentIndicator(
+          percent: lpv.clamp(0, 1), lineHeight: _d(n['height']) ?? 12,
+          progressColor: _color(n['color']), backgroundColor: _color(n['trackColor']) ?? const Color(0x22000000),
+          barRadius: Radius.circular(_d(n['radius']) ?? 6),
+          padding: EdgeInsets.all(_d(n['padding']) ?? 8),
+          center: n['label'] != null ? Text(_interp('${n['label']}'), style: TextStyle(fontSize: _d(n['fontSize']) ?? 10, color: Colors.white)) : null);
+      case 'circular_percent':
+        final cpv = (n['bind'] != null ? _d(_state[n['bind']]) : _d(n['value'])) ?? 0.5;
+        return CircularPercentIndicator(
+          percent: cpv.clamp(0, 1), radius: _d(n['radius']) ?? 40,
+          lineWidth: _d(n['strokeWidth']) ?? 8,
+          progressColor: _color(n['color']), backgroundColor: _color(n['trackColor']) ?? const Color(0x22000000),
+          circularStrokeCap: CircularStrokeCap.round,
+          center: n['label'] != null ? Text(_interp('${n['label']}'), style: TextStyle(fontSize: _d(n['fontSize']) ?? 14, fontWeight: FontWeight.bold, color: _color(n['textColor']))) : null);
+      case 'chart':
+      case 'bar_chart':
+        final data = (n['data'] is List) ? (n['data'] as List) : [];
+        return SizedBox(height: _d(n['height']) ?? 200,
+          child: BarChart(BarChartData(
+            barGroups: data.asMap().entries.map((e) => BarChartGroupData(x: e.key,
+              barRods: [BarChartRodData(toY: _d(e.value) ?? 0, color: _color(n['color']) ?? const Color(0xFF5EEAD4), width: 16, borderRadius: const BorderRadius.vertical(top: Radius.circular(4)))]
+            )).toList(),
+            gridData: const FlGridData(show: false),
+            borderData: FlBorderData(show: false),
+            titlesData: const FlTitlesData(show: false),
+          )));
+      case 'pie_chart':
+        final pdata = (n['data'] is List) ? (n['data'] as List) : [];
+        final colors = (n['colors'] is List) ? (n['colors'] as List).map((c) => _color(c) ?? Colors.grey).toList() : [const Color(0xFF5EEAD4), const Color(0xFFFF9500), const Color(0xFFA5A5A5), const Color(0xFF333333)];
+        return SizedBox(height: _d(n['height']) ?? 200,
+          child: PieChart(PieChartData(sections: pdata.asMap().entries.map((e) =>
+            PieChartSectionData(value: _d(e.value) ?? 1, color: colors[e.key % colors.length], radius: _d(n['radius']) ?? 40, showTitle: false)
+          ).toList(), centerSpaceRadius: _d(n['innerRadius']) ?? 20)));
+      case 'staggered_grid':
+      case 'masonry':
+        return MasonryGridView.count(
+          crossAxisCount: (n['columns'] is num) ? (n['columns'] as num).toInt() : 2,
+          mainAxisSpacing: _d(n['gap']) ?? 8, crossAxisSpacing: _d(n['gap']) ?? 8,
+          shrinkWrap: true, physics: const NeverScrollableScrollPhysics(),
+          padding: EdgeInsets.all(_d(n['padding']) ?? 8),
+          itemCount: _kids(n['children']).length, itemBuilder: (ctx, i) => _kids(n['children'])[i]);
+      case 'spinkit':
+        final spType = '${n['spinner'] ?? 'fading_circle'}';
+        final spColor = _color(n['color']) ?? const Color(0xFF5EEAD4);
+        final spSize = _d(n['size']) ?? 40.0;
+        switch (spType) {
+          case 'wave': return SpinKitWave(color: spColor, size: spSize);
+          case 'pulse': return SpinKitPulse(color: spColor, size: spSize);
+          case 'ring': return SpinKitRing(color: spColor, size: spSize, lineWidth: _d(n['strokeWidth']) ?? 4);
+          case 'circle': return SpinKitCircle(color: spColor, size: spSize);
+          case 'chasing_dots': return SpinKitChasingDots(color: spColor, size: spSize);
+          case 'fading_four': return SpinKitFadingFour(color: spColor, size: spSize);
+          default: return SpinKitFadingCircle(color: spColor, size: spSize);
+        }
+      case 'animated_list':
+      case 'staggered_list':
+        return AnimationLimiter(child: Column(children:
+          AnimationConfiguration.staggeredList(
+            position: 0, duration: const Duration(milliseconds: 375),
+            child: _node(n['child'])).children.map((c) => SlideAnimation(
+              verticalOffset: 50, child: FadeInAnimation(child: c))).toList()));
+      case 'svg':
+        return n['url'] != null ? SvgPicture.network('${n['url']}', height: _d(n['height']), width: _d(n['width']), color: _color(n['color'])) : const SizedBox.shrink();
+      case 'cached_image':
+        return n['url'] != null ? CachedNetworkImage(
+          imageUrl: '${n['url']}', height: _d(n['height']), width: _d(n['width']),
+          fit: BoxFit.cover,
+          placeholder: (c, u) => const SpinKitFadingCircle(color: Colors.grey, size: 30),
+          errorWidget: (c, u, e) => const Icon(Icons.broken_image, color: Colors.grey)) : const SizedBox.shrink();
       default:
         return n['children'] != null ? Column(children: _kids(n['children'])) : (n['child'] != null ? _node(n['child']) : const SizedBox.shrink());
     }
