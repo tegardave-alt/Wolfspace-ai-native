@@ -2288,18 +2288,6 @@ function App() {
     const prompt = "Ubah kode berikut sesuai instruksi. Kembalikan HANYA satu blok kode (bertag bahasa "+lang+").\nInstruksi: "+instruction+"\n\n```"+lang+"\n"+code+"\n```";
     doSend(prompt, "✦ Ubah ("+lang+"): "+instruction);
   };
-  // Flutter compile failed → feed the Dart error back to the model (max 2x per
-  // user turn), mirroring the console verify loop: model guesses, compiler judges.
-  const flutterFixRef = useRef(0);
-  const autoFixFlutter = (source, error) => {
-    if (busy || flutterFixRef.current >= 2) return;
-    flutterFixRef.current++;
-    const firstErr = (error.split("\n").find(l=>/error/i.test(l)) || "compile error").trim().slice(0,90);
-    doSend(
-      "Kode Flutter berikut GAGAL compile.\n\nError:\n"+error+"\n\nKode:\n```dart\n"+source+"\n```\n\nPerbaiki akar masalahnya dan kembalikan SATU blok ```dart lengkap yang sudah dikoreksi.",
-      "✦ Auto-fix Flutter ("+flutterFixRef.current+"/2): "+firstErr
-    );
-  };
   const cancel = () => { console.log('[cancel] Aborting and setting busy=false'); if(ctrlRef.current) ctrlRef.current.abort(); setBusy(false); setStatus("dibatalkan"); };
   const reset = () => { setMessages([]); setHistory([]); setBusy(false); setStatus("ready"); };
   const saveChat = () => {
