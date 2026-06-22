@@ -2027,6 +2027,7 @@ function App() {
   const toggleCanvas = () => setCanvasAuto(v => {
     const nv = !v;
     if (nv && lastProject.current) setCanvas(lastProject.current);   // turning on reopens last web output
+    else if (nv) setCanvas({ doc: CANVAS_BUILDING, run: null });     // no previous project → show placeholder
     if (!nv) setCanvas(null);                                        // turning off closes the split
     return nv;
   });
