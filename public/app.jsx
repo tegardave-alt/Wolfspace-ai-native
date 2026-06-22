@@ -2271,7 +2271,7 @@ function App() {
           { const now = Date.now(); if (now - lastCanvasT > 450) {
             const p = canvasAuto ? buildPreview(t) : { has:false };          // web/flutter preview only in Web Dev mode
             if (p.has) { lastCanvasT = now; _setCanvas(p.flutter
-              ? { flutter: p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_STREAMING, run: null, files: p.files }  // A2UI: instant render with source; Dart: wait for stream done
+              ? { flutter: p.streaming ? null : p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_STREAMING, run: null, files: p.files }  // A2UI: only send complete JSON to studio; incomplete JSON crashes Flutter jsonDecode
               : { doc: p.doc, run: null, files: p.files }); }                 // web: live preview is cheap, keep it
             else if (run) { lastCanvasT = now; _setCanvas({ doc: consoleDoc(run), run }); }   // any executed code → live terminal view
           } }
