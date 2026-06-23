@@ -484,10 +484,11 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
 ''';
 
   void _loadCalculatorExample() {
+    _beacon('load example start');
     try {
       final spec = jsonDecode(_calculatorSpec);
-      if (spec is Map) _applyUi(Map<String, dynamic>.from(spec), _calculatorSpec);
-    } catch (_) {}
+      if (spec is Map) { _applyUi(Map<String, dynamic>.from(spec), _calculatorSpec); _beacon('load example done'); }
+    } catch (_) { _beacon('load example fail'); }
   }
 
   // Apply an A2UI spec to the preview and persist it so it survives studio reloads.
