@@ -346,8 +346,8 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
     final src = _prop(d, 'quantumSource');
     _beacon('onmsg: src_type=${src?.runtimeType.toString().replaceAll(" ", "~") ?? "null"}');
     if (src is String) {
-      _uiJson = null;   // switching back to Dart-compile mode
       if (src == _lastReceivedSrc) return;   // retries send the same source — handle once
+      _uiJson = null;   // switching back to Dart-compile mode
       _lastReceivedSrc = src;
       _beacon('received source', src.length);
       _codeCtrl.text = src;
