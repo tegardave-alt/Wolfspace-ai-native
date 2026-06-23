@@ -306,12 +306,16 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
 
   void _onMessage(html.MessageEvent e) {
     final d = e.data;
+    _beacon('onmsg: dtype=${d.runtimeType.toString().replaceAll(" ", "~")}');
     // A2UI: a declarative JSON UI spec → render instantly, no compile.
     final ui = _prop(d, 'quantumUi');
+    _beacon('onmsg: ui_type=${ui?.runtimeType.toString().replaceAll(" ", "~") ?? "null"} len=${ui is String ? (ui as String).length : (ui is Map ? (ui as Map).length : "?")}');
     if (ui != null) {
       try {
         final str = ui is String ? ui : jsutil.dartify(ui);
+        _beacon('onmsg: str_type=${str.runtimeType.toString().replaceAll(" ", "~")} len=${str is String ? (str as String).length : "?"}');
         final spec = str is String ? jsonDecode(str) : str;
+        _beacon('onmsg: spec_type=${spec.runtimeType.toString().replaceAll(" ", "~")} isMap=${spec is Map}');
         if (spec is Map) { _applyUi(Map<String, dynamic>.from(spec), str is String ? str : jsonEncode(spec)); _beacon('a2ui applied'); }
         else { _beacon('a2ui not map: ${(spec.runtimeType).toString()}'); }
       } catch (ex) {
@@ -320,6 +324,7 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
       return;
     }
     final src = _prop(d, 'quantumSource');
+    _beacon('onmsg: src_type=${src?.runtimeType.toString().replaceAll(" ", "~") ?? "null"}');
     if (src is String) {
       _uiJson = null;   // switching back to Dart-compile mode
       if (src == _lastReceivedSrc) return;   // retries send the same source — handle once
