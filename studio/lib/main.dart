@@ -300,8 +300,25 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
   // Flutter Web (dart2js) delivers postMessage data as JS types (JSObject, JSString, …),
   // NOT Dart types, so always convert via dartify to get proper Dart values.
   dynamic _prop(dynamic o, String k) {
-    try { if (o is Map) { final v = o[k]; if (v != null) return jsutil.dartify(v); } } catch (_) {}
-    try { final v = jsutil.getProperty(o, k); return jsutil.dartify(v); } catch (_) { return null; }
+    // Branch 1: o is already a Dart Map (dart2js sometimes auto-converts JS objects).
+    if (o is Map) {
+      final v = o[k];
+      if (v == null) return null;
+      // If v is already a Dart value (String/num/Map/List) just return it.
+      if (v is String || v is num || v is Map || v is List) return v;
+      if (v is bool) return v;
+      try { return jsutil.dartify(v); } catch (_) { return v; }
+    }
+    // Branch 2: o is a JSObject / JSAny — use js_util interop.
+    try {
+      final v = jsutil.getProperty(o, k);
+      if (v == null) return null;
+      // dartify converts JS types → Dart types. If v is already Dart, return as-is.
+      if (v is String || v is num || v is Map || v is List || v is bool) return v;
+      try { return jsutil.dartify(v); } catch (_) { return v; }
+    } catch (_) {
+      return null;
+    }
   }
 
   void _onMessage(html.MessageEvent e) {
