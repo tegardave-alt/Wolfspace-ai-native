@@ -310,7 +310,8 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
     final ui = _prop(d, 'quantumUi');
     if (ui != null) {
       try {
-        final spec = ui is String ? jsonDecode(ui) : jsutil.dartify(ui);
+        final str = ui is String ? ui : jsutil.dartify(ui);
+final spec = str is String ? jsonDecode(str) : str;
         if (spec is Map) { _applyUi(Map<String, dynamic>.from(spec), ui is String ? ui : jsonEncode(spec)); _beacon('a2ui applied'); }
         else { _beacon('a2ui not map: ${(spec.runtimeType).toString()}'); }
       } catch (ex) {
