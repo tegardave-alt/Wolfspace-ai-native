@@ -491,7 +491,21 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
     try {
       final spec = jsonDecode(_calculatorSpec);
       if (spec is Map) { _applyUi(Map<String, dynamic>.from(spec), _calculatorSpec); _beacon('load example done'); }
-    } catch (_) { _beacon('load example fail'); }
+      else { _beacon('load example not map'); _fallbackUi(); }
+    } catch (_) { _beacon('load example fail'); _fallbackUi(); }
+  }
+  
+  void _fallbackUi() {
+    setState(() {
+      _uiJson = {
+        'type': 'scaffold',
+        'body': {
+          'type': 'center',
+          'child': {'type': 'text', 'text': 'Quantum Studio', 'size': 20, 'color': '#5eead4'}
+        }
+      };
+      _phase = Phase.done;
+    });
   }
 
   // Apply an A2UI spec to the preview and persist it so it survives studio reloads.
