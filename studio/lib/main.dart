@@ -300,7 +300,7 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
   // Flutter Web (dart2js) delivers postMessage data as JS types (JSObject, JSString, …),
   // NOT Dart types, so always convert via dartify to get proper Dart values.
   dynamic _prop(dynamic o, String k) {
-    try { if (o is Map) return o[k]; } catch (_) {}
+    try { if (o is Map) { final v = o[k]; if (v != null) return jsutil.dartify(v); } } catch (_) {}
     try { final v = jsutil.getProperty(o, k); return jsutil.dartify(v); } catch (_) { return null; }
   }
 
