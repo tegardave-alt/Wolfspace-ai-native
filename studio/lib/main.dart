@@ -272,7 +272,10 @@ class _StudioHomeState extends State<StudioHome> with SingleTickerProviderStateM
     }
     if (!restored) {
       // No valid saved A2UI — load the calculator demo on first frame.
+      _beacon('init: scheduling calc example');
       Future.microtask(() => _loadCalculatorExample());
+    } else {
+      _beacon('init: restored from localStorage');
     }
     // Handshake: tell the parent (React shell) we're ready to receive source.
     // Posted a few times in case the parent's listener attaches slightly later.
