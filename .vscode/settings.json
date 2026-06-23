@@ -1,4 +1,5 @@
 {
     "Codegeex.RepoIndex": true,
-    "Codegeex.SidebarUI.LanguagePreference": "English"
+    "Codegeex.SidebarUI.LanguagePreference": "English",
+    "Codegeex.CommitMessage.LanguagePreference": "English"
 }
