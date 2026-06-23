@@ -1589,6 +1589,10 @@ class _A2UIViewState extends State<A2UIView> {
     final root = widget.spec['root'] ?? widget.spec;
     // Parent MaterialApp (StudioApp) already provides ScaffoldMessenger, Navigator.
     // Do NOT nest another MaterialApp — causes grey/blank screen in web dev.
-    return _buildNode(root);
+    try {
+      return _buildNode(root);
+    } catch (e) {
+      return Container(color: Colors.white, alignment: Alignment.center, child: Text('Render error: $e', textAlign: TextAlign.center, style: const TextStyle(color: Color(0xFFEF4444))));
+    }
   }
 }
