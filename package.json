@@ -14,7 +14,8 @@
     "dist": "electron-builder --win",
     "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles",
-    "test:watch": "jest --watch --verbose"
+    "test:watch": "jest --watch --verbose",
+    "prepare": "husky"
   },
   "keywords": [
     "ai",
@@ -42,8 +43,11 @@
     "browser-sync": "^3.0.4",
     "electron": "^33.4.11",
     "electron-builder": "25.1.8",
+    "husky": "^9.1.7",
     "jest": "^29.7.0",
-    "nodemon": "^3.1.14"
+    "lint-staged": "^17.0.8",
+    "nodemon": "^3.1.14",
+    "prettier": "^3.8.4"
   },
   "trustedDependencies": [
     "electron",
@@ -87,5 +91,17 @@
     "@xterm/xterm": "^6.0.0",
     "node-pty": "^1.1.0",
     "xterm": "^5.3.0"
+  },
+  "lint-staged": {
+    "*.{cjs,js,mjs}": [
+      "node --check",
+      "prettier --write"
+    ],
+    "*.jsx": [
+      "prettier --write"
+    ],
+    "*.{css,html,json,md}": [
+      "prettier --write"
+    ]
   }
 }
