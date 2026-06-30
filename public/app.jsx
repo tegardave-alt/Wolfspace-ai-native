@@ -2072,8 +2072,6 @@ function Composer({ onSend, onCancel, busy }) {
       <div className="composer-hint">
         {soon ? (
           <b style={{ color: "var(--brand)" }}>{soon}</b>
-        ) : mode === "build" ? (
-          <b style={{ color: "var(--brand)" }}>Build mode aktif</b>
         ) : null}
       </div>
     </div>
