@@ -154,3 +154,20 @@ Require stack:
     at require (node:internal/modules/helpers:153:16)
     at Object.<anonymous> (C:\Users\dave\quantum\server.cjs:59:15)
     at Module._compile (node:internal/modules/cjs/loader:1854:14)
+
+2026-06-30T18:09:01.176Z Invalid or unexpected token
+C:\Users\dave\quantum\agent\self_agent.cjs:1
+��/ /   S e l f - a g e n t   s t r e a m   i m p l e m e n t a t i o n   ( e x t r a c t e d   a n d   m o d u l a r i z e d   f r o m   s e r v e r . c j s ) 
+
+
+SyntaxError: Invalid or unexpected token
+    at wrapSafe (node:internal/modules/cjs/loader:1787:18)
+    at Module._compile (node:internal/modules/cjs/loader:1828:20)
+    at Object..js (node:internal/modules/cjs/loader:1985:10)
+    at Module.load (node:internal/modules/cjs/loader:1577:32)
+    at Module._load (node:internal/modules/cjs/loader:1379:12)
+    at wrapModuleLoad (node:internal/modules/cjs/loader:255:19)
+    at Module.require (node:internal/modules/cjs/loader:1600:12)
+    at require (node:internal/modules/helpers:153:16)
+    at Object.<anonymous> (C:\Users\dave\quantum\server.cjs:3347:29)
+    at Module._compile (node:internal/modules/cjs/loader:1854:14)

@@ -1936,7 +1936,7 @@ const MI = {
     </>,
   ),
 };
-function Composer({ onSend, onCancel, busy, mode, onModeChange }) {
+function Composer({ onSend, onCancel, busy }) {
   const [val, setVal] = useState("");
   const [menu, setMenu] = useState(false);
   const [soon, setSoon] = useState("");
@@ -2007,36 +2007,6 @@ function Composer({ onSend, onCancel, busy, mode, onModeChange }) {
                 <span className="cm-lbl">
                   <b>Upload attachment</b>
                   <small>file, image, video, audio</small>
-                </span>
-              </button>
-              <button
-                className={"cm-item" + (mode === "plan" ? " active" : "")}
-                onClick={() => {
-                  setMenu(false);
-                  onModeChange("plan");
-                  setSoon("Plan mode aktif");
-                  setTimeout(() => setSoon(""), 2600);
-                }}
-              >
-                <i>{MI.research}</i>
-                <span className="cm-lbl">
-                  <b>Plan</b>
-                  <small>Generate a task plan</small>
-                </span>
-              </button>
-              <button
-                className={"cm-item" + (mode === "build" ? " active" : "")}
-                onClick={() => {
-                  setMenu(false);
-                  onModeChange("build");
-                  setSoon("Build mode aktif");
-                  setTimeout(() => setSoon(""), 2600);
-                }}
-              >
-                <i>{MI.more}</i>
-                <span className="cm-lbl">
-                  <b>Build</b>
-                  <small>Build the current task</small>
                 </span>
               </button>
               <input
@@ -4926,7 +4896,7 @@ function AgentSteps({ run, onAiEdit, busy }) {
         ) : null}
         {run.phase ? (
           <span className={"agent-phase agent-phase-" + run.phase}>
-            {run.phase === "plan" ? "📋 Plan" : "🔨 Build"}
+            {run.phase}
           </span>
         ) : null}
       </div>
@@ -5052,10 +5022,7 @@ function App() {
       return "dark";
     }
   });
-  const [mode, setMode] = useState(() => {
-    try { return localStorage.getItem("quantum_mode") || "plan"; }
-    catch (e) { return "plan"; }
-  });
+
   const [canvas, setCanvas] = useState(null); // {doc, run} when the split Canvas is open
   const canvasRef = useRef(null); // mirror of canvas for stale-closure-safe reads in async
   const _setCanvas = (v) => {
@@ -5285,12 +5252,6 @@ function App() {
     } catch (e) {}
   }, [theme]);
 
-  useEffect(() => {
-    try {
-      localStorage.setItem("quantum_mode", mode);
-    } catch (e) {}
-  }, [mode]);
-
   const loadModels = useCallback(async () => {
     let list = [];
     try {
@@ -5457,7 +5418,7 @@ function App() {
       let hadError = false;
       try {
         await streamSelfAgent(
-          { history: newHist, cloud: getCloud(), port: modelVal, mode },
+          { history: newHist, cloud: getCloud(), port: modelVal },
           (j) => {
             if (j.t === "backup") upd({ backup: j.dir });
             else if (j.t === "step") {
@@ -5749,8 +5710,6 @@ function App() {
                 onSend={(t) => doSend(t)}
                 onCancel={cancel}
                 busy={busy}
-                mode={mode}
-                onModeChange={setMode}
               />
             </div>
             {canvas && (

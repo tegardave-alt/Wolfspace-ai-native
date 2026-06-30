@@ -1975,7 +1975,7 @@ function App() {
   const [sbCollapsed, setSbCollapsed] = useState(() => { try { return localStorage.getItem("quantum_sb")==="1"; } catch(e){ return false; } });
   useEffect(()=>{ try{ localStorage.setItem("quantum_sb", sbCollapsed?"1":"0"); }catch(e){} }, [sbCollapsed]);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("quantum_theme") || "dark"; } catch(e){ return "dark"; } });
-  const [mode, setMode] = useState(() => { try { return localStorage.getItem("quantum_mode") || "plan"; } catch (e) { return "plan"; } });
+
   const [canvas, setCanvas] = useState(null);          // {doc, run} when the split Canvas is open
   const canvasRef = useRef(null);                       // mirror ref for stale-closure-safe reads
   const _setCanvas = (v) => { canvasRef.current = v; setCanvas(v); };
@@ -2137,7 +2137,7 @@ function App() {
       const upd = (patch)=> setMessages(m=>{ const c=m.slice(); const last={...c[c.length-1]}; last.agent={...last.agent,...patch}; c[c.length-1]=last; return c; });
       const evlist = []; let think = ""; let adoneSent = false; let hadError = false;
       try {
-        await streamSelfAgent({ history:newHist, cloud:getCloud(), port:modelVal, mode }, (j)=>{
+        await streamSelfAgent({ history:newHist, cloud:getCloud(), port:modelVal }, (j)=>{
           if(j.t==="backup") upd({ backup:j.dir });
           else if(j.t==="step"){ think=""; upd({ step:j.n, thinking:"" }); }
           else if(j.t==="tok"){ think+=j.c; upd({ thinking:think }); }

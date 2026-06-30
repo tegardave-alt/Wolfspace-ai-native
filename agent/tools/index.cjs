@@ -167,7 +167,7 @@ function abortSessionBash(sessionId) {
 }
 
 // ── Core tool dispatcher ──
-async function runSelfTool(name, args, emit, mode, context = {}) {
+async function runSelfTool(name, args, emit, context = {}) {
   try {
     // Check if required module is available before dispatching
     const toolModMap = {
@@ -189,12 +189,6 @@ async function runSelfTool(name, args, emit, mode, context = {}) {
       const state = _circuitBreakers.get(name);
       const remaining = Math.ceil((RESET_TIMEOUT - (Date.now() - state.trippedAt)) / 1000);
       return { ok: false, output: 'CIRCUIT TERBUKA: tool ' + name + ' diblokir sementara (' + TRIP_THRESHOLD + ' kegagalan berurutan). Coba lagi dalam ' + remaining + ' detik.' };
-    }
-
-    // Mode enforcement — reject destructive tools in PLAN mode
-    const DESTRUCTIVE_TOOLS = ['edit','write','bash','terminal_open','terminal_write','terminal_read','terminal_close','sandbox_run','skill_run','skill_install'];
-    if (mode === 'plan' && DESTRUCTIVE_TOOLS.includes(name)) {
-      return { ok: false, output: 'MODE PLAN: tool ' + name + ' tidak diizinkan. Silakan alihkan ke mode BUILD dulu.' };
     }
 
     // Validate destructive operations before execution
