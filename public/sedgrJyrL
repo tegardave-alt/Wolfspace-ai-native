@@ -1,0 +1,759 @@
+const { useState, useRef, useEffect, useCallback, useMemo } = React;
+
+/* ----------------------------- Icons ----------------------------- */
+const Icon = {
+  spark: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M12 2.5l1.9 5.1 5.1 1.9-5.1 1.9L12 16.5l-1.9-5.1L5 9.5l5.1-1.9L12 2.5z"
+        fill="currentColor"
+      />
+      <path
+        d="M18.5 14.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9.9-2.4z"
+        fill="currentColor"
+        opacity="0.7"
+      />
+    </svg>
+  ),
+  caret: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  chev: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M6 9l6 6 6-6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  reset: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M3 12a9 9 0 109-9 9 9 0 00-7 3.3M3 4v3.3h3.3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  copy: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <rect
+        x="9"
+        y="9"
+        width="11"
+        height="11"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M5 15V5a2 2 0 012-2h10"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  check: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M5 13l4 4L19 7"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  send: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M4 12l16-8-5 16-3.5-6L4 12z" fill="currentColor" />
+    </svg>
+  ),
+  target: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
+      <circle cx="12" cy="12" r="3.2" fill="currentColor" />
+    </svg>
+  ),
+  arrow: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M9 6l6 6-6 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  play: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path d="M7 5l12 7-12 7V5z" fill="currentColor" />
+    </svg>
+  ),
+  pencil: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M14.5 5.5l4 4M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  loader: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M12 3a9 9 0 109 9"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  sun: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
+      <path
+        d="M12 2v2M12 20v2M4 12H2M22 12h-2M5 5l1.5 1.5M17.5 17.5L19 19M19 5l-1.5 1.5M6.5 17.5L5 19"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  moon: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+};
+const HubIcon = {
+  back: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M15 6l-6 6 6 6"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  search: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <circle
+        cx="10.5"
+        cy="10.5"
+        r="6.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M15.5 15.5L20 20"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  download: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M12 3v12m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  check: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M5 13l4 4L19 7"
+        stroke="currentColor"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  loader: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M12 3a9 9 0 109 9"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  star: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M12 2l2.9 6.3L22 9.2l-5 4.6 1.3 6.9L12 17.5l-6.3 3.2L7 13.8 2 9.2l7.1-.9L12 2z"
+        fill="currentColor"
+      />
+    </svg>
+  ),
+  dl: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M12 5v10m0 0l-3-3m3 3l3-3M6 17h12"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+  hf: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M7.5 7.5a2.5 2.5 0 015 0v3h-5v-3zm4 0a2.5 2.5 0 015 0v3h-5v-3zm-5 5h5v4a2 2 0 01-2 2h-1a2 2 0 01-2-2v-4zm6 0h5v4a2 2 0 01-2 2h-1a2 2 0 01-2-2v-4z"
+        fill="currentColor"
+      />
+    </svg>
+  ),
+  empty: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <rect
+        x="3"
+        y="5"
+        width="18"
+        height="14"
+        rx="3"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M8 12h8M10 15h4"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+      />
+    </svg>
+  ),
+};
+function BrandMark({ className }) {
+  return (
+    <span className={"brand-mark " + (className || "")}>
+      <Icon.spark style={{ color: "#fff" }} />
+    </span>
+  );
+}
+
+/* ----------------------------- Backend glue ----------------------------- */
+const PREFIXES = [
+  ["github_pat_", "github", "GitHub Models"],
+  ["ghp_", "github", "GitHub Models"],
+  ["sk-ant-", "anthropic", "Claude"],
+  ["sk-or-", "openrouter", "OpenRouter"],
+  ["gsk_", "groq", "Groq"],
+  ["AIza", "gemini", "Gemini"],
+  ["nvapi-", "nvidia", "NVIDIA"],
+  ["sk-UUa", "opencode", "OpenCode"],
+  ["sk-", "openai", "OpenAI"],
+];
+const CLOUD_DEFAULT = {
+  anthropic: "claude",
+  openai: "gpt-4o",
+  openrouter: "anthropic/claude-opus-4-8",
+  groq: "llama",
+  qwen: "qwen",
+  deepseek: "chat",
+  github: "gpt-4o",
+  gemini: "gemini-2.0-flash",
+  nvidia: "nvidia/nemotron-3-super-120b-a12b",
+  opencode: "deepseek-v4-flash",
+  puter: "claude-sonnet-4",
+  custom: "gpt-4o",
+};
+const PROVIDER_LABELS = {
+  openai: "OpenAI",
+  qwen: "Qwen",
+  groq: "Groq",
+  openrouter: "OpenRouter",
+  anthropic: "Claude",
+  deepseek: "DeepSeek",
+  github: "GitHub Models",
+  gemini: "Gemini",
+  nvidia: "NVIDIA",
+  opencode: "OpenCode",
+  puter: "Puter",
+  custom: "Custom",
+};
+const PROVIDER_OPTS = [
+  "auto",
+  "openai",
+  "qwen",
+  "deepseek",
+  "github",
+  "groq",
+  "openrouter",
+  "anthropic",
+  "gemini",
+  "nvidia",
+  "opencode",
+  "puter",
+  "custom",
+];
+function detectPrefix(key) {
+  key = (key || "").trim();
+  for (const [p, prov, name] of PREFIXES)
+    if (key.startsWith(p)) return { provider: prov, name };
+  return key ? { provider: "openai", name: "OpenAI" } : null;
+}
+function keyish(s) {
+  return /^(sk-|gsk_|AIza|github_pat_|ghp_)/.test((s || "").trim());
+}
+function getCloud() {
+  try {
+    return JSON.parse(localStorage.getItem("quantum_cloud") || "null");
+  } catch (e) {
+    return null;
+  }
+}
+function setCloudLS(c) {
+  if (c) localStorage.setItem("quantum_cloud", JSON.stringify(c));
+  else localStorage.removeItem("quantum_cloud");
+}
+function escHtml(s) {
+  return s.replace(
+    /[&<>]/g,
+    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c],
+  );
+}
+function mdToHtml(s) {
+  let h = escHtml(s);
+  h = h.replace(/`([^`\n]+)`/g, '<span class="inline-code">$1</span>');
+  h = h.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
+  return h.replace(/\n/g, "<br/>");
+}
+function parseBlocks(text) {
+  const out = [];
+  const re = /```(\w*)\n?([\s\S]*?)```/g;
+  let last = 0,
+    m;
+  while ((m = re.exec(text))) {
+    const pre = text.slice(last, m.index);
+    if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre) });
+    out.push({
+      type: "code",
+      lang: m[1] || "text",
+      code: m[2].replace(/\n$/, ""),
+    });
+    last = re.lastIndex;
+  }
+  const tail = text.slice(last);
+  const open = tail.indexOf("```");
+  if (open >= 0) {
+    const pre = tail.slice(0, open);
+    if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre) });
+    out.push({
+      type: "code",
+      lang: "",
+      code: tail.slice(open).replace(/^```\w*\n?/, ""),
+    });
+  } else if (tail.trim()) out.push({ type: "text", html: mdToHtml(tail) });
+  return out;
+}
+function reqFor(modelVal, cloud, history, webdev) {
+  const b =
+    modelVal === "cloud" && cloud
+      ? { history, cloud }
+      : { history, port: modelVal };
+  if (webdev) {
+    b.webdev = true;
+    if (b.history && b.history.length) {
+      const i = b.history.length - 1,
+        last = b.history[i];
+      if (last && last.role === "user" && !last.content.includes("```json")) {
+        const R =
+          "\n\n⚠️ CRITICAL: Your ENTIRE answer must be a SINGLE ```json block containing an A2UI spec. NEVER write ```dart. Dart code is NOT rendered. Output ONLY ```json.";
+        b.history = [
+          ...b.history.slice(0, i),
+          { ...last, content: last.content + R },
+        ];
+      }
+    }
+  }
+  return b;
+}
+// Verify HTTP server is running (only for browser users, not Electron)
+async function checkServerHealth() {
+  if (IPC) return true; // Electron: uses IPC, no HTTP needed
+  try {
+    const r = await fetch("/", { method: "HEAD", timeout: 2000 });
+    return r.ok;
+  } catch {
+    return false;
+  }
+}
+// Parse an SSE stream from a fetch Response, calling onEvent(parsedJSON) per line.
+async function pumpSSE(r, signal, onEvent) {
+  const reader = r.body.getReader();
+  const dec = new TextDecoder();
+  let buf = "";
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buf += dec.decode(value, { stream: true });
+    const lines = buf.split("\n");
+    buf = lines.pop();
+    for (const line of lines) {
+      const mm = line.match(/^data:\s*(.*)$/);
+      if (!mm) continue;
+      let j;
+      try {
+        j = JSON.parse(mm[1]);
+      } catch (e) {
+        continue;
+      }
+      onEvent(j);
+    }
+  }
+}
+const IPC =
+  typeof window !== "undefined" && window.quantum && window.quantum.ipc
+    ? window.quantum
+    : null;
+
+async function streamChat(reqBody, onText, signal) {
+  let acc = "",
+    run = null;
+  const handle = (j) => {
+    if (j.t === "tok") {
+      acc += j.c;
+      onText(acc, run);
+    } else if (j.t === "retry") {
+      acc = "";
+      run = null;
+      onText(acc, run);
+    } // new fix attempt → drop the previous failed one
+    else if (j.t === "run") {
+      run = j.run;
+      onText(acc, run);
+    } else if (j.t === "done") {
+      run = j.run || run;
+      onText(acc, run);
+    } else if (j.t === "err") {
+      acc += "\n[" + j.m + "]";
+      onText(acc, run);
+    }
+  };
+  if (IPC) {
+    // Electron IPC — no HTTP
+    await new Promise((resolve) => {
+      const cancel = IPC.stream("chat", reqBody, handle, resolve);
+      if (signal)
+        signal.addEventListener("abort", () => {
+          cancel();
+          resolve();
+        });
+    });
+    return { text: acc, run };
+  }
+  const r = await fetch("/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(reqBody),
+    signal,
+  });
+  await pumpSSE(r, signal, handle);
+  return { text: acc, run };
+}
+// Self-edit agent: stream the READ/GREP/EDIT/… loop (IPC, or /self-agent over HTTP).
+async function streamSelfAgent(reqBody, onEvent, signal) {
+  if (IPC) {
+    await new Promise((resolve) => {
+      const cancel = IPC.stream("self-agent", reqBody, onEvent, resolve);
+      if (signal)
+        signal.addEventListener("abort", () => {
+          cancel();
+          resolve();
+        });
+    });
+    return;
+  }
+  try {
+    const r = await fetch("/self-agent", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(reqBody),
+      signal,
+    });
+    if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
+    await pumpSSE(r, signal, onEvent);
+  } catch (e) {
+    if (e instanceof TypeError && e.message.includes("Failed to fetch")) {
+      throw new Error(
+        'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder quantum\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
+      );
+    }
+    throw e;
+  }
+}
+
+/* ----------------------------- Model Interface (collapsible dropdown) ----------------------------- */
+function ModelInterface({ models, modelVal, setModelVal }) {
+  const [open, setOpen] = React.useState(false);
+  const ref = React.useRef(null);
+  React.useEffect(() => {
+    const handle = (e) => {
+      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
+    };
+    document.addEventListener("mousedown", handle);
+    return () => document.removeEventListener("mousedown", handle);
+  }, []);
+  const current = models.find((m) => m.value === modelVal);
+  const label = current ? current.label : modelVal;
+  return (
+    <div className="model-interface" ref={ref}>
+      <button
+        className="mi-trigger"
+        onClick={() => setOpen(!open)}
+        title={label}
+      >
+        <span className="mi-label">{label}</span>
+        <Icon.chev
+          className={"mi-chev" + (open ? " open" : "")}
+          style={{ width: 14, height: 14 }}
+        />
+      </button>
+      {open && (
+        <div className="mi-panel">
+          {models.map((m) => (
+            <div
+              key={m.value}
+              className={
+                "mi-opt" +
+                (m.value === modelVal ? " active" : "") +
+                (m.disabled ? " disabled" : "")
+              }
+              onClick={() => {
+                if (!m.disabled) {
+                  setModelVal(m.value);
+                  setOpen(false);
+                }
+              }}
+            >
+              {m.label}
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------- Top bar ----------------------------- */
+function TopBar({
+  models,
+  modelVal,
+  setModelVal,
+  panelOpen,
+  setPanelOpen,
+  onReset,
+  status,
+  theme,
+  setTheme,
+}) {
+  return (
+    <header className="topbar">
+      <ModelInterface
+        models={models}
+        modelVal={modelVal}
+        setModelVal={setModelVal}
+      />
+
+      <div className="tb-spacer" />
+    </header>
+  );
+}
+
+/* ----------------------------- HuggingFace models ----------------------------- */
+function fmtSize(b) {
+  if (!b) return "";
+  const gb = b / 1073741824;
+  return gb >= 1 ? gb.toFixed(2) + " GB" : (b / 1048576).toFixed(0) + " MB";
+}
+function HFModels({ onSaved }) {
+  const [q, setQ] = useState("");
+  const [results, setResults] = useState([]);
+  const [sel, setSel] = useState("");
+  const [files, setFiles] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [prog, setProg] = useState(null);
+  const [msg, setMsg] = useState("");
+  const search = async () => {
+    const t = q.trim();
+    if (!t) return;
+    setMsg("mencari…");
+    setResults([]);
+    setSel("");
+    setFiles([]);
+    try {
+      const r = await (
+        await fetch("/hf/search?q=" + encodeURIComponent(t))
+      ).json();
+      if (r.error) throw new Error(r.error);
+      setResults(r);
+      setMsg(r.length ? "" : "tidak ada hasil");
+    } catch (e) {
+      setMsg("gagal: " + e.message);
+    }
+  };
+  const pick = async (id) => {
+    setSel(id);
+    setFiles([]);
+    setMsg("memuat file…");
+    try {
+      const r = await (
+        await fetch("/hf/files?id=" + encodeURIComponent(id))
+      ).json();
+      if (r.error) throw new Error(r.error);
+      setFiles(r);
+      setMsg(r.length ? "" : "tak ada file .gguf di repo ini");
+    } catch (e) {
+      setMsg("gagal: " + e.message);
+    }
+  };
+  const download = async (file) => {
+    if (busy) return;
+    setBusy(true);
+    setProg(0);
+    setMsg("mengunduh " + file.split("/").pop() + "…");
+    try {
+      const res = await fetch("/hf/download", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sel, file }),
+      });
+      const reader = res.body.getReader();
+      const dec = new TextDecoder();
+      let buf = "";
+      while (true) {
+        const { done, value } = await reader.read();
+        if (done) break;
+        buf += dec.decode(value, { stream: true });
+        const lines = buf.split("\n");
+        buf = lines.pop();
+        for (const line of lines) {
+          const m = line.match(/^data:\s*(.*)$/);
+          if (!m) continue;
+          let j;
+          try {
+            j = JSON.parse(m[1]);
+          } catch (e) {
+            continue;
+          }
+          if (j.t === "progress") setProg(j.pct);
+          else if (j.t === "done") {
+            setMsg(
+              "✓ " +
+                j.model.name +
+                " diunduh & dijalankan (port " +
+                j.model.port +
+                "). Tunggu ~30 dtk, lalu pilih di dropdown Model.",
+            );
+            onSaved && onSaved();
+          } else if (j.t === "err") setMsg("gagal: " + j.m);
+        }
+      }
+    } catch (e) {
+      setMsg("gagal: " + e.message);
+    }
+    setBusy(false);
+    setProg(null);
+  };
+  return (
+    <div className="hf">
+      <label className="field-label">Model HuggingFace</label>
+      <div className="hf-search">
+        <input
+          className="input"
+          value={q}
+          onChange={(e) => setQ(e.target.value)}
+          placeholder="cari GGUF… (mis. qwen coder)"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") search();
+          }}
+        />
+        <button className="btn btn-primary" onClick={search}>
+          Cari
+        </button>
+      </div>
+      {results.length > 0 && (
+        <div className="hf-res">
+          {results.map((m) => (
+            <button
+              key={m.id}
+              className={"hf-item" + (sel === m.id ? " sel" : "")}
+              onClick={() => pick(m.id)}
+            >
+              {m.id}
+              <br />
+              <span className="meta">
+                ↓ {m.downloads.toLocaleString()} · ♥ {m.likes}
+              </span>
+            </button>
+          ))}
+        </div>
+      )}
+      {sel &&
+        files.map((f) => {
+          const heavy = f.size > 4 * 1073741824;
+          return (
+            <div className="hf-file" key={f.path}>
+              <span className="nm">{f.path.split("/").pop()}</span>
+              <span className={"sz" + (heavy ? " heavy" : "")}>
+                {fmtSize(f.size)}
+                {heavy ? " ⚠" : ""}
+              </span>
+              <button
+                className="hf-dl"
+                disabled={busy}
+                onClick={() => download(f.path)}
+              >
+                Unduh
+              </button>
+            </div>
+          );
+        })}
+      {prog !== null && (
+        <div className="hf-bar">
+          <div style={{ width: prog + "%" }} />
+        </div>
+      )}
+      {msg && <div className="hf-msg">{msg}</div>}
+    </div>
+  );
+}
+
+/* ----------------------------- Settings (full page) ----------------------------- */
+function SettingsView({ onBack, onSaved, onCloudChanged }) {
+  const stored = getCloud();
+  const [key, setKey] = useState("");
+  const [provider, setProvider] = useState(
+    stored ? (stored.baseUrl ? "custom" : stored.provider) : "auto",

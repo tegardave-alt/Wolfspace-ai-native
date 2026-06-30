@@ -1,0 +1,47 @@
+C:\Users\dave\Quantum/
+├── server.cjs              ← Entry point utama (HTTP server, SSE chat)
+├── config.json             ← Konfigurasi (model, port, timeout, dll)
+│
+├── config/                 ← ★ SINGLE SOURCE OF TRUTH ★
+│   └── prompts.json        ← Semua system prompt + metadata + versi
+│
+├── core.js                 ← Init core
+├── cloud.cjs               ← Integrasi cloud LLM (Anthropic, OpenAI, Groq, dll)
+├── chat.cjs                ← Chat streaming & reply handling
+├── prompts.cjs             ← System prompt management (READ dari config/prompts.json)
+├── runners.cjs             ← Code execution (multi-language runner)
+├── self_agent.cjs          ← Self-agent loop (function-calling, READ dari config/prompts.json)
+├── dspy_tool.cjs           ← DSpy prompt optimization
+├── sysprompt_opt.cjs       ← System prompt optimization (WRITE ke config/prompts.json)
+├── skills.cjs              ← Plugin system (skills)
+├── sandbox.cjs             ← Sandbox execution (capability-based)
+├── web.cjs                 ← Web search & fetch (via Edge headless)
+├── debug.cjs               ← Debug logging
+├── trace.cjs               ← Tracing
+├── process-manager.cjs     ← Process management
+├── terminal-worker.cjs     ← PTY terminal worker
+│
+├── tools/                  ← Tool definitions untuk self-agent
+│   ├── index.cjs           ← Tool aggregator & dispatcher
+│   ├── tool-definitions.cjs ← Definisi tools (daftar nama & parameter)
+│   ├── file-tools.cjs      ← File tools (read, write, edit, grep, glob)
+│   ├── disk-tools.cjs      ← Disk exploration tools (read-only)
+│   ├── exec-tools.cjs      ← Execution tools (bash, terminal)
+│   ├── web-tools.cjs       ← Web tools (search, fetch)
+│   └── skill-tools.cjs     ← Skill & sandbox tools
+│
+├── public/                 ← Frontend (HTML/JS/CSS - chat UI)
+├── dist-app/               ← Aplikasi Electron build
+├── electron/               ← Electron wrapper
+├── skills/                 ← Plugin skills (modular .cjs)
+├── sandbox/                ← Sandbox workspace files
+├── workspace/              ← Default workspace untuk eksekusi
+├── scripts/                ← Utility scripts
+│   └── generate-docs.cjs   ← Auto-generator docs/prompts.md dari config/prompts.json
+├── docs/                   ← Dokumentasi
+│   └── prompts.md          ← AUTO-GENERATED dari config/prompts.json
+├── tests/                  ← Test files
+├── samples/                ← Sample files
+├── agent/                  ← Agent config/storage
+├── web/                    ← Web build artifacts
+└── node_modules/           ← Dependencies

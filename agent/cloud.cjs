@@ -37,6 +37,7 @@ const MODEL_ALIASES = {
   gemini:     { gemini:'gemini-2.0-flash', flash:'gemini-2.0-flash', pro:'gemini-1.5-pro' },
   openrouter: {},
   nvidia:     { llama:'meta/llama-3.3-70b-instruct', '70b':'meta/llama-3.3-70b-instruct', nemotron:'nvidia/llama-3.1-nemotron-70b-instruct', deepseek:'deepseek-ai/deepseek-r1', qwen:'qwen/qwen2.5-coder-32b-instruct' },
+  opencode:   { flash:'deepseek-v4-flash', 'v4-flash':'deepseek-v4-flash', 'deepseek-v4-flash':'deepseek-v4-flash', 'deepseek-v4-flash-free':'deepseek-v4-flash-free' },
 };
 
 const PROVIDER_NAMES = {
@@ -153,6 +154,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     console.log('[cloud] system prompt:', sys ? `${sys.length} chars, starts: ${sys.slice(0,80)}...` : 'EMPTY!');
     console.log('[cloud] work messages:', workMsgs.length, 'msgs, roles:', workMsgs.map(m=>m.role).join(','));
     let host = cfg.host, path = cfg.path, port = null, headers = { 'content-type':'application/json' }, body, extract;
+    if (provider === 'opencode' && model.includes('-free')) path = '/zen/v1/chat/completions';
     const openaiCompatible = () => {
       headers['authorization'] = 'Bearer ' + cloud.key;
       body = JSON.stringify({ model, stream:true, messages:[{role:'system',content:sys||''},...workMsgs] });
@@ -236,13 +238,35 @@ function fillCloudKey(cloud) {
     cloud.baseUrl = CLOUD_KEYS[cloud.provider].baseUrl;
   }
   if (cloud.baseUrl && /:8085(\/|$)/.test(cloud.baseUrl)) cloud.baseUrl = undefined;
-  // Auto-fix: if opencode baseUrl missing /zen/, use the correct one from CLOUD_KEYS or CLOUD table
+  // Auto-fix: derive opencode baseUrl from model (Zen free vs Go paid)
   if (cloud.provider === 'opencode' || (cloud.baseUrl && /opencode\.ai/i.test(cloud.baseUrl))) {
-    if (!cloud.baseUrl || !/\/zen\//.test(cloud.baseUrl)) {
-      const correct = (CLOUD_KEYS.opencode && CLOUD_KEYS.opencode.baseUrl) || ('https://' + CLOUD.opencode.host + CLOUD.opencode.path.replace(/\/chat\/completions$/, ''));
-      if (cloud.baseUrl !== correct) { cloud.baseUrl = correct; cloud.provider = 'opencode'; }
+    const isFree = cloud.model && cloud.model.includes('-free');
+    const correct = 'https://opencode.ai' + (isFree ? '/zen/v1' : '/zen/go/v1');
+    if (cloud.baseUrl !== correct) { cloud.baseUrl = correct; cloud.provider = 'opencode'; }
+  }
+}
+
+function _sanitizeMessages(messages) {
+  // Ensure all tool_calls have valid JSON arguments (Qwen API requirement)
+  for (const msg of messages) {
+    if (msg.tool_calls && Array.isArray(msg.tool_calls)) {
+      for (const tc of msg.tool_calls) {
+        if (tc.function) {
+          if (!tc.function.arguments || tc.function.arguments.trim() === '') {
+            tc.function.arguments = '{}';
+          } else {
+            // Validate JSON, fix if invalid
+            try {
+              JSON.parse(tc.function.arguments);
+            } catch (_) {
+              tc.function.arguments = '{}';
+            }
+          }
+        }
+      }
     }
   }
+  return messages;
 }
 
 function _askCloudToolsOnce(cloud, messages, tools) {
@@ -254,9 +278,11 @@ function _askCloudToolsOnce(cloud, messages, tools) {
     const aliases = MODEL_ALIASES[provider];
     if (aliases && aliases[model.toLowerCase()]) model = aliases[model.toLowerCase()];
     let host = cfg.host, p = cfg.path, port, transport = https;
+    if (provider === 'opencode' && model.includes('-free')) p = '/zen/v1/chat/completions';
     if (cloud.baseUrl) { try { const u = new URL(cloud.baseUrl.replace(/\/+$/, '') + '/chat/completions'); host = u.hostname; p = u.pathname + (u.search || ''); port = u.port || undefined; transport = (u.protocol === 'http:') ? http : https; } catch (_) {} }
     const isReasoning = /deepseek|reason/i.test(model);
-    const body = JSON.stringify({ model, messages, tools: tools, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: isReasoning ? 16384 : 4096 });
+    const sanitizedMessages = _sanitizeMessages(messages);
+    const body = JSON.stringify({ model, messages: sanitizedMessages, tools: tools, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: isReasoning ? 16384 : 4096 });
     const headers = { 'content-type': 'application/json', authorization: 'Bearer ' + cloud.key, 'content-length': Buffer.byteLength(body) };
     const r = transport.request({ hostname: host, port, path: p, method: 'POST', headers, timeout: 300000 }, s => {
       const bad = s.statusCode >= 400;

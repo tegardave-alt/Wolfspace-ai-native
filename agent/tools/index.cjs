@@ -1,0 +1,433 @@
+// Tool aggregator - imports all sub-modules and provides runSelfTool dispatcher
+const fs = require('fs');
+const path = require('path');
+const { spawn } = require('child_process');
+
+// ── Hybrid module loading (eager core + lazy peripheral) ──
+// Core modules (file-tools, exec-tools) are loaded eagerly — needed on
+// almost every agent step. Peripheral modules load only on first tool call,
+// reducing startup time and memory when tools are not used.
+const _modLoadErrors = {};
+const _modCache = {};
+
+function _ensureMod(name, path) {
+  if (_modCache[name]) return _modCache[name];
+  try {
+    const mod = require(path);
+    _modCache[name] = mod;
+    return mod;
+  } catch (e) {
+    _modLoadErrors[name] = e.message;
+    return null;
+  }
+}
+
+// ── Eager (core) ──
+let fileTools, execTools;
+try { fileTools = require('./file-tools.cjs'); } catch (e) { _modLoadErrors['file-tools'] = e.message; fileTools = {}; }
+try { execTools = require('./exec-tools.cjs'); } catch (e) { _modLoadErrors['exec-tools'] = e.message; execTools = {}; }
+
+// ── Lazy (peripheral) — loaded on first tool call ──
+let _diskTools = null, _webTools = null, _skillTools = null;
+function lazyDisk() { return _diskTools || (_diskTools = _ensureMod('disk-tools', './disk-tools.cjs')) || {}; }
+function lazyWeb()  { return _webTools  || (_webTools  = _ensureMod('web-tools',  './web-tools.cjs'))  || {}; }
+function lazySkill() { return _skillTools || (_skillTools = _ensureMod('skill-tools', './skill-tools.cjs')) || {}; }
+
+// Static definitions (pure JSON, never fails)
+const { SELF_TOOLS } = require('./tool-definitions.cjs');
+
+// Sandbox validator — non-critical, isolated
+let validateOperation = async () => ({ safe: false, reason: 'sandbox-validator not available' });
+try { const v = require('./sandbox-validator.cjs'); if (v.validateOperation) validateOperation = v.validateOperation; }
+catch (e) { _modLoadErrors['sandbox-validator'] = e.message; }
+
+// Re-export everything (eager for core, lazy getters for peripheral)
+const QROOT = (fileTools.QROOT) || path.resolve(__dirname, '..');
+const Q_ALLOWED = fileTools.Q_ALLOWED || /^(?!$)/;
+const Q_FORBID = fileTools.Q_FORBID || /$^/;
+const qResolve = fileTools.qResolve || (() => { throw new Error('file-tools not loaded'); });
+const qWalk = fileTools.qWalk || (() => []);
+const qList = fileTools.qList || (() => '(file-tools not loaded)');
+const qGlob = fileTools.qGlob || ((p) => '(file-tools not loaded: glob unavailable)');
+const qRead = fileTools.qRead || ((p) => '(file-tools not loaded: read unavailable)');
+const qGrep = fileTools.qGrep || ((p) => '(file-tools not loaded: grep unavailable)');
+const qBackup = fileTools.qBackup || (() => { throw new Error('file-tools not loaded'); });
+const qSyntaxOk = fileTools.qSyntaxOk || (async () => ({ ok: false, error: 'file-tools not loaded' }));
+const qSemanticCheck = fileTools.qSemanticCheck || ((fp, c) => ({ blocking: [], warnings: [] }));
+const WORKSPACE = execTools.WORKSPACE || null;
+const wsResolve = execTools.wsResolve || ((p) => p);
+const wsList = execTools.wsList || (() => '(exec-tools not loaded)');
+const runInWorkspace = execTools.runInWorkspace || (() => { throw new Error('exec-tools not loaded'); });
+const term = execTools.term || null;
+// Peripheral exports — lazy, loaded only when their modules are first used
+const resolveDiskPath = (p) => { const m = lazyDisk(); return m.resolveDiskPath ? m.resolveDiskPath(p) : p; };
+const diskList = (...a) => { const m = lazyDisk(); return m.diskList ? m.diskList(...a) : '(disk-tools not loaded)'; };
+const diskRead = (...a) => { const m = lazyDisk(); return m.diskRead ? m.diskRead(...a) : '(disk-tools not loaded)'; };
+const diskGlob = (...a) => { const m = lazyDisk(); return m.diskGlob ? m.diskGlob(...a) : '(disk-tools not loaded)'; };
+const diskGrep = (...a) => { const m = lazyDisk(); return m.diskGrep ? m.diskGrep(...a) : '(disk-tools not loaded)'; };
+const webSearch = async (...a) => { const m = lazyWeb(); return m.webSearch ? m.webSearch(...a) : '(web-tools not loaded)'; };
+const webFetch = async (...a) => { const m = lazyWeb(); return m.webFetch ? m.webFetch(...a) : '(web-tools not loaded)'; };
+const skills = { listSkills: () => { const m = lazySkill(); return m.skills ? m.skills.listSkills() : []; }, runSkill: async (n,a,sr) => { const m = lazySkill(); return m.skills ? m.skills.runSkill(n,a,sr) : { ok: false, output: 'skill-tools not loaded' }; }, installFromFile: (s) => { const m = lazySkill(); return m.skills ? m.skills.installFromFile(s) : { output: 'skill-tools not loaded' }; }, installFromNpm: async (s) => { const m = lazySkill(); return m.skills ? m.skills.installFromNpm(s) : { ok: false, output: 'skill-tools not loaded' }; } };
+const sandbox = { sandboxRun: async (cmd, opts) => { const m = lazySkill(); return m.sandbox ? m.sandbox.sandboxRun(cmd, opts) : { ok: false, output: 'skill-tools not loaded' }; }, defaultSandboxOpts: () => { const m = lazySkill(); return m.sandbox ? m.sandbox.defaultSandboxOpts() : {}; } };
+
+// ── Tool result cache (L1 in-memory with TTL) ──
+// Caches idempotent (read-only) tool results to avoid redundant I/O.
+// Evicts entries older than CACHE_TTL_MS. Cache key = toolName|arg1|arg2|...
+const CACHE_TTL_MS = 30000;
+const _resultCache = new Map();
+function _cachedResult(key, fn) {
+  const now = Date.now();
+  const entry = _resultCache.get(key);
+  if (entry && (now - entry.ts) < CACHE_TTL_MS) return entry.value;
+  const value = fn();
+  if (value && typeof value.then === 'function') {
+    return value.then(r => { if (r && r.ok) _resultCache.set(key, { ts: now, value: r }); return r; });
+  }
+  if (value && value.ok) _resultCache.set(key, { ts: now, value });
+  return value;
+}
+setInterval(() => {
+  const now = Date.now();
+  for (const [k, e] of _resultCache) { if ((now - e.ts) >= CACHE_TTL_MS) _resultCache.delete(k); }
+}, 30000).unref();
+
+// ── Circuit breaker ──
+// Trips after TRIP_THRESHOLD consecutive throws per tool.
+// Auto-resets after RESET_TIMEOUT ms of open state.
+const TRIP_THRESHOLD = 5;
+const RESET_TIMEOUT = 60000;
+const _circuitBreakers = new Map();
+function _circuitAllowed(name) {
+  const state = _circuitBreakers.get(name);
+  if (!state) return true;
+  if (state.tripped) {
+    if (Date.now() - state.trippedAt >= RESET_TIMEOUT) {
+      _circuitBreakers.delete(name);
+      return true;
+    }
+    return false;
+  }
+  return true;
+}
+function _circuitFail(name) {
+  let state = _circuitBreakers.get(name);
+  if (!state) state = { failures: 0, tripped: false, trippedAt: 0 };
+  state.failures++;
+  if (state.failures >= TRIP_THRESHOLD) { state.tripped = true; state.trippedAt = Date.now(); }
+  _circuitBreakers.set(name, state);
+}
+
+// ── Session resource tracker ──
+// Tracks child processes per session for cleanup.
+const _sessionResources = new Map();
+let _nextSessionId = 1;
+function createSession() {
+  const id = 'sess_' + (_nextSessionId++);
+  _sessionResources.set(id, { procs: [], created: Date.now() });
+  return id;
+}
+function trackProcess(sessionId, child) {
+  const sess = _sessionResources.get(sessionId);
+  if (sess) {
+    sess.procs.push(child);
+    child.on('exit', () => { const i = sess.procs.indexOf(child); if (i >= 0) sess.procs.splice(i, 1); });
+  }
+}
+function cleanupSession(sessionId) {
+  abortSessionBash(sessionId);
+  const sess = _sessionResources.get(sessionId);
+  if (!sess) return;
+  for (const child of sess.procs) { try { child.kill(); } catch {} }
+  _sessionResources.delete(sessionId);
+}
+
+// ── Bash process abort registry (per-session) ──
+// Enables external cancellation of running bash via AbortController.
+const _bashProcesses = new Map(); // sessionId -> Set<{controller, child, cmd, started}>
+function _registerBashProcess(sessionId, controller, child, cmd) {
+  if (!_bashProcesses.has(sessionId)) _bashProcesses.set(sessionId, new Set());
+  const entry = { controller, child, cmd, started: Date.now() };
+  _bashProcesses.get(sessionId).add(entry);
+  return entry;
+}
+function _unregisterBashProcess(sessionId, entry) {
+  const set = _bashProcesses.get(sessionId);
+  if (set) { set.delete(entry); if (set.size === 0) _bashProcesses.delete(sessionId); }
+}
+function abortSessionBash(sessionId) {
+  const set = _bashProcesses.get(sessionId);
+  if (!set) return 0;
+  let count = 0;
+  for (const entry of set) {
+    try { entry.controller.abort('cancelled'); entry.child.kill(); } catch {}
+    count++;
+  }
+  _bashProcesses.delete(sessionId);
+  return count;
+}
+
+// ── Core tool dispatcher ──
+async function runSelfTool(name, args, emit, mode, context = {}) {
+  try {
+    // Check if required module is available before dispatching
+    const toolModMap = {
+      list:'file-tools', glob:'file-tools', read:'file-tools', grep:'file-tools',
+      edit:'file-tools', write:'file-tools', bash:'exec-tools',
+      web_search:'web-tools', web_fetch:'web-tools', dspy:'',
+      disk_list:'disk-tools', disk_read:'disk-tools', disk_glob:'disk-tools', disk_grep:'disk-tools',
+      skill_list:'skill-tools', skill_run:'skill-tools', skill_install:'skill-tools', sandbox_run:'skill-tools',
+      terminal_open:'exec-tools', terminal_write:'exec-tools', terminal_read:'exec-tools', terminal_close:'exec-tools',
+      todowrite:'', question:'', task:''
+    };
+    const reqMod = toolModMap[name];
+    if (reqMod && _modLoadErrors[reqMod]) {
+      return { ok: false, output: 'Tool tidak tersedia: modul ' + reqMod + ' gagal dimuat — ' + _modLoadErrors[reqMod] };
+    }
+
+    // Circuit breaker — reject if tool is in OPEN state (>5 consecutive throws)
+    if (!_circuitAllowed(name)) {
+      const state = _circuitBreakers.get(name);
+      const remaining = Math.ceil((RESET_TIMEOUT - (Date.now() - state.trippedAt)) / 1000);
+      return { ok: false, output: 'CIRCUIT TERBUKA: tool ' + name + ' diblokir sementara (' + TRIP_THRESHOLD + ' kegagalan berurutan). Coba lagi dalam ' + remaining + ' detik.' };
+    }
+
+    // Mode enforcement — reject destructive tools in PLAN mode
+    const DESTRUCTIVE_TOOLS = ['edit','write','bash','terminal_open','terminal_write','terminal_read','terminal_close','sandbox_run','skill_run','skill_install'];
+    if (mode === 'plan' && DESTRUCTIVE_TOOLS.includes(name)) {
+      return { ok: false, output: 'MODE PLAN: tool ' + name + ' tidak diizinkan. Silakan alihkan ke mode BUILD dulu.' };
+    }
+
+    // Validate destructive operations before execution
+    if (name === 'edit' || name === 'write' || name === 'bash') {
+      const validation = await validateOperation(name, args);
+      if (!validation.safe) {
+        return { ok: false, output: 'VALIDASI DITOLAK: ' + validation.reason };
+      }
+    }
+
+    if (name === 'list') return _cachedResult('list', () => ({ ok: true, output: qList() }));
+    if (name === 'glob') return _cachedResult('glob|' + (args.pattern||'') + '|' + (args.intent||''), () => ({ ok: true, output: qGlob(args.pattern, { intent: args.intent }) }));
+    if (name === 'read') return _cachedResult('read|' + (args.path||'') + '|' + (args.near||''), () => ({ ok: true, output: qRead(args.path, args.near) }));
+    if (name === 'grep') {
+      const _grepKey = 'grep|' + (args.pattern||'') + '|' + (args.intent||'') + '|' + (!!args.semantic);
+      let output = qGrep(args.pattern, { intent: args.intent, semantic: args.semantic });
+      // Warn if results contain sensitive files (credential/config_sensitive)
+      if (output && !output.startsWith('(') && !args.intent && !args.semantic) {
+        const sensitiveFiles = output.split('\n').filter(line => {
+          const filePath = line.split(':')[0];
+          if (!filePath) return false;
+          const { blocking } = qSemanticCheck(filePath, '');
+          return blocking.length > 0;
+        });
+        if (sensitiveFiles.length > 0) {
+          output = '⚠️  PERINGATAN: ' + sensitiveFiles.length + ' file sensitif terdeteksi (kredensial/konfigurasi). Gunakan `semantic:true` atau `intent` untuk pencarian aman.\n\n' + output;
+        }
+      }
+      return _cachedResult(_grepKey, () => ({ ok: true, output }));
+    }
+    if (name === 'edit') {
+      const dest = qResolve(args.path, true);
+      const old = fs.readFileSync(dest, 'utf8');
+      if (!old.includes(args.old_string)) return { ok: false, output: 'old_string tidak ditemukan di file — read ulang & salin persis.' };
+      if (args.old_string === args.new_string) return { ok: false, output: 'NOOP: old_string sama dengan new_string — edit dibatalkan.' };
+      const patched = old.replace(args.old_string, args.new_string);
+      if (old === patched) return { ok: false, output: 'NOOP: replace tidak mengubah konten (old_string tidak match atau sudah sama).' };
+      fs.writeFileSync(dest, patched, 'utf8');
+      return qSyntaxOk(dest).then(chk => {
+        if (!chk.ok) { fs.writeFileSync(dest, old, 'utf8'); return { ok: false, output: 'DITOLAK (sintaks rusak, dikembalikan):\n' + chk.error }; }
+        return { ok: true, edited: true, output: 'edited ' + args.path + ' (' + old.length + '->' + patched.length + ' b, sintaks OK)' };
+      });
+    }
+    if (name === 'write') {
+      const dest = qResolve(args.path, true);
+      const existed = fs.existsSync(dest); const prev = existed ? fs.readFileSync(dest, 'utf8') : null;
+      fs.mkdirSync(path.dirname(dest), { recursive: true });
+      fs.writeFileSync(dest, args.content || '', 'utf8');
+      return qSyntaxOk(dest).then(chk => {
+        if (!chk.ok) { if (existed) fs.writeFileSync(dest, prev, 'utf8'); else fs.rmSync(dest, { force: true }); return { ok: false, output: 'DITOLAK (sintaks rusak):\n' + chk.error }; }
+        return { ok: true, edited: true, output: (existed ? 'overwrote' : 'created') + ' ' + args.path + ' (sintaks OK)' };
+      });
+    }
+    if (name === 'bash') {
+      const cmd = (args.command || '').trim();
+      if (/\brm\s+-rf\b|\bdel\s+\/|\bformat\b|\bmkfs\b|shutdown|\breboot\b|:\(\)\s*\{|>\s*\/dev\/sd|\bcurl\b[^|]*\|\s*(sh|bash)|\bgit\s+push\b/i.test(cmd))
+        return { ok: false, output: 'perintah berbahaya ditolak' };
+      let cwd = QROOT;
+      if (args.cwd) {
+        try { const resolved = resolveDiskPath(args.cwd); const st = fs.statSync(resolved); if (st.isDirectory()) cwd = resolved; } catch {}
+      }
+      // Resolve session from context (passed by self_agent) or fallback to default
+      const sessId = (context && context.sessionId) || '_default';
+      if (!_sessionResources.has(sessId)) createSession();
+      // Use spawn with AbortController for external cancellation
+      return new Promise(resolve => {
+        const controller = new AbortController();
+        const signal = controller.signal;
+        const child = spawn('cmd.exe', ['/d', '/c', cmd], {
+          cwd,
+          windowsHide: true,
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: '1' },
+          signal,
+        });
+        trackProcess(sessId, child);
+        const entry = _registerBashProcess(sessId, controller, child, cmd);
+        let stdout = '', stderr = '', timedOut = false, aborted = false;
+        const timeoutMs = args.timeout || 60000;
+        const timer = setTimeout(() => { timedOut = true; controller.abort('timeout'); child.kill(); }, timeoutMs);
+        // Poll isCancelled (if provided) every second to honour user cancellation
+        const isCancelled = (context && context.isCancelled) || (() => false);
+        const cancelCheck = setInterval(() => {
+          if (isCancelled() && !timedOut && !aborted) {
+            aborted = true;
+            timedOut = true;
+            clearTimeout(timer);
+            controller.abort('cancelled');
+            child.kill();
+            _unregisterBashProcess(sessId, entry);
+            resolve({ ok: false, output: 'DIBATALKAN: perintah dihentikan oleh user.\n' + cmd.slice(0, 200) });
+          }
+        }, 1000);
+        child.stdout.on('data', chunk => {
+          const text = chunk.toString();
+          stdout += text;
+          if (emit) emit({ t: 'act', kind: 'bash', arg: cmd.slice(0, 60), ok: true, output: text.slice(0, 1000) });
+        });
+        child.stderr.on('data', chunk => {
+          const text = chunk.toString();
+          stderr += text;
+          if (emit) emit({ t: 'act', kind: 'bash', arg: cmd.slice(0, 60), ok: true, output: text.slice(0, 1000) });
+        });
+        child.on('close', code => {
+          clearTimeout(timer);
+          clearInterval(cancelCheck);
+          _unregisterBashProcess(sessId, entry);
+          if (timedOut && !aborted) return resolve({ ok: false, output: 'TIMEOUT (' + (timeoutMs/1000) + 's): ' + cmd.slice(0, 100) });
+          if (aborted) return; // already resolved above
+          const full = (stdout || stderr || '').trim();
+          if (code !== 0 && stderr) {
+            resolve({ ok: false, output: 'exit ' + code + ':\n' + (stderr.trim() || stdout.trim() || '(no output)').slice(0, 4000) });
+          } else {
+            resolve({ ok: true, output: full.slice(0, 4000) || '(exit ' + code + ')' });
+          }
+        });
+        child.on('error', err => {
+          clearTimeout(timer);
+          clearInterval(cancelCheck);
+          _unregisterBashProcess(sessId, entry);
+          // AbortError (from isCancelled or external abort) is expected — don't surface as error
+          if (err.name === 'AbortError') return resolve({ ok: false, output: 'DIBATALKAN: ' + cmd.slice(0, 200) });
+          resolve({ ok: false, output: 'spawn error: ' + err.message });
+        });
+      });
+    }
+    if (name === 'todowrite') {
+      const todos = args.todos || [];
+      const summary = todos.map(t => {
+        const icon = t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '→' : t.status === 'cancelled' ? '✗' : '○';
+        return `${icon} [${t.priority || 'medium'}] ${t.content}`;
+      }).join('\n');
+      return { ok: true, output: `Task list updated (${todos.length} items):\n${summary}` };
+    }
+    if (name === 'question') {
+      const q = args.question || '';
+      const choices = args.choices || [];
+      const choicesText = choices.length ? '\n\nSuggested answers:\n' + choices.map((c, i) => `${i + 1}. ${c}`).join('\n') : '';
+      return { ok: true, output: `Question: ${q}${choicesText}`, needsAnswer: true, question: q, choices };
+    }
+    if (name === 'terminal_open') {
+      if (!term) return { ok: false, output: 'terminal tidak tersedia (node-pty tidak terinstall)' };
+      const r = term.create(args.cwd || undefined, args.shell || undefined);
+      return { ok: true, output: 'terminal opened: ' + r.id + ' (pid ' + r.pid + ')' };
+    }
+    if (name === 'terminal_write') {
+      if (!term) return { ok: false, output: 'terminal tidak tersedia' };
+      if (!args.id) return { ok: false, output: 'parameter id wajib' };
+      const ok = term.write(args.id, args.data);
+      return { ok, output: ok ? 'written' : 'session not found: ' + args.id };
+    }
+    // ACTIVE: terminal_read is registered in tool-definitions.cjs and invoked by the agent
+    // to poll accumulated PTY output. The polling loop (up to 2s) prevents empty reads
+    // right after a terminal_write before the shell has produced output.
+    if (name === 'terminal_read') {
+      if (!term) return { ok: false, output: 'terminal tidak tersedia' };
+      if (!args.id) return { ok: false, output: 'parameter id wajib' };
+      // Wait briefly for output (up to 2s) so agent doesn't read empty buffer immediately after write
+      return new Promise(resolve => {
+        let waited = 0;
+        const poll = () => {
+          const buf = term.readBuffer(args.id, false);
+          if (buf && buf.trim()) {
+            const out = term.readBuffer(args.id, args.clear) || buf;
+            return resolve({ ok: true, output: out || '(no output yet)' });
+          }
+          waited += 100;
+          if (waited >= 2000) return resolve({ ok: true, output: buf || '(no output yet)' });
+          setTimeout(poll, 100);
+        };
+        poll();
+      });
+    }
+    if (name === 'terminal_close') {
+      if (!term) return { ok: false, output: 'terminal tidak tersedia' };
+      if (!args.id) return { ok: false, output: 'parameter id wajib' };
+      const ok = term.destroy(args.id);
+      return { ok, output: ok ? 'session closed: ' + args.id : 'session not found: ' + args.id };
+    }
+    if (name === 'web_search') return webSearch(args.query).then(r => ({ ok: true, output: r }), e => ({ ok: false, output: e.message }));
+    if (name === 'web_fetch')  return webFetch(args.url).then(r => ({ ok: true, output: r }), e => ({ ok: false, output: e.message }));
+    if (name === 'dspy') {
+      // Real DSpy optimization via native JS (Quantum's cloud LLM, no Python)
+      const dspyTool = require('./dspy_tool.cjs');
+      return dspyTool.run(args);
+    }
+    if (name === 'disk_list') return _cachedResult('disk_list|' + (args.path||''), () => ({ ok: true, output: diskList(args.path) }));
+    if (name === 'disk_read') return _cachedResult('disk_read|' + (args.path||'') + '|' + (args.near||''), () => ({ ok: true, output: diskRead(args.path, args.near) }));
+    if (name === 'disk_glob') return _cachedResult('disk_glob|' + (args.path||'') + '|' + (args.pattern||'') + '|' + (args.intent||''), () => ({ ok: true, output: diskGlob(args.path, args.pattern, { intent: args.intent }) }));
+    if (name === 'disk_grep') return _cachedResult('disk_grep|' + (args.path||'') + '|' + (args.pattern||'') + '|' + (args.intent||'') + '|' + (!!args.semantic), () => ({ ok: true, output: diskGrep(args.path, args.pattern, { intent: args.intent, semantic: args.semantic }) }));
+
+    if (name === 'skill_list') {
+      const list = skills.listSkills();
+      const text = list.length ? list.map(s => '- ' + s.name + ' v' + s.version + ': ' + s.description).join('\n') : '(belum ada skill terinstall. Gunakan skill_install untuk menambah.)';
+      return { ok: true, output: text };
+    }
+    if (name === 'skill_run') {
+      const sandboxRunner = (cmd, opts) => sandbox.sandboxRun(cmd, { ...opts, ...sandbox.defaultSandboxOpts() });
+      return skills.runSkill(args.name, args.args || {}, sandboxRunner).then(r => r, e => ({ ok: false, output: e.message }));
+    }
+    if (name === 'skill_install') {
+      const src = (args.source || '').trim();
+      if (!src) return { ok: false, output: 'source diperlukan (npm package name atau path ke .cjs)' };
+      if (src.endsWith('.cjs') && fs.existsSync(src)) {
+        return { ok: true, output: skills.installFromFile(src).output };
+      }
+      // Try npm install
+      return skills.installFromNpm(src).then(r => r, e => ({ ok: false, output: e.message }));
+    }
+    if (name === 'sandbox_run') {
+      const opts = { ...sandbox.defaultSandboxOpts() };
+      if (args.timeout) opts.timeout = args.timeout;
+      if (args.cwd) opts.cwd = args.cwd;
+      if (args.network !== undefined) opts.networkAllowed = args.network;
+      if (args.readRoots) opts.readRoots = args.readRoots;
+      if (args.writeRoots) opts.writeRoots = args.writeRoots;
+      return sandbox.sandboxRun(args.command, opts).then(r => ({
+        ok: r.ok,
+        output: r.output + (r.error ? '\nError: ' + r.error : ''),
+        sandboxId: r.sessionId,
+      }), e => ({ ok: false, output: e.message }));
+    }
+    return { ok: false, output: 'unknown tool: ' + name };
+  } catch (e) {
+    _circuitFail(name);
+    return { ok: false, output: 'error: ' + e.message };
+  }
+}
+
+module.exports = {
+  QROOT, Q_ALLOWED, Q_FORBID,
+  SELF_TOOLS, runSelfTool,
+  qWalk, qList, qGlob, qRead, qGrep, qBackup, qSyntaxOk, qResolve,
+  diskList, diskRead, diskGlob, diskGrep, resolveDiskPath,
+  wsResolve, wsList, runInWorkspace,
+  createSession, cleanupSession, trackProcess,
+};

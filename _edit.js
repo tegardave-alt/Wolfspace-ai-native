@@ -1,0 +1,1 @@
+const fs = require(\"fs\");let c=fs.readFileSync(\"public/index.html\",\"utf8\");c=c.replace(\"xterm.css\",\"xterm.css\n  ^<script src=\\\"https://cdn.tailwindcss.com\\\"^></script^>\");fs.writeFileSync(\"public/index.html\",c);  

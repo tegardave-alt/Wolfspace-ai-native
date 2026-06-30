@@ -21,5 +21,8 @@
     "kotlinc": "C:/langs/kotlinc/bin/kotlinc.bat"
   },
   "models": [],
-  "verbose": true
+  "verbose": true,
+  "eraser": {
+    "apiKey": ""
+  }
 }

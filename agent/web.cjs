@@ -78,18 +78,7 @@ async function webSearch(query) {
     }
   } catch (_) {}
 
-  // 4) Wikipedia
-  try {
-    const wp = await _get({
-      hostname: 'en.wikipedia.org', path: '/w/api.php?action=query&list=search&srsearch=' + q + '&format=json&srlimit=3',
-      headers: { 'User-Agent': UA }, timeout: 10000,
-    });
-    if (wp.query && wp.query.search) for (const item of wp.query.search) {
-      results.push(`**[Wiki] ${item.title}**\n   https://en.wikipedia.org/wiki/${encodeURIComponent(item.title.replace(/ /g,'_'))}\n   ${trunc(item.snippet.replace(/<[^>]+>/g,''),250)}`);
-    }
-  } catch (_) {}
-
-  // 5) DuckDuckGo Instant Answer
+  // 4) DuckDuckGo Instant Answer
   try {
     const ddg = await _get({
       hostname: 'api.duckduckgo.com', path: '/?q=' + q + '&format=json&no_html=1&t=quantum',

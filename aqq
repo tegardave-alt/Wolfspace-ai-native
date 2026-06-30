@@ -1,0 +1,21 @@
+[33mcommit 84ea727b4475fe0cf841155c3914a20a93e1b09d[m
+Author: tegar <tegartanjung141@gmail.com>
+Date:   Sun Jun 21 12:02:36 2026 -0700
+
+    auto
+
+[1mdiff --git a/web/app.jsx b/web/app.jsx[m
+[1mnew file mode 100644[m
+[1mindex 0000000..4655b65[m
+[1m--- /dev/null[m
+[1m+++ b/web/app.jsx[m
+[36m@@ -0,0 +757,9 @@[m
+[32m+[m[32m        <div className="composer-add-wrap" ref={wrapRef}>[m
+[32m+[m[32m          <button className={"composer-add"+(menu?" open":"")} title="Tambah" onClick={()=>setMenu(m=>!m)}>{MI.plus}</button>[m
+[32m+[m[32m          {menu && ([m
+[32m+[m[32m            <div className="composer-menu">[m
+[32m+[m[32m              <button className="cm-item" onClick={()=>notYet("Upload attachment")}><i>{MI.upload}</i><span className="cm-lbl"><b>Upload attachment</b><small>file, image, video, audio</small></span></button>[m
+[32m+[m[32m              <div className="cm-sep" />[m
+[32m+[m[32m              <button className={"cm-item"+(canvasAuto?" active":"")} onClick={webDev}><i>{MI.webdev}</i> Web Dev{canvasAuto?<span className="cm-on">aktif</span>:null}</button>[m
+[32m+[m[32m            </div>[m
+[32m+[m[32m          )}[m

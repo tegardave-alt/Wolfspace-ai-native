@@ -1,0 +1,41 @@
+{
+  "modes": {
+    "plan": {
+      "allowed_tools": [
+        "list",
+        "glob",
+        "read",
+        "grep",
+        "disk_list",
+        "disk_read",
+        "disk_glob",
+        "disk_grep",
+        "web_search",
+        "web_fetch",
+        "skill_list",
+        "todowrite",
+        "question",
+        "dspy",
+        "task"
+      ],
+      "forbidden_tools": [
+        "edit",
+        "write",
+        "bash",
+        "terminal_open",
+        "terminal_write",
+        "terminal_read",
+        "terminal_close",
+        "skill_run",
+        "skill_install",
+        "sandbox_run"
+      ],
+      "refusal": "[PLAN MODE] Read-only. Saya bisa mencari, membaca, dan menganalisis kode, tapi tidak bisa mengedit, menulis, atau menjalankan perintah. Gunakan mode BUILD jika perlu coding & eksekusi."
+    },
+    "build": {
+      "allowed_tools": ["all"],
+      "forbidden_tools": [],
+      "refusal": "[BUILD MODE] Semua tool aktif — siap coding, edit, dan execute."
+    }
+  }
+}

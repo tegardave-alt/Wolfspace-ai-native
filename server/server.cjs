@@ -1603,7 +1603,7 @@ function parsePseudoCalls(text) {
 
 // Pure self-edit agent loop (function-calling tools over Quantum's own source).
 // The full implementation now lives in `agent/self_agent.cjs`.
-const { selfAgentStream } = require('../core/agent/self_agent.cjs');
+const { selfAgentStream } = require('../agent/self_agent.cjs');
 
 // â”€â”€ Persistent PTY Terminal Sessions â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 // Each session is a background pseudo-terminal that keeps state (cd, env).

@@ -10,39 +10,19 @@ const { askCloudStream } = require('./cloud.cjs');
 
 /**
  * Stream a chat completion to the client.
- * @param {Object} opts - {history, port, cloud, webdev}
+ * @param {Object} opts - {history, port, cloud}
  *   - history: array of {role, content}
  *   - port: local model port (if using local model)
  *   - cloud: optional cloud config {key, provider?, model?, system?, baseUrl?}
- *   - webdev: boolean – if true, use WEBDEV_SYS (handled in prompts).
- * @param {function(string):void} emit - SSE writer (writes "data: ...\n\n").
+ * @param {function(string):void} emit - SSE writer (writes "data: ...\n\n").
  * @param {Object} ctl - control object, currently unused but kept for compatibility.
  */
-async function chatStream({ history, port, cloud, webdev }, emit, ctl) {
+async function chatStream({ history, port, cloud }, emit, ctl) {
   // Choose system prompt based on history and mode – prompts module handles.
-  const sys = pickSystem(history, webdev);
-  // In Web Dev mode, auto-optimize the last user message with DSpy for better A2UI output.
-  let enhanced = history || [];
-  if (webdev && enhanced.length > 0) {
-    try {
-      const dspy = require('./dspy_tool.cjs');
-      for (let i = enhanced.length - 1; i >= 0; i--) {
-        if (enhanced[i].role === 'user' && enhanced[i].content) {
-          console.log('[chat] Web Dev mode: calling DSpy to optimize user prompt...');
-          const opt = await dspy.run({ prompt: enhanced[i].content, context: 'Web Dev (A2UI) — improve this prompt to generate a Flutter UI spec in A2UI JSON format (NOT Dart code). Make it specific about layout, state, actions, colors, and interactivity. The model MUST output a single ```json block.', cloud });
-          if (opt.ok && opt.output && opt.output.length > enhanced[i].content.length) {
-            console.log('[chat] DSpy optimization applied:', enhanced[i].content.length, '->', opt.output.length, 'chars');
-            enhanced = enhanced.map((m, idx) => idx === i ? { ...m, content: opt.output } : m);
-          } else {
-            console.log('[chat] DSpy optimization not applied:', opt.ok ? 'output shorter than original' : opt.output);
-          }
-          break; // only optimize the last user message
-        }
-      }
-    } catch (_) { console.log('[chat] DSpy optimization error:', _.message); dlog('chat', 'warn', 'DSpy optimization skipped', { err: _.message }); }
-  }
-  const messages = [{ role: 'system', content: sys }, ...enhanced];
-  console.log('[chat] chatStream started', { historyLen: enhanced.length, useCloud: !!(cloud && cloud.key), port, webdev: !!webdev });
+  const sys = pickSystem(history);
+
+  const messages = [{ role: 'system', content: sys }, ...(history || [])];
+  console.log('[chat] chatStream started', { historyLen: (history || []).length, useCloud: !!(cloud && cloud.key), port });
   const onToken = token => {
     console.log('[chat] token:', token);
     emit({ t: 'tok', c: token });
@@ -65,8 +45,8 @@ async function chatStream({ history, port, cloud, webdev }, emit, ctl) {
   return streamPromise
     .then(full => {
       dlog('chat', 'info', 'stream completed', { length: full.length });
-      // In Web Dev mode, A2UI JSON is rendered client-side — skip server-side code execution.
-      if (webdev) return { ok: true, info: 'webdev mode - client-side A2UI rendering' };
+
+
       return runReply(full, history, emit);
     })
     .catch(onError);

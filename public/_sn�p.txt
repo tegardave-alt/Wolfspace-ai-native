@@ -1,0 +1,11 @@
+<Composer
+                onSend={(t) => doSend(t)}
+                onCancel={cancel}
+                busy={busy}
+              />
+            </div>
+            {canvas && (
+              <div className="split-divider" onMouseDown={onDividerDown} />
+            )}
+            {canvas && (
+         
