@@ -11,10 +11,11 @@ const os = require('os');
 const path = require('path');
 const PROMPTS_CFG_PATH = path.join(__dirname, 'config', 'prompts.json');
 
-function loadSelfAgentPrompt() {
+function loadSelfAgentPrompt(mode) {
   try {
     const cfg = JSON.parse(require('fs').readFileSync(PROMPTS_CFG_PATH, 'utf8'));
-    return cfg.prompts.self_agent.text;
+    const key = mode === 'plan' ? 'self_agent_plan' : mode === 'build' ? 'self_agent_build' : 'self_agent';
+    return cfg.prompts[key]?.text || cfg.prompts.self_agent.text;
   } catch (e) {
     return "You are Quantum's assistant. Chat normally or use tools on Quantum's source code as needed.\nBE CONCISE: answer in 1-3 sentences ONCE.";
   }
@@ -147,20 +148,21 @@ async function selfAgentStream({ history, port, cloud, mode }, emit, ctl = {}) {
   const backupRel = () => (backup ? require('path').relative(__dirname, backup) : null);
   const ensureBackup = () => { if (!backup) { backup = qBackup(); emit({ t: 'backup', dir: backupRel() }); dlog('self', 'info', 'self-agent edit start', { backup: backupRel() }); } };
 
-  // Use optimized system prompt from config/prompts.json if cached, else fallback to original
+  // Load mode-specific system prompt (Plan vs Build) 
+  const modePrompt = loadSelfAgentPrompt(mode);
   let optPrompt = loadSelfAgentOptimized();
   if (optPrompt) {
-    dlog('self', 'info', 'using optimized system prompt', { originalChars: SELF_FC_SYS.length, optimizedChars: optPrompt.length });
+    dlog('self', 'info', 'using optimized system prompt', { originalChars: modePrompt.length, optimizedChars: optPrompt.length });
   } else {
     // Trigger background optimization for next time (non-blocking)
     const { optimizeInBackground } = require('./sysprompt_opt.cjs');
     setImmediate(() => {
-      optimizeInBackground(SELF_FC_SYS).then(result => {
-        if (result) saveSelfAgentOptimized(result, SELF_FC_SYS.length);
+      optimizeInBackground(modePrompt).then(result => {
+        if (result) saveSelfAgentOptimized(result, modePrompt.length);
       }).catch(() => {});
     });
   }
-  const currentSysPrompt = optPrompt || SELF_FC_SYS;
+  const currentSysPrompt = optPrompt || modePrompt;
 
   const messages = new MessageBus([{ role: 'system', content: currentSysPrompt }, ...(history || [])]);
   const MAX_STEPS = Infinity;
@@ -180,6 +182,7 @@ async function selfAgentStream({ history, port, cloud, mode }, emit, ctl = {}) {
     ? new Set(SELF_TOOLS.map(t => t.function.name))
     : new Set(curMode.allowed_tools);
   const filteredTools = SELF_TOOLS.filter(t => allowedTools.has(t.function.name));
+  // modeHint sebagai reinforcement (lapisan kedua) — prompt utama sudah mode-specific
   const modeHint = '\n\n' + (curMode.refusal || (mode === 'plan' ? '[MODE PLAN] Read-only.' : '[MODE BUILD] All tools.'));
   messages.replaceAt(0, { role: 'system', content: messages.get(0).content + modeHint });
 
