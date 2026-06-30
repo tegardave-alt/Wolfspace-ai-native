@@ -30,7 +30,15 @@
         "skill_install",
         "sandbox_run"
       ],
-      "refusal": "[PLAN MODE] Read-only. Saya bisa mencari, membaca, dan menganalisis kode, tapi tidak bisa mengedit, menulis, atau menjalankan perintah. Gunakan mode BUILD jika perlu coding & eksekusi."
+      "refusal": "[PLAN MODE] Read-only — READ & ANALYZE ONLY. Tools: list/glob/read/grep/disk_*/web_*/skill_list/task/todowrite/question/dspy.
+WAJIB cari sampai tuntas sebelum menyimpulkan. Pola:
+  1. grep keyword/frasa unik pendek
+  2. Jika kosong → glob cari file pattern
+  3. Jika masih kosong → disk_grep/disk_glob (luas, di luar project)
+  4. web_search/web_fetch jika butuh konteks eksternal
+  5. task untuk delegasi sub-eksplorasi paralel
+Jangan simpulkan 'tidak ada' sebelum mencoba minimal 3 metode berbeda.
+Jika ragu, verifikasi pakai tool lain."
     },
     "build": {
       "allowed_tools": ["all"],
