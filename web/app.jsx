@@ -32,9 +32,9 @@ function BrandMark({ className }) { return (<span className={"brand-mark " + (cl
 
 /* ----------------------------- Backend glue ----------------------------- */
 const PREFIXES = [["github_pat_","github","GitHub Models"],["ghp_","github","GitHub Models"],["sk-ant-","anthropic","Claude"],["sk-or-","openrouter","OpenRouter"],["gsk_","groq","Groq"],["AIza","gemini","Gemini"],["nvapi-","nvidia","NVIDIA"],["sk-UUa","opencode","OpenCode"],["sk-","openai","OpenAI"]];
-const CLOUD_DEFAULT = { anthropic:"claude", openai:"gpt-4o", openrouter:"anthropic/claude-opus-4-8", groq:"llama", qwen:"qwen", deepseek:"chat", github:"gpt-4o", gemini:"gemini-2.0-flash", nvidia:"nvidia/nemotron-3-super-120b-a12b", opencode:"deepseek-v4-flash", puter:"claude-sonnet-4", custom:"gpt-4o" };
-const PROVIDER_LABELS = { openai:"OpenAI", qwen:"Qwen", groq:"Groq", openrouter:"OpenRouter", anthropic:"Claude", deepseek:"DeepSeek", github:"GitHub Models", gemini:"Gemini", nvidia:"NVIDIA", opencode:"OpenCode", puter:"Puter", custom:"Custom" };
-const PROVIDER_OPTS = ["auto","openai","qwen","deepseek","github","groq","openrouter","anthropic","gemini","nvidia","opencode","puter","custom"];
+const CLOUD_DEFAULT = { anthropic:"claude", openai:"gpt-4o", openrouter:"anthropic/claude-opus-4-8", groq:"llama", qwen:"qwen", deepseek:"chat", github:"gpt-4o", gemini:"gemini-2.0-flash", nvidia:"nvidia/nemotron-3-super-120b-a12b", opencode:"deepseek-v4-flash", puter:"claude-sonnet-4", cloudflare:"@cf/meta/llama-3.1-8b-instruct", custom:"gpt-4o" };
+const PROVIDER_LABELS = { openai:"OpenAI", qwen:"Qwen", groq:"Groq", openrouter:"OpenRouter", anthropic:"Claude", deepseek:"DeepSeek", github:"GitHub Models", gemini:"Gemini", nvidia:"NVIDIA", opencode:"OpenCode", puter:"Puter", cloudflare:"Cloudflare Worker", custom:"Custom" };
+const PROVIDER_OPTS = ["auto","openai","qwen","deepseek","github","groq","openrouter","anthropic","gemini","nvidia","opencode","puter","cloudflare","custom"];
 function detectPrefix(key){ key=(key||"").trim(); for(const [p,prov,name] of PREFIXES) if(key.startsWith(p)) return {provider:prov,name}; return key?{provider:"openai",name:"OpenAI"}:null; }
 function keyish(s){ return /^(sk-|gsk_|AIza|github_pat_|ghp_)/.test((s||"").trim()); }
 function getCloud(){ try{ return JSON.parse(localStorage.getItem("quantum_cloud")||"null"); }catch(e){ return null; } }
@@ -231,7 +231,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
     if (!k) { setHint("Tempel API key dulu."); return; }
     let prov, name, bu;
     if (provider === "auto") { const d = detectPrefix(k); prov = d.provider; name = d.name; }
-    else if (provider === "custom") { prov = "custom"; name = "Custom"; bu = baseUrl.trim(); if(!bu){ setHint("Isi Base URL untuk custom."); return; } }
+    else if (provider === "custom" || provider === "cloudflare") { prov = provider; name = PROVIDER_LABELS[provider]; bu = baseUrl.trim(); if(!bu){ setHint("Isi Base URL untuk " + (provider === "cloudflare" ? "Cloudflare Worker" : "custom") + "."); return; } }
     else { prov = provider; name = PROVIDER_LABELS[provider]; }
     let mdl = model.trim();
     if (stored && stored.provider !== prov) mdl = "";
@@ -274,9 +274,9 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
               <Icon.chev className="chev" style={{ width: 15, height: 15 }} />
             </div>
           </div>
-          {provider === "custom" && (
+          {(provider === "custom" || provider === "cloudflare") && (
             <div className="field"><label className="field-label">Base URL</label>
-              <input className="input" value={baseUrl} onChange={(e)=>setBaseUrl(e.target.value)} placeholder="https://host/v1" /></div>
+              <input className="input" value={baseUrl} onChange={(e)=>setBaseUrl(e.target.value)} placeholder={provider === "cloudflare" ? "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1" : "https://host/v1"} /></div>
           )}
           <div className="field"><label className="field-label">Model</label>
             <input className="input" value={model} onChange={(e)=>setModelName(e.target.value)} placeholder="opsional — mis. qwen, coder, gpt-4o" /></div>

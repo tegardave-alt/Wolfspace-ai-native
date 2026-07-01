@@ -16,6 +16,7 @@
     nvidia: "nvidia/nemotron-3-super-120b-a12b",
     opencode: "deepseek-v4-flash-free",
     puter: "claude-sonnet-4",
+    cloudflare: "@cf/meta/llama-3.1-8b-instruct",
     custom: "gpt-4o",
   };
 
@@ -31,6 +32,7 @@
     nvidia: "NVIDIA",
     opencode: "OpenCode",
     puter: "Puter",
+    cloudflare: "Cloudflare Worker",
     custom: "Custom",
   };
 
@@ -47,6 +49,7 @@
     "nvidia",
     "opencode",
     "puter",
+    "cloudflare",
     "custom",
   ];
 
@@ -126,12 +129,12 @@
         }
         prov = d.provider;
         name = d.name;
-      } else if (provider === "custom") {
-        prov = "custom";
-        name = "Custom";
+      } else if (provider === "custom" || provider === "cloudflare") {
+        prov = provider;
+        name = PROVIDER_LABELS[provider];
         bu = baseUrl.trim();
         if (!bu) {
-          setHint("Isi Base URL untuk custom.");
+          setHint("Isi Base URL untuk " + (provider === "cloudflare" ? "Cloudflare Worker" : "custom") + ".");
           return;
         }
       } else {
@@ -232,14 +235,14 @@
                   <Icon.chev className="chev" style={{ width: 15, height: 15 }} />
                 </div>
               </div>
-              {provider === "custom" && (
+              {(provider === "custom" || provider === "cloudflare") && (
                 <div className="field">
                   <label className="field-label">Base URL</label>
                   <input
                     className="input"
                     value={baseUrl}
                     onChange={(e) => setBaseUrl(e.target.value)}
-                    placeholder="https://host/v1"
+                    placeholder={provider === "cloudflare" ? "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1" : "https://host/v1"}
                   />
                 </div>
               )}

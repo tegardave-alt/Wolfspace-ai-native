@@ -3,7 +3,7 @@
 const fs = require('fs');
 const path = require('path');
 
-const CACHE_FILE = path.join(__dirname, 'config', 'prompts.json');
+const CACHE_FILE = path.join(__dirname, '..', 'config', 'prompts.json');
 const CACHE_TTL_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
 let cachedOptimized = null;

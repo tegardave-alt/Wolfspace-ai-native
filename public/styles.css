@@ -3770,6 +3770,18 @@ select {
   background: var(--surface-2);
   flex-shrink: 0;
 }
+.agent-runner-card-icon.agent-claude {
+  background: rgba(217, 119, 87, 0.12);
+  color: #D97757;
+}
+.agent-runner-card-icon.agent-opencode {
+  background: rgba(16, 185, 129, 0.12);
+  color: #10b981;
+}
+.agent-runner-card-icon.agent-quantum {
+  background: rgba(139, 109, 255, 0.12);
+  color: #8b6dff;
+}
 .agent-runner-card-name {
   font-size: 14px;
   font-weight: 700;

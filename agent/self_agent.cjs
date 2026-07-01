@@ -9,7 +9,7 @@ const os = require('os');
 
 // System prompt for function-calling self-agent
 const path = require('path');
-const PROMPTS_CFG_PATH = path.join(__dirname, 'config', 'prompts.json');
+const PROMPTS_CFG_PATH = path.join(__dirname, '..', 'config', 'prompts.json');
 
 function loadSelfAgentPrompt() {
   try {
@@ -18,15 +18,7 @@ function loadSelfAgentPrompt() {
     const cfg = JSON.parse(clean);
     return cfg.prompts.self_agent.text;
   } catch (e) {
-    // Fallback hardcoded prompt if config file unavailable
-    return [
-      "You are Quantum's assistant. You can chat normally AND, when needed, act on Quantum's own source code with tools — you decide which, like Claude.",
-      "BE CONCISE — straight to the point. The final answer is AT MOST 1-3 short sentences. State the result ONCE (e.g. 'Ada di public/app.jsx:524.') and STOP.",
-      "DEFAULT = just answer in plain text. For greetings, DO NOT use any tools.",
-      "USE TOOLS ONLY when the user asks to find/read/inspect/locate/change/fix/search in Quantum source or for web info.",
-      "When acting: CALL tools directly. NEVER describe tool calls in prose.",
-      "Editable: server.cjs, *.cjs, config.json, public/** (.jsx/.js/.css/.html/.json). Forbidden: cloud-keys.json, node_modules, builds, backups."
-    ].join('\n');
+    return "You are Quantum's assistant. Chat normally or use tools on Quantum's source code as needed. Answer based on evidence from tools. Do not speculate.";
   }
 }
 
@@ -90,13 +82,10 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
   const backupRel = () => (backup ? require('path').relative(__dirname, backup) : null);
   const ensureBackup = () => { if (!backup) { backup = qBackup(); emit({ t: 'backup', dir: backupRel() }); dlog('self', 'info', 'self-agent edit start', { backup: backupRel() }); } };
 
-  // Use DSpy-optimized system prompt if cached, else fallback to original
+  // Use DSpy-optimized system prompt if cached, else use original
   let optPrompt = getOptimized();
   if (optPrompt) {
     dlog('self', 'info', 'using optimized system prompt', { originalChars: SELF_FC_SYS.length, optimizedChars: optPrompt.length });
-  } else {
-    // Trigger background optimization for next time (non-blocking)
-    setImmediate(() => optimizeInBackground(SELF_FC_SYS));
   }
   const currentSysPrompt = optPrompt || SELF_FC_SYS;
 

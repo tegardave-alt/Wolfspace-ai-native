@@ -24,10 +24,11 @@ function dlog(cat, level, msg, data) {
   try { fs.appendFileSync(LOG_FILE, JSON.stringify(e) + '\n'); } catch (_) {}
   if (VERBOSE) {
     const prefix = `[quantum:${cat}]`;
-    if (level === 'error') console.error(prefix, msg, data && data.error ? data.error : '');
-    else console.log(prefix, msg, data ? JSON.stringify(data, null, 0) : '');
+    const text = data ? JSON.stringify(data, null, 0) : '';
+    if (level === 'error') process.stderr.write(`${prefix} ${msg} ${data && data.error ? data.error : ''}\n`);
+    else process.stdout.write(`${prefix} ${msg} ${text}\n`);
   } else if (DEBUG_ON && level === 'error') {
-    console.error(`[quantum:${cat}] ${msg}`, data && data.error ? data.error : '');
+    process.stderr.write(`[quantum:${cat}] ${msg} ${data && data.error ? data.error : ''}\n`);
   }
   return e;
 }
