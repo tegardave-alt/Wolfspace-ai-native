@@ -1,5 +1,15 @@
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
+// Command Palette (forked from VS Code) - daftar command yang tersedia
+const COMMANDS = [
+  { id: 'open.agents', label: 'Agent Runner: Buka Agent Runner', icon: 'runner', action: () => document.querySelector('[data-view="agents"]')?.click() },
+  { id: 'open.settings', label: 'Settings: Buka Pengaturan', icon: 'settings', action: () => document.querySelector('[data-view="settings"]')?.click() },
+  { id: 'terminal.new', label: 'Terminal: Buat Terminal Baru', icon: 'terminal', action: () => window.createNewTerminal?.() },
+  { id: 'openclaw.chat', label: 'OpenClaw: Jalankan dari Chat', icon: 'runner', action: () => window.dispatchEvent(new CustomEvent('WOLFSPACE:set-composer', { detail: '/openclaw ' })) },
+  { id: 'agent.run', label: 'Agent: Mulai agent baru', icon: 'play', action: () => window.startNewAgent?.() },
+  { id: 'theme.toggle', label: 'Appearance: Toggle Tema Gelap/Terang', icon: 'theme', action: () => document.body.classList.toggle('light-theme') },
+];
+
 /* ----------------------------- Icons ----------------------------- */
 const Icon = {
   spark: (p) => (
@@ -126,6 +136,38 @@ const Icon = {
       />
     </svg>
   ),
+  square: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <rect
+        x="5"
+        y="5"
+        width="14"
+        height="14"
+        rx="2"
+        fill="currentColor"
+      />
+    </svg>
+  ),
+  terminal: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <rect
+        x="3"
+        y="3"
+        width="18"
+        height="18"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M9 10l3 3-3 3M15 16h2"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
   sun: (p) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
@@ -229,10 +271,20 @@ const HubIcon = {
   ),
   hf: (p) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <circle cx="8" cy="7" r="3" fill="currentColor" />
+      <circle cx="16" cy="7" r="3" fill="currentColor" />
       <path
-        d="M7.5 7.5a2.5 2.5 0 015 0v3h-5v-3zm4 0a2.5 2.5 0 015 0v3h-5v-3zm-5 5h5v4a2 2 0 01-2 2h-1a2 2 0 01-2-2v-4zm6 0h5v4a2 2 0 01-2 2h-1a2 2 0 01-2-2v-4z"
-        fill="currentColor"
+        d="M6 11c-1 0-1.5 2-1.5 4 0 3 2 6 7.5 6s7.5-3 7.5-6c0-2-.5-4-1.5-4M8 14v3M12 14v3M16 14v3"
+        stroke="currentColor"
+        strokeWidth="1.5"
+        strokeLinecap="round"
+        fill="none"
       />
+    </svg>
+  ),
+  ollama: (p) => (
+    <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
+      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3-8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-6 0c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-2.7 0-5.8 1.29-6 2v2h12v-2c-.2-.71-3.3-2-6-2z" />
     </svg>
   ),
   empty: (p) => (
@@ -393,7 +445,7 @@ function reqFor(modelVal, cloud, history, webdev) {
         last = b.history[i];
       if (last && last.role === "user" && !last.content.includes("```json")) {
         const R =
-          "\n\n⚠️ CRITICAL: Your ENTIRE answer must be a SINGLE ```json block containing an A2UI spec. NEVER write ```dart. Dart code is NOT rendered. Output ONLY ```json.";
+          "\n\n?? CRITICAL: Your ENTIRE answer must be a SINGLE ```json block containing an A2UI spec. NEVER write ```dart. Dart code is NOT rendered. Output ONLY ```json.";
         b.history = [
           ...b.history.slice(0, i),
           { ...last, content: last.content + R },
@@ -438,8 +490,8 @@ async function pumpSSE(r, signal, onEvent) {
   }
 }
 const IPC =
-  typeof window !== "undefined" && window.quantum && window.quantum.ipc
-    ? window.quantum
+  typeof window !== "undefined" && window.WOLFSPACE && window.WOLFSPACE.ipc
+    ? window.WOLFSPACE
     : null;
 
 async function streamChat(reqBody, onText, signal) {
@@ -453,7 +505,7 @@ async function streamChat(reqBody, onText, signal) {
       acc = "";
       run = null;
       onText(acc, run);
-    } // new fix attempt → drop the previous failed one
+    } // new fix attempt ? drop the previous failed one
     else if (j.t === "run") {
       run = j.run;
       onText(acc, run);
@@ -466,7 +518,7 @@ async function streamChat(reqBody, onText, signal) {
     }
   };
   if (IPC) {
-    // Electron IPC — no HTTP
+    // Electron IPC � no HTTP
     await new Promise((resolve) => {
       const cancel = IPC.stream("chat", reqBody, handle, resolve);
       if (signal)
@@ -486,7 +538,7 @@ async function streamChat(reqBody, onText, signal) {
   await pumpSSE(r, signal, handle);
   return { text: acc, run };
 }
-// Self-edit agent: stream the READ/GREP/EDIT/… loop (IPC, or /self-agent over HTTP).
+// Self-edit agent: stream the READ/GREP/EDIT/� loop (IPC, or /self-agent over HTTP).
 async function streamSelfAgent(reqBody, onEvent, signal) {
   if (IPC) {
     await new Promise((resolve) => {
@@ -511,11 +563,28 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
   } catch (e) {
     if (e instanceof TypeError && e.message.includes("Failed to fetch")) {
       throw new Error(
-        'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder quantum\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
+        'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder WOLFSPACE\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
       );
     }
     throw e;
   }
+}
+
+async function runOpenClawChat(message, signal) {
+  const r = await fetch("/api/openclaw/chat", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message }),
+    signal,
+  });
+  let data = {};
+  try {
+    data = await r.json();
+  } catch (_) {}
+  if (!r.ok || !data.ok) {
+    throw new Error(data.error || `OpenClaw gagal: HTTP ${r.status}`);
+  }
+  return data;
 }
 
 /* ----------------------------- Model Interface (collapsible dropdown) ----------------------------- */
@@ -581,6 +650,8 @@ function TopBar({
   status,
   theme,
   setTheme,
+  terminalOpen,
+  setTerminalOpen,
 }) {
   return (
     <header className="topbar">
@@ -591,6 +662,20 @@ function TopBar({
       />
 
       <div className="tb-spacer" />
+      <button
+        className="topbar-btn"
+        onClick={() => {}}
+        title="MCP Server"
+        style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: "6px" }}
+      >
+        <svg viewBox="0 0 24 24" fill="none" style={{ width: 18, height: 18 }}>
+          <rect x="2" y="2" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="2" />
+          <rect x="14" y="2" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="2" />
+          <rect x="2" y="14" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="2" />
+          <rect x="14" y="14" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="2" />
+          <path d="M10 6h4M6 10v4M18 10v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
+        </svg>
+      </button>
     </header>
   );
 }
@@ -612,7 +697,7 @@ function HFModels({ onSaved }) {
   const search = async () => {
     const t = q.trim();
     if (!t) return;
-    setMsg("mencari…");
+    setMsg("Mencari model...");
     setResults([]);
     setSel("");
     setFiles([]);
@@ -622,31 +707,31 @@ function HFModels({ onSaved }) {
       ).json();
       if (r.error) throw new Error(r.error);
       setResults(r);
-      setMsg(r.length ? "" : "tidak ada hasil");
+      setMsg(r.length ? "" : "Belum ada hasil yang cocok.");
     } catch (e) {
-      setMsg("gagal: " + e.message);
+      setMsg("Pencarian gagal: " + e.message);
     }
   };
   const pick = async (id) => {
     setSel(id);
     setFiles([]);
-    setMsg("memuat file…");
+    setMsg("Memuat daftar file...");
     try {
       const r = await (
         await fetch("/hf/files?id=" + encodeURIComponent(id))
       ).json();
       if (r.error) throw new Error(r.error);
       setFiles(r);
-      setMsg(r.length ? "" : "tak ada file .gguf di repo ini");
+      setMsg(r.length ? "" : "Tidak ada file .gguf di repositori ini.");
     } catch (e) {
-      setMsg("gagal: " + e.message);
+      setMsg("Gagal memuat file: " + e.message);
     }
   };
   const download = async (file) => {
     if (busy) return;
     setBusy(true);
     setProg(0);
-    setMsg("mengunduh " + file.split("/").pop() + "…");
+    setMsg("Mengunduh " + file.split("/").pop() + "...");
     try {
       const res = await fetch("/hf/download", {
         method: "POST",
@@ -674,18 +759,18 @@ function HFModels({ onSaved }) {
           if (j.t === "progress") setProg(j.pct);
           else if (j.t === "done") {
             setMsg(
-              "✓ " +
+              "Selesai: " +
                 j.model.name +
-                " diunduh & dijalankan (port " +
+                " sudah diunduh dan dijalankan di port " +
                 j.model.port +
-                "). Tunggu ~30 dtk, lalu pilih di dropdown Model.",
+                ". Tunggu sekitar 30 detik, lalu pilih dari menu Model.",
             );
             onSaved && onSaved();
-          } else if (j.t === "err") setMsg("gagal: " + j.m);
+          } else if (j.t === "err") setMsg("Unduhan gagal: " + j.m);
         }
       }
     } catch (e) {
-      setMsg("gagal: " + e.message);
+      setMsg("Unduhan gagal: " + e.message);
     }
     setBusy(false);
     setProg(null);
@@ -698,7 +783,7 @@ function HFModels({ onSaved }) {
           className="input"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="cari GGUF… (mis. qwen coder)"
+          placeholder="Cari GGUF, misalnya qwen coder"
           onKeyDown={(e) => {
             if (e.key === "Enter") search();
           }}
@@ -718,7 +803,7 @@ function HFModels({ onSaved }) {
               {m.id}
               <br />
               <span className="meta">
-                ↓ {m.downloads.toLocaleString()} · ♥ {m.likes}
+                Unduhan {m.downloads.toLocaleString()} � Suka {m.likes}
               </span>
             </button>
           ))}
@@ -732,7 +817,7 @@ function HFModels({ onSaved }) {
               <span className="nm">{f.path.split("/").pop()}</span>
               <span className={"sz" + (heavy ? " heavy" : "")}>
                 {fmtSize(f.size)}
-                {heavy ? " ⚠" : ""}
+                {heavy ? " ?" : ""}
               </span>
               <button
                 className="hf-dl"
@@ -767,21 +852,21 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
   const [baseUrl, setBaseUrl] = useState(stored ? stored.baseUrl || "" : "");
   const [hint, setHint] = useState(
     stored
-      ? "provider " +
+      ? "Provider " +
           stored.provider +
-          " ·" +
+          " � " +
           (stored.key ? stored.key.slice(-4) : "server") +
-          " · aktif"
-      : "Tempel API key, lalu Deteksi atau pilih provider.",
+          " � aktif"
+      : "Tempel API key, lalu deteksi otomatis atau pilih provider.",
   );
 
   const detect = async () => {
     const k = key.trim() || (stored && stored.key);
     if (!k) {
-      setHint("Tempel API key dulu.");
+      setHint("Tempel API key terlebih dahulu.");
       return;
     }
-    setHint("🔍 Mendeteksi…");
+    setHint("Sedang mendeteksi provider...");
     try {
       const d = await (
         await fetch("/detect-key", {
@@ -793,17 +878,17 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       if (PROVIDER_LABELS[d.provider]) setProvider(d.provider);
       setHint(
         d.verified
-          ? "✓ Terverifikasi: " + d.name
+          ? "Terverifikasi: " + d.name
           : "Tebakan: " + d.name + " (belum terverifikasi)",
       );
     } catch (e) {
-      setHint("Deteksi gagal: " + e.message);
+      setHint("Deteksi belum berhasil: " + e.message);
     }
   };
   const save = () => {
     const k = key.trim() || (stored && stored.key);
     if (!k) {
-      setHint("Tempel API key dulu.");
+      setHint("Tempel API key terlebih dahulu.");
       return;
     }
     let prov, name, bu;
@@ -816,7 +901,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       name = PROVIDER_LABELS[provider];
       bu = baseUrl.trim();
       if (!bu) {
-        setHint("Isi Base URL untuk " + (provider === "cloudflare" ? "Cloudflare Worker" : "custom") + ".");
+        setHint("Isi Base URL untuk " + (provider === "cloudflare" ? "Cloudflare Worker" : "provider custom") + ".");
         return;
       }
     } else {
@@ -836,17 +921,17 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       .then((r) => r.json())
       .then(() =>
         setHint(
-          "Tersimpan (browser + server): " +
+          "Tersimpan di browser dan server: " +
             prov +
-            " ·" +
+            " � " +
             k.slice(-4) +
-            " → " +
+            " ? " +
             mdl,
         ),
       )
       .catch(() =>
         setHint(
-          "Tersimpan di browser: " + prov + " ·" + k.slice(-4) + " → " + mdl,
+          "Tersimpan di browser: " + prov + " � " + k.slice(-4) + " ? " + mdl,
         ),
       );
     onSaved();
@@ -858,7 +943,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
     setModelName("");
     setBaseUrl("");
     setProvider("auto");
-    setHint("Dihapus.");
+    setHint("Konfigurasi API key sudah dihapus.");
     onSaved();
     onCloudChanged();
   };
@@ -874,8 +959,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
           >
             {SB.key({ width: 16, height: 16 })}
           </span>
-          <span className="hub-title">API Key</span>
-          <span className="hub-subtitle">Cloud BYOK · bawa key sendiri</span>
+          <span className="hub-title">Pengaturan API</span>
         </div>
         <div className="tb-spacer" />
       </header>
@@ -883,7 +967,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
         <div className="hub-inner settings-inner">
           <div className="settings-card">
             <div className="field">
-              <label className="field-label">Cloud API Key</label>
+              <label className="field-label">API Key Cloud</label>
               <input
                 className="input"
                 type="password"
@@ -892,15 +976,15 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                 onChange={(e) => setKey(e.target.value)}
                 placeholder={
                   stored
-                    ? "Key tersimpan (…" +
+                    ? "Key tersimpan (... " +
                       (stored.key ? stored.key.slice(-4) : "server") +
-                      ") — kosongkan untuk tetap"
-                    : "Tempel API key apa saja…"
+                      ") - kosongkan untuk tetap memakai key lama"
+                    : "Tempel API key di sini"
                 }
               />
             </div>
             <button className="btn btn-ghost" onClick={detect}>
-              🔍 Deteksi provider dari key
+              Deteksi provider dari key
             </button>
             <div className="field">
               <label className="field-label">Provider</label>
@@ -909,7 +993,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                   value={provider}
                   onChange={(e) => setProvider(e.target.value)}
                 >
-                  <option value="auto">Auto-deteksi</option>
+                  <option value="auto">Deteksi otomatis</option>
                   {PROVIDER_OPTS.filter((p) => p !== "auto").map((p) => (
                     <option key={p} value={p}>
                       {p === "custom"
@@ -938,7 +1022,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                 className="input"
                 value={model}
                 onChange={(e) => setModelName(e.target.value)}
-                placeholder="opsional — mis. qwen, coder, gpt-4o"
+                placeholder="Opsional, misalnya qwen, coder, gpt-4o"
               />
             </div>
             <div className="provider-status">
@@ -950,7 +1034,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                 <Icon.check style={{ width: 14, height: 14 }} /> Simpan
               </button>
               <button className="btn btn-danger" onClick={clear}>
-                Hapus
+                Hapus konfigurasi
               </button>
             </div>
           </div>
@@ -1051,7 +1135,7 @@ function mLang(l) {
   return MLANG[(l || "").toLowerCase()] || "plaintext";
 }
 
-// Per-language monogram badge (color + short symbol) — clean, no heavy logo assets.
+// Per-language monogram badge (color + short symbol) � clean, no heavy logo assets.
 const LANG_META = {
   python: { l: "Python", s: "Py", c: "#3776AB" },
   javascript: { l: "JavaScript", s: "JS", c: "#F7DF1E", d: 1 },
@@ -1116,66 +1200,10 @@ function LangIcon({ lang }) {
     </span>
   );
 }
-function LangSelect({ value, onChange }) {
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
 
-  useEffect(() => {
-    if (!open) return;
-    const h = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [open]);
-  const meta = (l) =>
-    LANG_META[l] || { l, s: (l || "?").slice(0, 2), c: "#7c8aa0" };
-  const cur = meta(value);
-  return (
-    <div className="lang-select" ref={ref}>
-      <button
-        className="lang-trigger"
-        onClick={() => setOpen((o) => !o)}
-        title="Pilih bahasa"
-      >
-        <LangIcon lang={value} />
-        <span className="lang-name">{cur.l}</span>
-        <Icon.chev className="chev" style={{ width: 13, height: 13 }} />
-      </button>
-      {open && (
-        <div className="lang-menu">
-          {LANGS.map((l) => {
-            const m = meta(l);
-            return (
-              <button
-                key={l}
-                className={"lang-opt" + (l === value ? " active" : "")}
-                onClick={() => {
-                  onChange(l);
-                  setOpen(false);
-                }}
-              >
-                <LangIcon lang={l} />
-                <span>{m.l}</span>
-                {l === value ? (
-                  <Icon.check
-                    style={{ width: 13, height: 13, marginLeft: "auto" }}
-                  />
-                ) : null}
-              </button>
-            );
-          })}
-        </div>
-      )}
-    </div>
-  );
-}
-
-function CodeBlock({ lang, code, onAiEdit, busy }) {
+function CodeBlock({ lang, code }) {
   const [copied, setCopied] = useState(false);
   const [language, setLanguage] = useState((lang || "python").toLowerCase());
-  const [aiOpen, setAiOpen] = useState(false);
-  const [ins, setIns] = useState("");
   const [runState, setRunState] = useState("idle");
   const [out, setOut] = useState(null);
   const [edReady, setEdReady] = useState(false); // Monaco mounted? else show <pre> fallback
@@ -1267,16 +1295,9 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
       });
       setOut(await r.json());
     } catch (e) {
-      setOut({ ok: false, error: "server tidak terjangkau: " + e.message });
+      setOut({ ok: false, error: "Server belum bisa dijangkau: " + e.message });
     }
     setRunState("done");
-  };
-  const doAi = () => {
-    const t = ins.trim();
-    if (!t || busy) return;
-    setAiOpen(false);
-    setIns("");
-    onAiEdit(getCode(), language, t);
   };
 
   return (
@@ -1319,16 +1340,13 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
         >
           {runState === "running" ? (
             <>
-              <Icon.loader className="spin" /> Running…
+              <Icon.loader className="spin" /> Menjalankan...
             </>
           ) : (
             <>
-              <Icon.play /> Run
+              <Icon.play /> Jalankan
             </>
           )}
-        </button>
-        <button className="ctb-btn ctb-ai" onClick={() => setAiOpen((o) => !o)}>
-          <Icon.spark style={{ width: 13, height: 13 }} /> AI Edit
         </button>
         <button
           className={"ctb-btn" + (copied ? " copied" : "")}
@@ -1336,31 +1354,8 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
         >
           {copied ? <Icon.check /> : <Icon.copy />} {copied ? "Copied" : "Copy"}
         </button>
-        <LangSelect value={language} onChange={setLanguage} />
       </div>
-      {aiOpen && (
-        <div className="ai-panel">
-          <textarea
-            value={ins}
-            onChange={(e) => setIns(e.target.value)}
-            placeholder="Instruksi AI… (mis. tambah error handling, ubah ke async)"
-            onKeyDown={(e) => {
-              if (e.key === "Enter" && !e.shiftKey) {
-                e.preventDefault();
-                doAi();
-              }
-            }}
-          />
-          <div className="ai-row">
-            <button className="ai-go" onClick={doAi}>
-              ✦ Generate
-            </button>
-            <button className="ctb-btn" onClick={() => setAiOpen(false)}>
-              Batal
-            </button>
-          </div>
-        </div>
-      )}
+
       {runState === "done" && out && (
         <div className={"code-output " + (out.ok ? "ok" : "err")}>
           <div className="output-head">
@@ -1370,9 +1365,9 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
                   <Icon.check /> ran (exit 0)
                 </>
               ) : (
-                <>✗ error</>
+                <>? error</>
               )}{" "}
-              · {language}
+              � {language}
             </span>
           </div>
           <div className="output-body">
@@ -1753,7 +1748,7 @@ function MermaidBlock({ code }) {
 }
 
 /* ----------------------------- Message ----------------------------- */
-function Blocks({ text, onAiEdit, busy }) {
+function Blocks({ text }) {
   const blocks = parseBlocks(text);
   if (!blocks.length)
     return (
@@ -1772,8 +1767,6 @@ function Blocks({ text, onAiEdit, busy }) {
           key={i}
           lang={b.lang}
           code={b.code}
-          onAiEdit={onAiEdit}
-          busy={busy}
         />
       )
     ) : (
@@ -1796,7 +1789,7 @@ function Verdict({ run }) {
       {q && (
         <div className={"quality " + tier}>
           <span className="q-score">kualitas {q.score}/100</span>
-          {q.hasTest ? <span className="q-tag">· ada self-test</span> : null}
+          {q.hasTest ? <span className="q-tag">� ada self-test</span> : null}
           {q.notes && q.notes.length > 0 && (
             <ul className="q-notes">
               {q.notes.map((n, i) => (
@@ -1811,19 +1804,19 @@ function Verdict({ run }) {
     </div>
   );
 }
-function Message({ msg, onAiEdit, busy, onOpenCanvas }) {
+function Message({ msg, onOpenCanvas }) {
   if (msg.role === "user")
     return (
       <div className="msg user">
-        <span className="msg-role">you</span>
+        <span className="msg-role">You</span>
         <div className="bubble-user">{msg.text}</div>
       </div>
     );
   if (msg.role === "agent")
     return (
       <div className="msg model">
-        <span className="msg-role">agent</span>
-        <AgentSteps run={msg.agent || {}} onAiEdit={onAiEdit} busy={busy} />
+        <span className="msg-role">Agent</span>
+        <AgentSteps run={msg.agent || {}} />
       </div>
     );
   const web = msg.text ? buildPreview(msg.text) : { has: false };
@@ -1832,7 +1825,7 @@ function Message({ msg, onAiEdit, busy, onOpenCanvas }) {
   const isLong = (msg.text || "").length > THRESH;
   return (
     <div className="msg model">
-      <span className="msg-role">model</span>
+      <span className="msg-role">WOLFSPACE</span>
       <div
         className="bubble-model"
         style={{
@@ -1841,7 +1834,7 @@ function Message({ msg, onAiEdit, busy, onOpenCanvas }) {
         }}
       >
         {msg.text ? (
-          <Blocks text={msg.text} onAiEdit={onAiEdit} busy={busy} />
+          <Blocks text={msg.text} />
         ) : (
           <div className="typing">
             <span />
@@ -1939,7 +1932,7 @@ const MI = {
     </>,
   ),
 };
-function Composer({ onSend, onCancel, busy }) {
+function Composer({ onSend, onCancel, busy, onAgentCli }) {
   const [val, setVal] = useState("");
   const [menu, setMenu] = useState(false);
   const [soon, setSoon] = useState("");
@@ -1973,6 +1966,18 @@ function Composer({ onSend, onCancel, busy }) {
     console.log("[Composer] val changed to:", val);
   }, [val]);
   useEffect(() => {
+    const h = (e) => {
+      const next = String(e.detail || "");
+      setVal(next);
+      requestAnimationFrame(() => {
+        grow();
+        ref.current?.focus();
+      });
+    };
+    window.addEventListener("WOLFSPACE:set-composer", h);
+    return () => window.removeEventListener("WOLFSPACE:set-composer", h);
+  }, []);
+  useEffect(() => {
     if (!menu) return;
     const h = (e) => {
       if (wrapRef.current && !wrapRef.current.contains(e.target))
@@ -1983,12 +1988,48 @@ function Composer({ onSend, onCancel, busy }) {
   }, [menu]);
   const notYet = (name) => {
     setMenu(false);
-    setSoon(name + " — segera hadir");
+    setSoon(name + " segera hadir.");
     setTimeout(() => setSoon(""), 2600);
   };
   return (
     <div className="composer-wrap">
       <div className="composer">
+        <textarea
+          ref={ref}
+          rows={1}
+          value={val}
+          placeholder={
+            busy
+              ? "Lanjutkan percakapan..."
+              : val.includes("/")
+                ? "Terus ketik perintah..."
+                : "Apa yang ingin kamu buat hari ini?"
+          }
+          onChange={(e) => {
+            console.log("[Textarea] value changed:", e.target.value);
+            setVal(e.target.value);
+            grow();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              console.log("[Textarea] Enter pressed, calling submit");
+              submit();
+            }
+            if (e.key === "k" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              setVal("");
+              requestAnimationFrame(() => {
+                if (ref.current) ref.current.style.height = "auto";
+              });
+            }
+            if (e.key === "/" && val === "") {
+              console.log("[Textarea] / pressed, trigger command mode");
+            }
+          }}
+          onFocus={() => console.log("[Textarea] focused")}
+          onBlur={() => console.log("[Textarea] blurred")}
+        />
         <div className="composer-add-wrap" ref={wrapRef}>
           <button
             className={"composer-add" + (menu ? " open" : "")}
@@ -2008,8 +2049,27 @@ function Composer({ onSend, onCancel, busy }) {
               >
                 <i>{MI.upload}</i>
                 <span className="cm-lbl">
-                  <b>Upload attachment</b>
-                  <small>file, image, video, audio</small>
+                  <b>Unggah lampiran</b>
+                  <small>file, gambar, video, audio</small>
+                </span>
+              </button>
+              <button
+                className="cm-item"
+                onClick={() => {
+                  setMenu(false);
+                  if (onAgentCli) {
+                    onAgentCli();
+                  } else {
+                    // fallback: try global starter, then open Agent Runner view
+                    if (window.startNewAgent) window.startNewAgent();
+                    else document.querySelector('[data-view="agents"]')?.click();
+                  }
+                }}
+              >
+                <i>{SB.runner({ width: 18, height: 18 })}</i>
+                <span className="cm-lbl">
+                  <b>Agent CLI</b>
+                  <small>jalankan perintah agent</small>
                 </span>
               </button>
               <input
@@ -2030,26 +2090,6 @@ function Composer({ onSend, onCancel, busy }) {
             </div>
           )}
         </div>
-        <textarea
-          ref={ref}
-          rows={1}
-          value={val}
-          placeholder="How can I help you today?"
-          onChange={(e) => {
-            console.log("[Textarea] value changed:", e.target.value);
-            setVal(e.target.value);
-            grow();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              console.log("[Textarea] Enter pressed, calling submit");
-              submit();
-            }
-          }}
-          onFocus={() => console.log("[Textarea] focused")}
-          onBlur={() => console.log("[Textarea] blurred")}
-        />
         <button
           className={"send-btn" + (busy ? " cancel" : "")}
           onClick={busy ? onCancel : submit}
@@ -2064,18 +2104,24 @@ function Composer({ onSend, onCancel, busy }) {
           }}
         >
           {busy ? (
-            "Cancel"
+            <Icon.square />
           ) : (
-            <>
-              Send <Icon.send />
-            </>
+            <Icon.send />
           )}
         </button>
       </div>
       <div className="composer-hint">
         {soon ? (
           <b style={{ color: "var(--brand)" }}>{soon}</b>
-        ) : null}
+        ) : (
+          <>
+            <span>Tekan <kbd>Shift+Enter</kbd> untuk baris baru</span>
+            <span>•</span>
+            <span>Tekan <kbd>Ctrl+K</kbd> untuk bersihkan</span>
+            <span>•</span>
+            <span>Ketik <kbd>/</kbd> untuk perintah</span>
+          </>
+        )}
       </div>
     </div>
   );
@@ -2091,7 +2137,7 @@ function useVisualPicker() {
     if (VP_STOP) {
       VP_STOP();
       return;
-    } // already active → toggle off
+    } // already active ? toggle off
     let hover = null;
     const cleanHovers = () =>
       document
@@ -2134,7 +2180,7 @@ function useVisualPicker() {
         depth = 0;
       while (cur && cur.nodeType === 1 && depth < 6) {
         parts.unshift(seg(cur));
-        if (cur.id || realCls(cur).length) break; // anchored → enough to be unique
+        if (cur.id || realCls(cur).length) break; // anchored ? enough to be unique
         cur = cur.parentElement;
         depth++;
       }
@@ -2158,13 +2204,13 @@ function useVisualPicker() {
           ""
         : "";
       let d = selector;
-      if (text) d += ' — teks: "' + text + '"';
-      else if (label) d += ' — label: "' + label.trim().slice(0, 80) + '"';
+      if (text) d += ' � teks: "' + text + '"';
+      else if (label) d += ' � label: "' + label.trim().slice(0, 80) + '"';
       try {
         navigator.clipboard && navigator.clipboard.writeText(d);
       } catch (_) {}
       stop();
-      setTimeout(() => alert("Tersalin: " + d), 0);
+      setTimeout(() => alert("Disalin: " + d), 0);
     };
     const key = (e) => {
       if (e.key === "Escape") {
@@ -2221,12 +2267,12 @@ function fmtDate(iso) {
     return "";
   }
 }
-// Map an Ollama model name → its maker brand (real logo + brand color + monogram).
+// Map an Ollama model name ? its maker brand (real logo + brand color + monogram).
 // Real SVGs live in /vendor/llm/<brand>.svg; if absent, the colored monogram shows.
 const LLM_BRANDS = {
   meta: {
     c: "#0866FF",
-    s: "∞",
+    s: "8",
     re: /^(llama|codellama|llama-guard|tinyllama|meta)/,
   },
   qwen: { c: "#6E56CF", s: "Q", re: /^(qwen|qwq)/ },
@@ -2237,20 +2283,20 @@ const LLM_BRANDS = {
     s: "M",
     re: /^(mistral|mixtral|codestral|mathstral|ministral|magistral|devstral)/,
   },
-  microsoft: { c: "#00A4EF", s: "φ", re: /^phi/ },
+  microsoft: { c: "#00A4EF", s: "f", re: /^phi/ },
   openai: { c: "#10A37F", s: "O", re: /^gpt-oss/ },
-  ibm: { c: "#0F62FE", s: "ɢ", re: /^granite/ },
+  ibm: { c: "#0F62FE", s: "?", re: /^granite/ },
   cohere: { c: "#39594D", s: "C", re: /^command/ },
-  huggingface: { c: "#FFB000", s: "🤗", re: /^(smollm|smol)/ },
+  huggingface: { c: "#FFB000", s: "??", re: /^(smollm|smol)/ },
   falcon: { c: "#1973E8", s: "F", re: /^falcon/ },
   vision: {
     c: "#14B8A6",
-    s: "◉",
+    s: "?",
     re: /^(llava|bakllava|moondream|minicpm|llama3.2-vision|llama-vision)/,
   },
   embed: {
     c: "#64748B",
-    s: "≈",
+    s: "�",
     re: /^(nomic|mxbai|snowflake|all-minilm|bge|paraphrase)/,
   },
   code: {
@@ -2351,7 +2397,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
   const resolveSizes = useCallback(async (list) => {
     const token = ++sizeReq.current;
     for (const m of list) {
-      if (token !== sizeReq.current) return; // a newer search started — stop
+      if (token !== sizeReq.current) return; // a newer search started � stop
       try {
         const files = await (
           await fetch("/hf/files?id=" + encodeURIComponent(m.id))
@@ -2381,10 +2427,10 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
         setResults(r);
         setSizes({});
         resolveSizes(r);
-        if (!r.length) setMsg("Tidak ada model.");
+        if (!r.length) setMsg("Belum ada model yang tersedia.");
       } catch (e) {
         setResults([]);
-        setMsg("Gagal memuat: " + e.message);
+        setMsg("Gagal memuat model: " + e.message);
       }
       setLoading(false);
     },
@@ -2414,7 +2460,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
         setMsg(
           'Repo "' +
             id +
-            '" tak punya file .gguf — coba repo berakhiran "-GGUF".',
+            '" tak punya file .gguf � coba repo berakhiran "-GGUF".',
         );
         return;
       }
@@ -2535,7 +2581,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
     };
     return sizes.slice().sort((a, b) => parse(a) - parse(b))[0];
   };
-  // Download an Ollama model's GGUF blob → launch llama-server (SSE progress, keyed by name:tag)
+  // Download an Ollama model's GGUF blob ? launch llama-server (SSE progress, keyed by name:tag)
   const downloadOllama = async (name, tag) => {
     const id = name + ":" + tag;
     if (dl[id] && dl[id].state === "downloading") return;
@@ -2597,12 +2643,9 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
       <header className="hub-header">
         <div className="hub-title-group">
           <span className="hub-hf-mark">
-            <HubIcon.hf />
+            {source === "ollama" ? <HubIcon.ollama /> : <HubIcon.hf />}
           </span>
           <span className="hub-title">Model Hub</span>
-          <span className="hub-subtitle">
-            {source === "ollama" ? "Ollama · realtime" : "Hugging Face · GGUF"}
-          </span>
         </div>
         <div className="tb-spacer" />
         <div className="hub-source">
@@ -2625,14 +2668,14 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
           {local.length > 0 && (
             <div className="hub-local">
               <div className="hub-local-title">
-                📦 Model Terunduh ({local.length})
+                ?? Model Terunduh ({local.length})
               </div>
               {local.map((m) => (
                 <div className="hub-local-row" key={m.port}>
                   <div className="hub-local-info">
                     <b>{m.name}</b>
                     <span>
-                      {m.size ? fmtSize(m.size) : ""} · port {m.port}
+                      {m.size ? fmtSize(m.size) : ""} � port {m.port}
                     </span>
                   </div>
                   <button className="m-use-btn" onClick={() => onUse(m.port)}>
@@ -2651,8 +2694,8 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
               <input
                 placeholder={
                   source === "ollama"
-                    ? "Cari model Ollama… (llama, qwen, deepseek, phi)"
-                    : "Cari model GGUF… (llama, coder, qwen, phi)"
+                    ? "Cari model Ollama� (llama, qwen, deepseek, phi)"
+                    : "Cari model GGUF� (llama, coder, qwen, phi)"
                 }
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -2685,7 +2728,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
             ollLoading ? (
               <div className="hub-empty">
                 <HubIcon.loader className="spin" />
-                <div>Memuat dari Ollama…</div>
+                <div>Memuat dari Ollama�</div>
               </div>
             ) : oll.length ? (
               <div className="hub-grid">
@@ -2739,25 +2782,25 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                         <div className="m-card-meta">
                           <span className="m-dlsize">
                             {b === undefined ? (
-                              <span style={{ opacity: 0.5 }}>⬇ —</span>
+                              <span style={{ opacity: 0.5 }}>? �</span>
                             ) : b === null ? (
                               <span style={{ opacity: 0.5 }}>
-                                ⬇ menghitung…
+                                ? menghitung�
                               </span>
                             ) : b > 0 ? (
                               <code>
-                                ⬇ {fmtSize(b)} · {tag}
+                                ? {fmtSize(b)} � {tag}
                               </code>
                             ) : (
-                              <span style={{ opacity: 0.5 }}>⬇ ?</span>
+                              <span style={{ opacity: 0.5 }}>? ?</span>
                             )}
                           </span>
                           <span>
                             <HubIcon.dl style={{ width: 12, height: 12 }} />{" "}
                             {m.pulls}
                           </span>
-                          <span>🏷 {m.tags}</span>
-                          {m.updated && <span>↻ {m.updated}</span>}
+                          <span>?? {m.tags}</span>
+                          {m.updated && <span>? {m.updated}</span>}
                         </div>
                       );
                     })()}
@@ -2777,7 +2820,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                                 />
                               </div>
                               <div className="m-progress-info">
-                                <span>Mengunduh {tag}…</span>
+                                <span>Mengunduh {tag}�</span>
                                 <span>{Math.round(d.progress || 0)}%</span>
                               </div>
                             </div>
@@ -2804,7 +2847,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                             ) : st === "downloading" ? (
                               <>
                                 <button className="m-dl-btn" disabled>
-                                  <HubIcon.loader className="spin" /> Mengunduh…
+                                  <HubIcon.loader className="spin" /> Mengunduh�
                                 </button>
                                 <button
                                   className="hub-del"
@@ -2828,7 +2871,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                                   rel="noreferrer"
                                   style={{ textDecoration: "none" }}
                                 >
-                                  ↗
+                                  ?
                                 </a>
                               </>
                             )}
@@ -2842,13 +2885,13 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
             ) : (
               <div className="hub-empty">
                 <HubIcon.empty />
-                <div>{q ? "Tidak ada model cocok." : "Memuat…"}</div>
+                <div>{q ? "Tidak ada model cocok." : "Memuat�"}</div>
               </div>
             )
           ) : loading ? (
             <div className="hub-empty">
               <HubIcon.loader className="spin" />
-              <div>Memuat dari Hugging Face…</div>
+              <div>Memuat dari Hugging Face�</div>
             </div>
           ) : results.length ? (
             <div className="hub-grid">
@@ -2904,7 +2947,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                           </span>
                         ))}
                         {m.gated && (
-                          <span className="m-tag-soft">🔒 gated</span>
+                          <span className="m-tag-soft">?? gated</span>
                         )}
                       </div>
                     )}
@@ -2923,21 +2966,21 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                         />{" "}
                         {fmtN(m.likes)}
                       </span>
-                      {m.updated && <span>↻ {fmtDate(m.updated)}</span>}
+                      {m.updated && <span>? {fmtDate(m.updated)}</span>}
                       {sizes[m.id] ? (
                         <span>
                           <code>
                             {sizes[m.id].bytes
-                              ? "⬇ " +
+                              ? "? " +
                                 fmtSize(sizes[m.id].bytes) +
                                 (sizes[m.id].quant
-                                  ? " · " + sizes[m.id].quant
+                                  ? " � " + sizes[m.id].quant
                                   : "")
-                              : "—"}
+                              : "�"}
                           </code>
                         </span>
                       ) : (
-                        <span style={{ opacity: 0.5 }}>⬇ menghitung…</span>
+                        <span style={{ opacity: 0.5 }}>? menghitung�</span>
                       )}
                     </div>
                     {st === "downloading" && (
@@ -2949,7 +2992,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                           />
                         </div>
                         <div className="m-progress-info">
-                          <span>Mengunduh…</span>
+                          <span>Mengunduh�</span>
                           <span>{Math.round(d.progress || 0)}%</span>
                         </div>
                       </div>
@@ -2976,7 +3019,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                       ) : st === "downloading" ? (
                         <>
                           <button className="m-dl-btn" disabled>
-                            <HubIcon.loader className="spin" /> Mengunduh…
+                            <HubIcon.loader className="spin" /> Mengunduh�
                           </button>
                           <button
                             className="hub-del"
@@ -2987,7 +3030,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                         </>
                       ) : st === "resolving" ? (
                         <button className="m-dl-btn" disabled>
-                          <HubIcon.loader className="spin" /> Menyiapkan…
+                          <HubIcon.loader className="spin" /> Menyiapkan�
                         </button>
                       ) : (
                         <button
@@ -3043,7 +3086,7 @@ ${compiledJs}
 }
 
 // Visual-edit overlay for the Flutter preview. Flutter (CanvasKit) paints to one
-// <canvas>, so per-widget DOM doesn't exist — instead we force-enable Flutter's
+// <canvas>, so per-widget DOM doesn't exist � instead we force-enable Flutter's
 // accessibility SEMANTICS layer (flt-semantics nodes carry each widget's screen
 // rect + label) and hit-test against those. Interaction mirrors the web Visual
 // Picker: click selects a widget, drag moves its outline, parent shows the panel.
@@ -3064,7 +3107,7 @@ function flutterDragScript() {
   function place(b,r){ b.style.left=r.left+'px'; b.style.top=r.top+'px'; b.style.width=r.width+'px'; b.style.height=r.height+'px'; b.style.display='block'; }
 
   // Flutter only builds the semantics DOM after its hidden a11y placeholder is
-  // activated — click it programmatically (retry until the tree appears).
+  // activated � click it programmatically (retry until the tree appears).
   function enableSemantics(){
     var ph=document.querySelector('flt-semantics-placeholder');
     if(ph){ try{ ph.dispatchEvent(new MouseEvent('click',{bubbles:true,cancelable:true})); }catch(e){} }
@@ -3152,14 +3195,14 @@ const A2UI_STREAMING =
   "<style>body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1117;font-family:system-ui;color:#54c5f8;flex-direction:column;gap:12px}" +
   ".dots span{animation:b 1.2s infinite;display:inline-block}.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}" +
   "@keyframes b{0%,80%,100%{opacity:.25}40%{opacity:1}}p{font-size:13px;opacity:.75}</style></head>" +
-  '<body><div class="dots" style="font-size:26px"><span>●</span> <span>●</span> <span>●</span></div><p>menerima spesifikasi A2UI dari model…</p></body></html>';
+  '<body><div class="dots" style="font-size:26px"><span>?</span> <span>?</span> <span>?</span></div><p>menerima spesifikasi A2UI dari model�</p></body></html>';
 // Fallback: if a model wrongly returns ```dart instead of A2UI JSON
 const FLUTTER_STREAMING =
   '<!DOCTYPE html><html><head><meta charset="UTF-8">' +
   "<style>body{margin:0;display:flex;align-items:center;justify-content:center;height:100vh;background:#0d1117;font-family:system-ui;color:#54c5f8;flex-direction:column;gap:12px}" +
   ".dots span{animation:b 1.2s infinite;display:inline-block}.dots span:nth-child(2){animation-delay:.2s}.dots span:nth-child(3){animation-delay:.4s}" +
   "@keyframes b{0%,80%,100%{opacity:.25}40%{opacity:1}}p{font-size:13px;opacity:.75}</style></head>" +
-  '<body><div class="dots" style="font-size:26px"><span>●</span> <span>●</span> <span>●</span></div><p>menerima kode Flutter dari model…</p></body></html>';
+  '<body><div class="dots" style="font-size:26px"><span>?</span> <span>?</span> <span>?</span></div><p>menerima kode Flutter dari model�</p></body></html>';
 
 // Loading placeholder shown while DartPad API compiles
 const FLUTTER_COMPILING = `<!DOCTYPE html>
@@ -3168,14 +3211,14 @@ const FLUTTER_COMPILING = `<!DOCTYPE html>
 .spin{width:36px;height:36px;border:3px solid rgba(94,234,212,.2);border-top-color:#5eead4;border-radius:50%;animation:spin .8s linear infinite;}
 @keyframes spin{to{transform:rotate(360deg)}}
 p{font-size:13px;opacity:.7;}</style></head>
-<body><div class="spin"></div><p>Mengkompilasi Flutter…</p></body></html>`;
+<body><div class="spin"></div><p>Mengkompilasi Flutter�</p></body></html>`;
 
 // Web Dev is A2UI-only. If a model wrongly returns Dart instead of an A2UI JSON spec,
 // we show this instead of compiling the old way.
 const DART_NOTICE =
   '<!doctype html><html><head><meta charset="utf-8"></head>' +
   '<body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#cbd5e1;font-family:system-ui;text-align:center;padding:24px">' +
-  '<div><div style="font-size:30px;margin-bottom:10px">⚠️</div>' +
+  '<div><div style="font-size:30px;margin-bottom:10px">??</div>' +
   '<div style="color:#fbbf24;font-weight:600;margin-bottom:8px">Model mengembalikan kode Dart, bukan A2UI JSON</div>' +
   '<div style="font-size:13px;opacity:.7;max-width:340px;line-height:1.6">' +
   "Gunakan model yang konsisten menghasilkan A2UI JSON, atau minta ulang. Kode Dart tidak lagi dikompilasi.</div></div></body></html>";
@@ -3222,11 +3265,11 @@ function buildPreview(text) {
       code: sqlB.code,
     });
 
-  // Quantum Canvas is Flutter-only: a previewable result is ONE ```dart block,
+  // WOLFSPACE Canvas is Flutter-only: a previewable result is ONE ```dart block,
   // compiled locally by the Flutter SDK. HTML/CSS/JS/React are no longer rendered.
-  // streaming:true while the fence is still open — compiling a half-written
+  // streaming:true while the fence is still open � compiling a half-written
   // program just wastes a build on a guaranteed syntax error.
-  // A2UI: a ```json block that is a UI spec → render instantly in the studio (no compile).
+  // A2UI: a ```json block that is a UI spec ? render instantly in the studio (no compile).
   const jsonB = find(/^(json|a2ui)$/);
   console.log(
     "[buildPreview] jsonB:",
@@ -3259,7 +3302,7 @@ function buildPreview(text) {
   }
 
   // Web Dev is A2UI-only now: a model that (wrongly) returns ```dart is NOT compiled
-  // anymore — show it in the file list but never run the old Flutter-compile path.
+  // anymore � show it in the file list but never run the old Flutter-compile path.
   const dart = find(/^dart$/);
   if (dart && dart.code && dart.code.length > 20)
     return {
@@ -3295,10 +3338,10 @@ function consoleDoc(run) {
     ' <span class="' +
     (run.ok ? "ok" : "bad") +
     '">' +
-    (run.ok ? "· exit 0" : "· gagal") +
+    (run.ok ? "� exit 0" : "� gagal") +
     "</span></div>" +
     "<pre>" +
-    (esc(run.output) || "(tidak ada output)") +
+    (esc(run.output) || "(Belum ada output)") +
     "</pre>" +
     (run.error ? '<pre class="err">' + esc(run.error) + "</pre>" : "") +
     '<div style="margin-top:22px;padding-top:12px;border-top:1px solid #1f2733;color:#5b6776;font-size:11px">' +
@@ -3310,6 +3353,57 @@ function consoleDoc(run) {
 // Code tab: file tree grouped by folder (lib/ backend/) + editor pane
 function CodeExplorer({ files, onEdit }) {
   const [cur, setCur] = useState(0);
+  // Command Palette state (VS Code fork)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandSearch, setCommandSearch] = useState("");
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  
+  // Filter commands based on search
+  const filteredCommands = useMemo(() => {
+    if (!commandSearch.trim()) return COMMANDS;
+    return COMMANDS.filter(cmd => 
+      cmd.label.toLowerCase().includes(commandSearch.toLowerCase())
+    );
+  }, [commandSearch]);
+  
+  // Execute selected command
+  const runSelectedCommand = () => {
+    const cmd = filteredCommands[selectedCommandIndex];
+    if (cmd) {
+      cmd.action();
+      setCommandPaletteOpen(false);
+      setCommandSearch("");
+    }
+  };
+  
+  // Keyboard shortcut for Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+        setCommandSearch("");
+        setSelectedCommandIndex(0);
+      }
+      // Navigate in command palette
+      if (commandPaletteOpen) {
+        if (e.key === 'Escape') {
+          setCommandPaletteOpen(false);
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedCommandIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSelectedCommandIndex(prev => Math.max(prev - 1, 0));
+        } else if (e.key === 'Enter') {
+          runSelectedCommand();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [commandPaletteOpen, selectedCommandIndex, filteredCommands]);
+
   useEffect(() => {
     if (cur >= files.length) setCur(0);
   }, [files.length]);
@@ -3430,10 +3524,10 @@ function FlutterSDKInfo({ isFlutter }) {
           Flutter SDK
         </span>
         <button className="fsdk-refresh" title="Refresh" onClick={fetchInfo}>
-          ↻
+          ?
         </button>
       </div>
-      {loading && !info && <div className="fsdk-loading">Memuat…</div>}
+      {loading && !info && <div className="fsdk-loading">Memuat�</div>}
       {err && <div className="fsdk-err">{err}</div>}
       {info && (
         <>
@@ -3487,7 +3581,7 @@ function FlutterSDKInfo({ isFlutter }) {
               target="_blank"
               rel="noreferrer"
             >
-              Dokumentasi ↗
+              Dokumentasi ?
             </a>
           </div>
           {showDoctor && doctor && (
@@ -3498,11 +3592,11 @@ function FlutterSDKInfo({ isFlutter }) {
                   className="fsdk-doctor-close"
                   onClick={() => setShowDoctor(false)}
                 >
-                  ✕
+                  ?
                 </button>
               </div>
               <pre className="fsdk-doctor-out">
-                {doctor.output || "" || doctor.error || "Tidak ada output"}
+                {doctor.output || "" || doctor.error || "Belum ada output"}
               </pre>
             </div>
           )}
@@ -3543,7 +3637,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
     setFiles(project.files || null);
   }, [project.files]);
 
-  // Edit a file in the Code explorer → update Dart source (takes effect on ↻ compile)
+  // Edit a file in the Code explorer ? update Dart source (takes effect on ? compile)
   function onFileEdit(i, code) {
     setFiles((prev) => {
       const nf = prev.slice();
@@ -3573,7 +3667,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
           // Surgical auto-fix: patch the compile error (max 2x), recompile once each.
           if (fixCountRef.current < 2) {
             fixCountRef.current++;
-            setDragStatus("Auto-fix (" + fixCountRef.current + "/2)…");
+            setDragStatus("Auto-fix (" + fixCountRef.current + "/2)�");
             fetch("/flutter/fix", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -3600,7 +3694,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
                 setFlutterErr(d.error);
               });
           } else {
-            setFlutterErr(d.error); // budget spent → show error + revert option
+            setFlutterErr(d.error); // budget spent ? show error + revert option
           }
         } else if (d.url) {
           fixCountRef.current = 0;
@@ -3645,7 +3739,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
       });
   }
 
-  // The compiled app iframe is same-origin (/flutter-app/...) — inject the
+  // The compiled app iframe is same-origin (/flutter-app/...) � inject the
   // visual-edit runtime into it after each load, and restore drag mode.
   function setupFlutterFrame() {
     const f = iframeRef.current;
@@ -3674,7 +3768,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
       setFlutterErr(null);
       return;
     }
-    fixCountRef.current = 0; // fresh generation → fresh auto-fix budget
+    fixCountRef.current = 0; // fresh generation ? fresh auto-fix budget
     compileDart(project.flutter);
   }, [project.flutter, project.doc]);
 
@@ -3747,7 +3841,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
       fDelta && (Math.abs(fDelta.dx) >= 4 || Math.abs(fDelta.dy) >= 4);
     const instr = [sizeInstruction(), fInstr.trim()].filter(Boolean).join(". ");
     if (!moved && !instr) return;
-    setDragStatus("AI memperbarui kode…");
+    setDragStatus("AI memperbarui kode�");
     fetch("/flutter/move", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -3770,7 +3864,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
         }
         setDartSource(d.source);
         clearFSel();
-        setDragStatus("Mengkompilasi…");
+        setDragStatus("Mengkompilasi�");
         compileDart(d.source).then(() => setDragStatus(null));
       })
       .catch((e) => {
@@ -3810,7 +3904,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
               "flutter-badge" + (compiling ? " flutter-badge-busy" : "")
             }
           >
-            {compiling ? "⏳ mengkompilasi…" : "Flutter"}
+            {compiling ? "? mengkompilasi�" : "Flutter"}
           </span>
         )}
         <div className="canvas-tabs">
@@ -3841,15 +3935,15 @@ function CanvasPanel({ project, onClose, modelVal }) {
               disabled={compiling}
               onClick={() => compileDart(dartSource || project.flutter)}
             >
-              ↻
+              ?
             </button>
             <button
               className="canvas-icon"
-              title={building ? "Membangun…" : "Build APK"}
+              title={building ? "Membangun�" : "Build APK"}
               disabled={compiling || building}
               onClick={() => buildApk(dartSource || project.flutter, "apk")}
             >
-              {building ? "⏳" : "📦"}
+              {building ? "?" : "??"}
             </button>
             <button
               className={
@@ -3859,7 +3953,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
               title={
                 dragMode
                   ? "Nonaktifkan Edit Visual"
-                  : "Edit Visual — pilih & seret widget"
+                  : "Edit Visual � pilih & seret widget"
               }
               disabled={compiling}
               onClick={() => {
@@ -3912,14 +4006,14 @@ function CanvasPanel({ project, onClose, modelVal }) {
           </>
         )}
 
-        {/* Non-flutter (console/terminal) — just reload */}
+        {/* Non-flutter (console/terminal) � just reload */}
         {!isFlutter && (
           <button
             className="canvas-icon"
             title="Muat ulang"
             onClick={() => setNonce((n) => n + 1)}
           >
-            ↻
+            ?
           </button>
         )}
 
@@ -3928,21 +4022,21 @@ function CanvasPanel({ project, onClose, modelVal }) {
           title="Buka di tab baru"
           onClick={openTab}
         >
-          ⇱
+          ?
         </button>
         <button
           className="canvas-icon canvas-close"
           title="Tutup"
           onClick={onClose}
         >
-          ✕
+          ?
         </button>
       </div>
 
       {/* Flutter compile error */}
       {isFlutter && flutterErr && (
         <div className="flutter-err-panel">
-          <span className="flutter-err-icon">⚠</span>
+          <span className="flutter-err-icon">?</span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <pre className="flutter-err-pre">{flutterErr}</pre>
             {flutterErr.includes("tidak ditemukan") && (
@@ -3952,7 +4046,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
                 target="_blank"
                 rel="noreferrer"
               >
-                → Install Flutter SDK
+                ? Install Flutter SDK
               </a>
             )}
             {lastGoodRef.current && lastGoodRef.current !== dartSource && (
@@ -3963,10 +4057,10 @@ function CanvasPanel({ project, onClose, modelVal }) {
                   setDartSource(good);
                   setFlutterErr(null);
                   clearFSel();
-                  compileDart(good); // server caches the last good build → instant
+                  compileDart(good); // server caches the last good build ? instant
                 }}
               >
-                ↩ Kembalikan versi yang berfungsi
+                ? Kembalikan versi yang berfungsi
               </button>
             )}
           </div>
@@ -3977,7 +4071,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
       {isFlutter && buildOutput && (
         <div className="flutter-err-panel" style={{ borderColor: "#22c55e" }}>
           <span className="flutter-err-icon" style={{ color: "#22c55e" }}>
-            ✓
+            ?
           </span>
           <div style={{ flex: 1, minWidth: 0 }}>
             <pre className="flutter-err-pre" style={{ color: "#22c55e" }}>
@@ -3988,7 +4082,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
                 style={{ fontSize: 11, color: "#60a5fa", cursor: "pointer" }}
                 onClick={() => navigator.clipboard.writeText(buildOutput)}
               >
-                📋 salin path
+                ?? salin path
               </span>
             )}
           </div>
@@ -4013,7 +4107,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
                   </span>
                 ) : (
                   <span className="fdrag-delta">
-                    seret untuk pindah, atau atur ukuran ↓
+                    seret untuk pindah, atau atur ukuran ?
                   </span>
                 )}
               </div>
@@ -4024,7 +4118,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
                 onKeyDown={(e) => {
                   if (e.key === "Enter") applyVisualEdit();
                 }}
-                placeholder="instruksi bebas: ubah warna jadi merah…"
+                placeholder="Tulis instruksi, misalnya: ubah warna menjadi merah"
               />
               <button className="fdrag-cancel" onClick={clearFSel}>
                 Batal
@@ -4065,13 +4159,13 @@ function CanvasPanel({ project, onClose, modelVal }) {
                 <path d="M3 3l4 1-1 4 2-2 4 4-1.5 1.5-4-4-2 2 1-4z" />
                 <path d="M10 2l4 4" />
               </svg>
-              Klik widget di preview untuk memilih — lalu atur ukuran atau seret
+              Klik widget di preview untuk memilih � lalu atur ukuran atau seret
             </>
           )}
         </div>
       )}
 
-      {/* Flutter size/spacing panel — fills the gap where HTML would use CSS resize */}
+      {/* Flutter size/spacing panel � fills the gap where HTML would use CSS resize */}
       {isFlutter && dragMode && !compiling && fSel && (
         <div className="fsize-panel">
           {[
@@ -4087,12 +4181,12 @@ function CanvasPanel({ project, onClose, modelVal }) {
                 className="fsize-btn"
                 onClick={() => bumpSize(d.key, -d.step)}
               >
-                −
+                -
               </button>
               <span className={"fsize-val" + (sizeOps[d.key] ? " on" : "")}>
                 {sizeOps[d.key]
                   ? (sizeOps[d.key] > 0 ? "+" : "") + sizeOps[d.key]
-                  : "·"}
+                  : "�"}
               </span>
               <button
                 className="fsize-btn"
@@ -4146,14 +4240,14 @@ function CanvasPanel({ project, onClose, modelVal }) {
       <div className="canvas-foot">
         {isFlutter ? (
           <span className="verdict-mini" style={{ color: "#54c5f8" }}>
-            Flutter · SDK lokal
+            Flutter � SDK lokal
           </span>
         ) : run ? (
           <span className={"verdict-mini " + (run.ok ? "ok" : "bad")}>
-            {run.ok ? "✓ logika terverifikasi" : "⚠ belum lolos"}
+            {run.ok ? "? logika terverifikasi" : "? belum lolos"}
           </span>
         ) : (
-          <span className="verdict-mini">● live preview</span>
+          <span className="verdict-mini">? live preview</span>
         )}
         {!isFlutter && q ? (
           <span
@@ -4168,7 +4262,7 @@ function CanvasPanel({ project, onClose, modelVal }) {
         <span className="tb-spacer" />
         <span className="canvas-hint">
           {isFlutter
-            ? "edit lib/main.dart di tab Code → ↻ compile ulang"
+            ? "edit lib/main.dart di tab Code ? ? compile ulang"
             : "output eksekusi"}
         </span>
       </div>
@@ -4215,7 +4309,7 @@ function StudioFrame({ source, onClose }) {
     }, 400);
     return () => clearInterval(iv);
   }, [source, send]);
-  // studio announces readiness AFTER its Flutter app boots — (re)send then
+  // studio announces readiness AFTER its Flutter app boots � (re)send then
   useEffect(() => {
     const onMsg = (e) => {
       if (e.data && e.data.quantumStudioReady) {
@@ -4231,13 +4325,13 @@ function StudioFrame({ source, onClose }) {
       <iframe
         ref={ref}
         src={bust.current}
-        title="Quantum Studio"
+        title="WOLFSPACE Studio"
         className="canvas-frame studio-frame"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
         onLoad={send}
       />
       <button className="studio-close" title="Tutup Studio" onClick={onClose}>
-        ✕
+        ?
       </button>
     </div>
   );
@@ -4408,7 +4502,7 @@ const SB = {
       />
     </svg>
   ),
-  // ── Agent-specific logos ──
+  // -- Agent-specific logos --
   quantumAgent: (p) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.3" />
@@ -4513,11 +4607,11 @@ function Sidebar({
     </button>
   );
   return (
-    <aside className={"sidebar" + (collapsed ? " collapsed" : "")}>
+    <aside className={"sidebar" + (collapsed ? " collapsed" : "")}> 
       <div className="sb-head">
         <span className="sb-brand">
           <BrandMark />
-          <b>Quantum</b>
+          <b>WOLFSPACE</b>
         </span>
         <button
           className="sb-toggle"
@@ -4579,13 +4673,13 @@ function Sidebar({
       >
         Riwayat Chat{" "}
         <span style={{ float: "right", opacity: 0.6 }}>
-          {showHistory ? "▾" : "▸"} {savedChats.length}
+          {showHistory ? "?" : "?"} {savedChats.length}
         </span>
       </div>
       {showHistory && (
         <div className="sb-history-list">
           {savedChats.length === 0 ? (
-            <div className="sb-history-empty">Belum ada chat tersimpan</div>
+            <div className="sb-history-empty">Belum ada percakapan tersimpan</div>
           ) : (
             savedChats
               .slice()
@@ -4617,62 +4711,40 @@ function Sidebar({
                       deleteChat(chat.id);
                     }}
                   >
-                    ✕
+                    ?
                   </button>
                 </div>
               ))
           )}
         </div>
       )}
-      {terminalOpen && (
-        <div className="sb-terminal">
-          <div className="sb-row">
-            <input
-              className="sb-input"
-              placeholder="Perintah"
-              value={terminal.input}
-              onChange={(e) => terminal.setInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && terminal.run()}
-              disabled={terminal.loading}
-            />
-            <button
-              className="sb-button"
-              onClick={terminal.run}
-              disabled={terminal.loading}
-            >
-              {terminal.loading ? "Menjalankan..." : "Jalankan"}
-            </button>
-          </div>
-          <div
-            className="sb-output"
-            style={{
-              whiteSpace: "pre-wrap",
-              wordBreak: "break-word",
-              height: "120px",
-              overflowY: "auto",
-              borderTop: "1px solid #444",
-              marginTop: "8px",
-              paddingTop: "8px",
-            }}
-          >
-            {terminal.output}
-          </div>
-        </div>
-      )}
     </aside>
   );
 }
 
-// Live agent process — animated bubbles showing each file/folder being worked on.
-const AG_ICON = {
-  list: "📁",
-  glob: "📂",
-  read: "📄",
-  grep: "🔍",
-  edit: "✎",
-  write: "✚",
-  run: "▶",
-  bash: "▶",
+// Live agent process � animated bubbles showing each file/folder being worked on.
+// ─── Agent Step UI v2 ── SVG icons per tool ────────────────────────────────
+const AG_SVG = {
+  list:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><path d="M2 3h3v3H2zM2 7h3v3H2zM2 11h3v3H2z" fill="currentColor" opacity=".4"/><path d="M7 4h7M7 8h7M7 12h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+  glob:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.4"/><path d="M8 2.5C6 5 6 11 8 13.5M8 2.5C10 5 10 11 8 13.5M2.5 8h11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>,
+  read:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><rect x="3" y="1.5" width="10" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M5.5 5h5M5.5 7.5h5M5.5 10h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  grep:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.4"/><path d="M10 10l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M5 6.5h3M6.5 5v3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>,
+  edit:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><path d="M10.5 2.5l3 3L5 14H2v-3L10.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M8.5 4.5l3 3" stroke="currentColor" strokeWidth="1.2"/></svg>,
+  write: (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><rect x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M8 5v6M5 8h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+  run:   (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><path d="M4 2.5l10 5.5-10 5.5V2.5z" fill="currentColor" opacity=".9"/></svg>,
+  bash:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3"/><path d="M4 6l2.5 2.5L4 11M8.5 11h3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  err:   (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4"/><path d="M8 5v4M8 11v.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+};
+const AG_META = {
+  list:  { label:"List",  color:"var(--text-muted, #94a3b8)", bg:"transparent" },
+  glob:  { label:"Glob",  color:"var(--text-muted, #94a3b8)", bg:"transparent" },
+  read:  { label:"Read",  color:"var(--text-muted, #94a3b8)", bg:"transparent" },
+  grep:  { label:"Grep",  color:"var(--text-muted, #94a3b8)", bg:"transparent" },
+  edit:  { label:"Edit",  color:"var(--text-muted, #94a3b8)", bg:"transparent" },
+  write: { label:"Write", color:"var(--text-muted, #94a3b8)", bg:"transparent" },
+  run:   { label:"Run",   color:"var(--text-muted, #94a3b8)", bg:"transparent" },
+  bash:  { label:"Bash",  color:"var(--text-muted, #94a3b8)", bg:"transparent" },
+  err:   { label:"Error", color:"#f87171", bg:"rgba(248,113,113,0.12)" },
 };
 // Strip the DONE protocol marker so the agent's answer reads clean.
 function cleanAgentText(s) {
@@ -4834,146 +4906,148 @@ function ToolOutput({ text, ok, kind, arg }) {
   );
 }
 
-function AgentSteps({ run, onAiEdit, busy }) {
-  // run = { events:[...], thinking, busy, summary, done, error, backup, editCount, run }
-  const [expanded, setExpanded] = useState({});
-  const acts = (run.events || []).filter(
-    (e) => e.type === "act" || e.type === "err",
-  );
-  const summary = cleanAgentText(run.summary);
-  // Plain answer (no tools used) → render like a normal chat reply (code blocks +
-  // terminal/verdict when the reply contained runnable code), not a timeline.
-  if (run.done && acts.length === 0 && !run.error) {
-    return (
-      <>
-        <div className="bubble-model">
-          <Blocks text={summary} onAiEdit={onAiEdit} busy={busy} />
-        </div>
-        <Verdict run={run.run} />
-      </>
-    );
-  }
-  if (!run.busy && acts.length === 0 && run.error) {
-    return (
-      <div className="bubble-model" style={{ color: "#fca5a5" }}>
-        {summary || (run.events && run.events[0] && run.events[0].m) || "error"}
-      </div>
-    );
-  }
+/* ── Sub-component: satu baris step di timeline ── */
+function AgentStepRow({ e, i, expanded, setExpanded }) {
+  const isErr = e.type === "err";
+  const meta  = AG_META[isErr ? "err" : e.kind] || { label: e.kind, color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
+  const SvgIcon = isErr ? AG_SVG.err : (AG_SVG[e.kind] || AG_SVG.bash);
+  const isOpen  = !!expanded[i];
   return (
-    <div className={"agent-flow" + (run.busy ? " busy" : "")}>
-      <div className={"agent-flow-head" + (run.busy ? " busy" : "")}>
-        {run.busy ? (
-          <span className="agent-spin" />
-        ) : (
-          <span className={"agent-dot" + (run.error ? " err" : " done")} />
-        )}
-        <span className="agent-flow-title">
-          {run.busy ? (
-            <>
-              Memproses
-              <span className="agent-ell">
-                <span>.</span>
-                <span>.</span>
-                <span>.</span>
-              </span>{" "}
-              langkah {run.step || 1}
-            </>
-          ) : run.error ? (
-            "Berhenti"
-          ) : (
-            "Selesai"
-          )}
-        </span>
-        {run.backup ? (
-          <span className="agent-backup" title="cadangan source sebelum diedit">
-            ⤺ {run.backup}
-          </span>
-        ) : null}
-        {run.phase ? (
-          <span className={"agent-phase agent-phase-" + run.phase}>
-            {run.phase}
-          </span>
-        ) : null}
+    <div className={"av2-row " + (isErr ? "av2-err" : e.ok ? "av2-ok" : "av2-fail")}
+         style={{"--row-color": meta.color, "--row-bg": meta.bg}}>
+      {/* connector: icon bulat + garis vertikal */}
+      <div className="av2-connector">
+        <div className="av2-icon-wrap">
+          <SvgIcon width={13} height={13} style={{color: meta.color}} />
+        </div>
+        <div className="av2-track" />
       </div>
-      <div className="agent-steps">
-        {acts.map((e, i) =>
-          e.type === "err" ? (
-            <div key={i} className="agent-row fail">
-              <div className="ar-line">
-                <span className="ar-header">
-                  <span className="ar-verb">error</span>
-                  <span className="ar-arg">{e.m}</span>
-                </span>
-              </div>
-            </div>
-          ) : (
-            <div key={i} className={"agent-row " + (e.ok ? "ok" : "fail")}>
-              <div
-                className={"ar-line" + (expanded[i] ? " expanded" : "")}
-                onClick={() =>
-                  setExpanded((prev) => ({ ...prev, [i]: !prev[i] }))
-                }
-              >
-                <span className="ar-header">
-                  <span className="ar-chev">{expanded[i] ? "▼" : "▶"}</span>
-                  <span className="ar-verb">
-                    {{
-                      list: "List",
-                      glob: "Glob",
-                      read: "Read",
-                      grep: "Grep",
-                      edit: "Edit",
-                      write: "Write",
-                      run: "Run",
-                      bash: "Bash",
-                    }[e.kind] || e.kind}
-                  </span>
-                  {e.arg ? <span className="ar-arg">{e.arg}</span> : null}
-                </span>
-                {e.output && expanded[i] ? (
-                  <ToolOutput
-                    text={e.output}
-                    ok={e.ok}
-                    kind={e.kind}
-                    arg={e.arg}
-                  />
-                ) : null}
-              </div>
-            </div>
-          ),
-        )}
-        {run.busy ? (
-          <div className="agent-row busy">
-            <span className="ar-line">
-              <span className="ar-verb dim">
-                {run.thinking ? "Berpikir" : "Menjalankan"}
-              </span>
+      {/* konten baris */}
+      <div className="av2-body">
+        <div className={"av2-header" + (e.output ? " clickable" : "")}
+             onClick={e.output ? () => setExpanded(p => ({...p, [i]: !p[i]})) : undefined}>
+          <span className="av2-badge" style={{background: meta.bg, color: meta.color}}>{meta.label}</span>
+          {e.arg  ? <span className="av2-arg">{e.arg}</span>   : null}
+          {isErr  ? <span className="av2-err-msg">{e.m}</span> : null}
+          <span className="av2-spacer" />
+          {!e.ok && !isErr ? <span className="av2-fail-dot" title="gagal" /> : null}
+          {e.output ? (
+            <span className="av2-chev-icon" style={{transform: isOpen ? "rotate(90deg)" : "rotate(0deg)"}}>
+              <svg viewBox="0 0 12 12" width={10} height={10} fill="none">
+                <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
             </span>
-            {run.thinking ? (
-              <div className="agent-think">
-                {run.thinking.slice(-260)}
-                <span className="agent-caret" />
-              </div>
-            ) : null}
+          ) : null}
+        </div>
+        {e.output && isOpen ? (
+          <div className="av2-output-wrap">
+            <ToolOutput text={e.output} ok={e.ok} kind={e.kind} arg={e.arg} />
           </div>
         ) : null}
       </div>
-      {run.done && (summary || run.run) ? (
-        <div className="agent-summary">
-          {run.editCount ? (
-            <div className="agent-edits">
-              <b>✓ {run.editCount} perubahan</b>
-              <div className="agent-apply-hint">
-                Tinjau lalu jalankan <code>sync-app.ps1</code> untuk menerapkan.
+    </div>
+  );
+}
+
+/* ── Komponen utama AgentSteps v2 ── */
+function AgentSteps({ run }) {
+  const [expanded, setExpanded] = useState({});
+  const acts      = (run.events || []).filter(e => e.type === "act" || e.type === "err");
+  const summary   = cleanAgentText(run.summary);
+  const totalSteps = acts.length;
+  const okSteps    = acts.filter(e => e.type === "act" && e.ok).length;
+
+  // Jawaban biasa tanpa tool → tampilkan seperti chat reply normal
+  if (run.done && acts.length === 0 && !run.error)
+    return (<><div className="bubble-model"><Blocks text={summary} /></div><Verdict run={run.run} /></>);
+  if (!run.busy && acts.length === 0 && run.error)
+    return <div className="bubble-model" style={{color:"#fca5a5"}}>{summary || (run.events&&run.events[0]&&run.events[0].m) || "error"}</div>;
+
+  return (
+    <div className={"av2-flow" + (run.busy ? " av2-busy" : "") + (run.error ? " av2-error" : "") + (run.done ? " av2-done" : "")}>
+
+      {/* ── Header ── */}
+      <div className="av2-head">
+        <div className="av2-head-left">
+          {run.busy
+            ? <span className="av2-spinner">
+                <svg viewBox="0 0 20 20" width={14} height={14}>
+                  <circle cx="10" cy="10" r="7" stroke="#8b6dff" strokeWidth="2.5" fill="none"
+                    strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round"/>
+                </svg>
+              </span>
+            : run.error
+              ? <span className="av2-status-dot av2-dot-err" />
+              : <span className="av2-status-dot av2-dot-ok" />
+          }
+          <span className="av2-head-title">
+            {run.busy
+              ? <><span className="av2-pulse-text">Memproses</span>{" "}<span className="av2-step-badge">langkah {run.step||1}</span></>
+              : run.error ? "Berhenti" : "Selesai"
+            }
+          </span>
+          {run.backup ? <span className="av2-backup-pill" title="cadangan sebelum diedit">↩ {run.backup}</span> : null}
+        </div>
+        {totalSteps > 0 && <span className="av2-step-counter">{okSteps}/{totalSteps} langkah</span>}
+      </div>
+
+      {/* ── Progress bar ── */}
+      <div className="av2-progress-track">
+        <div className={"av2-progress-bar"
+          + (run.done && !run.error ? " av2-progress-done" : run.error ? " av2-progress-err" : "")}
+          style={{width: run.done ? "100%"
+            : (run.busy && totalSteps > 0 ? Math.round((okSteps / Math.max(totalSteps,1)) * 85) + "%" : "0%")
+          }}
+        />
+        {run.busy ? <div className="av2-progress-shimmer" /> : null}
+      </div>
+
+      {/* ── Timeline steps ── */}
+      {acts.length > 0 && (
+        <div className="av2-steps">
+          {acts.map((e, i) => (
+            <AgentStepRow key={i} e={e} i={i} expanded={expanded} setExpanded={setExpanded} />
+          ))}
+
+          {/* Baris live saat busy */}
+          {run.busy && (
+            <div className="av2-row av2-live">
+              <div className="av2-connector">
+                <div className="av2-icon-wrap av2-icon-live">
+                  <span className="av2-live-dot" />
+                  <span className="av2-live-dot" />
+                  <span className="av2-live-dot" />
+                </div>
+                <div className="av2-track av2-track-dashed" />
+              </div>
+              <div className="av2-body">
+                <div className="av2-header">
+                  <span className="av2-badge av2-badge-live">{run.thinking ? "Berpikir" : "Menjalankan"}</span>
+                </div>
+                {run.thinking && (
+                  <div className="av2-think-box">
+                    <span className="av2-think-text">{run.thinking.slice(-280)}</span>
+                    <span className="av2-think-caret" />
+                  </div>
+                )}
               </div>
             </div>
-          ) : null}
-          {summary ? (
-            <div className="bubble-model">
-              <Blocks text={summary} onAiEdit={onAiEdit} busy={busy} />
+          )}
+        </div>
+      )}
+
+      {/* ── Summary / hasil akhir ── */}
+      {run.done && (summary || run.run) ? (
+        <div className="av2-summary">
+          {run.editCount ? (
+            <div className="av2-edit-badge">
+              <svg viewBox="0 0 16 16" width={13} height={13} fill="none">
+                <path d="M2 13l1-4L12 1l3 3-9 8-4 1z" stroke="#34d399" strokeWidth="1.4" strokeLinejoin="round"/>
+              </svg>
+              <b>{run.editCount} perubahan diterapkan</b>
             </div>
           ) : null}
+          {summary ? <div className="bubble-model av2-result-bubble"><Blocks text={summary} /></div> : null}
           <Verdict run={run.run} />
         </div>
       ) : null}
@@ -4985,10 +5059,11 @@ function AgentSteps({ run, onAiEdit, busy }) {
 const SUGGESTIONS = [];
 const CANVAS_BUILDING =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">' +
-  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">QUANTUM</div><div style="margin-top:10px;font-size:15px">membangun antarmuka…</div></div></body></html>';
+  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka�</div></div></body></html>';
 function App() {
+
   const [models, setModels] = useState([
-    { value: "", label: "memuat…", disabled: true },
+    { value: "", label: "Memuat model...", disabled: true },
   ]);
   const [modelVal, setModelVal] = useState("");
   const [cloudVersion, setCloudVersion] = useState(0); // Trigger reload when cloud config changes
@@ -4997,7 +5072,7 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("memuat model…");
+  const [status, setStatus] = useState("Memuat model...");
   const [view, setView] = useState("chat");
   const [sbCollapsed, setSbCollapsed] = useState(() => {
     try {
@@ -5035,6 +5110,7 @@ function App() {
     });
   };
   const [canvasPct, setCanvasPct] = useState(46); // canvas width % (draggable divider)
+  const [terminalPct, setTerminalPct] = useState(30);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalInput, setTerminalInput] = useState("");
   const [terminalOutput, setTerminalOutput] = useState("");
@@ -5164,14 +5240,15 @@ function App() {
       setSavedChats(updated);
     } catch (e) {}
   };
-  const runTerminalCommand = async () => {
-    if (!terminalInput.trim()) return;
+  const runTerminalCommand = async (command = null) => {
+    const cmd = (command === null ? terminalInput : command).trim();
+    if (!cmd) return;
     setTerminalLoading(true);
     try {
       const res = await fetch("/api/bash", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ command: terminalInput }),
+        body: JSON.stringify({ command: cmd }),
       });
       const data = await res.json();
       setTerminalOutput(data.output || "");
@@ -5181,6 +5258,58 @@ function App() {
       setTerminalLoading(false);
       setTerminalInput("");
     }
+  };
+
+  const handleSlashCommand = async (content) => {
+    const trimmed = content.trim();
+    if (!trimmed.startsWith("/")) return false;
+    const parts = trimmed.slice(1).split(/\s+/);
+    const cmd = parts[0]?.toLowerCase();
+    const args = parts.slice(1);
+    if (cmd === "terminal" || cmd === "term" || cmd === "bash") {
+      const sub = args[0]?.toLowerCase();
+      if (!sub || sub === "help") {
+        setTerminalOpen(true);
+        setStatus("Gunakan /terminal run <perintah>, /terminal open, /terminal close");
+        return true;
+      }
+      if (sub === "open") {
+        setTerminalOpen(true);
+        setStatus("Terminal sudah terbuka.");
+        return true;
+      }
+      if (sub === "close" || sub === "exit" || sub === "quit") {
+        setTerminalOpen(false);
+        setStatus("Terminal ditutup.");
+        return true;
+      }
+      if (sub === "toggle") {
+        setTerminalOpen((v) => !v);
+        setStatus("Status terminal diperbarui.");
+        return true;
+      }
+      if (sub === "run") {
+        const command = args.slice(1).join(" ");
+        if (!command) {
+          setTerminalOpen(true);
+          setStatus("Terminal siap. Ketik perintah untuk mulai.");
+          return true;
+        }
+        setTerminalOpen(true);
+        await runTerminalCommand(command);
+        return true;
+      }
+      const command = args.join(" ");
+      if (command) {
+        setTerminalOpen(true);
+        await runTerminalCommand(command);
+      } else {
+        setTerminalOpen(true);
+        setStatus("Terminal sudah terbuka.");
+      }
+      return true;
+    }
+    return false;
   };
   const terminal = {
     input: terminalInput,
@@ -5239,6 +5368,22 @@ function App() {
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   };
+  const onTerminalDividerDown = (e) => {
+    e.preventDefault();
+    const move = (ev) => {
+      const w = window.innerWidth;
+      const pct = Math.min(60, Math.max(15, ((w - ev.clientX) / w) * 100));
+      setTerminalPct(pct);
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.userSelect = "";
+    };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  };
   const startPicker = useVisualPicker();
   const doSendRef = useRef(void 0);
   useEffect(() => {
@@ -5255,7 +5400,7 @@ function App() {
     } catch (e) {}
     const opts = list.map((m) => ({
       value: String(m.port),
-      label: m.name + (m.size ? " · " + fmtSize(m.size) : ""),
+      label: m.name + (m.size ? " � " + fmtSize(m.size) : ""),
       default: m.default,
     }));
     let cloud = getCloud();
@@ -5294,15 +5439,15 @@ function App() {
       opts.push({
         value: "cloud",
         label:
-          "☁ " +
+          "? " +
           (cloud.name || cloud.provider) +
           " (" +
           (cloud.model || "") +
           ")" +
-          (cloud.key ? " ·" + cloud.key.slice(-4) : ""),
+          (cloud.key ? " �" + cloud.key.slice(-4) : ""),
       });
     if (!opts.length)
-      opts.push({ value: "", label: "tidak ada model", disabled: true });
+      opts.push({ value: "", label: "Belum ada model", disabled: true });
     setModels(opts);
     const def = hasCloud
       ? "cloud"
@@ -5313,7 +5458,7 @@ function App() {
         ? "cloud: " + (cloud.name || cloud.provider)
         : opts.length
           ? "siap"
-          : "jalankan start-models",
+          : "Jalankan start-models",
     );
   }, [cloudVersion]);
   useEffect(() => {
@@ -5323,7 +5468,7 @@ function App() {
   useEffect(() => {
     if (!IPC) {
       checkServerHealth().then((ok) => {
-        if (!ok) setStatus("⚠ Jalankan 'npm start' di terminal");
+        if (!ok) setStatus("Jalankan 'npm start' di terminal.");
       });
     }
   }, []);
@@ -5335,17 +5480,73 @@ function App() {
   const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
 
   const doSend = async (content, display) => {
-    if (!content || busy) return;
+    if (!content) return;
+    const trimmedContent = content.trim();
+    if (trimmedContent.toLowerCase() === "/openclaw" || trimmedContent.toLowerCase().startsWith("/openclaw ")) {
+      if (busy) return;
+      const openclawMessage = trimmedContent.replace(/^\/openclaw\b/i, "").trim();
+      if (!openclawMessage) {
+        setMessages((m) => [
+          ...m,
+          { role: "user", text: display || content },
+          { role: "model", text: "Pesan /openclaw tidak boleh kosong. Contoh: /openclaw ringkas project ini" },
+        ]);
+        setStatus("OpenClaw butuh pesan");
+        return;
+      }
+      const ctrl = new AbortController();
+      ctrlRef.current = ctrl;
+      setBusy(true);
+      setStatus("Running OpenClaw...");
+      setMessages((m) => [
+        ...m,
+        { role: "user", text: display || content },
+        { role: "model", text: "Running OpenClaw..." },
+      ]);
+      try {
+        const res = await runOpenClawChat(openclawMessage, ctrl.signal);
+        const reply = res.text || res.raw || "OpenClaw selesai tanpa output.";
+        setMessages((m) => {
+          const c = m.slice();
+          c[c.length - 1] = { role: "model", text: reply };
+          return c;
+        });
+        setHistory((h) => [
+          ...h,
+          { role: "user", content },
+          { role: "assistant", content: reply },
+        ]);
+        setStatus("OpenClaw selesai");
+      } catch (e) {
+        if (e.name === "AbortError") {
+          setStatus("dibatalkan");
+        } else {
+          const msg = "[OpenClaw error: " + e.message + "]";
+          setMessages((m) => {
+            const c = m.slice();
+            c[c.length - 1] = { role: "model", text: msg };
+            return c;
+          });
+          setStatus("OpenClaw error");
+        }
+      } finally {
+        ctrlRef.current = null;
+        setBusy(false);
+      }
+      return;
+    }
+    if (content.trim().startsWith("/") && (await handleSlashCommand(content))) return;
+    if (busy) return;
     const newHist = [...history, { role: "user", content }];
     setHistory(newHist);
     setBusy(true);
-    setStatus("typing…");
+    setStatus("typing�");
     console.log("[doSend] Setting busy=true, content:", content);
     const ctrl = new AbortController();
     ctrlRef.current = ctrl;
     // ONE smart chat: with a tool-capable cloud, the model itself decides (tool_choice
-    // auto) whether to just answer (normal chat) or use tools (a command/edit) — like
-    // chatting with Claude. Local/bridge endpoints can't do tools → plain chat.
+    // auto) whether to just answer (normal chat) or use tools (a command/edit) � like
+    // chatting with Claude. Local/bridge endpoints can't do tools ? plain chat.
     const _cl = getCloud();
     const _localCloud =
       _cl && _cl.baseUrl && /(127\.0\.0\.1|localhost)/.test(_cl.baseUrl);
@@ -5394,7 +5595,7 @@ function App() {
       }
     } else if (!canvasAuto) {
       // Agentic chat (like Claude Code): the model answers OR uses tools to edit
-      // Quantum's own source. The live process renders as a clean timeline.
+      // WOLFSPACE's own source. The live process renders as a clean timeline.
       setMessages((m) => [
         ...m,
         { role: "user", text: display || content },
@@ -5488,7 +5689,7 @@ function App() {
         { role: "user", text: display || content },
         { role: "model", text: "", run: null },
       ]);
-      if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null }); // Web Dev → split opens immediately
+      if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null }); // Web Dev ? split opens immediately
       let lastCanvasT = 0;
       try {
         const res = await streamChat(
@@ -5519,7 +5720,7 @@ function App() {
                 else if (run) {
                   lastCanvasT = now;
                   _setCanvas({ doc: consoleDoc(run), run });
-                } // any executed code → live terminal view
+                } // any executed code ? live terminal view
               }
             }
           },
@@ -5532,7 +5733,7 @@ function App() {
         });
         setHistory((h) => [...h, { role: "assistant", content: res.text }]);
         setStatus(
-          res.run ? (res.run.ok ? "✓ verified" : "⚠ not passing") : "ready",
+          res.run ? (res.run.ok ? "Terverifikasi" : "Belum lolos pemeriksaan") : "Siap",
         );
         const proj = buildPreview(res.text); // finalize the live Canvas
         console.log(
@@ -5556,7 +5757,7 @@ function App() {
             _setCanvas(wstate);
           }
         } else if (res.run) {
-          // No web/flutter content but code WAS executed — show the terminal in Canvas
+          // No web/flutter content but code WAS executed � show the terminal in Canvas
           _setCanvas({ doc: consoleDoc(res.run), run: res.run });
         } else if (canvasAuto && !canvasRef.current?.flutter) _setCanvas(null); // only close if no A2UI was detected during streaming
       } catch (e) {
@@ -5581,20 +5782,7 @@ function App() {
     setBusy(false);
   };
   doSendRef.current = doSend;
-  const aiEditCode = (code, lang, instruction) => {
-    const prompt =
-      "Ubah kode berikut sesuai instruksi. Kembalikan HANYA satu blok kode (bertag bahasa " +
-      lang +
-      ").\nInstruksi: " +
-      instruction +
-      "\n\n```" +
-      lang +
-      "\n" +
-      code +
-      "\n```";
-    doSend(prompt, "✦ Ubah (" + lang + "): " + instruction);
-  };
-  const cancel = () => {
+    const cancel = () => {
     console.log("[cancel] Aborting and setting busy=false");
     if (ctrlRef.current) ctrlRef.current.abort();
     setBusy(false);
@@ -5604,7 +5792,7 @@ function App() {
     setMessages([]);
     setHistory([]);
     setBusy(false);
-    setStatus("ready");
+    setStatus("Siap.");
   };
   const saveChat = () => {
     if (messages.length === 0) return;
@@ -5672,21 +5860,25 @@ function App() {
             status={status}
             theme={theme}
             setTheme={setTheme}
+            terminalOpen={terminalOpen}
+            setTerminalOpen={setTerminalOpen}
           />
           <div className="chat-split">
             <div
               className="chat-col"
               style={{
-                flex: canvas ? "1 1 " + (100 - canvasPct) + "%" : "1 1 100%",
+                flex: terminalOpen && canvas
+                  ? "1 1 " + (100 - terminalPct - canvasPct) + "%"
+                  : terminalOpen
+                    ? "1 1 " + (100 - terminalPct) + "%"
+                    : canvas
+                      ? "1 1 " + (100 - canvasPct) + "%"
+                      : "1 1 100%",
               }}
             >
               <div className="chat-scroll" ref={scrollRef}>
                 {messages.length === 0 ? (
-                  <div className="empty">
-                    <span className="glyph">
-                      <Icon.spark style={{ color: "#fff" }} />
-                    </span>
-                    <h2>Enjoy development</h2>
+                  <div className="chat-inner">
                   </div>
                 ) : (
                   <div className="chat-inner">
@@ -5694,8 +5886,6 @@ function App() {
                       <Message
                         key={i}
                         msg={m}
-                        onAiEdit={aiEditCode}
-                        busy={busy}
                         onOpenCanvas={openCanvas}
                       />
                     ))}
@@ -5706,37 +5896,65 @@ function App() {
                 onSend={(t) => doSend(t)}
                 onCancel={cancel}
                 busy={busy}
+                onAgentCli={() => {
+                  setMenu(false);
+                  setStatus("Memulai agent...");
+                  if (window.startNewAgent) window.startNewAgent();
+                  else document.querySelector('[data-view="agents"]')?.click();
+                }}
               />
             </div>
-            {canvas && (
-              <div className="split-divider" onMouseDown={onDividerDown} />
+            {terminalOpen && (
+              <>
+                <div className="split-divider" onMouseDown={onTerminalDividerDown} />
+                <div className="terminal-col" style={{ flex: "0 0 " + terminalPct + "%" }}>
+                  <div className="terminal-panel">
+                    <div className="terminal-header">
+                      <span>Terminal</span>
+                      <button
+                        className="terminal-close"
+                        onClick={() => setTerminalOpen(false)}
+                        title="Tutup terminal"
+                      >
+                        ?
+                      </button>
+                    </div>
+                    <div className="terminal-output">
+                      {terminal.output || ""}
+                    </div>
+                  </div>
+                </div>
+              </>
             )}
             {canvas && (
-              <div
-                className="canvas-col"
-                style={{ flex: "0 0 " + canvasPct + "%" }}
-              >
-                {canvas.flutter ? (
-                  <StudioFrame
-                    source={canvas.flutter}
-                    onClose={() => {
-                      _setCanvas(null);
-                      _setCanvasAuto(false);
-                      lastProject.current = null;
-                    }}
-                  />
-                ) : (
-                  <CanvasPanel
-                    project={canvas}
-                    modelVal={modelVal}
-                    onClose={() => {
-                      _setCanvas(null);
-                      _setCanvasAuto(false);
-                      lastProject.current = null;
-                    }}
-                  />
-                )}
-              </div>
+              <>
+                <div className="split-divider" onMouseDown={onDividerDown} />
+                <div
+                  className="canvas-col"
+                  style={{ flex: "0 0 " + canvasPct + "%" }}
+                >
+                  {canvas.flutter ? (
+                    <StudioFrame
+                      source={canvas.flutter}
+                      onClose={() => {
+                        _setCanvas(null);
+                        _setCanvasAuto(false);
+                        lastProject.current = null;
+                      }}
+                    />
+                  ) : (
+                    <CanvasPanel
+                      project={canvas}
+                      modelVal={modelVal}
+                      onClose={() => {
+                        _setCanvas(null);
+                        _setCanvasAuto(false);
+                        lastProject.current = null;
+                      }}
+                    />
+                  )}
+                </div>
+              </>
             )}
           </div>
         </div>
@@ -5809,6 +6027,57 @@ function AgentRunnerView({
   onSend,
   currentModel,
 }) {
+  // Command Palette state (VS Code fork)
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandSearch, setCommandSearch] = useState("");
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  
+  // Filter commands based on search
+  const filteredCommands = useMemo(() => {
+    if (!commandSearch.trim()) return COMMANDS;
+    return COMMANDS.filter(cmd => 
+      cmd.label.toLowerCase().includes(commandSearch.toLowerCase())
+    );
+  }, [commandSearch]);
+  
+  // Execute selected command
+  const runSelectedCommand = () => {
+    const cmd = filteredCommands[selectedCommandIndex];
+    if (cmd) {
+      cmd.action();
+      setCommandPaletteOpen(false);
+      setCommandSearch("");
+    }
+  };
+  
+  // Keyboard shortcut for Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+        setCommandSearch("");
+        setSelectedCommandIndex(0);
+      }
+      // Navigate in command palette
+      if (commandPaletteOpen) {
+        if (e.key === 'Escape') {
+          setCommandPaletteOpen(false);
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedCommandIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSelectedCommandIndex(prev => Math.max(prev - 1, 0));
+        } else if (e.key === 'Enter') {
+          runSelectedCommand();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [commandPaletteOpen, selectedCommandIndex, filteredCommands]);
+
   const [selected, setSelected] = useState("");
   const [fullScreenAgent, setFullScreenAgent] = useState(null);
   const [installing, setInstalling] = useState(false);
@@ -5823,10 +6092,10 @@ function AgentRunnerView({
   const inputQueueRef = useRef([]); // queue of pending keystrokes
   const sendingRef = useRef(false); // lock for sequential send
   const startingRef = useRef(false); // prevent concurrent agent starts
-  const runnerAgents = agents.filter((a) => (a.id || a.name) !== "quantum");
+  const runnerAgents = agents.filter((a) => (a.id || a.name) !== "WOLFSPACE");
 
   const getAgentStyle = (id) => {
-    if (id === "quantum") {
+    if (id === "WOLFSPACE") {
       return {
         background: "rgba(139,109,255,0.12)",
         color: "#8b6dff",
@@ -5857,7 +6126,7 @@ function AgentRunnerView({
   };
 
   const getAgentIcon = (id) => {
-    if (id === "quantum") return SB.quantumAgent;
+    if (id === "WOLFSPACE") return SB.quantumAgent;
     if (id === "opencode") return SB.opencode;
     if (id === "claude") return SB.claude;
     return SB.runner;
@@ -5877,7 +6146,7 @@ function AgentRunnerView({
     ensureStartedRef.current = ensureStarted;
   });
 
-  // ── xterm.js init when fullscreen opens ──
+  // -- xterm.js init when fullscreen opens --
   useEffect(() => {
     if (!fullScreenAgent || !xtermRef.current) return;
     // Cleanup any existing terminal
@@ -5931,34 +6200,30 @@ function AgentRunnerView({
     fitRef.current = fit;
     term.focus();
 
-    // ── Shift+wheel: scroll xterm scrollback even when TUI has mouse tracking ──
-    // Sandbox: client-side only, fully try/caught, never touches PTY/server.
-    // Normal wheel (no Shift) is left untouched → TUI mouse-wheel still works.
+    // -- Scroll support: Hanya izinkan scroll di normal buffer, tidak di alternate buffer (TUI)
+    // Alternate buffer (yang dipakai opencode CLI/TUI) harus dikontrol penuh oleh aplikasi agar tampilan tidak rusak
     let wheelCleanup = () => {};
     try {
       const el = xtermRef.current;
       if (el && term) {
         const onWheel = (e) => {
           try {
-            if (!e.shiftKey) return; // no Shift → let TUI handle wheel
             const buf = term.buffer && term.buffer.active;
-            if (!buf || buf.type !== 'alternate') return; // normal buffer → xterm default scroll
-            e.preventDefault();
-            e.stopPropagation();
-            const lines = -Math.round((e.deltaY || 0) / 24);
-            if (lines !== 0) term.scrollLines(lines);
+            // Hanya proses scroll manual jika BUKAN alternate buffer (TUI)
+            // Di alternate buffer, biarkan TUI yang menangani semua input agar tampilan tidak pecah
+            if (buf && buf.type === 'alternate') return;
           } catch (_) {}
         };
-        el.addEventListener('wheel', onWheel, { capture: true, passive: false });
+        el.addEventListener('wheel', onWheel, { capture: true, passive: true });
         wheelCleanup = () => {
           try { el.removeEventListener('wheel', onWheel, { capture: true }); } catch (_) {}
         };
       }
     } catch (_) {}
 
-    // xterm input → auto-start agent on first keystroke, then send to PTY
+    // xterm input ? auto-start agent on first keystroke, then send to PTY
 
-    // ── Queue-based sender ── ensures sequential, ordered delivery to PTY
+    // -- Queue-based sender -- ensures sequential, ordered delivery to PTY
     const flushQueue = async () => {
       if (sendingRef.current) return; // already flushing
       sendingRef.current = true;
@@ -5979,7 +6244,7 @@ function AgentRunnerView({
           // Let PTY settle
           await new Promise((r) => setTimeout(r, 300));
         }
-        // Drain queue — send all buffered chars as one batch
+        // Drain queue � send all buffered chars as one batch
         while (inputQueueRef.current.length > 0) {
           const batch = inputQueueRef.current.splice(0).join("");
           await fetch("/api/agents/send", {
@@ -6002,7 +6267,7 @@ function AgentRunnerView({
       flushQueue();
     });
 
-    // Debounced resize — prevents flooding PTY with rapid SIGWINCH
+    // Debounced resize � prevents flooding PTY with rapid SIGWINCH
     let resizeDebounce = null;
     const doFit = () => {
       clearTimeout(resizeDebounce);
@@ -6030,7 +6295,7 @@ function AgentRunnerView({
     };
   }, [fullScreenAgent]);
 
-  // ── SSE stream: raw PTY output → xterm.js ──
+  // -- SSE stream: raw PTY output ? xterm.js --
   const subscribeStream = (agentId) => {
     if (esRef.current) {
       try {
@@ -6092,7 +6357,7 @@ function AgentRunnerView({
     setLocalRunning(false);
   };
 
-  // Start agent — auto-start on first keystroke if not running
+  // Start agent � auto-start on first keystroke if not running
   const ensureStarted = async (agentId) => {
     const id = agentId || selected;
     if (localRunningRef.current || !id) return true;
@@ -6128,14 +6393,14 @@ function AgentRunnerView({
         const data = await res.json().catch(() => ({}));
         if (termRef.current)
           termRef.current.write(
-            "\r\n❌ " + (data.error || "Gagal start agent") + "\r\n",
+            "\r\n? " + (data.error || "Gagal start agent") + "\r\n",
           );
         return false;
       }
     } catch (e) {
       localRunningRef.current = false;
       if (termRef.current)
-        termRef.current.write("\r\n❌ " + e.message + "\r\n");
+        termRef.current.write("\r\n? " + e.message + "\r\n");
       return false;
     }
   };
@@ -6170,13 +6435,13 @@ function AgentRunnerView({
       });
       const data = await res.json();
       if (data.ok) {
-        setInstallMsg("✅ Installed successfully!");
+        setInstallMsg("? Installed successfully!");
         setTimeout(() => onLoadAgents(), 500);
       } else {
-        setInstallMsg("❌ " + (data.error || "Install failed"));
+        setInstallMsg("? " + (data.error || "Install failed"));
       }
     } catch (e) {
-      setInstallMsg("❌ " + e.message);
+      setInstallMsg("? " + e.message);
     }
     setInstalling(false);
   };
@@ -6195,7 +6460,7 @@ function AgentRunnerView({
       }}
     >
       {fsAgent ? (
-        /* ═══════════ FULL-SCREEN AGENT VIEW ═══════════ */
+        /* ----------- FULL-SCREEN AGENT VIEW ----------- */
         <div className="ar-fullscreen">
           {/* Header */}
           <header className="ar-fs-header">
@@ -6221,15 +6486,15 @@ function AgentRunnerView({
             >
               <span className="ar-fs-dot" />
               {localRunning
-                ? "Running"
+                ? "Berjalan"
                 : fsAvailable
-                  ? "Ready"
-                  : "Not installed"}
+                  ? "Siap"
+                  : "Belum terpasang"}
             </span>
             <div className="tb-spacer" />
             {localRunning && (
               <button className="ar-fs-stop-btn" onClick={handleStop}>
-                ■ Stop
+                � Stop
               </button>
             )}
           </header>
@@ -6241,7 +6506,7 @@ function AgentRunnerView({
               ref={xtermRef}
               style={{ flex: 1, padding: 0, overflow: "hidden" }}
             />
-            {/* ── MINI SIDEBAR ── */}
+            {/* -- MINI SIDEBAR -- */}
             <div className="ar-fs-sidebar-mini">
               <div className="ar-fs-section">
                 <div className="ar-fs-section-label">Status</div>
@@ -6249,7 +6514,7 @@ function AgentRunnerView({
                   <span
                     className={"ar-fs-badge " + (fsAvailable ? "ok" : "warn")}
                   >
-                    {fsAvailable ? "✅ Installed" : "⚠ Not installed"}
+                    {fsAvailable ? "Terpasang" : "Belum terpasang"}
                   </span>
                   {!fsAvailable && (
                     <button
@@ -6257,7 +6522,7 @@ function AgentRunnerView({
                       onClick={handleInstall}
                       disabled={installing}
                     >
-                      {installing ? "Installing..." : "Install CLI"}
+                      {installing ? "Memasang..." : "Pasang CLI"}
                     </button>
                   )}
                 </div>
@@ -6269,7 +6534,7 @@ function AgentRunnerView({
           </div>
         </div>
       ) : (
-        /* ═══════════ GRID VIEW ═══════════ */
+        /* ----------- GRID VIEW ----------- */
         <>
           {/* Header */}
           <header className="hub-header">
@@ -6299,8 +6564,8 @@ function AgentRunnerView({
                   <div className="agent-runner-section-label">Pilih Agent</div>
                   {runnerAgents.length === 0 ? (
                     <div className="agent-runner-empty">
-                      Belum ada agent tersedia. Pastikan backend /api/agents
-                      berjalan.
+                      Belum ada agent yang tersedia. Pastikan backend /api/agents
+                      sedang berjalan.
                     </div>
                   ) : (
                     <div className="agent-runner-grid">
@@ -6317,8 +6582,8 @@ function AgentRunnerView({
                               <span
                                 className={
                                   "agent-runner-card-icon" +
-                                  (id === "quantum"
-                                    ? " agent-quantum"
+                                  (id === "WOLFSPACE"
+                                    ? " agent-WOLFSPACE"
                                     : id === "opencode"
                                       ? " agent-opencode"
                                       : id === "claude"
@@ -6332,18 +6597,18 @@ function AgentRunnerView({
                                 {a.name || id}
                               </span>
                               {a.available ? (
-                                <span className="ar-card-badge">available</span>
+                                <span className="ar-card-badge">tersedia</span>
                               ) : (
                                 <span
                                   className="ar-card-badge"
                                   style={{ color: "var(--text-faint)" }}
                                 >
-                                  not installed
+                                  belum terpasang
                                 </span>
                               )}
                             </div>
                             <div className="agent-runner-card-desc">
-                              {a.description || a.desc || "—"}
+                              {a.description || a.desc || "�"}
                             </div>
                             {a.model && (
                               <div className="agent-runner-card-model">
@@ -6360,6 +6625,37 @@ function AgentRunnerView({
             </div>
           </div>
         </>
+      )}
+      
+      {/* Command Palette UI (VS Code fork) */}
+      {commandPaletteOpen && (
+        <div className="command-palette-overlay" onClick={() => setCommandPaletteOpen(false)}>
+          <div className="command-palette" onClick={e => e.stopPropagation()}>
+            <input
+              type="text"
+              placeholder="Cari perintah... (Ctrl+Shift+P untuk membuka)"
+              value={commandSearch}
+              onChange={e => { setCommandSearch(e.target.value); setSelectedCommandIndex(0); }}
+              autoFocus
+              className="command-palette-input"
+            />
+            <div className="command-palette-list">
+              {filteredCommands.map((cmd, idx) => (
+                <div
+                  key={cmd.id}
+                  className={`command-palette-item ${idx === selectedCommandIndex ? 'selected' : ''}`}
+                  onClick={() => { setSelectedCommandIndex(idx); runSelectedCommand(); }}
+                >
+                  <span className="command-icon">{cmd.icon}</span>
+                  <span className="command-label">{cmd.label}</span>
+                </div>
+              ))}
+              {filteredCommands.length === 0 && (
+                <div className="command-palette-empty">Tidak ada perintah yang cocok</div>
+              )}
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
@@ -6669,3 +6965,6 @@ function Avatar({ src, fallback, className = "", size = "default" }) {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
+
+

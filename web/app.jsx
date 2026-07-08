@@ -67,7 +67,7 @@ async function pumpSSE(r, signal, onEvent){
     buf+=dec.decode(value,{stream:true}); const lines=buf.split("\n"); buf=lines.pop();
     for(const line of lines){ const mm=line.match(/^data:\s*(.*)$/); if(!mm) continue; let j; try{ j=JSON.parse(mm[1]); }catch(e){ continue; } onEvent(j); } }
 }
-const IPC = (typeof window!=="undefined" && window.quantum && window.quantum.ipc) ? window.quantum : null;
+const IPC = (typeof window!=="undefined" && window.WOLFSPACE && window.WOLFSPACE.ipc) ? window.WOLFSPACE : null;
 
 async function streamChat(reqBody, onText, signal){
   let acc="", run=null;
@@ -100,7 +100,7 @@ async function streamSelfAgent(reqBody, onEvent, signal){
     await pumpSSE(r, signal, onEvent);
   } catch(e) {
     if (e instanceof TypeError && e.message.includes('Failed to fetch')) {
-      throw new Error('Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder quantum\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app');
+      throw new Error('Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder WOLFSPACE\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app');
     }
     throw e;
   }
@@ -161,12 +161,12 @@ function HFModels({ onSaved }) {
   const [busy, setBusy] = useState(false);
   const [prog, setProg] = useState(null);
   const [msg, setMsg] = useState("");
-  const search = async () => { const t=q.trim(); if(!t) return; setMsg("mencari…"); setResults([]); setSel(""); setFiles([]);
+  const search = async () => { const t=q.trim(); if(!t) return; setMsg("Mencari model..."); setResults([]); setSel(""); setFiles([]);
     try { const r = await (await fetch("/hf/search?q="+encodeURIComponent(t))).json(); if(r.error) throw new Error(r.error); setResults(r); setMsg(r.length?"":"tidak ada hasil"); }
-    catch(e){ setMsg("gagal: "+e.message); } };
-  const pick = async (id) => { setSel(id); setFiles([]); setMsg("memuat file…");
+    catch(e){ setMsg("Pencarian gagal: "+e.message); } };
+  const pick = async (id) => { setSel(id); setFiles([]); setMsg("Memuat daftar file...");
     try { const r = await (await fetch("/hf/files?id="+encodeURIComponent(id))).json(); if(r.error) throw new Error(r.error); setFiles(r); setMsg(r.length?"":"tak ada file .gguf di repo ini"); }
-    catch(e){ setMsg("gagal: "+e.message); } };
+    catch(e){ setMsg("Gagal memuat file: "+e.message); } };
   const download = async (file) => { if(busy) return; setBusy(true); setProg(0); setMsg("mengunduh "+file.split("/").pop()+"…");
     try {
       const res = await fetch("/hf/download",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({id:sel,file})});
@@ -175,9 +175,9 @@ function HFModels({ onSaved }) {
         for(const line of lines){ const m=line.match(/^data:\s*(.*)$/); if(!m) continue; let j; try{ j=JSON.parse(m[1]); }catch(e){ continue; }
           if(j.t==="progress") setProg(j.pct);
           else if(j.t==="done"){ setMsg("✓ "+j.model.name+" diunduh & dijalankan (port "+j.model.port+"). Tunggu ~30 dtk, lalu pilih di dropdown Model."); onSaved && onSaved(); }
-          else if(j.t==="err") setMsg("gagal: "+j.m);
+          else if(j.t==="err") setMsg("Unduhan gagal: "+j.m);
         } }
-    } catch(e){ setMsg("gagal: "+e.message); }
+    } catch(e){ setMsg("Unduhan gagal: "+e.message); }
     setBusy(false); setProg(null);
   };
   return (
@@ -214,21 +214,21 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
   const [provider, setProvider] = useState(stored ? (stored.baseUrl ? "custom" : stored.provider) : "auto");
   const [model, setModelName] = useState(stored ? (keyish(stored.model) ? "" : stored.model) : "");
   const [baseUrl, setBaseUrl] = useState(stored ? (stored.baseUrl || "") : "");
-  const [hint, setHint] = useState(stored ? ("provider " + stored.provider + " ·" + (stored.key?stored.key.slice(-4):"server") + " · aktif") : "Tempel API key, lalu Deteksi atau pilih provider.");
+  const [hint, setHint] = useState(stored ? ("Provider " + stored.provider + " · " + (stored.key?stored.key.slice(-4):"server") + " · aktif") : "Tempel API key, lalu deteksi otomatis atau pilih provider.");
 
   const detect = async () => {
     const k = key.trim() || (stored && stored.key);
-    if (!k) { setHint("Tempel API key dulu."); return; }
+    if (!k) { setHint("Tempel API key terlebih dahulu."); return; }
     setHint("🔍 Mendeteksi…");
     try {
       const d = await (await fetch("/detect-key",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k})})).json();
       if (PROVIDER_LABELS[d.provider]) setProvider(d.provider);
       setHint(d.verified ? ("✓ Terverifikasi: " + d.name) : ("Tebakan: " + d.name + " (belum terverifikasi)"));
-    } catch(e){ setHint("Deteksi gagal: " + e.message); }
+    } catch(e){ setHint("Deteksi belum berhasil: " + e.message); }
   };
   const save = () => {
     const k = key.trim() || (stored && stored.key);
-    if (!k) { setHint("Tempel API key dulu."); return; }
+    if (!k) { setHint("Tempel API key terlebih dahulu."); return; }
     let prov, name, bu;
     if (provider === "auto") { const d = detectPrefix(k); prov = d.provider; name = d.name; }
     else if (provider === "custom" || provider === "cloudflare") { prov = provider; name = PROVIDER_LABELS[provider]; bu = baseUrl.trim(); if(!bu){ setHint("Isi Base URL untuk " + (provider === "cloudflare" ? "Cloudflare Worker" : "custom") + "."); return; } }
@@ -239,12 +239,12 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
     setCloudLS({ key:k, provider:prov, name, model:mdl, baseUrl:bu });
     // mirror to the server so the backend agent loop can use it autonomously
     fetch("/cloud-save",{ method:"POST", headers:{"Content-Type":"application/json"}, body:JSON.stringify({ key:k, provider:prov, model:mdl, baseUrl:bu }) })
-      .then(r=>r.json()).then(()=>setHint("Tersimpan (browser + server): " + prov + " ·" + k.slice(-4) + " → " + mdl))
-      .catch(()=>setHint("Tersimpan di browser: " + prov + " ·" + k.slice(-4) + " → " + mdl));
+      .then(r=>r.json()).then(()=>setHint("Tersimpan di browser dan server: " + prov + " · " + k.slice(-4) + " → " + mdl))
+      .catch(()=>setHint("Tersimpan di browser: " + prov + " · " + k.slice(-4) + " → " + mdl));
     onSaved();
     onCloudChanged(); // Trigger model list reload
   };
-  const clear = () => { setCloudLS(null); setKey(""); setModelName(""); setBaseUrl(""); setProvider("auto"); setHint("Dihapus."); onSaved(); onCloudChanged(); };
+  const clear = () => { setCloudLS(null); setKey(""); setModelName(""); setBaseUrl(""); setProvider("auto"); setHint("Konfigurasi API key sudah dihapus."); onSaved(); onCloudChanged(); };
 
   return (
     <div className="hub">
@@ -252,7 +252,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
         <span className="tb-divider" />
         <div className="hub-title-group">
           <span className="hub-hf-mark" style={{background:"rgba(94,234,212,.14)",color:"#5eead4"}}>{SB.key({width:16,height:16})}</span>
-          <span className="hub-title">API Key</span>
+          <span className="hub-title">Pengaturan API</span>
           <span className="hub-subtitle">Cloud BYOK · bawa key sendiri</span>
         </div>
         <div className="tb-spacer" />
@@ -260,9 +260,9 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       </header>
       <div className="hub-body"><div className="hub-inner settings-inner">
         <div className="settings-card">
-          <div className="field"><label className="field-label">Cloud API Key</label>
+          <div className="field"><label className="field-label">API Key Cloud</label>
             <input className="input" type="password" autoComplete="new-password" value={key} onChange={(e)=>setKey(e.target.value)}
-              placeholder={stored ? ("Key tersimpan (…" + (stored.key?stored.key.slice(-4):"server") + ") — kosongkan untuk tetap") : "Tempel API key apa saja…"} />
+              placeholder={stored ? ("Key tersimpan (... " + (stored.key?stored.key.slice(-4):"server") + ") - kosongkan untuk tetap memakai key lama") : "Tempel API key di sini"} />
           </div>
           <button className="btn btn-ghost" onClick={detect}>🔍 Deteksi provider dari key</button>
           <div className="field"><label className="field-label">Provider</label>
@@ -279,11 +279,11 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
               <input className="input" value={baseUrl} onChange={(e)=>setBaseUrl(e.target.value)} placeholder={provider === "cloudflare" ? "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1" : "https://host/v1"} /></div>
           )}
           <div className="field"><label className="field-label">Model</label>
-            <input className="input" value={model} onChange={(e)=>setModelName(e.target.value)} placeholder="opsional — mis. qwen, coder, gpt-4o" /></div>
+            <input className="input" value={model} onChange={(e)=>setModelName(e.target.value)} placeholder="Opsional, misalnya qwen, coder, gpt-4o" /></div>
           <div className="provider-status"><span className="status-dot" />{hint}</div>
           <div className="btn-row">
             <button className="btn btn-primary" onClick={save}><Icon.check style={{width:14,height:14}} /> Simpan</button>
-            <button className="btn btn-danger" onClick={clear}>Hapus</button>
+            <button className="btn btn-danger" onClick={clear}>Hapus konfigurasi</button>
           </div>
         </div>
       </div></div>
@@ -351,39 +351,10 @@ function LangIcon({ lang }){
       onError={(e)=>{ const sp=document.createElement("span"); sp.className="lang-badge"; sp.style.background=m.c; sp.style.color=m.d?"#111":"#fff"; sp.textContent=m.s; e.target.replaceWith(sp); }} />;
   return <span className="lang-badge" style={{ background:m.c, color:m.d?"#111":"#fff" }}>{m.s}</span>;
 }
-function LangSelect({ value, onChange }){
-  const [open, setOpen] = useState(false);
-  const ref = useRef(null);
-  useEffect(() => {
-    if(!open) return;
-    const h = (e) => { if(ref.current && !ref.current.contains(e.target)) setOpen(false); };
-    document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
-  }, [open]);
-  const meta = (l) => LANG_META[l] || { l, s:(l||"?").slice(0,2), c:"#7c8aa0" };
-  const cur = meta(value);
-  return (
-    <div className="lang-select" ref={ref}>
-      <button className="lang-trigger" onClick={()=>setOpen(o=>!o)} title="Pilih bahasa">
-        <LangIcon lang={value} /><span className="lang-name">{cur.l}</span><Icon.chev className="chev" style={{width:13,height:13}} />
-      </button>
-      {open && (
-        <div className="lang-menu">
-          {LANGS.map(l => { const m = meta(l); return (
-            <button key={l} className={"lang-opt"+(l===value?" active":"")} onClick={()=>{ onChange(l); setOpen(false); }}>
-              <LangIcon lang={l} /><span>{m.l}</span>{l===value?<Icon.check style={{width:13,height:13,marginLeft:"auto"}} />:null}
-            </button>
-          ); })}
-        </div>
-      )}
-    </div>
-  );
-}
 
-function CodeBlock({ lang, code, onAiEdit, busy }) {
+function CodeBlock({ lang, code }) {
   const [copied, setCopied] = useState(false);
   const [language, setLanguage] = useState((lang || "python").toLowerCase());
-  const [aiOpen, setAiOpen] = useState(false);
-  const [ins, setIns] = useState("");
   const [runState, setRunState] = useState("idle");
   const [out, setOut] = useState(null);
   const [edReady, setEdReady] = useState(false);   // Monaco mounted? else show <pre> fallback
@@ -426,7 +397,6 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
     catch(e){ setOut({ ok:false, error:"server tidak terjangkau: "+e.message }); }
     setRunState("done");
   };
-  const doAi = () => { const t=ins.trim(); if(!t||busy) return; setAiOpen(false); setIns(""); onAiEdit(getCode(), language, t); };
 
   return (
     <div className="code-block">
@@ -438,19 +408,10 @@ function CodeBlock({ lang, code, onAiEdit, busy }) {
       {!edReady && <pre className="code-fallback" style={{ margin:0, padding:"10px 14px", overflow:"auto", color:"#cbd5e1", background:"#0d1117", font:"13px/1.6 ui-monospace,Consolas,monospace", whiteSpace:"pre" }}>{code}</pre>}
       <div className="code-toolbar">
         <button className="ctb-btn ctb-run" onClick={run} disabled={runState==="running"}>
-          {runState==="running" ? <><Icon.loader className="spin" /> Running…</> : <><Icon.play /> Run</>}
+          {runState==="running" ? <><Icon.loader className="spin" /> Menjalankan...</> : <><Icon.play /> Jalankan</>}
         </button>
-        <button className="ctb-btn ctb-ai" onClick={()=>setAiOpen(o=>!o)}><Icon.spark style={{width:13,height:13}} /> AI Edit</button>
         <button className={"ctb-btn"+(copied?" copied":"")} onClick={copyCode}>{copied?<Icon.check/>:<Icon.copy/>} {copied?"Copied":"Copy"}</button>
-        <LangSelect value={language} onChange={setLanguage} />
       </div>
-      {aiOpen && (
-        <div className="ai-panel">
-          <textarea value={ins} onChange={(e)=>setIns(e.target.value)} placeholder="Instruksi AI… (mis. tambah error handling, ubah ke async)"
-            onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); doAi(); } }} />
-          <div className="ai-row"><button className="ai-go" onClick={doAi}>✦ Generate</button><button className="ctb-btn" onClick={()=>setAiOpen(false)}>Batal</button></div>
-        </div>
-      )}
       {runState==="done" && out && (
         <div className={"code-output " + (out.ok ? "ok" : "err")}>
           <div className="output-head"><span className="ok-mark">{out.ok?<><Icon.check/> ran (exit 0)</>:<>✗ error</>} · {language}</span></div>
@@ -672,13 +633,13 @@ function MermaidBlock({ code }) {
 }
 
 /* ----------------------------- Message ----------------------------- */
-function Blocks({ text, onAiEdit, busy }) {
+function Blocks({ text }) {
   const blocks = parseBlocks(text);
   if (!blocks.length) return <div className="typing"><span/><span/><span/></div>;
   return blocks.map((b,i) => b.type==="code"
     ? (b.lang && /^(mermaid|mmd)$/i.test(b.lang)
       ? <MermaidBlock key={i} code={b.code} />
-      : <CodeBlock key={i} lang={b.lang} code={b.code} onAiEdit={onAiEdit} busy={busy} />)
+      : <CodeBlock key={i} lang={b.lang} code={b.code} />)
     : <p key={i} dangerouslySetInnerHTML={{ __html: b.html }} />);
 }
 function Verdict({ run }) {
@@ -702,13 +663,13 @@ function Verdict({ run }) {
     </div>
   );
 }
-function Message({ msg, onAiEdit, busy, onOpenCanvas }) {
+function Message({ msg, onOpenCanvas }) {
   if (msg.role === "user") return (<div className="msg user"><span className="msg-role">you</span><div className="bubble-user">{msg.text}</div></div>);
-  if (msg.role === "agent") return (<div className="msg model"><span className="msg-role">agent</span><AgentSteps run={msg.agent||{}} onAiEdit={onAiEdit} busy={busy} /></div>);
+  if (msg.role === "agent") return (<div className="msg model"><span className="msg-role">agent</span><AgentSteps run={msg.agent||{}} /></div>);
   const web = msg.text ? buildPreview(msg.text) : { has:false };
   return (
     <div className="msg model"><span className="msg-role">model</span>
-      <div className="bubble-model">{msg.text ? <Blocks text={msg.text} onAiEdit={onAiEdit} busy={busy} /> : <div className="typing"><span/><span/><span/></div>}</div>
+      <div className="bubble-model">{msg.text ? <Blocks text={msg.text} /> : <div className="typing"><span/><span/><span/></div>}</div>
       <Verdict run={msg.run} />
       {web.has && onOpenCanvas && <button className="open-canvas-btn" onClick={()=>onOpenCanvas(msg.text, msg.run)}><Icon.spark style={{width:13,height:13}} /> Buka di Canvas (split)</button>}
     </div>
@@ -750,28 +711,28 @@ function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
     document.addEventListener("mousedown", h); return () => document.removeEventListener("mousedown", h);
   }, [menu]);
   const webDev = () => { setMenu(false); onToggleCanvas(); };
-  const notYet = (name) => { setMenu(false); setSoon(name + " — segera hadir"); setTimeout(()=>setSoon(""), 2600); };
+  const notYet = (name) => { setMenu(false); setSoon(name + " segera hadir."); setTimeout(()=>setSoon(""), 2600); };
   return (
     <div className="composer-wrap">
       <div className="composer">
-        <div className="composer-add-wrap" ref={wrapRef}>
-          <button className={"composer-add"+(menu?" open":"")} title="Tambah" onClick={()=>setMenu(m=>!m)}>{MI.plus}</button>
-          {menu && (
-            <div className="composer-menu">
-              <button className="cm-item" onClick={()=>notYet("Upload attachment")}><i>{MI.upload}</i><span className="cm-lbl"><b>Upload attachment</b><small>file, image, video, audio</small></span></button>
-              <div className="cm-sep" />
-              <button className={"cm-item"+(canvasAuto?" active":"")} onClick={webDev}><i>{MI.webdev}</i> Web Dev{canvasAuto?<span className="cm-on">aktif</span>:null}</button>
-            </div>
-          )}
-        </div>
-        <textarea ref={ref} rows={1} value={val} placeholder="How can I help you today?"
+        <textarea ref={ref} rows={1} value={val} placeholder="Apa yang ingin kamu buat hari ini?"
           onChange={(e)=>{ console.log('[Textarea] value changed:', e.target.value); setVal(e.target.value); grow(); }}
           onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); console.log('[Textarea] Enter pressed, calling submit'); submit(); } }}
           onFocus={()=>console.log('[Textarea] focused')}
           onBlur={()=>console.log('[Textarea] blurred')} />
-        <button className={"send-btn"+(busy?" cancel":"")} onClick={busy?onCancel:submit} disabled={!busy && !val.trim()} onClickCapture={(e)=>{console.log('[Send button] clicked, busy:', busy, 'disabled:', !busy && !val.trim());}}>
-          {busy ? "Cancel" : <>Send <Icon.send /></>}
-        </button>
+        <div className="composer-add-wrap" ref={wrapRef}>
+          <button className={"composer-add"+(menu?" open":"")} title="Tambah" onClick={()=>setMenu(m=>!m)}>{MI.plus}</button>
+          {menu && (
+            <div className="composer-menu">
+              <button className="cm-item" onClick={()=>notYet("Unggah lampiran")}><i>{MI.upload}</i><span className="cm-lbl"><b>Unggah lampiran</b><small>file, gambar, video, audio</small></span></button>
+              <div className="cm-sep" />
+              <button className={"cm-item"+(canvasAuto?" active":"")} onClick={webDev}><i>{MI.webdev}</i> Web Dev{canvasAuto?<span className="cm-on">aktif</span>:null}</button>
+            </div>
+          )}
+          <button className={"send-btn"+(busy?" cancel":"")} onClick={busy?onCancel:submit} disabled={!busy && !val.trim()} onClickCapture={(e)=>{console.log('[Send button] clicked, busy:', busy, 'disabled:', !busy && !val.trim());}}>
+            {busy ? "Cancel" : <>Send <Icon.send /></>}
+          </button>
+        </div>
       </div>
       <div className="composer-hint">
         {soon ? <b style={{color:"var(--brand)"}}>{soon}</b>
@@ -923,8 +884,8 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
   }, []);
   const doSearch = useCallback(async (query) => {
     setLoading(true); setMsg("");
-    try { const r = await (await fetch("/hf/search?q=" + encodeURIComponent(query))).json(); if(r.error) throw new Error(r.error); setResults(r); setSizes({}); resolveSizes(r); if(!r.length) setMsg("Tidak ada model."); }
-    catch(e){ setResults([]); setMsg("Gagal memuat: " + e.message); }
+    try { const r = await (await fetch("/hf/search?q=" + encodeURIComponent(query))).json(); if(r.error) throw new Error(r.error); setResults(r); setSizes({}); resolveSizes(r); if(!r.length) setMsg("Belum ada model yang tersedia."); }
+    catch(e){ setResults([]); setMsg("Gagal memuat model: " + e.message); }
     setLoading(false);
   }, [resolveSizes]);
   useEffect(() => { const c = HUB_CATS.find(x=>x.key===cat) || HUB_CATS[0]; doSearch(q.trim() || c.q); }, [cat]);
@@ -1296,7 +1257,7 @@ function buildPreview(text){
   if(pyB)  backendFiles.push({ path:"backend/main.py",    lang:"python", code:pyB.code });
   if(sqlB) backendFiles.push({ path:"backend/schema.sql", lang:"sql",    code:sqlB.code });
 
-  // Quantum Canvas is Flutter-only: a previewable result is ONE ```dart block,
+  // WOLFSPACE Canvas is Flutter-only: a previewable result is ONE ```dart block,
   // compiled locally by the Flutter SDK. HTML/CSS/JS/React are no longer rendered.
   // streaming:true while the fence is still open — compiling a half-written
   // program just wastes a build on a guaranteed syntax error.
@@ -1734,7 +1695,7 @@ function StudioFrame({ source, onClose }){
   }, [send]);
   return (
     <div className="canvas">
-      <iframe ref={ref} src={bust.current} title="Quantum Studio" className="canvas-frame studio-frame"
+      <iframe ref={ref} src={bust.current} title="WOLFSPACE Studio" className="canvas-frame studio-frame"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
         onLoad={send} />
       <button className="studio-close" title="Tutup Web Dev" onClick={onClose}>✕</button>
@@ -1764,7 +1725,7 @@ function Sidebar({ collapsed, setCollapsed, view, setView, onNewChat, onVisualPi
   return (
     <aside className={"sidebar"+(collapsed?" collapsed":"")}>
       <div className="sb-head">
-        <span className="sb-brand"><BrandMark /><b>Quantum</b></span>
+        <span className="sb-brand"><BrandMark /><b>WOLFSPACE</b></span>
         <button className="sb-toggle" title={collapsed?"Buka panel":"Tutup panel"} onClick={()=>setCollapsed(!collapsed)}>{SB.panel({width:19,height:19})}</button>
       </div>
       <div className="sb-group">
@@ -1784,7 +1745,7 @@ function Sidebar({ collapsed, setCollapsed, view, setView, onNewChat, onVisualPi
       {showHistory && (
         <div className="sb-history-list">
           {savedChats.length === 0 ? (
-            <div className="sb-history-empty">Belum ada chat tersimpan</div>
+            <div className="sb-history-empty">Belum ada percakapan tersimpan</div>
           ) : (
             savedChats.slice().reverse().map(chat => (
               <div key={chat.id} className="sb-history-item" onClick={()=>restoreChat(chat)}>
@@ -1821,8 +1782,28 @@ function Sidebar({ collapsed, setCollapsed, view, setView, onNewChat, onVisualPi
 }
 
 // Live agent process — animated bubbles showing each file/folder being worked on.
-const AG_ICON = {
-  list: "📁", glob: "📂", read: "📄", grep: "🔍", edit: "✎", write: "✚", run: "▶", bash: "▶",
+// ─── Agent Step UI v2 ── SVG icons per tool ────────────────────────────────
+const AG_SVG = {
+  list:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><path d="M2 3h3v3H2zM2 7h3v3H2zM2 11h3v3H2z" fill="currentColor" opacity=".4"/><path d="M7 4h7M7 8h7M7 12h7" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round"/></svg>,
+  glob:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.4"/><path d="M8 2.5C6 5 6 11 8 13.5M8 2.5C10 5 10 11 8 13.5M2.5 8h11" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>,
+  read:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><rect x="3" y="1.5" width="10" height="13" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M5.5 5h5M5.5 7.5h5M5.5 10h3" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round"/></svg>,
+  grep:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.4"/><path d="M10 10l3.5 3.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/><path d="M5 6.5h3M6.5 5v3" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round"/></svg>,
+  edit:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><path d="M10.5 2.5l3 3L5 14H2v-3L10.5 2.5z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round"/><path d="M8.5 4.5l3 3" stroke="currentColor" strokeWidth="1.2"/></svg>,
+  write: (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><rect x="2" y="2" width="12" height="12" rx="1.5" stroke="currentColor" strokeWidth="1.4"/><path d="M8 5v6M5 8h6" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+  run:   (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><path d="M4 2.5l10 5.5-10 5.5V2.5z" fill="currentColor" opacity=".9"/></svg>,
+  bash:  (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><rect x="1.5" y="2.5" width="13" height="11" rx="2" stroke="currentColor" strokeWidth="1.3"/><path d="M4 6l2.5 2.5L4 11M8.5 11h3.5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round"/></svg>,
+  err:   (p) => <svg viewBox="0 0 16 16" fill="none" {...p}><circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4"/><path d="M8 5v4M8 11v.5" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round"/></svg>,
+};
+const AG_META = {
+  list:  { label:"List",  color:"#60a5fa", bg:"rgba(96,165,250,0.12)"  },
+  glob:  { label:"Glob",  color:"#a78bfa", bg:"rgba(167,139,250,0.12)" },
+  read:  { label:"Read",  color:"#34d399", bg:"rgba(52,211,153,0.12)"  },
+  grep:  { label:"Grep",  color:"#fbbf24", bg:"rgba(251,191,36,0.12)"  },
+  edit:  { label:"Edit",  color:"#f97316", bg:"rgba(249,115,22,0.12)"  },
+  write: { label:"Write", color:"#22d3ee", bg:"rgba(34,211,238,0.12)"  },
+  run:   { label:"Run",   color:"#a3e635", bg:"rgba(163,230,53,0.12)"  },
+  bash:  { label:"Bash",  color:"#a3e635", bg:"rgba(163,230,53,0.12)"  },
+  err:   { label:"Error", color:"#f87171", bg:"rgba(248,113,113,0.12)" },
 };
 // Strip the DONE protocol marker so the agent's answer reads clean.
 function cleanAgentText(s){
@@ -1902,54 +1883,149 @@ function ToolOutput({ text, ok, kind, arg }) {
   );
 }
 
-function AgentSteps({ run, onAiEdit, busy }){
-  // run = { events:[...], thinking, busy, summary, done, error, backup, editCount, run }
-  const [expanded, setExpanded] = useState({});
-  const acts = (run.events || []).filter(e => e.type === "act" || e.type === "err");
-  const summary = cleanAgentText(run.summary);
-  // Plain answer (no tools used) → render like a normal chat reply (code blocks +
-  // terminal/verdict when the reply contained runnable code), not a timeline.
-  if (run.done && acts.length === 0 && !run.error) {
-    return (<><div className="bubble-model"><Blocks text={summary} onAiEdit={onAiEdit} busy={busy} /></div><Verdict run={run.run} /></>);
-  }
-  if (!run.busy && acts.length === 0 && run.error) {
-    return <div className="bubble-model" style={{color:"#fca5a5"}}>{summary || (run.events&&run.events[0]&&run.events[0].m) || "error"}</div>;
-  }
+/* ── Sub-component: satu baris step di timeline ── */
+function AgentStepRow({ e, i, expanded, setExpanded }) {
+  const isErr = e.type === "err";
+  const meta  = AG_META[isErr ? "err" : e.kind] || { label: e.kind, color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
+  const SvgIcon = isErr ? AG_SVG.err : (AG_SVG[e.kind] || AG_SVG.bash);
+  const isOpen  = !!expanded[i];
   return (
-    <div className={"agent-flow"+(run.busy?" busy":"")}>
-      <div className={"agent-flow-head"+(run.busy?" busy":"")}>
-        {run.busy ? <span className="agent-spin" /> : <span className={"agent-dot"+(run.error?" err":" done")} />}
-        <span className="agent-flow-title">
-          {run.busy ? <>Memproses<span className="agent-ell"><span>.</span><span>.</span><span>.</span></span> langkah {run.step||1}</> : run.error ? "Berhenti" : "Selesai"}
-        </span>
-        {run.backup ? <span className="agent-backup" title="cadangan source sebelum diedit">⤺ {run.backup}</span> : null}
+    <div className={"av2-row " + (isErr ? "av2-err" : e.ok ? "av2-ok" : "av2-fail")}
+         style={{"--row-color": meta.color, "--row-bg": meta.bg}}>
+      {/* connector: icon bulat + garis vertikal */}
+      <div className="av2-connector">
+        <div className="av2-icon-wrap">
+          <SvgIcon width={13} height={13} style={{color: meta.color}} />
+        </div>
+        <div className="av2-track" />
       </div>
-      <div className="agent-steps">
-        {acts.map((e,i)=> e.type==="err" ? (
-          <div key={i} className="agent-row fail"><div className="ar-line"><span className="ar-header"><span className="ar-verb">error</span><span className="ar-arg">{e.m}</span></span></div></div>
-        ) : (
-          <div key={i} className={"agent-row "+(e.ok?"ok":"fail")}>
-            <div className={"ar-line"+(expanded[i]?" expanded":"")} onClick={()=>setExpanded(prev=>({...prev,[i]:!prev[i]}))}>
-              <span className="ar-header">
-                <span className="ar-chev">{expanded[i]?"▼":"▶"}</span>
-                <span className="ar-verb">{({list:"List",glob:"Glob",read:"Read",grep:"Grep",edit:"Edit",write:"Write",run:"Run",bash:"Bash"})[e.kind]||e.kind}</span>
-                {e.arg ? <span className="ar-arg">{e.arg}</span> : null}
-              </span>
-              {e.output && expanded[i] ? <ToolOutput text={e.output} ok={e.ok} kind={e.kind} arg={e.arg} /> : null}
-            </div>
-          </div>
-        ))}
-        {run.busy ? (
-          <div className="agent-row busy">
-            <span className="ar-line"><span className="ar-verb dim">{run.thinking ? "Berpikir" : "Menjalankan"}</span></span>
-            {run.thinking ? <div className="agent-think">{run.thinking.slice(-260)}<span className="agent-caret" /></div> : null}
+      {/* konten baris */}
+      <div className="av2-body">
+        <div className={"av2-header" + (e.output ? " clickable" : "")}
+             onClick={e.output ? () => setExpanded(p => ({...p, [i]: !p[i]})) : undefined}>
+          <span className="av2-badge" style={{background: meta.bg, color: meta.color}}>{meta.label}</span>
+          {e.arg  ? <span className="av2-arg">{e.arg}</span>   : null}
+          {isErr  ? <span className="av2-err-msg">{e.m}</span> : null}
+          <span className="av2-spacer" />
+          {!e.ok && !isErr ? <span className="av2-fail-dot" title="gagal" /> : null}
+          {e.output ? (
+            <span className="av2-chev-icon" style={{transform: isOpen ? "rotate(90deg)" : "rotate(0deg)"}}>
+              <svg viewBox="0 0 12 12" width={10} height={10} fill="none">
+                <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
+              </svg>
+            </span>
+          ) : null}
+        </div>
+        {e.output && isOpen ? (
+          <div className="av2-output-wrap">
+            <ToolOutput text={e.output} ok={e.ok} kind={e.kind} arg={e.arg} />
           </div>
         ) : null}
       </div>
+    </div>
+  );
+}
+
+/* ── Komponen utama AgentSteps v2 ── */
+function AgentSteps({ run }){
+  const [expanded, setExpanded] = useState({});
+  const acts      = (run.events || []).filter(e => e.type === "act" || e.type === "err");
+  const summary   = cleanAgentText(run.summary);
+  const totalSteps = acts.length;
+  const okSteps    = acts.filter(e => e.type === "act" && e.ok).length;
+
+  // Jawaban biasa tanpa tool → tampilkan seperti chat reply normal
+  if (run.done && acts.length === 0 && !run.error)
+    return (<><div className="bubble-model"><Blocks text={summary} /></div><Verdict run={run.run} /></>);
+  if (!run.busy && acts.length === 0 && run.error)
+    return <div className="bubble-model" style={{color:"#fca5a5"}}>{summary || (run.events&&run.events[0]&&run.events[0].m) || "error"}</div>;
+
+  return (
+    <div className={"av2-flow" + (run.busy ? " av2-busy" : "") + (run.error ? " av2-error" : "") + (run.done ? " av2-done" : "")}>
+
+      {/* ── Header ── */}
+      <div className="av2-head">
+        <div className="av2-head-left">
+          {run.busy
+            ? <span className="av2-spinner">
+                <svg viewBox="0 0 20 20" width={14} height={14}>
+                  <circle cx="10" cy="10" r="7" stroke="#8b6dff" strokeWidth="2.5" fill="none"
+                    strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round"/>
+                </svg>
+              </span>
+            : run.error
+              ? <span className="av2-status-dot av2-dot-err" />
+              : <span className="av2-status-dot av2-dot-ok" />
+          }
+          <span className="av2-head-title">
+            {run.busy
+              ? <><span className="av2-pulse-text">Memproses</span>{" "}<span className="av2-step-badge">langkah {run.step||1}</span></>
+              : run.error ? "Berhenti" : "Selesai"
+            }
+          </span>
+          {run.backup ? <span className="av2-backup-pill" title="cadangan sebelum diedit">↩ {run.backup}</span> : null}
+        </div>
+        {totalSteps > 0 && <span className="av2-step-counter">{okSteps}/{totalSteps} langkah</span>}
+      </div>
+
+      {/* ── Progress bar ── */}
+      <div className="av2-progress-track">
+        <div className={"av2-progress-bar"
+          + (run.done && !run.error ? " av2-progress-done" : run.error ? " av2-progress-err" : "")}
+          style={{width: run.done ? "100%"
+            : (run.busy && totalSteps > 0 ? Math.round((okSteps / Math.max(totalSteps,1)) * 85) + "%" : "0%")
+          }}
+        />
+        {run.busy ? <div className="av2-progress-shimmer" /> : null}
+      </div>
+
+      {/* ── Timeline steps ── */}
+      {acts.length > 0 && (
+        <div className="av2-steps">
+          {acts.map((e, i) => (
+            <AgentStepRow key={i} e={e} i={i} expanded={expanded} setExpanded={setExpanded} />
+          ))}
+
+          {/* Baris live saat busy */}
+          {run.busy && (
+            <div className="av2-row av2-live">
+              <div className="av2-connector">
+                <div className="av2-icon-wrap av2-icon-live">
+                  <span className="av2-live-dot" />
+                  <span className="av2-live-dot" />
+                  <span className="av2-live-dot" />
+                </div>
+                <div className="av2-track av2-track-dashed" />
+              </div>
+              <div className="av2-body">
+                <div className="av2-header">
+                  <span className="av2-badge av2-badge-live">{run.thinking ? "Berpikir" : "Menjalankan"}</span>
+                </div>
+                {run.thinking && (
+                  <div className="av2-think-box">
+                    <span className="av2-think-text">{run.thinking.slice(-280)}</span>
+                    <span className="av2-think-caret" />
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {/* ── Summary / hasil akhir ── */}
       {run.done && (summary || run.run) ? (
-        <div className="agent-summary">
-          {run.editCount ? <div className="agent-edits"><b>✓ {run.editCount} perubahan</b><div className="agent-apply-hint">Tinjau lalu jalankan <code>sync-app.ps1</code> untuk menerapkan.</div></div> : null}
-          {summary ? <div className="bubble-model"><Blocks text={summary} onAiEdit={onAiEdit} busy={busy} /></div> : null}
+        <div className="av2-summary">
+          {run.editCount ? (
+            <div className="av2-edit-badge">
+              <svg viewBox="0 0 16 16" width={13} height={13} fill="none">
+                <path d="M2 13l1-4L12 1l3 3-9 8-4 1z" stroke="#34d399" strokeWidth="1.4" strokeLinejoin="round"/>
+              </svg>
+              <b>{run.editCount} perubahan diterapkan</b>
+              <span className="av2-edit-hint">· jalankan <code>sync-app.ps1</code> untuk deploy</span>
+            </div>
+          ) : null}
+          {summary ? <div className="bubble-model av2-result-bubble"><Blocks text={summary} /></div> : null}
           <Verdict run={run.run} />
         </div>
       ) : null}
@@ -1960,9 +2036,9 @@ function AgentSteps({ run, onAiEdit, busy }){
 /* ----------------------------- App ----------------------------- */
 const SUGGESTIONS = ["Contoh syntax Python", "Buatkan fungsi rekursif Python dengan assert", "Jelaskan async/await", "Tulis is_prime(n) + tes"];
 const CANVAS_BUILDING = '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">'+
-  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">QUANTUM</div><div style="margin-top:10px;font-size:15px">membangun antarmuka…</div></div></body></html>';
+  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka…</div></div></body></html>';
 function App() {
-  const [models, setModels] = useState([{value:"",label:"memuat…",disabled:true}]);
+  const [models, setModels] = useState([{value:"",label:"Memuat model...",disabled:true}]);
   const [modelVal, setModelVal] = useState("");
   const [cloudVersion, setCloudVersion] = useState(0); // Trigger reload when cloud config changes
 
@@ -1970,7 +2046,7 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
-  const [status, setStatus] = useState("memuat model…");
+  const [status, setStatus] = useState("Memuat model...");
   const [view, setView] = useState("chat");
   const [sbCollapsed, setSbCollapsed] = useState(() => { try { return localStorage.getItem("quantum_sb")==="1"; } catch(e){ return false; } });
   useEffect(()=>{ try{ localStorage.setItem("quantum_sb", sbCollapsed?"1":"0"); }catch(e){} }, [sbCollapsed]);
@@ -2077,7 +2153,7 @@ function App() {
     } catch(e) {}
     const hasCloud = cloud && (cloud.key || cloud.provider);
     if (hasCloud) opts.push({ value:"cloud", label:"☁ "+(cloud.name||cloud.provider)+" ("+(cloud.model||"")+")"+(cloud.key?" ·"+cloud.key.slice(-4):"") });
-    if (!opts.length) opts.push({ value:"", label:"tidak ada model", disabled:true });
+    if (!opts.length) opts.push({ value:"", label:"Belum ada model", disabled:true });
     setModels(opts);
     const def = hasCloud ? "cloud" : (opts.find(o=>o.default)||opts[0]).value;
     setModelVal(v => v && opts.some(o=>o.value===v) ? v : def);
@@ -2088,7 +2164,7 @@ function App() {
   useEffect(() => {
     if (!IPC) {
       checkServerHealth().then(ok => {
-        if (!ok) setStatus("⚠ Jalankan 'npm start' di terminal");
+        if (!ok) setStatus("Jalankan 'npm start' di terminal.");
       });
     }
   }, []);
@@ -2132,7 +2208,7 @@ function App() {
       } catch(e){ if(e.name!=="AbortError") setStatus("error: "+e.message); else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (normal chat error)'); setBusy(false); }
     } else if (!canvasAuto) {
       // Agentic chat (like Claude Code): the model answers OR uses tools to edit
-      // Quantum's own source. The live process renders as a clean timeline.
+      // WOLFSPACE's own source. The live process renders as a clean timeline.
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"agent", agent:{ events:[], busy:true } }]);
       const upd = (patch)=> setMessages(m=>{ const c=m.slice(); const last={...c[c.length-1]}; last.agent={...last.agent,...patch}; c[c.length-1]=last; return c; });
       const evlist = []; let think = ""; let adoneSent = false; let hadError = false;
@@ -2178,7 +2254,7 @@ function App() {
         }, ctrl.signal);
         setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:res.text,run:res.run}; return c; });
         setHistory(h => [...h, { role:"assistant", content: res.text }]);
-        setStatus(res.run ? (res.run.ok ? "✓ verified" : "⚠ not passing") : "ready");
+        setStatus(res.run ? (res.run.ok ? "Terverifikasi" : "Belum lolos pemeriksaan") : "Siap");
         console.log('[doSend] Setting busy=false (canvas auto complete)');
         setBusy(false); // Reset busy state after stream completes
         const proj = buildPreview(res.text);              // finalize the live Canvas
@@ -2198,11 +2274,7 @@ function App() {
     }
     ctrlRef.current=null; setBusy(false);
   };
-  const aiEditCode = (code, lang, instruction) => {
-    const prompt = "Ubah kode berikut sesuai instruksi. Kembalikan HANYA satu blok kode (bertag bahasa "+lang+").\nInstruksi: "+instruction+"\n\n```"+lang+"\n"+code+"\n```";
-    doSend(prompt, "✦ Ubah ("+lang+"): "+instruction);
-  };
-  // Flutter compile failed → feed the Dart error back to the model (max 2x per
+    // Flutter compile failed → feed the Dart error back to the model (max 2x per
   // user turn), mirroring the console verify loop: model guesses, compiler judges.
   const flutterFixRef = useRef(0);
   const autoFixFlutter = (source, error) => {
@@ -2215,7 +2287,7 @@ function App() {
     );
   };
   const cancel = () => { console.log('[cancel] Aborting and setting busy=false'); if(ctrlRef.current) ctrlRef.current.abort(); setBusy(false); setStatus("dibatalkan"); };
-  const reset = () => { setMessages([]); setHistory([]); setBusy(false); setStatus("ready"); };
+  const reset = () => { setMessages([]); setHistory([]); setBusy(false); setStatus("Siap."); };
   const saveChat = () => {
     if (messages.length === 0) return;
     try {
@@ -2253,12 +2325,11 @@ function App() {
               <div className="chat-scroll" ref={scrollRef}>
                 {messages.length === 0 ? (
                   <div className="empty">
-                    <span className="glyph"><Icon.spark style={{ color:"#fff" }} /></span>
-                    <h2>Start building something great with Quantum</h2>
+                    <h2>Start building something great with WOLFSPACE</h2>
                     <div className="empty-chips">{SUGGESTIONS.map(s=><button className="chip" key={s} onClick={()=>doSend(s)}>{s}</button>)}</div>
                   </div>
                 ) : (
-                  <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onAiEdit={aiEditCode} busy={busy} onOpenCanvas={openCanvas} />)}</div>
+                  <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onOpenCanvas={openCanvas} />)}</div>
                 )}
               </div>
               <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} canvasAuto={canvasAuto} onToggleCanvas={toggleCanvas} />
@@ -2283,3 +2354,4 @@ function App() {
   );
 }
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+
