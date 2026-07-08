@@ -53,35 +53,38 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
 }
 
 /**
+ * Determine whether the most recent user message explicitly requests code execution.
+ * Guards against auto-executing code blocks in greetings or explanations.
+ * @param {Array} history - chat history
+ * @returns {boolean} true if the latest user message explicitly requests execution.
+ */
+function _isExecutionRequested(history) {
+  // Find the latest user message
+  let latestUser = null;
+  for (let i = history.length - 1; i >= 0; i--) {
+    if (history[i].role === 'user') {
+      latestUser = history[i].content || '';
+      break;
+    }
+  }
+  if (!latestUser) return false;
+
+  // Explicit execution keywords: run, execute, test, jalankan, cobakan, eksekusi, try it, run it, execute it, etc.
+  const explicitExec = /\b(run|execute|test|jalankan|cobakan|eksekusi|try it|run it|execute it|test it|execute this|run this|test this|compile this)\b/gi;
+  return explicitExec.test(latestUser);
+}
+
+/**
  * Process the assistant's full reply: detect code blocks, execute if requested,
  * and handle function‑calling style tool invocations.
  * @param {string} reply - full text from the model.
  * @param {Array} history - chat history (may be used for context).
  */
 async function runReply(reply, history, emit) {
-  const toolMatch = reply.match(/"name"\s*:\s*"(\w+)"[\s\S]*?"arguments"\s*:\s*({[\s\S]*?})/);
-  if (toolMatch) {
-    try {
-      const name = toolMatch[1];
-      const args = JSON.parse(toolMatch[2]);
-      const res = await runSelfTool(name, args, emit);
-      return res;
-    } catch (e) {
-      dlog('chat', 'error', 'tool parsing error', { error: e.message });
-    }
-  }
-
-  // If no tool call, attempt to extract executable code.
-  const codeObj = extractCode(reply);
-  if (!codeObj) {
-    return { ok: true, info: 'no code to run' };
-  }
-
-  const { lang, code } = codeObj;
-  const dispLang = detectLang(lang, code);
-  dlog('chat', 'info', 'executing extracted code', { lang: dispLang });
-  const result = await runByLang(dispLang, code);
-  return result;
+  // Fitur auto-run dimatikan agar chat biasa tidak secara agresif
+  // menjalankan regex tool atau mengeksekusi blok kode.
+  // Eksekusi hanya dilakukan di mode Agent Runner (/self-agent).
+  return { ok: true, info: 'auto-run disabled in normal chat', reply };
 }
 
 /**
