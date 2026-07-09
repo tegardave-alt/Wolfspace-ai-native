@@ -1085,8 +1085,8 @@ select {
 .bubble-user {
   background: var(--accent);
   color: #fff;
-  font-size: 14.5px;
-  line-height: 1.5;
+  font-size: 13px;
+  line-height: 1.45;
   padding: 11px 15px;
   border-radius: 14px 14px 4px 14px;
   max-width: 78%;
@@ -1094,8 +1094,8 @@ select {
   white-space: pre-wrap;
 }
 .bubble-model {
-  font-size: 14.5px;
-  line-height: 1.62;
+  font-size: 13px;
+  line-height: 1.5;
   color: var(--text);
 }
 .bubble-model p {
@@ -1516,7 +1516,7 @@ select {
   background: var(--surface-1);
   border: 1px solid var(--line-strong);
   border-radius: var(--r-lg);
-  padding: 10px 10px 10px 16px;
+  padding: 10px;
   transition:
     border-color 0.15s,
     box-shadow 0.15s;
@@ -1534,6 +1534,7 @@ select {
   font-size: 14.5px;
   line-height: 1.5;
   padding: 8px 0;
+  min-height: 60px;
   max-height: 180px;
   outline: none;
 }
@@ -1546,10 +1547,11 @@ select {
   gap: 8px;
   background: var(--accent);
   color: #fff;
-  font-size: 14px;
+  font-size: 13px;
   font-weight: 700;
-  padding: 11px 18px;
-  border-radius: var(--r-md);
+  height: 30px;
+  padding: 0 14px;
+  border-radius: 10px;
   transition:
     background 0.15s,
     transform 0.08s;
@@ -3528,8 +3530,8 @@ select {
   flex: none;
 }
 .composer-add {
-  width: 36px;
-  height: 36px;
+  width: 30px;
+  height: 30px;
   border-radius: 10px;
   border: 1px solid var(--line-strong, #26303c);
   background: var(--surface-2, #11151c);
@@ -4248,6 +4250,66 @@ img.ar-fs-icon {
 }
 
 /* ============================================================
+   Agent Execution Tree — DOM-style phase tree (Init/Observe/Think/Act/Validate/Return)
+   ============================================================ */
+.aet-root { font-family: var(--font-mono, monospace); padding: 4px 0; animation: aet-fadein .25s ease; }
+@keyframes aet-fadein { from{opacity:0;transform:translateY(4px)} to{opacity:1;transform:none} }
+.aet-tree-header { display:flex; align-items:center; gap:8px; margin-bottom:6px; padding:0 4px; }
+.aet-header-icon { font-size:11px; color:var(--text-muted,#8c959f); }
+.aet-header-title { font-size:13px; font-weight:600; color:var(--text-primary,#1f2328); }
+.aet-badge { font-size:10px; padding:2px 7px; border-radius:4px; font-weight:600; font-family:var(--font-sans,system-ui); }
+.aet-badge-ok { background:#dafbe1; color:#1a7f37; }
+.aet-badge-run { background:#fff8c5; color:#7d4e00; animation:aet-pulse 1s ease-in-out infinite; }
+@keyframes aet-pulse { 0%,100%{opacity:1} 50%{opacity:.5} }
+.aet-tree-body { padding:0 4px; }
+.aet-node { user-select:none; }
+.aet-node-row { display:flex; align-items:flex-start; gap:0; cursor:default; padding:1px 0; }
+.aet-node-row:hover .aet-node-label { background:rgba(148,163,184,0.08); border-radius:4px; }
+.aet-indent { display:flex; align-items:stretch; flex-shrink:0; }
+.aet-indent-bar { width:18px; border-left:1.5px solid rgba(175,184,193,0.4); margin-left:8px; flex-shrink:0; }
+.aet-toggle { width:16px; height:18px; display:flex; align-items:center; justify-content:center; flex-shrink:0; font-size:9px; color:var(--text-muted,#8c959f); transition:transform .15s; }
+.aet-toggle.open { transform:rotate(0deg); }
+.aet-toggle.closed { transform:rotate(-90deg); }
+.aet-toggle.leaf { color:transparent; }
+.aet-node-label { display:flex; align-items:center; gap:5px; padding:2px 5px; border-radius:4px; flex:1; min-width:0; transition:background .1s; flex-wrap:wrap; }
+.aet-status-dot { width:7px; height:7px; border-radius:50%; flex-shrink:0; margin-top:1px; }
+.aet-dot-ok { background:#639922; }
+.aet-dot-run { background:#EF9F27; animation:aet-pulse .9s ease-in-out infinite; }
+.aet-dot-err { background:#E24B4A; }
+.aet-dot-skip { background:rgba(175,184,193,0.5); }
+.aet-tag { font-size:11.5px; font-weight:600; font-family:var(--font-mono,monospace); white-space:nowrap; }
+.aet-root-tag { color:#185FA5; }
+.aet-phase { font-size:10px; padding:1px 6px; border-radius:3px; font-family:var(--font-sans,system-ui); font-weight:600; letter-spacing:.02em; }
+.aet-phase-init { background:#E6F1FB; color:#185FA5; }
+.aet-phase-observe { background:#E1F5EE; color:#085041; }
+.aet-phase-think { background:#EEEDFE; color:#3C3489; }
+.aet-phase-act { background:#FAEEDA; color:#633806; }
+.aet-phase-validate { background:#E1F5EE; color:#085041; }
+.aet-phase-return { background:#EAF3DE; color:#27500A; }
+.aet-phase-error { background:#FCEBEB; color:#791F1F; }
+.aet-attr { font-size:11px; color:var(--text-secondary,#656d76); font-family:var(--font-mono,monospace); }
+.aet-attr-key { color:#185FA5; }
+.aet-attr-val { color:#639922; }
+.aet-attr-val.str:before { content:'"'; }
+.aet-attr-val.str:after { content:'"'; }
+.aet-attr-val.num { color:#BA7517; }
+.aet-tool-chip { font-size:9px; padding:1px 5px; border-radius:3px; background:rgba(246,248,250,0.8); border:0.5px solid rgba(175,184,193,0.3); color:var(--text-secondary,#656d76); font-family:var(--font-sans,system-ui); flex-shrink:0; }
+.aet-evidence { font-size:9px; padding:1px 5px; border-radius:3px; background:#EAF3DE; color:#3B6D11; border:0.5px solid #C0DD97; }
+.aet-blocked { font-size:9px; padding:1px 5px; border-radius:3px; background:#FCEBEB; color:#791F1F; border:0.5px solid #F09595; }
+.aet-self-close { font-size:11px; color:var(--text-muted,#8c959f); }
+.aet-timing { font-size:9px; color:var(--text-muted,#8c959f); margin-left:auto; padding-right:3px; flex-shrink:0; font-family:var(--font-sans,system-ui); }
+.aet-children { display:block; }
+[data-mode="dark"] .aet-root-tag { color:#85B7EB; }
+[data-mode="dark"] .aet-attr-key { color:#85B7EB; }
+[data-mode="dark"] .aet-attr-val { color:#97C459; }
+[data-mode="dark"] .aet-phase-init { background:#0C447C; color:#B5D4F4; }
+[data-mode="dark"] .aet-phase-observe { background:#085041; color:#9FE1CB; }
+[data-mode="dark"] .aet-phase-think { background:#3C3489; color:#CECBF6; }
+[data-mode="dark"] .aet-phase-act { background:#633806; color:#FAC775; }
+[data-mode="dark"] .aet-phase-validate { background:#085041; color:#9FE1CB; }
+[data-mode="dark"] .aet-phase-return { background:#27500A; color:#C0DD97; }
+[data-mode="dark"] .aet-phase-error { background:#791F1F; color:#F7C1C1; }
+
    Agent Steps v2 — VS Code-style timeline UI (Local Workspace)
    ============================================================ */
 .av2-flow { display:flex; flex-direction:column; gap:0; padding:2px 0 4px; animation:av2-fadein .25s ease; }
@@ -4308,3 +4370,41 @@ img.ar-fs-icon {
 .av2-spacer { flex:1; }
 .av2-fail-dot { width:6px; height:6px; border-radius:50%; background:#f87171; flex-shrink:0; }
 .av2-chev-icon { color:var(--text-muted); flex-shrink:0; transition:transform .2s cubic-bezier(.4,0,.2,1); display:flex; align-items:center; }
+
+/* ========================================================================= */
+/* THINKING BLOCK STYLES                                                     */
+/* ========================================================================= */
+.think-block {
+  margin-bottom: 12px;
+  border-left: 3px solid var(--accent);
+  background: var(--surface-2);
+  border-radius: var(--r-md);
+  overflow: hidden;
+}
+
+.think-block summary {
+  cursor: pointer;
+  padding: 8px 12px;
+  font-weight: 500;
+  color: var(--tx-2);
+  font-size: 13px;
+  user-select: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.think-block summary:hover {
+  background: var(--surface-3);
+  color: var(--tx-1);
+}
+
+.think-content {
+  padding: 0 12px 12px 12px;
+  font-size: 13px;
+  color: var(--tx-2);
+  opacity: 0.9;
+  border-top: 1px solid var(--line-light);
+  margin-top: 8px;
+  padding-top: 8px;
+}

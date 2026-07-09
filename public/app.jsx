@@ -406,31 +406,44 @@ function mdToHtml(s) {
   return h.replace(/\n/g, "<br/>");
 }
 function parseBlocks(text) {
+  // Pre-processing: Jika model hanya memberikan tag penutup tapi lupa tag pembuka
+  if ((text.includes("</think>") || text.includes("</thought>")) && 
+      !text.includes("<think>") && !text.includes("<thought>")) {
+    text = "<think>\n" + text;
+  }
+
   const out = [];
-  const re = /```(\w*)\n?([\s\S]*?)```/g;
+  const re = /(?:```(\w*)\n?([\s\S]*?)```)|(?:<(?:think|thought)>([\s\S]*?)(?:<\/(?:think|thought)>|$))/gi;
   let last = 0,
     m;
   while ((m = re.exec(text))) {
     const pre = text.slice(last, m.index);
-    if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre) });
-    out.push({
-      type: "code",
-      lang: m[1] || "text",
-      code: m[2].replace(/\n$/, ""),
-    });
+    if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre.trim()) });
+    if (m[3] !== undefined) {
+      out.push({
+        type: "think",
+        html: mdToHtml(m[3].trim())
+      });
+    } else {
+      out.push({
+        type: "code",
+        lang: m[1] || "text",
+        code: (m[2] || "").replace(/\n$/, ""),
+      });
+    }
     last = re.lastIndex;
   }
   const tail = text.slice(last);
-  const open = tail.indexOf("```");
-  if (open >= 0) {
-    const pre = tail.slice(0, open);
-    if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre) });
+  const openCode = tail.indexOf("```");
+  if (openCode >= 0) {
+    const pre = tail.slice(0, openCode);
+    if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre.trim()) });
     out.push({
       type: "code",
       lang: "",
-      code: tail.slice(open).replace(/^```\w*\n?/, ""),
+      code: tail.slice(openCode).replace(/^```\w*\n?/, ""),
     });
-  } else if (tail.trim()) out.push({ type: "text", html: mdToHtml(tail) });
+  } else if (tail.trim()) out.push({ type: "text", html: mdToHtml(tail.trim()) });
   return out;
 }
 function reqFor(modelVal, cloud, history, webdev) {
@@ -1334,21 +1347,7 @@ function CodeBlock({ lang, code }) {
       )}
       <div className="code-toolbar">
         <button
-          className="ctb-btn ctb-run"
-          onClick={run}
-          disabled={runState === "running"}
-        >
-          {runState === "running" ? (
-            <>
-              <Icon.loader className="spin" /> Menjalankan...
-            </>
-          ) : (
-            <>
-              <Icon.play /> Jalankan
-            </>
-          )}
-        </button>
-        <button
+
           className={"ctb-btn" + (copied ? " copied" : "")}
           onClick={copyCode}
         >
@@ -1769,7 +1768,7 @@ function Blocks({ text }) {
           code={b.code}
         />
       )
-    ) : (
+    ) : b.type === "think" ? null : (
       <p key={i} dangerouslySetInnerHTML={{ __html: b.html }} />
     ),
   );
@@ -1820,19 +1819,10 @@ function Message({ msg, onOpenCanvas }) {
       </div>
     );
   const web = msg.text ? buildPreview(msg.text) : { has: false };
-  const [expanded, setExpanded] = useState(false);
-  const THRESH = 1000; // characters threshold to collapse
-  const isLong = (msg.text || "").length > THRESH;
   return (
     <div className="msg model">
       <span className="msg-role">WOLFSPACE</span>
-      <div
-        className="bubble-model"
-        style={{
-          maxHeight: !expanded && isLong ? 220 : "none",
-          overflow: !expanded && isLong ? "hidden" : "visible",
-        }}
-      >
+      <div className="bubble-model">
         {msg.text ? (
           <Blocks text={msg.text} />
         ) : (
@@ -1843,17 +1833,6 @@ function Message({ msg, onOpenCanvas }) {
           </div>
         )}
       </div>
-      {isLong && (
-        <div style={{ marginTop: 6 }}>
-          <button
-            className="open-canvas-btn"
-            onClick={() => setExpanded((e) => !e)}
-            style={{ padding: "4px 8px", fontSize: 12 }}
-          >
-            {expanded ? "Tampilkan lebih sedikit" : "Tampilkan selengkapnya"}
-          </button>
-        </div>
-      )}
       <Verdict run={msg.run} />
       {web.has && onOpenCanvas && (
         <button
@@ -1994,42 +1973,6 @@ function Composer({ onSend, onCancel, busy, onAgentCli }) {
   return (
     <div className="composer-wrap">
       <div className="composer">
-        <textarea
-          ref={ref}
-          rows={1}
-          value={val}
-          placeholder={
-            busy
-              ? "Lanjutkan percakapan..."
-              : val.includes("/")
-                ? "Terus ketik perintah..."
-                : "Apa yang ingin kamu buat hari ini?"
-          }
-          onChange={(e) => {
-            console.log("[Textarea] value changed:", e.target.value);
-            setVal(e.target.value);
-            grow();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              console.log("[Textarea] Enter pressed, calling submit");
-              submit();
-            }
-            if (e.key === "k" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              setVal("");
-              requestAnimationFrame(() => {
-                if (ref.current) ref.current.style.height = "auto";
-              });
-            }
-            if (e.key === "/" && val === "") {
-              console.log("[Textarea] / pressed, trigger command mode");
-            }
-          }}
-          onFocus={() => console.log("[Textarea] focused")}
-          onBlur={() => console.log("[Textarea] blurred")}
-        />
         <div className="composer-add-wrap" ref={wrapRef}>
           <button
             className={"composer-add" + (menu ? " open" : "")}
@@ -2090,6 +2033,42 @@ function Composer({ onSend, onCancel, busy, onAgentCli }) {
             </div>
           )}
         </div>
+        <textarea
+          ref={ref}
+          rows={1}
+          value={val}
+          placeholder={
+            busy
+              ? "Lanjutkan percakapan..."
+              : val.includes("/")
+                ? "Terus ketik perintah..."
+                : "Apa yang ingin kamu buat hari ini?"
+          }
+          onChange={(e) => {
+            console.log("[Textarea] value changed:", e.target.value);
+            setVal(e.target.value);
+            grow();
+          }}
+          onKeyDown={(e) => {
+            if (e.key === "Enter" && !e.shiftKey) {
+              e.preventDefault();
+              console.log("[Textarea] Enter pressed, calling submit");
+              submit();
+            }
+            if (e.key === "k" && (e.ctrlKey || e.metaKey)) {
+              e.preventDefault();
+              setVal("");
+              requestAnimationFrame(() => {
+                if (ref.current) ref.current.style.height = "auto";
+              });
+            }
+            if (e.key === "/" && val === "") {
+              console.log("[Textarea] / pressed, trigger command mode");
+            }
+          }}
+          onFocus={() => console.log("[Textarea] focused")}
+          onBlur={() => console.log("[Textarea] blurred")}
+        />
         <button
           className={"send-btn" + (busy ? " cancel" : "")}
           onClick={busy ? onCancel : submit}
@@ -2191,26 +2170,25 @@ function useVisualPicker() {
       e.stopPropagation();
       const el = e.target,
         selector = sel(el);
-      // Capture the ESSENCE so the agent knows what was picked without searching blind:
-      // the element's visible text (or label/placeholder), not just an abstract selector.
-      const text = (el.textContent || "")
-        .replace(/\s+/g, " ")
-        .trim()
-        .slice(0, 120);
-      const label = el.getAttribute
-        ? el.getAttribute("aria-label") ||
-          el.getAttribute("placeholder") ||
-          el.getAttribute("title") ||
-          ""
-        : "";
-      let d = selector;
-      if (text) d += ' � teks: "' + text + '"';
-      else if (label) d += ' � label: "' + label.trim().slice(0, 80) + '"';
+      
+      let d = "";
+      
+      // Tambahkan struktur DOM agar agent lebih mudah mencari di source code
+      let htmlSnippet = el.outerHTML || "";
+      if (htmlSnippet) {
+        // Potong htmlSnippet jika terlalu panjang, tapi tetap pertahankan strukturnya
+        if (htmlSnippet.length > 300) {
+          htmlSnippet = htmlSnippet.slice(0, 300) + "...";
+        }
+        d = "Struktur DOM:\n```html\n" + htmlSnippet + "\n```";
+      }
+
       try {
         navigator.clipboard && navigator.clipboard.writeText(d);
       } catch (_) {}
       stop();
-      setTimeout(() => alert("Disalin: " + d), 0);
+      // Gunakan alert yang rapi
+      setTimeout(() => alert("Detail elemen berhasil disalin ke clipboard!\n\n" + selector), 0);
     };
     const key = (e) => {
       if (e.key === "Escape") {
@@ -4906,6 +4884,109 @@ function ToolOutput({ text, ok, kind, arg }) {
   );
 }
 
+/* ── Agent Execution Tree (phase-based DOM tree view) ── */
+const PHASE_META = {
+  init:     { label: "Init",     cls: "aet-phase-init",     color: "#185FA5" },
+  observe:  { label: "Observe",  cls: "aet-phase-observe",  color: "#085041" },
+  think:    { label: "Think",    cls: "aet-phase-think",    color: "#3C3489" },
+  act:      { label: "Act",      cls: "aet-phase-act",      color: "#633806" },
+  validate: { label: "Validate", cls: "aet-phase-validate", color: "#085041" },
+  return:   { label: "Return",   cls: "aet-phase-return",   color: "#27500A" },
+  error:    { label: "Error",    cls: "aet-phase-error",    color: "#791F1F" },
+};
+const DOT_CLS = { ok: "aet-dot-ok", run: "aet-dot-run", err: "aet-dot-err", skip: "aet-dot-skip" };
+
+function TreeNode({ node, depth, expanded, setExpanded }) {
+  const key = (depth || 0) + "-" + (node.tag || "") + "-" + (node.attrs && node.attrs[0] ? node.attrs[0].v : "");
+  const hasChildren = node.children && node.children.length > 0;
+  const isOpen = expanded[key] !== false;
+  const status = node.status || "ok";
+  const pm = PHASE_META[node.phase];
+  const dotCls = DOT_CLS[status] || "aet-dot-skip";
+
+  return (
+    <div className="aet-node">
+      <div className="aet-node-row" style={{ cursor: hasChildren ? "pointer" : "default" }}
+           onClick={hasChildren ? () => setExpanded(p => ({ ...p, [key]: !isOpen })) : undefined}>
+        <div className="aet-indent">
+          {Array.from({ length: depth }).map((_, i) => <div key={i} className="aet-indent-bar" />)}
+        </div>
+        <div className={"aet-toggle " + (hasChildren ? (isOpen ? "open" : "closed") : "leaf")}>
+          {hasChildren ? "\u25BE" : "\u00B7"}
+        </div>
+        <div className="aet-node-label">
+          <span className={"aet-status-dot " + dotCls} />
+          {pm ? (
+            <span className={"aet-tag aet-phase " + pm.cls}>{node.tag}</span>
+          ) : (
+            <span className="aet-tag aet-root-tag">{"<" + node.tag}</span>
+          )}
+          {(node.attrs || []).map((a, i) => (
+            <span key={i} className="aet-attr">
+              {" "}<span className="aet-attr-key">{a.k}</span>=
+              <span className={"aet-attr-val " + (a.t || "")}>{String(a.v)}</span>
+            </span>
+          ))}
+          {node.chip ? <span className="aet-tool-chip">{node.chip}</span> : null}
+          {node.evidence ? <span className="aet-evidence">{"\u2713 evidence"}</span> : null}
+          {node.blocked ? <span className="aet-blocked">{"\u26D4 blocked"}</span> : null}
+          {!pm && !hasChildren ? <span className="aet-self-close">/</span> : null}
+          {node.time != null ? <span className="aet-timing">{node.time}ms</span> : null}
+        </div>
+      </div>
+      {hasChildren && isOpen && (
+        <div className="aet-children">
+          {node.children.map((c, i) => (
+            <TreeNode key={i} node={c} depth={depth + 1} expanded={expanded} setExpanded={setExpanded} />
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AgentExecutionTree({ phaseNodes, busy }) {
+  const [expanded, setExpanded] = useState({});
+  if (!phaseNodes || phaseNodes.length === 0) return null;
+
+  // Group flat phase nodes into a phase-structured tree
+  const phaseOrder = ["init", "observe", "think", "act", "validate", "return"];
+  const grouped = {};
+  phaseNodes.forEach(n => {
+    const ph = n.phase || "observe";
+    if (!grouped[ph]) grouped[ph] = [];
+    grouped[ph].push(n);
+  });
+
+  const tree = phaseOrder
+    .filter(ph => grouped[ph])
+    .map(ph => ({
+      tag: (PHASE_META[ph] || {}).label || ph,
+      phase: ph,
+      status: grouped[ph].some(n => n.status === "err") ? "err"
+            : grouped[ph].some(n => n.status === "run") ? "run"
+            : "ok",
+      children: grouped[ph],
+    }));
+
+  return (
+    <div className={"aet-root" + (busy ? " aet-busy" : "")}>
+      <div className="aet-tree-header">
+        <span className="aet-header-icon">{"\u25B6"}</span>
+        <span className="aet-header-title">SelfAgent</span>
+        <span className={"aet-badge " + (busy ? "aet-badge-run" : "aet-badge-ok")}>
+          {busy ? "RUNNING" : "COMPLETED"}
+        </span>
+      </div>
+      <div className="aet-tree-body">
+        {tree.map((phNode, i) => (
+          <TreeNode key={i} node={phNode} depth={0} expanded={expanded} setExpanded={setExpanded} />
+        ))}
+      </div>
+    </div>
+  );
+}
+
 /* ── Sub-component: satu baris step di timeline ── */
 function AgentStepRow({ e, i, expanded, setExpanded }) {
   const isErr = e.type === "err";
@@ -4952,15 +5033,16 @@ function AgentStepRow({ e, i, expanded, setExpanded }) {
 /* ── Komponen utama AgentSteps v2 ── */
 function AgentSteps({ run }) {
   const [expanded, setExpanded] = useState({});
-  const acts      = (run.events || []).filter(e => e.type === "act" || e.type === "err");
+  const acts      = (run.events || []).filter(e => e.type === "act" || e.type === "err" || e.type === "thought");
   const summary   = cleanAgentText(run.summary);
   const totalSteps = acts.length;
   const okSteps    = acts.filter(e => e.type === "act" && e.ok).length;
+  const hasPhaseTree = (run.phaseNodes || []).length > 0;
 
   // Jawaban biasa tanpa tool → tampilkan seperti chat reply normal
-  if (run.done && acts.length === 0 && !run.error)
+  if (run.done && acts.length === 0 && !run.error && !hasPhaseTree)
     return (<><div className="bubble-model"><Blocks text={summary} /></div><Verdict run={run.run} /></>);
-  if (!run.busy && acts.length === 0 && run.error)
+  if (!run.busy && acts.length === 0 && run.error && !hasPhaseTree)
     return <div className="bubble-model" style={{color:"#fca5a5"}}>{summary || (run.events&&run.events[0]&&run.events[0].m) || "error"}</div>;
 
   return (
@@ -5002,8 +5084,13 @@ function AgentSteps({ run }) {
         {run.busy ? <div className="av2-progress-shimmer" /> : null}
       </div>
 
-      {/* ── Timeline steps ── */}
-      {acts.length > 0 && (
+      {/* ── Execution Tree (phase-based) ── */}
+      {hasPhaseTree && (
+        <AgentExecutionTree phaseNodes={run.phaseNodes} busy={run.busy} />
+      )}
+
+      {/* ── Timeline steps (fallback jika tidak ada phase tree) ── */}
+      {!hasPhaseTree && acts.length > 0 && (
         <div className="av2-steps">
           {acts.map((e, i) => (
             <AgentStepRow key={i} e={e} i={i} expanded={expanded} setExpanded={setExpanded} />
@@ -5439,12 +5526,8 @@ function App() {
       opts.push({
         value: "cloud",
         label:
-          "? " +
-          (cloud.name || cloud.provider) +
-          " (" +
-          (cloud.model || "") +
-          ")" +
-          (cloud.key ? " �" + cloud.key.slice(-4) : ""),
+          (cloud.model || cloud.name || cloud.provider || "").replace(/-/g, " ") +
+          (cloud.key ? " •" + cloud.key.slice(-4) : ""),
       });
     if (!opts.length)
       opts.push({ value: "", label: "Belum ada model", disabled: true });
@@ -5550,7 +5633,13 @@ function App() {
     const _cl = getCloud();
     const _localCloud =
       _cl && _cl.baseUrl && /(127\.0\.0\.1|localhost)/.test(_cl.baseUrl);
-    const useAgent = modelVal === "cloud" && !_localCloud;
+    
+    // Deteksi apakah input adalah instruksi tugas atau chat biasa
+    const TASK_KEYWORDS = /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|perbaiki|refactor|optimi[sz]e|sort|parse|regex|api|loop|array|string|hitung|kalkulator|baca|file|folder|cari|search|hapus|edit|ubah|ganti|tambah(?:kan)?|jalankan|eksekusi|test|bantu)\b/i;
+    const isTask = TASK_KEYWORDS.test(content);
+    
+    // Gunakan agent HANYA jika model cloud DAN terdeteksi sebagai tugas
+    const useAgent = modelVal === "cloud" && !_localCloud && isTask;
     if (!canvasAuto && !useAgent) {
       // Bridge / local model: plain conversational chat (text streaming, no function-calling).
       setMessages((m) => [
@@ -5610,6 +5699,7 @@ function App() {
           return c;
         });
       const evlist = [];
+      const phaseNodes = [];
       let think = "";
       let adoneSent = false;
       let hadError = false;
@@ -5624,6 +5714,10 @@ function App() {
             } else if (j.t === "tok") {
               think += j.c;
               upd({ thinking: think });
+            } else if (j.t === "thought") {
+              think = "";
+              evlist.push({ type: "thought", kind: j.tool, arg: j.c, ok: j.ok, output: j.c });
+              upd({ events: [...evlist], thinking: "" });
             } else if (j.t === "act") {
               think = "";
               evlist.push({
@@ -5634,6 +5728,18 @@ function App() {
                 output: j.output,
               });
               upd({ events: [...evlist], thinking: "" });
+            } else if (j.t === "phase") {
+              phaseNodes.push({
+                phase: j.phase,
+                tag: j.tag,
+                status: j.status,
+                time: j.time,
+                attrs: j.attrs,
+                chip: j.chip,
+                evidence: j.evidence,
+                children: j.children,
+              });
+              upd({ phaseNodes: [...phaseNodes] });
             } else if (j.t === "adone") {
               adoneSent = true;
               upd({
@@ -5644,13 +5750,12 @@ function App() {
                 backup: j.backup,
                 run: j.run,
                 phase: j.phase,
+                phaseNodes: [...phaseNodes],
               });
               setHistory((h) => [
                 ...h,
                 { role: "assistant", content: j.summary || "" },
               ]);
-            } else if (j.t === "phase") {
-              upd({ phase: j.p });
             } else if (j.t === "err") {
               hadError = true;
               evlist.push({ type: "err", m: j.m });

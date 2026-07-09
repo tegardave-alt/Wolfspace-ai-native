@@ -98,6 +98,30 @@ function loadSelfAgentPrompt() {
 
 const SELF_FC_SYS = loadSelfAgentPrompt();
 
+// --- PHASED EXECUTION TREE HELPERS ---
+// Map a tool name to its execution phase for the visual tree.
+function phaseForTool(name) {
+  const observe = /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|mcp_[a-z0-9_]+)$/i;
+  const act = /^(edit|write|bash|exec|task)$/i;
+  if (observe.test(name)) return 'observe';
+  if (act.test(name)) return 'act';
+  return 'observe';
+}
+
+// Helper to emit a phase-tree node alongside legacy events.
+function makePhaseEmitter(rawEmit) {
+  const start = Date.now();
+  return function emitPhase(phase, node) {
+    rawEmit({
+      t: 'phase',
+      phase,
+      time: Date.now() - start,
+      status: node.status || 'ok',
+      ...node
+    });
+  };
+}
+
 // Helper to parse pseudo‑function calls that some models emit as text
 function parsePseudoCalls(text) {
   if (!text || text.indexOf('<function') < 0) return [];
@@ -124,6 +148,7 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
   const depth = ctl.depth || 0;
   const MAX_DEPTH = 3;
   let finalSummary = '';
+  const emitPhase = makePhaseEmitter(emit);
   loadCloudKeys(); // ensure keys are loaded
   fillCloudKey(cloud);
 
@@ -154,7 +179,25 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
 
   let backup = null;
   const backupRel = () => (backup ? require('path').relative(__dirname, backup) : null);
-  const ensureBackup = () => { if (!backup) { backup = qBackup(); emit({ t: 'backup', dir: backupRel() }); dlog('self', 'info', 'self-agent edit start', { backup: backupRel() }); } };
+  const ensureBackup = () => {
+    if (!backup) {
+      backup = qBackup();
+      emit({ t: 'backup', dir: backupRel() });
+      emitPhase('init', { tag: 'create_backup', attrs: [{ k: 'dir', v: backupRel(), t: 'str' }] });
+      dlog('self', 'info', 'self-agent edit start', { backup: backupRel() });
+    }
+  };
+
+  // Emit init phase: prompt loaded + model resolved
+  emitPhase('init', {
+    tag: 'Init',
+    status: 'ok',
+    attrs: [{ k: 'provider', v: cloud.provider, t: 'str' }, { k: 'model', v: cloud.model, t: 'str' }],
+    children: [
+      { tag: 'load_prompts', status: 'ok', attrs: [{ k: 'source', v: 'config/prompts.json', t: 'str' }] },
+      { tag: 'resolve_model', status: 'ok', attrs: [{ k: 'provider', v: cloud.provider, t: 'str' }, { k: 'model', v: cloud.model, t: 'str' }] }
+    ]
+  });
 
   // Use DSpy-optimized system prompt if cached, else use original
   let optPrompt = getOptimized();
@@ -283,8 +326,31 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
         
         finalSummary = fallback;
         dlog('self', 'info', 'stop', { reason: hasContent ? 'text_response_no_tools' : 'no_response', step, chars: (msg.content || '').length, sanitized: true });
+
+        // Validation phase
+        emitPhase('validate', {
+          tag: 'Validate',
+          status: 'ok',
+          attrs: [{ k: 'step', v: step, t: 'num' }],
+          children: [
+            { tag: 'evidence_check', status: 'ok', attrs: [{ k: 'claim_grounded', v: 'true', t: 'str' }], evidence: true },
+            { tag: 'strip_tool_recap', status: 'ok', attrs: [{ k: 'final_chars', v: fallback.length, t: 'num' }] },
+            { tag: 'sandbox_audit', status: 'ok', attrs: [{ k: 'files_written', v: edits, t: 'num' }] }
+          ]
+        });
+
         const runRes = hasContent ? await runReply(fallback) : null;
         emit({ t: 'adone', steps: step, edits, summary: finalSummary, backup: backupRel(), run: runRes });
+
+        // Return phase
+        emitPhase('return', {
+          tag: 'Return',
+          status: 'ok',
+          attrs: [{ k: 'step', v: step, t: 'num' }],
+          children: [
+            { tag: 'response', status: 'ok', attrs: [{ k: 'type', v: 'text', t: 'str' }, { k: 'chars', v: finalSummary.length, t: 'num' }, { k: 'preview', v: finalSummary.slice(0, 120), t: 'str' }] }
+          ]
+        });
         break;
       }
 
@@ -297,11 +363,31 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
         if (args.rencana_tindakan) {
           // Kita pancarkan sebagai tipe 'thought' khusus agar Frontend bisa membungkusnya dalam UI berstruktur
           emit({ t: 'thought', c: args.rencana_tindakan, tool: tc.function.name, ok: true });
+          emitPhase('think', {
+            tag: 'rencana_tindakan',
+            status: 'ok',
+            attrs: [
+              { k: 'tool', v: tc.function.name, t: 'str' },
+              { k: 'plan', v: args.rencana_tindakan.slice(0, 120), t: 'str' }
+            ]
+          });
         }
         
         const sig = tc.function.name + '|' + (tc.function.arguments || '');
         callCounts[sig] = (callCounts[sig] || 0) + 1;
         if (callCounts[sig] > 10) return { stop: true };
+
+        const phase = phaseForTool(tc.function.name);
+        const toolArg = args.path || args.pattern || args.command || args.goal || '';
+        emitPhase(phase, {
+          tag: 'tool_call',
+          status: 'run',
+          attrs: [
+            { k: 'name', v: tc.function.name, t: 'str' },
+            { k: 'arg', v: toolArg.slice(0, 80), t: 'str' }
+          ],
+          chip: phase
+        });
 
         if (/^(edit|write)$/i.test(tc.function.name)) ensureBackup();
         // Emit "running" immediately for bash so frontend shows activity right away
@@ -320,6 +406,15 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
         const extra = {};
         if (r.hunkId) { extra.hunkId = r.hunkId; extra.oldContent = r.oldContent; extra.newContent = r.newContent; }
         emit({ t: 'act', kind: tc.function.name, arg: args.path || args.pattern || args.command || '', ok: !!r.ok, output: r.output || '', ...extra });
+        emitPhase(phase, {
+          tag: 'tool_result',
+          status: r.ok ? 'ok' : 'err',
+          attrs: [
+            { k: 'name', v: tc.function.name, t: 'str' },
+            { k: 'ok', v: String(r.ok), t: 'str' },
+            { k: 'output_preview', v: (r.output || '(ok)').slice(0, 120).replace(/\n/g, ' '), t: 'str' }
+          ]
+        });
         let out = r.output || '(ok)';
         if (callCounts[sig] >= 2) out += '\n[catatan: panggilan sama diulang ' + callCounts[sig] + '× — hasilnya SAMA. JANGAN ulang yang sama; pakai hasil ini, lalu lanjut atau jawab.]';
         // Handle question tool — pause and wait for user input

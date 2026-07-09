@@ -1,0 +1,344 @@
+<!DOCTYPE html>
+<html lang="id">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>WOLFSPACE Agent Execution Tree — Prototype</title>
+  <style>
+    :root {
+      --font-mono: 'SF Mono', Menlo, Consolas, monospace;
+      --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+      --text-primary: #1f2328;
+      --text-secondary: #656d76;
+      --text-muted: #8c959f;
+      --border: #d0d7de;
+      --border-strong: #afb8c1;
+      --surface-1: #f6f8fa;
+      --bg-success: #dafbe1;
+      --text-success: #1a7f37;
+      --bg-error: #ffebe9;
+      --text-error: #cf222e;
+      --bg-warn: #fff8c5;
+      --text-warn: #7d4e00;
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: var(--font-sans); background: #fff; color: var(--text-primary); padding: 1rem; }
+    .root { max-width: 900px; margin: 0 auto; }
+    h2.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0,0,0,0); }
+    .tree-header { display: flex; align-items: center; gap: 10px; margin-bottom: 1rem; padding: 0 0.5rem; }
+    .tree-header .badge { font-size: 11px; padding: 2px 8px; border-radius: 4px; background: var(--bg-success); color: var(--text-success); font-weight: 600; }
+    .tree-header .agent-id { font-size: 13px; color: var(--text-secondary); }
+    .node { user-select: none; }
+    .node-row { display: flex; align-items: flex-start; gap: 0; cursor: pointer; padding: 1px 0; position: relative; }
+    .node-row:hover .node-label { background: var(--surface-1); }
+    .indent { display: flex; align-items: stretch; flex-shrink: 0; }
+    .indent-bar { width: 20px; border-left: 1.5px solid var(--border-strong); margin-left: 9px; flex-shrink: 0; }
+    .toggle { width: 18px; height: 20px; display: flex; align-items: center; justify-content: center; flex-shrink: 0; font-size: 10px; color: var(--text-muted); transition: transform .15s; }
+    .toggle.open { transform: rotate(0deg); }
+    .toggle.closed { transform: rotate(-90deg); }
+    .toggle.leaf { color: transparent; cursor: default; }
+    .node-label { display: flex; align-items: center; gap: 6px; padding: 2px 6px; border-radius: 4px; flex: 1; min-width: 0; transition: background .1s; }
+    .tag { font-size: 12px; font-weight: 600; font-family: var(--font-mono); white-space: nowrap; }
+    .tag.root-tag { color: #185FA5; }
+    .tag.phase { font-size: 10px; padding: 1px 6px; border-radius: 3px; font-family: var(--font-sans); font-weight: 600; letter-spacing: .02em; }
+    .phase-init { background: #E6F1FB; color: #185FA5; }
+    .phase-observe { background: #E1F5EE; color: #085041; }
+    .phase-think { background: #EEEDFE; color: #3C3489; }
+    .phase-act { background: #FAEEDA; color: #633806; }
+    .phase-validate { background: #E1F5EE; color: #085041; }
+    .phase-return { background: #EAF3DE; color: #27500A; }
+    .phase-error { background: #FCEBEB; color: #791F1F; }
+    .attr { font-size: 11.5px; color: var(--text-secondary); font-family: var(--font-mono); }
+    .attr .key { color: #185FA5; }
+    .attr .val { color: #639922; }
+    .attr .val.str:before { content: '"'; }
+    .attr .val.str:after { content: '"'; }
+    .status-dot { width: 7px; height: 7px; border-radius: 50%; flex-shrink: 0; margin-top: 1px; }
+    .dot-ok { background: #639922; }
+    .dot-run { background: #EF9F27; animation: pulse .9s ease-in-out infinite; }
+    .dot-err { background: #E24B4A; }
+    .dot-skip { background: var(--border-strong); }
+    @keyframes pulse { 0%,100%{opacity:1} 50%{opacity:.4} }
+    .children { display: block; }
+    .children.collapsed { display: none; }
+    .timing { font-size: 10px; color: var(--text-muted); margin-left: auto; padding-right: 4px; flex-shrink: 0; }
+    .tool-chip { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: var(--surface-1); border: 0.5px solid var(--border); color: var(--text-secondary); font-family: var(--font-sans); flex-shrink: 0; }
+    .evidence { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: #EAF3DE; color: #3B6D11; border: 0.5px solid #C0DD97; }
+    .blocked { font-size: 10px; padding: 1px 5px; border-radius: 3px; background: #FCEBEB; color: #791F1F; border: 0.5px solid #F09595; }
+    .summary-box { margin-top: 1rem; padding: 0.75rem; border: 1px solid var(--border); border-radius: 6px; background: var(--surface-1); }
+    .summary-box h3 { font-size: 12px; color: var(--text-secondary); margin-bottom: 0.4rem; }
+    .summary-box p { font-size: 13px; color: var(--text-primary); }
+    .legend { display: flex; flex-wrap: wrap; gap: 8px; padding: 0.75rem 0.5rem; border-top: 0.5px solid var(--border); margin-top: 0.75rem; }
+    .legend-item { display: flex; align-items: center; gap: 4px; font-size: 11px; color: var(--text-secondary); }
+  </style>
+</head>
+<body>
+  <div class="root">
+    <h2 class="sr-only">WOLFSPACE Agent Execution Tree — Prototype</h2>
+
+    <div class="tree-header">
+      <span style="font-size:13px;color:var(--text-muted)">▶</span>
+      <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-primary)">SelfAgent</span>
+      <span class="badge">COMPLETED</span>
+      <span class="agent-id">id: wolfspace-agent-001 · 1.85s</span>
+    </div>
+
+    <div id="tree"></div>
+
+    <div class="summary-box">
+      <h3>Final Answer</h3>
+      <p>Struktur DOM ada di <code>agent/public/app.jsx</code> — komponen Item baris 4463 dan pemanggil "Agent Runner" baris 4513.</p>
+    </div>
+
+    <div class="legend">
+      <span class="legend-item"><span class="status-dot dot-ok"></span> success</span>
+      <span class="legend-item"><span class="status-dot dot-run"></span> running</span>
+      <span class="legend-item"><span class="status-dot dot-err"></span> error / blocked</span>
+      <span class="legend-item"><span class="status-dot dot-skip"></span> skipped</span>
+      <span class="legend-item" style="margin-left:4px">click node to expand/collapse</span>
+    </div>
+  </div>
+
+  <script>
+    const data = {
+      tag: 'AgentTask', phase: null, status: 'ok', time: '1850ms',
+      attrs: [
+        { k: 'id', v: 'wolfspace-001', t: 'str' },
+        { k: 'goal', v: 'find Agent Runner DOM location', t: 'str' }
+      ],
+      children: [
+        {
+          tag: 'Init', phase: 'init', status: 'ok', time: '24ms',
+          attrs: [{ k: 'step', v: 0, t: 'num' }],
+          children: [
+            { tag: 'load_prompts', phase: null, status: 'ok', time: '4ms', attrs: [{ k: 'source', v: 'config/prompts.json', t: 'str' }] },
+            { tag: 'resolve_model', phase: null, status: 'ok', time: '8ms', attrs: [{ k: 'provider', v: 'opencode', t: 'str' }, { k: 'model', v: 'deepseek-v4-flash-free', t: 'str' }] },
+            { tag: 'create_backup', phase: null, status: 'ok', time: '12ms', attrs: [{ k: 'dir', v: '.wolfspace/snapshots/...', t: 'str' }] }
+          ]
+        },
+        {
+          tag: 'Observe', phase: 'observe', status: 'ok', time: '620ms',
+          attrs: [{ k: 'step', v: 1, t: 'num' }],
+          children: [
+            {
+              tag: 'tool_call', phase: null, status: 'ok', time: '210ms',
+              attrs: [{ k: 'name', v: 'disk_grep', t: 'str' }, { k: 'pattern', v: 'Agent Runner', t: 'str' }],
+              chip: 'disk',
+              children: [
+                { tag: 'tool_result', phase: null, status: 'ok', time: null, attrs: [{ k: 'file', v: 'agent/public/app.jsx', t: 'str' }, { k: 'line', v: 4515, t: 'num' }] }
+              ]
+            },
+            {
+              tag: 'tool_call', phase: null, status: 'ok', time: '180ms',
+              attrs: [{ k: 'name', v: 'disk_grep', t: 'str' }, { k: 'pattern', v: 'sb-item', t: 'str' }],
+              chip: 'disk',
+              children: [
+                { tag: 'tool_result', phase: null, status: 'ok', time: null, attrs: [{ k: 'file', v: 'agent/public/app.jsx', t: 'str' }, { k: 'line', v: 4465, t: 'num' }] }
+              ]
+            },
+            {
+              tag: 'tool_call', phase: null, status: 'ok', time: '95ms',
+              attrs: [{ k: 'name', v: 'disk_read', t: 'str' }, { k: 'path', v: 'agent/public/app.jsx', t: 'str' }, { k: 'near', v: 4463, t: 'num' }],
+              chip: 'file',
+              children: [
+                { tag: 'tool_result', phase: null, status: 'ok', time: null, attrs: [{ k: 'lines', v: 11, t: 'num' }, { k: 'component', v: 'Item', t: 'str' }] }
+              ]
+            },
+            {
+              tag: 'tool_call', phase: null, status: 'ok', time: '75ms',
+              attrs: [{ k: 'name', v: 'disk_grep', t: 'str' }, { k: 'pattern', v: 'vp-hover', t: 'str' }],
+              chip: 'disk',
+              children: [
+                { tag: 'tool_result', phase: null, status: 'ok', time: null, attrs: [{ k: 'file', v: 'agent/public/app.jsx', t: 'str' }, { k: 'line', v: '2060-2066', t: 'str' }] }
+              ]
+            }
+          ]
+        },
+        {
+          tag: 'Think', phase: 'think', status: 'ok', time: '340ms',
+          attrs: [{ k: 'step', v: 2, t: 'num' }],
+          children: [
+            { tag: 'rencana_tindakan', phase: null, status: 'ok', time: '20ms', attrs: [{ k: 'tool', v: 'disk_read', t: 'str' }, { k: 'plan', v: 'verify component definition and caller location', t: 'str' }] },
+            { tag: 'forbidden_speculative_filter', phase: null, status: 'ok', time: '8ms', attrs: [{ k: 'flagged', v: 0, t: 'num' }, { k: 'pass', v: 'true', t: 'str' }] },
+            { tag: 'evidence_validation', phase: null, status: 'ok', time: '14ms', attrs: [{ k: 'sources', v: 4, t: 'num' }, { k: 'coverage', v: '92%', t: 'str' }], evidence: true },
+            { tag: 'plan', phase: null, status: 'ok', time: '298ms', attrs: [{ k: 'steps', v: 1, t: 'num' }], children: [
+              { tag: 'step', phase: null, status: 'ok', attrs: [{ k: 'i', v: 0, t: 'num' }, { k: 'action', v: 'report file path and line numbers', t: 'str' }] }
+            ]}
+          ]
+        },
+        {
+          tag: 'Act', phase: 'act', status: 'skip', time: '0ms',
+          attrs: [{ k: 'step', v: 3, t: 'num' }],
+          children: [
+            { tag: 'no_action_required', phase: null, status: 'skip', attrs: [{ k: 'reason', v: 'task is read-only inquiry', t: 'str' }] }
+          ]
+        },
+        {
+          tag: 'Validate', phase: 'validate', status: 'ok', time: '32ms',
+          attrs: [{ k: 'step', v: 4, t: 'num' }],
+          children: [
+            { tag: 'evidence_check', phase: null, status: 'ok', time: '9ms', attrs: [{ k: 'claim_grounded', v: 'true', t: 'str' }, { k: 'hallucination', v: 'false', t: 'str' }], evidence: true },
+            { tag: 'strip_tool_recap', phase: null, status: 'ok', time: '5ms', attrs: [{ k: 'removed_patterns', v: 3, t: 'num' }] },
+            { tag: 'truncate_concise', phase: null, status: 'ok', time: '4ms', attrs: [{ k: 'final_chars', v: 108, t: 'num' }] },
+            { tag: 'sandbox_audit', phase: null, status: 'ok', time: '14ms', attrs: [{ k: 'files_written', v: 0, t: 'num' }, { k: 'outside_workspace', v: 0, t: 'num' }] }
+          ]
+        },
+        {
+          tag: 'Return', phase: 'return', status: 'ok', time: '8ms',
+          attrs: [{ k: 'step', v: 5, t: 'num' }],
+          children: [
+            { tag: 'response', phase: null, status: 'ok', time: null, attrs: [{ k: 'type', v: 'text', t: 'str' }, { k: 'chars', v: 108, t: 'num' }] }
+          ]
+        }
+      ]
+    };
+
+    const phaseClass = {
+      init: 'phase-init',
+      observe: 'phase-observe',
+      think: 'phase-think',
+      act: 'phase-act',
+      validate: 'phase-validate',
+      return: 'phase-return',
+      error: 'phase-error'
+    };
+    const dotClass = { ok: 'dot-ok', run: 'dot-run', err: 'dot-err', skip: 'dot-skip' };
+
+    function buildNode(node, depth) {
+      const hasChildren = node.children && node.children.length > 0;
+      const isOpen = depth < 2;
+
+      const el = document.createElement('div');
+      el.className = 'node';
+
+      const row = document.createElement('div');
+      row.className = 'node-row';
+
+      const indent = document.createElement('div');
+      indent.className = 'indent';
+      for (let i = 0; i < depth; i++) {
+        const bar = document.createElement('div');
+        bar.className = 'indent-bar';
+        indent.appendChild(bar);
+      }
+      row.appendChild(indent);
+
+      const tog = document.createElement('div');
+      tog.className = 'toggle ' + (hasChildren ? (isOpen ? 'open' : 'closed') : 'leaf');
+      tog.textContent = hasChildren ? '▾' : '·';
+      row.appendChild(tog);
+
+      const lbl = document.createElement('div');
+      lbl.className = 'node-label';
+
+      const dot = document.createElement('span');
+      dot.className = 'status-dot ' + (dotClass[node.status] || 'dot-skip');
+      lbl.appendChild(dot);
+
+      const tag = document.createElement('span');
+      tag.className = 'tag';
+      if (node.phase) {
+        tag.className += ' phase ' + (phaseClass[node.phase] || '');
+        tag.textContent = node.tag;
+      } else {
+        tag.className += ' root-tag';
+        tag.textContent = '<' + node.tag;
+      }
+      lbl.appendChild(tag);
+
+      node.attrs && node.attrs.forEach(a => {
+        const attr = document.createElement('span');
+        attr.className = 'attr';
+        attr.innerHTML = ' <span class="key">' + a.k + '</span>=<span class="val ' + (a.t || '') + '">' + a.v + '</span>';
+        lbl.appendChild(attr);
+      });
+
+      if (node.chip) {
+        const chip = document.createElement('span');
+        chip.className = 'tool-chip';
+        chip.textContent = node.chip;
+        lbl.appendChild(chip);
+      }
+      if (node.evidence) {
+        const ev = document.createElement('span');
+        ev.className = 'evidence';
+        ev.textContent = '✓ evidence';
+        lbl.appendChild(ev);
+      }
+      if (node.blocked) {
+        const bl = document.createElement('span');
+        bl.className = 'blocked';
+        bl.textContent = '⛔ blocked';
+        lbl.appendChild(bl);
+      }
+
+      if (!node.phase) {
+        if (!hasChildren) {
+          const sc = document.createElement('span');
+          sc.className = 'self-close';
+          sc.style.cssText = 'font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono);';
+          sc.textContent = '/>';
+          lbl.appendChild(sc);
+        } else {
+          const cl = document.createElement('span');
+          cl.className = 'tag';
+          cl.textContent = '>';
+          cl.style.cssText = 'color:var(--text-muted);';
+          lbl.appendChild(cl);
+        }
+      }
+
+      if (node.time) {
+        const t = document.createElement('span');
+        t.className = 'timing';
+        t.textContent = node.time;
+        lbl.appendChild(t);
+      }
+
+      row.appendChild(lbl);
+      el.appendChild(row);
+
+      if (hasChildren) {
+        const ch = document.createElement('div');
+        ch.className = 'children ' + (isOpen ? '' : 'collapsed');
+        node.children.forEach(c => ch.appendChild(buildNode(c, depth + 1)));
+
+        if (!node.phase) {
+          const closeRow = document.createElement('div');
+          closeRow.className = 'node-row';
+          const ci = document.createElement('div');
+          ci.className = 'indent';
+          for (let i = 0; i < depth; i++) { const b = document.createElement('div'); b.className = 'indent-bar'; ci.appendChild(b); }
+          closeRow.appendChild(ci);
+          const ct = document.createElement('div');
+          ct.className = 'toggle leaf';
+          ct.textContent = '·';
+          closeRow.appendChild(ct);
+          const cl = document.createElement('div');
+          cl.className = 'node-label';
+          const ctag = document.createElement('span');
+          ctag.className = 'tag';
+          ctag.style.cssText = 'color:var(--text-muted);';
+          ctag.textContent = '</' + node.tag + '>';
+          cl.appendChild(ctag);
+          closeRow.appendChild(cl);
+          ch.appendChild(closeRow);
+        }
+
+        row.style.cursor = 'pointer';
+        row.addEventListener('click', () => {
+          const open = !ch.classList.contains('collapsed');
+          ch.classList.toggle('collapsed', open);
+          tog.className = 'toggle ' + (open ? 'closed' : 'open');
+        });
+
+        el.appendChild(ch);
+      }
+
+      return el;
+    }
+
+    document.getElementById('tree').appendChild(buildNode(data, 0));
+  </script>
+</body>
+</html>
