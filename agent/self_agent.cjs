@@ -183,21 +183,9 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
     if (!backup) {
       backup = qBackup();
       emit({ t: 'backup', dir: backupRel() });
-      emitPhase('init', { tag: 'create_backup', attrs: [{ k: 'dir', v: backupRel(), t: 'str' }] });
       dlog('self', 'info', 'self-agent edit start', { backup: backupRel() });
     }
   };
-
-  // Emit init phase: prompt loaded + model resolved
-  emitPhase('init', {
-    tag: 'Init',
-    status: 'ok',
-    attrs: [{ k: 'provider', v: cloud.provider, t: 'str' }, { k: 'model', v: cloud.model, t: 'str' }],
-    children: [
-      { tag: 'load_prompts', status: 'ok', attrs: [{ k: 'source', v: 'config/prompts.json', t: 'str' }] },
-      { tag: 'resolve_model', status: 'ok', attrs: [{ k: 'provider', v: cloud.provider, t: 'str' }, { k: 'model', v: cloud.model, t: 'str' }] }
-    ]
-  });
 
   // Use DSpy-optimized system prompt if cached, else use original
   let optPrompt = getOptimized();
@@ -348,7 +336,7 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
           status: 'ok',
           attrs: [{ k: 'step', v: step, t: 'num' }],
           children: [
-            { tag: 'response', status: 'ok', attrs: [{ k: 'type', v: 'text', t: 'str' }, { k: 'chars', v: finalSummary.length, t: 'num' }, { k: 'preview', v: finalSummary.slice(0, 120), t: 'str' }] }
+            { tag: 'response', status: 'ok', attrs: [{ k: 'type', v: 'text', t: 'str' }, { k: 'chars', v: finalSummary.length, t: 'num' }, { k: 'preview', v: finalSummary.slice(0, 80), t: 'str' }] }
           ]
         });
         break;
@@ -368,7 +356,7 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
             status: 'ok',
             attrs: [
               { k: 'tool', v: tc.function.name, t: 'str' },
-              { k: 'plan', v: args.rencana_tindakan.slice(0, 120), t: 'str' }
+              { k: 'plan', v: args.rencana_tindakan.slice(0, 80), t: 'str' }
             ]
           });
         }
@@ -376,18 +364,6 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
         const sig = tc.function.name + '|' + (tc.function.arguments || '');
         callCounts[sig] = (callCounts[sig] || 0) + 1;
         if (callCounts[sig] > 10) return { stop: true };
-
-        const phase = phaseForTool(tc.function.name);
-        const toolArg = args.path || args.pattern || args.command || args.goal || '';
-        emitPhase(phase, {
-          tag: 'tool_call',
-          status: 'run',
-          attrs: [
-            { k: 'name', v: tc.function.name, t: 'str' },
-            { k: 'arg', v: toolArg.slice(0, 80), t: 'str' }
-          ],
-          chip: phase
-        });
 
         if (/^(edit|write)$/i.test(tc.function.name)) ensureBackup();
         // Emit "running" immediately for bash so frontend shows activity right away
@@ -406,15 +382,31 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
         const extra = {};
         if (r.hunkId) { extra.hunkId = r.hunkId; extra.oldContent = r.oldContent; extra.newContent = r.newContent; }
         emit({ t: 'act', kind: tc.function.name, arg: args.path || args.pattern || args.command || '', ok: !!r.ok, output: r.output || '', ...extra });
+
+        // Emit single tool_call node with tool_result child for execution tree
+        const phase = phaseForTool(tc.function.name);
+        const toolArg = args.path || args.pattern || args.command || args.goal || '';
+        const cleanArg = toolArg.replace(/C:\\Users\\dave\\quantum\\/gi, '').replace(/C:\\Users\\dave\\/gi, '').slice(0, 60);
         emitPhase(phase, {
-          tag: 'tool_result',
+          tag: 'tool_call',
           status: r.ok ? 'ok' : 'err',
           attrs: [
             { k: 'name', v: tc.function.name, t: 'str' },
-            { k: 'ok', v: String(r.ok), t: 'str' },
-            { k: 'output_preview', v: (r.output || '(ok)').slice(0, 120).replace(/\n/g, ' '), t: 'str' }
+            { k: 'arg', v: cleanArg, t: 'str' }
+          ],
+          chip: phase,
+          children: [
+            {
+              tag: 'tool_result',
+              status: r.ok ? 'ok' : 'err',
+              attrs: [
+                { k: 'ok', v: String(r.ok), t: 'str' },
+                { k: 'preview', v: (r.output || '(ok)').replace(/\r?\n/g, ' ').slice(0, 80), t: 'str' }
+              ]
+            }
           ]
         });
+
         let out = r.output || '(ok)';
         if (callCounts[sig] >= 2) out += '\n[catatan: panggilan sama diulang ' + callCounts[sig] + '× — hasilnya SAMA. JANGAN ulang yang sama; pakai hasil ini, lalu lanjut atau jawab.]';
         // Handle question tool — pause and wait for user input
