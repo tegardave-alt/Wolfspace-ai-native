@@ -1,4 +1,3 @@
-#!/usr/bin/env node
 "use strict";
 // DEBUG: capture full stack for Maximum call stack errors
 process.on("uncaughtException", (err) => {
@@ -18,7 +17,7 @@ process.on("uncaughtException", (err) => {
 });
 /**
 /**
- * Quantum server Ã¢â‚¬â€ serves the chat UI, runs code blocks, and orchestrates the
+ * WOLFSPACE server Ã¢â‚¬â€ serves the chat UI, runs code blocks, and orchestrates the
  * generate -> execute -> fix loop against local models.
  *
  *   GET  /             -> chat UI (public/index.html)
@@ -70,7 +69,7 @@ const stripAnsi = (str) =>
 const CONFIG_PATH = path.join(__dirname, "config.json");
 const CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
 const HOST = (CONFIG.server && CONFIG.server.host) || "0.0.0.0";
-const PORT = (CONFIG.server && CONFIG.server.port) || 8090;
+const PORT = process.env.PORT || (CONFIG.server && CONFIG.server.port) || 8090;
 const HTML = path.join(__dirname, "public", "index.html");
 const TMP_PY = path.join(os.tmpdir(), "_quantum_run.py");
 // Shared execution timeout for full-access runtimes (ms). Generous so that
@@ -80,15 +79,149 @@ const EXEC_TIMEOUT = CONFIG.execTimeout || 120000;
 // We reuse it to execute generated JS so there is no hard dependency on `node`.
 const JS_RUNTIME = process.execPath;
 
+function writeJson(res, statusCode, payload) {
+  res.writeHead(statusCode, { "Content-Type": "application/json" });
+  res.end(JSON.stringify(payload));
+}
+
+function openclawCommand() {
+  return process.platform === "win32" ? "openclaw.cmd" : "openclaw";
+}
+
+function friendlyOpenClawError(stderr, stdout, err) {
+  const raw = [stderr, stdout, err && err.message].filter(Boolean).join("\n");
+  if (err && err.code === "ENOENT") {
+    return "OpenClaw CLI tidak ditemukan. Install dulu dengan: npm.cmd install -g openclaw@latest";
+  }
+  if (/timeout|timed out/i.test(raw)) {
+    return "OpenClaw terlalu lama merespons. Coba lagi, atau jalankan: openclaw.cmd status";
+  }
+  if (/gateway|onboard|configure|not configured|auth|api key|credential/i.test(raw)) {
+    return "OpenClaw belum siap dikonfigurasi. Jalankan: openclaw.cmd onboard";
+  }
+  return raw.trim() || "OpenClaw gagal dijalankan.";
+}
+
+function parseOpenClawText(stdout, stderr) {
+  const out = (stdout || "").trim();
+  if (!out) return stripAnsi(stderr || "").trim();
+  try {
+    const parsed = JSON.parse(out);
+    return (
+      parsed.text ||
+      parsed.message ||
+      parsed.reply ||
+      parsed.output ||
+      parsed.result ||
+      JSON.stringify(parsed, null, 2)
+    );
+  } catch (_) {
+    return stripAnsi(out);
+  }
+}
+
+function runOpenClawAgent(message) {
+  return new Promise((resolve) => {
+    const tempPath = path.join(
+      os.tmpdir(),
+      `WOLFSPACE-openclaw-${process.pid}-${Date.now()}.txt`,
+    );
+    try {
+      fs.writeFileSync(tempPath, message, "utf8");
+    } catch (err) {
+      return resolve({
+        ok: false,
+        text: "",
+        raw: "",
+        error: "Tidak bisa membuat file pesan sementara: " + err.message,
+        exitCode: null,
+      });
+    }
+
+    const args = [
+      "agent",
+      "--message-file",
+      tempPath,
+      "--session-key",
+      "WOLFSPACE-openclaw",
+      "--json",
+      "--timeout",
+      "600",
+    ];
+    const child = spawn(openclawCommand(), args, {
+      cwd: __dirname,
+      windowsHide: true,
+      shell: false,
+    });
+    let stdout = "";
+    let stderr = "";
+    let settled = false;
+    const timeout = setTimeout(() => {
+      settled = true;
+      try {
+        child.kill();
+      } catch (_) {}
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (_) {}
+      resolve({
+        ok: false,
+        text: "",
+        raw: stdout,
+        error: friendlyOpenClawError(stderr, stdout, new Error("timeout")),
+        exitCode: null,
+      });
+    }, 610000);
+
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (err) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (_) {}
+      resolve({
+        ok: false,
+        text: "",
+        raw: stdout,
+        error: friendlyOpenClawError(stderr, stdout, err),
+        exitCode: null,
+      });
+    });
+    child.on("close", (code) => {
+      if (settled) return;
+      settled = true;
+      clearTimeout(timeout);
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (_) {}
+      const text = parseOpenClawText(stdout, stderr);
+      resolve({
+        ok: code === 0,
+        text,
+        raw: stdout,
+        error: code === 0 ? "" : friendlyOpenClawError(stderr, stdout),
+        exitCode: code,
+      });
+    });
+  });
+}
+
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-// Debug bus Ã¢â‚¬â€ a single event log wired through ALL of Quantum's logic.
+// Debug bus Ã¢â‚¬â€ a single event log wired through ALL of WOLFSPACE's logic.
 // Every meaningful step (model call, execution, retry, cloud request, error)
 // emits a structured event. Events live in a ring buffer, stream live to any
 // /debug viewer, and append to a log file. Toggle with config.debug = false.
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 const DEBUG_ON = CONFIG.debug !== false;
 const VERBOSE = CONFIG.verbose === true;
-const LOG_FILE = path.join(os.tmpdir(), "quantum-debug.log");
+const LOG_FILE = path.join(os.tmpdir(), "WOLFSPACE-debug.log");
 const LOG_RING = []; // recent events, in memory
 const LOG_MAX = 800;
 const debugSubs = new Set(); // live SSE writers
@@ -116,13 +249,13 @@ function dlog(cat, level, msg, data) {
   try {
     fs.appendFileSync(LOG_FILE, JSON.stringify(e) + "\n");
   } catch (_) {}
-  if (VERBOSE) {
-    const prefix = `[quantum:${cat}]`;
+    if (VERBOSE) {
+    const prefix = `[WOLFSPACE:${cat}]`;
     if (level === "error")
-      _origError(prefix, msg, data && data.error ? data.error : "");
-    else _origLog(prefix, msg, data ? JSON.stringify(data, null, 0) : "");
+      _writeSafe(_origError, prefix, msg, data && data.error ? data.error : "");
+    else _writeSafe(_origLog, prefix, msg, data ? JSON.stringify(data, null, 0) : "");
   } else if (DEBUG_ON && level === "error") {
-    _origError(`[quantum:${cat}] ${msg}`, data && data.error ? data.error : "");
+    _writeSafe(_origError, `[WOLFSPACE:${cat}] ${msg}`, data && data.error ? data.error : "");
   }
   return e;
 }
@@ -133,44 +266,48 @@ function dlog(cat, level, msg, data) {
 const _origLog = console.log;
 const _origError = console.error;
 const _origWarn = console.warn;
-let _qLogDepth = 1;
+const _writeSafe = (fn, ...args) => { try { fn(...args); } catch (_) {} };
+let _qLogReentrant = false;
 console.log = function (...args) {
-  _origLog.apply(console, args);
-  if (++_qLogDepth > 5) { _qLogDepth--; return; }
+  _writeSafe(_origLog, console, ...args);
+  if (_qLogReentrant) return;
+  _qLogReentrant = true;
   try {
     dlog(
       "console",
       "info",
       args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "),
     );
-  } finally { _qLogDepth--; }
+  } finally { _qLogReentrant = false; }
 };
 console.error = function (...args) {
-  _origError.apply(console, args);
-  if (++_qLogDepth > 5) { _qLogDepth--; return; }
+  _writeSafe(_origError, console, ...args);
+  if (_qLogReentrant) return;
+  _qLogReentrant = true;
   try {
     dlog(
       "console",
       "error",
       args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "),
     );
-  } finally { _qLogDepth--; }
+  } finally { _qLogReentrant = false; }
 };
 console.warn = function (...args) {
-  _origWarn.apply(console, args);
-  if (++_qLogDepth > 5) { _qLogDepth--; return; }
+  _writeSafe(_origWarn, console, ...args);
+  if (_qLogReentrant) return;
+  _qLogReentrant = true;
   try {
     dlog(
       "console",
       "warn",
       args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "),
     );
-  } finally { _qLogDepth--; }
+  } finally { _qLogReentrant = false; }
 };
 
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 // Code intelligence Ã¢â‚¬â€ static quality analysis (heuristics, zero dependencies).
-// Quantum already proves code RUNS; this judges how WELL it is written and
+// WOLFSPACE already proves code RUNS; this judges how WELL it is written and
 // surfaces actionable notes + a 0Ã¢â‚¬â€œ100 score alongside the execution verdict.
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 function analyzeCode(lang, code) {
@@ -363,7 +500,7 @@ function isBrowserJs(code) {
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Execution sandbox (Docker) Ã¢â‚¬â€ gate #1 for serving untrusted/other-user code Ã¢â€â‚¬Ã¢â€â‚¬
-const SANDBOX_IMAGE = "quantum-sandbox";
+const SANDBOX_IMAGE = "WOLFSPACE-sandbox";
 function hasDocker() {
   try {
     execSync("docker version", { stdio: "ignore", timeout: 8000 });
@@ -468,7 +605,7 @@ async function runJS(code) {
 function findPython() {
   const candidates = [
     process.env.QUANTUM_PYTHON, // user override via config/env
-    // Bundled Python distributed with Quantum (uv-managed)
+    // Bundled Python distributed with WOLFSPACE (uv-managed)
     process.env.APPDATA &&
       path.join(
         process.env.APPDATA,
@@ -1102,13 +1239,13 @@ async function runByLang(lang, code) {
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Model client + orchestration Ã¢â€â‚¬Ã¢â€â‚¬
 const SYS = [
-  "You are Quantum, a friendly assistant. Chat naturally and answer in plain text.",
+  "You are WOLFSPACE, a friendly assistant. Chat naturally and answer in plain text.",
   'Do NOT write code unless the user explicitly asks for code or gives a programming task. A greeting like "hi" gets a short friendly reply Ã¢â‚¬â€ never code.',
   "If you do write code, use one fenced block tagged with the language; it runs in a sandbox with no stdin, so avoid input().",
 ].join(" ");
 // Quality-focused system prompt, used when the request is a programming task.
 const CODE_SYS = [
-  "You are Quantum, an expert programming assistant whose code is JUDGED BY EXECUTION.",
+  "You are WOLFSPACE, an expert programming assistant whose code is JUDGED BY EXECUTION.",
   "Write CLEAN, CORRECT code: descriptive names, handle edge cases and errors, prefer the standard library.",
   "Output EXACTLY ONE fenced code block tagged with its language Ã¢â‚¬â€ no alternative versions.",
   "The sandbox has NO stdin: never use input()/prompt()/sys.stdin (they crash with EOF); use hardcoded values.",
@@ -1118,18 +1255,20 @@ const CODE_SYS = [
 const CODE_HINT =
   /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|refactor|optimi[sz]e|sort|parse|regex|api|loop|array|string|hitung|kalkulator)\b/i;
 function isCodingTask(work) {
-  for (const i = work.length - 1; i >= 0; i--)
+  // Guard: jika work bukan array, tidak ada yang bisa dicek
+  if (!Array.isArray(work) || work.length === 0) return false;
+  for (let i = work.length - 1; i >= 0; i--)
     if (work[i].role === "user") return CODE_HINT.test(work[i].content || "");
   return false;
 }
-function pickSystem(work, webdev) {
-  return webdev ? WEBDEV_SYS : isCodingTask(work) ? CODE_SYS : SYS;
+function pickSystem(work) {
+  return isCodingTask(work) ? CODE_SYS : SYS;
 }
 // Web Dev (Canvas) mode: every reply MUST be ONE A2UI JSON spec inside a
 // ```json fenced block. The Studio iframe renders it instantly — no Dart, no compile.
 const WEBDEV_SYS = [
   "CRITICAL RULE: Your ENTIRE response MUST be a single ```json code block containing an A2UI JSON spec. DO NOT generate ```dart code blocks. DO NOT generate ```python, ```html, or any other language. Dart code will NOT be compiled or rendered — ONLY ```json works. If you write Dart, the user sees nothing.",
-  "You are Quantum UI Builder using A2UI (server-driven UI). The user is in visual app mode: your ENTIRE answer must be ONE A2UI spec inside a single ```json fenced block. It renders instantly as a Flutter app — NO Dart, NO compile, NO HTML.",
+  "You are WOLFSPACE UI Builder using A2UI (server-driven UI). The user is in visual app mode: your ENTIRE answer must be ONE A2UI spec inside a single ```json fenced block. It renders instantly as a Flutter app — NO Dart, NO compile, NO HTML.",
   'The spec is a JSON object. The root has "type" (usually "scaffold") and optionally "state" (an object of initial values).',
   'Node shape: { "type": <kind>, ...props, "children": [...] | "child": {...} }. A bare string is shorthand for a text node.',
   "Available types & props:",
@@ -1944,8 +2083,8 @@ function wsGrep(pattern) {
   return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Self-edit agent: operate on QUANTUM'S OWN source (dev copy), with guardrails Ã¢â€â‚¬Ã¢â€â‚¬
-const QROOT = __dirname; // the Quantum app source root (dev copy)
+// Ã¢â€â‚¬Ã¢â€â‚¬ Self-edit agent: operate on WOLFSPACE'S OWN source (dev copy), with guardrails Ã¢â€â‚¬Ã¢â€â‚¬
+const QROOT = __dirname; // the WOLFSPACE app source root (dev copy)
 // Editable: source files under safe dirs. NEVER node_modules/builds/backups/keys.
 const Q_ALLOWED =
   /^(server\.cjs|[\w.-]+\.cjs|[\w.-]+([\\/][\w.-]+)+\.cjs|config\.json|public[\\/].+\.(jsx|css|html|js|json)|studio[\\/]lib[\\/].+\.dart|studio[\\/](pubspec\.yaml|web[\\/]index\.html))$/;
@@ -1992,7 +2131,7 @@ function qResolve(p, mustBeEditable) {
   const rel = unq(p).replace(/^[\\/]+/, "");
   const dest = path.resolve(QROOT, rel);
   if (dest !== QROOT && !dest.startsWith(QROOT + path.sep))
-    throw new Error("path di luar root Quantum");
+    throw new Error("path di luar root WOLFSPACE");
   const relNorm = path.relative(QROOT, dest).replace(/\\/g, "/");
   if (Q_FORBID.test(relNorm))
     throw new Error("path terlarang (secret/generated): " + relNorm);
@@ -2360,8 +2499,8 @@ function diskGrep(p, pattern) {
 }
 
 const SELF_SYS = [
-  "You are Quantum's assistant Ã¢â‚¬â€ like Claude Code, but for the Quantum app itself. You can either ANSWER the user normally, OR, when they ask you to change/add/fix/improve something in Quantum, edit Quantum's OWN SOURCE (a dev copy) using tools.",
-  "DECIDE each turn: if the user just asks a question or chats, reply with a DONE block containing your answer Ã¢â‚¬â€ do NOT use tools. If they ask to modify Quantum, work in small steps; each reply is EXACTLY ONE action as a single fenced block:",
+  "You are WOLFSPACE's assistant Ã¢â‚¬â€ like Claude Code, but for the WOLFSPACE app itself. You can either ANSWER the user normally, OR, when they ask you to change/add/fix/improve something in WOLFSPACE, edit WOLFSPACE's OWN SOURCE (a dev copy) using tools.",
+  "DECIDE each turn: if the user just asks a question or chats, reply with a DONE block containing your answer Ã¢â‚¬â€ do NOT use tools. If they ask to modify WOLFSPACE, work in small steps; each reply is EXACTLY ONE action as a single fenced block:",
   "  LIST           Ã¢â‚¬â€ list project files. Body empty.",
   "  GLOB <pattern> Ã¢â‚¬â€ find files by wildcard, e.g. GLOB public/*.css or GLOB *agent*. Body empty.",
   "  READ <path>    Ã¢â‚¬â€ read a file (with line numbers) BEFORE editing it. Body empty.",
@@ -2759,8 +2898,8 @@ function _askCloudToolsOnce(cloud, messages) {
               )
                 return resolve({
                   role: "assistant",
-                  content: String(err.failed_generation),
-                  tool_calls: [],
+                  content: String(err.failed_generation)
+                  // Jangan kirim tool_calls: [] karena DeepSeek menolak array kosong
                 });
             } catch (_) {}
             return reject(
@@ -2769,11 +2908,16 @@ function _askCloudToolsOnce(cloud, messages) {
               ),
             );
           }
-          resolve({
+          const validToolCalls = tcs.filter(Boolean);
+          const response = {
             role: "assistant",
-            content: content || reasoning || null,
-            tool_calls: tcs.filter(Boolean),
-          });
+            content: content || reasoning || null
+          };
+          // Hanya kirim tool_calls jika ada setidaknya 1 tool call (hindari error DeepSeek)
+          if (validToolCalls.length > 0) {
+            response.tool_calls = validToolCalls;
+          }
+          resolve(response);
         });
       },
     );
@@ -2831,55 +2975,43 @@ function runSelfTool(name, args, emit) {
           output:
             "NOOP: replace tidak mengubah konten (old_string tidak match atau sudah sama).",
         };
-      fs.writeFileSync(dest, patched, "utf8");
-      return qSyntaxOk(dest).then((chk) => {
-        if (!chk.ok) {
-          fs.writeFileSync(dest, old, "utf8");
-          return {
-            ok: false,
-            output: "DITOLAK (sintaks rusak, dikembalikan):\n" + chk.error,
-          };
-        }
+      // Safe-Edit Protocol: snapshot → syntax check → apply / rollback + quarantine
+      const editResult = safeWriteFile(dest, patched);
+      if (!editResult.ok) {
         return {
-          ok: true,
-          edited: true,
-          output:
-            "edited " +
-            args.path +
-            " (" +
-            old.length +
-            "->" +
-            patched.length +
-            " b, sintaks OK)",
+          ok: false,
+          output: "DITOLAK & ROLLBACK otomatis (sintaks rusak):\n" + editResult.error +
+            "\n[Snapshot: " + editResult.snapshotId + "]" +
+            "\n[Karantina: " + (editResult.quarantineFile || '-') + "]",
         };
-      });
+      }
+      return {
+        ok: true,
+        edited: true,
+        output:
+          "edited " + args.path +
+          " (" + old.length + "->" + patched.length + " b, sintaks OK)" +
+          " [snapshot: " + editResult.snapshotId + "]",
+      };
     }
 
     if (name === "write") {
       const dest = qResolve(args.path, true);
-      const existed = fs.existsSync(dest);
-      const prev = existed ? fs.readFileSync(dest, "utf8") : null;
-      fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, args.content || "", "utf8");
-      return qSyntaxOk(dest).then((chk) => {
-        if (!chk.ok) {
-          if (existed) fs.writeFileSync(dest, prev, "utf8");
-          else fs.rmSync(dest, { force: true });
-          return {
-            ok: false,
-            output: "DITOLAK (sintaks rusak):\n" + chk.error,
-          };
-        }
+      // Safe-Edit Protocol: snapshot → syntax check → apply / rollback + quarantine
+      const writeResult = safeWriteFile(dest, args.content || "");
+      if (!writeResult.ok) {
         return {
-          ok: true,
-          edited: true,
-          output:
-            (existed ? "overwrote" : "created") +
-            " " +
-            args.path +
-            " (sintaks OK)",
+          ok: false,
+          output: "DITOLAK & ROLLBACK otomatis (sintaks rusak):\n" + writeResult.error +
+            "\n[Snapshot: " + writeResult.snapshotId + "]" +
+            "\n[Karantina: " + (writeResult.quarantineFile || '-') + "]",
         };
-      });
+      }
+      return {
+        ok: true,
+        edited: true,
+        output: "created/overwrote " + args.path + " (sintaks OK) [snapshot: " + writeResult.snapshotId + "]",
+      };
     }
     if (name === "bash") {
       const cmd = (args.command || "").trim();
@@ -3169,7 +3301,7 @@ function hfGetJson(p) {
       {
         hostname: "huggingface.co",
         path: p,
-        headers: { "User-Agent": "Quantum" },
+        headers: { "User-Agent": "WOLFSPACE" },
       },
       (s) => {
         let d = "";
@@ -3219,7 +3351,7 @@ function hfDownload(urlStr, dest, onProgress, reg) {
         {
           hostname: o.hostname,
           path: o.pathname + o.search,
-          headers: { "User-Agent": "Quantum" },
+          headers: { "User-Agent": "WOLFSPACE" },
         },
         (s) => {
           if (s.statusCode >= 300 && s.statusCode < 400 && s.headers.location) {
@@ -3254,7 +3386,7 @@ function hfDownload(urlStr, dest, onProgress, reg) {
 }
 
 // Minimal live debug viewer (no deps) Ã¢â‚¬â€ open http://127.0.0.1:PORT/debug
-const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>Quantum Ã‚Â· Debug</title>
+const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>WOLFSPACE Ã‚Â· Debug</title>
 <style>
  body{margin:0;background:#0b0d11;color:#cbd5e1;font:13px/1.5 ui-monospace,Consolas,monospace}
  header{position:sticky;top:0;background:#11151c;padding:10px 14px;border-bottom:1px solid #1f2733;display:flex;gap:10px;align-items:center}
@@ -3265,7 +3397,7 @@ const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>Qu
  .info{} .warn{color:#fbbf24} .error{color:#f87171}
  .d{color:#7c8aa0}
 </style></head><body>
-<header><b>Ã¢Å¡â€º Quantum Debug</b><span id="n">0</span> event<input id="f" placeholder="filter (cat/msg)Ã¢â‚¬Â¦"><button onclick="document.getElementById('log').innerHTML='';">clear</button></header>
+<header><b>Ã¢Å¡â€º WOLFSPACE Debug</b><span id="n">0</span> event<input id="f" placeholder="filter (cat/msg)Ã¢â‚¬Â¦"><button onclick="document.getElementById('log').innerHTML='';">clear</button></header>
 <div id="log"></div>
 <script>
  var log=document.getElementById('log'),f=document.getElementById('f'),n=document.getElementById('n'),c=0;
@@ -3286,8 +3418,10 @@ const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>Qu
 // AND the Electron IPC layer. `emit(event)` replaces SSE writes; `ctl.isCancelled()`
 // for cooperative cancel; `ctl.setCurReq(r)` exposes the in-flight model request.
 const { chatStream } = require("./agent/chat.cjs");
+const { createSnapshot, rollback, listSnapshots } = require("./agent/snapshot.cjs");
+const { safeWriteFile, quarantine } = require("./agent/safe-edit.cjs");
 
-// Pure self-edit agent loop (function-calling tools over Quantum's own source).
+// Pure self-edit agent loop (function-calling tools over WOLFSPACE's own source).
 // emit(event)/ctl.isCancelled()/ctl.setCurReq() â€” shared by HTTP + IPC.
 // If a chat reply contains a runnable code block, execute it (model guesses, CPU judges)
 // so the UI can show the terminal/verdict â€” same behavior as the plain /chat path.
@@ -3334,7 +3468,7 @@ function parsePseudoCalls(text) {
   return out;
 }
 
-// Pure self-edit agent loop (function-calling tools over Quantum's own source).
+// Pure self-edit agent loop (function-calling tools over WOLFSPACE's own source).
 // The full implementation now lives in `agent/self_agent.cjs`.
 const { selfAgentStream } = require("./agent/self_agent.cjs");
 
@@ -3455,10 +3589,10 @@ function closeTerminalSession(id) {
 // ── Agent Runner Registry (module-level, persists across requests) ──
 const AGENT_REGISTRY = [
   {
-    id: "quantum",
-    name: "Quantum Native",
+    id: "WOLFSPACE",
+    name: "WOLFSPACE Native",
     icon: "⚡",
-    description: "Quantum built-in agent",
+    description: "WOLFSPACE built-in agent",
     available: true,
   },
   {
@@ -3479,7 +3613,9 @@ const AGENT_REGISTRY = [
 const agentSessions = new Map();
 
 const server = http.createServer(async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", "*");
+  // Dynamic CORS: in bypass mode, allow only the frontend origin
+  const CORS_ORIGIN = process.env.STATIC_PORT ? `http://localhost:${process.env.STATIC_PORT}` : "*";
+  res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") {
     res.writeHead(204);
@@ -3561,6 +3697,68 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "GET" && _path === "/debug") {
     res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
     return res.end(DEBUG_VIEWER);
+  }
+
+  if (req.method === "GET" && _path === "/api/openclaw/status") {
+    const child = spawn(openclawCommand(), ["--version"], {
+      cwd: __dirname,
+      windowsHide: true,
+      shell: false,
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk.toString("utf8");
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk.toString("utf8");
+    });
+    child.on("error", (err) =>
+      writeJson(res, 200, {
+        installed: false,
+        version: "",
+        error: friendlyOpenClawError(stderr, stdout, err),
+      }),
+    );
+    child.on("close", (code) =>
+      writeJson(res, 200, {
+        installed: code === 0,
+        version: code === 0 ? stripAnsi(stdout).trim() : "",
+        error: code === 0 ? "" : friendlyOpenClawError(stderr, stdout),
+      }),
+    );
+    return;
+  }
+
+  if (req.method === "POST" && _path === "/api/openclaw/chat") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", async () => {
+      let message = "";
+      try {
+        message = String((JSON.parse(body || "{}") || {}).message || "").trim();
+      } catch (err) {
+        return writeJson(res, 400, {
+          ok: false,
+          text: "",
+          raw: "",
+          error: "bad request: " + err.message,
+          exitCode: null,
+        });
+      }
+      if (!message) {
+        return writeJson(res, 400, {
+          ok: false,
+          text: "",
+          raw: "",
+          error: "Pesan /openclaw tidak boleh kosong.",
+          exitCode: null,
+        });
+      }
+      const result = await runOpenClawAgent(message);
+      writeJson(res, result.ok ? 200 : 500, result);
+    });
+    return;
   }
 
   // Persist the BYOK key server-side (cloud-keys.json) so the BACKEND Ã¢â‚¬â€ including
@@ -3724,7 +3922,7 @@ const server = http.createServer(async (req, res) => {
         https
           .get(
             "https://ollama.com/library?sort=popular",
-            { headers: { "user-agent": "Mozilla/5.0 Quantum" } },
+            { headers: { "user-agent": "Mozilla/5.0 WOLFSPACE" } },
             (s) => {
               if (s.statusCode >= 400) {
                 s.resume();
@@ -3913,7 +4111,7 @@ const server = http.createServer(async (req, res) => {
             {
               headers: {
                 Accept: "application/vnd.docker.distribution.manifest.v2+json",
-                "User-Agent": "Quantum",
+                "User-Agent": "WOLFSPACE",
               },
             },
             (s) => {
@@ -3993,7 +4191,7 @@ const server = http.createServer(async (req, res) => {
                 headers: {
                   Accept:
                     "application/vnd.docker.distribution.manifest.v2+json",
-                  "User-Agent": "Quantum",
+                  "User-Agent": "WOLFSPACE",
                 },
               },
               (s) => {
@@ -4216,9 +4414,9 @@ const server = http.createServer(async (req, res) => {
     });
     req.on("data", (c) => (body += c));
     req.on("end", async () => {
-      let history, port, cloud, webdev;
+      let history, port, cloud;
       try {
-        ({ history, port, cloud, webdev } = JSON.parse(body));
+        ({ history, port, cloud } = JSON.parse(body));
       } catch (e) {
         res.writeHead(400);
         return res.end("bad json");
@@ -4235,7 +4433,7 @@ const server = http.createServer(async (req, res) => {
         if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`);
       };
       // Logic lives in the pure chatStream() (shared with the IPC layer).
-      await chatStream({ history, port, cloud, webdev }, ev, {
+      await chatStream({ history, port, cloud }, ev, {
         isCancelled: () => cancelled,
         setCurReq: (r) => {
           curReq = r;
@@ -4330,7 +4528,7 @@ const server = http.createServer(async (req, res) => {
           convo.push({ role: "assistant", content: reply });
           let act = parseAction(reply),
             implicitRun = false;
-          // Fallback (honors Quantum's thesis): if the model just dumped a code block
+          // Fallback (honors WOLFSPACE's thesis): if the model just dumped a code block
           // instead of using the protocol, run it and verify by execution.
           if (!act) {
             const cb = extractCode(reply);
@@ -4460,7 +4658,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Self-edit agent: edits Quantum's OWN source (dev copy) with backup + syntax-gate.
+  // Self-edit agent: edits WOLFSPACE's OWN source (dev copy) with backup + syntax-gate.
   // Edits the dev files; you review and run sync-app.ps1 to apply to the live app.
   if (req.method === "POST" && req.url === "/self-agent") {
     let body = "";
@@ -4594,13 +4792,13 @@ const server = http.createServer(async (req, res) => {
           res.end(
             JSON.stringify({
               error:
-                "Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart Quantum.",
+                "Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart WOLFSPACE.",
             }),
           );
           return;
         }
 
-        const tmpProj = path.join(os.tmpdir(), "quantum-flutter-proj");
+        const tmpProj = path.join(os.tmpdir(), "WOLFSPACE-flutter-proj");
         const buildOut = path.join(tmpProj, "build", "web");
 
         // Result cache: same source as the last successful build Ã¢â€ â€™ serve instantly
@@ -4654,7 +4852,7 @@ const server = http.createServer(async (req, res) => {
             path.join(tmpProj, "pubspec.yaml"),
             [
               "name: quantum_preview",
-              "description: Quantum Canvas preview",
+              "description: WOLFSPACE Canvas preview",
               "publish_to: none",
               "version: 1.0.0",
               "environment:",
@@ -4883,13 +5081,13 @@ const server = http.createServer(async (req, res) => {
           res.end(
             JSON.stringify({
               error:
-                "Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart Quantum.",
+                "Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart WOLFSPACE.",
             }),
           );
           return;
         }
 
-        const tmpProj = path.join(os.tmpdir(), "quantum-flutter-proj");
+        const tmpProj = path.join(os.tmpdir(), "WOLFSPACE-flutter-proj");
         const libDir = path.join(tmpProj, "lib");
         if (!fs.existsSync(libDir)) {
           res.writeHead(200, { "Content-Type": "application/json" });
@@ -5185,6 +5383,33 @@ Rules:
     return;
   }
 
+  // ── Safe-Edit Protocol: Snapshot & Rollback API ──────────────────────────
+  if (req.method === "GET" && req.url === "/api/snapshots") {
+    const snaps = listSnapshots().slice(0, 20).map(s => ({
+      id: s.id,
+      ts: s.ts,
+      label: s.label,
+      files: s.files,
+      age: Math.round((Date.now() - s.ts) / 1000 / 60) + " menit lalu",
+    }));
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify({ ok: true, snapshots: snaps }));
+  }
+
+  if (req.method === "POST" && req.url === "/api/rollback") {
+    let body = "";
+    req.on("data", c => (body += c));
+    req.on("end", () => {
+      let id;
+      try { ({ id } = JSON.parse(body)); } catch { res.writeHead(400); return res.end("bad json"); }
+      if (!id) { res.writeHead(400); return res.end("id required"); }
+      const result = rollback(id);
+      res.writeHead(result.ok ? 200 : 404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(result));
+    });
+    return;
+  }
+
   // Run one code block manually
   if (req.method === "POST" && req.url === "/run") {
     let body = "";
@@ -5209,7 +5434,7 @@ Rules:
             language: lang,
             skipped: true,
             error:
-              "Eksekusi diblokir: kode ini membuka jendela GUI desktop (Swing/tkinter/JavaFX) yang akan menggantung sampai timeout. Untuk UI visual gunakan mode Web Dev (Canvas), atau jalankan file-nya manual di luar Quantum.",
+              "Eksekusi diblokir: kode ini membuka jendela GUI desktop (Swing/tkinter/JavaFX) yang akan menggantung sampai timeout. Untuk UI visual gunakan mode Web Dev (Canvas), atau jalankan file-nya manual di luar WOLFSPACE.",
           };
         } else {
           r = await runByLang(lang, code);
@@ -5232,7 +5457,7 @@ Rules:
   if (req.method === "GET" && urlPath.startsWith("/flutter-app/")) {
     const buildDir = path.join(
       os.tmpdir(),
-      "quantum-flutter-proj",
+      "WOLFSPACE-flutter-proj",
       "build",
       "web",
     );
@@ -5271,7 +5496,7 @@ Rules:
     return res.end("not found");
   }
 
-  // Quantum Studio Ã¢â‚¬â€ the embedded Flutter Web Dev module (studio/build/web).
+  // WOLFSPACE Studio Ã¢â‚¬â€ the embedded Flutter Web Dev module (studio/build/web).
   if (req.method === "GET" && urlPath.startsWith("/studio")) {
     const buildDir = path.join(__dirname, "studio", "build", "web");
     let rel =
@@ -5418,7 +5643,7 @@ Rules:
     const { execSync } = require("child_process");
 
     for (const a of AGENT_REGISTRY) {
-      if (a.id === "quantum") continue;
+      if (a.id === "WOLFSPACE") continue;
 
       const cmds = {
         opencode: "opencode --version",
@@ -5454,12 +5679,12 @@ Rules:
           return res.end(JSON.stringify({ error: "agent not found" }));
         }
 
-        if (id === "quantum") {
+        if (id === "WOLFSPACE") {
           res.writeHead(400, { "Content-Type": "application/json" });
           return res.end(
             JSON.stringify({
               error:
-                "Quantum agent tidak bisa dijalankan lewat Agent Runner. Gunakan panel Chat biasa.",
+                "WOLFSPACE agent tidak bisa dijalankan lewat Agent Runner. Gunakan panel Chat biasa.",
             }),
           );
         }
@@ -5616,7 +5841,7 @@ Rules:
       "Content-Type": "text/event-stream",
       "Cache-Control": "no-cache",
       Connection: "keep-alive",
-      "Access-Control-Allow-Origin": "*",
+      "Access-Control-Allow-Origin": CORS_ORIGIN,
     });
     let lastLen = {};
     const interval = setInterval(() => {
@@ -5804,7 +6029,7 @@ if (require.main === module) {
   });
   server.listen(PORT, HOST, () => {
     console.log(
-      `\n  Quantum  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`,
+      `\n  WOLFSPACE  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`,
     );
   });
 }
@@ -5849,3 +6074,4 @@ module.exports = {
   resizeTerminal,
   closeTerminalSession,
 };
+

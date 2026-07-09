@@ -18,11 +18,14 @@ const { askCloudStream } = require('./cloud.cjs');
  * @param {Object} ctl - control object, currently unused but kept for compatibility.
  */
 async function chatStream({ history, port, cloud }, emit, ctl) {
-  // Choose system prompt based on history and mode – prompts module handles.
-  const sys = pickSystem(history);
+  // Guard: pastikan history selalu berupa array, bukan null/undefined
+  const safeHistory = Array.isArray(history) ? history : [];
 
-  const messages = [{ role: 'system', content: sys }, ...(history || [])];
-  console.log('[chat] chatStream started', { historyLen: (history || []).length, useCloud: !!(cloud && cloud.key), port });
+  // Choose system prompt based on history and mode – prompts module handles.
+  const sys = pickSystem(safeHistory);
+
+  const messages = [{ role: 'system', content: sys }, ...safeHistory];
+  console.log('[chat] chatStream started', { historyLen: safeHistory.length, useCloud: !!(cloud && cloud.key), port });
   const onToken = token => {
     console.log('[chat] token:', token);
     emit({ t: 'tok', c: token });
@@ -47,7 +50,7 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
       dlog('chat', 'info', 'stream completed', { length: full.length });
 
 
-      return runReply(full, history, emit);
+      return runReply(full, safeHistory, emit);
     })
     .catch(onError);
 }
@@ -59,6 +62,8 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
  * @returns {boolean} true if the latest user message explicitly requests execution.
  */
 function _isExecutionRequested(history) {
+  // Guard: jika history bukan array, langsung kembalikan false
+  if (!Array.isArray(history) || history.length === 0) return false;
   // Find the latest user message
   let latestUser = null;
   for (let i = history.length - 1; i >= 0; i--) {
