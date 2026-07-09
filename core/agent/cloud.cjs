@@ -1,4 +1,4 @@
-// Cloud model integration for Quantum (extracted from server.cjs)
+﻿// Cloud model integration for WOLFSPACE (extracted from server.cjs)
 // Dependencies – same as original server.cjs
 const fs = require('fs');
 const path = require('path');
@@ -250,7 +250,7 @@ function _askCloudToolsOnce(cloud, messages, tools) {
     let host = cfg.host, p = cfg.path, port, transport = https;
     if (cloud.baseUrl) { try { const u = new URL(cloud.baseUrl.replace(/\/+$/, '') + '/chat/completions'); host = u.hostname; p = u.pathname + (u.search || ''); port = u.port || undefined; transport = (u.protocol === 'http:') ? http : https; } catch (_) {} }
     const isReasoning = /deepseek|reason/i.test(model);
-    const body = JSON.stringify({ model, messages, tools: tools, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: isReasoning ? 16384 : 4096 });
+    const body = JSON.stringify({ model, messages, tools: tools, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: isReasoning ? 2048 : 512 });
     const headers = { 'content-type': 'application/json', authorization: 'Bearer ' + cloud.key, 'content-length': Buffer.byteLength(body) };
     const r = transport.request({ hostname: host, port, path: p, method: 'POST', headers, timeout: 300000 }, s => {
       const bad = s.statusCode >= 400;
@@ -278,14 +278,18 @@ function _askCloudToolsOnce(cloud, messages, tools) {
           try { const err = JSON.parse(errBody).error || {};
             if ((err.code === 'tool_use_failed' || /tool/i.test(err.message || '')) && err.failed_generation) {
               trace.emit('cloud_request_error', 'cloud', { runId, ms: Date.now() - t0, error: 'tool_use_failed' });
-              return resolve({ role: 'assistant', content: String(err.failed_generation), tool_calls: [] });
+              return resolve({ role: 'assistant', content: String(err.failed_generation) }); // Jangan kirim tool_calls:[] untuk DeepSeek
             }
           } catch (_) {}
           trace.emit('cloud_request_error', 'cloud', { runId, ms: Date.now() - t0, error: provider + ' ' + s.statusCode });
           return reject(new Error(provider + ' ' + s.statusCode + ': ' + errBody.slice(0, 300)));
         }
-        resolve({ role: 'assistant', content: content || (reasoning || null), tool_calls: tcs.filter(Boolean) });
-        trace.emit('cloud_request_done', 'cloud', { runId, ms: Date.now() - t0, hasToolCalls: !!(tcs.filter(Boolean).length) });
+        const validToolCalls = tcs.filter(Boolean);
+        const response = { role: 'assistant', content: content || (reasoning || null) };
+        // Hanya kirim tool_calls jika ada minimal 1 (hindari error DeepSeek)
+        if (validToolCalls.length > 0) response.tool_calls = validToolCalls;
+        resolve(response);
+        trace.emit('cloud_request_done', 'cloud', { runId, ms: Date.now() - t0, hasToolCalls: !!validToolCalls.length });
       });
     });
     r.on('error', reject); r.on('timeout', () => r.destroy(new Error('timeout')));

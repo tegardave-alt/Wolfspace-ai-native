@@ -1,4 +1,4 @@
-// Cloud model integration for Quantum (extracted from server.cjs)
+// Cloud model integration for WOLFSPACE (extracted from server.cjs)
 // Dependencies – same as original server.cjs
 const fs = require('fs');
 const path = require('path');
@@ -154,11 +154,26 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     console.log('[cloud] system prompt:', sys ? `${sys.length} chars, starts: ${sys.slice(0,80)}...` : 'EMPTY!');
     console.log('[cloud] work messages:', workMsgs.length, 'msgs, roles:', workMsgs.map(m=>m.role).join(','));
     let host = cfg.host, path = cfg.path, port = null, headers = { 'content-type':'application/json' }, body, extract;
+    let isReasoning = false; // Track reasoning block state
     if (provider === 'opencode' && model.includes('-free')) path = '/zen/v1/chat/completions';
     const openaiCompatible = () => {
       headers['authorization'] = 'Bearer ' + cloud.key;
       body = JSON.stringify({ model, stream:true, messages:[{role:'system',content:sys||''},...workMsgs] });
-      extract = j => { try { const d = j.choices && j.choices[0] && j.choices[0].delta; return (d && (d.content || d.reasoning_content)) || ''; } catch { return ''; } };
+      extract = j => {
+        try {
+          const d = j.choices && j.choices[0] && j.choices[0].delta;
+          if (!d) return '';
+          let chunk = '';
+          if (d.reasoning_content) {
+            if (!isReasoning) { isReasoning = true; chunk += '<think>\n'; }
+            chunk += d.reasoning_content;
+          } else if (d.content) {
+            if (isReasoning) { isReasoning = false; chunk += '\n</think>\n\n'; }
+            chunk += d.content;
+          }
+          return chunk;
+        } catch { return ''; }
+      };
     };
     if (cloud.baseUrl) {
       try { const u = new URL(cloud.baseUrl.replace(/\/+$/,'') + '/chat/completions'); host = u.hostname; path = u.pathname + (u.search||''); if (u.port) port = parseInt(u.port); }
@@ -168,7 +183,20 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       headers['x-api-key'] = cloud.key;
       headers['anthropic-version'] = '2023-06-01';
       body = JSON.stringify({ model, max_tokens:4096, system:sys||'', stream:true, thinking:{type:'adaptive'}, messages: workMsgs.map(m=>({role:m.role,content:m.content})) });
-      extract = j => (j.type==='content_block_delta' && j.delta && j.delta.type==='text_delta') ? j.delta.text : '';
+      extract = j => {
+        if (j.type === 'content_block_delta' && j.delta) {
+          let chunk = '';
+          if (j.delta.type === 'thinking_delta') {
+            if (!isReasoning) { isReasoning = true; chunk += '<think>\n'; }
+            chunk += j.delta.thinking;
+          } else if (j.delta.type === 'text_delta') {
+            if (isReasoning) { isReasoning = false; chunk += '\n</think>\n\n'; }
+            chunk += j.delta.text;
+          }
+          return chunk;
+        }
+        return '';
+      };
     } else if (provider === 'gemini') {
       path = `/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(cloud.key)}`;
       body = JSON.stringify({ systemInstruction:{parts:[{text:sys||''}]}, contents: workMsgs.map(m=>({role:m.role==='assistant'?'model':'user', parts:[{text:m.content}]})) });
@@ -178,7 +206,8 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     }
     headers['content-length'] = Buffer.byteLength(body);
     const t0 = Date.now();
-    dlog('cloud','info',`cloud model start ${provider}/${model}`,{provider,model,host});
+    const maskedKey = cloud.key ? cloud.key.slice(0, 5) + '***' + cloud.key.slice(-4) : 'none';
+    dlog('cloud','info',`cloud model start ${provider}/${model}`,{provider,model,host,key:maskedKey});
     const { VERBOSE } = require('./debug.cjs');
     if (VERBOSE) dlog('cloud','info','cloud model request',{provider,model,messages:work});
     const isLocal = host === '127.0.0.1' || host === 'localhost';
@@ -282,7 +311,7 @@ function _askCloudToolsOnce(cloud, messages, tools) {
     if (cloud.baseUrl) { try { const u = new URL(cloud.baseUrl.replace(/\/+$/, '') + '/chat/completions'); host = u.hostname; p = u.pathname + (u.search || ''); port = u.port || undefined; transport = (u.protocol === 'http:') ? http : https; } catch (_) {} }
     const isReasoning = /deepseek|reason/i.test(model);
     const sanitizedMessages = _sanitizeMessages(messages);
-    const body = JSON.stringify({ model, messages: sanitizedMessages, tools: tools, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: isReasoning ? 16384 : 4096 });
+    const body = JSON.stringify({ model, messages: sanitizedMessages, tools: tools, tool_choice: 'auto', temperature: 0.1, stream: true, max_tokens: isReasoning ? 2048 : 512 });
     const headers = { 'content-type': 'application/json', authorization: 'Bearer ' + cloud.key, 'content-length': Buffer.byteLength(body) };
     const r = transport.request({ hostname: host, port, path: p, method: 'POST', headers, timeout: 300000 }, s => {
       const bad = s.statusCode >= 400;
@@ -309,11 +338,15 @@ function _askCloudToolsOnce(cloud, messages, tools) {
         if (bad) {
           try { const err = JSON.parse(errBody).error || {};
             if ((err.code === 'tool_use_failed' || /tool/i.test(err.message || '')) && err.failed_generation)
-              return resolve({ role: 'assistant', content: String(err.failed_generation), tool_calls: [] });
+              return resolve({ role: 'assistant', content: String(err.failed_generation) }); // Jangan kirim tool_calls:[] untuk DeepSeek
           } catch (_) {}
           return reject(new Error(provider + ' ' + s.statusCode + ': ' + errBody.slice(0, 300)));
         }
-        resolve({ role: 'assistant', content: content || (reasoning || null), tool_calls: tcs.filter(Boolean) });
+        const validToolCalls = tcs.filter(Boolean);
+        const response = { role: 'assistant', content: content || (reasoning || null) };
+        // Hanya kirim tool_calls jika ada minimal 1 (hindari error DeepSeek)
+        if (validToolCalls.length > 0) response.tool_calls = validToolCalls;
+        resolve(response);
       });
     });
     r.on('error', reject); r.on('timeout', () => r.destroy(new Error('timeout')));

@@ -11,14 +11,88 @@ const os = require('os');
 const path = require('path');
 const PROMPTS_CFG_PATH = path.join(__dirname, '..', 'config', 'prompts.json');
 
+// ===================== SISTEM ATURAN AGENT (HARDCODED RULES) =====================
+// Aturan yang dipindahkan dari prompt ke sistem untuk kepatuhan 100%
+const SYSTEM_RULES = {
+  // Kata-kata spekulatif yang dilarang
+  FORBIDDEN_SPECULATIVE: /\b(mungkin|sepertinya|bisa jadi|perhaps|possibly|maybe|probably|seems|appears|I think|I believe|I assume|presumably)\b/gi,
+  // Urutan tool yang wajib dicoba sebelum menyatakan "tidak ada"
+  REQUIRED_TOOL_SEQUENCE: ['disk_grep', 'disk_glob', 'web_search'],
+  // Minimal tools yang gagal sebelum bisa menyerah
+  MIN_FAILED_TOOLS: 3
+};
+
+// Simpan bukti dari tool yang sudah diakses untuk validasi
+const accessedEvidence = new Set();
+let failedTools = new Set();
+
+// Bersihkan output dari kata spekulatif
+function sanitizeOutput(text) {
+  return text.replace(SYSTEM_RULES.FORBIDDEN_SPECULATIVE, '[kata-spekulatif-dihapus]');
+}
+
+// Hapus rekapitulasi tool / daftar bukti / kalimat pengantar yang tidak perlu
+function stripToolRecap(text) {
+  if (!text) return text;
+  return text
+    .replace(/Berikut bukti dari tool yang telah dijalankan:?[\s\S]*?(?=Kesimpulan:|$)/gi, '')
+    .replace(/Tool (grep|read|glob|list|bash|web_search|web_fetch|disk_grep|disk_read|disk_glob|disk_list|mcp_[a-z0-9_]+)(?:\s+dengan pattern [^\n]+)?\s+menemukan:?[\s\S]*?(?=\n\n|Tool |Kesimpulan:|$)/gi, '')
+    .replace(/Kesimpulan:\s*/gi, '')
+    .replace(/^\s*(\d+\.)\s+/gm, '')
+    .replace(/```[\s\S]*?```/g, '')
+    .replace(/\n{3,}/g, '\n\n')
+    .trim();
+}
+
+// Potong jawaban akhir menjadi maksimal 1-2 kalimat / 300 karakter sebagai safety net
+function truncateToConcise(text, maxChars = 300) {
+  if (!text) return text;
+  if (text.length <= maxChars) return text;
+  // Coba ambil 1-2 kalimat pertama
+  const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)/g) || [text];
+  let result = sentences[0] || '';
+  if (sentences.length > 1 && (result + sentences[1]).length <= maxChars) {
+    result += ' ' + sentences[1].trim();
+  }
+  result = result.trim();
+  if (result.length > maxChars) result = result.slice(0, maxChars).trim() + '...';
+  return result;
+}
+
+// Cek apakah jawaban mengandung minimal sebagian dari bukti yang diakses
+// Validasi ini memastikan jawaban didasarkan pada bukti tool, TANPA memaksa agent
+// menyalin ulang output tool. Cukup sebut file path atau istilah kunci dari bukti.
+function hasValidEvidence(summary, evidenceSet) {
+  if (evidenceSet.size === 0) return true; // tidak ada tool yang dijalankan, skip
+  const sum = summary.toLowerCase();
+  for (const ev of evidenceSet) {
+    const evLower = ev.toLowerCase();
+    // Cek apakah summary menyebut file path yang ada di bukti
+    const paths = evLower.match(/[a-z]:\\[^\s]+|(?:\.\.\/|\/|[a-zA-Z0-9_-]+\/)+[a-zA-Z0-9_.-]+/g) || [];
+    for (const p of paths) {
+      if (p.length > 3 && sum.includes(p)) return true;
+    }
+    // Cek apakah summary menyebut istilah/pattern kunci dari bukti (min 8 char)
+    const terms = evLower.split(/\s+/).filter(w => w.length >= 8);
+    for (const term of terms) {
+      if (sum.includes(term)) return true;
+    }
+  }
+  return false;
+}
+// ==================================================================================
+
 function loadSelfAgentPrompt() {
   try {
     const raw = require('fs').readFileSync(PROMPTS_CFG_PATH, 'utf8');
     const clean = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
     const cfg = JSON.parse(clean);
-    return cfg.prompts.self_agent.text;
+    // Hapus aturan yang sudah dipindahkan ke sistem dari prompt (ringkasin)
+    let promptText = cfg.prompts.self_agent.text;
+    promptText = promptText.replace(/\[PRECISION RULES - WAJIB DIPATUHI\][\s\S]*?7\..+$/m, '');
+    return promptText;
   } catch (e) {
-    return "You are Quantum's assistant. Chat normally or use tools on Quantum's source code as needed. Answer based on evidence from tools. Do not speculate.";
+    return "You are WOLFSPACE's assistant. Chat normally or use tools on WOLFSPACE's source code as needed. Answer based on evidence from tools. Do not speculate.";
   }
 }
 
@@ -39,7 +113,7 @@ function parsePseudoCalls(text) {
 }
 
 /**
- * Self‑agent loop – operates on Quantum's own source code via function‑calling tools.
+ * Self‑agent loop – operates on WOLFSPACE's own source code via function‑calling tools.
  * @param {Object} opts - {history, port, cloud}
  * @param {function(Object):void} emit - event emitter (e.g. SSE writer)
  * @param {Object} ctl - {isCancelled, setCurReq, depth}
@@ -90,18 +164,59 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
   const currentSysPrompt = optPrompt || SELF_FC_SYS;
 
   const messages = [{ role: 'system', content: currentSysPrompt }, ...(history || [])];
+  messages[0].content += "\n\n[CRITICAL BEHAVIOR RULE]: JAWAB MAKSIMAL 1-2 KALIMAT. LANGSUNG KE INTI. DILARANG KERAS mencantumkan daftar langkah, hasil tool, atau output grep di jawaban akhir. CoT/rencana_tindakan hanya untuk pemikiran INTERNAL; JANGAN ditulis ulang di jawaban final. Berikan LANGSUNG KESIMPULAN AKHIR saja. Contoh SALAH: '1. grep → ... 2. grep → ... Kesimpulan: ...'. Contoh BENAR: 'Ada di agent/public/app.jsx baris 4515.'";
   const MAX_STEPS = Infinity;
   let edits = 0;
   const callCounts = {};
   let fallbackCount = 0;
   const _TRANSIENT_SELF = /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|too busy|Service Unavailable|service_unavailable/i;
 
+  // Load MCP tools dynamically
+  const mcpClient = require('./mcp-client.cjs');
+  let currentTools = [...SELF_TOOLS];
+  try {
+    const mcpTools = await mcpClient.getTools();
+    if (mcpTools.length > 0) {
+      currentTools = currentTools.concat(mcpTools);
+      // HARDCODE RULE: Filter web_search/web_fetch HANYA jika pertanyaan jelas tentang Github/MCP
+      const lastMsg = history && history.length > 0 ? history[history.length - 1].content : '';
+      const isMcpQuery = /github|repo|issue|commit|pull request|mcp/i.test(lastMsg);
+      const isGeneralQuery = /apa itu|siapa|cara|bagaimana|contoh|cari|google|web/i.test(lastMsg);
+      
+      if (isMcpQuery && !isGeneralQuery) {
+        currentTools = currentTools.filter(t => t.function.name !== 'web_search' && t.function.name !== 'web_fetch');
+        dlog('self', 'info', 'Hardcode: web_search dinonaktifkan karena tugas MCP terdeteksi.');
+      }
+      
+      // Injeksi kesadaran MCP ke dalam otak/Prompt Sistem AI
+      messages[0].content += "\n\n[CRITICAL MCP RULE]: Anda terhubung ke MCP. Prioritaskan alat 'mcp_'.";
+    }
+  } catch (e) {
+    dlog('self', 'warn', 'Gagal memuat tools MCP', { error: e.message });
+  }
+
+  // --- INJEKSI CHAIN-OF-THOUGHT (CoT) ---
+  currentTools = currentTools.map(t => {
+    const newTool = JSON.parse(JSON.stringify(t));
+    if (!newTool.function.parameters) newTool.function.parameters = { type: 'object', properties: {} };
+    if (!newTool.function.parameters.properties) newTool.function.parameters.properties = {};
+    newTool.function.parameters.properties.rencana_tindakan = {
+      type: 'string',
+      description: 'WAJIB DIISI SEBELUM PARAMETER LAIN: Tulis 1-2 kalimat deskripsi tentang apa yang akan Anda lakukan dengan alat ini dan mengapa.'
+    };
+    if (!newTool.function.parameters.required) newTool.function.parameters.required = [];
+    if (!newTool.function.parameters.required.includes('rencana_tindakan')) {
+      newTool.function.parameters.required.push('rencana_tindakan');
+    }
+    return newTool;
+  });
+
   try {
     for (let step = 1; step <= MAX_STEPS; step++) {
       if (isCancelled()) { dlog('self', 'info', 'stop', { reason: 'cancelled', step }); break; }
       emit({ t: 'step', n: step });
       let msg;
-      try { msg = await askCloudTools(cloud, messages, SELF_TOOLS); }
+      try { msg = await askCloudTools(cloud, messages, currentTools); }
       catch (e) {
         if (_TRANSIENT_SELF.test(e.message || '') && fallbackCount < 3) {
           const fb = Object.keys(CLOUD_KEYS).find(p => p !== cloud.provider && CLOUD_KEYS[p] && CLOUD_KEYS[p].key);
@@ -125,18 +240,49 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
       if (!calls) {
         const pseudo = parsePseudoCalls(msg.content || '');
         if (pseudo.length) {
-          calls = pseudo.map((c, i) => ({ id: 'call_' + step + '_' + i, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
-          messages[messages.length - 1] = { role: 'assistant', content: null, tool_calls: calls };
-        }
+        calls = pseudo.map((c, i) => ({ id: 'call_' + step + '_' + i, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
+        const newMsg = { role: 'assistant', content: null };
+        if (calls && calls.length > 0) newMsg.tool_calls = calls;
+        messages[messages.length - 1] = newMsg;
+      }
       }
       // Emit token output when there is plain content and no tool calls
       if (msg.content && !calls) emit({ t: 'tok', c: msg.content });
       // If there are no tool calls (or none returned), finalize the stream with fallback
       if (!calls || !calls.length) {
         const hasContent = msg.content && msg.content.trim();
-        const fallback = hasContent ? msg.content : '(tidak ada respons dari model)';
+        let fallback = hasContent ? msg.content : '(tidak ada respons dari model)';
+        
+        // 1. Bersihkan kata spekulatif dari output
+        fallback = sanitizeOutput(fallback);
+        
+        // 1b. Hapus rekapitulasi tool / daftar bukti / pola verbose
+        fallback = stripToolRecap(fallback);
+        
+        // 1c. Safety net: pastikan jawaban akhir tetap singkat (maks 1-2 kalimat / 300 char)
+        fallback = truncateToConcise(fallback, 300);
+        
+        // 2. Validasi bukti: jika belum mencoba minimal 3 tool, paksa coba lagi
+        if (failedTools.size < SYSTEM_RULES.MIN_FAILED_TOOLS && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.some(t => failedTools.has(t))) {
+          const nextTool = SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.find(t => !failedTools.has(t));
+          if (nextTool) {
+            emit({ t: 'force_retry', m: `Belum memenuhi minimal ${SYSTEM_RULES.MIN_FAILED_TOOLS} tool gagal. Coba ${nextTool} selanjutnya...` });
+            messages.push({ role: 'user', content: `Anda belum mencoba tool ${nextTool}. Jalankan tool tersebut untuk mencari informasi lebih lanjut sebelum menyimpulkan.` });
+            step--;
+            continue;
+          }
+        }
+        
+        // 3. Cek apakah jawaban mengandung bukti dari tools yang diakses
+        if (!hasValidEvidence(fallback, accessedEvidence)) {
+          emit({ t: 'force_retry', m: 'Jawaban belum berdasarkan bukti tools, meminta ulang...' });
+          messages.push({ role: 'user', content: 'Jawaban Anda harus didasarkan pada bukti dari tools yang sudah dijalankan, tetapi DILARANG menyalin ulang log/output tool. Berikan kesimpulan SANGAT SINGKAT (1-2 kalimat) saja, langsung ke inti.' });
+          step--;
+          continue;
+        }
+        
         finalSummary = fallback;
-        dlog('self', 'info', 'stop', { reason: hasContent ? 'text_response_no_tools' : 'no_response', step, chars: (msg.content || '').length });
+        dlog('self', 'info', 'stop', { reason: hasContent ? 'text_response_no_tools' : 'no_response', step, chars: (msg.content || '').length, sanitized: true });
         const runRes = hasContent ? await runReply(fallback) : null;
         emit({ t: 'adone', steps: step, edits, summary: finalSummary, backup: backupRel(), run: runRes });
         break;
@@ -146,6 +292,13 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
       const runOne = async (tc) => {
         let args = {};
         try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+        
+        // --- EXTRAKTOR CHAIN-OF-THOUGHT ---
+        if (args.rencana_tindakan) {
+          // Kita pancarkan sebagai tipe 'thought' khusus agar Frontend bisa membungkusnya dalam UI berstruktur
+          emit({ t: 'thought', c: args.rencana_tindakan, tool: tc.function.name, ok: true });
+        }
+        
         const sig = tc.function.name + '|' + (tc.function.arguments || '');
         callCounts[sig] = (callCounts[sig] || 0) + 1;
         if (callCounts[sig] > 10) return { stop: true };
@@ -157,6 +310,12 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
         }
         const r = await runSelfTool(tc.function.name, args, emit);
         if (r.edited) edits++;
+        // Simpan output tool sebagai bukti yang diakses
+        if (r.output) accessedEvidence.add(r.output);
+        // Catat tool yang gagal
+        if (!r.ok && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)) {
+          failedTools.add(tc.function.name);
+        }
         // For edits, also include hunk info so frontend can show diff hunks
         const extra = {};
         if (r.hunkId) { extra.hunkId = r.hunkId; extra.oldContent = r.oldContent; extra.newContent = r.newContent; }
