@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-# Quantum setup (Linux/macOS) -- downloads the models in config.json.
+﻿#!/usr/bin/env bash
+# WOLFSPACE setup (Linux/macOS) -- downloads the models in config.json.
 # Note: install llama.cpp yourself (so `llama-server` is available) and set
 # "modelDir" in config.json to a Linux path. Then run scripts/start-models.sh.
 set -e
@@ -18,3 +18,4 @@ for m in cfg['models']:
                     '--no-progress-meter', '-o', p, m['url']], check=True)
 print('Done. Next: scripts/start-models.sh  then  npm start')
 PY
+

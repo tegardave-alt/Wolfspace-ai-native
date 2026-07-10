@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 
 /**
  * POST /run - Run one code block manually
@@ -29,7 +29,7 @@ function handleRun(req, res, deps) {
           ok: false,
           language: lang,
           skipped: true,
-          error: 'Eksekusi diblokir: kode ini membuka jendela GUI desktop (Swing/tkinter/JavaFX) yang akan menggantung sampai timeout. Untuk UI visual gunakan mode Web Dev (Canvas), atau jalankan file-nya manual di luar Quantum.'
+          error: 'Eksekusi diblokir: kode ini membuka jendela GUI desktop (Swing/tkinter/JavaFX) yang akan menggantung sampai timeout. Untuk UI visual gunakan mode Web Dev (Canvas), atau jalankan file-nya manual di luar WOLFSPACE.'
         };
       } else {
         r = await runByLang(lang, code);
@@ -48,3 +48,4 @@ function handleRun(req, res, deps) {
 }
 
 module.exports = { handleRun };
+

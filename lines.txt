@@ -1,0 +1,2 @@
+32:                  style={{ flex: "0 0 " + canvasPct + "%" }}
+659:                style={{ padding: "0", height: "auto", overflow: "visible" }}

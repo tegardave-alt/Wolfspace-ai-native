@@ -1,11 +1,11 @@
-{
-  "name": "quantum",
+﻿{
+  "name": "WOLFSPACE",
   "version": "0.1.0",
   "description": "A local, open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
   "main": "electron/main.js",
   "type": "commonjs",
   "bin": {
-    "quantum": "server.cjs"
+    "WOLFSPACE": "server.cjs"
   },
   "license": "MIT",
   "engines": {
@@ -13,7 +13,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/<you>/quantum"
+    "url": "https://github.com/<you>/WOLFSPACE"
   },
   "trustedDependencies": [
     "electron",

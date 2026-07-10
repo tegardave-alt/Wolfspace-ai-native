@@ -1,4 +1,4 @@
-# A2UI — Skema Desain (app + web, satu sumber)
+﻿# A2UI — Skema Desain (app + web, satu sumber)
 
 Status: RANCANGAN (belum diimplementasi). Tujuan: satu spec JSON A2UI →
 render ke **app (Flutter)** dan **web (React/HTML)**, dengan transport
@@ -73,7 +73,7 @@ port terbuka, dan bisa dikunci aman lewat `contextBridge`.
 ```js
 // preload.js
 const { contextBridge, ipcRenderer } = require('electron');
-contextBridge.exposeInMainWorld('quantum', {
+contextBridge.exposeInMainWorld('WOLFSPACE', {
   invoke: (channel, payload) => ipcRenderer.invoke(channel, payload),     // request/response
   stream: (channel, payload, onChunk) => {                                // streaming (chat/agent)
     const id = crypto.randomUUID();
@@ -89,9 +89,9 @@ Hanya fungsi tertentu yang diekspos — renderer TIDAK dapat akses Node penuh (a
 **Renderer (React) — ganti fetch:**
 ```js
 // sebelum:  await fetch('/compile', {method:'POST', body:...})
-// sesudah:  await window.quantum.invoke('compile', { spec });
+// sesudah:  await window.WOLFSPACE.invoke('compile', { spec });
 // streaming chat:
-const cancel = window.quantum.stream('chat', { history, cloud }, (chunk) => append(chunk));
+const cancel = window.WOLFSPACE.stream('chat', { history, cloud }, (chunk) => append(chunk));
 ```
 
 **Main (Node) — handler:**
@@ -222,7 +222,7 @@ Dua opsi internal:
 ## 6. Urutan implementasi (jika disetujui)
 1. **Core module** — pecah logika `server.cjs` jadi `core.js` murni (tanpa HTTP).
 2. **IPC layer** — preload (`contextBridge`) + `ipcMain.handle/on` memanggil core;
-   React ganti `fetch` → `window.quantum.invoke/stream`. (HTTP boleh hidup paralel saat transisi.)
+   React ganti `fetch` → `window.WOLFSPACE.invoke/stream`. (HTTP boleh hidup paralel saat transisi.)
 3. **Custom protocol** `app://` untuk memuat React + studio tanpa port 8090.
 4. **Schema + envelope** (`a2ui:1`, `root`) — validasi ringan.
 5. **Renderer React/HTML** (cermin `A2UIView`, paritas tipe + aksi `eval`).
@@ -235,3 +235,4 @@ Risiko utama:
 - **Paritas** dua renderer → mitigasi: satu tabel schema + set "spec contoh" diuji di keduanya.
 - **Migrasi HTTP→IPC** menyentuh banyak titik → mitigasi: core dipanggil dua jalur
   (HTTP+IPC) selama transisi, pindah endpoint satu per satu, hapus HTTP terakhir.
+

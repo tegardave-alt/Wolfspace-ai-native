@@ -1,7 +1,7 @@
-// HFModels Component - HuggingFace model search and download
+﻿// HFModels Component - HuggingFace model search and download
 (function() {
   const { useState } = React;
-  const { fmtSize } = window.Quantum.Utils;
+  const { fmtSize } = window.WOLFSPACE.Utils;
 
   function HFModels({ onSaved }) {
     const [q, setQ] = useState("");
@@ -15,7 +15,7 @@
     const search = async () => {
       const t = q.trim();
       if (!t) return;
-      setMsg("mencari…");
+      setMsg("Mencari model...");
       setResults([]);
       setSel("");
       setFiles([]);
@@ -25,25 +25,25 @@
         ).json();
         if (r.error) throw new Error(r.error);
         setResults(r);
-        setMsg(r.length ? "" : "tidak ada hasil");
+        setMsg(r.length ? "" : "Belum ada hasil yang cocok.");
       } catch (e) {
-        setMsg("gagal: " + e.message);
+        setMsg("Pencarian gagal: " + e.message);
       }
     };
     
     const pick = async (id) => {
       setSel(id);
       setFiles([]);
-      setMsg("memuat file…");
+      setMsg("Memuat daftar file...");
       try {
         const r = await (
           await fetch("/hf/files?id=" + encodeURIComponent(id))
         ).json();
         if (r.error) throw new Error(r.error);
         setFiles(r);
-        setMsg(r.length ? "" : "tak ada file .gguf di repo ini");
+        setMsg(r.length ? "" : "Tidak ada file .gguf di repositori ini.");
       } catch (e) {
-        setMsg("gagal: " + e.message);
+        setMsg("Gagal memuat file: " + e.message);
       }
     };
     
@@ -51,7 +51,7 @@
       if (busy) return;
       setBusy(true);
       setProg(0);
-      setMsg("mengunduh " + file.split("/").pop() + "…");
+      setMsg("Mengunduh " + file.split("/").pop() + "...");
       try {
         const res = await fetch("/hf/download", {
           method: "POST",
@@ -79,18 +79,18 @@
             if (j.t === "progress") setProg(j.pct);
             else if (j.t === "done") {
               setMsg(
-                "✓ " +
+                "Selesai: " +
                   j.model.name +
-                  " diunduh & dijalankan (port " +
+                  " sudah diunduh dan dijalankan di port " +
                   j.model.port +
-                  "). Tunggu ~30 dtk, lalu pilih di dropdown Model.",
+                  ". Tunggu sekitar 30 detik, lalu pilih dari menu Model.",
               );
               onSaved && onSaved();
-            } else if (j.t === "err") setMsg("gagal: " + j.m);
+            } else if (j.t === "err") setMsg("Unduhan gagal: " + j.m);
           }
         }
       } catch (e) {
-        setMsg("gagal: " + e.message);
+        setMsg("Unduhan gagal: " + e.message);
       }
       setBusy(false);
       setProg(null);
@@ -104,7 +104,7 @@
             className="input"
             value={q}
             onChange={(e) => setQ(e.target.value)}
-            placeholder="cari GGUF… (mis. qwen coder)"
+            placeholder="Cari GGUF, misalnya qwen coder"
             onKeyDown={(e) => {
               if (e.key === "Enter") search();
             }}
@@ -124,7 +124,7 @@
                 {m.id}
                 <br />
                 <span className="meta">
-                  ↓ {m.downloads.toLocaleString()} · ♥ {m.likes}
+                  Unduhan {m.downloads.toLocaleString()} · Suka {m.likes}
                 </span>
               </button>
             ))}
@@ -161,5 +161,6 @@
   }
 
   // Export to global namespace
-  window.Quantum.Components.HFModels = HFModels;
+  window.WOLFSPACE.Components.HFModels = HFModels;
 })();
+

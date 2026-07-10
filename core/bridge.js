@@ -1,5 +1,5 @@
-// Claude bridge — acts as OpenAI-compatible API, relays via files
-// Quantum -> POST /chat/completions -> write bridge/pending.json -> wait -> read bridge/response.txt -> SSE back
+﻿// Claude bridge — acts as OpenAI-compatible API, relays via files
+// WOLFSPACE -> POST /chat/completions -> write bridge/pending.json -> wait -> read bridge/response.txt -> SSE back
 import { serve } from 'bun';
 import { writeFileSync, existsSync, readFileSync, unlinkSync, mkdirSync } from 'fs';
 import { join, dirname } from 'path';
@@ -67,3 +67,4 @@ serve({
 
 console.log(`[bridge] Claude bridge listening on http://127.0.0.1:${PORT}`);
 console.log(`[bridge] Waiting for prompts in ${PENDING}`);
+

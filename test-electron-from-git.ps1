@@ -1,4 +1,4 @@
-param(
+﻿param(
   [string]$Branch = "main",
   [switch]$PullOnly,
   [switch]$SkipElectronStart
@@ -7,11 +7,11 @@ param(
 $ErrorActionPreference = 'Stop'
 
 function Stop-QuantumElectron {
-  # Tries to stop any running Electron/Quantum processes.
+  # Tries to stop any running Electron/WOLFSPACE processes.
   # Not perfect, but safe for dev/testing.
   $candidates = @(
-    "Quantum*",
-    "*Quantum*",
+    "WOLFSPACE*",
+    "*WOLFSPACE*",
     "electron.exe",
     "Electron Helper*",
     "App*"
@@ -62,4 +62,5 @@ if ($SkipElectronStart) {
 
 Write-Host "==> Start Electron"
 & npm run app
+
 

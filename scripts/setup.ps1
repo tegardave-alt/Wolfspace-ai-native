@@ -1,4 +1,4 @@
-# Quantum setup (Windows) -- downloads llama.cpp (CPU) + the models in config.json
+﻿# WOLFSPACE setup (Windows) -- downloads llama.cpp (CPU) + the models in config.json
 $ErrorActionPreference = 'Stop'
 $cfg = Get-Content (Join-Path $PSScriptRoot '..\config.json') -Raw | ConvertFrom-Json
 $dir = $cfg.modelDir
@@ -33,4 +33,5 @@ foreach ($m in $cfg.models) {
 Write-Host ""
 Write-Host "Setup done. Next:" -ForegroundColor Cyan
 Write-Host "  powershell scripts/start-models.ps1   # launch the model servers" -ForegroundColor White
-Write-Host "  npm start                             # launch Quantum (http://127.0.0.1:8090)" -ForegroundColor White
+Write-Host "  npm start                             # launch WOLFSPACE (http://127.0.0.1:8090)" -ForegroundColor White
+

@@ -1,9 +1,9 @@
-import asar from '@electron/asar';
+﻿import asar from '@electron/asar';
 import fs from 'fs';
 import path from 'path';
 
-const ASAR = 'C:/Users/dave/AppData/Local/Programs/Quantum/resources/app.asar';
-const TMP  = 'C:/Users/dave/AppData/Local/Programs/Quantum/resources/_asar_tmp';
+const ASAR = 'C:/Users/dave/AppData/Local/Programs/WOLFSPACE/resources/app.asar';
+const TMP  = 'C:/Users/dave/AppData/Local/Programs/WOLFSPACE/resources/_asar_tmp';
 
 // Extract
 asar.extractAll(ASAR, TMP);
@@ -70,3 +70,4 @@ console.log('repacked app.asar');
 // Cleanup
 fs.rmSync(TMP, { recursive: true, force: true });
 console.log('done');
+

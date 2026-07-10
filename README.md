@@ -1,8 +1,8 @@
-# ⚛️ Quantum
+﻿# ⚛️ WOLFSPACE
 
 **A local, open-source AI coding chat that _proves_ its code by actually running it.**
 
-Most AI coding tools hand you code and hope it works. Quantum treats the model as an
+Most AI coding tools hand you code and hope it works. WOLFSPACE treats the model as an
 **untrusted guesser** and your **CPU as the judge**: generated code is executed and tested
 automatically, and if it fails, the error is fed back to the model to fix — looping until it
 genuinely runs.
@@ -14,11 +14,11 @@ execution, not by appearance.
 
 ---
 
-## Why Quantum
+## Why WOLFSPACE
 
 - ✅ **Verified, not vibes.** Every code answer is run; you see real stdout/stderr and a
   `✓ verified` / `⚠ not passing` verdict — not "looks right."
-- 🔌 **Any model.** Bring your own API key — Quantum auto-detects the provider
+- 🔌 **Any model.** Bring your own API key — WOLFSPACE auto-detects the provider
   (OpenAI, Claude, Qwen, DeepSeek, GitHub Models, Groq, OpenRouter, Gemini, or any
   OpenAI-compatible endpoint). Or run **local GGUF models** via llama.cpp.
 - 🤗 **Model Hub.** Search Hugging Face, see real logos + download size, download a GGUF,
@@ -34,11 +34,11 @@ execution, not by appearance.
 ## Quickstart
 
 ```bash
-git clone https://github.com/<you>/quantum && cd quantum
+git clone https://github.com/<you>/WOLFSPACE && cd WOLFSPACE
 npm start                      # -> http://127.0.0.1:8090
 ```
 
-Open **http://127.0.0.1:8090**, click **⚛️ Quantum** (top-left) -> paste any **cloud API key**
+Open **http://127.0.0.1:8090**, click **⚛️ WOLFSPACE** (top-left) -> paste any **cloud API key**
 -> ask for code. It runs and verifies automatically. That's it.
 
 **Requirements:** [Node.js](https://nodejs.org) 18+ (or [Bun](https://bun.sh)).
@@ -68,7 +68,7 @@ Hugging Face.
 
 ## Languages
 
-Runs **Python** and **JavaScript** out of the box (JS via your Node/Bun runtime). Quantum also
+Runs **Python** and **JavaScript** out of the box (JS via your Node/Bun runtime). WOLFSPACE also
 runs **C, C++, Go, Java, PHP, Rust, and Kotlin** if their compilers are on your PATH — point to
 them under `runners` in `config.json`. HTML/CSS preview live in an iframe.
 
@@ -85,7 +85,7 @@ Cloud keys live in the browser (localStorage) or server-side in `cloud-keys.json
 
 ## Security
 
-Quantum runs generated code **on your machine, with your permissions** — like other local AI
+WOLFSPACE runs generated code **on your machine, with your permissions** — like other local AI
 coding tools. Keep it bound to `127.0.0.1`; **don't expose the server to a network.** A
 sandboxed execution mode (Docker) for multi-user/hosted use is in `sandbox/` (opt-in).
 
@@ -98,3 +98,4 @@ sandboxed execution mode (Docker) for multi-user/hosted use is in `sandbox/` (op
 ## License
 
 MIT — see [LICENSE](LICENSE).
+

@@ -1,4 +1,4 @@
-// Self-edit agent tools — complete implementation extracted from server.cjs
+﻿// Self-edit agent tools — complete implementation extracted from server.cjs
 const fs = require("fs");
 const path = require("path");
 const os = require("os");
@@ -16,7 +16,7 @@ try {
   term = null;
 }
 
-// ── Quantum source root + guardrails ──
+// ── WOLFSPACE source root + guardrails ──
 const QROOT = path.resolve(__dirname, "..");
 const Q_ALLOWED =
   /^(server\.cjs|[\w.-]+\.cjs|[\w.-]+([\\/][\w.-]+)+\.cjs|config\.json|public[\\/].+\.(jsx|css|html|js|json)|studio[\\/]lib[\\/].+\.dart|studio[\\/](pubspec\.yaml|web[\\/]index\.html))$/;
@@ -29,7 +29,7 @@ function qResolve(p, mustBeEditable) {
     .replace(/^\//, "");
   const dest = path.resolve(QROOT, rel);
   if (dest !== QROOT && !dest.startsWith(QROOT + path.sep))
-    throw new Error("path di luar root Quantum");
+    throw new Error("path di luar root WOLFSPACE");
   const relNorm = path.relative(QROOT, dest).replace(/\\/g, "/");
   if (Q_FORBID.test(relNorm)) throw new Error("path terlarang: " + relNorm);
   if (
@@ -637,7 +637,7 @@ const SELF_TOOLS = [
     function: {
       name: "dspy",
       description:
-        "Use DSpy (native JS ChainOfThought) to optimize prompts via Quantum's cloud LLM.",
+        "Use DSpy (native JS ChainOfThought) to optimize prompts via WOLFSPACE's cloud LLM.",
       parameters: {
         type: "object",
         properties: {
@@ -1403,7 +1403,7 @@ function runSelfTool(name, args, emit) {
         (e) => ({ ok: false, output: e.message }),
       );
     if (name === "dspy") {
-      // Real DSpy optimization via native JS (Quantum's cloud LLM, no Python)
+      // Real DSpy optimization via native JS (WOLFSPACE's cloud LLM, no Python)
       const dspyTool = require("./dspy_tool.cjs");
       return dspyTool.run(args);
     }
@@ -1483,3 +1483,4 @@ module.exports = {
   wsList,
   runInWorkspace,
 };
+

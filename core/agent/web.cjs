@@ -1,4 +1,4 @@
-// Web search + fetch for Quantum agent
+﻿// Web search + fetch for WOLFSPACE agent
 const https = require('https');
 const http = require('http');
 const { execSync } = require('child_process');
@@ -92,7 +92,7 @@ async function webSearch(query) {
   // 5) DuckDuckGo Instant Answer
   try {
     const ddg = await _get({
-      hostname: 'api.duckduckgo.com', path: '/?q=' + q + '&format=json&no_html=1&t=quantum',
+      hostname: 'api.duckduckgo.com', path: '/?q=' + q + '&format=json&no_html=1&t=WOLFSPACE',
       headers: { 'User-Agent': UA }, timeout: 10000,
     });
     if (ddg.AbstractText && results.length < 8) {
@@ -194,3 +194,4 @@ function _fetchWithHttp(urlStr) {
 }
 
 module.exports = { webSearch, webFetch };
+

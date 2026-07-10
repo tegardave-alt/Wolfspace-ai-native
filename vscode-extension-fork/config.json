@@ -1,0 +1,25 @@
+{
+  "server": {
+    "host": "127.0.0.1",
+    "port": 8090
+  },
+  "modelDir": "C:/llama-cpp",
+  "llama": {
+    "threads": 2,
+    "ctxSize": 2048
+  },
+  "ghostPort": 8083,
+  "_ghostPort_note": "model that powers gray inline ghost-text (pakai 3B juga karena hanya 3B yang dipasang)",
+  "runners": {
+    "c": "C:/langs/mingw64/bin/gcc.exe",
+    "cpp": "C:/langs/mingw64/bin/g++.exe",
+    "go": "C:/langs/go/bin/go.exe",
+    "java": "C:/langs/jdk-21.0.11+10/bin/java.exe",
+    "javac": "C:/langs/jdk-21.0.11+10/bin/javac.exe",
+    "php": "C:/langs/php/php.exe",
+    "rust": "C:/Users/dave/.cargo/bin/rustc.exe",
+    "kotlinc": "C:/langs/kotlinc/bin/kotlinc.bat"
+  },
+  "models": [],
+  "verbose": true
+}

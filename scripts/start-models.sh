@@ -1,5 +1,5 @@
-#!/usr/bin/env bash
-# Quantum -- launch each model in config.json (Linux/macOS).
+﻿#!/usr/bin/env bash
+# WOLFSPACE -- launch each model in config.json (Linux/macOS).
 # Requires `llama-server` (from llama.cpp) on PATH or in config.modelDir.
 set -e
 cd "$(dirname "$0")/.."
@@ -24,3 +24,4 @@ for m in cfg['models']:
     print('[start]', m['name'], '->', f"http://127.0.0.1:{m['port']}")
 print('Models starting. Then: npm start')
 PY
+

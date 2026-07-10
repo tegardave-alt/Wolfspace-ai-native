@@ -1,11 +1,11 @@
 {
-  "name": "quantum",
+  "name": "WOLFSPACE",
   "version": "0.1.0",
   "description": "A local, open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
   "main": "server.cjs",
   "type": "commonjs",
   "bin": {
-    "quantum": "server.cjs"
+    "WOLFSPACE": "server.cjs"
   },
   "scripts": {
     "start": "node server.cjs",
@@ -15,7 +15,8 @@
     "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles",
     "test:watch": "jest --watch --verbose",
-    "prepare": "husky"
+    "prepare": "husky",
+    "start:bypass": "node start.cjs"
   },
   "keywords": [
     "ai",
@@ -36,7 +37,7 @@
   },
   "repository": {
     "type": "git",
-    "url": "https://github.com/<you>/quantum"
+    "url": "https://github.com/<you>/WOLFSPACE"
   },
   "devDependencies": {
     "@playwright/test": "^1.61.1",
@@ -54,8 +55,8 @@
     "electron-builder"
   ],
   "build": {
-    "appId": "com.quantum.app",
-    "productName": "Quantum",
+    "appId": "com.WOLFSPACE.app",
+    "productName": "WOLFSPACE",
     "files": [
       "electron/**",
       "server.cjs",
@@ -82,11 +83,13 @@
       "oneClick": false,
       "perMachine": false,
       "allowToChangeInstallationDirectory": true,
-      "shortcutName": "Quantum"
+      "shortcutName": "WOLFSPACE"
     }
   },
   "dependencies": {
     "@electron/asar": "^4.2.0",
+    "@langchain/core": "^1.2.2",
+    "@langchain/langgraph": "^1.4.7",
     "@xterm/addon-fit": "^0.11.0",
     "@xterm/xterm": "^6.0.0",
     "node-pty": "^1.1.0",

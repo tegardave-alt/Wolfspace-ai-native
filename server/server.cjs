@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 'use strict';
 // DEBUG: capture full stack for Maximum call stack errors
 process.on('uncaughtException', (err) => {
@@ -8,7 +8,7 @@ process.on('uncaughtException', (err) => {
 });
 /**
 /**
- * Quantum server Ã¢â‚¬â€ serves the chat UI, runs code blocks, and orchestrates the
+ * WOLFSPACE server Ã¢â‚¬â€ serves the chat UI, runs code blocks, and orchestrates the
  * generate -> execute -> fix loop against local models.
  *
  *   GET  /             -> chat UI (public/index.html)
@@ -43,14 +43,14 @@ const EXEC_TIMEOUT = (CONFIG.execTimeout) || 120000;
 const JS_RUNTIME = process.execPath;
 
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
-// Debug bus Ã¢â‚¬â€ a single event log wired through ALL of Quantum's logic.
+// Debug bus Ã¢â‚¬â€ a single event log wired through ALL of WOLFSPACE's logic.
 // Every meaningful step (model call, execution, retry, cloud request, error)
 // emits a structured event. Events live in a ring buffer, stream live to any
 // /debug viewer, and append to a log file. Toggle with config.debug = false.
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 const DEBUG_ON  = CONFIG.debug !== false;
 const VERBOSE   = CONFIG.verbose === true;
-const LOG_FILE  = path.join(os.tmpdir(), 'quantum-debug.log');
+const LOG_FILE  = path.join(os.tmpdir(), 'WOLFSPACE-debug.log');
 const LOG_RING  = [];                 // recent events, in memory
 const LOG_MAX   = 800;
 const debugSubs = new Set();          // live SSE writers
@@ -65,11 +65,11 @@ function dlog(cat, level, msg, data) {
   for (const w of debugSubs) { try { w(line); } catch (_) {} }
   try { fs.appendFileSync(LOG_FILE, JSON.stringify(e) + '\n'); } catch (_) {}
   if (VERBOSE) {
-    const prefix = `[quantum:${cat}]`;
+    const prefix = `[WOLFSPACE:${cat}]`;
     if (level === 'error') _origError(prefix, msg, data && data.error ? data.error : '');
     else _origLog(prefix, msg, data ? JSON.stringify(data, null, 0) : '');
   } else if (DEBUG_ON && level === 'error') {
-    _origError(`[quantum:${cat}] ${msg}`, data && data.error ? data.error : '');
+    _origError(`[WOLFSPACE:${cat}] ${msg}`, data && data.error ? data.error : '');
   }
   return e;
 }
@@ -95,7 +95,7 @@ console.warn = function(...args) {
 
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 // Code intelligence Ã¢â‚¬â€ static quality analysis (heuristics, zero dependencies).
-// Quantum already proves code RUNS; this judges how WELL it is written and
+// WOLFSPACE already proves code RUNS; this judges how WELL it is written and
 // surfaces actionable notes + a 0Ã¢â‚¬â€œ100 score alongside the execution verdict.
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 function analyzeCode(lang, code) {
@@ -221,7 +221,7 @@ function isBrowserJs(code) {
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Execution sandbox (Docker) Ã¢â‚¬â€ gate #1 for serving untrusted/other-user code Ã¢â€â‚¬Ã¢â€â‚¬
-const SANDBOX_IMAGE = 'quantum-sandbox';
+const SANDBOX_IMAGE = 'WOLFSPACE-sandbox';
 function hasDocker() { try { execSync('docker version', { stdio: 'ignore', timeout: 8000 }); return true; } catch (e) { return false; } }
 const USE_SANDBOX = CONFIG.sandbox === true && hasDocker();
 // Run code in a throwaway, network-less, resource-capped, read-only container.
@@ -565,13 +565,13 @@ async function runByLang(lang, code) {
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Model client + orchestration Ã¢â€â‚¬Ã¢â€â‚¬
 const SYS = [
-  'You are Quantum, a friendly assistant. Chat naturally and answer in plain text.',
+  'You are WOLFSPACE, a friendly assistant. Chat naturally and answer in plain text.',
   'Do NOT write code unless the user explicitly asks for code or gives a programming task. A greeting like "hi" gets a short friendly reply Ã¢â‚¬â€ never code.',
   'If you do write code, use one fenced block tagged with the language; it runs in a sandbox with no stdin, so avoid input().',
 ].join(' ');
 // Quality-focused system prompt, used when the request is a programming task.
 const CODE_SYS = [
-  'You are Quantum, an expert programming assistant whose code is JUDGED BY EXECUTION.',
+  'You are WOLFSPACE, an expert programming assistant whose code is JUDGED BY EXECUTION.',
   'Write CLEAN, CORRECT code: descriptive names, handle edge cases and errors, prefer the standard library.',
   'Output EXACTLY ONE fenced code block tagged with its language Ã¢â‚¬â€ no alternative versions.',
   'The sandbox has NO stdin: never use input()/prompt()/sys.stdin (they crash with EOF); use hardcoded values.',
@@ -583,12 +583,12 @@ function isCodingTask(work) {
   for (const i = work.length - 1; i >= 0; i--) if (work[i].role === 'user') return CODE_HINT.test(work[i].content || '');
   return false;
 }
-function pickSystem(work, webdev) { return webdev ? WEBDEV_SYS : isCodingTask(work) ? CODE_SYS : SYS; }
+function pickSystem(work) { return isCodingTask(work) ? CODE_SYS : SYS; }
 // Web Dev (Canvas) mode: every reply MUST be one complete Flutter app Ã¢â‚¬â€ the
 // Canvas compiles ```dart locally and renders it; HTML/prose gives a broken
 // "page of code text" instead of a UI.
 const WEBDEV_SYS = [
-  'You are Quantum UI Builder using A2UI (server-driven UI). The user is in visual app mode: your ENTIRE answer must be ONE A2UI spec inside a single ```json fenced block. It renders instantly as a Flutter app Ã¢â‚¬â€ NO Dart, NO compile, NO HTML.',
+  'You are WOLFSPACE UI Builder using A2UI (server-driven UI). The user is in visual app mode: your ENTIRE answer must be ONE A2UI spec inside a single ```json fenced block. It renders instantly as a Flutter app Ã¢â‚¬â€ NO Dart, NO compile, NO HTML.',
   'The spec is a JSON object. The root has "type" (usually "scaffold") and optionally "state" (an object of initial values).',
   'Node shape: { "type": <kind>, ...props, "children": [...] | "child": {...} }. A bare string is shorthand for a text node.',
   'Available types & props:',
@@ -943,8 +943,8 @@ function wsGrep(pattern) {
   return hits.length ? hits.join('\n') : '(tidak ada kecocokan)';
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Self-edit agent: operate on QUANTUM'S OWN source (dev copy), with guardrails Ã¢â€â‚¬Ã¢â€â‚¬
-const QROOT = path.join(__dirname, '..');           // the Quantum app source root (dev copy)
+// Ã¢â€â‚¬Ã¢â€â‚¬ Self-edit agent: operate on WOLFSPACE'S OWN source (dev copy), with guardrails Ã¢â€â‚¬Ã¢â€â‚¬
+const QROOT = path.join(__dirname, '..');           // the WOLFSPACE app source root (dev copy)
 // Editable: source files under safe dirs. NEVER node_modules/builds/backups/keys.
 const Q_ALLOWED = /^(server\.cjs|[\w.-]+\.cjs|config\.json|web[\\/].+\.(jsx|css|html|js|json)|studio[\\/]lib[\\/].+\.dart|studio[\\/](pubspec\.yaml|web[\\/]index\.html))$/;
 // Never touch these even if they match above (secrets / generated / heavy).
@@ -973,7 +973,7 @@ function unq(s) { return (s || '').trim().replace(/^[`"']+|[`"']+$/g, '').trim()
 function qResolve(p, mustBeEditable) {
   const rel = unq(p).replace(/^[\\/]+/, '');
   const dest = path.resolve(QROOT, rel);
-  if (dest !== QROOT && !dest.startsWith(QROOT + path.sep)) throw new Error('path di luar root Quantum');
+  if (dest !== QROOT && !dest.startsWith(QROOT + path.sep)) throw new Error('path di luar root WOLFSPACE');
   const relNorm = path.relative(QROOT, dest).replace(/\\/g, '/');
   if (Q_FORBID.test(relNorm)) throw new Error('path terlarang (secret/generated): ' + relNorm);
   if (mustBeEditable && !Q_ALLOWED.test(relNorm.replace(/\//g, path.sep)) && !Q_ALLOWED.test(relNorm))
@@ -1169,8 +1169,8 @@ function diskGrep(p, pattern) {
 }
 
 const SELF_SYS = [
-  "You are Quantum's assistant Ã¢â‚¬â€ like Claude Code, but for the Quantum app itself. You can either ANSWER the user normally, OR, when they ask you to change/add/fix/improve something in Quantum, edit Quantum's OWN SOURCE (a dev copy) using tools.",
-  'DECIDE each turn: if the user just asks a question or chats, reply with a DONE block containing your answer Ã¢â‚¬â€ do NOT use tools. If they ask to modify Quantum, work in small steps; each reply is EXACTLY ONE action as a single fenced block:',
+  "You are WOLFSPACE's assistant Ã¢â‚¬â€ like Claude Code, but for the WOLFSPACE app itself. You can either ANSWER the user normally, OR, when they ask you to change/add/fix/improve something in WOLFSPACE, edit WOLFSPACE's OWN SOURCE (a dev copy) using tools.",
+  'DECIDE each turn: if the user just asks a question or chats, reply with a DONE block containing your answer Ã¢â‚¬â€ do NOT use tools. If they ask to modify WOLFSPACE, work in small steps; each reply is EXACTLY ONE action as a single fenced block:',
   '  LIST           Ã¢â‚¬â€ list project files. Body empty.',
   '  GLOB <pattern> Ã¢â‚¬â€ find files by wildcard, e.g. GLOB web/*.css or GLOB *agent*. Body empty.',
   '  READ <path>    Ã¢â‚¬â€ read a file (with line numbers) BEFORE editing it. Body empty.',
@@ -1263,11 +1263,15 @@ function _askCloudToolsOnce(cloud, messages) {
           // answers in plain text Ã¢â‚¬â€ treat that text as a normal reply, not an error.
           try { const err = JSON.parse(errBody).error || {};
             if ((err.code === 'tool_use_failed' || /tool/i.test(err.message || '')) && err.failed_generation)
-              return resolve({ role: 'assistant', content: String(err.failed_generation), tool_calls: [] });
+              return resolve({ role: 'assistant', content: String(err.failed_generation) }); // Jangan kirim tool_calls:[] untuk DeepSeek
           } catch (_) {}
           return reject(new Error(provider + ' ' + s.statusCode + ': ' + errBody.slice(0, 300)));
         }
-          resolve({ role: 'assistant', content: content || (reasoning || null), tool_calls: tcs.filter(Boolean) });
+          const validToolCalls = tcs.filter(Boolean);
+          const response = { role: 'assistant', content: content || (reasoning || null) };
+          // Hanya kirim tool_calls jika ada minimal 1 (hindari error DeepSeek)
+          if (validToolCalls.length > 0) response.tool_calls = validToolCalls;
+          resolve(response);
       });
     });
     r.on('error', reject); r.on('timeout', () => r.destroy(new Error('timeout')));
@@ -1482,7 +1486,7 @@ async function runInWorkspace(lang, code) {
 // Ã¢â€â‚¬Ã¢â€â‚¬ HuggingFace model browser / downloader Ã¢â€â‚¬Ã¢â€â‚¬
 function hfGetJson(p) {
   return new Promise((resolve, reject) => {
-    const r = https.request({ hostname: 'huggingface.co', path: p, headers: { 'User-Agent': 'Quantum' } }, s => {
+    const r = https.request({ hostname: 'huggingface.co', path: p, headers: { 'User-Agent': 'WOLFSPACE' } }, s => {
       let d = ''; s.on('data', c => d += c); s.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
     });
     r.on('error', reject); r.end();
@@ -1501,7 +1505,7 @@ function hfDownload(urlStr, dest, onProgress, reg) {
   return new Promise((resolve, reject) => {
     const get = (u) => {
       let o; try { o = new URL(u); } catch (e) { return reject(e); }
-      const rq = https.get({ hostname: o.hostname, path: o.pathname + o.search, headers: { 'User-Agent': 'Quantum' } }, s => {
+      const rq = https.get({ hostname: o.hostname, path: o.pathname + o.search, headers: { 'User-Agent': 'WOLFSPACE' } }, s => {
         if (s.statusCode >= 300 && s.statusCode < 400 && s.headers.location) {
           s.resume(); const loc = s.headers.location;
           return get(loc.startsWith('http') ? loc : ('https://' + o.hostname + loc));
@@ -1521,7 +1525,7 @@ function hfDownload(urlStr, dest, onProgress, reg) {
 }
 
 // Minimal live debug viewer (no deps) Ã¢â‚¬â€ open http://127.0.0.1:PORT/debug
-const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>Quantum Ã‚Â· Debug</title>
+const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>WOLFSPACE Ã‚Â· Debug</title>
 <style>
  body{margin:0;background:#0b0d11;color:#cbd5e1;font:13px/1.5 ui-monospace,Consolas,monospace}
  header{position:sticky;top:0;background:#11151c;padding:10px 14px;border-bottom:1px solid #1f2733;display:flex;gap:10px;align-items:center}
@@ -1532,7 +1536,7 @@ const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>Qu
  .info{} .warn{color:#fbbf24} .error{color:#f87171}
  .d{color:#7c8aa0}
 </style></head><body>
-<header><b>Ã¢Å¡â€º Quantum Debug</b><span id="n">0</span> event<input id="f" placeholder="filter (cat/msg)Ã¢â‚¬Â¦"><button onclick="document.getElementById('log').innerHTML='';">clear</button></header>
+<header><b>Ã¢Å¡â€º WOLFSPACE Debug</b><span id="n">0</span> event<input id="f" placeholder="filter (cat/msg)Ã¢â‚¬Â¦"><button onclick="document.getElementById('log').innerHTML='';">clear</button></header>
 <div id="log"></div>
 <script>
  var log=document.getElementById('log'),f=document.getElementById('f'),n=document.getElementById('n'),c=0;
@@ -1554,7 +1558,7 @@ const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>Qu
 // for cooperative cancel; `ctl.setCurReq(r)` exposes the in-flight model request.
 const { chatStream } = require('../core/agent/chat.cjs');
 
-// Pure self-edit agent loop (function-calling tools over Quantum's own source).
+// Pure self-edit agent loop (function-calling tools over WOLFSPACE's own source).
 // emit(event)/ctl.isCancelled()/ctl.setCurReq() â€” shared by HTTP + IPC.
 // If a chat reply contains a runnable code block, execute it (model guesses, CPU judges)
 // so the UI can show the terminal/verdict â€” same behavior as the plain /chat path.
@@ -1583,7 +1587,7 @@ function parsePseudoCalls(text) {
   return out;
 }
 
-// Pure self-edit agent loop (function-calling tools over Quantum's own source).
+// Pure self-edit agent loop (function-calling tools over WOLFSPACE's own source).
 // The full implementation now lives in `agent/self_agent.cjs`.
 const { selfAgentStream } = require('../agent/self_agent.cjs');
 
@@ -1819,7 +1823,7 @@ const server = http.createServer(async (req, res) => {
       // Always pull the full library (their search page has different markup);
       // filter by query server-side over name + description.
       const html = await new Promise((resolve, reject) => {
-        https.get('https://ollama.com/library?sort=popular', { headers: { 'user-agent': 'Mozilla/5.0 Quantum' } }, s => {
+        https.get('https://ollama.com/library?sort=popular', { headers: { 'user-agent': 'Mozilla/5.0 WOLFSPACE' } }, s => {
           if (s.statusCode >= 400) { s.resume(); return reject(new Error('ollama ' + s.statusCode)); }
           let d = ''; s.on('data', c => d += c); s.on('end', () => resolve(d));
         }).on('error', reject);
@@ -1902,7 +1906,7 @@ const server = http.createServer(async (req, res) => {
     try {
       const man = await new Promise((resolve, reject) => {
         https.get(`https://registry.ollama.ai/v2/library/${name}/manifests/${tag}`,
-          { headers: { Accept: 'application/vnd.docker.distribution.manifest.v2+json', 'User-Agent': 'Quantum' } }, s => {
+          { headers: { Accept: 'application/vnd.docker.distribution.manifest.v2+json', 'User-Agent': 'WOLFSPACE' } }, s => {
             if (s.statusCode >= 400) { s.resume(); return reject(new Error('manifest ' + s.statusCode)); }
             let d = ''; s.on('data', c => d += c); s.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(e); } });
           }).on('error', reject);
@@ -1929,7 +1933,7 @@ const server = http.createServer(async (req, res) => {
         // 1) manifest Ã¢â€ â€™ find the GGUF model layer (vnd.ollama.image.model)
         const manUrl = `https://registry.ollama.ai/v2/library/${name}/manifests/${tag}`;
         const man = await new Promise((resolve, reject) => {
-          https.get(manUrl, { headers: { Accept: 'application/vnd.docker.distribution.manifest.v2+json', 'User-Agent': 'Quantum' } }, s => {
+          https.get(manUrl, { headers: { Accept: 'application/vnd.docker.distribution.manifest.v2+json', 'User-Agent': 'WOLFSPACE' } }, s => {
             if (s.statusCode >= 400) { s.resume(); return reject(new Error('manifest ' + s.statusCode + ' Ã¢â‚¬â€ cek nama/tag (mis. qwen2.5:7b)')); }
             let d = ''; s.on('data', c => d += c); s.on('end', () => { try { resolve(JSON.parse(d)); } catch (e) { reject(new Error('manifest tidak valid')); } });
           }).on('error', reject);
@@ -2031,15 +2035,15 @@ const server = http.createServer(async (req, res) => {
     res.on('close', () => { if (!res.writableFinished) { cancelled = true; if (curReq) { try { curReq.destroy(); } catch (_) {} } } });
     req.on('data', c => body += c);
     req.on('end', async () => {
-      let history, port, cloud, webdev;
-      try { ({ history, port, cloud, webdev } = JSON.parse(body)); } catch (e) { res.writeHead(400); return res.end('bad json'); }
+      let history, port, cloud;
+      try { ({ history, port, cloud } = JSON.parse(body)); } catch (e) { res.writeHead(400); return res.end('bad json'); }
       // Fill key/model/baseUrl from server-side storage (and route the groq slot
       // to the local Claude bridge) Ã¢â‚¬â€ same resolution as everywhere else.
       fillCloudKey(cloud);
       res.writeHead(200, { 'Content-Type': 'text/event-stream', 'Cache-Control': 'no-cache', 'Connection': 'keep-alive' });
       const ev = o => { if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`); };
       // Logic lives in the pure chatStream() (shared with the IPC layer).
-      await chatStream({ history, port, cloud, webdev }, ev,
+      await chatStream({ history, port, cloud }, ev,
         { isCancelled: () => cancelled, setCurReq: r => { curReq = r; } });
       if (!res.writableEnded) res.end();
     });
@@ -2084,7 +2088,7 @@ const server = http.createServer(async (req, res) => {
           if (cancelled) break;
           convo.push({ role: 'assistant', content: reply });
           let act = parseAction(reply), implicitRun = false;
-          // Fallback (honors Quantum's thesis): if the model just dumped a code block
+          // Fallback (honors WOLFSPACE's thesis): if the model just dumped a code block
           // instead of using the protocol, run it and verify by execution.
           if (!act) {
             const cb = extractCode(reply);
@@ -2139,7 +2143,7 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
-  // Self-edit agent: edits Quantum's OWN source (dev copy) with backup + syntax-gate.
+  // Self-edit agent: edits WOLFSPACE's OWN source (dev copy) with backup + syntax-gate.
   // Edits the dev files; you review and run sync-app.ps1 to apply to the live app.
   if (req.method === 'POST' && req.url === '/self-agent') {
     let body = '';
@@ -2210,11 +2214,11 @@ const server = http.createServer(async (req, res) => {
 
         if (!FLUTTER_BIN) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart Quantum.' }));
+          res.end(JSON.stringify({ error: 'Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart WOLFSPACE.' }));
           return;
         }
 
-        const tmpProj  = path.join(os.tmpdir(), 'quantum-flutter-proj');
+        const tmpProj  = path.join(os.tmpdir(), 'WOLFSPACE-flutter-proj');
         const buildOut = path.join(tmpProj, 'build', 'web');
 
         // Result cache: same source as the last successful build Ã¢â€ â€™ serve instantly
@@ -2244,7 +2248,7 @@ const server = http.createServer(async (req, res) => {
           };
           const pubspecChanged = writeIfChanged(path.join(tmpProj, 'pubspec.yaml'), [
             'name: quantum_preview',
-            'description: Quantum Canvas preview',
+            'description: WOLFSPACE Canvas preview',
             'publish_to: none',
             'version: 1.0.0',
             'environment:',
@@ -2339,11 +2343,11 @@ const server = http.createServer(async (req, res) => {
 
         if (!FLUTTER_BIN) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
-          res.end(JSON.stringify({ error: 'Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart Quantum.' }));
+          res.end(JSON.stringify({ error: 'Flutter SDK tidak ditemukan.\nInstall dari https://flutter.dev/docs/get-started/install/windows\nlalu restart WOLFSPACE.' }));
           return;
         }
 
-        const tmpProj  = path.join(os.tmpdir(), 'quantum-flutter-proj');
+        const tmpProj  = path.join(os.tmpdir(), 'WOLFSPACE-flutter-proj');
         const libDir = path.join(tmpProj, 'lib');
         if (!fs.existsSync(libDir)) {
           res.writeHead(200, { 'Content-Type': 'application/json' });
@@ -2547,7 +2551,7 @@ Rules:
             error: 'Eksekusi diblokir: kode ini menjalankan proses/shell eksternal atau membuka Python interaktif. Jalankan di terminal secara manual.' };
         } else if (opensGuiWindow(lang, code || '')) {
           r = { ok: false, language: lang, skipped: true,
-            error: 'Eksekusi diblokir: kode ini membuka jendela GUI desktop (Swing/tkinter/JavaFX) yang akan menggantung sampai timeout. Untuk UI visual gunakan mode Web Dev (Canvas), atau jalankan file-nya manual di luar Quantum.' };
+            error: 'Eksekusi diblokir: kode ini membuka jendela GUI desktop (Swing/tkinter/JavaFX) yang akan menggantung sampai timeout. Untuk UI visual gunakan mode Web Dev (Canvas), atau jalankan file-nya manual di luar WOLFSPACE.' };
         } else {
           r = await runByLang(lang, code);
           r.language = lang;
@@ -2565,7 +2569,7 @@ Rules:
   // Compiled Flutter preview: serve build/web over HTTP so relative assets
   // (main.dart.js, canvaskit/*.wasm, fonts) load normally inside the iframe.
   if (req.method === 'GET' && urlPath.startsWith('/flutter-app/')) {
-    const buildDir = path.join(os.tmpdir(), 'quantum-flutter-proj', 'build', 'web');
+    const buildDir = path.join(os.tmpdir(), 'WOLFSPACE-flutter-proj', 'build', 'web');
     const rel = path.normalize(urlPath.slice('/flutter-app/'.length)).replace(/^([\\/]|\.\.[\\/])+/, '');
     const fp = path.join(buildDir, rel || 'index.html');
     if (fp.startsWith(buildDir) && fs.existsSync(fp) && fs.statSync(fp).isFile()) {
@@ -2581,7 +2585,7 @@ Rules:
     res.writeHead(404); return res.end('not found');
   }
 
-  // Quantum Studio Ã¢â‚¬â€ the embedded Flutter Web Dev module (studio/build/web).
+  // WOLFSPACE Studio Ã¢â‚¬â€ the embedded Flutter Web Dev module (studio/build/web).
   if (req.method === 'GET' && urlPath.startsWith('/studio')) {
     const buildDir = path.join(__dirname, 'studio', 'build', 'web');
     let rel = (urlPath === '/studio' || urlPath === '/studio/') ? 'index.html'
@@ -2776,7 +2780,7 @@ if (require.main === module) {
     }
   });
   server.listen(PORT, HOST, () => {
-    console.log(`\n  Quantum  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`);
+    console.log(`\n  WOLFSPACE  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`);
   });
 }
 
@@ -2791,7 +2795,7 @@ module.exports = {
   // high-level streaming ops (emit-based, req/res-free) Ã¢â‚¬â€ for HTTP + IPC
   chatStream, selfAgentStream,
   // system prompts
-  SYS, WEBDEV_SYS, SELF_TOOLS, pickSystem, isCodingTask,
+  SYS, SELF_TOOLS, pickSystem, isCodingTask,
   // self-agent tools + patch helpers
   runSelfTool, applyHunks, braceProfile,
   qList, qGlob, qRead, qGrep, qBackup,

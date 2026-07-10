@@ -1,21 +1,21 @@
-# sync-app.ps1 — salin file pengembangan ke aplikasi Quantum yang ter-install.
+﻿# sync-app.ps1 — salin file pengembangan ke aplikasi WOLFSPACE yang ter-install.
 # Pakai: klik kanan > Run with PowerShell, atau dari terminal:  .\sync-app.ps1
 # Aplikasi yang sedang berjalan akan ditutup dulu, lalu dibuka kembali otomatis.
 
 $ErrorActionPreference = "Stop"
 
 $src = $PSScriptRoot
-$dst = "$env:LOCALAPPDATA\Programs\Quantum\resources\app.asar.unpacked"
-$exe = "$env:LOCALAPPDATA\Programs\Quantum\Quantum.exe"
+$dst = "$env:LOCALAPPDATA\Programs\WOLFSPACE\resources\app.asar.unpacked"
+$exe = "$env:LOCALAPPDATA\Programs\WOLFSPACE\WOLFSPACE.exe"
 
 if (-not (Test-Path $dst)) {
-    Write-Host "Aplikasi Quantum ter-install tidak ditemukan di $dst" -ForegroundColor Red
+    Write-Host "Aplikasi WOLFSPACE ter-install tidak ditemukan di $dst" -ForegroundColor Red
     Write-Host "Install dulu lewat installer (npm run dist), atau jalankan versi dev: node server.cjs"
     exit 1
 }
 
-Write-Host "Menutup Quantum yang sedang berjalan..." -ForegroundColor Cyan
-Get-Process -Name Quantum -ErrorAction SilentlyContinue | Stop-Process -Force
+Write-Host "Menutup WOLFSPACE yang sedang berjalan..." -ForegroundColor Cyan
+Get-Process -Name WOLFSPACE -ErrorAction SilentlyContinue | Stop-Process -Force
 # Server asli jalan sebagai `bun server.cjs` (atau node) — proses INI yang harus di-restart,
 # bukan cuma Electron. Cari via command line dan hentikan (bridge.js JANGAN disentuh).
 Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='node.exe'" -ErrorAction SilentlyContinue |
@@ -24,7 +24,7 @@ Get-CimInstance Win32_Process -Filter "Name='bun.exe' OR Name='node.exe'" -Error
 Start-Sleep 1
 
 # Hapus cache renderer Electron — tanpa ini jendela app bisa memuat app.jsx lama
-foreach ($c in @("$env:APPDATA\quantum\Cache", "$env:APPDATA\quantum\Code Cache", "$env:APPDATA\Quantum\Cache", "$env:APPDATA\Quantum\Code Cache")) {
+foreach ($c in @("$env:APPDATA\WOLFSPACE\Cache", "$env:APPDATA\WOLFSPACE\Code Cache", "$env:APPDATA\WOLFSPACE\Cache", "$env:APPDATA\WOLFSPACE\Code Cache")) {
     if (Test-Path $c) { Remove-Item $c -Recurse -Force -ErrorAction SilentlyContinue }
 }
 
@@ -58,10 +58,11 @@ if (Test-Path $bun) {
 }
 
 if (Test-Path $exe) {
-    Write-Host "Membuka kembali Quantum..." -ForegroundColor Cyan
+    Write-Host "Membuka kembali WOLFSPACE..." -ForegroundColor Cyan
     # ELECTRON_RUN_AS_NODE global (dari app Qwen) membuat Electron salah mode — kosongkan dulu
     $env:ELECTRON_RUN_AS_NODE = $null
     Start-Process $exe
 }
 
 Write-Host "Selesai." -ForegroundColor Green
+

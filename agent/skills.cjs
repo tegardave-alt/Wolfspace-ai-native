@@ -1,4 +1,4 @@
-// ── Quantum Skills Plugin System ──
+﻿// ── WOLFSPACE Skills Plugin System ──
 // Inspired by OpenClaw's modular skills ecosystem (@openclaw/skills / npm "skills")
 // Each skill is a self-contained .cjs module in the skills/ directory.
 // Skills are auto-discovered, can be hot-reloaded, and installed from npm/local/URL.
@@ -48,7 +48,7 @@ function makeContext(sandboxRunner) {
       const cwd = opts.cwd || QROOT;
       return execP(cmd, { cwd, timeout: opts.timeout || 30000, encoding: 'utf8', windowsHide: true });
     },
-    // Log through Quantum's debug bus
+    // Log through WOLFSPACE's debug bus
     log: (msg, data) => dlog('skill', 'info', msg, data),
     // Project root
     root: QROOT,
@@ -217,3 +217,4 @@ module.exports = {
   skillToolDefinitions,
   registry,
 };
+

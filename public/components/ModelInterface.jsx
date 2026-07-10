@@ -1,7 +1,7 @@
-// Model Interface Component - Collapsible model selector
+﻿// Model Interface Component - Collapsible model selector
 (function() {
   const { useState, useRef, useEffect } = React;
-  const { Icon } = window.Quantum.Icons;
+  const { Icon } = window.WOLFSPACE.Icons;
 
   function ModelInterface({ models, modelVal, setModelVal }) {
     const [open, setOpen] = useState(false);
@@ -58,7 +58,8 @@
   }
 
   // Export to global namespace
-  window.Quantum = window.Quantum || {};
-  window.Quantum.Components = window.Quantum.Components || {};
-  window.Quantum.Components.ModelInterface = ModelInterface;
+  window.WOLFSPACE = window.WOLFSPACE || {};
+  window.WOLFSPACE.Components = window.WOLFSPACE.Components || {};
+  window.WOLFSPACE.Components.ModelInterface = ModelInterface;
 })();
+

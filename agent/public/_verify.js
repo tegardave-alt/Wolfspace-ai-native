@@ -1,5 +1,5 @@
-const fs = require(`fs`);
-const lines = fs.readFileSync(`C:/Users/dave/quantum/public/app.jsx`, `utf8`).split(`\n`);
+﻿const fs = require(`fs`);
+const lines = fs.readFileSync(`C:/Users/dave/WOLFSPACE/public/app.jsx`, `utf8`).split(`\n`);
 // Verify mode is passed to streamSelfAgent
 for (let i = 0; i < lines.length; i++) {
   if (lines[i].includes(`streamSelfAgent`)) {
@@ -21,3 +21,4 @@ for (let i = 0; i < lines.length; i++) {
     if (i+1 < lines.length) console.log(`Line ${i+2}: ${lines[i+1]}`);
   }
 }
+

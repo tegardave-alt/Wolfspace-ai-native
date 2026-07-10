@@ -1,4 +1,4 @@
-{"ts":"2026-06-20T20:30:42.312Z","phase":"ingress","module":"self-agent","runId":"r_9ng1hj","hasHistory":false}
+﻿{"ts":"2026-06-20T20:30:42.312Z","phase":"ingress","module":"self-agent","runId":"r_9ng1hj","hasHistory":false}
 {"ts":"2026-06-20T20:30:42.315Z","phase":"config","module":"self-agent","runId":"r_9ng1hj","provider":"openai","hasKey":true}
 {"ts":"2026-06-20T20:30:42.317Z","phase":"cloud_request_start","module":"cloud","runId":"?","provider":"openai","hasTools":true}
 {"ts":"2026-06-20T20:30:42.320Z","phase":"error","module":"self-agent","runId":"r_9ng1hj","msg":"provider is not defined"}
@@ -304,7 +304,7 @@
 {"ts":"2026-06-20T20:54:13.716Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":1808,"hasToolCalls":true}
 {"ts":"2026-06-20T20:54:13.717Z","phase":"tool_call_start","module":"self-agent","runId":"r_8ocw9j","tool":"read"}
 {"ts":"2026-06-20T20:54:13.719Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T20:54:13.721Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":2,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T20:54:13.721Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":2,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T20:54:13.724Z","phase":"tool_call_done","module":"self-agent","runId":"r_8ocw9j","tool":"read","ms":5,"ok":false}
 {"ts":"2026-06-20T20:54:13.727Z","phase":"cloud_request_start","module":"cloud","runId":"?","provider":"opencode","hasTools":true}
 {"ts":"2026-06-20T20:54:16.569Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":2840,"hasToolCalls":true}
@@ -591,51 +591,51 @@
 {"ts":"2026-06-20T21:11:36.387Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":4856,"hasToolCalls":true}
 {"ts":"2026-06-20T21:11:36.388Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.390Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.391Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.391Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.392Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":2,"ok":false}
 {"ts":"2026-06-20T21:11:36.393Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.393Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.394Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.394Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.395Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":2,"ok":false}
 {"ts":"2026-06-20T21:11:36.395Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.396Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.397Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.397Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.397Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":1,"ok":false}
 {"ts":"2026-06-20T21:11:36.398Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.398Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.399Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.399Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.400Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":2,"ok":false}
 {"ts":"2026-06-20T21:11:36.400Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.401Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.401Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":0,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.401Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":0,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.402Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":1,"ok":false}
 {"ts":"2026-06-20T21:11:36.402Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.403Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.404Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.404Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.404Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":1,"ok":false}
 {"ts":"2026-06-20T21:11:36.405Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.405Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.406Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.406Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.407Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":2,"ok":false}
 {"ts":"2026-06-20T21:11:36.407Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.408Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.408Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":0,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.408Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":0,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.410Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":2,"ok":false}
 {"ts":"2026-06-20T21:11:36.411Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.412Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.413Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.413Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.414Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":2,"ok":false}
 {"ts":"2026-06-20T21:11:36.414Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.415Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.416Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.416Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.417Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":2,"ok":false}
 {"ts":"2026-06-20T21:11:36.417Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.418Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.418Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":0,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.418Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":0,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.419Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":2,"ok":false}
 {"ts":"2026-06-20T21:11:36.419Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"read"}
 {"ts":"2026-06-20T21:11:36.420Z","phase":"tool_exec_start","module":"tools","tool":"read"}
-{"ts":"2026-06-20T21:11:36.421Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:11:36.421Z","phase":"tool_exec_error","module":"tools","tool":"read","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:11:36.421Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"read","ms":1,"ok":false}
 {"ts":"2026-06-20T21:11:36.422Z","phase":"cloud_request_start","module":"cloud","runId":"?","provider":"opencode","hasTools":true}
 {"ts":"2026-06-20T21:11:42.754Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":6332,"hasToolCalls":true}
@@ -697,7 +697,7 @@
 {"ts":"2026-06-20T21:13:07.538Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":16532,"hasToolCalls":true}
 {"ts":"2026-06-20T21:13:07.539Z","phase":"tool_call_start","module":"self-agent","runId":"r_fwkpay","tool":"edit_batch"}
 {"ts":"2026-06-20T21:13:07.540Z","phase":"tool_exec_start","module":"tools","tool":"edit_batch"}
-{"ts":"2026-06-20T21:13:07.541Z","phase":"tool_exec_error","module":"tools","tool":"edit_batch","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:13:07.541Z","phase":"tool_exec_error","module":"tools","tool":"edit_batch","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:13:07.542Z","phase":"tool_call_done","module":"self-agent","runId":"r_fwkpay","tool":"edit_batch","ms":3,"ok":false}
 {"ts":"2026-06-20T21:13:07.542Z","phase":"cloud_request_start","module":"cloud","runId":"?","provider":"opencode","hasTools":true}
 {"ts":"2026-06-20T21:13:12.152Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":4609,"hasToolCalls":true}
@@ -924,85 +924,85 @@
 {"ts":"2026-06-20T21:16:28.720Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":26001,"hasToolCalls":true}
 {"ts":"2026-06-20T21:16:28.722Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit_batch"}
 {"ts":"2026-06-20T21:16:28.723Z","phase":"tool_exec_start","module":"tools","tool":"edit_batch"}
-{"ts":"2026-06-20T21:16:28.724Z","phase":"tool_exec_error","module":"tools","tool":"edit_batch","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:28.724Z","phase":"tool_exec_error","module":"tools","tool":"edit_batch","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:28.725Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit_batch","ms":2,"ok":false}
 {"ts":"2026-06-20T21:16:28.726Z","phase":"cloud_request_start","module":"cloud","runId":"?","provider":"opencode","hasTools":true}
 {"ts":"2026-06-20T21:16:46.869Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":18142,"hasToolCalls":true}
 {"ts":"2026-06-20T21:16:46.870Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.906Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.907Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.907Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.907Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":36,"ok":false}
 {"ts":"2026-06-20T21:16:46.908Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.909Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.911Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":2,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.911Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":2,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.912Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":3,"ok":false}
 {"ts":"2026-06-20T21:16:46.914Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.915Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.916Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.916Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.917Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":2,"ok":false}
 {"ts":"2026-06-20T21:16:46.918Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.918Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.919Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.919Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.920Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":2,"ok":false}
 {"ts":"2026-06-20T21:16:46.921Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.921Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.922Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.922Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.923Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":2,"ok":false}
 {"ts":"2026-06-20T21:16:46.923Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.924Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.924Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":0,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.924Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":0,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.925Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.926Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.926Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.927Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.927Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.927Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.928Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.929Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.930Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.930Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.932Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":3,"ok":false}
 {"ts":"2026-06-20T21:16:46.933Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.934Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.936Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":2,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.936Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":2,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.937Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":3,"ok":false}
 {"ts":"2026-06-20T21:16:46.938Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.938Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.939Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.939Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.940Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":2,"ok":false}
 {"ts":"2026-06-20T21:16:46.940Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.941Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.942Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.942Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.942Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.943Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.943Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.944Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.944Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.944Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.945Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.946Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.946Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":0,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.946Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":0,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.947Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.947Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.948Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.949Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.949Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.949Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.950Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.950Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.959Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":8,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.959Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":8,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.960Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":10,"ok":false}
 {"ts":"2026-06-20T21:16:46.960Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.961Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.962Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.962Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.962Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.963Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.963Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.964Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.964Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.965Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":2,"ok":false}
 {"ts":"2026-06-20T21:16:46.965Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.966Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.967Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.967Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.967Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.968Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"edit"}
 {"ts":"2026-06-20T21:16:46.968Z","phase":"tool_exec_start","module":"tools","tool":"edit"}
-{"ts":"2026-06-20T21:16:46.969Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:16:46.969Z","phase":"tool_exec_error","module":"tools","tool":"edit","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:16:46.969Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"edit","ms":1,"ok":false}
 {"ts":"2026-06-20T21:16:46.970Z","phase":"cloud_request_start","module":"cloud","runId":"?","provider":"opencode","hasTools":true}
 {"ts":"2026-06-20T21:16:55.664Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":8693,"hasToolCalls":true}
@@ -1023,7 +1023,7 @@
 {"ts":"2026-06-20T21:17:12.382Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":8777,"hasToolCalls":true}
 {"ts":"2026-06-20T21:17:12.383Z","phase":"tool_call_start","module":"self-agent","runId":"r_vp1mgr","tool":"write"}
 {"ts":"2026-06-20T21:17:12.384Z","phase":"tool_exec_start","module":"tools","tool":"write"}
-{"ts":"2026-06-20T21:17:12.385Z","phase":"tool_exec_error","module":"tools","tool":"write","ms":1,"error":"path di luar root Quantum"}
+{"ts":"2026-06-20T21:17:12.385Z","phase":"tool_exec_error","module":"tools","tool":"write","ms":1,"error":"path di luar root WOLFSPACE"}
 {"ts":"2026-06-20T21:17:12.385Z","phase":"tool_call_done","module":"self-agent","runId":"r_vp1mgr","tool":"write","ms":1,"ok":false}
 {"ts":"2026-06-20T21:17:12.386Z","phase":"cloud_request_start","module":"cloud","runId":"?","provider":"opencode","hasTools":true}
 {"ts":"2026-06-20T21:17:15.549Z","phase":"cloud_request_done","module":"cloud","runId":"?","ms":3163,"hasToolCalls":true}
@@ -1362,3 +1362,4 @@
 {"ts":"2026-06-20T21:54:49.691Z","phase":"cloud_request_start","module":"cloud","runId":"?","provider":"custom","hasTools":true}
 {"ts":"2026-06-20T21:54:49.802Z","phase":"cloud_request_error","module":"cloud","runId":"?","ms":110,"error":"custom 404"}
 {"ts":"2026-06-20T21:54:49.803Z","phase":"error","module":"self-agent","runId":"r_gbsxus","msg":"custom 404: 404 page not found\n"}
+

@@ -1,0 +1,377 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Calculator</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+
+    body {
+      min-height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: linear-gradient(135deg, #0f0c29, #302b63, #24243e);
+      font-family: 'Segoe UI', system-ui, -apple-system, sans-serif;
+    }
+
+    .calculator {
+      width: 340px;
+      background: #1c1c1e;
+      border-radius: 20px;
+      padding: 24px;
+      box-shadow: 0 20px 60px rgba(0,0,0,0.5), 0 0 0 1px rgba(255,255,255,0.05);
+    }
+
+    .display {
+      background: #2c2c2e;
+      border-radius: 14px;
+      padding: 20px;
+      margin-bottom: 20px;
+      text-align: right;
+      min-height: 110px;
+      display: flex;
+      flex-direction: column;
+      justify-content: flex-end;
+      overflow: hidden;
+    }
+
+    .expression {
+      color: #8e8e93;
+      font-size: 16px;
+      min-height: 22px;
+      margin-bottom: 6px;
+      word-break: break-all;
+    }
+
+    .result {
+      color: #fff;
+      font-size: 42px;
+      font-weight: 300;
+      letter-spacing: -1px;
+      word-break: break-all;
+      transition: font-size 0.2s;
+    }
+
+    .result.small { font-size: 30px; }
+
+    .buttons {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 12px;
+    }
+
+    button {
+      height: 64px;
+      border: none;
+      border-radius: 50%;
+      font-size: 22px;
+      font-weight: 500;
+      cursor: pointer;
+      transition: all 0.15s;
+      outline: none;
+      -webkit-tap-highlight-color: transparent;
+    }
+
+    button:active { transform: scale(0.92); }
+
+    .btn-num {
+      background: #505050;
+      color: #fff;
+    }
+    .btn-num:hover { background: #636363; }
+
+    .btn-func {
+      background: #a5a5a5;
+      color: #1c1c1e;
+    }
+    .btn-func:hover { background: #b8b8b8; }
+
+    .btn-op {
+      background: #ff9f0a;
+      color: #fff;
+      font-size: 26px;
+    }
+    .btn-op:hover { background: #ffb340; }
+    .btn-op.active {
+      background: #fff;
+      color: #ff9f0a;
+    }
+
+    .btn-zero {
+      grid-column: span 2;
+      border-radius: 34px;
+      text-align: left;
+      padding-left: 26px;
+    }
+
+    .btn-eq {
+      background: #30d158;
+      color: #fff;
+    }
+    .btn-eq:hover { background: #4de070; }
+
+    .history-toggle {
+      display: flex;
+      justify-content: center;
+      margin-top: 14px;
+    }
+
+    .history-toggle button {
+      background: none;
+      border: none;
+      color: #8e8e93;
+      font-size: 13px;
+      height: auto;
+      padding: 4px 12px;
+      border-radius: 8px;
+      cursor: pointer;
+    }
+    .history-toggle button:hover { color: #fff; }
+
+    .history-panel {
+      max-height: 0;
+      overflow: hidden;
+      transition: max-height 0.3s ease;
+      margin-top: 0;
+    }
+    .history-panel.open {
+      max-height: 200px;
+      margin-top: 12px;
+      overflow-y: auto;
+    }
+
+    .history-panel::-webkit-scrollbar { width: 4px; }
+    .history-panel::-webkit-scrollbar-thumb { background: #505050; border-radius: 2px; }
+
+    .history-item {
+      padding: 8px 16px;
+      border-radius: 8px;
+      margin-bottom: 4px;
+      cursor: pointer;
+      transition: background 0.15s;
+    }
+    .history-item:hover { background: #2c2c2e; }
+    .history-item .h-expr { color: #8e8e93; font-size: 13px; }
+    .history-item .h-result { color: #fff; font-size: 16px; }
+  </style>
+</head>
+<body>
+  <div class="calculator">
+    <div class="display">
+      <div class="expression" id="expression"></div>
+      <div class="result" id="result">0</div>
+    </div>
+
+    <div class="buttons">
+      <button class="btn-func" onclick="clearAll()">AC</button>
+      <button class="btn-func" onclick="toggleSign()">±</button>
+      <button class="btn-func" onclick="percent()">%</button>
+      <button class="btn-op" id="op-div" onclick="setOp('/')">÷</button>
+
+      <button class="btn-num" onclick="digit('7')">7</button>
+      <button class="btn-num" onclick="digit('8')">8</button>
+      <button class="btn-num" onclick="digit('9')">9</button>
+      <button class="btn-op" id="op-mul" onclick="setOp('*')">×</button>
+
+      <button class="btn-num" onclick="digit('4')">4</button>
+      <button class="btn-num" onclick="digit('5')">5</button>
+      <button class="btn-num" onclick="digit('6')">6</button>
+      <button class="btn-op" id="op-sub" onclick="setOp('-')">−</button>
+
+      <button class="btn-num" onclick="digit('1')">1</button>
+      <button class="btn-num" onclick="digit('2')">2</button>
+      <button class="btn-num" onclick="digit('3')">3</button>
+      <button class="btn-op" id="op-add" onclick="setOp('+')">+</button>
+
+      <button class="btn-num btn-zero" onclick="digit('0')">0</button>
+      <button class="btn-num" onclick="dot()">.</button>
+      <button class="btn-eq" onclick="equals()">=</button>
+    </div>
+
+    <div class="history-toggle">
+      <button onclick="toggleHistory()">History</button>
+    </div>
+    <div class="history-panel" id="historyPanel"></div>
+  </div>
+
+  <script>
+    let display = '0';
+    let firstOperand = null;
+    let operator = null;
+    let waitingForSecond = false;
+    let expression = '';
+    let history = [];
+
+    const resultEl = document.getElementById('result');
+    const exprEl = document.getElementById('expression');
+    const histPanel = document.getElementById('historyPanel');
+
+    const opSymbols = { '+': '+', '-': '−', '*': '×', '/': '÷' };
+    const opIds = { '+': 'op-add', '-': 'op-sub', '*': 'op-mul', '/': 'op-div' };
+
+    function updateDisplay() {
+      let text = display;
+      if (text.length > 12) text = parseFloat(text).toPrecision(10);
+      resultEl.textContent = text;
+      resultEl.className = text.length > 8 ? 'result small' : 'result';
+      exprEl.textContent = expression;
+      clearActiveOp();
+      if (operator && waitingForSecond) {
+        const btn = document.getElementById(opIds[operator]);
+        if (btn) btn.classList.add('active');
+      }
+    }
+
+    function clearActiveOp() {
+      document.querySelectorAll('.btn-op').forEach(b => b.classList.remove('active'));
+    }
+
+    function digit(d) {
+      if (display === 'Error') clearAll();
+      if (waitingForSecond) {
+        display = d;
+        waitingForSecond = false;
+      } else {
+        display = display === '0' ? d : display + d;
+      }
+      if (display.length > 15) display = display.slice(0, 15);
+      updateDisplay();
+    }
+
+    function dot() {
+      if (display === 'Error') clearAll();
+      if (waitingForSecond) {
+        display = '0.';
+        waitingForSecond = false;
+      } else if (!display.includes('.')) {
+        display += '.';
+      }
+      updateDisplay();
+    }
+
+    function setOp(op) {
+      if (display === 'Error') clearAll();
+      if (operator && !waitingForSecond) {
+        equals(true);
+      }
+      firstOperand = parseFloat(display);
+      operator = op;
+      waitingForSecond = true;
+      expression = formatNum(firstOperand) + ' ' + opSymbols[op];
+      updateDisplay();
+    }
+
+    function equals(chaining) {
+      if (operator == null || firstOperand == null) return;
+      if (display === 'Error') { clearAll(); return; }
+
+      const second = parseFloat(display);
+      let result;
+      const fullExpr = formatNum(firstOperand) + ' ' + opSymbols[operator] + ' ' + formatNum(second);
+
+      switch (operator) {
+        case '+': result = firstOperand + second; break;
+        case '-': result = firstOperand - second; break;
+        case '*': result = firstOperand * second; break;
+        case '/':
+          if (second === 0) {
+            display = 'Error';
+            expression = fullExpr + ' =';
+            operator = null;
+            firstOperand = null;
+            waitingForSecond = false;
+            updateDisplay();
+            return;
+          }
+          result = firstOperand / second;
+          break;
+      }
+
+      // Avoid floating point weirdness
+      result = parseFloat(result.toPrecision(12));
+      const resultStr = String(result);
+
+      if (!chaining) {
+        expression = fullExpr + ' = ' + formatNum(result);
+        history.unshift({ expr: fullExpr, result: formatNum(result) });
+        if (history.length > 20) history.pop();
+      }
+
+      display = resultStr;
+      firstOperand = result;
+      operator = chaining ? null : null;
+      waitingForSecond = !chaining;
+      operator = null;
+
+      updateDisplay();
+    }
+
+    function clearAll() {
+      display = '0';
+      firstOperand = null;
+      operator = null;
+      waitingForSecond = false;
+      expression = '';
+      updateDisplay();
+    }
+
+    function toggleSign() {
+      if (display === '0' || display === 'Error') return;
+      display = display.startsWith('-') ? display.slice(1) : '-' + display;
+      updateDisplay();
+    }
+
+    function percent() {
+      if (display === 'Error') return;
+      display = String(parseFloat(display) / 100);
+      updateDisplay();
+    }
+
+    function formatNum(n) {
+      const s = String(n);
+      if (s.length > 12) return parseFloat(n).toPrecision(10);
+      return s;
+    }
+
+    function toggleHistory() {
+      histPanel.classList.toggle('open');
+      renderHistory();
+    }
+
+    function renderHistory() {
+      if (history.length === 0) {
+        histPanel.innerHTML = '<div style="text-align:center;color:#636363;padding:12px;font-size:13px;">No history yet</div>';
+        return;
+      }
+      histPanel.innerHTML = history.map(h =>
+        `<div class="history-item" onclick="display='${h.result}';updateDisplay()">
+          <div class="h-expr">${h.expr}</div>
+          <div class="h-result">= ${h.result}</div>
+        </div>`
+      ).join('');
+    }
+
+    // Keyboard support
+    document.addEventListener('keydown', e => {
+      if (e.key >= '0' && e.key <= '9') digit(e.key);
+      else if (e.key === '.') dot();
+      else if (e.key === '+') setOp('+');
+      else if (e.key === '-') setOp('-');
+      else if (e.key === '*') setOp('*');
+      else if (e.key === '/') { e.preventDefault(); setOp('/'); }
+      else if (e.key === 'Enter' || e.key === '=') equals();
+      else if (e.key === 'Escape') clearAll();
+      else if (e.key === '%') percent();
+      else if (e.key === 'Backspace') {
+        if (display.length > 1) display = display.slice(0, -1);
+        else display = '0';
+        updateDisplay();
+      }
+    });
+
+    updateDisplay();
+  </script>
+</body>
+</html>

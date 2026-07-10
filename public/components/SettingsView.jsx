@@ -1,8 +1,8 @@
-// SettingsView Component - API Key configuration
+﻿// SettingsView Component - API Key configuration
 (function() {
   const { useState } = React;
-  const { Icon } = window.Quantum.Icons;
-  const { getCloud, setCloudLS, keyish, detectPrefix } = window.Quantum.API;
+  const { Icon } = window.WOLFSPACE.Icons;
+  const { getCloud, setCloudLS, keyish, detectPrefix } = window.WOLFSPACE.API;
 
   const CLOUD_DEFAULT = {
     anthropic: "claude",
@@ -80,21 +80,21 @@
     const [baseUrl, setBaseUrl] = useState(stored ? stored.baseUrl || "" : "");
     const [hint, setHint] = useState(
       stored
-        ? "provider " +
+        ? "Provider " +
             stored.provider +
-            " ·" +
+            " · " +
             (stored.key ? stored.key.slice(-4) : "server") +
             " · aktif"
-        : "Tempel API key, lalu Deteksi atau pilih provider.",
+        : "Tempel API key, lalu deteksi otomatis atau pilih provider.",
     );
 
     const detect = async () => {
       const k = key.trim() || (stored && stored.key);
       if (!k) {
-        setHint("Tempel API key dulu.");
+        setHint("Tempel API key terlebih dahulu.");
         return;
       }
-      setHint("🔍 Mendeteksi…");
+      setHint("Sedang mendeteksi provider...");
       try {
         const d = await (
           await fetch("/detect-key", {
@@ -106,25 +106,25 @@
         if (PROVIDER_LABELS[d.provider]) setProvider(d.provider);
         setHint(
           d.verified
-            ? "✓ Terverifikasi: " + d.name
+            ? "Terverifikasi: " + d.name
             : "Tebakan: " + d.name + " (belum terverifikasi)",
         );
       } catch (e) {
-        setHint("Deteksi gagal: " + e.message);
+        setHint("Deteksi belum berhasil: " + e.message);
       }
     };
 
     const save = () => {
       const k = key.trim() || (stored && stored.key);
       if (!k) {
-        setHint("API key kosong.");
+        setHint("API key belum diisi.");
         return;
       }
       let prov, name, bu = "";
       if (provider === "auto") {
         const d = detectPrefix(k);
         if (!d) {
-          setHint("Provider tidak terdeteksi.");
+          setHint("Provider belum terdeteksi. Pilih provider secara manual.");
           return;
         }
         prov = d.provider;
@@ -134,7 +134,7 @@
         name = PROVIDER_LABELS[provider];
         bu = baseUrl.trim();
         if (!bu) {
-          setHint("Isi Base URL untuk " + (provider === "cloudflare" ? "Cloudflare Worker" : "custom") + ".");
+          setHint("Isi Base URL untuk " + (provider === "cloudflare" ? "Cloudflare Worker" : "provider custom") + ".");
           return;
         }
       } else {
@@ -153,9 +153,9 @@
         .then((r) => r.json())
         .then(() =>
           setHint(
-            "Tersimpan (browser + server): " +
+            "Tersimpan di browser dan server: " +
               prov +
-              " ·" +
+              " · " +
               k.slice(-4) +
               " → " +
               mdl,
@@ -163,7 +163,7 @@
         )
         .catch(() =>
           setHint(
-            "Tersimpan di browser: " + prov + " ·" + k.slice(-4) + " → " + mdl,
+            "Tersimpan di browser: " + prov + " · " + k.slice(-4) + " → " + mdl,
           ),
         );
       onSaved();
@@ -176,7 +176,7 @@
       setModelName("");
       setBaseUrl("");
       setProvider("auto");
-      setHint("Dihapus.");
+      setHint("Konfigurasi API key sudah dihapus.");
       onSaved();
       onCloudChanged();
     };
@@ -192,7 +192,7 @@
             >
               {SB.key({ width: 16, height: 16 })}
             </span>
-            <span className="hub-title">API Key</span>
+            <span className="hub-title">Pengaturan API</span>
           </div>
           <div className="tb-spacer" />
         </header>
@@ -200,7 +200,7 @@
           <div className="hub-inner settings-inner">
             <div className="settings-card">
               <div className="field">
-                <label className="field-label">Cloud API Key</label>
+                <label className="field-label">API Key Cloud</label>
                 <input
                   className="input"
                   type="password"
@@ -209,7 +209,7 @@
                   onChange={(e) => setKey(e.target.value)}
                   placeholder={
                     stored
-                      ? "••••" + stored.key.slice(-4) + " (kosongkan untuk pakai yang lama)"
+                      ? "••••" + stored.key.slice(-4) + " (kosongkan untuk tetap memakai key lama)"
                       : "sk-… / gsk_… / AIza…"
                   }
                 />
@@ -225,7 +225,7 @@
                     {PROVIDER_OPTS.map((p) => (
                       <option key={p} value={p}>
                         {p === "auto"
-                          ? "Auto-detect"
+                          ? "Deteksi otomatis"
                           : p === "custom"
                           ? "OpenAI-compatible (URL custom)"
                           : PROVIDER_LABELS[p]}
@@ -252,7 +252,7 @@
                   className="input"
                   value={model}
                   onChange={(e) => setModelName(e.target.value)}
-                  placeholder="opsional — mis. qwen, coder, gpt-4o"
+                  placeholder="Opsional, misalnya qwen, coder, gpt-4o"
                 />
               </div>
               <div className="provider-status">
@@ -264,7 +264,7 @@
                   <Icon.check style={{ width: 14, height: 14 }} /> Simpan
                 </button>
                 <button className="btn btn-danger" onClick={clear}>
-                  Hapus
+                  Hapus konfigurasi
                 </button>
               </div>
             </div>
@@ -275,5 +275,6 @@
   }
 
   // Export to global namespace
-  window.Quantum.Components.SettingsView = SettingsView;
+  window.WOLFSPACE.Components.SettingsView = SettingsView;
 })();
+

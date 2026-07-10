@@ -1,4 +1,4 @@
-{
+﻿{
   "server": {
     "host": "127.0.0.1",
     "port": 8090
@@ -22,7 +22,7 @@
   },
   "models": [
     {
-      "name": "Quantum 3B (smart)",
+      "name": "WOLFSPACE 3B (smart)",
       "file": "qwen2.5-coder-3b-instruct-q4_k_m.gguf",
       "url": "https://huggingface.co/Qwen/Qwen2.5-Coder-3B-Instruct-GGUF/resolve/main/qwen2.5-coder-3b-instruct-q4_k_m.gguf?download=true",
       "port": 8083,

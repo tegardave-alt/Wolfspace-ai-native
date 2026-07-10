@@ -171,3 +171,13 @@ SyntaxError: Invalid or unexpected token
     at require (node:internal/modules/helpers:153:16)
     at Object.<anonymous> (C:\Users\dave\quantum\server.cjs:3347:29)
     at Module._compile (node:internal/modules/cjs/loader:1854:14)
+
+2026-07-09T03:04:58.519Z Cannot read properties of null (reading 'length')
+TypeError: Cannot read properties of null (reading 'length')
+    at isCodingTask (C:\Users\dave\quantum\agent\prompts.cjs:41:21)
+    at pickSystem (C:\Users\dave\quantum\agent\prompts.cjs:57:10)
+    at chatStream (C:\Users\dave\quantum\agent\chat.cjs:23:15)
+    at IncomingMessage.<anonymous> (C:\Users\dave\quantum\server.cjs:4444:13)
+    at IncomingMessage.emit (node:events:509:28)
+    at endReadableNT (node:internal/streams/readable:1735:12)
+    at process.processTicksAndRejections (node:internal/process/task_queues:90:21)

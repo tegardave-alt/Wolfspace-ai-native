@@ -1,4 +1,4 @@
-// Icon Components
+﻿// Icon Components
 (function() {
   const Icon = {
     spark: (p) => (
@@ -265,6 +265,7 @@
   }
 
   // Export to global namespace
-  window.Quantum = window.Quantum || {};
-  window.Quantum.Icons = { Icon, HubIcon, BrandMark };
+  window.WOLFSPACE = window.WOLFSPACE || {};
+  window.WOLFSPACE.Icons = { Icon, HubIcon, BrandMark };
 })();
+

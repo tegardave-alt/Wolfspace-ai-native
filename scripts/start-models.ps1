@@ -1,4 +1,4 @@
-# Quantum -- launch each model in config.json on its own port (Windows)
+﻿# WOLFSPACE -- launch each model in config.json on its own port (Windows)
 $ErrorActionPreference = 'Stop'
 $cfg = Get-Content (Join-Path $PSScriptRoot '..\config.json') -Raw | ConvertFrom-Json
 $dir = $cfg.modelDir
@@ -23,3 +23,4 @@ foreach ($m in $cfg.models) {
 Write-Host ""
 Write-Host "Models starting (give them a few seconds). Then:  npm start" -ForegroundColor White
 Write-Host "Stop all:  Get-Process llama-server | Stop-Process -Force" -ForegroundColor DarkGray
+

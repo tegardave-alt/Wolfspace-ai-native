@@ -1,4 +1,4 @@
-# Quantum execution sandbox — runs UNTRUSTED user code in isolation.
+﻿# WOLFSPACE execution sandbox — runs UNTRUSTED user code in isolation.
 # Minimal, non-root. Network/filesystem/limits are enforced at `docker run` time
 # (see sandbox/README.md), not here. Keep this image lean.
 FROM python:3.12-slim
@@ -15,3 +15,4 @@ WORKDIR /code
 
 # No ENTRYPOINT: the command is supplied per-run by the server
 # (e.g. `python /code/main.py` or `node /code/main.js`).
+

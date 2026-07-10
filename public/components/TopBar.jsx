@@ -1,6 +1,6 @@
-// TopBar Component - Header with model selector
+﻿// TopBar Component - Header with model selector
 (function() {
-  const { ModelInterface } = window.Quantum.Components;
+  const { ModelInterface } = window.WOLFSPACE.Components;
 
   function TopBar({
     models,
@@ -26,5 +26,6 @@
   }
 
   // Export to global namespace
-  window.Quantum.Components.TopBar = TopBar;
+  window.WOLFSPACE.Components.TopBar = TopBar;
 })();
+

@@ -1,19 +1,19 @@
-// File operations for Quantum source code
+﻿// File operations for WOLFSPACE source code
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
 const { exec } = require('child_process');
 const execP = util.promisify(exec);
 
-// ── Quantum source root + guardrails ──
-const QROOT = path.resolve(__dirname, '..');
+// ── WOLFSPACE source root + guardrails ──
+const QROOT = path.resolve(__dirname, '..', '..');
 const Q_ALLOWED = /^(server\.cjs|[\w-]+(?:\.[\w-]+)*\.cjs|[\w-]+(?:\.[\w-]+)*[\\/][\w-]+(?:\.[\w-]+)*\.cjs|agent[\\/][\w-]+(?:\.[\w-]+)*[\\/][\w-]+(?:\.[\w-]+)*\.cjs|config\.json|config[\\/][\w-]+(?:\.[\w-]+)*\.json|public[\\/].+\.(jsx|css|html|js|json))$/;
 const Q_FORBID = /(^|[\\/])(cloud-keys\.json|node_modules|_agent_backups|dist-app|build|\.dart_tool|workspace)([\\/]|$)/;
 function qResolve(p, mustBeEditable) {
   const rel = (p||'').trim().replace(/^[`"']+|[`"']+$/g,'').replace(/^\//,'');
   const dest = path.resolve(QROOT, rel);
   if (dest !== QROOT && !dest.startsWith(QROOT + path.sep))
-    throw new Error('path di luar root Quantum');
+    throw new Error('path di luar root WOLFSPACE');
   const relNorm = path.relative(QROOT, dest).replace(/\\/g, '/');
   if (Q_FORBID.test(relNorm)) throw new Error('path terlarang: ' + relNorm);
   if (mustBeEditable && !Q_ALLOWED.test(relNorm) && !Q_ALLOWED.test(relNorm.replace(/\//g, '\\\\')))
@@ -39,54 +39,25 @@ function qWalk(filterRe) {
 }
 function qList() { return qWalk(null).slice(0, 400).map(f => { let sz = 0; try { sz = fs.statSync(f.fp).size; } catch {} return f.rel + ' (' + sz + 'b)'; }).join('\n'); }
 
-function globToRe(p) {
-  const esc = c => c.replace(/[.+^${}()|[\]\\]/g, '\\$&');
-  let rx = '', i = 0;
-  while (i < p.length) {
-    const c = p[i];
-    if (c === '*') {
-      if (p[i+1] === '*') { if (p[i+2] === '/') { rx += '(?:.*/)?'; i += 3; } else { rx += '.*'; i += 2; } }
-      else { rx += '[^/]*'; i++; }
-    } else if (c === '?') { rx += '[^/]'; i++; }
-    else { rx += esc(c); i++; }
+// ── utils ──
+function qGlob(pattern) {
+  if (!pattern) return 'pola kosong';
+  const re = globToRe(pattern);
+  const res = [];
+  const files = qWalk(null);
+  for (const f of files) {
+    if (re.test(f.rel)) res.push(f.rel + ' (' + (() => { try { return fs.statSync(f.fp).size; } catch { return 0; } })() + 'b)');
   }
-  return new RegExp('^' + rx + '$', 'i');
+  return res.length ? res.join('\n') : '(tidak ada file cocok)';
 }
-function qGlob(pattern, options = {}) {
-  let patternsToSearch = [];
-
-  // ── Semantic mode: use intent-based file-name/file-path patterns ──
-  if (options.intent) {
-    const sv = getSemanticValidator();
-    if (sv && sv.qSemanticSearch) {
-      const semantic = sv.qSemanticSearch(options.intent, { intent: options.intent, filePatterns: true });
-      if (semantic.intent && semantic.patterns.length > 0) {
-        patternsToSearch = semantic.patterns;
-      }
-    }
-  }
-
-  // ── Fallback: pure lexical glob ──
-  if (patternsToSearch.length === 0) {
-    let re; try { re = globToRe((pattern||'*').trim()); } catch { return 'pola tidak valid'; }
-    patternsToSearch = [re];
-  }
-
-  const hits = qWalk(null).filter(f => {
-    for (const re of patternsToSearch) {
-      if (re.test(f.rel) || re.test(f.rel.split('/').pop())) return true;
-    }
-    return false;
-  }).map(f => f.rel);
-
-  return hits.length ? hits.slice(0, 200).join('\n') : '(tidak ada file cocok)';
+function globToRe(pat) {
+  pat = pat.replace(/[.+^${}()|\[\]\\]/g, '\\$&').replace(/\*/g, '.*').replace(/\?/g, '.');
+  return new RegExp('^' + pat + '$', 'i');
 }
-
-function qRead(p, near) {
-  const fp = qResolve(p, false);
-  let st; try { st = fs.statSync(fp); } catch { throw new Error('file tidak ada: ' + p); }
-  if (st.isDirectory()) return '(ini direktori) isi:\n' + fs.readdirSync(fp).slice(0,100).join('\n');
-  const lines = fs.readFileSync(fp, 'utf8').split('\n');
+function qRead(absPath, near) {
+  if (!absPath) return '(path kosong)';
+  let txt; try { txt = fs.readFileSync(absPath, 'utf8'); } catch (e) { return '(gagal baca: ' + e.message + ')'; }
+  const lines = txt.split('\n');
   const N = lines.length;
   near = parseInt(near);
   let a = 0, b = Math.min(N, 800);
@@ -147,6 +118,11 @@ async function qSyntaxOk(absPath) {
       JSON.parse(fs.readFileSync(absPath, 'utf8'));
       return { ok: true };
     }
+    if (ext === '.jsx') {
+      const B = require(path.join(QROOT, 'public', 'vendor', 'babel.min.js'));
+      B.transform(fs.readFileSync(absPath, 'utf8'), { presets: ['react'] });
+      return { ok: true };
+    }
     return { ok: true };
   } catch (e) { return { ok: false, error: (((e.stderr||'')+'').trim() || e.message).slice(0, 500) }; }
 }
@@ -205,3 +181,4 @@ module.exports = {
   qResolve, qWalk, qList, qGlob, qRead, qGrep, qBackup, qSyntaxOk, globToRe,
   qSemanticCheck, qIntentDescription
 };
+

@@ -1,4 +1,4 @@
-// core.js — Quantum's pure business logic, callable by BOTH the HTTP server and
+﻿// core.js — WOLFSPACE's pure business logic, callable by BOTH the HTTP server and
 // the Electron IPC layer (no req/res, no port). See docs/A2UI-DESIGN.md (step 1).
 //
 // Requiring server.cjs does NOT open a port: server.cjs only calls server.listen()
@@ -23,3 +23,4 @@ module.exports = {
   // Until extracted, the HTTP handlers in server.cjs remain the single source of
   // truth and IPC can call the re-exported primitives above (askCloudStream, etc.).
 };
+

@@ -4500,6 +4500,7 @@ const server = http.createServer(async (req, res) => {
       };
       const convo = (history || []).slice();
       const MAX = 50;
+      let hasRunOk = false; // Track verified executions across steps
       try {
         for (let step = 1; step <= MAX; step++) {
           if (cancelled) break;
@@ -4549,9 +4550,7 @@ const server = http.createServer(async (req, res) => {
           // Verifikasi anti-halu: DONE hanya boleh jika ada eksekusi yang OK.
           // Kalau model mengirim DONE tanpa bukti eksekusi sukses, kita tolak.
           if (!act || act.kind === "done") {
-            // implicitRun = hanya true kalau kita menjalankan code block dari model.
-            const verified = !!(implicitRun && result && result.ok);
-            if (!verified) {
+            if (!hasRunOk) {
               ev({
                 t: "adone",
                 steps: step,
@@ -4561,15 +4560,15 @@ const server = http.createServer(async (req, res) => {
               convo.push({
                 role: "user",
                 content:
-                  "DONE ditolak karena belum terverifikasi. Tolong lanjutkan pekerjaan dan pastikan hasil akhir divalidasi dengan menjalankan test/assert sehingga CPU memberi ok=true.",
+                  "DONE ditolak karena belum terverifikasi. Tolong lanjutkan pekerjaan dan pastikan hasil akhir divalidasi dengan menjalankan perintah eksekusi sehingga CPU memberi ok=true.",
               });
               continue;
             }
-            ev({ t: "adone", steps: step, summary: act ? act.body : reply });
+            ev({ t: "adone", steps: step, summary: act ? act.body || "Selesai." : reply });
             break;
           }
 
-          let result;
+          let result = { ok: false };
           if (act.kind === "list") {
             try {
               result = { ok: true, output: wsList(act.arg) };
@@ -4620,6 +4619,7 @@ const server = http.createServer(async (req, res) => {
           } else {
             // run
             result = await runInWorkspace(act.arg, act.body);
+            if (result.ok) hasRunOk = true; // Mark as verified!
           }
           ev({
             t: "act",

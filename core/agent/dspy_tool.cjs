@@ -1,5 +1,5 @@
-// DSpy tool for Quantum agent
-// Real native integration: uses Quantum's own cloud LLM to optimize prompts
+﻿// DSpy tool for WOLFSPACE agent
+// Real native integration: uses WOLFSPACE's own cloud LLM to optimize prompts
 // (ChainOfThought-style prompt optimization, no Python dependency).
 
 const { dlog } = require('./debug.cjs');
@@ -9,7 +9,7 @@ function run(args) {
   const context = (args.context || '').trim();
   if (!prompt) return { ok: false, output: 'No prompt provided' };
 
-  // Resolve cloud config from Quantum's cloud module
+  // Resolve cloud config from WOLFSPACE's cloud module
   let cloud;
   try {
     const cloudMod = require('./cloud.cjs');
@@ -43,7 +43,7 @@ function run(args) {
   }
 
   if (!cloud || !cloud.key) {
-    return { ok: false, output: 'DSpy needs an API key to optimize prompts. Set one in Quantum\'s settings (☁ menu) first.' };
+    return { ok: false, output: 'DSpy needs an API key to optimize prompts. Set one in WOLFSPACE\'s settings (☁ menu) first.' };
   }
 
   // Build the DSpy-style ChainOfThought prompt
@@ -113,3 +113,4 @@ EXPLANATION:
 }
 
 module.exports = { run };
+

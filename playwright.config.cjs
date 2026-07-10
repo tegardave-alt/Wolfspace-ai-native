@@ -1,15 +1,15 @@
-// @ts-check
+﻿// @ts-check
 const { defineConfig, devices } = require('@playwright/test');
 
 /**
- * Playwright config for Quantum UI tests.
- * Quantum server runs on http://127.0.0.1:8090 (config.json port).
+ * Playwright config for WOLFSPACE UI tests.
+ * WOLFSPACE server runs on http://127.0.0.1:8090 (config.json port).
  * Tests start the server automatically via webServer config.
  */
 module.exports = defineConfig({
   testDir: './tests/ui',
   testMatch: '*.spec.cjs',
-  fullyParallel: false,           // Quantum server is single-instance — no parallel
+  fullyParallel: false,           // WOLFSPACE server is single-instance — no parallel
   forbidRetry: false,
   retries: 0,
   workers: 1,                     // single worker — shared server
@@ -32,7 +32,7 @@ module.exports = defineConfig({
     },
   ],
 
-  // Auto-start Quantum server before tests, auto-stop after
+  // Auto-start WOLFSPACE server before tests, auto-stop after
   webServer: {
     command: 'node server.cjs',
     url: 'http://127.0.0.1:8090',

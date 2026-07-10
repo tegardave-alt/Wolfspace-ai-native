@@ -1,15 +1,15 @@
-<!DOCTYPE html>
+﻿<!DOCTYPE html>
 <html lang="id">
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title>Quantum</title>
+  <title>WOLFSPACE</title>
   <script>
     // Zero-HTTP: route ALL relative API calls through Electron IPC. Non-streaming
     // → invoke('api'); SSE-progress downloads → stream('api') backed by a
     // ReadableStream so res.body.getReader() still works. No HTTP server exists.
     (function(){
-      var q = window.quantum;
+      var q = window.WOLFSPACE;
       if (!(q && q.ipc)) return;                       // plain browser: keep native fetch
       var STREAM = /\/(hf|ollama)\/download/;          // endpoints that stream SSE progress
       var _f = window.fetch.bind(window);
@@ -38,6 +38,7 @@
   <link rel="icon" href="/icon.png" />
   <link rel="stylesheet" href="/vendor/fonts.css" />
   <link rel="stylesheet" href="/styles.css" />
+  <style>.composer-hint:nth-of-type(2){display:none}</style>
   <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
 </head>
 <body>
@@ -65,3 +66,4 @@
   <script type="text/babel" src="/app.jsx"></script>
 </body>
 </html>
+

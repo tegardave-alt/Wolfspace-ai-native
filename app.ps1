@@ -1,4 +1,4 @@
-# Launch Quantum as a native desktop app (Electron).
+﻿# Launch WOLFSPACE as a native desktop app (Electron).
 # Clears ELECTRON_RUN_AS_NODE (set globally on some machines) so Electron starts
 # in app mode, not as plain Node.
 $ErrorActionPreference = 'SilentlyContinue'
@@ -10,3 +10,4 @@ if (-not (Test-Path $electron)) {
   exit 1
 }
 Start-Process -FilePath $electron -ArgumentList 'electron/main.js' -WorkingDirectory $root
+

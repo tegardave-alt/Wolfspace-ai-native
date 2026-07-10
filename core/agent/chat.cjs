@@ -18,28 +18,11 @@ const { askCloudStream } = require('./cloud.cjs');
  * @param {function(string):void} emit - SSE writer (writes "data: ...\n\n").
  * @param {Object} ctl - control object, currently unused but kept for compatibility.
  */
-async function chatStream({ history, port, cloud, webdev }, emit, ctl) {
-  // Choose system prompt based on history and mode – prompts module handles.
-  const sys = pickSystem(history, webdev);
-  // In Web Dev mode, auto-optimize the last user message with DSpy for better A2UI output.
-  let enhanced = history || [];
-  if (webdev && enhanced.length > 0) {
-    try {
-      const dspy = require('./dspy_tool.cjs');
-      for (let i = enhanced.length - 1; i >= 0; i--) {
-        if (enhanced[i].role === 'user' && enhanced[i].content) {
-          const opt = await dspy.run({ prompt: enhanced[i].content, context: 'Web Dev (A2UI) — improve this prompt to generate better Flutter UI specs. Make it specific about layout, state, actions, colors, and interactivity.' });
-          if (opt.ok && opt.output && opt.output.length > enhanced[i].content.length) {
-            dlog('chat', 'info', 'DSpy optimized user prompt in webdev mode', { before: enhanced[i].content.length, after: opt.output.length });
-            enhanced = enhanced.map((m, idx) => idx === i ? { ...m, content: opt.output } : m);
-          }
-          break; // only optimize the last user message
-        }
-      }
-    } catch (_) { dlog('chat', 'warn', 'DSpy optimization skipped', { err: _.message }); }
-  }
-  const messages = [{ role: 'system', content: sys }, ...enhanced];
-  console.log('[chat] chatStream started', { historyLen: enhanced.length, useCloud: !!(cloud && cloud.key), port, webdev: !!webdev });
+async function chatStream({ history, port, cloud }, emit, ctl) {
+  // Choose system prompt based on history – prompts module handles.
+  const sys = pickSystem(history);
+  const messages = [{ role: 'system', content: sys }, ...(history || [])];
+  console.log('[chat] chatStream started', { historyLen: messages.length - 1, useCloud: !!(cloud && cloud.key), port });
   const onToken = token => {
     console.log('[chat] token:', token);
     emit({ t: 'tok', c: token });

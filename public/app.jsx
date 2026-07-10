@@ -675,20 +675,7 @@ function TopBar({
       />
 
       <div className="tb-spacer" />
-      <button
-        className="topbar-btn"
-        onClick={() => {}}
-        title="MCP Server"
-        style={{ display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", padding: "6px" }}
-      >
-        <svg viewBox="0 0 24 24" fill="none" style={{ width: 18, height: 18 }}>
-          <rect x="2" y="2" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="2" />
-          <rect x="14" y="2" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="2" />
-          <rect x="2" y="14" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="2" />
-          <rect x="14" y="14" width="8" height="8" rx="2" stroke="currentColor" strokeWidth="2" />
-          <path d="M10 6h4M6 10v4M18 10v4" stroke="currentColor" strokeWidth="2" strokeLinecap="round" />
-        </svg>
-      </button>
+
     </header>
   );
 }
@@ -4884,256 +4871,175 @@ function ToolOutput({ text, ok, kind, arg }) {
   );
 }
 
-/* ── Agent Execution Tree (phase-based DOM tree view) ── */
-const PHASE_META = {
-  init:     { label: "Init",     cls: "aet-phase-init",     color: "#185FA5" },
-  observe:  { label: "Observe",  cls: "aet-phase-observe",  color: "#085041" },
-  think:    { label: "Think",    cls: "aet-phase-think",    color: "#3C3489" },
-  act:      { label: "Act",      cls: "aet-phase-act",      color: "#633806" },
-  validate: { label: "Validate", cls: "aet-phase-validate", color: "#085041" },
-  return:   { label: "Return",   cls: "aet-phase-return",   color: "#27500A" },
-  error:    { label: "Error",    cls: "aet-phase-error",    color: "#791F1F" },
-};
-const DOT_CLS = { ok: "aet-dot-ok", run: "aet-dot-run", err: "aet-dot-err", skip: "aet-dot-skip" };
+/* ── Agent Action Log (IDE Style) ── */
+function AgentActionLogRow({ e, i, expanded, setExpanded }) {
+  const isOpen = !!expanded[i];
+  
+  if (e.type === "thought") {
+    return (
+      <React.Fragment>
+        <div className="aal-row aal-thought-header" onClick={() => setExpanded(p => ({...p, [i]: !isOpen}))}>
+          <span>Thought Process</span>
+          <span className={"aal-chevron" + (isOpen ? " open" : "")}>
+            <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M5 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </span>
+        </div>
+        {isOpen && <div className="aal-thought-content">{e.output || e.arg || "Thinking..."}</div>}
+      </React.Fragment>
+    );
+  }
+  
+  let verb = "Ran";
+  let target = e.arg || "";
+  let icon = AG_SVG.bash;
+  let color = "var(--text-muted, #8c959f)";
+  let fileLang = null;
+  
+  if (e.kind) {
+    const k = e.kind.toLowerCase();
+    if (k.includes("grep") || k.includes("search")) { verb = "Searched"; icon = AG_SVG.grep; }
+    else if (k.includes("read") || k.includes("view")) { verb = "Analyzed"; icon = AG_SVG.read; color = "#61dafb"; }
+    else if (k.includes("edit") || k.includes("replace") || k.includes("write")) { verb = "Edited"; icon = AG_SVG.edit; color = "#ef4444"; }
+    else if (k.includes("list") || k.includes("glob")) { verb = "Explored"; icon = AG_SVG.glob; }
+  }
 
-function TreeNode({ node, depth, expanded, setExpanded }) {
-  const key = (depth || 0) + "-" + (node.tag || "") + "-" + (node.attrs && node.attrs[0] ? node.attrs[0].v : "");
-  const hasChildren = node.children && node.children.length > 0;
-  const isOpen = expanded[key] !== false;
-  const status = node.status || "ok";
-  const pm = PHASE_META[node.phase];
-  const dotCls = DOT_CLS[status] || "aet-dot-skip";
+  if (verb !== "Ran" && verb !== "Explored" && target.includes(".")) {
+    const ext = target.split(".").pop().toLowerCase();
+    const lMap = {
+      js: "javascript", jsx: "javascript", ts: "typescript", tsx: "typescript",
+      py: "python", rb: "ruby", go: "go", rs: "rust", java: "java",
+      c: "c", cpp: "cpp", dart: "dart", php: "php", yml: "yaml", yaml: "yaml",
+      json: "json", xml: "xml", html: "html", css: "css", md: "markdown",
+      sql: "sql", sh: "shell", bash: "shell", ps1: "powershell",
+      cjs: "javascript", mjs: "javascript", kt: "kotlin", swift: "swift"
+    };
+    if (lMap[ext]) fileLang = lMap[ext];
+  }
+
+  let added = 0; let removed = 0;
+  if (verb === "Edited" && e.output && e.output.includes("@@")) {
+    const lines = e.output.split("\n");
+    added = lines.filter(l => l.startsWith("+") && !l.startsWith("+++")).length;
+    removed = lines.filter(l => l.startsWith("-") && !l.startsWith("---")).length;
+  }
+  
+  const SvgIcon = icon;
 
   return (
-    <div className="aet-node">
-      <div className="aet-node-row" style={{ cursor: hasChildren ? "pointer" : "default" }}
-           onClick={hasChildren ? () => setExpanded(p => ({ ...p, [key]: !isOpen })) : undefined}>
-        <div className="aet-indent">
-          {Array.from({ length: depth }).map((_, i) => <div key={i} className="aet-indent-bar" />)}
-        </div>
-        <div className={"aet-toggle " + (hasChildren ? (isOpen ? "open" : "closed") : "leaf")}>
-          {hasChildren ? "\u25BE" : "\u00B7"}
-        </div>
-        <div className="aet-node-label">
-          <span className={"aet-status-dot " + dotCls} />
-          {pm ? (
-            <span className={"aet-tag aet-phase " + pm.cls}>{node.tag}</span>
-          ) : (
-            <span className="aet-tag aet-root-tag">{"<" + node.tag}</span>
-          )}
-          {(node.attrs || []).map((a, i) => (
-            <span key={i} className="aet-attr">
-              {" "}<span className="aet-attr-key">{a.k}</span>=
-              <span className={"aet-attr-val " + (a.t || "")}>{String(a.v)}</span>
-            </span>
-          ))}
-          {node.chip ? <span className="aet-tool-chip">{node.chip}</span> : null}
-          {node.evidence ? <span className="aet-evidence">{"\u2713 evidence"}</span> : null}
-          {node.blocked ? <span className="aet-blocked">{"\u26D4 blocked"}</span> : null}
-          {!pm && !hasChildren ? <span className="aet-self-close">/</span> : null}
-          {node.time != null ? <span className="aet-timing">{node.time}ms</span> : null}
-        </div>
+    <React.Fragment>
+      <div className={"aal-row" + (e.output ? "" : " no-hover")} onClick={e.output ? () => setExpanded(p => ({...p, [i]: !isOpen})) : undefined}>
+        <span>{verb}</span>
+        {fileLang ? (
+          <span className="aal-icon" style={{marginTop: "1px"}}><LangIcon lang={fileLang} /></span>
+        ) : (
+          SvgIcon && <span className="aal-icon" style={{color: color}}><SvgIcon width={13} height={13}/></span>
+        )}
+        <span className="aal-code-highlight">{target.substring(0,60) + (target.length>60?"...":"")}</span>
+        
+        {verb === "Edited" && (added > 0 || removed > 0) ? (
+          <React.Fragment>
+            <span className="aal-diff-add">+{added}</span>
+            <span className="aal-diff-sub">-{removed}</span>
+          </React.Fragment>
+        ) : null}
+        
+        {e.output && (
+          <span className={"aal-chevron" + (isOpen ? " open" : "")} style={{marginLeft: "auto"}}>
+            <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M5 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+          </span>
+        )}
       </div>
-      {hasChildren && isOpen && (
-        <div className="aet-children">
-          {node.children.map((c, i) => (
-            <TreeNode key={i} node={c} depth={depth + 1} expanded={expanded} setExpanded={setExpanded} />
-          ))}
+      
+      {isOpen && e.output && (
+        <div style={{margin: "4px 8px 12px 24px", border: "1px solid rgba(175,184,193,0.3)", borderRadius: "6px", overflow: "hidden"}}>
+          <ToolOutput text={e.output} ok={e.ok} kind={e.kind} arg={e.arg} />
         </div>
       )}
-    </div>
+    </React.Fragment>
   );
 }
 
-function AgentExecutionTree({ phaseNodes, busy }) {
-  const [expanded, setExpanded] = useState({});
-  if (!phaseNodes || phaseNodes.length === 0) return null;
-
-  // Group flat phase nodes into a phase-structured tree
-  const phaseOrder = ["init", "observe", "think", "act", "validate", "return"];
-  const grouped = {};
-  phaseNodes.forEach(n => {
-    const ph = n.phase || "observe";
-    if (!grouped[ph]) grouped[ph] = [];
-    grouped[ph].push(n);
-  });
-
-  const tree = phaseOrder
-    .filter(ph => grouped[ph])
-    .map(ph => ({
-      tag: (PHASE_META[ph] || {}).label || ph,
-      phase: ph,
-      status: grouped[ph].some(n => n.status === "err") ? "err"
-            : grouped[ph].some(n => n.status === "run") ? "run"
-            : "ok",
-      children: grouped[ph],
-    }));
-
+function GroupedActionRow({ group, expanded, setExpanded }) {
+  const isOpen = !!expanded[group.id];
+  const acts = group.acts;
+  if (acts.length === 1) return <AgentActionLogRow e={acts[0]} i={acts[0].originalIndex} expanded={expanded} setExpanded={setExpanded} />;
+  
   return (
-    <div className={"aet-root" + (busy ? " aet-busy" : "")}>
-      <div className="aet-tree-header">
-        <span className="aet-header-icon">{"\u25B6"}</span>
-        <span className="aet-header-title">SelfAgent</span>
-        <span className={"aet-badge " + (busy ? "aet-badge-run" : "aet-badge-ok")}>
-          {busy ? "RUNNING" : "COMPLETED"}
+    <React.Fragment>
+      <div className="aal-row" onClick={() => setExpanded(p => ({...p, [group.id]: !isOpen}))}>
+        <span className="aal-icon" style={{color: "#3fb950"}}><AG_SVG.bash width={13} height={13}/></span>
+        <span className="aal-code-highlight">Ran {acts.length} parallel commands</span>
+        <span className={"aal-chevron" + (isOpen ? " open" : "")} style={{marginLeft: "auto"}}>
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M5 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
         </span>
       </div>
-      <div className="aet-tree-body">
-        {tree.map((phNode, i) => (
-          <TreeNode key={i} node={phNode} depth={0} expanded={expanded} setExpanded={setExpanded} />
-        ))}
-      </div>
-    </div>
+      {isOpen && (
+        <div style={{margin: "4px 8px 12px 24px", border: "1px solid rgba(175,184,193,0.3)", borderRadius: "6px", overflow: "hidden", display: "flex", flexDirection: "column"}}>
+          {acts.map((a, j) => (
+            <div key={j} style={j > 0 ? { borderTop: "1px solid rgba(175,184,193,0.3)" } : {}}>
+              <div style={{ background: "#21262d", padding: "4px 12px", fontSize: "12px", color: "#8c959f", fontFamily: "monospace", display: "flex", alignItems: "center", gap: "8px" }}>
+                <span style={{ color: "#3fb950" }}>...\quantum &gt;</span> {a.arg || a.kind}
+              </div>
+              <ToolOutput text={a.output} ok={a.ok} kind={a.kind} arg={a.arg} />
+            </div>
+          ))}
+        </div>
+      )}
+    </React.Fragment>
   );
 }
 
-/* ── Sub-component: satu baris step di timeline ── */
-function AgentStepRow({ e, i, expanded, setExpanded }) {
-  const isErr = e.type === "err";
-  const meta  = AG_META[isErr ? "err" : e.kind] || { label: e.kind, color: "#94a3b8", bg: "rgba(148,163,184,0.1)" };
-  const SvgIcon = isErr ? AG_SVG.err : (AG_SVG[e.kind] || AG_SVG.bash);
-  const isOpen  = !!expanded[i];
-  return (
-    <div className={"av2-row " + (isErr ? "av2-err" : e.ok ? "av2-ok" : "av2-fail")}
-         style={{"--row-color": meta.color, "--row-bg": meta.bg}}>
-      {/* connector: icon bulat + garis vertikal */}
-      <div className="av2-connector">
-        <div className="av2-icon-wrap">
-          <SvgIcon width={13} height={13} style={{color: meta.color}} />
-        </div>
-        <div className="av2-track" />
-      </div>
-      {/* konten baris */}
-      <div className="av2-body">
-        <div className={"av2-header" + (e.output ? " clickable" : "")}
-             onClick={e.output ? () => setExpanded(p => ({...p, [i]: !p[i]})) : undefined}>
-          <span className="av2-badge" style={{background: meta.bg, color: meta.color}}>{meta.label}</span>
-          {e.arg  ? <span className="av2-arg">{e.arg}</span>   : null}
-          {isErr  ? <span className="av2-err-msg">{e.m}</span> : null}
-          <span className="av2-spacer" />
-          {!e.ok && !isErr ? <span className="av2-fail-dot" title="gagal" /> : null}
-          {e.output ? (
-            <span className="av2-chev-icon" style={{transform: isOpen ? "rotate(90deg)" : "rotate(0deg)"}}>
-              <svg viewBox="0 0 12 12" width={10} height={10} fill="none">
-                <path d="M4 2l4 4-4 4" stroke="currentColor" strokeWidth="1.6" strokeLinecap="round" strokeLinejoin="round"/>
-              </svg>
-            </span>
-          ) : null}
-        </div>
-        {e.output && isOpen ? (
-          <div className="av2-output-wrap">
-            <ToolOutput text={e.output} ok={e.ok} kind={e.kind} arg={e.arg} />
-          </div>
-        ) : null}
-      </div>
-    </div>
-  );
-}
-
-/* ── Komponen utama AgentSteps v2 ── */
 function AgentSteps({ run }) {
   const [expanded, setExpanded] = useState({});
-  const acts      = (run.events || []).filter(e => e.type === "act" || e.type === "err" || e.type === "thought");
-  const summary   = cleanAgentText(run.summary);
-  const totalSteps = acts.length;
-  const okSteps    = acts.filter(e => e.type === "act" && e.ok).length;
-  const hasPhaseTree = (run.phaseNodes || []).length > 0;
+  const acts = (run.events || []).filter(e => e.type === "act" || e.type === "err" || e.type === "thought");
+  const summary = cleanAgentText(run.summary);
 
-  // Jawaban biasa tanpa tool → tampilkan seperti chat reply normal
-  if (run.done && acts.length === 0 && !run.error && !hasPhaseTree)
-    return (<><div className="bubble-model"><Blocks text={summary} /></div><Verdict run={run.run} /></>);
-  if (!run.busy && acts.length === 0 && run.error && !hasPhaseTree)
+  if (run.done && acts.length === 0 && !run.error)
+    return (<React.Fragment><div className="bubble-model"><Blocks text={summary} /></div><Verdict run={run.run} /></React.Fragment>);
+  if (!run.busy && acts.length === 0 && run.error)
     return <div className="bubble-model" style={{color:"#fca5a5"}}>{summary || (run.events&&run.events[0]&&run.events[0].m) || "error"}</div>;
 
+  const isTopOpen = expanded.top !== false;
+
   return (
-    <div className={"av2-flow" + (run.busy ? " av2-busy" : "") + (run.error ? " av2-error" : "") + (run.done ? " av2-done" : "")}>
+    <div className="aal-container">
+      <div className="aal-row" onClick={() => setExpanded(p => ({...p, top: !isTopOpen}))}>
+        <span className="aal-code-highlight">Worked for {run.busy ? "..." : "1m"}</span>
+        <span className={"aal-chevron" + (isTopOpen ? " open" : "")} style={{marginLeft: "auto"}}>
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M5 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </span>
+      </div>
 
-      {/* ── Header ── */}
-      <div className="av2-head">
-        <div className="av2-head-left">
-          {run.busy
-            ? <span className="av2-spinner">
-                <svg viewBox="0 0 20 20" width={14} height={14}>
-                  <circle cx="10" cy="10" r="7" stroke="#8b6dff" strokeWidth="2.5" fill="none"
-                    strokeDasharray="32" strokeDashoffset="8" strokeLinecap="round"/>
-                </svg>
-              </span>
-            : run.error
-              ? <span className="av2-status-dot av2-dot-err" />
-              : <span className="av2-status-dot av2-dot-ok" />
-          }
-          <span className="av2-head-title">
-            {run.busy
-              ? <><span className="av2-pulse-text">Memproses</span>{" "}<span className="av2-step-badge">langkah {run.step||1}</span></>
-              : run.error ? "Berhenti" : "Selesai"
+      <div className={"aal-indent" + (isTopOpen ? "" : " aal-hidden")}>
+        {(() => {
+          const groupedActs = [];
+          let currentGroup = null;
+          acts.forEach((e, idx) => {
+            if (e.type === "act") {
+              if (!currentGroup) {
+                currentGroup = [];
+                groupedActs.push({ type: "group", acts: currentGroup, id: "g" + idx });
+              }
+              currentGroup.push({ ...e, originalIndex: idx });
+            } else {
+              currentGroup = null;
+              groupedActs.push({ type: "single", event: e, originalIndex: idx });
             }
-          </span>
-          {run.backup ? <span className="av2-backup-pill" title="cadangan sebelum diedit">↩ {run.backup}</span> : null}
-        </div>
-        {totalSteps > 0 && <span className="av2-step-counter">{okSteps}/{totalSteps} langkah</span>}
+          });
+          return groupedActs.map((item, idx) => {
+            if (item.type === "group") return <GroupedActionRow key={"g"+idx} group={item} expanded={expanded} setExpanded={setExpanded} />;
+            return <AgentActionLogRow key={"s"+idx} e={item.event} i={item.originalIndex} expanded={expanded} setExpanded={setExpanded} />;
+          });
+        })()}
+        {run.busy && run.thinking && (
+           <div className="aal-row aal-thought-header">
+             <span>Thinking...</span>
+           </div>
+        )}
       </div>
-
-      {/* ── Progress bar ── */}
-      <div className="av2-progress-track">
-        <div className={"av2-progress-bar"
-          + (run.done && !run.error ? " av2-progress-done" : run.error ? " av2-progress-err" : "")}
-          style={{width: run.done ? "100%"
-            : (run.busy && totalSteps > 0 ? Math.round((okSteps / Math.max(totalSteps,1)) * 85) + "%" : "0%")
-          }}
-        />
-        {run.busy ? <div className="av2-progress-shimmer" /> : null}
-      </div>
-
-      {/* ── Execution Tree (phase-based) ── */}
-      {hasPhaseTree && (
-        <AgentExecutionTree phaseNodes={run.phaseNodes} busy={run.busy} />
-      )}
-
-      {/* ── Timeline steps (fallback jika tidak ada phase tree) ── */}
-      {!hasPhaseTree && acts.length > 0 && (
-        <div className="av2-steps">
-          {acts.map((e, i) => (
-            <AgentStepRow key={i} e={e} i={i} expanded={expanded} setExpanded={setExpanded} />
-          ))}
-
-          {/* Baris live saat busy */}
-          {run.busy && (
-            <div className="av2-row av2-live">
-              <div className="av2-connector">
-                <div className="av2-icon-wrap av2-icon-live">
-                  <span className="av2-live-dot" />
-                  <span className="av2-live-dot" />
-                  <span className="av2-live-dot" />
-                </div>
-                <div className="av2-track av2-track-dashed" />
-              </div>
-              <div className="av2-body">
-                <div className="av2-header">
-                  <span className="av2-badge av2-badge-live">{run.thinking ? "Berpikir" : "Menjalankan"}</span>
-                </div>
-                {run.thinking && (
-                  <div className="av2-think-box">
-                    <span className="av2-think-text">{run.thinking.slice(-280)}</span>
-                    <span className="av2-think-caret" />
-                  </div>
-                )}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* ── Summary / hasil akhir ── */}
+      
       {run.done && (summary || run.run) ? (
-        <div className="av2-summary">
-          {run.editCount ? (
-            <div className="av2-edit-badge">
-              <svg viewBox="0 0 16 16" width={13} height={13} fill="none">
-                <path d="M2 13l1-4L12 1l3 3-9 8-4 1z" stroke="#34d399" strokeWidth="1.4" strokeLinejoin="round"/>
-              </svg>
-              <b>{run.editCount} perubahan diterapkan</b>
-            </div>
-          ) : null}
+        <div style={{marginTop: "8px"}}>
           {summary ? <div className="bubble-model av2-result-bubble"><Blocks text={summary} /></div> : null}
           <Verdict run={run.run} />
         </div>
@@ -7069,7 +6975,30 @@ function Avatar({ src, fallback, className = "", size = "default" }) {
   );
 }
 
-ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+/* ----------------------------- Error Boundary ----------------------------- */
+class ErrorBoundary extends React.Component {
+  constructor(props) {
+    super(props);
+    this.state = { hasError: false, error: null, errorInfo: null };
+  }
+  static getDerivedStateFromError(error) {
+    return { hasError: true };
+  }
+  componentDidCatch(error, errorInfo) {
+    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    this.setState({ error, errorInfo });
+  }
+  render() {
+    if (this.state.hasError) {
+      // User requested to only log to terminal/inspect and not show the giant crash UI.
+      return null;
+    }
+    return this.props.children;
+  }
+}
 
-
-
+ReactDOM.createRoot(document.getElementById("root")).render(
+  <ErrorBoundary>
+    <App />
+  </ErrorBoundary>
+);

@@ -1,0 +1,60 @@
+{
+	"name": "quantum-vscode-agent-ui",
+	"displayName": "Quantum AI — Agent Step UI (Fork)",
+	"version": "0.2.0",
+	"description": "Fork dari Quantum AI extension dengan tampilan agent step UI yang baru — timeline VS Code style, SVG icons, progress bar, animasi.",
+	"publisher": "quantum",
+	"license": "MIT",
+	"engines": {
+		"vscode": "^1.85.0"
+	},
+	"categories": [
+		"Chat",
+		"Programming Languages",
+		"Other"
+	],
+	"activationEvents": [],
+	"main": "./out/extension.js",
+	"contributes": {
+		"viewsContainers": {
+			"activitybar": [
+				{
+					"id": "quantum",
+					"title": "Quantum",
+					"icon": "quantum-icon.svg"
+				}
+			]
+		},
+		"views": {
+			"quantum": [
+				{
+					"type": "webview",
+					"id": "quantum.chat",
+					"name": "Chat"
+				}
+			]
+		},
+		"commands": [
+			{
+				"command": "quantum.ask",
+				"title": "Ask Quantum a Question"
+			}
+		]
+	},
+	"scripts": {
+		"vscode:prepublish": "node build.mjs",
+		"build": "node build.mjs",
+		"watch": "npx tsc --watch --project tsconfig.json"
+	},
+	"devDependencies": {
+		"@types/vscode": "^1.85.0",
+		"typescript": "^5.4.0",
+		"@types/node": "^20.11.0"
+	},
+	"icon": "icon.png",
+	"__metadata": {
+		"installedTimestamp": 1782239608537,
+		"targetPlatform": "undefined",
+		"size": 21801870
+	}
+}

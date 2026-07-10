@@ -1,4 +1,4 @@
-'use strict';
+﻿'use strict';
 /**
  * Terminal session manager — wraps node-pty for persistent PTY sessions.
  * Shared by both the HTTP server and the agent tools.
@@ -44,7 +44,7 @@ function create(cwd, shellOverride) {
   });
 
   ptyProcess.onExit(({ exitCode, signal }) => {
-    const msg = `\n[Quantum] Process exited (code=${exitCode}, signal=${signal})\n`;
+    const msg = `\n[WOLFSPACE] Process exited (code=${exitCode}, signal=${signal})\n`;
     outputBuffer.push(msg);
     for (const fn of session.listeners) {
       try { fn(msg); } catch (_) {}
@@ -106,3 +106,4 @@ function readBuffer(id, clear) {
 }
 
 module.exports = { create, write, onData, resize, destroy, list, readBuffer };
+

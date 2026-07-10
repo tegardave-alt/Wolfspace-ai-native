@@ -1,4 +1,4 @@
-const { useState, useRef, useEffect, useCallback, useMemo } = React;
+﻿const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 /* ----------------------------- Icons ----------------------------- */
 const Icon = {
@@ -435,8 +435,8 @@ async function pumpSSE(r, signal, onEvent) {
   }
 }
 const IPC =
-  typeof window !== "undefined" && window.quantum && window.quantum.ipc
-    ? window.quantum
+  typeof window !== "undefined" && window.WOLFSPACE && window.WOLFSPACE.ipc
+    ? window.WOLFSPACE
     : null;
 
 async function streamChat(reqBody, onText, signal) {
@@ -508,7 +508,7 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
   } catch (e) {
     if (e instanceof TypeError && e.message.includes("Failed to fetch")) {
       throw new Error(
-        'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder quantum\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
+        'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder WOLFSPACE\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
       );
     }
     throw e;
@@ -757,3 +757,4 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
   const [key, setKey] = useState("");
   const [provider, setProvider] = useState(
     stored ? (stored.baseUrl ? "custom" : stored.provider) : "auto",
+

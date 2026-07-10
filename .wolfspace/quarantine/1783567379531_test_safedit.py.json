@@ -1,0 +1,7 @@
+{
+  "ts": 1783567379531,
+  "isoTime": "2026-07-09T03:22:59.531Z",
+  "targetFile": "C:\\Users\\dave\\quantum\\test_safedit.py",
+  "reason": "File \"C:\\Users\\dave\\AppData\\Local\\Temp\\_wf_check_1783567379251.py\", line 2\r\n    print(\"ini syntax error\"\r\n         ^\r\nSyntaxError: invalid syntax",
+  "content": "def broken(\nprint(\"ini syntax error\""
+}

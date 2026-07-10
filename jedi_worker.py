@@ -1,5 +1,5 @@
-"""
-Persistent Jedi worker for Quantum: real Python autocomplete (static analysis,
+﻿"""
+Persistent Jedi worker for WOLFSPACE: real Python autocomplete (static analysis,
 library-aware, NO AI model). Imports jedi once, then answers one JSON request
 per stdin line with one JSON response line.
 
@@ -28,3 +28,4 @@ for line in sys.stdin:
         out = []
     sys.stdout.write(json.dumps(out) + "\n")
     sys.stdout.flush()
+

@@ -1,4 +1,4 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 // Auto-generate docs/prompts.md from config/prompts.json
 // Usage: node scripts/generate-docs.cjs
 
@@ -12,7 +12,7 @@ function generateDocs() {
   try {
     const cfg = JSON.parse(fs.readFileSync(PROMPTS_CFG_PATH, 'utf8'));
     
-    let md = '# Quantum Prompts Documentation\n\n';
+    let md = '# WOLFSPACE Prompts Documentation\n\n';
     md += '> **Auto-generated** from `config/prompts.json` — DO NOT EDIT MANUALLY\n\n';
     md += `**Version:** ${cfg.version}  \n`;
     md += `**Last Updated:** ${new Date(cfg.updatedAt).toISOString()}\n\n`;
@@ -100,3 +100,4 @@ function generateDocs() {
 }
 
 generateDocs();
+

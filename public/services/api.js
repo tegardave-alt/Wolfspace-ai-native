@@ -1,8 +1,8 @@
-// API Client - Handles all server communication
+﻿// API Client - Handles all server communication
 (function() {
   const IPC =
-    typeof window !== "undefined" && window.quantum && window.quantum.ipc
-      ? window.quantum
+    typeof window !== "undefined" && window.WOLFSPACE && window.WOLFSPACE.ipc
+      ? window.WOLFSPACE
       : null;
 
   // Verify HTTP server is running (only for browser users, not Electron)
@@ -108,33 +108,18 @@
     } catch (e) {
       if (e instanceof TypeError && e.message.includes("Failed to fetch")) {
         throw new Error(
-          'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder quantum\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
+          'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder WOLFSPACE\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
         );
       }
       throw e;
     }
   }
 
-  function reqFor(modelVal, cloud, history, webdev) {
+  function reqFor(modelVal, cloud, history) {
     const b =
       modelVal === "cloud" && cloud
         ? { history, cloud }
         : { history, port: modelVal };
-    if (webdev) {
-      b.webdev = true;
-      if (b.history && b.history.length) {
-        const i = b.history.length - 1,
-          last = b.history[i];
-        if (last && last.role === "user" && !last.content.includes("```json")) {
-          const R =
-            "\n\n⚠️ CRITICAL: Your ENTIRE answer must be a SINGLE ```json block containing an A2UI spec. NEVER write ```dart. Dart code is NOT rendered. Output ONLY ```json. NEVER use \"type\":\"scaffold\" — it causes Flutter Web crash (grey screen). Use \"container\" or \"column\" as root instead.";
-          b.history = [
-            ...b.history.slice(0, i),
-            { ...last, content: last.content + R },
-          ];
-        }
-      }
-    }
     return b;
   }
 
@@ -175,8 +160,8 @@
   }
 
   // Export to global namespace
-  window.Quantum = window.Quantum || {};
-  window.Quantum.API = {
+  window.WOLFSPACE = window.WOLFSPACE || {};
+  window.WOLFSPACE.API = {
     checkServerHealth,
     pumpSSE,
     streamChat,

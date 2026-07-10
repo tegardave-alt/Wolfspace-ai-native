@@ -1,4 +1,4 @@
-// UI Components - Card, Tabs, Dropdown
+﻿// UI Components - Card, Tabs, Dropdown
 (function() {
   const { useState, useRef, useEffect } = React;
 
@@ -125,13 +125,14 @@
   }
 
   // Export to global namespace
-  window.Quantum.Components = window.Quantum.Components || {};
-  window.Quantum.Components.Card = Card;
-  window.Quantum.Components.CardHeader = CardHeader;
-  window.Quantum.Components.CardTitle = CardTitle;
-  window.Quantum.Components.CardDescription = CardDescription;
-  window.Quantum.Components.CardContent = CardContent;
-  window.Quantum.Components.CardFooter = CardFooter;
-  window.Quantum.Components.Tabs = Tabs;
-  window.Quantum.Components.Dropdown = Dropdown;
+  window.WOLFSPACE.Components = window.WOLFSPACE.Components || {};
+  window.WOLFSPACE.Components.Card = Card;
+  window.WOLFSPACE.Components.CardHeader = CardHeader;
+  window.WOLFSPACE.Components.CardTitle = CardTitle;
+  window.WOLFSPACE.Components.CardDescription = CardDescription;
+  window.WOLFSPACE.Components.CardContent = CardContent;
+  window.WOLFSPACE.Components.CardFooter = CardFooter;
+  window.WOLFSPACE.Components.Tabs = Tabs;
+  window.WOLFSPACE.Components.Dropdown = Dropdown;
 })();
+

@@ -1,5 +1,5 @@
-// DSpy tool for Quantum agent
-// Real native integration: uses Quantum's own cloud LLM to optimize prompts
+﻿// DSpy tool for WOLFSPACE agent
+// Real native integration: uses WOLFSPACE's own cloud LLM to optimize prompts
 // (ChainOfThought-style prompt optimization, no Python dependency).
 
 const { dlog } = require('./debug.cjs');
@@ -16,7 +16,7 @@ function run(args) {
   if (cloud && cloud.key) {
     console.log('[dspy] using caller-provided cloud config, provider:', cloud.provider || 'unknown');
   } else {
-    // Fallback: resolve from Quantum's cloud module
+    // Fallback: resolve from WOLFSPACE's cloud module
     try {
       const cloudMod = require('./cloud.cjs');
       cloudMod.loadCloudKeys();
@@ -52,7 +52,7 @@ function run(args) {
 
   if (!cloud || !cloud.key) {
     console.log('[dspy] no API key found — optimization skipped');
-    return { ok: false, output: 'DSpy needs an API key to optimize prompts. Set one in Quantum\'s settings (☁ menu) first.' };
+    return { ok: false, output: 'DSpy needs an API key to optimize prompts. Set one in WOLFSPACE\'s settings (☁ menu) first.' };
   }
 
   console.log('[dspy] cloud resolved, provider:', cloud.provider, 'model:', cloud.model);
@@ -124,3 +124,4 @@ EXPLANATION:
 }
 
 module.exports = { run };
+

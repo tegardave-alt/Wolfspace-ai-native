@@ -1,6 +1,6 @@
-# Quantum Execution Sandbox (gate #1 for a multi-user platform)
+﻿# WOLFSPACE Execution Sandbox (gate #1 for a multi-user platform)
 
-The Quantum executor runs **arbitrary user code**. For a single local user that's
+The WOLFSPACE executor runs **arbitrary user code**. For a single local user that's
 fine. For a platform serving *other people*, running untrusted code with full host
 access is catastrophic. This sandbox isolates each execution in a throwaway Docker
 container with **no network, capped CPU/RAM, a read-only filesystem, and a hard
@@ -14,7 +14,7 @@ runs Python/JavaScript code like this instead of natively:
 ```
 docker run --rm --network none --memory 256m --memory-swap 256m \
   --cpus 0.5 --pids-limit 128 --read-only --tmpfs /tmp:size=16m \
-  -v <tempdir>:/code:ro -w /code quantum-sandbox sh -c "python /code/main.py"
+  -v <tempdir>:/code:ro -w /code WOLFSPACE-sandbox sh -c "python /code/main.py"
 ```
 
 - `--network none` — no internet / no LAN access
@@ -36,10 +36,10 @@ docker run --rm --network none --memory 256m --memory-swap 256m \
 
 2. **Build the sandbox image**:
    ```powershell
-   powershell C:\Users\dave\quantum\sandbox\build.ps1
+   powershell C:\Users\dave\WOLFSPACE\sandbox\build.ps1
    ```
 
-3. **Enable it** — set `"sandbox": true` in `config.json`, then restart Quantum.
+3. **Enable it** — set `"sandbox": true` in `config.json`, then restart WOLFSPACE.
 
 ## Status / roadmap
 
@@ -48,3 +48,4 @@ docker run --rm --network none --memory 256m --memory-swap 256m \
 - Next gates for a platform: per-user auth + isolation, per-request resource
   quotas, an extension/MCP API, and cloud hosting (a laptop can't host a public
   service).
+

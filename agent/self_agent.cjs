@@ -6,7 +6,7 @@ const { runSelfTool, SELF_TOOLS, qBackup } = require('./tools.cjs');
 const { runReply } = require('./chat.cjs');
 const { getOptimized, optimizeInBackground } = require('./sysprompt_opt.cjs');
 const os = require('os');
-
+const { StateGraph, START, END, Annotation } = require('@langchain/langgraph');
 // System prompt for function-calling self-agent
 const path = require('path');
 const PROMPTS_CFG_PATH = path.join(__dirname, '..', 'config', 'prompts.json');
@@ -126,15 +126,43 @@ function makePhaseEmitter(rawEmit) {
 function parsePseudoCalls(text) {
   if (!text || text.indexOf('<function') < 0) return [];
   const out = [];
+  const seen = new Set();
   const re = /<function\s*=\s*([\w.-]+)\s*=?\s*(\{[\s\S]*?\})?\s*\/?>(?:\s*<\/function>)?/g;
   let m;
   while ((m = re.exec(text))) {
     let args = {};
     if (m[2]) { try { args = JSON.parse(m[2]); } catch (_) {} }
-    out.push({ name: m[1], args });
+    const callStr = JSON.stringify({ name: m[1], args });
+    if (!seen.has(callStr)) {
+      seen.add(callStr);
+      out.push({ name: m[1], args });
+    }
   }
   return out;
 }
+
+// --- LANGGRAPH STATE DEFINITION ---
+const AgentState = Annotation.Root({
+  messages: Annotation({
+    reducer: (x, y) => x.concat(y),
+    default: () => [],
+  }),
+  step: Annotation({ reducer: (x, y) => y, default: () => 1 }),
+  edits: Annotation({ reducer: (x, y) => x + y, default: () => 0 }),
+  failedTools: Annotation({
+    reducer: (x, y) => { const set = new Set(x); y.forEach(item => set.add(item)); return set; },
+    default: () => new Set(),
+  }),
+  accessedEvidence: Annotation({
+    reducer: (x, y) => { const set = new Set(x); y.forEach(item => set.add(item)); return set; },
+    default: () => new Set(),
+  }),
+  fallbackCount: Annotation({ reducer: (x, y) => y, default: () => 0 }),
+  forceRetryCount: Annotation({ reducer: (x, y) => y, default: () => 0 }),
+  finalSummary: Annotation({ reducer: (x, y) => y, default: () => "" }),
+  stopReason: Annotation({ reducer: (x, y) => y, default: () => "" }),
+  waitForAnswer: Annotation({ reducer: (x, y) => y, default: () => false })
+});
 
 /**
  * Self‑agent loop – operates on WOLFSPACE's own source code via function‑calling tools.
@@ -200,7 +228,8 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
   let edits = 0;
   const callCounts = {};
   let fallbackCount = 0;
-  const _TRANSIENT_SELF = /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|too busy|Service Unavailable|service_unavailable/i;
+  let forceRetryCount = 0;
+  const _TRANSIENT_SELF = /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
 
   // Load MCP tools dynamically
   const mcpClient = require('./mcp-client.cjs');
@@ -243,230 +272,237 @@ async function selfAgentStream({ history, port, cloud }, emit, ctl = {}) {
   });
 
   try {
-    for (let step = 1; step <= MAX_STEPS; step++) {
-      if (isCancelled()) { dlog('self', 'info', 'stop', { reason: 'cancelled', step }); break; }
-      emit({ t: 'step', n: step });
-      let msg;
-      try { msg = await askCloudTools(cloud, messages, currentTools); }
-      catch (e) {
-        if (_TRANSIENT_SELF.test(e.message || '') && fallbackCount < 3) {
-          const fb = Object.keys(CLOUD_KEYS).find(p => p !== cloud.provider && CLOUD_KEYS[p] && CLOUD_KEYS[p].key);
-          if (fb) {
-            fallbackCount++;
-            dlog('self', 'warn', 'provider fallback', { from: cloud.provider, to: fb, error: e.message.slice(0, 100) });
-            emit({ t: 'err', m: cloud.provider + ' gagal: ' + e.message.slice(0, 80) + ' — beralih ke ' + fb });
-            cloud = { provider: fb, key: CLOUD_KEYS[fb].key, model: CLOUD_KEYS[fb].model, baseUrl: CLOUD_KEYS[fb].baseUrl };
-            fillCloudKey(cloud);
-            step--; continue;
+    const workflow = new StateGraph(AgentState)
+      .addNode("agent", async (state) => {
+        if (isCancelled()) return { stopReason: 'cancelled' };
+        emit({ t: 'step', n: state.step });
+        let msg;
+        try { msg = await askCloudTools(cloud, state.messages, currentTools); }
+        catch (e) {
+          if (_TRANSIENT_SELF.test(e.message || '') && state.fallbackCount < 3) {
+            const fb = Object.keys(CLOUD_KEYS).find(p => p !== cloud.provider && CLOUD_KEYS[p] && CLOUD_KEYS[p].key);
+            if (fb) {
+              dlog('self', 'warn', 'provider fallback', { from: cloud.provider, to: fb, error: e.message.slice(0, 100) });
+              emit({ t: 'err', m: cloud.provider + ' gagal: ' + e.message.slice(0, 80) + ' — beralih ke ' + fb });
+              cloud = { provider: fb, key: CLOUD_KEYS[fb].key, model: CLOUD_KEYS[fb].model, baseUrl: CLOUD_KEYS[fb].baseUrl };
+              fillCloudKey(cloud);
+              return { fallbackCount: state.fallbackCount + 1 };
+            }
+          }
+          dlog('self', 'info', 'stop', { reason: 'askCloudTools_error', step: state.step, error: (e && e.message || '').slice(0, 100) });
+          emit({ t: 'err', m: e.message });
+          return { stopReason: 'error' };
+        }
+        if (isCancelled()) return { stopReason: 'cancelled_after_tools' };
+
+        let calls = (msg.tool_calls && msg.tool_calls.length) ? msg.tool_calls : null;
+        if (!calls) {
+          const pseudo = parsePseudoCalls(msg.content || '');
+          if (pseudo.length) {
+            calls = pseudo.map((c, i) => ({ id: 'call_' + state.step + '_' + i, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
+            msg.tool_calls = calls;
           }
         }
-        dlog('self', 'info', 'stop', { reason: 'askCloudTools_error', step, error: (e && e.message || '').slice(0, 100) });
-        emit({ t: 'err', m: e.message }); break;
-      }
-      if (isCancelled()) { dlog('self', 'info', 'stop', { reason: 'cancelled_after_tools', step }); break; }
-      messages.push(msg);
+        if (msg.content && !calls) emit({ t: 'tok', c: msg.content });
+        return { messages: [msg] };
+      })
+      .addNode("tools", async (state) => {
+        const msg = state.messages[state.messages.length - 1];
+        const calls = msg.tool_calls || [];
+        
+        let localEdits = 0;
+        const localAccessed = new Set();
+        const localFailed = new Set();
+        
+        const runOne = async (tc) => {
+          let args = {};
+          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+          
+          if (args.rencana_tindakan) {
+            emit({ t: 'thought', c: args.rencana_tindakan, tool: tc.function.name, ok: true });
+            emitPhase('think', { tag: 'rencana_tindakan', status: 'ok', attrs: [{ k: 'tool', v: tc.function.name, t: 'str' }, { k: 'plan', v: args.rencana_tindakan.slice(0, 80), t: 'str' }] });
+          }
+          
+          const sig = tc.function.name + '|' + (tc.function.arguments || '');
+          callCounts[sig] = (callCounts[sig] || 0) + 1;
+          if (callCounts[sig] > 10) return { stop: true };
 
-      // Recover pseudo‑function calls if the model emitted them as plain text
-      let calls = (msg.tool_calls && msg.tool_calls.length) ? msg.tool_calls : null;
-      if (!calls) {
-        const pseudo = parsePseudoCalls(msg.content || '');
-        if (pseudo.length) {
-        calls = pseudo.map((c, i) => ({ id: 'call_' + step + '_' + i, type: 'function', function: { name: c.name, arguments: JSON.stringify(c.args) } }));
-        const newMsg = { role: 'assistant', content: null };
-        if (calls && calls.length > 0) newMsg.tool_calls = calls;
-        messages[messages.length - 1] = newMsg;
-      }
-      }
-      // Emit token output when there is plain content and no tool calls
-      if (msg.content && !calls) emit({ t: 'tok', c: msg.content });
-      // If there are no tool calls (or none returned), finalize the stream with fallback
-      if (!calls || !calls.length) {
+          if (/^(edit|write)$/i.test(tc.function.name)) ensureBackup();
+          if (tc.function.name === 'bash') {
+            emit({ t: 'act', kind: 'bash', arg: args.command || '', ok: true, output: '⟳ running…' });
+          }
+          const r = await runSelfTool(tc.function.name, args, emit);
+          if (r.edited) localEdits++;
+          if (r.output) localAccessed.add(r.output);
+          if (!r.ok && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)) localFailed.add(tc.function.name);
+          
+          const extra = {};
+          if (r.hunkId) { extra.hunkId = r.hunkId; extra.oldContent = r.oldContent; extra.newContent = r.newContent; }
+          emit({ t: 'act', kind: tc.function.name, arg: args.path || args.pattern || args.command || '', ok: !!r.ok, output: r.output || '', ...extra });
+
+          const phase = phaseForTool(tc.function.name);
+          const cleanArg = (args.path || args.pattern || args.command || args.goal || '').replace(/C:\\Users\\dave\\quantum\\/gi, '').replace(/C:\\Users\\dave\\/gi, '').slice(0, 60);
+          emitPhase(phase, {
+            tag: 'tool_call', status: r.ok ? 'ok' : 'err',
+            attrs: [{ k: 'name', v: tc.function.name, t: 'str' }, { k: 'arg', v: cleanArg, t: 'str' }],
+            chip: phase,
+            children: [{ tag: 'tool_result', status: r.ok ? 'ok' : 'err', attrs: [{ k: 'ok', v: String(r.ok), t: 'str' }, { k: 'preview', v: (r.output || '(ok)').replace(/\r?\n/g, ' ').slice(0, 80), t: 'str' }] }]
+          });
+
+          let out = r.output || '(ok)';
+          if (callCounts[sig] >= 2) out += '\n[catatan: panggilan sama diulang ' + callCounts[sig] + '× — hasilnya SAMA. JANGAN ulang yang sama; pakai hasil ini, lalu lanjut atau jawab.]';
+          if (r.needsAnswer) {
+            emit({ t: 'ask', question: r.question, choices: r.choices });
+            out = 'You asked the user: "' + r.question + '". The user will respond. Wait for their answer before continuing.';
+            return { out, stop: true, waitForAnswer: true, question: r.question };
+          }
+          if (tc.function.name === 'task') {
+            if (depth >= MAX_DEPTH) {
+              const outMsg = '(batas kedalaman sub‑agent tercapai — kerjakan sub‑tugas ini langsung dengan tool biasa)';
+              emit({ t: 'act', kind: 'task', arg: (args.goal || '').slice(0,70), ok: false, output: outMsg });
+              return { out: outMsg };
+            }
+            emit({ t: 'act', kind: 'task', arg: (args.goal || '').slice(0,70), ok: true, output: '↳ sub‑agent…' });
+            let subSum = '';
+            const subEmit = (e) => {
+              if (e.t === 'adone') subSum = e.summary || '';
+              else if (e.t === 'err') subSum = '[sub‑agent error: ' + e.m + ']';
+              else if (e.t === 'act') emit({ t: 'act', kind: e.kind, arg: '↳ ' + (e.arg || ''), ok: e.ok, output: e.output });
+            };
+            try {
+              const ret = await selfAgentStream({ history: [{ role: 'user', content: args.goal || '' }], cloud }, subEmit, { isCancelled, setCurReq, depth: depth + 1 });
+              return { out: subSum || ret || '(sub‑agent selesai tanpa ringkasan)' };
+            } catch (e) { return { out: '[sub‑agent gagal: ' + e.message + ']' }; }
+          }
+          return { out };
+        };
+
+        const results = await Promise.all(calls.map(tc => runOne(tc)));
+        
+        const toolMessages = [];
+        let stopReason = "";
+        let waitForAnswer = false;
+        let localSummary = "";
+        
+        for (let i = 0; i < calls.length; i++) {
+          if (results[i] && results[i].stop) {
+            if (results[i].waitForAnswer) {
+              waitForAnswer = true;
+              stopReason = "waiting_for_user_answer";
+              localSummary = 'Menunggu jawaban user: ' + results[i].question;
+            } else {
+              stopReason = "repeated_tool_calls";
+              localSummary = msg.content || 'Berhenti: panggilan tool berulang tanpa kemajuan.';
+            }
+          }
+          toolMessages.push({ role: 'tool', tool_call_id: calls[i].id, content: (results[i] && results[i].out) || '(ok)' });
+        }
+        
+        return { 
+          messages: toolMessages, 
+          step: state.step + 1, 
+          edits: localEdits, 
+          accessedEvidence: Array.from(localAccessed),
+          failedTools: Array.from(localFailed),
+          stopReason, 
+          waitForAnswer, 
+          finalSummary: localSummary 
+        };
+      })
+      .addNode("validate", async (state) => {
+        const msg = state.messages[state.messages.length - 1];
         const hasContent = msg.content && msg.content.trim();
         let fallback = hasContent ? msg.content : '(tidak ada respons dari model)';
         
-        // 1. Bersihkan kata spekulatif dari output
         fallback = sanitizeOutput(fallback);
-        
-        // 1b. Hapus rekapitulasi tool / daftar bukti / pola verbose
         fallback = stripToolRecap(fallback);
-        
-        // 1c. Safety net: pastikan jawaban akhir tetap singkat (maks 1-2 kalimat / 300 char)
         fallback = truncateToConcise(fallback, 300);
         
-        // 2. Validasi bukti: jika belum mencoba minimal 3 tool, paksa coba lagi
-        if (failedTools.size < SYSTEM_RULES.MIN_FAILED_TOOLS && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.some(t => failedTools.has(t))) {
-          const nextTool = SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.find(t => !failedTools.has(t));
+        if (state.failedTools.size < SYSTEM_RULES.MIN_FAILED_TOOLS && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.some(t => state.failedTools.has(t))) {
+          const nextTool = SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.find(t => !state.failedTools.has(t));
           if (nextTool) {
-            emit({ t: 'force_retry', m: `Belum memenuhi minimal ${SYSTEM_RULES.MIN_FAILED_TOOLS} tool gagal. Coba ${nextTool} selanjutnya...` });
-            messages.push({ role: 'user', content: `Anda belum mencoba tool ${nextTool}. Jalankan tool tersebut untuk mencari informasi lebih lanjut sebelum menyimpulkan.` });
-            step--;
-            continue;
+            if (state.forceRetryCount >= 3) {
+              dlog('self', 'warn', 'force_retry limit reached', { step: state.step });
+            } else {
+              emit({ t: 'force_retry', m: `Belum memenuhi minimal ${SYSTEM_RULES.MIN_FAILED_TOOLS} tool gagal. Coba ${nextTool} selanjutnya...` });
+              return { 
+                messages: [{ role: 'user', content: `Anda belum mencoba tool ${nextTool}. Jalankan tool tersebut untuk mencari informasi lebih lanjut sebelum menyimpulkan.` }],
+                forceRetryCount: state.forceRetryCount + 1
+              };
+            }
           }
         }
         
-        // 3. Cek apakah jawaban mengandung bukti dari tools yang diakses
-        if (!hasValidEvidence(fallback, accessedEvidence)) {
-          emit({ t: 'force_retry', m: 'Jawaban belum berdasarkan bukti tools, meminta ulang...' });
-          messages.push({ role: 'user', content: 'Jawaban Anda harus didasarkan pada bukti dari tools yang sudah dijalankan, tetapi DILARANG menyalin ulang log/output tool. Berikan kesimpulan SANGAT SINGKAT (1-2 kalimat) saja, langsung ke inti.' });
-          step--;
-          continue;
+        if (!hasValidEvidence(fallback, state.accessedEvidence)) {
+          if (state.forceRetryCount >= 3) {
+            dlog('self', 'warn', 'hasValidEvidence retry limit reached', { step: state.step });
+          } else {
+            emit({ t: 'force_retry', m: 'Jawaban belum berdasarkan bukti tools, meminta ulang...' });
+            return { 
+              messages: [{ role: 'user', content: 'Jawaban Anda harus didasarkan pada bukti dari tools yang sudah dijalankan, tetapi DILARANG menyalin ulang log/output tool. Berikan kesimpulan SANGAT SINGKAT (1-2 kalimat) saja, langsung ke inti.' }],
+              forceRetryCount: state.forceRetryCount + 1
+            };
+          }
         }
         
-        finalSummary = fallback;
-        dlog('self', 'info', 'stop', { reason: hasContent ? 'text_response_no_tools' : 'no_response', step, chars: (msg.content || '').length, sanitized: true });
-
-        // Validation phase
+        dlog('self', 'info', 'stop', { reason: hasContent ? 'text_response_no_tools' : 'no_response', step: state.step, chars: (msg.content || '').length, sanitized: true });
+        
         emitPhase('validate', {
-          tag: 'Validate',
-          status: 'ok',
-          attrs: [{ k: 'step', v: step, t: 'num' }],
+          tag: 'Validate', status: 'ok', attrs: [{ k: 'step', v: state.step, t: 'num' }],
           children: [
             { tag: 'evidence_check', status: 'ok', attrs: [{ k: 'claim_grounded', v: 'true', t: 'str' }], evidence: true },
             { tag: 'strip_tool_recap', status: 'ok', attrs: [{ k: 'final_chars', v: fallback.length, t: 'num' }] },
-            { tag: 'sandbox_audit', status: 'ok', attrs: [{ k: 'files_written', v: edits, t: 'num' }] }
+            { tag: 'sandbox_audit', status: 'ok', attrs: [{ k: 'files_written', v: state.edits, t: 'num' }] }
           ]
         });
 
         const runRes = hasContent ? await runReply(fallback) : null;
-        emit({ t: 'adone', steps: step, edits, summary: finalSummary, backup: backupRel(), run: runRes });
-
-        // Return phase
+        emit({ t: 'adone', steps: state.step, edits: state.edits, summary: fallback, backup: backupRel(), run: runRes });
+        
         emitPhase('return', {
-          tag: 'Return',
-          status: 'ok',
-          attrs: [{ k: 'step', v: step, t: 'num' }],
-          children: [
-            { tag: 'response', status: 'ok', attrs: [{ k: 'type', v: 'text', t: 'str' }, { k: 'chars', v: finalSummary.length, t: 'num' }, { k: 'preview', v: finalSummary.slice(0, 80), t: 'str' }] }
-          ]
+          tag: 'Return', status: 'ok', attrs: [{ k: 'step', v: state.step, t: 'num' }],
+          children: [{ tag: 'response', status: 'ok', attrs: [{ k: 'type', v: 'text', t: 'str' }, { k: 'chars', v: fallback.length, t: 'num' }, { k: 'preview', v: fallback.slice(0, 80), t: 'str' }] }]
         });
-        break;
-      }
-
-      // Execute each tool call sequentially
-      const runOne = async (tc) => {
-        let args = {};
-        try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
         
-        // --- EXTRAKTOR CHAIN-OF-THOUGHT ---
-        if (args.rencana_tindakan) {
-          // Kita pancarkan sebagai tipe 'thought' khusus agar Frontend bisa membungkusnya dalam UI berstruktur
-          emit({ t: 'thought', c: args.rencana_tindakan, tool: tc.function.name, ok: true });
-          emitPhase('think', {
-            tag: 'rencana_tindakan',
-            status: 'ok',
-            attrs: [
-              { k: 'tool', v: tc.function.name, t: 'str' },
-              { k: 'plan', v: args.rencana_tindakan.slice(0, 80), t: 'str' }
-            ]
-          });
-        }
-        
-        const sig = tc.function.name + '|' + (tc.function.arguments || '');
-        callCounts[sig] = (callCounts[sig] || 0) + 1;
-        if (callCounts[sig] > 10) return { stop: true };
+        return { finalSummary: fallback, stopReason: 'finished' };
+      })
+      .addEdge(START, "agent")
+      .addConditionalEdges("agent", (state) => {
+        if (state.stopReason) return END;
+        const msg = state.messages[state.messages.length - 1];
+        if (msg.role === 'assistant' && msg.tool_calls && msg.tool_calls.length > 0) return "tools";
+        // If fallback provider updated but no tools were returned
+        if (msg.role !== 'assistant') return "agent";
+        return "validate";
+      })
+      .addConditionalEdges("tools", (state) => {
+        if (state.stopReason) return END;
+        if (state.step >= MAX_STEPS) return END;
+        return "agent";
+      })
+      .addConditionalEdges("validate", (state) => {
+        if (state.stopReason === 'finished') return END;
+        return "agent";
+      });
 
-        if (/^(edit|write)$/i.test(tc.function.name)) ensureBackup();
-        // Emit "running" immediately for bash so frontend shows activity right away
-        if (tc.function.name === 'bash') {
-          emit({ t: 'act', kind: 'bash', arg: args.command || '', ok: true, output: '⟳ running…' });
-        }
-        const r = await runSelfTool(tc.function.name, args, emit);
-        if (r.edited) edits++;
-        // Simpan output tool sebagai bukti yang diakses
-        if (r.output) accessedEvidence.add(r.output);
-        // Catat tool yang gagal
-        if (!r.ok && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)) {
-          failedTools.add(tc.function.name);
-        }
-        // For edits, also include hunk info so frontend can show diff hunks
-        const extra = {};
-        if (r.hunkId) { extra.hunkId = r.hunkId; extra.oldContent = r.oldContent; extra.newContent = r.newContent; }
-        emit({ t: 'act', kind: tc.function.name, arg: args.path || args.pattern || args.command || '', ok: !!r.ok, output: r.output || '', ...extra });
+    const app = workflow.compile();
+    const finalState = await app.invoke({ messages });
 
-        // Emit single tool_call node with tool_result child for execution tree
-        const phase = phaseForTool(tc.function.name);
-        const toolArg = args.path || args.pattern || args.command || args.goal || '';
-        const cleanArg = toolArg.replace(/C:\\Users\\dave\\quantum\\/gi, '').replace(/C:\\Users\\dave\\/gi, '').slice(0, 60);
-        emitPhase(phase, {
-          tag: 'tool_call',
-          status: r.ok ? 'ok' : 'err',
-          attrs: [
-            { k: 'name', v: tc.function.name, t: 'str' },
-            { k: 'arg', v: cleanArg, t: 'str' }
-          ],
-          chip: phase,
-          children: [
-            {
-              tag: 'tool_result',
-              status: r.ok ? 'ok' : 'err',
-              attrs: [
-                { k: 'ok', v: String(r.ok), t: 'str' },
-                { k: 'preview', v: (r.output || '(ok)').replace(/\r?\n/g, ' ').slice(0, 80), t: 'str' }
-              ]
-            }
-          ]
-        });
-
-        let out = r.output || '(ok)';
-        if (callCounts[sig] >= 2) out += '\n[catatan: panggilan sama diulang ' + callCounts[sig] + '× — hasilnya SAMA. JANGAN ulang yang sama; pakai hasil ini, lalu lanjut atau jawab.]';
-        // Handle question tool — pause and wait for user input
-        if (r.needsAnswer) {
-          emit({ t: 'ask', question: r.question, choices: r.choices });
-          out = 'You asked the user: "' + r.question + '". The user will respond. Wait for their answer before continuing.';
-          return { out, stop: true, waitForAnswer: true, question: r.question };
-        }
-        // Handle sub‑agent task delegation
-        if (tc.function.name === 'task') {
-          if (depth >= MAX_DEPTH) {
-            const outMsg = '(batas kedalaman sub‑agent tercapai — kerjakan sub‑tugas ini langsung dengan tool biasa)';
-            emit({ t: 'act', kind: 'task', arg: (args.goal || '').slice(0,70), ok: false, output: outMsg });
-            return { out: outMsg };
-          }
-          emit({ t: 'act', kind: 'task', arg: (args.goal || '').slice(0,70), ok: true, output: '↳ sub‑agent…' });
-          let subSum = '';
-          const subEmit = (e) => {
-            if (e.t === 'adone') subSum = e.summary || '';
-            else if (e.t === 'err') subSum = '[sub‑agent error: ' + e.m + ']';
-            else if (e.t === 'act') emit({ t: 'act', kind: e.kind, arg: '↳ ' + (e.arg || ''), ok: e.ok, output: e.output });
-          };
-          try {
-            const ret = await selfAgentStream({ history: [{ role: 'user', content: args.goal || '' }], cloud }, subEmit, { isCancelled, setCurReq, depth: depth + 1 });
-            return { out: subSum || ret || '(sub‑agent selesai tanpa ringkasan)' };
-          } catch (e) { return { out: '[sub‑agent gagal: ' + e.message + ']' }; }
-        }
-        return { out };
-      };
-
-      // Execute all tool calls in parallel (Promise.all) — eliminates sequential bottleneck
-      const results = await Promise.all(calls.map((tc, i) => runOne(tc)));
-      // Check for stop conditions after all parallel executions
-      for (let i = 0; i < calls.length; i++) {
-        if (results[i] && results[i].stop) {
-          if (results[i].waitForAnswer) {
-            // Question tool — pause and wait for user input
-            for (let j = 0; j < calls.length; j++) {
-              messages.push({ role: 'tool', tool_call_id: calls[j].id, content: (results[j] && results[j].out) || '(ok)' });
-            }
-            emit({ t: 'adone', steps: step, edits, summary: 'Menunggu jawaban user: ' + results[i].question, backup: backupRel(), waitForAnswer: true });
-            dlog('self', 'info', 'stop', { reason: 'waiting_for_user_answer', step, question: results[i].question });
-            return 'Menunggu jawaban user: ' + results[i].question;
-          }
-          dlog('self', 'info', 'stop', { reason: 'repeated_tool_calls', step, tool: calls[i].function.name });
-          finalSummary = msg.content || 'Berhenti: panggilan tool berulang tanpa kemajuan.';
-          const runRes = msg.content ? await runReply(msg.content) : null;
-          emit({ t: 'adone', steps: step, edits, summary: finalSummary, backup: backupRel(), run: runRes });
-          return finalSummary;
-        }
-      }
-      for (let i = 0; i < calls.length; i++) {
-        messages.push({ role: 'tool', tool_call_id: calls[i].id, content: (results[i] && results[i].out) || '(ok)' });
-      }
-      if (step === MAX_STEPS) {
-        dlog('self', 'info', 'stop', { reason: 'max_steps', step });
-        finalSummary = 'Batas langkah (' + MAX_STEPS + ').';
-        emit({ t: 'adone', steps: step, edits, summary: finalSummary, backup: backupRel() });
-      }
+    if (finalState.stopReason === 'repeated_tool_calls' || finalState.stopReason === 'waiting_for_user_answer') {
+       if (finalState.waitForAnswer) {
+         dlog('self', 'info', 'stop', { reason: 'waiting_for_user_answer', step: finalState.step });
+         emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalState.finalSummary, backup: backupRel(), waitForAnswer: true });
+       } else {
+         const runRes = finalState.finalSummary ? await runReply(finalState.finalSummary) : null;
+         emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalState.finalSummary, backup: backupRel(), run: runRes });
+       }
+    } else if (finalState.step >= MAX_STEPS && finalState.stopReason !== "finished") {
+       dlog('self', 'info', 'stop', { reason: 'max_steps', step: finalState.step });
+       finalSummary = 'Batas langkah (' + MAX_STEPS + ').';
+       emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalSummary, backup: backupRel() });
     }
+    
+    finalSummary = finalState.finalSummary || finalSummary;
   } catch (e) {
     dlog('self', 'info', 'stop', { reason: 'unhandled_exception', error: (e && e.message || String(e)).slice(0, 100) });
     if (!isCancelled()) emit({ t: 'err', m: e.message });

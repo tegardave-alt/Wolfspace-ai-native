@@ -1,10 +1,10 @@
-#!/usr/bin/env node
+﻿#!/usr/bin/env node
 // Quick test: verify git, edit_batch, run_tests tools work
 
 const { runSelfTool, SELF_TOOLS } = require('./agent/tools.cjs');
 
 async function test() {
-  console.log('=== Testing new Quantum tools ===\n');
+  console.log('=== Testing new WOLFSPACE tools ===\n');
 
   // Test 1: git tool — status
   console.log('TEST 1: git status');
@@ -39,3 +39,4 @@ async function test() {
 }
 
 test().catch(console.error);
+

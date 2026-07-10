@@ -1,0 +1,443 @@
+﻿const { useState, useRef, useEffect, useCallback } = React;
+
+/* ----------------------------- Icons ----------------------------- */
+const Icon = {
+  spark: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M12 2.5l1.9 5.1 5.1 1.9-5.1 1.9L12 16.5l-1.9-5.1L5 9.5l5.1-1.9L12 2.5z" fill="currentColor"/><path d="M18.5 14.5l.9 2.4 2.4.9-2.4.9-.9 2.4-.9-2.4-2.4-.9 2.4-.9.9-2.4z" fill="currentColor" opacity="0.7"/></svg>),
+  caret: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  chev: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M6 9l6 6 6-6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  reset: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M3 12a9 9 0 109-9 9 9 0 00-7 3.3M3 4v3.3h3.3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  copy: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><rect x="9" y="9" width="11" height="11" rx="2" stroke="currentColor" strokeWidth="2"/><path d="M5 15V5a2 2 0 012-2h10" stroke="currentColor" strokeWidth="2" strokeLinecap="round"/></svg>),
+  check: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M5 13l4 4L19 7" stroke="currentColor" strokeWidth="2.2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  send: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M4 12l16-8-5 16-3.5-6L4 12z" fill="currentColor"/></svg>),
+  target: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2"/><circle cx="12" cy="12" r="3.2" fill="currentColor"/></svg>),
+  arrow: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M9 6l6 6-6 6" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  play: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M7 5l12 7-12 7V5z" fill="currentColor"/></svg>),
+  pencil: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M14.5 5.5l4 4M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1z" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"/></svg>),
+  loader: (p) => (<svg viewBox="0 0 24 24" fill="none" {...p}><path d="M12 3a9 9 0 109 9" stroke="currentColor" strokeWidth="2.4" strokeLinecap="round"/></svg>),
+};
+function BrandMark({ className }) { return (<span className={"brand-mark " + (className || "")}><Icon.spark style={{ color: "#fff" }} /></span>); }
+
+/* ----------------------------- Backend glue ----------------------------- */
+const PREFIXES = [["github_pat_","github","GitHub Models"],["ghp_","github","GitHub Models"],["sk-ant-","anthropic","Claude"],["sk-or-","openrouter","OpenRouter"],["gsk_","groq","Groq"],["AIza","gemini","Gemini"],["sk-","openai","OpenAI"]];
+const CLOUD_DEFAULT = { anthropic:"claude", openai:"gpt-4o", openrouter:"anthropic/claude-opus-4-8", groq:"llama", qwen:"qwen", deepseek:"chat", github:"gpt-4o", gemini:"gemini-2.0-flash", custom:"gpt-4o" };
+const PROVIDER_LABELS = { openai:"OpenAI", qwen:"Qwen", groq:"Groq", openrouter:"OpenRouter", anthropic:"Claude", deepseek:"DeepSeek", github:"GitHub Models", gemini:"Gemini", custom:"Custom" };
+const PROVIDER_OPTS = ["auto","openai","qwen","deepseek","github","groq","openrouter","anthropic","gemini","custom"];
+function detectPrefix(key){ key=(key||"").trim(); for(const [p,prov,name] of PREFIXES) if(key.startsWith(p)) return {provider:prov,name}; return key?{provider:"openai",name:"OpenAI"}:null; }
+function keyish(s){ return /^(sk-|gsk_|AIza|github_pat_|ghp_)/.test((s||"").trim()); }
+function getCloud(){ try{ return JSON.parse(localStorage.getItem("quantum_cloud")||"null"); }catch(e){ return null; } }
+function setCloudLS(c){ if(c) localStorage.setItem("quantum_cloud", JSON.stringify(c)); else localStorage.removeItem("quantum_cloud"); }
+function escHtml(s){ return s.replace(/[&<>]/g,c=>({"&":"&amp;","<":"&lt;",">":"&gt;"}[c])); }
+function mdToHtml(s){ let h=escHtml(s); h=h.replace(/`([^`\n]+)`/g,'<span class="inline-code">$1</span>'); h=h.replace(/\*\*([^*\n]+)\*\*/g,"<strong>$1</strong>"); return h.replace(/\n/g,"<br/>"); }
+function parseBlocks(text){
+  const out=[]; const re=/```(\w*)\n?([\s\S]*?)```/g; let last=0,m;
+  while((m=re.exec(text))){ const pre=text.slice(last,m.index); if(pre.trim()) out.push({type:"text",html:mdToHtml(pre)}); out.push({type:"code",lang:(m[1]||"text"),code:m[2].replace(/\n$/,"")}); last=re.lastIndex; }
+  const tail=text.slice(last); const open=tail.indexOf("```");
+  if(open>=0){ const pre=tail.slice(0,open); if(pre.trim()) out.push({type:"text",html:mdToHtml(pre)}); out.push({type:"code",lang:"",code:tail.slice(open).replace(/^```\w*\n?/,"")}); }
+  else if(tail.trim()) out.push({type:"text",html:mdToHtml(tail)});
+  return out;
+}
+function reqFor(modelVal, cloud, history){ return (modelVal==="cloud" && cloud) ? { history, cloud } : { history, port: modelVal }; }
+async function streamChat(reqBody, onText, signal){
+  let acc="", run=null;
+  const r = await fetch("/chat",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify(reqBody),signal});
+  const reader=r.body.getReader(); const dec=new TextDecoder(); let buf="";
+  while(true){ const {done,value}=await reader.read(); if(done) break;
+    buf+=dec.decode(value,{stream:true}); const lines=buf.split("\n"); buf=lines.pop();
+    for(const line of lines){ const mm=line.match(/^data:\s*(.*)$/); if(!mm) continue; let j; try{ j=JSON.parse(mm[1]); }catch(e){ continue; }
+      if(j.t==="tok"){ acc+=j.c; onText(acc,run); }
+      else if(j.t==="run"){ run=j.run; onText(acc,run); }
+      else if(j.t==="done"){ run=j.run||run; onText(acc,run); }
+      else if(j.t==="err"){ acc+="\n["+j.m+"]"; onText(acc,run); }
+    } }
+  return { text: acc, run };
+}
+
+/* ----------------------------- Top bar ----------------------------- */
+function TopBar({ models, modelVal, setModelVal, compare, setCompare, compareVal, setCompareVal, panelOpen, setPanelOpen, onReset, status }) {
+  return (
+    <header className="topbar">
+      <button className={"brand-btn" + (panelOpen ? " open" : "")} onClick={() => setPanelOpen(!panelOpen)}>
+        <BrandMark /><span className="brand-name">WOLFSPACE</span>
+        <Icon.caret className="brand-caret" style={{ width: 14, height: 14 }} />
+      </button>
+      <div className="tb-spacer" /><span className="tb-label">Model</span>
+      <div className="model-select">
+        <select value={modelVal} onChange={(e) => setModelVal(e.target.value)}>
+          {models.map((m) => <option key={m.value} value={m.value} disabled={m.disabled}>{m.label}</option>)}
+        </select>
+        <Icon.chev className="chev" style={{ width: 15, height: 15 }} />
+      </div>
+      <button className="tb-btn" onClick={onReset}><Icon.reset /> Reset</button>
+      <button className={"compare" + (compare ? " on" : "")} onClick={() => setCompare(!compare)}><span className="toggle" />Bandingkan</button>
+      {compare && (
+        <div className="model-select">
+          <select value={compareVal} onChange={(e) => setCompareVal(e.target.value)}>
+            {models.map((m) => <option key={m.value} value={m.value} disabled={m.disabled}>{m.label}</option>)}
+          </select>
+          <Icon.chev className="chev" style={{ width: 15, height: 15 }} />
+        </div>
+      )}
+      <div className="tb-spacer" />
+    </header>
+  );
+}
+
+/* ----------------------------- Settings panel ----------------------------- */
+function SettingsPanel({ onClose, onSaved, onVisualPicker }) {
+  const stored = getCloud();
+  const [cfgOpen, setCfgOpen] = useState(true);
+  const [key, setKey] = useState("");
+  const [provider, setProvider] = useState(stored ? (stored.baseUrl ? "custom" : stored.provider) : "auto");
+  const [model, setModelName] = useState(stored ? (keyish(stored.model) ? "" : stored.model) : "");
+  const [baseUrl, setBaseUrl] = useState(stored ? (stored.baseUrl || "") : "");
+  const [hint, setHint] = useState(stored ? ("provider " + stored.provider + " ·" + stored.key.slice(-4) + " · aktif") : "Tempel API key, lalu Deteksi atau pilih provider.");
+
+  const detect = async () => {
+    const k = key.trim() || (stored && stored.key);
+    if (!k) { setHint("Tempel API key dulu."); return; }
+    setHint("🔍 Mendeteksi…");
+    try {
+      const d = await (await fetch("/detect-key",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({key:k})})).json();
+      if (PROVIDER_LABELS[d.provider]) setProvider(d.provider);
+      setHint(d.verified ? ("✓ Terverifikasi: " + d.name) : ("Tebakan: " + d.name + " (belum terverifikasi)"));
+    } catch(e){ setHint("Deteksi gagal: " + e.message); }
+  };
+  const save = () => {
+    const k = key.trim() || (stored && stored.key);
+    if (!k) { setHint("Tempel API key dulu."); return; }
+    let prov, name, bu;
+    if (provider === "auto") { const d = detectPrefix(k); prov = d.provider; name = d.name; }
+    else if (provider === "custom") { prov = "custom"; name = "Custom"; bu = baseUrl.trim(); if(!bu){ setHint("Isi Base URL untuk custom."); return; } }
+    else { prov = provider; name = PROVIDER_LABELS[provider]; }
+    let mdl = model.trim();
+    if (stored && stored.provider !== prov) mdl = "";
+    if (!mdl || keyish(mdl)) mdl = CLOUD_DEFAULT[prov] || "gpt-4o";
+    setCloudLS({ key:k, provider:prov, name, model:mdl, baseUrl:bu });
+    setHint("Tersimpan: " + prov + " ·" + k.slice(-4) + " → " + mdl);
+    onSaved();
+  };
+  const clear = () => { setCloudLS(null); setKey(""); setModelName(""); setBaseUrl(""); setProvider("auto"); setHint("Dihapus."); onSaved(); };
+
+  return (
+    <>
+      <div className="panel-overlay" onClick={onClose} />
+      <div className="panel" onClick={(e) => e.stopPropagation()}>
+        <div className="panel-head"><BrandMark /><span className="name">WOLFSPACE</span>{stored && <span className="tag">·{stored.key.slice(-4)}</span>}</div>
+        <div className="panel-body">
+          <div className={"cfg" + (cfgOpen ? " open" : "")}>
+            <button className="cfg-toggle" onClick={() => setCfgOpen((o) => !o)}>
+              <span className="status-dot" /><span className="cfg-title">Cloud API</span>
+              {!cfgOpen && <span className="cfg-summary">{stored ? stored.provider + " · ·" + stored.key.slice(-4) : "belum diatur"}</span>}
+              <Icon.caret className="cfg-caret" style={{ width: 15, height: 15 }} />
+            </button>
+            {cfgOpen && (
+              <div className="cfg-content">
+                <div className="field"><label className="field-label">Cloud API Key</label>
+                  <input className="input" type="password" autoComplete="new-password" value={key} onChange={(e)=>setKey(e.target.value)}
+                    placeholder={stored ? ("Key tersimpan (…" + stored.key.slice(-4) + ") — kosongkan untuk tetap") : "Tempel API key apa saja…"} />
+                </div>
+                <button className="btn btn-ghost" onClick={detect}>🔍 Deteksi provider dari key</button>
+                <div className="field"><label className="field-label">Provider</label>
+                  <div className="select-wrap">
+                    <select value={provider} onChange={(e)=>setProvider(e.target.value)}>
+                      <option value="auto">Auto-deteksi</option>
+                      {PROVIDER_OPTS.filter(p=>p!=="auto").map(p=><option key={p} value={p}>{p==="custom"?"OpenAI-compatible (URL custom)":PROVIDER_LABELS[p]}</option>)}
+                    </select>
+                    <Icon.chev className="chev" style={{ width: 15, height: 15 }} />
+                  </div>
+                </div>
+                {provider === "custom" && (
+                  <div className="field"><label className="field-label">Base URL</label>
+                    <input className="input" value={baseUrl} onChange={(e)=>setBaseUrl(e.target.value)} placeholder="https://host/v1" /></div>
+                )}
+                <div className="field"><label className="field-label">Model</label>
+                  <input className="input" value={model} onChange={(e)=>setModelName(e.target.value)} placeholder="opsional — mis. qwen, coder, gpt-4o" /></div>
+                <div className="provider-status"><span className="status-dot" />{hint}</div>
+                <div className="btn-row">
+                  <button className="btn btn-primary" onClick={save}><Icon.check style={{width:14,height:14}} /> Simpan</button>
+                  <button className="btn btn-danger" onClick={clear}>Hapus</button>
+                </div>
+              </div>
+            )}
+          </div>
+          <div className="panel-section"><label className="field-label">Alat</label>
+            <button className="tool-btn" onClick={onVisualPicker}><span className="tool-ico"><Icon.target style={{width:15,height:15}} /></span>Visual Picker<Icon.arrow className="chev" style={{ width: 16, height: 16 }} /></button>
+          </div>
+          <div className="panel-footer">— ruang untuk fitur lain —</div>
+        </div>
+      </div>
+    </>
+  );
+}
+
+/* ----------------------------- Syntax highlight ----------------------------- */
+const KW = {
+  python: "def class return if elif else for while in and or not import from as with try except finally lambda None True False print pass break continue is global nonlocal yield assert raise del self".split(" "),
+  javascript: "function return if else for while const let var class new typeof instanceof import from export default await async try catch finally throw switch case break continue this null undefined true false of in delete void yield".split(" "),
+};
+KW.typescript = KW.javascript; KW.go = "func return if else for range var const type struct interface package import map chan go defer nil true false switch case break continue".split(" ");
+function highlight(code, lang){
+  const kws = KW[lang] || KW.javascript;
+  const re = /(\/\/[^\n]*|#[^\n]*)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+\.?\d*\b)|([A-Za-z_$][\w$]*)(\s*\()?/g;
+  let out="", last=0, m;
+  while((m=re.exec(code))){
+    out += escHtml(code.slice(last, m.index));
+    if(m[1]) out += '<span class="t-com">'+escHtml(m[1])+'</span>';
+    else if(m[2]) out += '<span class="t-str">'+escHtml(m[2])+'</span>';
+    else if(m[3]) out += '<span class="t-num">'+escHtml(m[3])+'</span>';
+    else if(m[4]!==undefined){
+      const w=m[4], paren=m[5]||"";
+      if(kws.indexOf(w)>=0) out += '<span class="t-kw">'+escHtml(w)+'</span>';
+      else if(paren) out += '<span class="t-fn">'+escHtml(w)+'</span>';
+      else out += escHtml(w);
+      out += escHtml(paren);
+    }
+    last = re.lastIndex;
+  }
+  out += escHtml(code.slice(last));
+  return out;
+}
+
+/* ----------------------------- Code block ----------------------------- */
+const LANGS = ["python","javascript","typescript","bash","go","c","cpp","java","php","rust","kotlin","html","css","json"];
+const MLANG = { js:"javascript", javascript:"javascript", node:"javascript", ts:"typescript", typescript:"typescript",
+  py:"python", python:"python", go:"go", golang:"go", c:"c", cpp:"cpp", "c++":"cpp", java:"java", php:"php",
+  rust:"rust", kotlin:"kotlin", html:"html", css:"css", json:"json", bash:"shell", sh:"shell", shell:"shell", sql:"sql", yaml:"yaml", markdown:"markdown" };
+function mLang(l){ return MLANG[(l||"").toLowerCase()] || "plaintext"; }
+
+function CodeBlock({ lang, code, onAiEdit, busy }) {
+  const [copied, setCopied] = useState(false);
+  const [language, setLanguage] = useState((lang || "python").toLowerCase());
+  const [aiOpen, setAiOpen] = useState(false);
+  const [ins, setIns] = useState("");
+  const [runState, setRunState] = useState("idle");
+  const [out, setOut] = useState(null);
+  const hostRef = useRef(null);
+  const edRef = useRef(null);
+  const focusedRef = useRef(false);
+  const getCode = () => edRef.current ? edRef.current.getValue() : code;
+
+  useEffect(() => {
+    let disposed = false;
+    if (!window.monacoReady) return;
+    window.monacoReady.then((monaco) => {
+      if (disposed || !hostRef.current) return;
+      const ed = monaco.editor.create(hostRef.current, { value: code, language: mLang(language), theme: "vs-dark",
+        automaticLayout: true, minimap: { enabled: false }, scrollBeyondLastLine: false, fontSize: 13, lineNumbers: "on",
+        renderLineHighlight: "none", tabSize: 4, scrollbar: { alwaysConsumeMouseWheel: false }, padding: { top: 8, bottom: 8 }, wordWrap: "off" });
+      edRef.current = ed;
+      const fit = () => { if (!hostRef.current) return; hostRef.current.style.height = Math.min(Math.max(ed.getContentHeight(), 38), 540) + "px"; ed.layout(); };
+      ed.onDidContentSizeChange(fit); fit();
+      ed.onDidFocusEditorText(() => { focusedRef.current = true; });
+      ed.onDidBlurEditorText(() => { focusedRef.current = false; });
+    });
+    return () => { disposed = true; if (edRef.current) { edRef.current.dispose(); edRef.current = null; } };
+  }, []);
+  // follow streaming text until the user starts editing
+  useEffect(() => { const ed = edRef.current; if (ed && !focusedRef.current && ed.getValue() !== code) ed.setValue(code); }, [code]);
+  useEffect(() => { const ed = edRef.current; if (ed && window.monaco) window.monaco.editor.setModelLanguage(ed.getModel(), mLang(language)); }, [language]);
+
+  const copyCode = () => { navigator.clipboard?.writeText(getCode()); setCopied(true); setTimeout(()=>setCopied(false),1500); };
+  const run = async () => {
+    setRunState("running"); setOut(null);
+    try { const r = await fetch("/run",{method:"POST",headers:{"Content-Type":"application/json"},body:JSON.stringify({language:language,code:getCode()})}); setOut(await r.json()); }
+    catch(e){ setOut({ ok:false, error:"server tidak terjangkau: "+e.message }); }
+    setRunState("done");
+  };
+  const doAi = () => { const t=ins.trim(); if(!t||busy) return; setAiOpen(false); setIns(""); onAiEdit(getCode(), language, t); };
+
+  return (
+    <div className="code-block">
+      <div className="code-head">
+        <span className="code-dots"><span style={{background:"#ff5f57"}}/><span style={{background:"#febc2e"}}/><span style={{background:"#28c840"}}/></span>
+        <span className="code-lang">{language}</span><span className="lang-spacer" />
+      </div>
+      <div className="monaco-host" ref={hostRef} />
+      <div className="code-toolbar">
+        <button className="ctb-btn ctb-run" onClick={run} disabled={runState==="running"}>
+          {runState==="running" ? <><Icon.loader className="spin" /> Running…</> : <><Icon.play /> Run</>}
+        </button>
+        <button className="ctb-btn ctb-ai" onClick={()=>setAiOpen(o=>!o)}><Icon.spark style={{width:13,height:13}} /> AI Edit</button>
+        <button className={"ctb-btn"+(copied?" copied":"")} onClick={copyCode}>{copied?<Icon.check/>:<Icon.copy/>} {copied?"Copied":"Copy"}</button>
+        <div className="ctb-lang"><select value={language} onChange={(e)=>setLanguage(e.target.value)}>{LANGS.map(l=><option key={l} value={l}>{l}</option>)}</select><Icon.chev className="chev" style={{width:14,height:14}} /></div>
+      </div>
+      {aiOpen && (
+        <div className="ai-panel">
+          <textarea value={ins} onChange={(e)=>setIns(e.target.value)} placeholder="Instruksi AI… (mis. tambah error handling, ubah ke async)"
+            onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); doAi(); } }} />
+          <div className="ai-row"><button className="ai-go" onClick={doAi}>✦ Generate</button><button className="ctb-btn" onClick={()=>setAiOpen(false)}>Batal</button></div>
+        </div>
+      )}
+      {runState==="done" && out && (
+        <div className={"code-output " + (out.ok ? "ok" : "err")}>
+          <div className="output-head"><span className="ok-mark">{out.ok?<><Icon.check/> ran (exit 0)</>:<>✗ error</>} · {language}</span></div>
+          <div className="output-body">{(out.output||"") + (out.error?("\n"+out.error):"") || "(no output)"}</div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+/* ----------------------------- Message ----------------------------- */
+function Blocks({ text, onAiEdit, busy }) {
+  const blocks = parseBlocks(text);
+  if (!blocks.length) return <div className="typing"><span/><span/><span/></div>;
+  return blocks.map((b,i) => b.type==="code"
+    ? <CodeBlock key={i} lang={b.lang} code={b.code} onAiEdit={onAiEdit} busy={busy} />
+    : <p key={i} dangerouslySetInnerHTML={{ __html: b.html }} />);
+}
+function Verdict({ run }) {
+  if (!run) return null;
+  return <div className={"verdict " + (run.ok ? "ok" : "bad")}>{run.ok ? "✓ terverifikasi (exit 0)" : "⚠ belum lolos"}</div>;
+}
+function Message({ msg, onAiEdit, busy }) {
+  if (msg.role === "user") return (<div className="msg user"><span className="msg-role">you</span><div className="bubble-user">{msg.text}</div></div>);
+  if (msg.role === "compare") return (
+    <div className="msg model"><span className="msg-role">bandingkan</span>
+      <div className="cmp-grid">
+        {["a","b"].map((s)=>(
+          <div className="cmp-col" key={s}>
+            <div className="cmp-head">{s.toUpperCase()} · {msg[s].label}</div>
+            <div className="bubble-model">{msg[s].text ? <Blocks text={msg[s].text} onAiEdit={onAiEdit} busy={busy} /> : <div className="typing"><span/><span/><span/></div>}</div>
+            <Verdict run={msg[s].run} />
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+  return (
+    <div className="msg model"><span className="msg-role">model</span>
+      <div className="bubble-model">{msg.text ? <Blocks text={msg.text} onAiEdit={onAiEdit} busy={busy} /> : <div className="typing"><span/><span/><span/></div>}</div>
+      <Verdict run={msg.run} />
+    </div>
+  );
+}
+
+/* ----------------------------- Composer ----------------------------- */
+function Composer({ onSend, onCancel, busy }) {
+  const [val, setVal] = useState("");
+  const ref = useRef(null);
+  const grow = () => { const el=ref.current; if(!el) return; el.style.height="auto"; el.style.height=Math.min(el.scrollHeight,180)+"px"; };
+  const submit = () => { const v=val.trim(); if(!v||busy) return; onSend(v); setVal(""); requestAnimationFrame(()=>{ if(ref.current) ref.current.style.height="auto"; }); };
+  return (
+    <div className="composer-wrap">
+      <div className="composer">
+        <textarea ref={ref} rows={1} value={val} placeholder="Ask for code…"
+          onChange={(e)=>{ setVal(e.target.value); grow(); }}
+          onKeyDown={(e)=>{ if(e.key==="Enter"&&!e.shiftKey){ e.preventDefault(); submit(); } }} />
+        <button className={"send-btn"+(busy?" cancel":"")} onClick={busy?onCancel:submit} disabled={!busy && !val.trim()}>
+          {busy ? "Cancel" : <>Send <Icon.send /></>}
+        </button>
+      </div>
+      <div className="composer-hint"><kbd>Enter</kbd> kirim · <kbd>Shift</kbd>+<kbd>Enter</kbd> baris baru</div>
+    </div>
+  );
+}
+
+/* ----------------------------- Visual Picker ----------------------------- */
+function useVisualPicker(){
+  return useCallback(()=>{
+    let hover=null;
+    const move=(e)=>{ const el=e.target; if(hover&&hover!==el) hover.classList.remove("vp-hover"); hover=el; el.classList.add("vp-hover"); };
+    const sel=(el)=>{ if(el.id) return "#"+el.id; let s=el.tagName.toLowerCase(); if(typeof el.className==="string"&&el.className.trim()) s+="."+el.className.trim().split(/\s+/)[0]; return s; };
+    const click=(e)=>{ e.preventDefault(); e.stopPropagation(); const d=sel(e.target); navigator.clipboard?.writeText(d); stop(); alert("Tersalin selector: "+d); };
+    const key=(e)=>{ if(e.key==="Escape") stop(); };
+    function stop(){ document.body.classList.remove("vp-on"); if(hover) hover.classList.remove("vp-hover"); document.removeEventListener("mouseover",move,true); document.removeEventListener("click",click,true); document.removeEventListener("keydown",key,true); }
+    document.body.classList.add("vp-on");
+    document.addEventListener("mouseover",move,true); document.addEventListener("click",click,true); document.addEventListener("keydown",key,true);
+  },[]);
+}
+
+/* ----------------------------- App ----------------------------- */
+const SUGGESTIONS = ["Contoh syntax Python", "Buatkan fungsi rekursif Python dengan assert", "Jelaskan async/await", "Tulis is_prime(n) + tes"];
+function App() {
+  const [models, setModels] = useState([{value:"",label:"memuat…",disabled:true}]);
+  const [modelVal, setModelVal] = useState("");
+  const [compareVal, setCompareVal] = useState("");
+  const [compare, setCompare] = useState(false);
+  const [panelOpen, setPanelOpen] = useState(false);
+  const [messages, setMessages] = useState([]);
+  const [history, setHistory] = useState([]);
+  const [busy, setBusy] = useState(false);
+  const [status, setStatus] = useState("memuat model…");
+  const scrollRef = useRef(null);
+  const ctrlRef = useRef(null);
+  const startPicker = useVisualPicker();
+
+  const loadModels = useCallback(async () => {
+    let list = [];
+    try { list = await (await fetch("/models")).json(); } catch(e) {}
+    const opts = list.map(m => ({ value:String(m.port), label:m.name, default:m.default }));
+    const cloud = getCloud();
+    if (cloud && cloud.key) opts.push({ value:"cloud", label:"☁ "+cloud.name+" ("+cloud.model+") ·"+cloud.key.slice(-4) });
+    if (!opts.length) opts.push({ value:"", label:"tidak ada model", disabled:true });
+    setModels(opts);
+    const def = (cloud&&cloud.key) ? "cloud" : (opts.find(o=>o.default)||opts[0]).value;
+    setModelVal(v => v && opts.some(o=>o.value===v) ? v : def);
+    setCompareVal(v => v && opts.some(o=>o.value===v) ? v : (opts.find(o=>o.value!==def)||opts[0]).value);
+    setStatus(cloud&&cloud.key ? "cloud: "+cloud.name : (opts.length?"siap":"jalankan start-models"));
+  }, []);
+  useEffect(() => { loadModels(); }, [loadModels]);
+  useEffect(() => { const el=scrollRef.current; if(el) el.scrollTop=el.scrollHeight; }, [messages]);
+
+  const labelOf = (v) => (models.find(m=>m.value===v)||{}).label || v;
+
+  const doSend = async (content, display) => {
+    if (!content || busy) return;
+    const newHist = [...history, { role:"user", content }];
+    setHistory(newHist);
+    setBusy(true); setStatus("typing…");
+    const ctrl = new AbortController(); ctrlRef.current = ctrl;
+    if (compare) {
+      setMessages(m => [...m, { role:"user", text: display||content }, { role:"compare", a:{label:labelOf(modelVal),text:"",run:null}, b:{label:labelOf(compareVal),text:"",run:null} }]);
+      const upd = (side,t,run)=> setMessages(m=>{ const c=m.slice(); const last={...c[c.length-1]}; last[side]={...last[side],text:t,run}; c[c.length-1]=last; return c; });
+      try {
+        setStatus("A…"); const ra = await streamChat(reqFor(modelVal,getCloud(),newHist),(t,run)=>upd("a",t,run),ctrl.signal); upd("a",ra.text,ra.run);
+        setStatus("B…"); const rb = await streamChat(reqFor(compareVal,getCloud(),newHist),(t,run)=>upd("b",t,run),ctrl.signal); upd("b",rb.text,rb.run);
+        setHistory(h => [...h, { role:"assistant", content: ra.text }]);
+        setStatus("bandingkan: A "+(ra.run&&ra.run.ok?"✓":"–")+" vs B "+(rb.run&&rb.run.ok?"✓":"–"));
+      } catch(e){ if(e.name!=="AbortError") setStatus("error: "+e.message); else setStatus("dibatalkan"); }
+    } else {
+      setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
+      try {
+        const res = await streamChat(reqFor(modelVal,getCloud(),newHist),(t,run)=>{
+          setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:t,run}; return c; });
+        }, ctrl.signal);
+        setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:res.text,run:res.run}; return c; });
+        setHistory(h => [...h, { role:"assistant", content: res.text }]);
+        setStatus(res.run ? (res.run.ok ? "✓ verified" : "⚠ not passing") : "ready");
+      } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); } else setStatus("dibatalkan"); }
+    }
+    ctrlRef.current=null; setBusy(false);
+  };
+  const aiEditCode = (code, lang, instruction) => {
+    const prompt = "Ubah kode berikut sesuai instruksi. Kembalikan HANYA satu blok kode (bertag bahasa "+lang+").\nInstruksi: "+instruction+"\n\n```"+lang+"\n"+code+"\n```";
+    doSend(prompt, "✦ Ubah ("+lang+"): "+instruction);
+  };
+  const cancel = () => { if(ctrlRef.current) ctrlRef.current.abort(); };
+  const reset = () => { setMessages([]); setHistory([]); setBusy(false); setStatus("ready"); };
+
+  return (
+    <div className="app">
+      <TopBar models={models} modelVal={modelVal} setModelVal={setModelVal}
+        compare={compare} setCompare={setCompare} compareVal={compareVal} setCompareVal={setCompareVal}
+        panelOpen={panelOpen} setPanelOpen={setPanelOpen} onReset={reset} status={status} />
+      {panelOpen && <SettingsPanel onClose={()=>setPanelOpen(false)} onSaved={loadModels} onVisualPicker={()=>{ setPanelOpen(false); startPicker(); }} />}
+      <div className="chat-scroll" ref={scrollRef}>
+        {messages.length === 0 ? (
+          <div className="empty">
+            <span className="glyph"><Icon.spark style={{ color:"#fff" }} /></span>
+            <h2>Mulai ngobrol dengan WOLFSPACE</h2>
+            <p>Minta kode — contoh, refactor, atau penjelasan. Kode dijalankan & diverifikasi di CPU Anda.</p>
+            <div className="empty-chips">{SUGGESTIONS.map(s=><button className="chip" key={s} onClick={()=>doSend(s)}>{s}</button>)}</div>
+          </div>
+        ) : (
+          <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onAiEdit={aiEditCode} busy={busy} />)}</div>
+        )}
+      </div>
+      <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} />
+    </div>
+  );
+}
+ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+

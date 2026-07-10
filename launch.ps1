@@ -1,5 +1,5 @@
-# Quantum app launcher: starts the server (if needed), waits until ready,
-# then opens Quantum in a clean app window (no browser tabs/URL bar).
+﻿# WOLFSPACE app launcher: starts the server (if needed), waits until ready,
+# then opens WOLFSPACE in a clean app window (no browser tabs/URL bar).
 $ErrorActionPreference = 'SilentlyContinue'
 $root = $PSScriptRoot
 $port = 8090
@@ -27,3 +27,4 @@ if ($browser) {
 } else {
   Start-Process $url
 }
+

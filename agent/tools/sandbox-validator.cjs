@@ -1,10 +1,11 @@
-// Sandbox Validator — semantic, intent-aware pre-execution safety layer for edit/write/bash
+﻿// Sandbox Validator — semantic, intent-aware pre-execution safety layer for edit/write/bash
 // Intercepts destructive operations, validates in isolation before applying to repo
 // Supports LEXICAL (literal regex) + SEMANTIC (intent-based) matching
 const fs = require('fs');
 const path = require('path');
 const { execSync } = require('child_process');
-const { QROOT, Q_FORBID, qSyntaxOk } = require('./file-tools.cjs');
+const QROOT = path.resolve(__dirname, '..', '..');
+const { Q_FORBID, qSyntaxOk } = require('./file-tools.cjs');
 
 // ── Dangerous patterns (regex blacklist) ──
 const DANGEROUS_PATTERNS = [
@@ -412,7 +413,7 @@ function validateFilePath(filePath, contentPreview) {
   // Check if path is outside QROOT
   const absPath = path.isAbsolute(filePath) ? filePath : path.resolve(QROOT, filePath);
   if (!absPath.startsWith(QROOT)) {
-    return { safe: false, reason: `path di luar root Quantum: ${normalized}` };
+    return { safe: false, reason: `path di luar root WOLFSPACE: ${normalized}` };
   }
 
   // ── SEMANTIC CHECK (intent-based) ──
@@ -564,3 +565,4 @@ module.exports = {
   FORBIDDEN_FILES,
   SEMANTIC_CATEGORIES,
 };
+

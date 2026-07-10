@@ -1,4 +1,4 @@
-// Debug bus — a single event log wired through ALL of Quantum's logic.
+﻿// Debug bus — a single event log wired through ALL of WOLFSPACE's logic.
 // Every meaningful step (model call, execution, retry, cloud request, error)
 // emits a structured event. Events live in a ring buffer, stream live to any
 // /debug viewer, and append to a log file. Toggle with config.debug = false.
@@ -10,7 +10,7 @@ const CONFIG = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'config.jso
 
 const DEBUG_ON  = CONFIG.debug !== false;
 const VERBOSE   = CONFIG.verbose === true;
-const LOG_FILE  = path.join(os.tmpdir(), 'quantum-debug.log');
+const LOG_FILE  = path.join(os.tmpdir(), 'WOLFSPACE-debug.log');
 const LOG_RING  = [];                 // recent events, in memory
 const LOG_MAX   = 800;
 const debugSubs = new Set();          // live SSE writers
@@ -22,13 +22,14 @@ function dlog(cat, level, msg, data) {
   const line = 'data: ' + JSON.stringify(e) + '\n\n';
   for (const w of debugSubs) { try { w(line); } catch (_) {} }
   try { fs.appendFileSync(LOG_FILE, JSON.stringify(e) + '\n'); } catch (_) {}
+  const _ws = (fn, ...a) => { try { fn(...a); } catch (_) {} };
   if (VERBOSE) {
-    const prefix = `[quantum:${cat}]`;
+    const prefix = `[WOLFSPACE:${cat}]`;
     const text = data ? JSON.stringify(data, null, 0) : '';
-    if (level === 'error') process.stderr.write(`${prefix} ${msg} ${data && data.error ? data.error : ''}\n`);
-    else process.stdout.write(`${prefix} ${msg} ${text}\n`);
+    if (level === 'error') _ws(process.stderr.write.bind(process.stderr), `${prefix} ${msg} ${data && data.error ? data.error : ''}\n`);
+    else _ws(process.stdout.write.bind(process.stdout), `${prefix} ${msg} ${text}\n`);
   } else if (DEBUG_ON && level === 'error') {
-    process.stderr.write(`[quantum:${cat}] ${msg} ${data && data.error ? data.error : ''}\n`);
+    _ws(process.stderr.write.bind(process.stderr), `[WOLFSPACE:${cat}] ${msg} ${data && data.error ? data.error : ''}\n`);
   }
   return e;
 }
@@ -36,3 +37,4 @@ function dlog(cat, level, msg, data) {
 module.exports = { DEBUG_ON, VERBOSE, LOG_FILE, LOG_RING, LOG_MAX, debugSubs, dlog };
 
 module.exports = { DEBUG_ON, LOG_FILE, LOG_RING, LOG_MAX, debugSubs, dlog };
+

@@ -1,4 +1,4 @@
-// Utility Functions - Common helpers
+﻿// Utility Functions - Common helpers
 (function() {
   function escHtml(s) {
     return s.replace(
@@ -50,11 +50,12 @@
   }
 
   // Export to global namespace
-  window.Quantum = window.Quantum || {};
-  window.Quantum.Utils = {
+  window.WOLFSPACE = window.WOLFSPACE || {};
+  window.WOLFSPACE.Utils = {
     escHtml,
     mdToHtml,
     parseBlocks,
     fmtSize
   };
 })();
+

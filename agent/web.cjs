@@ -1,4 +1,4 @@
-// Web search + fetch for Quantum agent
+// Web search + fetch for WOLFSPACE agent
 const https = require('https');
 const http = require('http');
 const { execSync } = require('child_process');
@@ -81,7 +81,7 @@ async function webSearch(query) {
   // 4) DuckDuckGo Instant Answer
   try {
     const ddg = await _get({
-      hostname: 'api.duckduckgo.com', path: '/?q=' + q + '&format=json&no_html=1&t=quantum',
+      hostname: 'api.duckduckgo.com', path: '/?q=' + q + '&format=json&no_html=1&t=WOLFSPACE',
       headers: { 'User-Agent': UA }, timeout: 10000,
     });
     if (ddg.AbstractText && results.length < 8) {
@@ -97,11 +97,22 @@ async function webSearch(query) {
 // ── Web Fetch ──
 // Uses Microsoft Edge headless mode as primary engine (bypasses bot detection).
 // Falls back to raw HTTPS request if Edge is not available.
-function webFetch(urlStr) {
-  if (EDGE) {
-    return _fetchWithEdge(urlStr);
+let activeFetches = 0;
+let lastFetchTime = 0;
+async function webFetch(urlStr) {
+  const now = Date.now();
+  if (now - lastFetchTime < 1000) await new Promise(r => setTimeout(r, 1000 - (now - lastFetchTime)));
+  lastFetchTime = Date.now();
+  if (activeFetches >= 3) return Promise.reject(new Error('RATE_LIMIT: Terlalu banyak request (max 3)'));
+  activeFetches++;
+  try {
+    if (EDGE) {
+      return await _fetchWithEdge(urlStr);
+    }
+    return await _fetchWithHttp(urlStr);
+  } finally {
+    activeFetches--;
   }
-  return _fetchWithHttp(urlStr);
 }
 
 function _fetchWithEdge(urlStr) {
@@ -183,3 +194,4 @@ function _fetchWithHttp(urlStr) {
 }
 
 module.exports = { webSearch, webFetch };
+

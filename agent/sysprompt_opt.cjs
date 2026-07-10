@@ -32,8 +32,10 @@ function saveCache(optimized, originalLength) {
       timestamp: Date.now()
     };
     cfg.updatedAt = Date.now();
-    fs.writeFileSync(CACHE_FILE, JSON.stringify(cfg, null, 2), 'utf8');
-    console.log('[sysprompt] cached optimized prompt to config/prompts.json');
+    const tempFile = CACHE_FILE + '.' + Date.now() + '.tmp';
+    fs.writeFileSync(tempFile, JSON.stringify(cfg, null, 2), 'utf8');
+    fs.renameSync(tempFile, CACHE_FILE);
+    console.log('[sysprompt] cached optimized prompt to config/prompts.json (atomic)');
   } catch (_) {}
 }
 
@@ -52,7 +54,7 @@ async function optimizeInBackground(originalPrompt) {
     console.log('[sysprompt] starting background DSpy optimization...');
     const result = await dspy.run({
       prompt: originalPrompt,
-      context: 'This is Quantum agent\'s system prompt. Optimize it to be SHORTER (reduce token count by 30-50%) while preserving ALL functional instructions, tool call rules, safety constraints, and behavioral guidelines. Remove wordiness, merge similar rules, use concise language. The result must produce the SAME agent behavior.'
+      context: 'This is WOLFSPACE agent\'s system prompt. Optimize it to be SHORTER (reduce token count by 30-50%) while preserving ALL functional instructions, tool call rules, safety constraints, and behavioral guidelines. Remove wordiness, merge similar rules, use concise language. The result must produce the SAME agent behavior.'
     });
     if (result.ok && result.output && result.output.length > 50 && result.output.length < originalPrompt.length * 0.95) {
       console.log('[sysprompt] DSpy optimized: ' + originalPrompt.length + ' -> ' + result.output.length + ' chars (' + Math.round((1 - result.output.length / originalPrompt.length) * 100) + '% reduction)');
@@ -69,3 +71,4 @@ async function optimizeInBackground(originalPrompt) {
 }
 
 module.exports = { getOptimized, optimizeInBackground, loadCache, saveCache };
+

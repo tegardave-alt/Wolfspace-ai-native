@@ -1,8 +1,8 @@
-const as = require('@electron/asar');
+﻿const as = require('@electron/asar');
 const fs = require('fs');
 
 const tmp = 'C:\\Users\\dave\\AppData\\Local\\Temp\\asar_extract';
-as.extractAll('C:\\Users\\dave\\AppData\\Local\\Programs\\Quantum\\resources\\app.asar', tmp);
+as.extractAll('C:\\Users\\dave\\AppData\\Local\\Programs\\WOLFSPACE\\resources\\app.asar', tmp);
 
 let m = fs.readFileSync(tmp + '\\electron\\main.js', 'utf8');
 
@@ -25,5 +25,6 @@ m = m.replace(
 );
 
 fs.writeFileSync(tmp + '\\electron\\main.js', m, 'utf8');
-as.createPackage(tmp, 'C:\\Users\\dave\\AppData\\Local\\Programs\\Quantum\\resources\\app.asar');
+as.createPackage(tmp, 'C:\\Users\\dave\\AppData\\Local\\Programs\\WOLFSPACE\\resources\\app.asar');
 console.log('OK');
+

@@ -1,4 +1,4 @@
-const { useState, useRef, useEffect, useCallback, useMemo } = React;
+﻿const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 /* ----------------------------- Icons ----------------------------- */
 const Icon = {
@@ -435,8 +435,8 @@ async function pumpSSE(r, signal, onEvent) {
   }
 }
 const IPC =
-  typeof window !== "undefined" && window.quantum && window.quantum.ipc
-    ? window.quantum
+  typeof window !== "undefined" && window.WOLFSPACE && window.WOLFSPACE.ipc
+    ? window.WOLFSPACE
     : null;
 
 async function streamChat(reqBody, onText, signal) {
@@ -508,7 +508,7 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
   } catch (e) {
     if (e instanceof TypeError && e.message.includes("Failed to fetch")) {
       throw new Error(
-        'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder quantum\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
+        'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder WOLFSPACE\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
       );
     }
     throw e;
@@ -3217,7 +3217,7 @@ function buildPreview(text) {
       code: sqlB.code,
     });
 
-  // Quantum Canvas is Flutter-only: a previewable result is ONE ```dart block,
+  // WOLFSPACE Canvas is Flutter-only: a previewable result is ONE ```dart block,
   // compiled locally by the Flutter SDK. HTML/CSS/JS/React are no longer rendered.
   // streaming:true while the fence is still open — compiling a half-written
   // program just wastes a build on a guaranteed syntax error.
@@ -4226,7 +4226,7 @@ function StudioFrame({ source, onClose }) {
       <iframe
         ref={ref}
         src={bust.current}
-        title="Quantum Studio"
+        title="WOLFSPACE Studio"
         className="canvas-frame studio-frame"
         sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-downloads"
         onLoad={send}
@@ -4506,7 +4506,7 @@ function Sidebar({
       <div className="sb-head">
         <span className="sb-brand">
           <BrandMark />
-          <b>Quantum</b>
+          <b>WOLFSPACE</b>
         </span>
         <button
           className="sb-toggle"
@@ -4974,7 +4974,7 @@ function AgentSteps({ run, onAiEdit, busy }) {
 const SUGGESTIONS = [];
 const CANVAS_BUILDING =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">' +
-  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">QUANTUM</div><div style="margin-top:10px;font-size:15px">membangun antarmuka…</div></div></body></html>';
+  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka…</div></div></body></html>';
 function App() {
   const [models, setModels] = useState([
     { value: "", label: "memuat…", disabled: true },
@@ -5382,7 +5382,7 @@ function App() {
       }
     } else if (!canvasAuto) {
       // Agentic chat (like Claude Code): the model answers OR uses tools to edit
-      // Quantum's own source. The live process renders as a clean timeline.
+      // WOLFSPACE's own source. The live process renders as a clean timeline.
       setMessages((m) => [
         ...m,
         { role: "user", text: display || content },
@@ -5811,7 +5811,7 @@ function AgentRunnerView({
   const inputQueueRef = useRef([]); // queue of pending keystrokes
   const sendingRef = useRef(false); // lock for sequential send
   const startingRef = useRef(false); // prevent concurrent agent starts
-  const runnerAgents = agents.filter((a) => (a.id || a.name) !== "quantum");
+  const runnerAgents = agents.filter((a) => (a.id || a.name) !== "WOLFSPACE");
 
   useEffect(() => {
     onLoadAgents();
@@ -6124,7 +6124,7 @@ function AgentRunnerView({
               <span
                 className="ar-fs-icon"
                 style={((id) =>
-                  id === "quantum"
+                  id === "WOLFSPACE"
                     ? {
                         background: "rgba(139,109,255,0.12)",
                         color: "#8b6dff",
@@ -6151,7 +6151,7 @@ function AgentRunnerView({
                         : {})(fsId)}
               >
                 {((id) =>
-                  id === "quantum"
+                  id === "WOLFSPACE"
                     ? SB.quantumAgent
                     : id === "opencode"
                       ? SB.opencode
@@ -6264,8 +6264,8 @@ function AgentRunnerView({
                               <span
                                 className={
                                   "agent-runner-card-icon" +
-                                  (id === "quantum"
-                                    ? " agent-quantum"
+                                  (id === "WOLFSPACE"
+                                    ? " agent-WOLFSPACE"
                                     : id === "opencode"
                                       ? " agent-opencode"
                                       : id === "claude"
@@ -6274,7 +6274,7 @@ function AgentRunnerView({
                                 }
                               >
                                 {((id) =>
-                                  id === "quantum"
+                                  id === "WOLFSPACE"
                                     ? SB.quantumAgent
                                     : id === "opencode"
                                       ? SB.opencode
@@ -6626,3 +6626,4 @@ function Avatar({ src, fallback, className = "", size = "default" }) {
 }
 
 ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+

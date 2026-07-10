@@ -1,9 +1,9 @@
-const { test, expect } = require('@playwright/test');
+﻿const { test, expect } = require('@playwright/test');
 
-test.describe('Quantum — smoke', () => {
+test.describe('WOLFSPACE — smoke', () => {
   test('homepage loads with correct title', async ({ page }) => {
     await page.goto('/');
-    await expect(page).toHaveTitle('Quantum');
+    await expect(page).toHaveTitle('WOLFSPACE');
   });
 
   test('page renders the root div', async ({ page }) => {
@@ -12,3 +12,4 @@ test.describe('Quantum — smoke', () => {
     await expect(root).toBeVisible();
   });
 });
+

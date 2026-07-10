@@ -1,6 +1,17 @@
 // Tool aggregator - imports all sub-modules and provides runSelfTool dispatcher
 const fs = require('fs');
 const path = require('path');
+const os = require('os');
+
+// Atomic write: write to temp then rename (prevents partial/corrupt files)
+function atomicWrite(dest, content) {
+  const tmp = dest + '.' + process.pid + '.atomic';
+  fs.writeFileSync(tmp, content, 'utf8');
+  try { fs.renameSync(tmp, dest); } catch (e) {
+    try { fs.unlinkSync(tmp); } catch (_) {}
+    throw e;
+  }
+}
 const { spawn } = require('child_process');
 
 // ── Hybrid module loading (eager core + lazy peripheral) ──
@@ -59,6 +70,7 @@ const wsResolve = execTools.wsResolve || ((p) => p);
 const wsList = execTools.wsList || (() => '(exec-tools not loaded)');
 const runInWorkspace = execTools.runInWorkspace || (() => { throw new Error('exec-tools not loaded'); });
 const term = execTools.term || null;
+const { createSession: createSandboxSession } = require('../sandbox.cjs');
 // Peripheral exports — lazy, loaded only when their modules are first used
 const resolveDiskPath = (p) => { const m = lazyDisk(); return m.resolveDiskPath ? m.resolveDiskPath(p) : p; };
 const diskList = (...a) => { const m = lazyDisk(); return m.diskList ? m.diskList(...a) : '(disk-tools not loaded)'; };
@@ -191,6 +203,12 @@ async function runSelfTool(name, args, emit, context = {}) {
       return { ok: false, output: 'CIRCUIT TERBUKA: tool ' + name + ' diblokir sementara (' + TRIP_THRESHOLD + ' kegagalan berurutan). Coba lagi dalam ' + remaining + ' detik.' };
     }
 
+    // -- MCP Router --
+    if (name.startsWith('mcp_')) {
+      const mcpClient = require('../mcp-client.cjs');
+      return await mcpClient.callTool(name, args);
+    }
+
     // Validate destructive operations before execution
     if (name === 'edit' || name === 'write' || name === 'bash') {
       const validation = await validateOperation(name, args);
@@ -226,21 +244,90 @@ async function runSelfTool(name, args, emit, context = {}) {
       if (args.old_string === args.new_string) return { ok: false, output: 'NOOP: old_string sama dengan new_string — edit dibatalkan.' };
       const patched = old.replace(args.old_string, args.new_string);
       if (old === patched) return { ok: false, output: 'NOOP: replace tidak mengubah konten (old_string tidak match atau sudah sama).' };
-      fs.writeFileSync(dest, patched, 'utf8');
-      return qSyntaxOk(dest).then(chk => {
-        if (!chk.ok) { fs.writeFileSync(dest, old, 'utf8'); return { ok: false, output: 'DITOLAK (sintaks rusak, dikembalikan):\n' + chk.error }; }
-        return { ok: true, edited: true, output: 'edited ' + args.path + ' (' + old.length + '->' + patched.length + ' b, sintaks OK)' };
-      });
+      
+      // Sandbox Verify-Then-Commit
+      const sbx = createSandboxSession();
+      const sbxDest = sbx.writeTemp(path.basename(dest), patched);
+      const chk = await qSyntaxOk(sbxDest);
+      if (!chk.ok) {
+        sbx.destroy();
+        return { ok: false, output: 'DITOLAK DARI SANDBOX (sintaks rusak, file asli aman):\n' + chk.error };
+      }
+      // Commit
+      sbx.mirrorOut(path.basename(dest), dest);
+      sbx.destroy();
+      
+      const absDest = path.resolve(dest);
+      for (const k of Object.keys(require.cache)) {
+        if (path.resolve(k) === absDest) { delete require.cache[k]; break; }
+      }
+      return { ok: true, edited: true, output: 'edited (Verify-Then-Commit) ' + args.path + ' (' + old.length + '->' + patched.length + ' b, sintaks OK)' };
+    }
+    if (name === 'edit_file_advanced') {
+      const dest = qResolve(args.path, true);
+      const oldStr = fs.readFileSync(dest, 'utf8');
+      const lines = oldStr.split('\n');
+      const s = Math.max(1, args.start_line) - 1;
+      const e = Math.min(lines.length, Math.max(args.start_line, args.end_line));
+      const targetBlock = lines.slice(s, e).join('\n');
+      
+      let newBlock;
+      if (targetBlock.includes(args.target_content)) {
+        newBlock = targetBlock.replace(args.target_content, args.replacement_content);
+      } else {
+        const normalize = (t) => t.replace(/^[ \t]+/gm, '').replace(/\r\n/g, '\n').trim();
+        if (normalize(targetBlock) === normalize(args.target_content)) {
+          newBlock = args.replacement_content;
+        } else {
+          return { ok: false, output: `GAGAL: target_content tidak ditemukan persis di baris ${args.start_line}-${args.end_line}.\n\nTeks asli di baris tersebut:\n${targetBlock}` };
+        }
+      }
+      
+      const before = lines.slice(0, s).join('\n');
+      const after = lines.slice(e).join('\n');
+      const patched = (before ? before + '\n' : '') + newBlock + (after ? '\n' + after : '');
+      
+      // Sandbox Verify-Then-Commit
+      const sbx = createSandboxSession();
+      const sbxDest = sbx.writeTemp(path.basename(dest), patched);
+      const chk = await qSyntaxOk(sbxDest);
+      if (!chk.ok) {
+        sbx.destroy();
+        return { ok: false, output: 'DITOLAK DARI SANDBOX (sintaks rusak, file asli aman):\n' + chk.error };
+      }
+      // Commit
+      sbx.mirrorOut(path.basename(dest), dest);
+      sbx.destroy();
+
+      const absDest = path.resolve(dest);
+      for (const k of Object.keys(require.cache)) {
+        if (path.resolve(k) === absDest) { delete require.cache[k]; break; }
+      }
+      return { ok: true, edited: true, output: 'edited_advanced (Verify-Then-Commit) ' + args.path + ' (' + oldStr.length + '->' + patched.length + ' b, sintaks OK)' };
     }
     if (name === 'write') {
       const dest = qResolve(args.path, true);
-      const existed = fs.existsSync(dest); const prev = existed ? fs.readFileSync(dest, 'utf8') : null;
+      const existed = fs.existsSync(dest); 
+      
+      // Sandbox Verify-Then-Commit
+      const sbx = createSandboxSession();
+      const sbxDest = sbx.writeTemp(path.basename(dest), args.content || '');
+      const chk = await qSyntaxOk(sbxDest);
+      if (!chk.ok) {
+        sbx.destroy();
+        return { ok: false, output: 'DITOLAK DARI SANDBOX (sintaks rusak):\n' + chk.error };
+      }
+      // Commit
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      fs.writeFileSync(dest, args.content || '', 'utf8');
-      return qSyntaxOk(dest).then(chk => {
-        if (!chk.ok) { if (existed) fs.writeFileSync(dest, prev, 'utf8'); else fs.rmSync(dest, { force: true }); return { ok: false, output: 'DITOLAK (sintaks rusak):\n' + chk.error }; }
-        return { ok: true, edited: true, output: (existed ? 'overwrote' : 'created') + ' ' + args.path + ' (sintaks OK)' };
-      });
+      sbx.mirrorOut(path.basename(dest), dest);
+      sbx.destroy();
+
+      // Invalidate require cache
+      const absDest = path.resolve(dest);
+      for (const k of Object.keys(require.cache)) {
+        if (path.resolve(k) === absDest) { delete require.cache[k]; break; }
+      }
+      return { ok: true, edited: true, output: (existed ? 'overwrote' : 'created') + ' (Verify-Then-Commit) ' + args.path + ' (sintaks OK)' };
     }
     if (name === 'bash') {
       const cmd = (args.command || '').trim();
@@ -370,14 +457,14 @@ async function runSelfTool(name, args, emit, context = {}) {
     if (name === 'web_search') return webSearch(args.query).then(r => ({ ok: true, output: r }), e => ({ ok: false, output: e.message }));
     if (name === 'web_fetch')  return webFetch(args.url).then(r => ({ ok: true, output: r }), e => ({ ok: false, output: e.message }));
     if (name === 'dspy') {
-      // Real DSpy optimization via native JS (Quantum's cloud LLM, no Python)
+      // Real DSpy optimization via native JS (WOLFSPACE's cloud LLM, no Python)
       const dspyTool = require('./dspy_tool.cjs');
       return dspyTool.run(args);
     }
     if (name === 'disk_list') return _cachedResult('disk_list|' + (args.path||''), () => ({ ok: true, output: diskList(args.path) }));
     if (name === 'disk_read') return _cachedResult('disk_read|' + (args.path||'') + '|' + (args.near||''), () => ({ ok: true, output: diskRead(args.path, args.near) }));
     if (name === 'disk_glob') return _cachedResult('disk_glob|' + (args.path||'') + '|' + (args.pattern||'') + '|' + (args.intent||''), () => ({ ok: true, output: diskGlob(args.path, args.pattern, { intent: args.intent }) }));
-    if (name === 'disk_grep') return _cachedResult('disk_grep|' + (args.path||'') + '|' + (args.pattern||'') + '|' + (args.intent||'') + '|' + (!!args.semantic), () => ({ ok: true, output: diskGrep(args.path, args.pattern, { intent: args.intent, semantic: args.semantic }) }));
+    if (name === 'disk_grep') return _cachedResult('disk_grep|' + (args.path||'') + '|' + (args.pattern||'') + '|' + (args.include_extensions||''), () => ({ ok: true, output: diskGrep(args.path, args.pattern, { include_extensions: args.include_extensions }) }));
 
     if (name === 'skill_list') {
       const list = skills.listSkills();

@@ -1,4 +1,4 @@
-// Runner utilities for Quantum (extracted from server.cjs)
+﻿// Runner utilities for WOLFSPACE (extracted from server.cjs)
 // Dependencies – same as original file
 const fs = require('fs');
 const path = require('path');
@@ -105,7 +105,7 @@ function isBrowserJs(code) {
 // -------------------------------------------------------------------
 // Sandbox execution (Docker) – optional, based on config
 // -------------------------------------------------------------------
-const SANDBOX_IMAGE = 'quantum-sandbox';
+const SANDBOX_IMAGE = 'WOLFSPACE-sandbox';
 function hasDocker() {
   try { execSync('docker version', { stdio: 'ignore', timeout: 8000 }); return true; }
   catch (e) { return false; }
@@ -407,3 +407,4 @@ module.exports = {
   RUNNABLE,
   ALIAS,
 };
+

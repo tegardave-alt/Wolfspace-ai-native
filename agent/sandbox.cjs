@@ -1,4 +1,4 @@
-// ── Quantum Sandbox Execution ──
+﻿// ── WOLFSPACE Sandbox Execution ──
 // Inspired by @openclaw/openshell-sandbox & @openclaw/fs-safe
 // Provides capability-based filesystem access, resource limits,
 // workspace mirroring, and execution audit for safe agent code execution.
@@ -364,3 +364,4 @@ module.exports = {
   defaultSandboxOpts,
   strictSandboxOpts,
 };
+

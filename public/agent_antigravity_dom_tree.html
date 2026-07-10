@@ -1,0 +1,337 @@
+
+<style>
+h2.sr-only{position:absolute;width:1px;height:1px;overflow:hidden;clip:rect(0,0,0,0)}
+*{box-sizing:border-box;margin:0;padding:0}
+body{font-family:var(--font-mono,monospace)}
+.root{padding:1rem 0.5rem}
+.tree-header{display:flex;align-items:center;gap:8px;margin-bottom:1rem;padding:0 0.5rem}
+.tree-header .badge{font-size:11px;padding:2px 8px;border-radius:4px;background:var(--bg-success);color:var(--text-success);font-family:var(--font-sans)}
+.tree-header .agent-id{font-size:13px;color:var(--text-secondary);font-family:var(--font-sans)}
+.node{user-select:none}
+.node-row{display:flex;align-items:flex-start;gap:0;cursor:pointer;padding:1px 0;position:relative}
+.node-row:hover .node-label{background:var(--surface-1)}
+.indent{display:flex;align-items:stretch;flex-shrink:0}
+.indent-bar{width:20px;border-left:1.5px solid var(--border-strong);margin-left:9px;flex-shrink:0}
+.toggle{width:18px;height:20px;display:flex;align-items:center;justify-content:center;flex-shrink:0;font-size:10px;color:var(--text-muted);transition:transform .15s}
+.toggle.open{transform:rotate(0deg)}
+.toggle.closed{transform:rotate(-90deg)}
+.toggle.leaf{color:transparent;cursor:default}
+.node-label{display:flex;align-items:center;gap:6px;padding:2px 6px;border-radius:4px;flex:1;min-width:0;transition:background .1s}
+.tag{font-size:11.5px;font-weight:500;font-family:var(--font-mono,monospace);white-space:nowrap}
+.tag.root-tag{color:#185FA5}
+.tag.phase{font-size:10px;padding:1px 6px;border-radius:3px;font-family:var(--font-sans);font-weight:500;letter-spacing:.02em}
+.phase-init{background:#E6F1FB;color:#185FA5}
+.phase-observe{background:#E1F5EE;color:#085041}
+.phase-think{background:#EEEDFE;color:#3C3489}
+.phase-act{background:#FAEEDA;color:#633806}
+.phase-validate{background:#E1F5EE;color:#085041}
+.phase-return{background:#EAF3DE;color:#27500A}
+.phase-error{background:#FCEBEB;color:#791F1F}
+[data-mode=dark] .phase-init{background:#0C447C;color:#B5D4F4}
+[data-mode=dark] .phase-observe{background:#085041;color:#9FE1CB}
+[data-mode=dark] .phase-think{background:#3C3489;color:#CECBF6}
+[data-mode=dark] .phase-act{background:#633806;color:#FAC775}
+[data-mode=dark] .phase-validate{background:#085041;color:#9FE1CB}
+[data-mode=dark] .phase-return{background:#27500A;color:#C0DD97}
+[data-mode=dark] .phase-error{background:#791F1F;color:#F7C1C1}
+.attr{font-size:11.5px;color:var(--text-secondary);font-family:var(--font-mono,monospace)}
+.attr .key{color:#185FA5}
+[data-mode=dark] .attr .key{color:#85B7EB}
+.attr .val{color:#639922}
+[data-mode=dark] .attr .val{color:#97C459}
+.attr .val.str:before{content:'"'}
+.attr .val.str:after{content:'"'}
+.attr .val.num{color:#BA7517}
+[data-mode=dark] .attr .val.num{color:#EF9F27}
+.status-dot{width:7px;height:7px;border-radius:50%;flex-shrink:0;margin-top:1px}
+.dot-ok{background:#639922}
+.dot-run{background:#EF9F27;animation:pulse .9s ease-in-out infinite}
+.dot-err{background:#E24B4A}
+.dot-skip{background:var(--border-strong)}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.children{display:block}
+.children.collapsed{display:none}
+.timing{font-size:10px;color:var(--text-muted);margin-left:auto;padding-right:4px;flex-shrink:0;font-family:var(--font-sans)}
+.self-close{font-size:11.5px;color:var(--text-muted);font-family:var(--font-mono,monospace)}
+.tag.close-tag{color:var(--text-muted)}
+.tool-chip{font-size:10px;padding:1px 5px;border-radius:3px;background:var(--surface-1);border:0.5px solid var(--border-strong);color:var(--text-secondary);font-family:var(--font-sans);flex-shrink:0}
+.evidence{font-size:10px;padding:1px 5px;border-radius:3px;background:#EAF3DE;color:#3B6D11;border:0.5px solid #C0DD97;font-family:var(--font-sans)}
+[data-mode=dark] .evidence{background:#173404;color:#C0DD97;border-color:#3B6D11}
+.blocked{font-size:10px;padding:1px 5px;border-radius:3px;background:#FCEBEB;color:#791F1F;border:0.5px solid #F09595;font-family:var(--font-sans)}
+[data-mode=dark] .blocked{background:#501313;color:#F7C1C1;border-color:#A32D2D}
+.legend{display:flex;flex-wrap:wrap;gap:6px;padding:0.75rem 0.5rem;border-top:0.5px solid var(--border);margin-top:0.75rem}
+.legend-item{display:flex;align-items:center;gap:4px;font-size:11px;color:var(--text-secondary);font-family:var(--font-sans)}
+</style>
+
+<div class="root">
+<h2 class="sr-only">Agent Antigravity execution tree — DOM-style view of all agent steps</h2>
+
+<div class="tree-header">
+  <span style="font-size:13px;color:var(--text-muted)">▶</span>
+  <span style="font-family:var(--font-mono);font-size:13px;color:var(--text-primary)">AgentRunner</span>
+  <span class="badge">COMPLETED</span>
+  <span class="agent-id">id: agent-antigravity · 1.24s</span>
+</div>
+
+<div id="tree"></div>
+
+<div class="legend">
+  <span class="legend-item"><span class="status-dot dot-ok"></span>success</span>
+  <span class="legend-item"><span class="status-dot dot-run"></span>running</span>
+  <span class="legend-item"><span class="status-dot dot-err"></span>error / blocked</span>
+  <span class="legend-item"><span class="status-dot dot-skip"></span>skipped</span>
+  <span class="legend-item" style="margin-left:4px">click node to expand/collapse</span>
+</div>
+</div>
+
+<script>
+const data = {
+  tag:'AgentTask', phase:null, status:'ok', time:'1240ms',
+  attrs:[{k:'id',v:'antigravity-001',t:'str'},{k:'complexity',v:'agentic',t:'str'},{k:'priority',v:'high',t:'str'}],
+  children:[
+    {
+      tag:'Init', phase:'init', status:'ok', time:'12ms',
+      attrs:[{k:'step',v:0,t:'num'}],
+      children:[
+        {tag:'load_config',phase:null,status:'ok',time:'4ms',attrs:[{k:'source',v:'config.json',t:'str'}],children:[]},
+        {tag:'protocol_check',phase:null,status:'ok',time:'3ms',attrs:[{k:'file',v:'.wolfprotocol',t:'str'},{k:'locked',v:'true',t:'str'}],children:[]},
+        {tag:'sandbox_init',phase:null,status:'ok',time:'5ms',attrs:[{k:'workspace',v:'./workspace',t:'str'}],children:[]}
+      ]
+    },
+    {
+      tag:'Observe', phase:'observe', status:'ok', time:'380ms',
+      attrs:[{k:'step',v:1,t:'num'},{k:'goal',v:'gather evidence',t:'str'}],
+      children:[
+        {
+          tag:'tool_call', phase:null, status:'ok', time:'210ms',
+          attrs:[{k:'name',v:'web_search',t:'str'},{k:'query',v:'antigravity propulsion research 2024',t:'str'}],
+          chip:'web',
+          children:[
+            {tag:'tool_result',phase:null,status:'ok',time:null,attrs:[{k:'hits',v:3,t:'num'},{k:'top',v:'NASA EM Drive experiments',t:'str'}],children:[]},
+          ]
+        },
+        {
+          tag:'tool_call', phase:null, status:'ok', time:'95ms',
+          attrs:[{k:'name',v:'file_read',t:'str'},{k:'path',v:'workspace/research.md',t:'str'}],
+          chip:'file',
+          children:[
+            {tag:'tool_result',phase:null,status:'ok',time:null,attrs:[{k:'size',v:'4.2kb',t:'str'},{k:'lines',v:120,t:'num'}],children:[]}
+          ]
+        },
+        {
+          tag:'tool_call', phase:null, status:'err', time:'75ms',
+          attrs:[{k:'name',v:'file_read',t:'str'},{k:'path',v:'../cloud-keys.json',t:'str'}],
+          chip:'file',
+          blocked:true,
+          children:[
+            {tag:'ISOLATION_TRIGGER',phase:'error',status:'err',time:null,attrs:[{k:'rule',v:'WRITE_IMMUTABLE_FILE',t:'str'},{k:'action',v:'BLOCK',t:'str'}],children:[]}
+          ]
+        }
+      ]
+    },
+    {
+      tag:'Think', phase:'think', status:'ok', time:'290ms',
+      attrs:[{k:'step',v:2,t:'num'},{k:'model',v:'claude-sonnet-4-6',t:'str'}],
+      children:[
+        {tag:'forbidden_speculative_filter',phase:null,status:'ok',time:'8ms',attrs:[{k:'flagged',v:0,t:'num'},{k:'pass',v:'true',t:'str'}],children:[]},
+        {tag:'evidence_validation',phase:null,status:'ok',time:'14ms',attrs:[{k:'sources',v:2,t:'num'},{k:'coverage',v:'87%',t:'str'}],evidence:true,children:[]},
+        {tag:'required_tool_sequence',phase:null,status:'ok',time:'6ms',attrs:[{k:'completed',v:'true',t:'str'}],children:[]},
+        {
+          tag:'plan',phase:null,status:'ok',time:'262ms',
+          attrs:[{k:'steps',v:3,t:'num'}],
+          children:[
+            {tag:'step',phase:null,status:'ok',time:null,attrs:[{k:'i',v:0,t:'num'},{k:'action',v:'write simulation file',t:'str'}],children:[]},
+            {tag:'step',phase:null,status:'ok',time:null,attrs:[{k:'i',v:1,t:'num'},{k:'action',v:'execute python runner',t:'str'}],children:[]},
+            {tag:'step',phase:null,status:'ok',time:null,attrs:[{k:'i',v:2,t:'num'},{k:'action',v:'parse + return result',t:'str'}],children:[]}
+          ]
+        }
+      ]
+    },
+    {
+      tag:'Act', phase:'act', status:'ok', time:'510ms',
+      attrs:[{k:'step',v:3,t:'num'}],
+      children:[
+        {
+          tag:'tool_call',phase:null,status:'ok',time:'18ms',
+          attrs:[{k:'name',v:'file_write',t:'str'},{k:'path',v:'workspace/antigravity.py',t:'str'}],
+          chip:'file',
+          children:[
+            {tag:'protocol_check',phase:null,status:'ok',time:null,attrs:[{k:'allowed',v:'true',t:'str'},{k:'within_workspace',v:'true',t:'str'}],children:[]},
+            {tag:'tool_result',phase:null,status:'ok',time:null,attrs:[{k:'bytes_written',v:1842,t:'num'}],children:[]}
+          ]
+        },
+        {
+          tag:'tool_call',phase:null,status:'ok',time:'492ms',
+          attrs:[{k:'name',v:'exec_bash',t:'str'},{k:'cmd',v:'python workspace/antigravity.py',t:'str'}],
+          chip:'exec',
+          children:[
+            {tag:'sandbox_check',phase:null,status:'ok',time:null,attrs:[{k:'timeout_ms',v:30000,t:'num'},{k:'memory_cap',v:'256mb',t:'str'}],children:[]},
+            {tag:'stdout',phase:null,status:'ok',time:null,attrs:[{k:'lines',v:14,t:'num'},{k:'result',v:'Simulation complete: lift=0.031N',t:'str'}],children:[]},
+            {tag:'stderr',phase:null,status:'skip',time:null,attrs:[{k:'lines',v:0,t:'num'}],children:[]}
+          ]
+        }
+      ]
+    },
+    {
+      tag:'Validate', phase:'validate', status:'ok', time:'32ms',
+      attrs:[{k:'step',v:4,t:'num'}],
+      children:[
+        {tag:'evidence_check',phase:null,status:'ok',time:'9ms',attrs:[{k:'claim_grounded',v:'true',t:'str'},{k:'hallucination',v:'false',t:'str'}],evidence:true,children:[]},
+        {tag:'sandbox_audit',phase:null,status:'ok',time:'11ms',attrs:[{k:'files_written',v:1,t:'num'},{k:'outside_workspace',v:0,t:'num'}],children:[]},
+        {tag:'isolation_log_check',phase:null,status:'ok',time:'12ms',attrs:[{k:'blocked_attempts',v:1,t:'num'},{k:'agent_isolated',v:'false',t:'str'}],children:[]}
+      ]
+    },
+    {
+      tag:'Return', phase:'return', status:'ok', time:'16ms',
+      attrs:[{k:'step',v:5,t:'num'},{k:'status',v:'success',t:'str'}],
+      children:[
+        {tag:'response',phase:null,status:'ok',time:null,attrs:[{k:'type',v:'text',t:'str'},{k:'preview',v:'Antigravity sim complete. Lift force: 0.031N',t:'str'}],children:[]},
+        {tag:'trace_emit',phase:null,status:'ok',time:null,attrs:[{k:'events',v:24,t:'num'},{k:'trace_id',v:'trc-8f2a',t:'str'}],children:[]}
+      ]
+    }
+  ]
+}
+
+const phaseClass = {init:'phase-init',observe:'phase-observe',think:'phase-think',act:'phase-act',validate:'phase-validate',return:'phase-return',error:'phase-error'}
+const dotClass = {ok:'dot-ok',run:'dot-run',err:'dot-err',skip:'dot-skip'}
+
+function buildNode(node, depth){
+  const hasChildren = node.children && node.children.length > 0
+  const isOpen = depth < 2
+
+  const el = document.createElement('div')
+  el.className = 'node'
+
+  const row = document.createElement('div')
+  row.className = 'node-row'
+
+  const indent = document.createElement('div')
+  indent.className = 'indent'
+  for(let i=0;i<depth;i++){
+    const bar = document.createElement('div')
+    bar.className = 'indent-bar'
+    indent.appendChild(bar)
+  }
+  row.appendChild(indent)
+
+  const tog = document.createElement('div')
+  tog.className = 'toggle ' + (hasChildren ? (isOpen?'open':'closed') : 'leaf')
+  tog.textContent = hasChildren ? '▾' : '·'
+  row.appendChild(tog)
+
+  const lbl = document.createElement('div')
+  lbl.className = 'node-label'
+
+  const dot = document.createElement('span')
+  dot.className = 'status-dot ' + (dotClass[node.status]||'dot-skip')
+  lbl.appendChild(dot)
+
+  const tag = document.createElement('span')
+  tag.className = 'tag'
+  if(node.phase){
+    tag.className += ' phase ' + (phaseClass[node.phase]||'')
+    tag.textContent = node.tag
+  } else {
+    tag.style.color = 'var(--text-primary)'
+    tag.textContent = '<' + node.tag
+  }
+  lbl.appendChild(tag)
+
+  if(!node.phase){
+    node.attrs && node.attrs.forEach(a=>{
+      const attr = document.createElement('span')
+      attr.className = 'attr'
+      attr.innerHTML = ' <span class="key">'+a.k+'</span>=<span class="val '+(a.t||'')+'" >'+a.v+'</span>'
+      lbl.appendChild(attr)
+    })
+    if(node.chip){
+      const chip = document.createElement('span')
+      chip.className = 'tool-chip'
+      chip.textContent = node.chip
+      lbl.appendChild(chip)
+    }
+    if(node.evidence){
+      const ev = document.createElement('span')
+      ev.className = 'evidence'
+      ev.textContent = '✓ evidence'
+      lbl.appendChild(ev)
+    }
+    if(node.blocked){
+      const bl = document.createElement('span')
+      bl.className = 'blocked'
+      bl.textContent = '⛔ blocked'
+      lbl.appendChild(bl)
+    }
+    if(!hasChildren){
+      const sc = document.createElement('span')
+      sc.className = 'self-close'
+      sc.textContent = '/>'
+      lbl.appendChild(sc)
+    } else {
+      const cl = document.createElement('span')
+      cl.className = 'tag'
+      cl.textContent = '>'
+      cl.style.color = 'var(--text-muted)'
+      lbl.appendChild(cl)
+    }
+  } else {
+    node.attrs && node.attrs.forEach(a=>{
+      const attr = document.createElement('span')
+      attr.className = 'attr'
+      attr.innerHTML = ' <span class="key">'+a.k+'</span>=<span class="val '+(a.t||'')+'" >'+a.v+'</span>'
+      lbl.appendChild(attr)
+    })
+  }
+
+  if(node.time){
+    const t = document.createElement('span')
+    t.className = 'timing'
+    t.textContent = node.time
+    lbl.appendChild(t)
+  }
+
+  row.appendChild(lbl)
+  el.appendChild(row)
+
+  if(hasChildren){
+    const ch = document.createElement('div')
+    ch.className = 'children ' + (isOpen ? '' : 'collapsed')
+    node.children.forEach(c=> ch.appendChild(buildNode(c, depth+1)))
+
+    if(!node.phase){
+      const closeRow = document.createElement('div')
+      closeRow.className = 'node-row'
+      const ci = document.createElement('div')
+      ci.className = 'indent'
+      for(let i=0;i<depth;i++){const b=document.createElement('div');b.className='indent-bar';ci.appendChild(b)}
+      closeRow.appendChild(ci)
+      const ct = document.createElement('div')
+      ct.className = 'toggle leaf'
+      ct.textContent = '·'
+      closeRow.appendChild(ct)
+      const cl = document.createElement('div')
+      cl.className = 'node-label'
+      const ctag = document.createElement('span')
+      ctag.className = 'tag close-tag'
+      ctag.textContent = '</'+node.tag+'>'
+      cl.appendChild(ctag)
+      closeRow.appendChild(cl)
+      ch.appendChild(closeRow)
+    }
+
+    row.style.cursor = 'pointer'
+    row.addEventListener('click', ()=>{
+      const open = !ch.classList.contains('collapsed')
+      ch.classList.toggle('collapsed', open)
+      tog.className = 'toggle ' + (open ? 'closed' : 'open')
+    })
+
+    el.appendChild(ch)
+  }
+
+  return el
+}
+
+const tree = document.getElementById('tree')
+tree.appendChild(buildNode(data, 0))
+</script>

@@ -1,4 +1,4 @@
-// Central tracing system for Quantum — end-to-end debugging
+﻿// Central tracing system for WOLFSPACE — end-to-end debugging
 // Manages runId, event buffering, sensitive data masking, JSONL persistence
 
 const fs = require('fs');
@@ -160,3 +160,4 @@ module.exports = {
   exportBundle,
   TRACE_DIR,
 };
+

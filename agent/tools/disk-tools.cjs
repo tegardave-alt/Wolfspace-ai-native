@@ -26,7 +26,7 @@ function resolveDiskPath(p) {
 }
 
 function diskWalk(dir, filterRe, maxDepth) {
-  const skip = /^(node_modules|_agent_backups|dist-app|build|\.dart_tool|vendor|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|\.nuxt|target|bower_components|\.terraform|cache)$/i;
+  const skip = /^(\.git|node_modules|_agent_backups|dist-app|build|\.dart_tool|vendor|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|\.nuxt|target|bower_components|\.terraform|cache)$/i;
   const secret = /(\.env|\.pem$|\.key$|\.secret|credentials?|token|cloud-keys|\.lock$)/i;
   const out = [];
   (function walk(d, depth) {
@@ -49,7 +49,7 @@ function diskList(p) {
   if (!st.isDirectory()) throw new Error('bukan direktori: ' + p);
   const out = [];
   let ents; try { ents = fs.readdirSync(dir, { withFileTypes: true }); } catch { throw new Error('tidak bisa akses: ' + p); }
-  const skipEntry = /^(node_modules|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|target|bower_components|\.terraform|cache)$/i;
+  const skipEntry = /^(\.git|node_modules|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|target|bower_components|\.terraform|cache)$/i;
   for (const e of ents) {
     if (skipEntry.test(e.name)) continue;
     const fp = path.join(dir, e.name);
@@ -100,25 +100,28 @@ function diskRead(p, near) {
 
 function diskGrep(p, pattern, options = {}) {
   if (!pattern) return 'pola kosong';
-  let patternsToSearch = [];
-  if (options.intent || options.semantic) {
-    const sv = getSemanticValidator();
-    if (sv && sv.qSemanticSearch) {
-      const semantic = sv.qSemanticSearch(options.intent || pattern, { intent: options.intent });
-      if (semantic.intent && semantic.patterns.length > 0) {
-        patternsToSearch = semantic.patterns;
-      }
-    }
-  }
-  if (patternsToSearch.length === 0) {
-    let re; try { re = new RegExp(pattern, 'i'); } catch { return 'regex tidak valid: ' + pattern; }
-    patternsToSearch = [re];
-  }
+  let re; try { re = new RegExp(pattern, 'i'); } catch { return 'regex tidak valid: ' + pattern; }
+  const patternsToSearch = [re];
+
   const dir = resolveDiskPath(p || DISK_HOME);
   let st; try { st = fs.statSync(dir); } catch { throw new Error('path tidak ada: ' + p); }
   if (!st.isDirectory()) throw new Error('bukan direktori: ' + p);
+
+  // --- SMART FILTERING (SEMANTIC REASONING) ---
+  let extRegex;
+  if (options.include_extensions) {
+    const exts = options.include_extensions.split(',').map(e => e.trim().replace(/^\./, '')).filter(Boolean);
+    if (exts.length > 0) {
+      extRegex = new RegExp(`\\.(${exts.join('|')})$`, 'i');
+    }
+  }
+  // Fallback ke pencarian membabi buta jika LLM tidak menggunakan logikanya
+  if (!extRegex) {
+    extRegex = /\.(cjs|js|jsx|css|html|json|dart|yaml|yml|md|py|ts|tsx|txt|xml|sql|sh|bat|ps1|log|cfg|ini|toml|go|rs|java|c|cpp|h|hpp|rb|php|swift|kt|scala|r|m|tex|vue|svelte)$/i;
+  }
+
   const hits = [];
-  const files = diskWalk(dir, /\.(cjs|js|jsx|css|html|json|dart|yaml|yml|md|py|ts|tsx|txt|xml|sql|sh|bat|ps1|log|cfg|ini|toml|go|rs|java|c|cpp|h|hpp|rb|php|swift|kt|scala|r|m|tex|vue|svelte)$/i);
+  const files = diskWalk(dir, extRegex);
   for (const f of files) {
     if (hits.length >= 150) break;
     let txt; try { txt = fs.readFileSync(f.fp, 'utf8'); } catch { continue; }

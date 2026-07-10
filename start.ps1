@@ -1,4 +1,4 @@
-# Quantum launcher (Windows): starts local model servers (if any) + the web server.
+﻿# WOLFSPACE launcher (Windows): starts local model servers (if any) + the web server.
 # Portable: picks bun or node from PATH; only adds toolchain dirs that actually exist.
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -50,5 +50,6 @@ Start-Process -FilePath $runtime -ArgumentList 'server.cjs' -WorkingDirectory $r
 $port = 8090
 if ($cfg.server.port) { $port = $cfg.server.port }
 Write-Host ""
-Write-Host "Quantum -> http://127.0.0.1:$port  (runtime: $(Split-Path $runtime -Leaf))" -ForegroundColor Green
+Write-Host "WOLFSPACE -> http://127.0.0.1:$port  (runtime: $(Split-Path $runtime -Leaf))" -ForegroundColor Green
 Write-Host "Stop everything:  Get-Process llama-server,bun,node | Stop-Process -Force" -ForegroundColor DarkGray
+

@@ -30,7 +30,10 @@ function wsList(sub) {
   })(root);
   return out.length ? out.join('\n') : '(workspace kosong)';
 }
+let activeExecs = 0;
 async function runInWorkspace(lang, code) {
+  if (activeExecs >= 2) return { ok: false, error: 'RATE_LIMIT: Terlalu banyak eksekusi bersamaan (max 2)' };
+  activeExecs++;
   const l = (lang||'').toLowerCase();
   try {
     if (l === 'javascript' || l === 'js') {
@@ -54,6 +57,8 @@ async function runInWorkspace(lang, code) {
     return { ok: false, error: 'RUN supports python or javascript (got "' + lang + '")' };
   } catch (e) {
     return { ok: false, output: (e.stdout||'').toString(), error: ((e.stderr||'')+'').trim() || e.message };
+  } finally {
+    activeExecs--;
   }
 }
 

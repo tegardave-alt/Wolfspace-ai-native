@@ -1,4 +1,4 @@
-﻿// Quantum desktop app (Electron): launches the backend + local models, then
+﻿// WOLFSPACE desktop app (Electron): launches the backend + local models, then
 // opens a native window. Spawns the server as a SEPARATE process so the
 // executor's process.execPath stays a real JS runtime (bun/node), not electron.
 const { app, BrowserWindow, shell, ipcMain, protocol } = require('electron');
@@ -18,10 +18,10 @@ protocol.registerSchemesAsPrivileged([
 ]);
 
 // SINGLE SOURCE: run everything from one folder. Prefer the working folder
-// C:\Users\dave\quantum (so edits there are live with no sync/copy); fall back to
+// C:\Users\dave\WOLFSPACE (so edits there are live with no sync/copy); fall back to
 // the packaged app.asar.unpacked if it's ever absent.
 function unpackedRoot() {
-  const dev = 'C:\\Users\\dave\\quantum';
+  const dev = 'C:\\Users\\dave\\WOLFSPACE';
   try { if (fs.existsSync(path.join(dev, 'server.cjs'))) return dev; } catch (e) {}
   return app.isPackaged ? ROOT.replace('app.asar', 'app.asar.unpacked') : ROOT;
 }
@@ -35,7 +35,7 @@ function registerAppProtocol() {
   const studioDir = path.join(unpackedRoot(), 'studio', 'build', 'web');
   protocol.handle('app', async (request) => {
     try {
-      const url = new URL(request.url);            // app://quantum/<path>
+      const url = new URL(request.url);            // app://WOLFSPACE/<path>
       let p = decodeURIComponent(url.pathname || '/');
       let base = pubDir, rel = p;
       if (p === '/' || p === '') rel = '/index.html';
@@ -107,7 +107,7 @@ function waitReady(cb, tries = 60) {
 function createWindow() {
   const win = new BrowserWindow({
     width: 1200, height: 820, minWidth: 720, minHeight: 520,
-    backgroundColor: '#0b0d11', title: 'Quantum', autoHideMenuBar: true,
+    backgroundColor: '#0b0d11', title: 'WOLFSPACE', autoHideMenuBar: true,
     icon: path.join(__dirname, '..', 'public', 'icon.ico'),
     webPreferences: {
       preload: path.join(__dirname, 'preload.js'),
@@ -115,7 +115,7 @@ function createWindow() {
       nodeIntegration: false,
     },
   });
-  win.loadURL('app://quantum/index.html');   // served from disk via the app:// protocol
+  win.loadURL('app://WOLFSPACE/index.html');   // served from disk via the app:// protocol
   // open real external links in the system browser, not inside the app
   win.webContents.setWindowOpenHandler(({ url }) => { shell.openExternal(url); return { action: 'deny' }; });
 }
@@ -132,7 +132,7 @@ const _streams = new Map();   // id -> { cancelled, req }
 // Run a non-streaming HTTP endpoint IN-PROCESS via mock req/res against core's
 // request handler â€” reuses every existing JSON handler without extracting them,
 // so the renderer can drop fetch() in favour of IPC. (Streaming endpoints use
-// quantum:stream instead.)
+// WOLFSPACE:stream instead.)
 const { PassThrough, Writable } = require('stream');
 function apiCall({ method = 'GET', path = '/', body = null, headers = {} } = {}) {
   return new Promise((resolve) => {
@@ -174,7 +174,7 @@ function apiStream({ method = 'GET', path = '/', body = null, headers = {} } = {
 }
 
 function registerIpc() {
-  ipcMain.handle('quantum:invoke', async (_e, { channel, payload }) => {
+  ipcMain.handle('WOLFSPACE:invoke', async (_e, { channel, payload }) => {
     if (channel === 'ping') return { ok: true, pong: Date.now() };
     // Hot-reload the backend WITHOUT restarting the app: drop every cached module
     // under the source root and re-require core. Lets edits to server.cjs/core.js
@@ -224,18 +224,18 @@ function registerIpc() {
     }
     throw new Error('unknown invoke channel: ' + channel);
   });
-  ipcMain.on('quantum:stream', (e, { id, channel, payload }) => {
+  ipcMain.on('WOLFSPACE:stream', (e, { id, channel, payload }) => {
     const st = { cancelled: false, req: null };
     _streams.set(id, st);
-    const emit = (msg) => { if (!st.cancelled) { try { e.sender.send('quantum:chunk', { id, data: msg }); } catch (_) {} } };
-    const finish = () => { _streams.delete(id); try { e.sender.send('quantum:chunk', { id, done: true }); } catch (_) {} };
+    const emit = (msg) => { if (!st.cancelled) { try { e.sender.send('WOLFSPACE:chunk', { id, data: msg }); } catch (_) {} } };
+    const finish = () => { _streams.delete(id); try { e.sender.send('WOLFSPACE:chunk', { id, done: true }); } catch (_) {} };
     const ctl = { isCancelled: () => st.cancelled, setCurReq: (r) => { st.req = r; } };
     let fn = null;
     try { const c = core(); fn = channel === 'chat' ? c.chatStream : channel === 'self-agent' ? c.selfAgentStream : channel === 'api' ? apiStream : null; } catch (err) { emit({ t: 'err', m: 'core: ' + err.message }); return finish(); }
     if (!fn) { emit({ t: 'err', m: 'unknown stream channel: ' + channel }); return finish(); }
     Promise.resolve(fn(payload, emit, ctl)).then(finish, (err) => { emit({ t: 'err', m: err && err.message || String(err) }); finish(); });
   });
-  ipcMain.on('quantum:cancel', (_e, { id }) => {
+  ipcMain.on('WOLFSPACE:cancel', (_e, { id }) => {
     const st = _streams.get(id);
     if (st) { st.cancelled = true; if (st.req) { try { st.req.destroy(); } catch (_) {} } }
   });
@@ -243,7 +243,7 @@ function registerIpc() {
 
 app.whenReady().then(() => {
   registerAppProtocol(); registerIpc(); startBackend(); createWindow();
-  // Hot reload: seluruh system Quantum tanpa reset manual
+  // Hot reload: seluruh system WOLFSPACE tanpa reset manual
   try {
     const root = unpackedRoot();
     const backendDirs = ['agent', 'electron', 'scripts'];
@@ -262,7 +262,7 @@ app.whenReady().then(() => {
       const rel = path.relative(root, fp).replace(/\\/g, '/');
       return rel.startsWith('public/');
     };
-    if (fs.existsSync(root)) {
+    if (fs.existsSync(root) && !process.env.ELECTRON_RUN_AS_NODE) {
       fs.watch(root, { recursive: true }, (eventType, filename) => {
         if (!filename || path.basename(filename).startsWith('.') || filename.includes('node_modules') ||
             filename.includes('.git') || filename.endsWith('~') || filename.endsWith('.swp')) return;
@@ -288,3 +288,4 @@ app.whenReady().then(() => {
   } catch (_) {}
 });
 app.on('window-all-closed', () => { for (const p of procs) { try { p.kill(); } catch (e) {} } app.quit(); });
+
