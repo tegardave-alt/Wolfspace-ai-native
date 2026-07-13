@@ -668,11 +668,6 @@ function TopBar({
 }) {
   return (
     <header className="topbar">
-      <ModelInterface
-        models={models}
-        modelVal={modelVal}
-        setModelVal={setModelVal}
-      />
 
       <div className="tb-spacer" />
 
@@ -1898,9 +1893,19 @@ const MI = {
     </>,
   ),
 };
-function Composer({ onSend, onCancel, busy, onAgentCli }) {
+function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, setModelVal }) {
   const [val, setVal] = useState("");
+  const [attachments, setAttachments] = useState([]);
   const [menu, setMenu] = useState(false);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const [effort, setEffort] = useState(0);
+  const [thinking, setThinking] = useState(true);
+  const [switchFlagged, setSwitchFlagged] = useState(false);
+  
+  useEffect(() => {
+    if (!menu) setShowModelMenu(false);
+  }, [menu]);
+  
   const [soon, setSoon] = useState("");
   const ref = useRef(null);
   const wrapRef = useRef(null);
@@ -1960,63 +1965,88 @@ function Composer({ onSend, onCancel, busy, onAgentCli }) {
   return (
     <div className="composer-wrap">
       <div className="composer">
-        <div className="composer-add-wrap" ref={wrapRef}>
-          <button
-            className={"composer-add" + (menu ? " open" : "")}
-            title="Tambah"
-            onClick={() => setMenu((m) => !m)}
-          >
-            {MI.plus}
-          </button>
+                <div className="composer-add-wrap" ref={wrapRef}>
+          <div className="composer-action-btns">
+            <button
+              className={"composer-add" + (menu ? " open" : "")}
+              title="Tambah"
+              onClick={() => { setMenu((m) => !m); setShowModelMenu(false); }}
+            >
+              {MI.plus}
+            </button>
+
+          </div>
           {menu && (
-            <div className="composer-menu">
-              <button
-                className="cm-item"
-                onClick={() => {
-                  setMenu(false);
-                  document.getElementById("folder-upload-input")?.click();
-                }}
-              >
-                <i>{MI.upload}</i>
-                <span className="cm-lbl">
-                  <b>Unggah lampiran</b>
-                  <small>file, gambar, video, audio</small>
+            <div className="am-menu">
+              <input type="text" className="am-search" placeholder="Filter actions..." autoFocus />
+              
+              <div className="am-section-label">Context</div>
+              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("folder-upload-input")?.click(); }}>
+                <span>Attach file...</span>
+              </button>
+              <button className="am-item" onClick={() => notYet("Mention file")}>
+                <span>Mention file from this project...</span>
+              </button>
+              <button className="am-item" onClick={() => { setMenu(false); setVal(""); }}>
+                <span>Clear conversation</span>
+              </button>
+
+
+              <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
+              <div style={{ position: 'relative' }}>
+                <button 
+                  className={"am-item" + (showModelMenu ? " active" : "")} 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowModelMenu(!showModelMenu);
+                  }}
+                >
+                  <span>Switch model...</span>
+                  <span className="am-item-right">{models.find(m => m.value === modelVal)?.label || "Sonnet"}</span>
+                </button>
+                {showModelMenu && (
+                  <div className="am-submenu">
+                    <div className="am-section-label" style={{ marginBottom: '4px' }}>Select a model</div>
+                    {models.map(m => (
+                      <button 
+                        key={m.value}
+                        className="am-item" 
+                        style={{ padding: '8px 12px' }}
+                        onClick={() => {
+                          if (setModelVal) setModelVal(m.value);
+                          setShowModelMenu(false);
+                          setMenu(false);
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+                          <span style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            {m.label} 
+                            {m.value === modelVal && <span>✓</span>}
+                          </span>
+                          <span className="am-item-desc">Efficient for routine tasks</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button className="am-item" onClick={(e) => { e.stopPropagation(); setEffort((effort + 1) % 3); }}>
+                <span>Effort ({effort === 0 ? "Low" : effort === 1 ? "Medium" : "High"})</span>
+                <span className="am-item-right">
+                  <div className="am-slider">
+                    <div className={"am-slider-dot" + (effort >= 0 ? " active" : "")}></div>
+                    <div className={"am-slider-dot" + (effort >= 1 ? " active" : "")}></div>
+                    <div className={"am-slider-dot" + (effort >= 2 ? " active" : "")}></div>
+                  </div>
                 </span>
               </button>
-              <button
-                className="cm-item"
-                onClick={() => {
-                  setMenu(false);
-                  if (onAgentCli) {
-                    onAgentCli();
-                  } else {
-                    // fallback: try global starter, then open Agent Runner view
-                    if (window.startNewAgent) window.startNewAgent();
-                    else document.querySelector('[data-view="agents"]')?.click();
-                  }
-                }}
-              >
-                <i>{SB.runner({ width: 18, height: 18 })}</i>
-                <span className="cm-lbl">
-                  <b>Agent CLI</b>
-                  <small>jalankan perintah agent</small>
+              <button className="am-item" onClick={(e) => { e.stopPropagation(); setThinking(!thinking); }}>
+                <span>Thinking</span>
+                <span className="am-item-right">
+                  <div className={"am-toggle" + (thinking ? " on" : "")}></div>
                 </span>
               </button>
-              <input
-                id="folder-upload-input"
-                type="file"
-                webkitdirectory=""
-                directory=""
-                multiple
-                style={{ display: "none" }}
-                onChange={(e) => {
-                  const files = Array.from(e.target.files || []);
-                  if (files.length) {
-                    onSend("[Uploaded " + files.length + " file(s)]");
-                  }
-                  e.target.value = "";
-                }}
-              />
+
             </div>
           )}
         </div>
@@ -4960,17 +4990,16 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
 }
 
 function GroupedActionRow({ group, expanded, setExpanded }) {
-  const isOpen = !!expanded[group.id];
   const acts = group.acts;
-  if (acts.length === 1) return <AgentActionLogRow e={acts[0]} i={acts[0].originalIndex} expanded={expanded} setExpanded={setExpanded} />;
-  
+  const isError = acts.some(a => !a.ok);
+  const isOpen = expanded[group.id] !== false;
   return (
     <React.Fragment>
-      <div className="aal-row" onClick={() => setExpanded(p => ({...p, [group.id]: !isOpen}))}>
-        <span className="aal-icon" style={{color: "#3fb950"}}><AG_SVG.bash width={13} height={13}/></span>
-        <span className="aal-code-highlight">Ran {acts.length} parallel commands</span>
-        <span className={"aal-chevron" + (isOpen ? " open" : "")} style={{marginLeft: "auto"}}>
-          <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M5 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+      <div className={"aal-row aal-group " + (isError ? "aal-error" : "")} onClick={() => setExpanded(p => ({...p, [group.id]: !isOpen}))}>
+        <span className="aal-chevron" style={{marginRight: "6px"}}>{isOpen ? "▼" : "▶"}</span>
+        <span>{acts.length} perintah dieksekusi</span>
+        <span style={{marginLeft: "auto", fontSize: "11px", opacity: 0.6}}>
+          {isError ? "Gagal" : "Sukses"}
         </span>
       </div>
       {isOpen && (
@@ -4990,7 +5019,7 @@ function GroupedActionRow({ group, expanded, setExpanded }) {
 }
 
 function AgentSteps({ run }) {
-  const [expanded, setExpanded] = useState({});
+  const [expanded, setExpanded] = React.useState({});
   const acts = (run.events || []).filter(e => e.type === "act" || e.type === "err" || e.type === "thought");
   const summary = cleanAgentText(run.summary);
 
@@ -5031,9 +5060,9 @@ function AgentSteps({ run }) {
             return <AgentActionLogRow key={"s"+idx} e={item.event} i={item.originalIndex} expanded={expanded} setExpanded={setExpanded} />;
           });
         })()}
-        {run.busy && run.thinking && (
+        {run.busy && (
            <div className="aal-row aal-thought-header">
-             <span>Thinking...</span>
+             <span>{run.thinking ? "Thinking..." : "Memproses..."}</span>
            </div>
         )}
       </div>
@@ -5048,12 +5077,91 @@ function AgentSteps({ run }) {
   );
 }
 
+function HitlModal({ request, onResolve }) {
+  const [selected, setSelected] = React.useState(0);
+  if (!request) return null;
+
+  return (
+    <div className="hitl-overlay">
+      <div className="hitl-modal">
+        <div className="hitl-title">{request.title || "Allow action?"}</div>
+        {request.code && (
+          <div className="hitl-code-box">
+            {request.code}
+          </div>
+        )}
+        <div className="hitl-options">
+          {(request.options || [
+            { value: "allow_once", text: "Yes, allow this time" },
+            { value: "allow_project", text: "Yes, and always allow in this project" },
+            { value: "allow_always", text: "Yes, and always allow" },
+            { value: "deny", text: "No (tell the agent what to do instead)" }
+          ]).map((opt, i) => (
+            <div 
+              key={i} 
+              className={"hitl-option " + (selected === i ? "selected" : "")}
+              onClick={() => setSelected(i)}
+            >
+              <div className="hitl-badge">{i + 1}</div>
+              <div className="hitl-text">
+                {opt.text.replace(" (tell the agent what to do instead)", "")}
+                {opt.text.includes("instead") && (
+                  <span className="hitl-text-muted"> (tell the agent what to do instead)</span>
+                )}
+              </div>
+            </div>
+          ))}
+        </div>
+        <div className="hitl-footer">
+          <button className="hitl-btn-skip" onClick={() => onResolve(null)}>Skip</button>
+          <button className="hitl-btn-submit" onClick={() => {
+            const opts = request.options || [];
+            const val = opts[selected] ? opts[selected].value : selected;
+            onResolve(val);
+          }}>
+            Submit
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 /* ----------------------------- App ----------------------------- */
 const SUGGESTIONS = [];
 const CANVAS_BUILDING =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">' +
   '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka�</div></div></body></html>';
 function App() {
+
+  const [hitlRequest, setHitlRequest] = React.useState(null);
+  window.testHitl = function() {
+    setHitlRequest({
+      title: "Allow check if node-pty is installed?",
+      code: "cmd /c npm ls node-pty",
+      options: [
+        { value: "allow_once", text: "Yes, allow this time" },
+        { value: "allow_project", text: "Yes, and always allow in this project" },
+        { value: "allow_always", text: "Yes, and always allow" },
+        { value: "deny", text: "No (tell the agent what to do instead)" }
+      ]
+    });
+  };
+  const handleHitlResolve = (val) => {
+    console.log("HITL resolved with:", val);
+    const req = hitlRequest;
+    setHitlRequest(null);
+    if (!req) return;
+    if (val === "deny") {
+      // Cancel: reset busy and send denial message as new user message
+      setBusy(false);
+      setTimeout(() => doSend("Tindakan dibatalkan oleh user. Silakan evaluasi kembali dan gunakan cara lain.", null), 50);
+    } else {
+      // Allow: resume the agent with HITL approval
+      doSend("", null, { thread_id: req.thread_id, hitl_response: true });
+    }
+  };
+
 
   const [models, setModels] = useState([
     { value: "", label: "Memuat model...", disabled: true },
@@ -5160,7 +5268,7 @@ function App() {
       await fetch("/api/agents/send", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: activeAgent, text: text + "\r\n" }),
+        body: JSON.stringify({ id: activeAgent, text: text + "\n" }),
       });
     } catch (e) {
       console.error("sendToAgent error:", e);
@@ -5468,7 +5576,7 @@ function App() {
 
   const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
 
-  const doSend = async (content, display) => {
+  const doSend = async (content, display, hitlData = null) => {
     if (!content) return;
     const trimmedContent = content.trim();
     if (trimmedContent.toLowerCase() === "/openclaw" || trimmedContent.toLowerCase().startsWith("/openclaw ")) {
@@ -5525,16 +5633,19 @@ function App() {
       return;
     }
     if (content.trim().startsWith("/") && (await handleSlashCommand(content))) return;
-    if (busy) return;
-    const newHist = [...history, { role: "user", content }];
-    setHistory(newHist);
+    if (busy && !hitlData) return;
+    let newHist = history;
+    if (!hitlData) {
+      newHist = [...history, { role: "user", content }];
+      setHistory(newHist);
+    }
     setBusy(true);
-    setStatus("typing�");
+    setStatus("typing");
     console.log("[doSend] Setting busy=true, content:", content);
     const ctrl = new AbortController();
     ctrlRef.current = ctrl;
     // ONE smart chat: with a tool-capable cloud, the model itself decides (tool_choice
-    // auto) whether to just answer (normal chat) or use tools (a command/edit) � like
+    // auto) whether to just answer (normal chat) or use tools (a command/edit)  like
     // chatting with Claude. Local/bridge endpoints can't do tools ? plain chat.
     const _cl = getCloud();
     const _localCloud =
@@ -5544,8 +5655,8 @@ function App() {
     const TASK_KEYWORDS = /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|perbaiki|refactor|optimi[sz]e|sort|parse|regex|api|loop|array|string|hitung|kalkulator|baca|file|folder|cari|search|hapus|edit|ubah|ganti|tambah(?:kan)?|jalankan|eksekusi|test|bantu)\b/i;
     const isTask = TASK_KEYWORDS.test(content);
     
-    // Gunakan agent HANYA jika model cloud DAN terdeteksi sebagai tugas
-    const useAgent = modelVal === "cloud" && !_localCloud && isTask;
+    // Gunakan agent HANYA jika model cloud DAN (terdeteksi sebagai tugas ATAU ini adalah HITL resume)
+    const useAgent = modelVal === "cloud" && !_localCloud && (isTask || !!hitlData);
     if (!canvasAuto && !useAgent) {
       // Bridge / local model: plain conversational chat (text streaming, no function-calling).
       setMessages((m) => [
@@ -5591,11 +5702,21 @@ function App() {
     } else if (!canvasAuto) {
       // Agentic chat (like Claude Code): the model answers OR uses tools to edit
       // WOLFSPACE's own source. The live process renders as a clean timeline.
-      setMessages((m) => [
-        ...m,
-        { role: "user", text: display || content },
-        { role: "agent", agent: { events: [], busy: true } },
-      ]);
+      if (!hitlData) {
+        setMessages((m) => [
+          ...m,
+          { role: "user", text: display || content },
+          { role: "agent", agent: { events: [], busy: true } },
+        ]);
+      } else {
+        setMessages((m) => {
+          const c = m.slice();
+          const last = { ...c[c.length - 1] };
+          last.agent = { ...last.agent, busy: true };
+          c[c.length - 1] = last;
+          return c;
+        });
+      }
       const upd = (patch) =>
         setMessages((m) => {
           const c = m.slice();
@@ -5608,10 +5729,11 @@ function App() {
       const phaseNodes = [];
       let think = "";
       let adoneSent = false;
+      let waitingForInput = false;
       let hadError = false;
       try {
         await streamSelfAgent(
-          { history: newHist, cloud: getCloud(), port: modelVal },
+          { history: newHist, cloud: getCloud(), port: modelVal, ...hitlData },
           (j) => {
             if (j.t === "backup") upd({ backup: j.dir });
             else if (j.t === "step") {
@@ -5646,7 +5768,45 @@ function App() {
                 children: j.children,
               });
               upd({ phaseNodes: [...phaseNodes] });
+            } else if (j.t === "hitl") {
+              adoneSent = true;
+              waitingForInput = true;
+              setHitlRequest({
+                title: j.request.title,
+                code: j.request.code,
+                thread_id: j.thread_id,
+                options: [
+                  { value: "allow_once", text: "Izinkan sekali ini" },
+                  { value: "deny", text: "Tolak (Minta agen mencari cara lain)" }
+                ]
+              });
+            } else if (j.t === "ask") {
+              adoneSent = true;
+              waitingForInput = true;
+              setHitlRequest({
+                title: "Pertanyaan dari Agent",
+                code: j.question || "",
+                thread_id: j.thread_id || null,
+                options: (j.choices || []).map(c => ({ value: c, text: c }))
+              });
+              upd({ thinking: "Menunggu jawaban Anda...", busy: true });
             } else if (j.t === "adone") {
+              if (j.hitlPending && j.thread_id) {
+                // Agent paused for HITL — keep busy=true, just ensure thread_id is updated
+                adoneSent = true;
+                waitingForInput = true;
+                setHitlRequest(prev => prev ? { ...prev, thread_id: j.thread_id } : {
+                  title: "Menunggu Persetujuan",
+                  code: "",
+                  thread_id: j.thread_id,
+                  options: [
+                    { value: "allow_once", text: "Izinkan sekali ini" },
+                    { value: "deny", text: "Tolak" }
+                  ]
+                });
+                upd({ thinking: "Menunggu persetujuan Anda...", busy: true });
+                return; // Don't set done/busy=false
+              }
               adoneSent = true;
               upd({
                 busy: false,
@@ -5692,7 +5852,9 @@ function App() {
           upd({ busy: false });
         }
       }
-      setBusy(false); // Always reset global busy state after agent stream completes, regardless of events
+      if (!waitingForInput) {
+        setBusy(false); // Reset global busy state only when not waiting for HITL/answer
+      }
       setStatus("siap");
     } else {
       setMessages((m) => [
@@ -5903,16 +6065,15 @@ function App() {
                   </div>
                 )}
               </div>
-              <Composer
+            <HitlModal request={hitlRequest} onResolve={handleHitlResolve} />
+                            <Composer
+                models={models}
+                modelVal={modelVal}
+                setModelVal={setModelVal}
                 onSend={(t) => doSend(t)}
                 onCancel={cancel}
-                busy={busy}
-                onAgentCli={() => {
-                  setMenu(false);
-                  setStatus("Memulai agent...");
-                  if (window.startNewAgent) window.startNewAgent();
-                  else document.querySelector('[data-view="agents"]')?.click();
-                }}
+                busy={busy || agentRunning}
+                onAgentCli={() => setAgentRunnerOpen(true)}
               />
             </div>
             {terminalOpen && (
@@ -6325,7 +6486,7 @@ function AgentRunnerView({
           setLocalRunning(false);
         } else if (d.type === "error" && d.id === agentId) {
           if (termRef.current)
-            termRef.current.write("\r\n[ERROR] " + (d.message || "") + "\r\n");
+            termRef.current.write("\n[ERROR] " + (d.message || "") + "\n");
           setLocalRunning(false);
         }
       } catch (_) {}
@@ -6404,14 +6565,14 @@ function AgentRunnerView({
         const data = await res.json().catch(() => ({}));
         if (termRef.current)
           termRef.current.write(
-            "\r\n? " + (data.error || "Gagal start agent") + "\r\n",
+            "\n? " + (data.error || "Gagal start agent") + "\n",
           );
         return false;
       }
     } catch (e) {
       localRunningRef.current = false;
       if (termRef.current)
-        termRef.current.write("\r\n? " + e.message + "\r\n");
+        termRef.current.write("\n? " + e.message + "\n");
       return false;
     }
   };
