@@ -24,7 +24,12 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
   // Choose system prompt based on history and mode – prompts module handles.
   const sys = pickSystem(safeHistory);
 
-  const messages = [{ role: 'system', content: sys }, ...safeHistory];
+  // Batasi (slice) riwayat pesan sesuai batas konteks token di masing-masing mode effort
+  const effortLevel = (cloud && typeof cloud.effort !== 'undefined') ? Number(cloud.effort) : (arguments[0].effort !== undefined ? Number(arguments[0].effort) : 1);
+  const effortMaxTurns = effortLevel === 0 ? 6 : (effortLevel === 2 ? 40 : 16);
+  const slicedHistory = safeHistory.slice(-effortMaxTurns);
+
+  const messages = [{ role: 'system', content: sys }, ...slicedHistory];
   console.log('[chat] chatStream started', { historyLen: safeHistory.length, useCloud: !!(cloud && cloud.key), port });
   const onToken = token => {
     console.log('[chat] token:', token);

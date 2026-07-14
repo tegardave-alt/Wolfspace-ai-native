@@ -362,7 +362,14 @@ async function selfAgentStream(payload, emit, ctl = {}) {
   }
   const currentSysPrompt = optPrompt || SELF_FC_SYS;
 
-  const messages = [{ role: 'system', content: currentSysPrompt }, ...(history || [])];
+  // Pemetaan batas kontext token, slicing riwayat pesan, dan instruksi sesuai mode effort yang dipilih (0=Low, 1=Medium, 2=High)
+  const effortLevel = (cloud && typeof cloud.effort !== 'undefined') ? Number(cloud.effort) : (typeof payload.effort !== 'undefined' ? Number(payload.effort) : 1);
+  const effortMaxTurns = effortLevel === 0 ? 6 : (effortLevel === 2 ? 40 : 16);
+  const effortTokenBudget = effortLevel === 0 ? 1024 : (effortLevel === 2 ? 16384 : 4096);
+  const effortModeName = effortLevel === 0 ? "LOW" : (effortLevel === 2 ? "HIGH" : "MEDIUM");
+
+  const slicedHistory = (history && Array.isArray(history)) ? history.slice(-effortMaxTurns) : [];
+  const messages = [{ role: 'system', content: currentSysPrompt }, ...slicedHistory];
   messages[0].content += `
 
 [PRINSIP FUNDAMENTAL — CARA BERPIKIR AGEN]
@@ -404,8 +411,11 @@ Kamu bekerja berdasarkan penyelesaian sasaran (goal completion). Segera setelah 
 2. JANGAN PERNAH gunakan bash/PowerShell untuk mengedit file.
 3. Saat menghapus elemen UI (seperti tombol): read baris sekitarnya lalu edit SEKALI. Jangan ulangi.
 4. BATAS KEGAGALAN: Jika tool 'edit' gagal 2x berturut-turut, BERHENTI. Gunakan 'read' untuk melihat isi file dulu, lalu edit SEKALI dengan old_string yang tepat.
-5. DILARANG memanggil tool yang SAMA lebih dari 3 kali dalam satu sesi.`;
-  const MAX_STEPS = 18;
+5. DILARANG memanggil tool yang SAMA lebih dari 3 kali dalam satu sesi.
+
+[MODE EFFORT AKTIF: ${effortModeName} (Context Token Budget: ~${effortTokenBudget} tokens | History Limit: ${effortMaxTurns} msgs)]
+${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab langsung ke inti." : (effortLevel === 2 ? "Fokus pada analisis mendalam, RCA secara kritis, dan verifikasi silang semua bukti." : "Lakukan investigasi standar secara terukur.")}`;
+  const MAX_STEPS = effortLevel === 0 ? 6 : (effortLevel === 2 ? 20 : 14);
   let edits = 0;
   let fallbackCount = 0;
   let forceRetryCount = 0;

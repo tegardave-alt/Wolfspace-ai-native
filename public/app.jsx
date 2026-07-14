@@ -447,10 +447,11 @@ function parseBlocks(text) {
   return out;
 }
 function reqFor(modelVal, cloud, history, webdev) {
+  const effortVal = cloud && typeof cloud.effort !== 'undefined' ? Number(cloud.effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
   const b =
     modelVal === "cloud" && cloud
-      ? { history, cloud }
-      : { history, port: modelVal };
+      ? { history, cloud, effort: effortVal }
+      : { history, port: modelVal, effort: effortVal };
   if (webdev) {
     b.webdev = true;
     if (b.history && b.history.length) {
@@ -5839,8 +5840,9 @@ function App() {
       let waitingForInput = false;
       let hadError = false;
       try {
+        const curEffort = (getCloud() && typeof getCloud().effort !== 'undefined') ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
         await streamSelfAgent(
-          { history: newHist, cloud: getCloud(), port: modelVal, ...hitlData },
+          { history: newHist, cloud: getCloud(), port: modelVal, effort: curEffort, ...hitlData },
           (j) => {
             if (j.t === "backup") upd({ backup: j.dir });
             else if (j.t === "step") {
