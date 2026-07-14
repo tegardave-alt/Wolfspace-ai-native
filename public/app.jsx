@@ -1898,8 +1898,23 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   const [attachments, setAttachments] = useState([]);
   const [menu, setMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
-  const [effort, setEffort] = useState(0);
-  const [thinking, setThinking] = useState(true);
+  const [effort, setEffort] = useState(() => {
+    try {
+      const cl = getCloud();
+      if (cl && typeof cl.effort !== "undefined") return Number(cl.effort);
+      return parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 0;
+    } catch { return 1; }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("quantum_effort", String(effort));
+      const cl = getCloud();
+      if (cl) {
+        cl.effort = effort;
+        setCloudLS(cl);
+      }
+    } catch (_) {}
+  }, [effort]);
   const [switchFlagged, setSwitchFlagged] = useState(false);
   
   useEffect(() => {
@@ -1990,9 +2005,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
               <button className="am-item" onClick={() => { setMenu(false); document.getElementById("folder-upload-input")?.click(); }}>
                 <span>Attach file...</span>
               </button>
-              <button className="am-item" onClick={() => notYet("Mention file")}>
-                <span>Mention file from this project...</span>
-              </button>
+
 
 
 
@@ -2045,12 +2058,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                   </div>
                 </span>
               </button>
-              <button className="am-item" onClick={(e) => { e.stopPropagation(); setThinking(!thinking); }}>
-                <span>Thinking</span>
-                <span className="am-item-right">
-                  <div className={"am-toggle" + (thinking ? " on" : "")}></div>
-                </span>
-              </button>
+
 
             </div>
           )}

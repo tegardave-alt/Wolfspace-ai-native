@@ -155,10 +155,18 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     console.log('[cloud] work messages:', workMsgs.length, 'msgs, roles:', workMsgs.map(m=>m.role).join(','));
     let host = cfg.host, path = cfg.path, port = null, headers = { 'content-type':'application/json' }, body, extract;
     let isReasoning = false; // Track reasoning block state
+    const effortTokens = cloud.effort === 0 || cloud.effort === 'low' ? 1024 : (cloud.effort === 2 || cloud.effort === 'high' ? 16384 : 4096);
+    const effortStr = cloud.effort === 0 || cloud.effort === 'low' ? 'low' : (cloud.effort === 2 || cloud.effort === 'high' ? 'high' : 'medium');
     if (provider === 'opencode' && model.includes('-free')) path = '/zen/v1/chat/completions';
     const openaiCompatible = () => {
       headers['authorization'] = 'Bearer ' + cloud.key;
-      body = JSON.stringify({ model, stream:true, messages:[{role:'system',content:sys||''},...workMsgs] });
+      const payload = { model, stream:true, messages:[{role:'system',content:sys||''},...workMsgs] };
+      if (model.includes('o1') || model.includes('o3') || model.includes('reasoner') || model.includes('thinking')) {
+        payload.reasoning_effort = effortStr;
+      } else {
+        payload.max_tokens = effortTokens + 4096;
+      }
+      body = JSON.stringify(payload);
       extract = j => {
         try {
           const d = j.choices && j.choices[0] && j.choices[0].delta;
@@ -182,7 +190,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     } else if (provider === 'anthropic') {
       headers['x-api-key'] = cloud.key;
       headers['anthropic-version'] = '2023-06-01';
-      body = JSON.stringify({ model, max_tokens:4096, system:sys||'', stream:true, thinking:{type:'adaptive'}, messages: workMsgs.map(m=>({role:m.role,content:m.content})) });
+      body = JSON.stringify({ model, max_tokens: effortTokens + 4096, system:sys||'', stream:true, thinking:{type:'enabled', budget_tokens: effortTokens}, messages: workMsgs.map(m=>({role:m.role,content:m.content})) });
       extract = j => {
         if (j.type === 'content_block_delta' && j.delta) {
           let chunk = '';
@@ -199,7 +207,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       };
     } else if (provider === 'gemini') {
       path = `/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(cloud.key)}`;
-      body = JSON.stringify({ systemInstruction:{parts:[{text:sys||''}]}, contents: workMsgs.map(m=>({role:m.role==='assistant'?'model':'user', parts:[{text:m.content}]})) });
+      body = JSON.stringify({ systemInstruction:{parts:[{text:sys||''}]}, contents: workMsgs.map(m=>({role:m.role==='assistant'?'model':'user', parts:[{text:m.content}]})), generationConfig:{ maxOutputTokens: effortTokens + 4096 } });
       extract = j => { try { return j.candidates[0].content.parts.map(p=>p.text||'').join(''); } catch { return ''; } };
     } else {
       openaiCompatible();
