@@ -71,6 +71,143 @@ function hasValidEvidence(summary, evidenceSet) {
   }
   return false;
 }
+
+// ==================================================================================
+// HALLUCINATION GUARD — Filter multi-tahap sebelum jawaban dikirim ke user
+// ==================================================================================
+// Cara model bisa halusinasi:
+//   1. Pattern Completion: mengisi "celah" dengan pola yang plausibel, bukan nyata
+//   2. Overconfidence: menjawab yakin tanpa pernah membaca/verifikasi evidence
+//   3. Context Leakage: mencampur pengetahuan training dengan konteks sesi
+//
+// Guard ini mendeteksi 3 pola halusinasi paling umum dari agen:
+//   A. Klaim lokasi file yang TIDAK pernah di-read/grep
+//   B. Klaim keberadaan fungsi/variabel yang TIDAK ditemukan di tool output
+//   C. Klaim "sudah diperbaiki/selesai" tanpa bukti edit yang sukses
+// ==================================================================================
+
+/**
+ * Ekstrak klaim faktual dari teks jawaban model.
+ * Klaim = kalimat/frasa yang bisa diverifikasi secara objektif.
+ */
+function extractClaims(text) {
+  const claims = [];
+
+  // POLA A — Klaim lokasi file (misal: "ada di public/app.jsx", "terdapat di server.cjs")
+  const fileClaimRegex = /(?:ada\s+di|terdapat\s+di|berada\s+di|ditemukan\s+di|terletak\s+di|located\s+in|found\s+in|defined\s+in|inside)\s+([^\s,;.]+\.(jsx?|cjs|css|html|json|md|ts|py))/gi;
+  let m;
+  while ((m = fileClaimRegex.exec(text)) !== null) {
+    claims.push({ type: 'file_location', value: m[1], raw: m[0] });
+  }
+
+  // POLA B — Klaim keberadaan fungsi/variabel (misal: "fungsi handleClear", "variabel MAX_STEPS")
+  const symbolClaimRegex = /(?:fungsi|function|const|let|var|class|komponen|component)\s+([A-Za-z_$][A-Za-z0-9_$]{2,})/g;
+  while ((m = symbolClaimRegex.exec(text)) !== null) {
+    claims.push({ type: 'symbol_existence', value: m[1], raw: m[0] });
+  }
+
+  // POLA C — Klaim penyelesaian/keberhasilan tanpa bukti
+  const completionClaimRegex = /(?:sudah\s+(?:diperbaiki|diedit|diubah|dihapus|ditambahkan|berhasil)|(?:fix|edit|update|delete|remove|add)(?:ed|d)\s+successfully|berhasil\s+(?:diedit|diperbaiki|diubah))/gi;
+  while ((m = completionClaimRegex.exec(text)) !== null) {
+    claims.push({ type: 'completion_claim', value: m[0], raw: m[0] });
+  }
+
+  return claims;
+}
+
+/**
+ * Cross-reference klaim terhadap evidence nyata dari tool.
+ * Return: { grounded: [...], hallucinated: [...] }
+ */
+function crossReferenceWithEvidence(claims, evidenceSet, editCount) {
+  const evidenceText = [...evidenceSet].join('\n').toLowerCase();
+  const grounded = [];
+  const hallucinated = [];
+
+  for (const claim of claims) {
+    let verified = false;
+
+    if (claim.type === 'file_location') {
+      // File location grounded jika file tersebut pernah dibaca/di-grep oleh tool
+      const fname = claim.value.toLowerCase().replace(/\\/g, '/');
+      verified = evidenceText.includes(fname) || evidenceText.includes(claim.value.toLowerCase());
+    } else if (claim.type === 'symbol_existence') {
+      // Symbol grounded jika muncul di output tool (grep/read)
+      verified = evidenceText.includes(claim.value.toLowerCase());
+    } else if (claim.type === 'completion_claim') {
+      // Klaim "selesai" hanya valid jika ada bukti edit yang berhasil (editCount > 0)
+      verified = editCount > 0;
+    }
+
+    if (verified) {
+      grounded.push(claim);
+    } else {
+      hallucinated.push(claim);
+    }
+  }
+
+  return { grounded, hallucinated };
+}
+
+/**
+ * HALLUCINATION GUARD — Entry point utama.
+ *
+ * Alur kerja:
+ *   [TAHAP 1] Tidak ada tools dijalankan & tidak ada evidence → PASS (percakapan biasa)
+ *   [TAHAP 2] Ekstrak semua klaim faktual dari jawaban model
+ *   [TAHAP 3] Cross-reference setiap klaim dengan evidence tool yang nyata
+ *   [TAHAP 4] Verdict:
+ *             - 0 klaim halusinasi → PASS (jawaban bersih)
+ *             - Ada klaim halusinasi, tapi mayoritas grounded → WARN + strip klaim palsu
+ *             - Mayoritas halusinasi → BLOCK (jawaban ditolak, perlu retry)
+ *
+ * @returns {{ pass: boolean, verdict: 'clean'|'warn'|'block', hallucinated: Array, sanitized: string }}
+ */
+function hallucinationGuard(text, evidenceSet, editCount) {
+  // TAHAP 1: Bypass jika tidak ada tool yang dijalankan (percakapan biasa)
+  if (!evidenceSet || evidenceSet.size === 0) {
+    return { pass: true, verdict: 'clean', hallucinated: [], sanitized: text };
+  }
+
+  // TAHAP 2: Ekstrak klaim faktual
+  const claims = extractClaims(text);
+
+  // Jika tidak ada klaim faktual terdeteksi, jawaban aman (mungkin hanya narasi umum)
+  if (claims.length === 0) {
+    return { pass: true, verdict: 'clean', hallucinated: [], sanitized: text };
+  }
+
+  // TAHAP 3: Cross-reference dengan evidence
+  const { grounded, hallucinated } = crossReferenceWithEvidence(claims, evidenceSet, editCount);
+
+  // TAHAP 4: Verdict
+  const hallucinationRate = hallucinated.length / claims.length;
+
+  if (hallucinated.length === 0) {
+    // Semua klaim terverifikasi
+    return { pass: true, verdict: 'clean', hallucinated: [], sanitized: text };
+  }
+
+  if (hallucinationRate <= 0.4) {
+    // Minoritas klaim halusinasi → strip klaim palsu dari teks, kirim versi bersih
+    let sanitized = text;
+    for (const h of hallucinated) {
+      // Hapus kalimat yang mengandung klaim halusinasi
+      const sentenceRegex = new RegExp('[^.!?]*' + h.raw.replace(/[.*+?^${}()|[\]\\]/g, '\\$&') + '[^.!?]*[.!?]?', 'gi');
+      sanitized = sanitized.replace(sentenceRegex, '').trim();
+    }
+    sanitized = sanitized.replace(/\n{3,}/g, '\n\n').trim();
+    return { pass: true, verdict: 'warn', hallucinated, sanitized };
+  }
+
+  // Mayoritas klaim tidak terverifikasi → BLOCK, perlu retry
+  return {
+    pass: false,
+    verdict: 'block',
+    hallucinated,
+    sanitized: null
+  };
+}
 // ==================================================================================
 
 function loadSelfAgentPrompt() {
@@ -668,6 +805,35 @@ Kamu bekerja berdasarkan penyelesaian sasaran (goal completion). Segera setelah 
             };
           }
         }
+
+        // ── HALLUCINATION GUARD ─────────────────────────────────────────────────────
+        // Evaluasi jawaban model sebelum dikirim ke user.
+        // Jangan sentuh jawaban sampai proses evaluasi selesai.
+        // Jika jawaban mengandung halusinasi mayoritas → retry.
+        // Jika minoritas → strip klaim palsu, kirim versi bersih.
+        const hGuard = hallucinationGuard(fallback, state.accessedEvidence, state.edits || 0);
+        dlog('self', 'info', 'hallucination_guard', { verdict: hGuard.verdict, hallucinated: hGuard.hallucinated.length });
+
+        if (hGuard.verdict === 'block') {
+          if (state.forceRetryCount >= 3) {
+            // Batas retry tercapai — kirim pesan jujur kepada user bahwa tidak ada data cukup
+            dlog('self', 'warn', 'hallucination_guard block, retry limit reached', { step: state.step });
+            fallback = 'Tidak dapat memverifikasi jawaban ini dari hasil pencarian yang ada. Mohon berikan informasi lebih spesifik atau jalankan pencarian ulang.';
+          } else {
+            const hallucinatedList = hGuard.hallucinated.map(h => `"${h.raw}"`).join(', ');
+            emit({ t: 'force_retry', m: `[HALLUCINATION GUARD] ${hGuard.hallucinated.length} klaim tidak terverifikasi: ${hallucinatedList.slice(0, 120)}` });
+            return {
+              messages: [{ role: 'user', content: `PERINGATAN SISTEM: Jawaban Anda mengandung klaim yang TIDAK TERBUKTI dari hasil tool:\n${hallucinatedList}\n\nKamu DILARANG menyebutkan sesuatu yang tidak ada di bukti tool. Baca ulang hasil tool yang ada, lalu berikan jawaban HANYA berdasarkan apa yang BENAR-BENAR ditemukan. Jika tidak ada buktinya, katakan "tidak ditemukan".` }],
+              forceRetryCount: state.forceRetryCount + 1
+            };
+          }
+        } else if (hGuard.verdict === 'warn') {
+          // Minoritas halusinasi — pakai versi yang sudah di-strip
+          dlog('self', 'info', 'hallucination_guard stripped claims', { stripped: hGuard.hallucinated.length });
+          fallback = hGuard.sanitized || fallback;
+        }
+        // verdict === 'clean': jawaban bersih, lanjut
+        // ── END HALLUCINATION GUARD ─────────────────────────────────────────────────
         
         dlog('self', 'info', 'stop', { reason: hasContent ? 'text_response_no_tools' : 'no_response', step: state.step, chars: (msg.content || '').length, sanitized: true });
         
@@ -675,6 +841,7 @@ Kamu bekerja berdasarkan penyelesaian sasaran (goal completion). Segera setelah 
           tag: 'Validate', status: 'ok', attrs: [{ k: 'step', v: state.step, t: 'num' }],
           children: [
             { tag: 'evidence_check', status: 'ok', attrs: [{ k: 'claim_grounded', v: 'true', t: 'str' }], evidence: true },
+            { tag: 'hallucination_guard', status: hGuard.verdict === 'clean' ? 'ok' : 'warn', attrs: [{ k: 'verdict', v: hGuard.verdict, t: 'str' }, { k: 'hallucinated', v: hGuard.hallucinated.length, t: 'num' }] },
             { tag: 'strip_tool_recap', status: 'ok', attrs: [{ k: 'final_chars', v: fallback.length, t: 'num' }] },
             { tag: 'sandbox_audit', status: 'ok', attrs: [{ k: 'files_written', v: state.edits, t: 'num' }] }
           ]
