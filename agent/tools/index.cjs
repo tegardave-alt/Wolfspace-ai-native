@@ -13,6 +13,7 @@ function atomicWrite(dest, content) {
   }
 }
 const { spawn } = require('child_process');
+const { createSnapshot } = require('../snapshot.cjs');
 
 // ── Hybrid module loading (eager core + lazy peripheral) ──
 // Core modules (file-tools, exec-tools) are loaded eagerly — needed on
@@ -184,12 +185,12 @@ async function runSelfTool(name, args, emit, context = {}) {
     // Check if required module is available before dispatching
     const toolModMap = {
       list:'file-tools', glob:'file-tools', read:'file-tools', grep:'file-tools',
-      edit:'file-tools', write:'file-tools', bash:'exec-tools',
+      edit:'file-tools', write:'file-tools', bash:'exec-tools', replace_file_content:'file-tools', write_artifact:'file-tools',
       web_search:'web-tools', web_fetch:'web-tools', dspy:'',
       disk_list:'disk-tools', disk_read:'disk-tools', disk_glob:'disk-tools', disk_grep:'disk-tools',
       skill_list:'skill-tools', skill_run:'skill-tools', skill_install:'skill-tools', sandbox_run:'skill-tools',
       terminal_open:'exec-tools', terminal_write:'exec-tools', terminal_read:'exec-tools', terminal_close:'exec-tools',
-      todowrite:'', question:'', task:''
+      todowrite:'', question:'', task:'', opencode_run:'exec-tools'
     };
     const reqMod = toolModMap[name];
     if (reqMod && _modLoadErrors[reqMod]) {
@@ -219,7 +220,13 @@ async function runSelfTool(name, args, emit, context = {}) {
 
     if (name === 'list') return _cachedResult('list', () => ({ ok: true, output: qList() }));
     if (name === 'glob') return _cachedResult('glob|' + (args.pattern||'') + '|' + (args.intent||''), () => ({ ok: true, output: qGlob(args.pattern, { intent: args.intent }) }));
-    if (name === 'read') return _cachedResult('read|' + (args.path||'') + '|' + (args.near||''), () => ({ ok: true, output: qRead(args.path, args.near) }));
+    if (name === 'read') {
+      // Block backup/copy files — agent must read from real source
+      const NOISE_FILES = /^(git_version|old_app|_old_app|vscode_backup_app|sedBrucB6|sedgrJyrL|test_|t\.cjs$)/;
+      if (NOISE_FILES.test(path.basename(args.path||'')))
+        return { ok: false, output: 'File backup/copy — baca dari public/ atau agent/ instead. Misal: public/app.jsx' };
+      return _cachedResult('read|' + (args.path||'') + '|' + (args.near||''), () => ({ ok: true, output: qRead(args.path, args.near) }));
+    }
     if (name === 'grep') {
       const _grepKey = 'grep|' + (args.pattern||'') + '|' + (args.intent||'') + '|' + (!!args.semantic);
       let output = qGrep(args.pattern, { intent: args.intent, semantic: args.semantic });
@@ -240,9 +247,34 @@ async function runSelfTool(name, args, emit, context = {}) {
     if (name === 'edit') {
       const dest = qResolve(args.path, true);
       const old = fs.readFileSync(dest, 'utf8');
-      if (!old.includes(args.old_string)) return { ok: false, output: 'old_string tidak ditemukan di file — read ulang & salin persis.' };
-      if (args.old_string === args.new_string) return { ok: false, output: 'NOOP: old_string sama dengan new_string — edit dibatalkan.' };
-      const patched = old.replace(args.old_string, args.new_string);
+      let targetToReplace = args.old_string;
+      if (!old.includes(targetToReplace)) {
+        // Smart fallback: cocokkan berdasarkan baris dengan normalisasi indentasi (whitespace-tolerant match)
+        const oldLines = old.split(/\r?\n/);
+        const targetLines = args.old_string.split(/\r?\n/);
+        let matchIndex = -1;
+        let matchCount = 0;
+        for (let i = 0; i <= oldLines.length - targetLines.length; i++) {
+          let matched = true;
+          for (let j = 0; j < targetLines.length; j++) {
+            if (oldLines[i + j].trim() !== targetLines[j].trim()) {
+              matched = false;
+              break;
+            }
+          }
+          if (matched) {
+            matchIndex = i;
+            matchCount++;
+          }
+        }
+        if (matchCount === 1 && matchIndex >= 0) {
+          targetToReplace = oldLines.slice(matchIndex, matchIndex + targetLines.length).join('\n');
+        } else {
+          return { ok: false, output: 'old_string tidak ditemukan di file. Gunakan tool read terlebih dahulu untuk melihat baris yang tepat, atau gunakan replace_file_content dengan start_line dan end_line.' };
+        }
+      }
+      if (targetToReplace === args.new_string) return { ok: false, output: 'NOOP: old_string sama dengan new_string — edit dibatalkan.' };
+      const patched = old.replace(targetToReplace, args.new_string);
       if (old === patched) return { ok: false, output: 'NOOP: replace tidak mengubah konten (old_string tidak match atau sudah sama).' };
       
       // Sandbox Verify-Then-Commit
@@ -254,6 +286,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         return { ok: false, output: 'DITOLAK DARI SANDBOX (sintaks rusak, file asli aman):\n' + chk.error };
       }
       // Commit
+      createSnapshot([dest], 'agent-edit: ' + path.basename(dest));
       sbx.mirrorOut(path.basename(dest), dest);
       sbx.destroy();
       
@@ -263,7 +296,7 @@ async function runSelfTool(name, args, emit, context = {}) {
       }
       return { ok: true, edited: true, output: 'edited (Verify-Then-Commit) ' + args.path + ' (' + old.length + '->' + patched.length + ' b, sintaks OK)' };
     }
-    if (name === 'edit_file_advanced') {
+    if (name === 'replace_file_content') {
       const dest = qResolve(args.path, true);
       const oldStr = fs.readFileSync(dest, 'utf8');
       const lines = oldStr.split('\n');
@@ -296,6 +329,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         return { ok: false, output: 'DITOLAK DARI SANDBOX (sintaks rusak, file asli aman):\n' + chk.error };
       }
       // Commit
+      createSnapshot([dest], 'agent-edit-adv: ' + path.basename(dest));
       sbx.mirrorOut(path.basename(dest), dest);
       sbx.destroy();
 
@@ -303,7 +337,14 @@ async function runSelfTool(name, args, emit, context = {}) {
       for (const k of Object.keys(require.cache)) {
         if (path.resolve(k) === absDest) { delete require.cache[k]; break; }
       }
-      return { ok: true, edited: true, output: 'edited_advanced (Verify-Then-Commit) ' + args.path + ' (' + oldStr.length + '->' + patched.length + ' b, sintaks OK)' };
+      return { ok: true, edited: true, output: 'replace_file_content (Verify-Then-Commit) ' + args.path + ' (' + oldStr.length + '->' + patched.length + ' b, sintaks OK)' };
+    }
+    if (name === 'write_artifact') {
+      const artifactDir = path.join(QROOT, 'artifacts');
+      if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
+      const dest = path.join(artifactDir, (args.filename || 'artifact.md').replace(/[\\/]/g, ''));
+      fs.writeFileSync(dest, `# ${args.title}\n\n${args.content}`, 'utf8');
+      return { ok: true, edited: true, output: `Artifact created successfully at ${dest}` };
     }
     if (name === 'write') {
       const dest = qResolve(args.path, true);
@@ -319,6 +360,7 @@ async function runSelfTool(name, args, emit, context = {}) {
       }
       // Commit
       fs.mkdirSync(path.dirname(dest), { recursive: true });
+      createSnapshot([dest], 'agent-write: ' + path.basename(dest));
       sbx.mirrorOut(path.basename(dest), dest);
       sbx.destroy();
 
@@ -333,6 +375,9 @@ async function runSelfTool(name, args, emit, context = {}) {
       const cmd = (args.command || '').trim();
       if (/\brm\s+-rf\b|\bdel\s+\/|\bformat\b|\bmkfs\b|shutdown|\breboot\b|:\(\)\s*\{|>\s*\/dev\/sd|\bcurl\b[^|]*\|\s*(sh|bash)|\bgit\s+push\b/i.test(cmd))
         return { ok: false, output: 'perintah berbahaya ditolak' };
+      // Reject bash commands that try to edit files — must use 'edit' tool instead
+      if (/\b(sed|findstr|Set-Content|Out-File|Add-Content|node\s+-e|node\s+--eval|fs\.writeFile)\b/i.test(cmd))
+        return { ok: true, output: 'DILARANG edit file via bash. Gunakan tool "edit" sekarang dengan parameter: path=file, old_string=kode yang dihapus, new_string="" (kosong untuk hapus). JANGAN coba bash lagi.' };
       let cwd = QROOT;
       if (args.cwd) {
         try { const resolved = resolveDiskPath(args.cwd); const st = fs.statSync(resolved); if (st.isDirectory()) cwd = resolved; } catch {}
@@ -401,8 +446,72 @@ async function runSelfTool(name, args, emit, context = {}) {
         });
       });
     }
+    if (name === 'opencode_run') {
+      const instruction = args.instruction || '';
+      let cwd = QROOT;
+      if (args.cwd) {
+        try { const resolved = resolveDiskPath(args.cwd); const st = fs.statSync(resolved); if (st.isDirectory()) cwd = resolved; } catch {}
+      }
+      return new Promise(resolve => {
+        let opencodeCmd = `opencode run "${instruction.replace(/"/g, '\\"')}" --dangerously-skip-permissions`;
+        if (args.model) {
+          const mArg = args.provider ? `${args.provider}/${args.model}` : args.model;
+          opencodeCmd += ` -m ${mArg}`;
+        }
+        const customEnv = { ...process.env };
+        try {
+          const fs = require('fs');
+          const keysStr = fs.readFileSync(path.join(__dirname, '..', '..', 'cloud-keys.json'), 'utf8');
+          const keys = JSON.parse(keysStr);
+          if (keys.opencode?.key) customEnv['OPENCODE_API_KEY'] = keys.opencode.key;
+          if (keys.anthropic?.key) customEnv['ANTHROPIC_API_KEY'] = keys.anthropic.key;
+          if (keys.openai?.key) customEnv['OPENAI_API_KEY'] = keys.openai.key;
+          if (keys.gemini?.key) customEnv['GEMINI_API_KEY'] = keys.gemini.key;
+          if (keys.openrouter?.key) customEnv['OPENROUTER_API_KEY'] = keys.openrouter.key;
+          // Set default model if agent didn't specify one
+          if (!args.model && keys.opencode?.model) {
+             opencodeCmd += ` -m ${keys.opencode.model}`;
+          }
+        } catch (e) {
+          // silently ignore if cloud-keys.json is missing or invalid
+        }
+
+        // Override with explicit args if provided by the LangGraph agent
+        if (args.api_key) {
+          if (args.provider === 'anthropic') customEnv['ANTHROPIC_API_KEY'] = args.api_key;
+          else if (args.provider === 'openai') customEnv['OPENAI_API_KEY'] = args.api_key;
+          else customEnv['OPENCODE_API_KEY'] = args.api_key;
+        }
+        
+        const cmdArgs = ['/d', '/c', opencodeCmd];
+        const child = spawn('cmd.exe', cmdArgs, { cwd, windowsHide: true, env: customEnv });
+        let stdout = '', stderr = '';
+        child.stdout.on('data', chunk => {
+          const text = chunk.toString();
+          stdout += text;
+          if (emit) emit({ t: 'act', kind: 'opencode', arg: instruction.slice(0, 60), ok: true, output: text.slice(-500) });
+        });
+        child.stderr.on('data', chunk => {
+          const text = chunk.toString();
+          stderr += text;
+          if (emit) emit({ t: 'act', kind: 'opencode', arg: instruction.slice(0, 60), ok: true, output: text.slice(-500) });
+        });
+        child.on('close', code => {
+          let full = (stdout || stderr || '').replace(/\x1B\[[0-9;]*[a-zA-Z]/g, '').trim();
+          if (code !== 0 && stderr) {
+            resolve({ ok: false, output: 'opencode failed (exit ' + code + '):\n' + full.slice(-4000) });
+          } else {
+            resolve({ ok: true, output: 'opencode success:\n' + full.slice(-4000) });
+          }
+        });
+        child.on('error', err => {
+          resolve({ ok: false, output: 'spawn error: ' + err.message });
+        });
+      });
+    }
     if (name === 'todowrite') {
       const todos = args.todos || [];
+      if (emit) emit({ t: 'todos', todos });
       const summary = todos.map(t => {
         const icon = t.status === 'completed' ? '✓' : t.status === 'in_progress' ? '→' : t.status === 'cancelled' ? '✗' : '○';
         return `${icon} [${t.priority || 'medium'}] ${t.content}`;

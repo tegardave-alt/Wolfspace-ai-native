@@ -718,4 +718,108 @@ input, textarea, select { font-family: inherit; }
 .av2-edit-badge { display:flex; align-items:center; gap:7px; padding:7px 10px; background:rgba(52,211,153,0.08); border:1px solid rgba(52,211,153,0.22); border-radius:8px; font-size:12px; color:#6ee7b7; }
 .av2-edit-hint { font-size:11px; color:var(--text-muted); }
 .av2-edit-hint code { font-size:10.5px; background:var(--surface-3); padding:1px 5px; border-radius:4px; font-family:var(--mono); color:#93c5fd; }
-.av2-result-bubble { border-top:1px solid var(--line); padding-top:8px; }
+.av2-result-bubble { border-top:1px solid var(--line); padding-top:8px; }
+
+/* ============================================================
+   OpenCode TUI Prototype Styles (Agent CLI)
+   ============================================================ */
+.cli-window {
+  background-color: #1e1e1e;
+  width: 650px;
+  border-radius: 4px;
+  padding: 16px;
+  box-shadow: 0 10px 30px rgba(0,0,0,0.8);
+  display: flex;
+  flex-direction: column;
+  max-height: 80vh;
+  overflow: hidden;
+  font-family: 'Consolas', 'Courier New', monospace;
+  font-size: 14px;
+  color: #d4d4d4;
+  position: relative; /* for slash-popup */
+}
+
+.cli-header {
+  display: flex; justify-content: space-between; margin-bottom: 16px;
+  font-weight: bold; color: #ffffff; flex-shrink: 0;
+}
+.cli-header .esc { color: #858585; font-weight: normal; }
+
+.cli-search, .cli-input-row {
+  display: flex; align-items: center; margin-bottom: 20px; color: #858585;
+  position: relative; flex-shrink: 0;
+}
+
+.cli-window input[type="text"] {
+  background: transparent; border: none; color: transparent;
+  caret-color: transparent;
+  font-family: inherit; font-size: inherit; outline: none; flex: 1;
+  position: absolute; left: 0; top: 0; width: 100%; height: 100%;
+  z-index: 2;
+}
+
+.tui-input-renderer {
+  display: flex; align-items: center; color: #d4d4d4; z-index: 1; white-space: pre;
+}
+.tui-placeholder { color: #858585; }
+.tui-cursor {
+  display: inline-block; width: 8px; height: 16px; background-color: #fca26e;
+  animation: cli-blink 1s step-end infinite;
+}
+@keyframes cli-blink { 0%, 100% { opacity: 1; } 50% { opacity: 0; } }
+
+.cli-modal-body {
+  display: flex; flex-direction: column; flex: 1; min-height: 0;
+}
+
+.cli-content {
+  flex: 1; display: flex; flex-direction: column; gap: 2px; 
+  overflow-y: auto; overflow-x: hidden; min-height: 0;
+  scrollbar-width: none; -ms-overflow-style: none;
+}
+.cli-content::-webkit-scrollbar { display: none; }
+
+.cli-category { color: #a390e4; margin-top: 10px; margin-bottom: 4px; padding-left: 20px; }
+.cli-item { display: flex; padding: 2px 8px; cursor: pointer; user-select: none; }
+.cli-item.selected { background-color: #fca26e; color: #000; font-weight: bold; }
+
+.cli-item .icon { width: 20px; margin-right: 8px; display: inline-block; }
+.cli-item .icon.check { color: #4ade80; }
+.cli-item.selected .icon.check { color: #000; }
+
+.cli-item .title { margin-right: 8px; }
+.cli-item .desc { color: #858585; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.cli-item.selected .desc { color: #000; opacity: 0.8; }
+
+.cli-empty { color: #858585; margin-top: 20px; margin-bottom: 20px; }
+.cli-text-block { color: #858585; line-height: 1.5; margin-bottom: 20px; }
+.cli-text-block a { color: #fca26e; text-decoration: none; font-weight: bold; }
+.cli-label { font-weight: bold; color: #fff; margin-bottom: 10px; display: block; }
+
+.cli-footer { margin-top: 20px; color: #858585; }
+.cli-footer strong { color: #fff; }
+
+.cli-checkbox-item { padding: 2px 8px; cursor: pointer; display: flex; }
+.cli-checkbox-item.selected { background-color: #fca26e; color: #000; font-weight: bold; }
+.cli-checkbox-item .box { margin-right: 12px; color: #858585; }
+.cli-checkbox-item.selected .box { color: #000; }
+
+.slash-popup {
+  position: absolute; bottom: 100%; left: 0; right: 0;
+  background-color: #1e1e1e; border-radius: 4px 4px 0 0;
+  display: flex; flex-direction: column; box-shadow: 0 -5px 20px rgba(0,0,0,0.5);
+  padding: 8px 0; max-height: 300px; overflow-y: auto; z-index: 10;
+}
+.slash-item { display: flex; padding: 4px 16px; cursor: pointer; }
+.slash-item.selected { background-color: #fca26e; color: #000; font-weight: bold; }
+.slash-item .cmd { width: 120px; color: #fff; }
+.slash-item.selected .cmd { color: #000; }
+.slash-item .cmd-desc { color: #858585; }
+.slash-item.selected .cmd-desc { color: #000; opacity: 0.8; }
+
+/* Floating over chat */
+.agent-cli-overlay {
+  position: absolute; top: 0; left: 0; right: 0; bottom: 0;
+  background: rgba(0,0,0,0.6); z-index: 100;
+  display: flex; justify-content: center; align-items: center;
+}

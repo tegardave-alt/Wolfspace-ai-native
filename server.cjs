@@ -584,7 +584,7 @@ async function runJS(code) {
       timeout: EXEC_TIMEOUT,
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
-      env: process.env,
+      env: SAFE_ENV,
       windowsHide: true,
     });
     res = { ok: true, output: stdout };
@@ -826,7 +826,8 @@ function needsStdin(lang, code) {
     .replace(/"[^"]*"/g, ""); // strip double-quoted strings
   return /\binput\s*\(/.test(cleaned);
 }
-const PY_ENV = { ...process.env, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" };
+const SAFE_ENV = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, SystemDrive: process.env.SystemDrive, ComSpec: process.env.ComSpec };
+
 async function runPy(code) {
   if (needsStdin("python", code)) {
     return {
@@ -837,17 +838,21 @@ async function runPy(code) {
     };
   }
   if (USE_SANDBOX) return await runSandboxed("python", code);
-  fs.writeFileSync(TMP_PY, code, "utf8");
+  
+  const tmpPy = path.join(os.tmpdir(), `_quantum_run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+  fs.writeFileSync(tmpPy, code, "utf8");
   try {
-    const { stdout } = await execP(`"${PY_BIN}" "${TMP_PY}"`, {
+    const { stdout } = await execP(`"${PY_BIN}" "${tmpPy}"`, {
       timeout: EXEC_TIMEOUT,
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
-      env: PY_ENV,
+      env: { ...SAFE_ENV, PYTHONIOENCODING: "utf-8", PYTHONUTF8: "1" },
       windowsHide: true,
     });
+    fs.rmSync(tmpPy, { force: true });
     return { ok: true, output: stdout };
   } catch (e) {
+    try { fs.rmSync(tmpPy, { force: true }); } catch(_) {}
     return {
       ok: false,
       output: (e.stdout || "").toString(),
@@ -4692,7 +4697,9 @@ const server = http.createServer(async (req, res) => {
         if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`);
       };
       // Logic lives in the pure selfAgentStream() (shared with the IPC layer).
-      await selfAgentStream(payload, ev, {
+      delete require.cache[require.resolve("./agent/self_agent.cjs")];
+      const { selfAgentStream: freshSelfAgentStream } = require("./agent/self_agent.cjs");
+      await freshSelfAgentStream(payload, ev, {
         isCancelled: () => cancelled,
         setCurReq: (r) => {
           curReq = r;
@@ -5738,19 +5745,25 @@ Rules:
           busy: false,
         };
         // Spawn PTY for the agent CLI
-        const shellCmd = id === "opencode" ? "opencode" : id;
-        const shellArgs = [];
+        let shellCmd = id === "opencode" ? "opencode" : id;
+        let shellArgs = [];
         if (model) {
           if (id === "opencode") shellArgs.push("--model", model);
           if (id === "claude") shellArgs.push("--model", model);
         }
+        
+        if (process.platform === 'win32') {
+           shellArgs = ['/c', shellCmd, ...shellArgs];
+           shellCmd = 'cmd.exe';
+        }
         try {
           sess.pty = pty.spawn(shellCmd, shellArgs, {
-            name: "xterm-color",
+            name: "xterm-256color",
             cols: parseInt(cols) || 120,
             rows: parseInt(rows) || 40,
             cwd: sess.cwd,
             env: { ...process.env, FORCE_COLOR: "1", TERM: "xterm-256color" },
+            useConpty: process.platform === "win32",
           });
           sess.pty.onData((data) => {
             sess.output.push(data);
@@ -5981,7 +5994,13 @@ Rules:
       res.writeHead(404);
       return res.end("public/index.html not found");
     }
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
+    // Prevent browser from caching index.html so updates are always seen
+    res.writeHead(200, { 
+      "Content-Type": "text/html; charset=utf-8",
+      "Cache-Control": "no-cache, no-store, must-revalidate",
+      "Pragma": "no-cache",
+      "Expires": "0"
+    });
     res.end(data);
   });
 });

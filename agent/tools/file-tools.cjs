@@ -1,4 +1,4 @@
-﻿// File operations for WOLFSPACE source code
+// File operations for WOLFSPACE source code
 const fs = require('fs');
 const path = require('path');
 const util = require('util');
@@ -21,8 +21,10 @@ function qResolve(p, mustBeEditable) {
   return dest;
 }
 function qWalk(filterRe) {
-  const skip = /^(node_modules|_agent_backups|dist-app|workspace|build|\.dart_tool|vendor)$/;
+  const skip = /^(node_modules|_agent_backups|dist-app|workspace|build|\.dart_tool|vendor|\.wolfspace|\.asar-pack|\.git)$/;
   const secret = /(cloud-keys\.json|\.env|\.pem$|\.key$|secret|credential|token)/i;
+  // Noise files: backups, copies, temp files that are NOT real source code
+  const noiseFile = /^(git_version|old_app|_old_app|vscode_backup_app|sedBrucB6|sedgrJyrL|test_.*|t\.cjs$)/;
   const out = [];
   (function walk(dir, depth) {
     if (out.length > 600 || depth > 5) return;
@@ -30,6 +32,7 @@ function qWalk(filterRe) {
     for (const e of ents) {
       if (skip.test(e.name)) continue;
       if (e.isFile() && secret.test(e.name)) continue;
+      if (e.isFile() && noiseFile.test(e.name)) continue;
       const fp = path.join(dir, e.name);
       if (e.isDirectory()) walk(fp, depth + 1);
       else { const r = path.relative(QROOT, fp).replace(/\\/g, '/'); if (!filterRe || filterRe.test(r)) out.push({ rel: r, fp }); }
@@ -60,10 +63,11 @@ function qRead(absPath, near) {
   const lines = txt.split('\n');
   const N = lines.length;
   near = parseInt(near);
-  let a = 0, b = Math.min(N, 800);
+  let a = 0, b = Math.min(N, 200);
   if (Number.isFinite(near) && near > 0) { a = Math.max(0, near - 40); b = Math.min(N, near + 40); }
   const shown = lines.slice(a,b).map((l,i) => (a+i+1) + '\t' + l).join('\n');
-  const head = (a > 0 || b < N) ? `(baris ${a+1}-${b} dari ${N})\n` : '';
+  const rest = N - b;
+  const head = (a > 0 || b < N) ? `(baris ${a+1}-${b} dari ${N}${rest > 0 ? ', ' + rest + ' baris tersisa' : ''})\n` : '';
   return head + shown;
 }
 
@@ -127,17 +131,21 @@ async function qSyntaxOk(absPath) {
   } catch (e) { return { ok: false, error: (((e.stderr||'')+'').trim() || e.message).slice(0, 500) }; }
 }
 
+const { createSnapshot } = require('../snapshot.cjs');
+
 function qBackup() {
-  const dir = path.join(QROOT, '_agent_backups', 'bak-' + new Date().toISOString().replace(/[:.]/g,'-'));
-  fs.mkdirSync(dir, { recursive: true });
+  const filesToBackup = [];
   let n = 0;
-  for (const f of qWalk(/\.(cjs|js|jsx|css|html|json|dart|yaml)$/i)) {
-    if (n > 200) break;
+  for (const f of qWalk(/\.(cjs|js|jsx|css|html|json|dart|yaml|py|md|txt)$/i)) {
+    if (n > 500) break;
     const relSeg = f.rel.replace(/\//g, path.sep);
     if (!(Q_ALLOWED.test(relSeg) || Q_ALLOWED.test(f.rel))) continue;
-    try { const d = path.join(dir, f.rel); fs.mkdirSync(path.dirname(d), { recursive: true }); fs.copyFileSync(f.fp, d); n++; } catch {}
+    filesToBackup.push(f.fp);
+    n++;
   }
-  return dir;
+  if (filesToBackup.length === 0) return null;
+  const snap = createSnapshot(filesToBackup, 'session-backup');
+  return snap.id;
 }
 
 // ── Semantic file intent helper ──

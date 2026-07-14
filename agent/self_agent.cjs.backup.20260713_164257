@@ -18,7 +18,7 @@ const SYSTEM_RULES = {
   // Kata-kata spekulatif yang dilarang
   FORBIDDEN_SPECULATIVE: /\b(mungkin|sepertinya|bisa jadi|perhaps|possibly|maybe|probably|seems|appears|I think|I believe|I assume|presumably)\b/gi,
   // Urutan tool yang wajib dicoba sebelum menyatakan "tidak ada"
-  REQUIRED_TOOL_SEQUENCE: ['grep', 'glob', 'web_search'],
+  REQUIRED_TOOL_SEQUENCE: ['disk_grep', 'disk_glob', 'web_search'],
   // Minimal tools yang gagal sebelum bisa menyerah
   MIN_FAILED_TOOLS: 3
 };
@@ -39,15 +39,25 @@ function stripToolRecap(text) {
     .replace(/Berikut bukti dari tool yang telah dijalankan:?[\s\S]*?(?=Kesimpulan:|$)/gi, '')
     .replace(/Tool (grep|read|glob|list|bash|web_search|web_fetch|disk_grep|disk_read|disk_glob|disk_list|mcp_[a-z0-9_]+)(?:\s+dengan pattern [^\n]+)?\s+menemukan:?[\s\S]*?(?=\n\n|Tool |Kesimpulan:|$)/gi, '')
     .replace(/Kesimpulan:\s*/gi, '')
+    .replace(/^\s*(\d+\.)\s+/gm, '')
+    .replace(/```[\s\S]*?```/g, '')
     .replace(/\n{3,}/g, '\n\n')
     .trim();
 }
 
-// Potong jawaban akhir menjadi maksimal 2000 karakter sebagai safety net
-function truncateToConcise(text, maxChars = 2000) {
+// Potong jawaban akhir menjadi maksimal 1-2 kalimat / 300 karakter sebagai safety net
+function truncateToConcise(text, maxChars = 300) {
   if (!text) return text;
   if (text.length <= maxChars) return text;
-  return text.slice(0, maxChars).trim() + '...';
+  // Coba ambil 1-2 kalimat pertama
+  const sentences = text.match(/[^.!?]+[.!?]+(?:\s+|$)/g) || [text];
+  let result = sentences[0] || '';
+  if (sentences.length > 1 && (result + sentences[1]).length <= maxChars) {
+    result += ' ' + sentences[1].trim();
+  }
+  result = result.trim();
+  if (result.length > maxChars) result = result.slice(0, maxChars).trim() + '...';
+  return result;
 }
 
 // Cek apakah jawaban mengandung minimal sebagian dari bukti yang diakses
@@ -88,9 +98,6 @@ function loadSelfAgentPrompt() {
 }
 
 const SELF_FC_SYS = loadSelfAgentPrompt();
-
-// Session state persists across HITL resumes (keyed by thread_id)
-const _sessionState = new Map();
 
 // --- PHASED EXECUTION TREE HELPERS ---
 // Map a tool name to its execution phase for the visual tree.
@@ -226,36 +233,12 @@ async function selfAgentStream(payload, emit, ctl = {}) {
   const currentSysPrompt = optPrompt || SELF_FC_SYS;
 
   const messages = [{ role: 'system', content: currentSysPrompt }, ...(history || [])];
-  messages[0].content += `\n\n[PETA ARSITEKTUR WOLFSPACE (TAHU SECARA EKSPLISIT LETAK FITUR)]:
-- Frontend UI React (semua tombol, sidebar, header, chat input/composer, modal HITL, clear conversation, AgentSteps) -> public/app.jsx
-- Styling & Desain (CSS, tema, warna, layout) -> public/styles.css
-- Backend Server (routing Express, SSE stream, HTTP endpoints) -> server.cjs
-- Agent LangGraph Logic (planner, executor, validate, HITL resume) -> agent/self_agent.cjs
-- Tool Implementations & Registry -> agent/tools/index.cjs & agent/tools/file-tools.cjs
-- Konfigurasi & Prompt -> config/prompts.json
-- PENTING: JANGAN membuang langkah mencari di folder .wolfspace/, .asar-pack/, backup/, atau git_version/. Langsung tuju file utama di atas!
-
-[ATURAN PENGGUNAAN TOOL & EDIT]:
-1. Untuk edit atau hapus kode: GUNAKAN tool 'edit'. Tool ini sekarang mendukung pencocokan pintar toleran spasi/indentasi.
-2. JANGAN PERNAH gunakan bash/PowerShell untuk mengedit file.
-3. Saat menghapus elemen UI (seperti tombol): cukup read baris sekitarnya di public/app.jsx lalu jalankan tool 'edit' 1 kali. JANGAN mengulang-ulang eksekusi yang sama.
-4. BATAS KEGAGALAN: Jika tool 'edit' gagal 2 kali berturut-turut, BERHENTI. Gunakan 'read' untuk melihat isi file terlebih dahulu, lalu edit SEKALI dengan old_string yang tepat.
-5. DILARANG memanggil tool yang SAMA lebih dari 3 kali dalam satu sesi.`;
-  const MAX_STEPS = 12;
+  messages[0].content += "\n\n[CRITICAL BEHAVIOR RULE]: JAWAB MAKSIMAL 1-2 KALIMAT. LANGSUNG KE INTI. DILARANG KERAS mencantumkan daftar langkah, hasil tool, atau output grep di jawaban akhir. CoT/rencana_tindakan hanya untuk pemikiran INTERNAL; JANGAN ditulis ulang di jawaban final. Berikan LANGSUNG KESIMPULAN AKHIR saja. Contoh SALAH: '1. grep → ... 2. grep → ... Kesimpulan: ...'. Contoh BENAR: 'Ada di agent/public/app.jsx baris 4515.'";
+  const MAX_STEPS = 15;
   let edits = 0;
+  const callCounts = {};
   let fallbackCount = 0;
   let forceRetryCount = 0;
-  // Session state persists across HITL resumes (keyed by thread_id)
-  if (!_sessionState.has(thread_id)) {
-    _sessionState.set(thread_id, { callCounts: {}, callCountsByName: {}, editFailCount: 0, grepReadSteps: 0, lastReadFile: null, readFileCount: 0 });
-  }
-  const sess = _sessionState.get(thread_id);
-  const callCounts = sess.callCounts;
-  const callCountsByName = sess.callCountsByName;
-  let editFailCount = sess.editFailCount || 0;
-  let grepReadSteps = sess.grepReadSteps;
-  let lastReadFile = sess.lastReadFile;
-  let readFileCount = sess.readFileCount;
   const _TRANSIENT_SELF = /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
 
   // Load MCP tools dynamically
@@ -283,25 +266,17 @@ async function selfAgentStream(payload, emit, ctl = {}) {
   }
 
   // --- INJEKSI CHAIN-OF-THOUGHT (CoT) ---
-  // Inject rencana_tindakan for all tools: required for modifying tools, optional for read-only.
-  const READ_ONLY_TOOLS = ['grep', 'read', 'glob', 'list', 'web_search', 'web_fetch',
-    'question', 'todowrite', 'skill_list', 'terminal_read'];
   currentTools = currentTools.map(t => {
     const newTool = JSON.parse(JSON.stringify(t));
-    const isReadOnly = READ_ONLY_TOOLS.includes(t.function.name);
     if (!newTool.function.parameters) newTool.function.parameters = { type: 'object', properties: {} };
     if (!newTool.function.parameters.properties) newTool.function.parameters.properties = {};
     newTool.function.parameters.properties.rencana_tindakan = {
       type: 'string',
-      description: isReadOnly
-        ? '(OPTIONAL) Maks 5 kata menjelaskan intent tool ini.'
-        : '(WAJIB) 1 kalimat SINGKAT — apa yang dilakukan tool ini.'
+      description: 'WAJIB DIISI SEBELUM PARAMETER LAIN: Tulis 1-2 kalimat deskripsi tentang apa yang akan Anda lakukan dengan alat ini dan mengapa.'
     };
-    if (!isReadOnly) {
-      if (!newTool.function.parameters.required) newTool.function.parameters.required = [];
-      if (!newTool.function.parameters.required.includes('rencana_tindakan')) {
-        newTool.function.parameters.required.push('rencana_tindakan');
-      }
+    if (!newTool.function.parameters.required) newTool.function.parameters.required = [];
+    if (!newTool.function.parameters.required.includes('rencana_tindakan')) {
+      newTool.function.parameters.required.push('rencana_tindakan');
     }
     return newTool;
   });
@@ -310,14 +285,14 @@ async function selfAgentStream(payload, emit, ctl = {}) {
     const workflow = new StateGraph(AgentState)
       .addNode("planner", async (state) => {
          emit({ t: 'step', n: state.step });
-         emit({ t: 'act', kind: 'planner', arg: 'Menyusun rencana...', ok: true, output: 'Sedang membuat checklist singkat' });
+         emit({ t: 'act', kind: 'planner', arg: 'Menyusun rencana...', ok: true, output: 'Sedang membuat checklist tugas' });
          const lastMsg = state.messages[state.messages.length - 1];
-         const prompt = `Anda adalah AI Planner. Berdasarkan permintaan user, buat checklist SANGAT SINGKAT (maksimal 3 langkah). Tiap langkah di baris baru diawali "- ". JANGAN detail — langsung ke inti tugas. Jangan tambahkan teks lain.\n\nPermintaan: ${lastMsg.content}`;
+         const prompt = `Anda adalah AI Planner. Berdasarkan permintaan user berikut, buat checklist langkah-langkah teknis implementasinya secara rinci. Tiap langkah di baris baru, diawali dengan "- ". Jangan tambahkan teks lain.\n\nPermintaan: ${lastMsg.content}`;
          const reply = await askCloudTools(cloud, [{ role: 'user', content: prompt }], []);
          const lines = (reply.content || '').split('\n').filter(l => l.trim().startsWith('-')).map(l => l.trim().replace(/^- /, ''));
          if (lines.length === 0) lines.push('Jalankan tugas user.');
-         emit({ t: 'act', kind: 'planner', arg: 'Rencana selesai', ok: true, output: lines.slice(0, 3).join('\n') });
-         return { task_checklist: lines.slice(0, 3) };
+         emit({ t: 'act', kind: 'planner', arg: 'Rencana selesai', ok: true, output: lines.join('\n') });
+         return { task_checklist: lines };
       })
       .addNode("executor", async (state) => {
         if (isCancelled()) return { stopReason: 'cancelled' };
@@ -389,18 +364,15 @@ async function selfAgentStream(payload, emit, ctl = {}) {
         const runOne = async (tc) => {
           let args = {};
           try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
-
-          // Emit thought only when this tool actually executes
+          
           if (args.rencana_tindakan) {
             emit({ t: 'thought', c: args.rencana_tindakan, tool: tc.function.name, ok: true });
+            emitPhase('think', { tag: 'rencana_tindakan', status: 'ok', attrs: [{ k: 'tool', v: tc.function.name, t: 'str' }, { k: 'plan', v: args.rencana_tindakan.slice(0, 80), t: 'str' }] });
           }
-
+          
           const sig = tc.function.name + '|' + (tc.function.arguments || '');
           callCounts[sig] = (callCounts[sig] || 0) + 1;
-          // Per-name counter: detects loop where agent retries same tool with slightly different args
-          callCountsByName[tc.function.name] = (callCountsByName[tc.function.name] || 0) + 1;
-          if (callCounts[sig] > 3) return { stop: true }; // exact same call > 3x: hard stop
-          if (callCountsByName[tc.function.name] > 5) return { stop: true, reason: 'tool_name_loop' }; // same tool-type > 5x: hard stop
+          if (callCounts[sig] > 10) return { stop: true };
 
           if (/^(edit|write|replace_file_content|write_artifact)$/i.test(tc.function.name)) ensureBackup();
           if (tc.function.name === 'bash') {
@@ -411,15 +383,6 @@ async function selfAgentStream(payload, emit, ctl = {}) {
           if (r.output) localAccessed.add(r.output);
           if (!r.ok && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)) localFailed.add(tc.function.name);
           
-          // Track consecutive edit failures
-          if (tc.function.name === 'edit' && !r.ok) {
-            editFailCount++;
-            sess.editFailCount = editFailCount;
-          } else if (tc.function.name === 'edit' && r.ok) {
-            editFailCount = 0;
-            sess.editFailCount = 0;
-          }
-
           const extra = {};
           if (r.hunkId) { extra.hunkId = r.hunkId; extra.oldContent = r.oldContent; extra.newContent = r.newContent; }
           emit({ t: 'act', kind: tc.function.name, arg: args.path || args.pattern || args.command || '', ok: !!r.ok, output: r.output || '', ...extra });
@@ -434,9 +397,7 @@ async function selfAgentStream(payload, emit, ctl = {}) {
           });
 
           let out = r.output || '(ok)';
-          if (callCounts[sig] >= 2) out += '\n[SYSTEM: Panggilan identik diulang ' + callCounts[sig] + 'x — HASILNYA SAMA. Jangan ulangi. Gunakan read untuk melihat konten file, lalu edit SEKALI dengan old_string yang tepat.]';
-          if (editFailCount >= 2) out += '\n[SYSTEM: edit gagal ' + editFailCount + 'x berturut-turut. BERHENTI mencoba edit. Gunakan tool read untuk membaca baris yang tepat dari file, lalu buat 1 edit dengan old_string yang PERSIS sesuai konten file.]';
-          if (callCountsByName[tc.function.name] > 3) out += '\n[SYSTEM: Tool ' + tc.function.name + ' sudah dipanggil ' + callCountsByName[tc.function.name] + 'x. Ganti pendekatan atau berikan jawaban kepada user sekarang.]';
+          if (callCounts[sig] >= 2) out += '\n[catatan: panggilan sama diulang ' + callCounts[sig] + '× — hasilnya SAMA. JANGAN ulang yang sama; pakai hasil ini, lalu lanjut atau jawab.]';
           if (r.needsAnswer) {
             emit({ t: 'ask', question: r.question, choices: r.choices });
             out = 'You asked the user: "' + r.question + '". The user will respond. Wait for their answer before continuing.';
@@ -463,56 +424,32 @@ async function selfAgentStream(payload, emit, ctl = {}) {
           return { out };
         };
 
-        // Thoughts are emitted inside runOne or HITL branch — only for tools that actually execute.
-
-        // HITL disabled for testing — all tools execute directly
-        const EXECUTION_TOOLS = [];
-        const executionCalls = calls.filter(tc => EXECUTION_TOOLS.includes(tc.function.name));
-        const nonExecutionCalls = calls.filter(tc => !EXECUTION_TOOLS.includes(tc.function.name));
-        
-        if (executionCalls.length > 0 && !state.hitlApproved) {
-          // Execute non-execution tools (grep, read, etc.) directly so results are available
-          const nonExecMessages = [];
-          for (const tc of nonExecutionCalls) {
-            let tcArgs = {};
-            try { tcArgs = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
-            if (tcArgs.rencana_tindakan) {
-              emit({ t: 'thought', c: tcArgs.rencana_tindakan, tool: tc.function.name, ok: true });
-            }
-            const r = await runOne(tc);
-            nonExecMessages.push({ role: 'tool', tool_call_id: tc.id, content: r.out || '(ok)' });
-          }
-          // Emit HITL only for execution tools
-          const code = executionCalls.map(tc => {
+        // Batch-level HITL gate: pause the entire batch if any dangerous tool is requested and not pre-approved.
+        // This prevents multiple parallel HITL prompts and ensures every requested tool_call gets a result.
+        const DANGEROUS_TOOLS = ['bash', 'edit', 'write', 'replace_file_content', 'write_artifact'];
+        const dangerousCalls = calls.filter(tc => DANGEROUS_TOOLS.includes(tc.function.name));
+        if (dangerousCalls.length > 0 && !state.hitlApproved) {
+          const code = dangerousCalls.map(tc => {
             let a = {};
             try { a = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
             return '=== ' + tc.function.name + ' ===\n' + JSON.stringify(a, null, 2);
           }).join('\n\n');
-          emit({ t: 'hitl', thread_id, request: { title: 'Eksekusi perintah (' + executionCalls.length + '): ' + executionCalls.map(tc => tc.function.name).join(', '), code } });
-          // Add placeholder tool messages for execution tools
-          for (const tc of executionCalls) {
-            nonExecMessages.push({ role: 'tool', tool_call_id: tc.id, content: 'Menunggu persetujuan user...' });
-          }
+          emit({ t: 'hitl', thread_id, request: { title: 'Tindakan berbahaya (' + dangerousCalls.length + '): ' + dangerousCalls.map(tc => tc.function.name).join(', '), code } });
+          dlog('self', 'info', 'hitl_batch_pause', { count: dangerousCalls.length, tools: dangerousCalls.map(tc => tc.function.name) });
           return {
-            messages: nonExecMessages,
             step: state.step + 1,
             edits: localEdits,
             accessedEvidence: Array.from(localAccessed),
             failedTools: Array.from(localFailed),
             stopReason: 'hitl',
-            finalSummary: 'Menunggu persetujuan (HITL) untuk ' + executionCalls.length + ' eksekusi perintah.',
+            finalSummary: 'Menunggu persetujuan (HITL) untuk ' + dangerousCalls.length + ' alat berbahaya.',
             waitForAnswer: false,
             hitlPending: true,
-            pendingToolCalls: executionCalls
+            pendingToolCalls: dangerousCalls
           };
         }
 
-        // Sequential execution (not Promise.all) to preserve emit order and avoid race conditions
-        const results = [];
-        for (const tc of calls) {
-          const r = await runOne(tc);
-          results.push(r);
-        }
+        const results = await Promise.all(calls.map(tc => runOne(tc)));
         
         const toolMessages = [];
         let stopReason = "";
@@ -520,18 +457,6 @@ async function selfAgentStream(payload, emit, ctl = {}) {
         let localSummary = "";
         
         for (let i = 0; i < calls.length; i++) {
-          const name = calls[i].function.name;
-          const SEARCH_TOOLS = ['grep', 'disk_grep', 'read', 'disk_read', 'glob', 'disk_glob', 'list', 'disk_list', 'web_search', 'web_fetch'];
-          const isSearch = SEARCH_TOOLS.includes(name);
-          const isGrep = name === 'grep' || name === 'disk_grep';
-          const isRead = name === 'read' || name === 'disk_read';
-          if (isSearch) {
-            grepReadSteps++;
-            if (isRead) {
-              let fp = ''; try { fp = JSON.parse(calls[i].function.arguments||'{}').path||''; } catch(_) {}
-              if (fp === lastReadFile) readFileCount++; else { lastReadFile = fp; readFileCount = 1; }
-            }
-          }
           if (results[i] && results[i].stop) {
             if (results[i].waitForAnswer) {
               waitForAnswer = true;
@@ -542,56 +467,10 @@ async function selfAgentStream(payload, emit, ctl = {}) {
               localSummary = msg.content || 'Berhenti: panggilan tool berulang tanpa kemajuan.';
             }
           }
-          let out = (results[i] && results[i].out) || '(ok)';
-          // Force-stop notice: inform model to answer now instead of aborting the graph
-          if (grepReadSteps >= 5 && isSearch) {
-            out += '\n\n[SYSTEM NOTICE: PENCARIAN SELESAI] Anda sudah melakukan 5 langkah pencarian. DILARANG memanggil tool pencarian lagi. Berikan jawaban/kesimpulan lengkap Anda kepada user SEKARANG berdasarkan hasil yang sudah dikumpulkan.';
-          }
-          if (readFileCount >= 8 && isRead) {
-            out += '\n\n[SYSTEM NOTICE: BACA SELESAI] File sudah dibaca cukup. DILARANG memanggil tool read lagi. Berikan jawaban/kesimpulan lengkap Anda kepada user SEKARANG berdasarkan hasil yang sudah dikumpulkan.';
-          }
-          // Auto-convert: bash edit rejection → auto-read file + inject edit instruction
-          if (name === 'bash' && out.includes('DILARANG edit file via bash')) {
-            // Parse file path from bash command (common patterns)
-            const cmd = calls[i].function.arguments || '';
-            let cmdObj = {}; try { cmdObj = JSON.parse(cmd); } catch(_) {}
-            const cmdStr = cmdObj.command || '';
-            // Extract file path from common sed/findstr/Set-Content patterns
-            const pathMatch = cmdStr.match(/(?:sed|findstr|Set-Content|Out-File|Add-Content)[\s\S]*?["']?([^\s"']+?\.(?:jsx|js|cjs|css|html|json|md))["']?/i)
-              || cmdStr.match(/["']([^\s"']+?\.(?:jsx|js|cjs|css|html|json|md))["']/i);
-            if (pathMatch && pathMatch[1]) {
-              const targetFile = pathMatch[1].replace(/\\\\/g, '\\');
-              // Auto-read the file so agent has context for edit tool
-              try {
-                const fileToolsMod = require('./tools/file-tools.cjs');
-                const absPath = fileToolsMod.qResolve ? fileToolsMod.qResolve(targetFile) : null;
-                if (absPath) {
-                  const fileContent = fileToolsMod.qRead(absPath);
-                  // Truncate to 300 lines for context
-                  const lines = fileContent.split('\n').slice(0, 300).join('\n');
-                  out = `DITOLAK edit via bash. File sudah dibaca untuk Anda:\n\n${lines}\n\n[SYSTEM] Gunakan tool "edit" sekarang dengan:\n- path: ${targetFile}\n- old_string: (copy dari file di atas)\n- new_string: "" (kosong untuk hapus)`;
-                  emit({ t: 'act', kind: 'read', arg: targetFile, ok: true, output: 'Auto-read untuk edit conversion' });
-                } else {
-                  out = 'DITOLAK edit via bash. Baca file dulu dengan read tool, lalu gunakan edit tool.';
-                }
-              } catch (e2) {
-                out = 'DITOLAK edit via bash. Baca file dulu dengan read tool, lalu gunakan edit tool.';
-              }
-            } else {
-              out = 'DITOLANG edit via bash. Gunakan tool "edit" — baca file dulu dengan read tool jika perlu.';
-            }
-          }
-          toolMessages.push({ role: 'tool', tool_call_id: calls[i].id, content: out });
+          toolMessages.push({ role: 'tool', tool_call_id: calls[i].id, content: (results[i] && results[i].out) || '(ok)' });
         }
         
-        // Persist session state for HITL resume
-        sess.grepReadSteps = grepReadSteps;
-        sess.lastReadFile = lastReadFile;
-        sess.readFileCount = readFileCount;
-        sess.callCountsByName = callCountsByName;
-        sess.editFailCount = editFailCount;
-        
-        return {
+        return { 
           messages: toolMessages, 
           step: state.step + 1, 
           edits: localEdits, 
@@ -600,20 +479,18 @@ async function selfAgentStream(payload, emit, ctl = {}) {
           stopReason, 
           waitForAnswer, 
           hitlPending: stopReason === "hitl",
-          hitlApproved: state.hitlApproved, // Keep approval through the session (reset only on new user message)
+          hitlApproved: false, // Reset after processing tools
           finalSummary: localSummary 
         };
       })
       .addNode("validate", async (state) => {
         const msg = state.messages[state.messages.length - 1];
         const hasContent = msg.content && msg.content.trim();
-        const rawContent = hasContent ? msg.content : '(tidak ada respons dari model)';
-        const evidenceValid = hasValidEvidence(rawContent, state.accessedEvidence);
+        let fallback = hasContent ? msg.content : '(tidak ada respons dari model)';
         
-        let fallback = rawContent;
         fallback = sanitizeOutput(fallback);
         fallback = stripToolRecap(fallback);
-        fallback = truncateToConcise(fallback, 2000);
+        fallback = truncateToConcise(fallback, 300);
         
         if (state.failedTools.size < SYSTEM_RULES.MIN_FAILED_TOOLS && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.some(t => state.failedTools.has(t))) {
           const nextTool = SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.find(t => !state.failedTools.has(t));
@@ -630,7 +507,7 @@ async function selfAgentStream(payload, emit, ctl = {}) {
           }
         }
         
-        if (!evidenceValid) {
+        if (!hasValidEvidence(fallback, state.accessedEvidence)) {
           if (state.forceRetryCount >= 3) {
             dlog('self', 'warn', 'hasValidEvidence retry limit reached', { step: state.step });
           } else {
@@ -663,17 +540,16 @@ async function selfAgentStream(payload, emit, ctl = {}) {
         
         return { finalSummary: fallback, stopReason: 'finished' };
       })
-       .addConditionalEdges(START, (state) => {
-          if (state.hitlApproved) return "executor";
-          const lastMsg = state.messages[state.messages.length - 1];
-          const TASK_KEYWORDS = /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|perbaiki|refactor|optimi[sz]e|sort|parse|regex|api|loop|array|string|hitung|kalkulator|baca|file|folder|cari|search|hapus|edit|ubah|ganti|tambah(?:kan)?|jalankan|eksekusi|test|bantu)\b/i;
-          const CODE_KEYWORDS = /\b(buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|perbaiki|refactor|optimi[sz]e|edit|ubah|ganti|tambah(?:kan)?|jalankan|eksekusi|code|program|script)\b/i;
-          if (state.task_checklist && state.task_checklist.length === 0 && lastMsg.role === 'user' && CODE_KEYWORDS.test(lastMsg.content)) {
-              return "planner";
-          }
-          // Skip planner for simple search/lookup — langsung executor
-          return "executor";
-       })
+      .addConditionalEdges(START, (state) => {
+         // HITL resume: always go to executor directly
+         if (state.hitlApproved) return "executor";
+         const lastMsg = state.messages[state.messages.length - 1];
+         const TASK_KEYWORDS = /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|perbaiki|refactor|optimi[sz]e|sort|parse|regex|api|loop|array|string|hitung|kalkulator|baca|file|folder|cari|search|hapus|edit|ubah|ganti|tambah(?:kan)?|jalankan|eksekusi|test|bantu)\b/i;
+         if (state.task_checklist && state.task_checklist.length === 0 && lastMsg.role === 'user' && (TASK_KEYWORDS.test(lastMsg.content) || lastMsg.content.length > 50)) {
+             return "planner";
+         }
+         return "executor";
+      })
       .addEdge("planner", "executor")
       .addConditionalEdges("executor", (state) => {
         if (state.stopReason) return END;
@@ -729,82 +605,23 @@ async function selfAgentStream(payload, emit, ctl = {}) {
           ...toolResults.map(({ tc, output }) => ({ role: 'tool', tool_call_id: tc.id, content: output }))
         ];
         
-        // Restart graph. hitlApproved: true means all subsequent execution tools in this turn
-        // are auto-allowed. The flag resets to false when a new user message arrives (fresh invoke).
+        // Restart graph. hitlApproved is intentionally false so the NEXT batch of dangerous tools
+        // will trigger HITL again (one approval = one batch).
         finalState = await app.invoke({
           messages: continuationMessages,
           step: (savedState.step || 0) + 1,
           edits: (savedState.edits || 0) + toolResults.filter(r => r.edited).length,
-          hitlApproved: true,
+          hitlApproved: false,
           pendingToolCall: null,
           pendingToolCalls: [],
           task_checklist: savedState.task_checklist || []
         }, { configurable: { thread_id: thread_id + '_resume_' + Date.now() } });
       } else {
         // No pending tool call found — just restart normally
-        finalState = await app.invoke({ messages, hitlApproved: true }, config);
+        finalState = await app.invoke({ messages, hitlApproved: false }, config);
       }
     } else {
-      // Initial run — pre-search injection + intent-based routing
-      try {
-        const fileToolsMod = require('./tools/file-tools.cjs');
-        const userMsg = messages[messages.length - 1];
-        if (userMsg && userMsg.role === 'user' && fileToolsMod.qGrep) {
-          const content = (userMsg.content || '').toLowerCase();
-          
-          // Intent-based pre-routing: tell agent WHERE to look
-          const INTENT_MAP = [
-            { keywords: ['tombol','button','fitur','menu','ui','sidebar','composer','chat','modal','komponen','component','halaman','page','app.jsx'], hint: 'UI/React ada di public/app.jsx' },
-            { keywords: ['css','warna','color','style','theme','tema','layout','border','background','font'], hint: 'Styling ada di public/styles.css' },
-            { keywords: ['agent','hitl','tool','langgraph','graph','executor','planner','validate','rencana','self_agent'], hint: 'Agent logic ada di agent/self_agent.cjs' },
-            { keywords: ['tool definition','tool-def','daftar tool','definisi tool'], hint: 'Tool definitions ada di agent/tools/tool-definitions.cjs' },
-            { keywords: ['server','route','api','endpoint','http','port','sse'], hint: 'Server ada di server.cjs' },
-            { keywords: ['config','konfigurasi','mcp','prompt'], hint: 'Config ada di config/' },
-          ];
-          let routingHint = '';
-          for (const intent of INTENT_MAP) {
-            if (intent.keywords.some(k => content.includes(k))) {
-              routingHint = intent.hint;
-              break;
-            }
-          }
-          
-          // Extract likely search keywords from user message
-          const afterVerb = content.match(/(?:cari|hapus|temukan|edit|ganti|ubah|cari letak|di mana|where is)\s+(.{3,60})/i);
-          let keywords = [];
-          if (afterVerb && afterVerb[1]) {
-            let kw = afterVerb[1].replace(/^(di\s+(dalam\s+)?)|(yang\s+)|(kode\s+|tombol\s+|button\s+|fitur\s+)/gi, '').trim();
-            kw = kw.split(/\s+/).slice(0, 4).join(' ');
-            if (kw.length >= 3) keywords.push(kw);
-          }
-          if (keywords.length === 0) {
-            const words = (userMsg.content || '').split(/\s+/).filter(w => w.length >= 4 && !/^(yang|dengan|untuk|dari|pada|akan|bisa|harus|saya|tolong|silakan|mana|dimana|cara|buat|tampilkan|jelaskan|berikan|periksa|cek|lihat|karena|tetapi|namun|jika|kalau|supaya|agar|sehingga|sangat|juga|sudah|belum|masih|lebih|kurang|paling|saja|ini|itu|ada|tidak|dengan|dalam|luar|atas|bawah|kiri|kanan|depan|belakang|semua|setiap|beberapa|banyak|sedikit|cari|hapus|temukan|edit|ganti|ubah|fitur|tombol|button|kode|file|folder|project|direktori)/i.test(w));
-            if (words.length > 0) keywords.push(words.slice(0, 3).join(' '));
-          }
-          
-          if (keywords.length > 0) {
-            const grepResults = [];
-            for (const kw of keywords.slice(0, 2)) {
-              const result = fileToolsMod.qGrep(kw, {});
-              if (result && !result.startsWith('(') && result.length > 5) {
-                grepResults.push('grep "' + kw + '":\n' + result.slice(0, 500));
-              }
-            }
-            if (grepResults.length > 0) {
-              let preSearch = '\n\n[PRE-SEARCH — hasil sudah ada. JANGAN grep ulang. Langsung read + edit/jawab]:\n' + grepResults.join('\n\n');
-              if (routingHint) preSearch += '\n\n[ROUTE] ' + routingHint;
-              messages[0].content += preSearch;
-              dlog('self', 'info', 'pre_search_injected', { keywords, routing: routingHint, chars: preSearch.length });
-            } else if (routingHint) {
-              messages[0].content += '\n\n[ROUTE] ' + routingHint + '. Gunakan grep/read langsung ke file ini.';
-            }
-          } else if (routingHint) {
-            messages[0].content += '\n\n[ROUTE] ' + routingHint + '. Gunakan grep/read langsung ke file ini.';
-          }
-        }
-      } catch (e) {
-        dlog('self', 'warn', 'pre_search_failed', { error: e.message });
-      }
+      // Initial run
       finalState = await app.invoke({ messages }, config);
     }
 
@@ -821,44 +638,22 @@ async function selfAgentStream(payload, emit, ctl = {}) {
        }
     } else if (finalState.step >= MAX_STEPS && finalState.stopReason !== "finished") {
        dlog('self', 'info', 'stop', { reason: 'max_steps', step: finalState.step });
-       if (sessionSnapshotId && (finalState.edits || 0) === 0) {
+       if (sessionSnapshotId) {
          rollback(sessionSnapshotId);
          emit({ t: 'err', m: `[Auto-Rollback] Agen gagal (Batas Langkah). Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).` });
-         finalSummary = 'Batas langkah (' + MAX_STEPS + ').';
-       } else {
-         finalSummary = `Batas langkah (${MAX_STEPS}). ${finalState.edits || 0} file berhasil diedit.`;
        }
-       emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalSummary, backup: sessionSnapshotId });
-    } else if (finalState.stopReason === 'finished') {
-       dlog('self', 'info', 'stop', { reason: 'finished', step: finalState.step });
-       finalSummary = finalState.finalSummary || 'Selesai.';
-       if (!finalState.finalSummary) {
-         emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalSummary, backup: sessionSnapshotId });
-       }
-    } else {
-       // Catch-all: any other stopReason (error, cancelled, or unknown) — ALWAYS emit adone
-       dlog('self', 'info', 'stop', { reason: finalState.stopReason || 'unknown', step: finalState.step });
-       if (finalState.stopReason === 'error') {
-         finalSummary = 'Cloud API error — coba lagi dalam beberapa detik.';
-       } else if (finalState.stopReason === 'cancelled') {
-         finalSummary = 'Dibatalkan oleh user.';
-       } else {
-         finalSummary = finalState.finalSummary || 'Selesai.';
-       }
+       finalSummary = 'Batas langkah (' + MAX_STEPS + ').';
        emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalSummary, backup: sessionSnapshotId });
     }
     
     finalSummary = finalState.finalSummary || finalSummary;
   } catch (e) {
     dlog('self', 'info', 'stop', { reason: 'unhandled_exception', error: (e && e.message || String(e)).slice(0, 100) });
-    if (sessionSnapshotId && (edits || 0) === 0) {
+    if (sessionSnapshotId) {
       rollback(sessionSnapshotId);
       emit({ t: 'err', m: `[Auto-Rollback] Agen crash internal. Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).` });
     }
     if (!isCancelled()) emit({ t: 'err', m: e.message });
-    // ALWAYS emit adone so frontend knows the agent is done
-    emit({ t: 'adone', steps: 0, edits: edits || 0, summary: 'Error: ' + (e.message || 'unknown').slice(0, 100), backup: sessionSnapshotId });
-    finalSummary = 'Error: ' + (e.message || '').slice(0, 80);
   }
   dlog('self', 'info', 'stop', { reason: 'end_of_function', finalSummary: (finalSummary || '').slice(0, 80) });
   return finalSummary;

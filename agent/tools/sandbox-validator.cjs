@@ -1,4 +1,4 @@
-﻿// Sandbox Validator — semantic, intent-aware pre-execution safety layer for edit/write/bash
+// Sandbox Validator — semantic, intent-aware pre-execution safety layer for edit/write/bash
 // Intercepts destructive operations, validates in isolation before applying to repo
 // Supports LEXICAL (literal regex) + SEMANTIC (intent-based) matching
 const fs = require('fs');
@@ -458,18 +458,40 @@ async function validateEdit(filePath, oldString, newString) {
   const pathCheck = validateFilePath(filePath, currentContent.slice(0, 2000));
   if (!pathCheck.safe) return pathCheck;
 
-  // 3. Check old_string exists
-  if (!currentContent.includes(oldString)) {
-    return { safe: false, reason: 'old_string tidak ditemukan di file' };
+  // 3. Check old_string exists (dengan smart whitespace-tolerant fallback)
+  let targetToReplace = oldString;
+  if (!currentContent.includes(targetToReplace)) {
+    const oldLines = currentContent.split(/\r?\n/);
+    const targetLines = oldString.split(/\r?\n/);
+    let matchIndex = -1;
+    let matchCount = 0;
+    for (let i = 0; i <= oldLines.length - targetLines.length; i++) {
+      let matched = true;
+      for (let j = 0; j < targetLines.length; j++) {
+        if (oldLines[i + j].trim() !== targetLines[j].trim()) {
+          matched = false;
+          break;
+        }
+      }
+      if (matched) {
+        matchIndex = i;
+        matchCount++;
+      }
+    }
+    if (matchCount === 1 && matchIndex >= 0) {
+      targetToReplace = oldLines.slice(matchIndex, matchIndex + targetLines.length).join('\n');
+    } else {
+      return { safe: false, reason: 'old_string tidak ditemukan di file' };
+    }
   }
 
   // 4. Check NOOP
-  if (oldString === newString) {
+  if (targetToReplace === newString) {
     return { safe: false, reason: 'NOOP: old_string sama dengan new_string' };
   }
 
   // 5. Apply patch in memory
-  const patched = currentContent.replace(oldString, newString);
+  const patched = currentContent.replace(targetToReplace, newString);
   if (patched === currentContent) {
     return { safe: false, reason: 'NOOP: replace tidak mengubah konten' };
   }

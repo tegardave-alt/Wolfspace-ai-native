@@ -688,8 +688,9 @@ const MI = {
   webdev: svg(<><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M9 10l-2 2 2 2"/><path d="M15 10l2 2-2 2"/></>),
   slides: svg(<><rect x="3" y="4" width="18" height="12" rx="1.5"/><path d="M12 16v4"/><path d="M8 20h8"/></>),
   more:   svg(<><circle cx="5" cy="12" r="1"/><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/></>),
+  terminal: svg(<><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></>),
 };
-function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
+function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas, onOpenAgentCli }) {
   const [val, setVal] = useState("");
   const [menu, setMenu] = useState(false);
   const [soon, setSoon] = useState("");
@@ -725,6 +726,7 @@ function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
           {menu && (
             <div className="composer-menu">
               <button className="cm-item" onClick={()=>notYet("Unggah lampiran")}><i>{MI.upload}</i><span className="cm-lbl"><b>Unggah lampiran</b><small>file, gambar, video, audio</small></span></button>
+              <button className="cm-item" onClick={()=>{ setMenu(false); if(onOpenAgentCli) onOpenAgentCli(); }}><i>{MI.terminal}</i><span className="cm-lbl"><b>Agent CLI</b><small>jalankan perintah agent</small></span></button>
               <div className="cm-sep" />
               <button className={"cm-item"+(canvasAuto?" active":"")} onClick={webDev}><i>{MI.webdev}</i> Web Dev{canvasAuto?<span className="cm-on">aktif</span>:null}</button>
             </div>
@@ -738,6 +740,7 @@ function Composer({ onSend, onCancel, busy, canvasAuto, onToggleCanvas }) {
         {soon ? <b style={{color:"var(--brand)"}}>{soon}</b>
               : (canvasAuto ? <b style={{color:"var(--brand)"}}>Web Dev (Canvas) aktif</b> : null)}
       </div>
+
     </div>
   );
 }
@@ -2037,6 +2040,257 @@ function AgentSteps({ run }){
 const SUGGESTIONS = ["Contoh syntax Python", "Buatkan fungsi rekursif Python dengan assert", "Jelaskan async/await", "Tulis is_prime(n) + tes"];
 const CANVAS_BUILDING = '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">'+
   '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka…</div></div></body></html>';
+// Extract all providers (shortened to top 20 for code size, or full list if needed)
+const TUI_PROVIDERS = [
+  "302.AI", "Abacus", "abliteration.ai", "AI/ML API", "AIHubMix", "Alibaba", "Alibaba (China)", "Alibaba Coding Plan", "Alibaba Coding Plan (China)", "Alibaba Token Plan", "Alibaba Token Plan (China)", "Amazon Bedrock", "Ambient", "AnyAPI", "Atomic Chat", "Auriko", "Azure", "Azure Cognitive Services", "Bailing", "Baseten", "Berget.AI", "Cerebras", "Chutes", "Clarifai", "Claudinio", "CloudFerro Sherlock", "Cloudflare AI Gateway", "Cloudflare Workers AI", "Cohere", "Cortecs", "CrofAI", "CrossModel", "D.Run (China)", "Databricks", "Deep Infra", "DeepSeek", "DigitalOcean", "DInference", "evroc", "FastRouter", "Fireworks AI", "FreeModel", "Friendli", "FrogBot", "GitHub Models", "GitLab Duo", "GMI Cloud", "Groq", "Helicone", "HPC-AI", "Hugging Face", "iFlow", "Inception", "Inceptron", "Inference", "IO.NET", "Jiekou.AI", "Kenari", "Kilo Gateway", "Kimi For Coding", "KUAE Cloud Coding Plan", "Lilac", "Llama", "LLM Gateway", "LLMTR", "LMStudio", "LongCat", "LucidQuery", "Meganova", "Merge Gateway", "Meta", "MiniMax (minimax.io)", "MiniMax (minimaxi.com)", "MiniMax Token Plan (minimax.io)", "MiniMax Token Plan (minimaxi.com)", "Mistral", "Mixlayer", "Moark", "ModelScope", "Moonshot AI", "Moonshot AI (China)", "Morph", "NanoGPT", "NEAR AI Cloud", "Nebius Token Factory", "Neon", "Neuralwatt", "Nova", "NovitaAI", "Nvidia", "Ollama Cloud", "OpenRouter", "OrcaRouter", "OVHcloud AI Endpoints", "Perplexity", "Perplexity Agent", "Poe", "Poolside", "Privatemode AI", "QiHang", "Qiniu", "Regolo AI", "Requesty", "routing.run", "Sakana AI", "SAP AI Core", "Sarvam AI", "Scaleway", "SiliconFlow", "SiliconFlow (China)", "Snowflake Cortex", "STACKIT", "StepFun", "StepFun AI", "Subconscious", "submodel", "Synthetic", "Tencent Coding Plan (China)", "Tencent Token Plan", "Tencent TokenHub", "The Grid AI", "Tinfoil", "Together AI", "TrustedRouter", "Umans AI", "Umans AI Coding Plan", "Upstage", "v0", "Venice AI", "Vercel AI Gateway", "Vertex", "Vertex (Anthropic)", "Vivgrid", "Vultr", "Wafer", "Weights & Biases", "xAI", "Xiaomi", "Xiaomi Token Plan (China)", "Xiaomi Token Plan (Europe)", "Xiaomi Token Plan (Singapore)", "Xpersona", "Z.AI", "Z.AI Coding Plan", "Zeldoc", "Zenifra", "ZenMux", "Zhipu AI", "Zhipu AI Coding Plan"
+];
+
+const ALL_SLASH_COMMANDS = [
+  { cmd: '/agents', desc: 'Switch agent', action: 'agents' },
+  { cmd: '/compact', desc: 'Compact session', action: null },
+  { cmd: '/connect', desc: 'Connect provider', action: 'providers' },
+  { cmd: '/copy', desc: 'Copy session transcript', action: null },
+  { cmd: '/diff', desc: 'Open diff viewer', action: null },
+  { cmd: '/editor', desc: 'Open editor', action: null },
+  { cmd: '/exit', desc: 'Exit the app', action: null },
+  { cmd: '/export', desc: 'Export session transcript', action: 'export' },
+  { cmd: '/fork', desc: 'Fork session', action: null },
+  { cmd: '/help', desc: 'Help', action: 'help' },
+  { cmd: '/mcps', desc: 'Toggle MCPs', action: 'mcps' },
+  { cmd: '/models', desc: 'Switch model', action: 'models' },
+  { cmd: '/new', desc: 'New session', action: null },
+  { cmd: '/org', desc: 'Switch org', action: null },
+  { cmd: '/sessions', desc: 'Switch session', action: 'sessions' },
+  { cmd: '/skills', desc: 'Manage skills', action: 'skills' },
+  { cmd: '/status', desc: 'View status', action: 'status' },
+  { cmd: '/themes', desc: 'Switch theme', action: 'themes' },
+  { cmd: '/variants', desc: 'Switch model variant', action: 'variants' },
+  { cmd: '/workspaces', desc: 'Manage workspaces', action: 'workspaces' }
+];
+
+function OpenCodeTUI({ onClose }) {
+  const [mode, setMode] = useState('chat'); // 'chat', 'slash', 'modal'
+  const [chatVal, setChatVal] = useState('');
+  
+  // Slash state
+  const [slashQuery, setSlashQuery] = useState('');
+  const [slashIndex, setSlashIndex] = useState(0);
+  
+  // Modal state
+  const [activeModal, setActiveModal] = useState(null);
+  const [modalQuery, setModalQuery] = useState('');
+  const [modalIndex, setModalIndex] = useState(0);
+  const [selectedProvider, setSelectedProvider] = useState(null);
+  
+  // Refs for scrolling
+  const slashListRef = useRef(null);
+  const modalListRef = useRef(null);
+  const inputRef = useRef(null);
+
+  useEffect(() => {
+    if (inputRef.current) inputRef.current.focus();
+  }, [mode, activeModal]);
+
+  const filteredSlash = useMemo(() => {
+    return ALL_SLASH_COMMANDS.filter(c => c.cmd.toLowerCase().includes(slashQuery) || c.desc.toLowerCase().includes(slashQuery));
+  }, [slashQuery]);
+
+  const handleChatInput = (e) => {
+    const val = e.target.value;
+    setChatVal(val);
+    if (val.startsWith('/')) {
+      setMode('slash');
+      setSlashQuery(val.slice(1).toLowerCase());
+      setSlashIndex(0);
+    } else {
+      setMode('chat');
+    }
+  };
+  
+  const executeSlash = (item) => {
+    setChatVal('');
+    if (item.action) {
+      setMode('modal');
+      setActiveModal(item.action);
+      setModalQuery('');
+      setModalIndex(0);
+    } else {
+      setMode('chat');
+      onClose(); // or alert
+    }
+  };
+
+  const handleKeyDown = (e) => {
+    if (mode === 'chat' || mode === 'slash') {
+      if (e.key === 'Escape') onClose();
+      else if (mode === 'slash') {
+        if (e.key === 'ArrowDown') { e.preventDefault(); setSlashIndex(i => Math.min(i + 1, filteredSlash.length - 1)); }
+        else if (e.key === 'ArrowUp') { e.preventDefault(); setSlashIndex(i => Math.max(i - 1, 0)); }
+        else if (e.key === 'Enter') { e.preventDefault(); if (filteredSlash[slashIndex]) executeSlash(filteredSlash[slashIndex]); }
+      }
+    } else if (mode === 'modal') {
+      if (e.key === 'Escape') { e.preventDefault(); setMode('chat'); setActiveModal(null); }
+      else if (e.key === 'ArrowDown') {
+        e.preventDefault();
+        // Simple logic for generic modal
+        setModalIndex(i => i + 1); // bounds checked in render
+      }
+      else if (e.key === 'ArrowUp') {
+        e.preventDefault();
+        setModalIndex(i => Math.max(i - 1, 0));
+      }
+      else if (e.key === 'Enter') {
+        e.preventDefault();
+        handleModalEnter();
+      }
+    }
+  };
+
+  const handleModalEnter = () => {
+    if (activeModal === 'providers') {
+      const selected = getProvidersList()[modalIndex];
+      if (!selected) return;
+      if (selected.id === 'zen') {
+        alert('Successfully connected to OpenCode Zen!');
+        setMode('chat'); setActiveModal(null);
+      } else {
+        setSelectedProvider(selected.title);
+        setActiveModal('apikey');
+        setModalQuery('');
+      }
+    } else if (activeModal === 'apikey') {
+      const key = modalQuery;
+      if (window.WOLFSPACE && window.WOLFSPACE.invoke) {
+        window.WOLFSPACE.invoke('api', { method: 'POST', url: '/api/keys/save', body: { provider: selectedProvider, key } });
+      }
+      alert('API Key saved for ' + selectedProvider + '!');
+      setMode('chat'); setActiveModal(null);
+    } else {
+      setMode('chat'); setActiveModal(null);
+    }
+  };
+
+  const getProvidersList = () => {
+    const arr = [
+      { type: 'category', label: 'Popular' },
+      { title: 'OpenCode Zen', desc: '(Recommended)', icon: '√', id: 'zen', sel: true },
+      { title: 'OpenCode Go', desc: 'Low cost subscription for everyone', icon: '√', id: 'go', sel: true },
+      { title: 'OpenAI', desc: '(ChatGPT Plus/Pro or API key)', icon: ' ', sel: true },
+      { title: 'GitHub Copilot', desc: '', icon: ' ', sel: true },
+      { title: 'Anthropic', desc: '(API key)', icon: '√', id: 'anthropic', sel: true },
+      { title: 'Google', desc: '', icon: ' ', sel: true },
+      { type: 'category', label: 'All Providers (154)' },
+      ...TUI_PROVIDERS.map(p => ({ title: p, desc: '', icon: ' ', sel: true }))
+    ];
+    const filtered = arr.filter(p => p.type === 'category' || p.title.toLowerCase().includes(modalQuery));
+    // Remove empty categories
+    const final = [];
+    for(let i=0; i<filtered.length; i++) {
+        if (filtered[i].type === 'category') {
+            if (i+1 < filtered.length && filtered[i+1].type !== 'category') final.push(filtered[i]);
+        } else final.push(filtered[i]);
+    }
+    return final;
+  };
+
+  useEffect(() => {
+    // Snap scroll logic
+    if (mode === 'slash' && slashListRef.current) {
+        const sel = slashListRef.current.querySelector('.selected');
+        if(sel) sel.scrollIntoView({block:'nearest'});
+    } else if (mode === 'modal' && modalListRef.current) {
+        const sel = modalListRef.current.querySelector('.selected');
+        if(sel) sel.scrollIntoView({block:'nearest'});
+    }
+  }, [slashIndex, modalIndex, mode]);
+
+  const renderModalContent = () => {
+    if (activeModal === 'providers') {
+      const list = getProvidersList();
+      // bounds check
+      const selItems = list.map((l,i)=>l.type!=='category'?i:-1).filter(i=>i!==-1);
+      const actualIndex = selItems.includes(modalIndex) ? modalIndex : (selItems[0] || 0);
+      if (modalIndex !== actualIndex) setTimeout(()=>setModalIndex(actualIndex),0);
+
+      return (
+        <>
+          <div className="cli-search" style={{height:'20px'}}>
+             <input type="text" value={modalQuery} onChange={e=>setModalQuery(e.target.value)} ref={inputRef} autoFocus />
+             <div className="tui-input-renderer">
+                 {modalQuery ? <span>{modalQuery}</span> : <span className="tui-placeholder">Search</span>}
+                 <span className="tui-cursor"></span>
+             </div>
+          </div>
+          <div className="cli-content" ref={modalListRef}>
+            {list.map((item, i) => item.type === 'category' ? (
+              <div key={i} className="cli-category">{item.label}</div>
+            ) : (
+              <div key={i} className={"cli-item" + (i === actualIndex ? " selected" : "")} 
+                   onMouseEnter={()=>setModalIndex(i)} onClick={handleModalEnter}>
+                <span className={"icon" + (item.icon==='√'?' check':'')}>{item.icon||' '}</span>
+                <span className="title">{item.title}</span><span className="desc">{item.desc}</span>
+              </div>
+            ))}
+          </div>
+        </>
+      );
+    }
+    if (activeModal === 'apikey') {
+      return (
+        <>
+          <div className="cli-text-block">Please enter your API key for <strong>{selectedProvider}</strong>.</div>
+          <div className="cli-search" style={{height:'20px'}}>
+             <input type="text" value={modalQuery} onChange={e=>setModalQuery(e.target.value)} ref={inputRef} autoFocus />
+             <div className="tui-input-renderer">
+                 {modalQuery ? <span>{modalQuery.replace(/./g, '*')}</span> : <span className="tui-placeholder">API key</span>}
+                 <span className="tui-cursor"></span>
+             </div>
+          </div>
+          <div className="cli-footer"><strong>enter</strong> submit</div>
+        </>
+      );
+    }
+    return <div className="cli-text-block">Modal {activeModal} not fully implemented yet in React. Press ESC.</div>;
+  };
+
+  const getTitle = () => {
+      if(activeModal==='providers') return 'Connect a provider';
+      if(activeModal==='apikey') return 'API key';
+      return activeModal;
+  };
+
+  return (
+    <div className="agent-cli-overlay" onClick={(e) => { if(e.target.className==='agent-cli-overlay') onClose(); }}>
+      {mode === 'modal' ? (
+        <div className="cli-window" onClick={e=>e.stopPropagation()} onKeyDown={handleKeyDown}>
+          <div className="cli-header"><span>{getTitle()}</span><span className="esc">esc</span></div>
+          <div className="cli-modal-body">
+            {renderModalContent()}
+          </div>
+        </div>
+      ) : (
+        <div className="chat-container" onClick={e=>e.stopPropagation()} style={{position:'absolute', bottom:'150px', width:'100%', maxWidth:'800px'}} onKeyDown={handleKeyDown}>
+          <div className={"slash-popup" + (mode==='slash'?' active':'')} ref={slashListRef} style={{display: mode==='slash'?'flex':'none'}}>
+            {filteredSlash.map((item, i) => (
+              <div key={i} className={"slash-item" + (i===slashIndex?" selected":"")} 
+                   onMouseEnter={()=>setSlashIndex(i)} onClick={()=>executeSlash(item)}>
+                <span className="cmd">{item.cmd}</span><span className="cmd-desc">{item.desc}</span>
+              </div>
+            ))}
+          </div>
+          <div className="chat-input-wrapper" style={{backgroundColor:'#2a2a2a', display:'flex', padding:'12px 16px', borderRadius:'4px'}}>
+            <span className="prompt-cursor" style={{color:'#858585', marginRight:'8px'}}>❯</span>
+            <input type="text" value={chatVal} onChange={handleChatInput} ref={inputRef} 
+                   placeholder="Ketik / untuk memanggil OpenCode..." 
+                   style={{flex:1, background:'transparent', border:'none', outline:'none', color:'#d4d4d4', fontFamily:'inherit', fontSize:'14px'}} autoFocus />
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
+
 function App() {
   const [models, setModels] = useState([{value:"",label:"Memuat model...",disabled:true}]);
   const [modelVal, setModelVal] = useState("");
@@ -2332,7 +2586,8 @@ function App() {
                   <div className="chat-inner">{messages.map((m,i)=><Message key={i} msg={m} onOpenCanvas={openCanvas} />)}</div>
                 )}
               </div>
-              <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} canvasAuto={canvasAuto} onToggleCanvas={toggleCanvas} />
+              <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} canvasAuto={canvasAuto} onToggleCanvas={toggleCanvas} onOpenAgentCli={() => setAgentCliOpen(true)} />
+              {agentCliOpen && <OpenCodeTUI onClose={() => setAgentCliOpen(false)} />}
             </div>
             {canvas && <div className="split-divider" onMouseDown={onDividerDown} />}
             {canvas && <div className="canvas-col" style={{ flex: "0 0 " + canvasPct + "%" }}>

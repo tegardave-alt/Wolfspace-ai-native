@@ -1,4 +1,4 @@
-﻿// ── WOLFSPACE Sandbox Execution ──
+// ── WOLFSPACE Sandbox Execution ──
 // Inspired by @openclaw/openshell-sandbox & @openclaw/fs-safe
 // Provides capability-based filesystem access, resource limits,
 // workspace mirroring, and execution audit for safe agent code execution.
@@ -149,7 +149,12 @@ class SandboxSession {
         timeout: cmdTimeout,
         windowsHide: true,
         env: {
-          ...process.env,
+          PATH: process.env.PATH,
+          SystemRoot: process.env.SystemRoot,
+          SystemDrive: process.env.SystemDrive,
+          ComSpec: process.env.ComSpec,
+          TEMP: this.dir,
+          TMP: this.dir,
           // Sandbox env markers
           QUANTUM_SANDBOX: '1',
           QUANTUM_SANDBOX_ID: this.id,
@@ -285,6 +290,7 @@ function defaultSandboxOpts() {
       os.tmpdir(),
     ],
     writeRoots: [
+      QROOT,
       path.join(QROOT, 'workspace'),
       os.tmpdir(),
       path.join(QROOT, 'skills'),

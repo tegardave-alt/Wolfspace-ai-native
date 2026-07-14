@@ -1951,6 +1951,12 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   useEffect(() => {
     if (!menu) return;
     const h = (e) => {
+      // Keep menu open when clicking sidebar controls (e.g. Visual Picker button)
+      // or when the visual picker overlay is active, so the user can select
+      // elements inside the + menu with the picker.
+      const inSidebar = e.target.closest && e.target.closest('.sidebar');
+      if (inSidebar) return;
+      if (document.body.classList.contains('vp-on')) return;
       if (wrapRef.current && !wrapRef.current.contains(e.target))
         setMenu(false);
     };
@@ -1977,7 +1983,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
 
           </div>
           {menu && (
-            <div className="am-menu">
+            <div className="am-menu" onMouseDown={(e) => e.stopPropagation()}>
               <input type="text" className="am-search" placeholder="Filter actions..." autoFocus />
               
               <div className="am-section-label">Context</div>
@@ -1987,9 +1993,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
               <button className="am-item" onClick={() => notYet("Mention file")}>
                 <span>Mention file from this project...</span>
               </button>
-              <button className="am-item" onClick={() => { setMenu(false); setVal(""); }}>
-                <span>Clear conversation</span>
-              </button>
+
 
 
               <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
@@ -2012,10 +2016,11 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                         key={m.value}
                         className="am-item" 
                         style={{ padding: '8px 12px' }}
-                        onClick={() => {
+                        onClick={(e) => {
+                          e.stopPropagation();
                           if (setModelVal) setModelVal(m.value);
                           setShowModelMenu(false);
-                          setMenu(false);
+                          // Keep main + menu open so user can continue configuring other options
                         }}
                       >
                         <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
@@ -4906,6 +4911,22 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
   const isOpen = !!expanded[i];
   
   if (e.type === "thought") {
+    const text = e.output || e.arg || "Thinking...";
+    const sections = [];
+    const lines = text.split('\n');
+    let current = null;
+    for (const line of lines) {
+      const headingMatch = line.match(/^##\s+(.+)$/);
+      if (headingMatch) {
+        if (current) sections.push(current);
+        current = { heading: headingMatch[1].trim(), body: '' };
+      } else if (current) {
+        current.body += line + '\n';
+      }
+    }
+    if (current) sections.push(current);
+    const hasSections = sections.length > 0;
+    const displaySections = hasSections ? sections : [{ heading: 'Thinking', body: text }];
     return (
       <React.Fragment>
         <div className="aal-row aal-thought-header" onClick={() => setExpanded(p => ({...p, [i]: !isOpen}))}>
@@ -4914,7 +4935,16 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
             <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M5 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
           </span>
         </div>
-        {isOpen && <div className="aal-thought-content">{e.output || e.arg || "Thinking..."}</div>}
+        {isOpen && (
+          <div className="aal-thought-content">
+            {displaySections.map((s, idx) => (
+              <div key={idx} className="aal-thought-section">
+                <div className="aal-thought-heading">{s.heading}</div>
+                <div className="aal-thought-body">{s.body.trim()}</div>
+              </div>
+            ))}
+          </div>
+        )}
       </React.Fragment>
     );
   }
@@ -5018,14 +5048,68 @@ function GroupedActionRow({ group, expanded, setExpanded }) {
   );
 }
 
+function ConsolidatedThoughtCard({ thoughts, expanded, setExpanded }) {
+  const isOpen = expanded['thought_card'] === true;
+  const allSections = [];
+  const bullets = [];
+  thoughts.forEach((thought) => {
+    const text = (thought.output || thought.arg || '').trim();
+    if (!text) return;
+    const hasHeadings = /^##\s+/m.test(text);
+    if (hasHeadings) {
+      const lines = text.split('\n');
+      let current = null;
+      for (const line of lines) {
+        const headingMatch = line.match(/^##\s+(.+)$/);
+        if (headingMatch) {
+          if (current) allSections.push(current);
+          current = { heading: headingMatch[1].trim(), body: '' };
+        } else if (current) {
+          current.body += line + '\n';
+        }
+      }
+      if (current) allSections.push(current);
+    } else {
+      bullets.push(text);
+    }
+  });
+  const totalSteps = allSections.length + bullets.length;
+  if (totalSteps === 0) return null;
+  return (
+    <React.Fragment>
+      <div className="aal-row aal-thought-header" onClick={() => setExpanded(p => ({...p, thought_card: !isOpen}))}>
+        <span>Thought Process ({totalSteps} step{totalSteps > 1 ? 's' : ''})</span>
+        <span className={"aal-chevron" + (isOpen ? " open" : "")}>
+          <svg viewBox="0 0 16 16" width="10" height="10" fill="currentColor"><path d="M5 3l5 5-5 5" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"/></svg>
+        </span>
+      </div>
+      {isOpen && (
+        <div className="aal-thought-content">
+          {bullets.map((b, idx) => (
+            <div key={'b'+idx} className="aal-thought-bullet">• {b}</div>
+          ))}
+          {allSections.map((s, idx) => (
+            <div key={'s'+idx} className="aal-thought-section">
+              <div className="aal-thought-heading">{s.heading}</div>
+              <div className="aal-thought-body">{s.body.trim()}</div>
+            </div>
+          ))}
+        </div>
+      )}
+    </React.Fragment>
+  );
+}
+
 function AgentSteps({ run }) {
   const [expanded, setExpanded] = React.useState({});
-  const acts = (run.events || []).filter(e => e.type === "act" || e.type === "err" || e.type === "thought");
+  const allActs = (run.events || []).filter(e => e.type === "act" || e.type === "err" || e.type === "thought");
+  const thoughts = allActs.filter(e => e.type === "thought");
+  const acts = allActs.filter(e => e.type !== "thought");
   const summary = cleanAgentText(run.summary);
 
-  if (run.done && acts.length === 0 && !run.error)
+  if (run.done && allActs.length === 0 && !run.error)
     return (<React.Fragment><div className="bubble-model"><Blocks text={summary} /></div><Verdict run={run.run} /></React.Fragment>);
-  if (!run.busy && acts.length === 0 && run.error)
+  if (!run.busy && allActs.length === 0 && run.error)
     return <div className="bubble-model" style={{color:"#fca5a5"}}>{summary || (run.events&&run.events[0]&&run.events[0].m) || "error"}</div>;
 
   const isTopOpen = expanded.top !== false;
@@ -5040,6 +5124,9 @@ function AgentSteps({ run }) {
       </div>
 
       <div className={"aal-indent" + (isTopOpen ? "" : " aal-hidden")}>
+        {thoughts.length > 0 && (
+          <ConsolidatedThoughtCard thoughts={thoughts} expanded={expanded} setExpanded={setExpanded} />
+        )}
         {(() => {
           const groupedActs = [];
           let currentGroup = null;
@@ -5137,6 +5224,7 @@ function App() {
   const [hitlRequest, setHitlRequest] = React.useState(null);
   window.testHitl = function() {
     setHitlRequest({
+      kind: 'hitl',
       title: "Allow check if node-pty is installed?",
       code: "cmd /c npm ls node-pty",
       options: [
@@ -5152,12 +5240,23 @@ function App() {
     const req = hitlRequest;
     setHitlRequest(null);
     if (!req) return;
-    if (val === "deny") {
+    if (req.kind === 'ask') {
+      // Question tool: send the selected answer as a normal user message so the agent can continue.
+      if (val === "deny" || val === null || val === undefined) {
+        setBusy(false);
+        setTimeout(() => doSend("User memilih untuk tidak menjawab. Silakan lanjutkan dengan asumsi terbaik.", null), 50);
+      } else {
+        setTimeout(() => doSend(String(val), null), 50);
+      }
+      return;
+    }
+    // HITL approval flow
+    if (val === "deny" || val === null || val === undefined) {
       // Cancel: reset busy and send denial message as new user message
       setBusy(false);
       setTimeout(() => doSend("Tindakan dibatalkan oleh user. Silakan evaluasi kembali dan gunakan cara lain.", null), 50);
     } else {
-      // Allow: resume the agent with HITL approval
+      // Allow: resume the agent with HITL approval (content empty is OK now that doSend checks hitlData)
       doSend("", null, { thread_id: req.thread_id, hitl_response: true });
     }
   };
@@ -5577,7 +5676,7 @@ function App() {
   const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
 
   const doSend = async (content, display, hitlData = null) => {
-    if (!content) return;
+    if (!content && !hitlData) return;
     const trimmedContent = content.trim();
     if (trimmedContent.toLowerCase() === "/openclaw" || trimmedContent.toLowerCase().startsWith("/openclaw ")) {
       if (busy) return;
@@ -5772,6 +5871,7 @@ function App() {
               adoneSent = true;
               waitingForInput = true;
               setHitlRequest({
+                kind: 'hitl',
                 title: j.request.title,
                 code: j.request.code,
                 thread_id: j.thread_id,
@@ -5784,6 +5884,7 @@ function App() {
               adoneSent = true;
               waitingForInput = true;
               setHitlRequest({
+                kind: 'ask',
                 title: "Pertanyaan dari Agent",
                 code: j.question || "",
                 thread_id: j.thread_id || null,
@@ -5796,6 +5897,7 @@ function App() {
                 adoneSent = true;
                 waitingForInput = true;
                 setHitlRequest(prev => prev ? { ...prev, thread_id: j.thread_id } : {
+                  kind: 'hitl',
                   title: "Menunggu Persetujuan",
                   code: "",
                   thread_id: j.thread_id,
