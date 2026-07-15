@@ -2069,7 +2069,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                 </span>
               </button>
 
-              <div className="am-section-label" style={{ marginTop: '8px', color: '#a58aff' }}>Connection</div>
+              <div className="am-section-label" style={{ marginTop: '8px' }}>Connection</div>
               <div style={{ position: 'relative' }}>
                 <button 
                   className={"am-item" + (showMcpMenu ? " active" : "")} 
