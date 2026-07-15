@@ -1951,15 +1951,81 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
 
   console.log("[Composer] render, busy:", busy, "val:", val);
 
+  const handleAttachmentSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const target = e.target;
+    for (const file of files) {
+      const relPath = file.webkitRelativePath || file.name;
+      const attId = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      setAttachments((prev) => [
+        ...prev,
+        { id: attId, name: file.name, path: relPath, size: file.size, status: "uploading" },
+      ]);
+      try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const base64 = reader.result.split(',')[1] || reader.result;
+            const payload = { name: relPath, data: base64 };
+            let uploadedUrl = "";
+            if (IPC && IPC.invoke) {
+              const res = await IPC.invoke("api", { method: "POST", path: "/upload", body: payload });
+              let parsed;
+              try { parsed = typeof res.body === 'string' ? JSON.parse(res.body) : res; } catch (_) { parsed = res; }
+              if (res.status >= 400 || parsed.error) throw new Error(parsed.error || "Upload failed");
+              uploadedUrl = parsed.url || ("/uploads/" + parsed.name);
+            } else {
+              const r = await fetch("/upload", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+              });
+              const res = await r.json();
+              if (res.error) throw new Error(res.error);
+              uploadedUrl = res.url || ("/uploads/" + res.name);
+            }
+            setAttachments((prev) =>
+              prev.map((a) => (a.id === attId ? { ...a, status: "ready", url: uploadedUrl } : a))
+            );
+          } catch (err) {
+            console.error("[Attachment upload error]", err);
+            setAttachments((prev) =>
+              prev.map((a) => (a.id === attId ? { ...a, status: "error", error: err.message } : a))
+            );
+          }
+        };
+        reader.onerror = () => {
+          setAttachments((prev) =>
+            prev.map((a) => (a.id === attId ? { ...a, status: "error", error: "Failed reading file" } : a))
+          );
+        };
+        reader.readAsDataURL(file);
+      } catch (err) {
+        setAttachments((prev) =>
+          prev.map((a) => (a.id === attId ? { ...a, status: "error", error: err.message } : a))
+        );
+      }
+    }
+    target.value = "";
+  };
+
   const submit = () => {
     const v = val.trim();
-    console.log("[Composer submit] busy:", busy, "v:", v);
-    if (!v || busy) return;
-    console.log("[Composer submit] calling onSend with:", v);
-    onSend(v);
-    console.log("[Composer submit] setting val to empty string");
+    console.log("[Composer submit] busy:", busy, "v:", v, "attachments:", attachments.length);
+    if ((!v && attachments.length === 0) || busy) return;
+    let fullText = v;
+    if (attachments.length > 0) {
+      const attSummary = attachments
+        .map((a) => `- [Attached]: ${a.path} (${Math.round(a.size / 1024)} KB${a.url ? `, url: ${a.url}` : ""})`)
+        .join("\n");
+      fullText = v ? `${v}\n\nAttachments:\n${attSummary}` : `Attachments:\n${attSummary}`;
+    }
+    console.log("[Composer submit] calling onSend with:", fullText);
+    onSend(fullText);
+    console.log("[Composer submit] setting val to empty string and resetting attachments");
     setVal("");
-    console.log("[Composer submit] val after setVal:", val);
+    setAttachments([]);
     requestAnimationFrame(() => {
       if (ref.current) ref.current.style.height = "auto";
     });
@@ -2019,8 +2085,11 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
               <input type="text" className="am-search" placeholder="Filter actions..." autoFocus />
               
               <div className="am-section-label">Context</div>
-              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("folder-upload-input")?.click(); }}>
+              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("file-upload-input")?.click(); }}>
                 <span>Attach file...</span>
+              </button>
+              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("folder-upload-input")?.click(); }}>
+                <span>Attach folder...</span>
               </button>
 
               <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
@@ -2128,6 +2197,58 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
             </div>
           )}
         </div>
+        <input
+          type="file"
+          id="file-upload-input"
+          multiple
+          style={{ display: "none" }}
+          onChange={handleAttachmentSelect}
+        />
+        <input
+          type="file"
+          id="folder-upload-input"
+          webkitdirectory="true"
+          directory="true"
+          multiple
+          style={{ display: "none" }}
+          onChange={handleAttachmentSelect}
+        />
+        {attachments.length > 0 && (
+          <div className="attachments-list" style={{ display: "flex", flexWrap: "wrap", gap: "6px", padding: "8px 12px 4px 12px", width: "100%", borderBottom: "1px solid #2d2d30" }}>
+            {attachments.map((att) => (
+              <span
+                key={att.id}
+                style={{
+                  display: "inline-flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  background: att.status === "error" ? "rgba(248,113,113,0.12)" : "#2d2d30",
+                  color: att.status === "error" ? "#f87171" : "#d4d4d4",
+                  padding: "4px 8px",
+                  borderRadius: "6px",
+                  fontSize: "12px",
+                  border: "1px solid #3e3e42",
+                }}
+              >
+                <span style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={att.path}>
+                  📄 {att.path}
+                </span>
+                <span style={{ color: "#858585", fontSize: "10px" }}>
+                  ({Math.round(att.size / 1024)}KB)
+                </span>
+                {att.status === "uploading" && <span style={{ fontSize: "10px", color: "#b594f5" }}>⏳</span>}
+                {att.status === "error" && <span style={{ fontSize: "10px" }} title={att.error}>⚠️</span>}
+                <button
+                  type="button"
+                  onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}
+                  style={{ background: "transparent", border: "none", color: "#858585", cursor: "pointer", padding: "0 2px", fontSize: "14px" }}
+                >
+                  ×
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
         <textarea
           ref={ref}
           rows={1}
@@ -2167,13 +2288,13 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
         <button
           className={"send-btn" + (busy ? " cancel" : "")}
           onClick={busy ? onCancel : submit}
-          disabled={!busy && !val.trim()}
+          disabled={!busy && !val.trim() && attachments.length === 0}
           onClickCapture={(e) => {
             console.log(
               "[Send button] clicked, busy:",
               busy,
               "disabled:",
-              !busy && !val.trim(),
+              !busy && !val.trim() && attachments.length === 0,
             );
           }}
         >
