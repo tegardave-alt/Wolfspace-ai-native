@@ -2079,12 +2079,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                     setShowMcpMenu(!showMcpMenu);
                   }}
                 >
-                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    <span>MCP</span>
-                    <span className="status-badge connected" style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)', fontWeight: 500 }}>
-                      {mcpServers.filter(s => s.active).length} Active
-                    </span>
-                  </div>
+                  <span>MCP</span>
                   <span className="am-item-right">
                     <span>Manage servers</span>
                     <span style={{ fontSize: '10px' }}>▶</span>
