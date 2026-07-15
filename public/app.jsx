@@ -1893,7 +1893,6 @@ const MI = {
       <path d="M12 16v4" />
       <path d="M8 20h8" />
     </>,
-  ),
   more: svg(
     <>
       <circle cx="5" cy="12" r="1" />
@@ -1902,9 +1901,118 @@ const MI = {
     </>,
   ),
 };
+
+function LightboxModal({ item, onClose }) {
+  if (!item) return null;
+  const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(item.name || item.path || "") || (item.type && item.type.startsWith("image/")) || (item.url && /\.(png|jpe?g|webp|gif|svg|bmp|ico)(?:\?.*)?$/i.test(item.url)) || (!item.snippet && !/\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || ""));
+  const isVid = /\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || "") || (item.type && item.type.startsWith("video/"));
+  const displayUrl = item.previewUrl || item.url;
+
+  return (
+    <div
+      className="attachment-modal-overlay"
+      onClick={onClose}
+      style={{
+        position: "fixed",
+        inset: 0,
+        background: "rgba(0, 0, 0, 0.85)",
+        zIndex: 999999,
+        display: "flex",
+        alignItems: "center",
+        justifyContent: "center",
+        padding: "24px",
+        backdropFilter: "blur(6px)",
+        animation: "fadeIn 0.2s ease"
+      }}
+    >
+      <div
+        className="attachment-modal-content"
+        onClick={(e) => e.stopPropagation()}
+        style={{
+          position: "relative",
+          maxWidth: "92vw",
+          maxHeight: "92vh",
+          background: "var(--surface-2, #161b22)",
+          border: "1px solid var(--line-strong, #30363d)",
+          borderRadius: "12px",
+          boxShadow: "0 24px 64px rgba(0,0,0,0.7)",
+          display: "flex",
+          flexDirection: "column",
+          overflow: "hidden"
+        }}
+      >
+        <div
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+            padding: "12px 16px",
+            borderBottom: "1px solid var(--line-strong, #30363d)",
+            background: "var(--surface-3, #21262d)"
+          }}
+        >
+          <span style={{ fontWeight: 600, color: "var(--text, #e5e5e5)", fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%" }}>
+            📄 {item.name || item.path || "Preview"}
+          </span>
+          <button
+            type="button"
+            onClick={onClose}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "var(--text-muted, #858585)",
+              fontSize: "22px",
+              cursor: "pointer",
+              padding: "0 6px",
+              lineHeight: 1
+            }}
+            title="Tutup"
+          >
+            ×
+          </button>
+        </div>
+        <div style={{ padding: "16px", overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center", maxHeight: "calc(92vh - 55px)", minWidth: "300px", minHeight: "200px" }}>
+          {isImg && displayUrl ? (
+            <img
+              src={displayUrl}
+              alt={item.name || item.path}
+              style={{ maxWidth: "100%", maxHeight: "calc(85vh - 80px)", objectFit: "contain", borderRadius: "6px" }}
+            />
+          ) : isVid && displayUrl ? (
+            <video
+              src={displayUrl}
+              controls
+              autoPlay
+              style={{ maxWidth: "100%", maxHeight: "calc(85vh - 80px)", borderRadius: "6px" }}
+            />
+          ) : item.snippet ? (
+            <pre style={{ margin: 0, fontFamily: "Consolas, Courier New, monospace", fontSize: "13px", color: "#4ec9b0", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "#0d1117", padding: "16px", borderRadius: "8px", width: "100%", maxHeight: "calc(82vh - 80px)", overflow: "auto" }}>
+              {item.snippet}
+            </pre>
+          ) : (
+            <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted, #858585)" }}>
+              <div style={{ fontSize: "56px", marginBottom: "16px" }}>📄</div>
+              <div style={{ fontSize: "15px", color: "var(--text, #e5e5e5)" }}>{item.name || item.path}</div>
+              {item.size && <div style={{ fontSize: "12px", marginTop: "8px" }}>({Math.round(item.size / 1024)} KB)</div>}
+              {displayUrl && (
+                <div style={{ marginTop: "16px" }}>
+                  <a href={displayUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--brand, #61afef)", textDecoration: "underline" }}>
+                    Buka / Unduh File
+                  </a>
+                </div>
+              )}
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, setModelVal }) {
   const [val, setVal] = useState("");
   const [attachments, setAttachments] = useState([]);
+  const [previewAttachment, setPreviewAttachment] = useState(null);
   const [menu, setMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMcpMenu, setShowMcpMenu] = useState(false);
@@ -2235,7 +2343,12 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                   <div
                     key={att.id}
                     className="composer-attachment-item"
-                    title={att.path}
+                    title={att.path + " (Klik untuk melihat)"}
+                    onClick={() => {
+                      if (att.previewUrl || att.url || att.snippet) {
+                        setPreviewAttachment(att);
+                      }
+                    }}
                     style={{
                       width: "60px",
                       height: "60px",
@@ -2248,7 +2361,8 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                       alignItems: "center",
                       background: "var(--surface-2, #161b22)",
                       border: "1px solid var(--line-strong, #30363d)",
-                      borderRadius: "8px"
+                      borderRadius: "8px",
+                      cursor: (att.previewUrl || att.url || att.snippet) ? "pointer" : "default"
                     }}
                   >
                     {isImg && displayUrl ? (
@@ -2292,7 +2406,10 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                     <button
                       type="button"
                       className="composer-attachment-remove"
-                      onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setAttachments((p) => p.filter((x) => x.id !== att.id));
+                      }}
                       title={att.status === "error" ? att.error : "Remove"}
                     >
                       ×
@@ -2372,6 +2489,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
           </>
         )}
       </div>
+      <LightboxModal item={previewAttachment} onClose={() => setPreviewAttachment(null)} />
     </div>
   );
 }
@@ -5466,12 +5584,10 @@ function HitlModal({ request, onResolve }) {
 const SUGGESTIONS = [];
 const CANVAS_BUILDING =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">' +
-  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka�</div></div></body></html>';
+  '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka</div></div></body></html>';
 function App() {
-
+  const [globalPreviewItem, setGlobalPreviewItem] = React.useState(null);
   const [hitlRequest, setHitlRequest] = React.useState(null);
-  window.testHitl = function() {
-    setHitlRequest({
       kind: 'hitl',
       title: "Allow check if node-pty is installed?",
       code: "cmd /c npm ls node-pty",
@@ -6388,6 +6504,201 @@ function App() {
             setTerminalOpen={setTerminalOpen}
           />
           <div className="chat-split">
+const summary =
+            evlist.length > 0
+              ? `Selesai. ${evlist.length} operasi dieksekusi.`
+              : "Selesai. Tidak ada operasi yang dilakukan.";
+          upd({ busy: false, done: true, summary });
+          setHistory((h) => [...h, { role: "assistant", content: summary }]);
+        } else {
+          upd({ busy: false });
+        }
+      }
+      if (!waitingForInput) {
+        setBusy(false); // Reset global busy state only when not waiting for HITL/answer
+      }
+      setStatus("siap");
+    } else {
+      setMessages((m) => [
+        ...m,
+        { role: "user", text: display || content },
+        { role: "model", text: "", run: null },
+      ]);
+      if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null }); // Web Dev ? split opens immediately
+      let lastCanvasT = 0;
+      try {
+        const res = await streamChat(
+          reqFor(modelVal, getCloud(), newHist, canvasAuto),
+          (t, run) => {
+            setMessages((m) => {
+              const c = m.slice();
+              c[c.length - 1] = { role: "model", text: t, run };
+              return c;
+            });
+            {
+              const now = Date.now();
+              if (now - lastCanvasT > 450) {
+                const p = canvasAuto ? buildPreview(t) : { has: false }; // web/flutter preview only in Web Dev mode
+                if (p.has) {
+                  lastCanvasT = now;
+                  _setCanvas(
+                    p.flutter
+                      ? {
+                          flutter: p.streaming ? null : p.source,
+                          doc: p.a2ui ? A2UI_STREAMING : FLUTTER_STREAMING,
+                          run: null,
+                          files: p.files,
+                        } // A2UI: only send complete JSON to studio; incomplete JSON crashes Flutter jsonDecode
+                      : { doc: p.doc, run: null, files: p.files },
+                  );
+                } // web: live preview is cheap, keep it
+                else if (run) {
+                  lastCanvasT = now;
+                  _setCanvas({ doc: consoleDoc(run), run });
+                } // any executed code ? live terminal view
+              }
+            }
+          },
+          ctrl.signal,
+        );
+        setMessages((m) => {
+          const c = m.slice();
+          c[c.length - 1] = { role: "model", text: res.text, run: res.run };
+          return c;
+        });
+        setHistory((h) => [...h, { role: "assistant", content: res.text }]);
+        setStatus(
+          res.run ? (res.run.ok ? "Terverifikasi" : "Belum lolos pemeriksaan") : "Siap",
+        );
+        const proj = buildPreview(res.text); // finalize the live Canvas
+        console.log(
+          "[doSend] final buildPreview:",
+          proj.has ? (proj.flutter ? "flutter/a2ui" : "web") : "none",
+          "| canvasRef.flutter:",
+          !!canvasRef.current?.flutter,
+        );
+        if (proj.has) {
+          if (proj.flutter) {
+            const fstate = {
+              flutter: proj.source,
+              doc: proj.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING,
+              files: proj.files,
+            };
+            lastProject.current = fstate;
+            _setCanvas(fstate);
+          } else {
+            const wstate = { doc: proj.doc, run: res.run, files: proj.files };
+            lastProject.current = wstate;
+            _setCanvas(wstate);
+          }
+        } else if (res.run) {
+          // No web/flutter content but code WAS executed  show the terminal in Canvas
+          _setCanvas({ doc: consoleDoc(res.run), run: res.run });
+        } else if (canvasAuto && !canvasRef.current?.flutter) _setCanvas(null); // only close if no A2UI was detected during streaming
+      } catch (e) {
+        if (e.name !== "AbortError") {
+          setMessages((m) => {
+            const c = m.slice();
+            c[c.length - 1] = {
+              role: "model",
+              text: "[error: " + e.message + "]",
+            };
+            return c;
+          });
+          setStatus("error");
+          console.log("[doSend] Setting busy=false (canvas auto error)");
+          setBusy(false);
+        } else setStatus("dibatalkan");
+        console.log("[doSend] Setting busy=false (canvas auto abort)");
+        setBusy(false);
+      }
+    }
+    ctrlRef.current = null;
+    setBusy(false);
+  };
+  doSendRef.current = doSend;
+    const cancel = () => {
+    console.log("[cancel] Aborting and setting busy=false");
+    if (ctrlRef.current) ctrlRef.current.abort();
+    setBusy(false);
+    setStatus("dibatalkan");
+  };
+  const reset = () => {
+    setMessages([]);
+    setHistory([]);
+    setBusy(false);
+    setStatus("Siap.");
+  };
+  const saveChat = () => {
+    if (messages.length === 0) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem("quantum_chats") || "[]");
+      saved.push({
+        id: Date.now(),
+        title: messages[0]?.text?.slice(0, 60) || "Chat",
+        messages: messages,
+        history: history,
+        savedAt: new Date().toISOString(),
+      });
+      localStorage.setItem("quantum_chats", JSON.stringify(saved));
+      loadSavedChats();
+    } catch (e) {
+      /* ignore storage errors */
+    }
+  };
+
+  return (
+    <div className={"app has-sidebar" + (sbCollapsed ? " sb-collapsed" : "")}>
+      <Sidebar
+        collapsed={sbCollapsed}
+        setCollapsed={setSbCollapsed}
+        view={view}
+        setView={setView}
+        onNewChat={() => {
+          saveChat();
+          reset();
+          setView("chat");
+          loadSavedChats();
+        }}
+        onVisualPicker={() => {
+          startPicker();
+        }}
+        canvasAuto={canvasAuto}
+        onToggleCanvas={toggleCanvas}
+        theme={theme}
+        setTheme={setTheme}
+        terminalOpen={terminalOpen}
+        setTerminalOpen={setTerminalOpen}
+        terminal={terminal}
+        savedChats={savedChats}
+        showHistory={showHistory}
+        setShowHistory={setShowHistory}
+        restoreChat={restoreChat}
+        deleteChat={deleteChat}
+        loadSavedChats={loadSavedChats}
+        onAgentRunner={() => {
+          setAgentRunnerOpen(true);
+          loadAgents();
+        }}
+      />
+      <div className="page-container">
+        <div
+          className={"page chat-page " + (view === "chat" ? "active" : "exit")}
+        >
+          <TopBar
+            models={models}
+            modelVal={modelVal}
+            setModelVal={setModelVal}
+            panelOpen={panelOpen}
+            setPanelOpen={setPanelOpen}
+            onReset={reset}
+            status={status}
+            theme={theme}
+            setTheme={setTheme}
+            terminalOpen={terminalOpen}
+            setTerminalOpen={setTerminalOpen}
+          />
+          <div className="chat-split">
             <div
               className="chat-col"
               style={{
@@ -6400,7 +6711,15 @@ function App() {
                       : "1 1 100%",
               }}
             >
-              <div className="chat-scroll" ref={scrollRef}>
+              <div
+                className="chat-scroll"
+                ref={scrollRef}
+                onClick={(e) => {
+                  if (e.target.tagName === "IMG" && (e.target.src || e.target.getAttribute("src"))) {
+                    setGlobalPreviewItem({ url: e.target.src || e.target.getAttribute("src"), name: e.target.alt || "Preview Gambar / Screenshot" });
+                  }
+                }}
+              >
                 {messages.length === 0 ? (
                   <div className="chat-inner">
                   </div>
@@ -6417,6 +6736,7 @@ function App() {
                 )}
               </div>
             <HitlModal request={hitlRequest} onResolve={handleHitlResolve} />
+            <LightboxModal item={globalPreviewItem} onClose={() => setGlobalPreviewItem(null)} />
                             <Composer
                 models={models}
                 modelVal={modelVal}
