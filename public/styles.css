@@ -5147,12 +5147,11 @@ img.ar-fs-icon {
   border-color: #d4d4d4;
 }
 
-/* Submenu for Model Selection */
+/* Submenu for Model & MCP Selection */
 .am-submenu {
   position: absolute;
   bottom: 0;
-  left: 100%;
-  margin-left: 8px;
+  left: calc(100% + 8px);
   background: #252526;
   border: 1px solid #3e3e42;
   border-radius: 8px;
@@ -5162,6 +5161,24 @@ img.ar-fs-icon {
   width: 380px;
   z-index: 21;
   box-shadow: 0 8px 24px rgba(0, 0, 0, 0.4);
+}
+
+.status-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  font-size: 11px;
+  font-weight: 500;
+  padding: 2px 7px;
+  border-radius: 12px;
+}
+.status-badge.connected {
+  color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.12);
+}
+.status-badge.disabled {
+  color: #858585;
+  background: rgba(133, 133, 133, 0.12);
 }
 
 .composer-input-col {

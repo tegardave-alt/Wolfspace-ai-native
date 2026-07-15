@@ -1899,6 +1899,13 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   const [attachments, setAttachments] = useState([]);
   const [menu, setMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
+  const [showMcpMenu, setShowMcpMenu] = useState(false);
+  const [mcpServers, setMcpServers] = useState([
+    { id: 'github', name: 'GitHub & Git Tools', desc: 'Access repositories, issues, pull requests, and code diffs', active: true },
+    { id: 'filesystem', name: 'Local Filesystem & Ripgrep', desc: 'Direct workspace editing, directory analysis, and fast pattern search', active: true },
+    { id: 'browser', name: 'Browser Subagent (Puppeteer)', desc: 'Web scraping, DOM inspection, screenshot capture, and UI testing', active: false },
+    { id: 'database', name: 'SQL Database Inspector', desc: 'Query table schemas, execute read-only SQL, and analyze data structures', active: false }
+  ]);
   const [effort, setEffort] = useState(() => {
     try {
       const cl = getCloud();
@@ -1919,10 +1926,73 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   const [switchFlagged, setSwitchFlagged] = useState(false);
   
   useEffect(() => {
-    if (!menu) setShowModelMenu(false);
+    if (!menu) {
+      setShowModelMenu(false);
+      setShowMcpMenu(false);
+    }
   }, [menu]);
   
   const [soon, setSoon] = useState("");
+  const ref = useRef(null);
+  const wrapRef = useRef(null);
+  const grow = () => {
+    const el = ref.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 180) + "px";
+  };
+
+  console.log("[Composer] render, busy:", busy, "val:", val);
+
+  const submit = () => {
+    const v = val.trim();
+    console.log("[Composer submit] busy:", busy, "v:", v);
+    if (!v || busy) return;
+    console.log("[Composer submit] calling onSend with:", v);
+    onSend(v);
+    console.log("[Composer submit] setting val to empty string");
+    setVal("");
+    console.log("[Composer submit] val after setVal:", val);
+    requestAnimationFrame(() => {
+      if (ref.current) ref.current.style.height = "auto";
+    });
+  };
+
+  // Debug val changes
+  useEffect(() => {
+    console.log("[Composer] val changed to:", val);
+  }, [val]);
+  useEffect(() => {
+    const h = (e) => {
+      const next = String(e.detail || "");
+      setVal(next);
+      requestAnimationFrame(() => {
+        grow();
+        ref.current?.focus();
+      });
+    };
+    window.addEventListener("WOLFSPACE:set-composer", h);
+    return () => window.removeEventListener("WOLFSPACE:set-composer", h);
+  }, []);
+  useEffect(() => {
+    if (!menu) return;
+    const h = (e) => {
+      // Keep menu open when clicking sidebar controls (e.g. Visual Picker button)
+      // or when the visual picker overlay is active, so the user can select
+      // elements inside the + menu with the picker.
+      const inSidebar = e.target.closest && e.target.closest('.sidebar');
+      if (inSidebar) return;
+      if (document.body.classList.contains('vp-on')) return;
+      if (wrapRef.current && !wrapRef.current.contains(e.target))
+        setMenu(false);
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, [menu]);
+  const notYet = (name) => {
+    setMenu(false);
+    setSoon(name + " segera hadir.");
+    setTimeout(() => setSoon(""), 2600);
   const ref = useRef(null);
   const wrapRef = useRef(null);
   const grow = () => {
@@ -1987,16 +2057,15 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   return (
     <div className="composer-wrap">
       <div className="composer">
-                <div className="composer-add-wrap" ref={wrapRef}>
+        <div className="composer-add-wrap" ref={wrapRef}>
           <div className="composer-action-btns">
             <button
               className={"composer-add" + (menu ? " open" : "")}
               title="Tambah"
-              onClick={() => { setMenu((m) => !m); setShowModelMenu(false); }}
+              onClick={() => { setMenu((m) => !m); setShowModelMenu(false); setShowMcpMenu(false); }}
             >
               {MI.plus}
             </button>
-
           </div>
           {menu && (
             <div className="am-menu" onMouseDown={(e) => e.stopPropagation()}>
@@ -2007,19 +2076,19 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                 <span>Attach file...</span>
               </button>
 
-
-
-
               <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
               <div style={{ position: 'relative' }}>
                 <button 
                   className={"am-item" + (showModelMenu ? " active" : "")} 
                   onClick={(e) => {
                     e.stopPropagation();
+                    setShowMcpMenu(false);
                     setShowModelMenu(!showModelMenu);
                   }}
                 >
-                  <span>Switch model...</span>
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    Switch model...
+                  </span>
                   <span className="am-item-right">{models.find(m => m.value === modelVal)?.label || "Sonnet"}</span>
                 </button>
                 {showModelMenu && (
@@ -2060,6 +2129,59 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                 </span>
               </button>
 
+              <div className="am-section-label" style={{ marginTop: '8px', color: '#a58aff' }}>Connection</div>
+              <div style={{ position: 'relative' }}>
+                <button 
+                  className={"am-item" + (showMcpMenu ? " active" : "")} 
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setShowModelMenu(false);
+                    setShowMcpMenu(!showMcpMenu);
+                  }}
+                >
+                  <div style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span>MCP</span>
+                    <span className="status-badge connected" style={{ fontSize: '10px', padding: '1px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)', fontWeight: 500 }}>
+                      {mcpServers.filter(s => s.active).length} Active
+                    </span>
+                  </div>
+                  <span className="am-item-right">
+                    <span>Manage servers</span>
+                    <span style={{ fontSize: '10px' }}>▶</span>
+                  </span>
+                </button>
+                {showMcpMenu && (
+                  <div className="am-submenu">
+                    <div className="am-section-label" style={{ marginBottom: '4px' }}>Select an MCP connection</div>
+                    {mcpServers.map(srv => (
+                      <button 
+                        key={srv.id}
+                        className="am-item" 
+                        style={{ padding: '8px 12px' }}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setMcpServers(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item));
+                        }}
+                      >
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+                          <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
+                            {srv.active ? (
+                              <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
+                            ) : (
+                              <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
+                            )}
+                          </span>
+                          <span className="am-item-desc">{srv.desc}</span>
+                        </div>
+                      </button>
+                    ))}
+                    <div style={{ padding: '8px 12px', borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', color: '#b594f5', cursor: 'pointer', fontWeight: 500 }} onClick={(e) => { e.stopPropagation(); notYet("Add custom MCP server"); }}>+ Add custom MCP server (JSON)...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
 
             </div>
           )}
