@@ -2213,78 +2213,66 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
           style={{ display: "none" }}
           onChange={handleAttachmentSelect}
         />
-        {attachments.length > 0 && (
-          <div className="attachments-list" style={{ display: "flex", flexWrap: "wrap", gap: "6px", padding: "8px 12px 4px 12px", width: "100%", borderBottom: "1px solid #2d2d30" }}>
-            {attachments.map((att) => (
-              <span
-                key={att.id}
-                style={{
-                  display: "inline-flex",
-                  alignItems: "center",
-                  gap: "6px",
-                  background: att.status === "error" ? "rgba(248,113,113,0.12)" : "#2d2d30",
-                  color: att.status === "error" ? "#f87171" : "#d4d4d4",
-                  padding: "4px 8px",
-                  borderRadius: "6px",
-                  fontSize: "12px",
-                  border: "1px solid #3e3e42",
-                }}
-              >
-                <span style={{ maxWidth: "200px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={att.path}>
-                  📄 {att.path}
-                </span>
-                <span style={{ color: "#858585", fontSize: "10px" }}>
-                  ({Math.round(att.size / 1024)}KB)
-                </span>
-                {att.status === "uploading" && <span style={{ fontSize: "10px", color: "#b594f5" }}>⏳</span>}
-                {att.status === "error" && <span style={{ fontSize: "10px" }} title={att.error}>⚠️</span>}
-                <button
-                  type="button"
-                  onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}
-                  style={{ background: "transparent", border: "none", color: "#858585", cursor: "pointer", padding: "0 2px", fontSize: "14px" }}
-                >
-                  ×
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        <textarea
-          ref={ref}
-          rows={1}
-          value={val}
-          placeholder={
-            busy
-              ? "Lanjutkan percakapan..."
-              : val.includes("/")
-                ? "Terus ketik perintah..."
-                : "Apa yang ingin kamu buat hari ini?"
-          }
-          onChange={(e) => {
-            console.log("[Textarea] value changed:", e.target.value);
-            setVal(e.target.value);
-            grow();
-          }}
-          onKeyDown={(e) => {
-            if (e.key === "Enter" && !e.shiftKey) {
-              e.preventDefault();
-              console.log("[Textarea] Enter pressed, calling submit");
-              submit();
+        <div className="composer-input-col">
+          {attachments.length > 0 && (
+            <div className="composer-attachments">
+              {attachments.map((att) => (
+                <div key={att.id} className="composer-attachment-item" title={att.path}>
+                  <div className="composer-attachment-icon">
+                    {att.status === "uploading" ? "⏳" : att.status === "error" ? "⚠️" : "📄"}
+                  </div>
+                  <div className="composer-attachment-name">
+                    {att.name || att.path}
+                  </div>
+                  <button
+                    type="button"
+                    className="composer-attachment-remove"
+                    onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}
+                    title={att.status === "error" ? att.error : "Remove"}
+                  >
+                    ×
+                  </button>
+                </div>
+              ))}
+            </div>
+          )}
+          <textarea
+            ref={ref}
+            rows={1}
+            value={val}
+            placeholder={
+              busy
+                ? "Lanjutkan percakapan..."
+                : val.includes("/")
+                  ? "Terus ketik perintah..."
+                  : "Apa yang ingin kamu buat hari ini?"
             }
-            if (e.key === "k" && (e.ctrlKey || e.metaKey)) {
-              e.preventDefault();
-              setVal("");
-              requestAnimationFrame(() => {
-                if (ref.current) ref.current.style.height = "auto";
-              });
-            }
-            if (e.key === "/" && val === "") {
-              console.log("[Textarea] / pressed, trigger command mode");
-            }
-          }}
-          onFocus={() => console.log("[Textarea] focused")}
-          onBlur={() => console.log("[Textarea] blurred")}
-        />
+            onChange={(e) => {
+              console.log("[Textarea] value changed:", e.target.value);
+              setVal(e.target.value);
+              grow();
+            }}
+            onKeyDown={(e) => {
+              if (e.key === "Enter" && !e.shiftKey) {
+                e.preventDefault();
+                console.log("[Textarea] Enter pressed, calling submit");
+                submit();
+              }
+              if (e.key === "k" && (e.ctrlKey || e.metaKey)) {
+                e.preventDefault();
+                setVal("");
+                requestAnimationFrame(() => {
+                  if (ref.current) ref.current.style.height = "auto";
+                });
+              }
+              if (e.key === "/" && val === "") {
+                console.log("[Textarea] / pressed, trigger command mode");
+              }
+            }}
+            onFocus={() => console.log("[Textarea] focused")}
+            onBlur={() => console.log("[Textarea] blurred")}
+          />
+        </div>
         <button
           className={"send-btn" + (busy ? " cancel" : "")}
           onClick={busy ? onCancel : submit}
