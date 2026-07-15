@@ -1,4 +1,4 @@
-﻿// start.cjs — WOLFSPACE launcher with bypass lane
+// start.cjs — WOLFSPACE launcher with bypass lane
 // Starts the static file server (bypass lane) and the main server side by side.
 // The static server serves public/ files directly from disk — INDEPENDENT of server.cjs.
 // If server.cjs crashes, the frontend remains accessible through the bypass lane.
@@ -42,9 +42,15 @@ staticServer.on('exit', (code) => {
 // ── 2. Start the main server (server.cjs) as a child process ──
 //    We set PORT env so server.cjs listens on MAIN_PORT
 let mainServer = null;
+let serverStartTime = 0;
+let lockInTimer = null;
+
+const SERVER_FILE = path.join(ROOT, 'server.cjs');
+const BACKUP_FILE = path.join(ROOT, '.server_last_good.cjs');
 
 function startMainServer() {
-  const srv = spawn(process.execPath, [path.join(ROOT, 'server.cjs')], {
+  serverStartTime = Date.now();
+  const srv = spawn(process.execPath, [SERVER_FILE], {
     env: {
       ...process.env,
       PORT: String(MAIN_PORT),
@@ -55,11 +61,43 @@ function startMainServer() {
     cwd: ROOT,
   });
 
+  // Lock-in Timer: If server survives for 3 seconds, save it as the last known good version
+  clearTimeout(lockInTimer);
+  lockInTimer = setTimeout(() => {
+    if (srv.exitCode === null) {
+      try {
+        fs.copyFileSync(SERVER_FILE, BACKUP_FILE);
+        console.log(`\n  ✅ [Auto-Rollback] Versi server.cjs saat ini sehat. Dikunci sebagai versi Aman.`);
+      } catch (e) {
+        console.error(`\n  ⚠ Gagal mengunci versi Aman:`, e.message);
+      }
+    }
+  }, 3000);
+
   srv.stdout.on('data', (d) => process.stdout.write('[main] ' + d));
   srv.stderr.on('data', (d) => process.stderr.write('[main] ' + d));
 
   srv.on('exit', (code, sig) => {
+    clearTimeout(lockInTimer);
+    const uptime = Date.now() - serverStartTime;
     console.error(`\n  ⚠ Main server berhenti (kode ${code}, signal ${sig})`);
+    
+    // Auto-Rollback Logic
+    if (code !== 0 && code !== null) {
+      console.error(`  💥 SERVER CRASH DETECTED! (Uptime: ${uptime}ms)`);
+      if (fs.existsSync(BACKUP_FILE)) {
+        console.error(`  🔄 Memulai Auto-Rollback: Memulihkan server.cjs dari versi Aman...`);
+        try {
+          fs.copyFileSync(BACKUP_FILE, SERVER_FILE);
+          console.error(`  ✅ Pemulihan berhasil. Layanan akan dilanjutkan dengan versi Aman.`);
+        } catch (err) {
+          console.error(`  ❌ Gagal menimpa file:`, err.message);
+        }
+      } else {
+        console.error(`  ❌ Auto-Rollback Gagal: File cadangan (.server_last_good.cjs) tidak ditemukan.`);
+      }
+    }
+
     console.error(`  ✓ Bypass lane MASIH AKTIF di http://localhost:${STATIC_PORT}`);
     // Auto-restart after 1 second (unless we're shutting down)
     if (!_shuttingDown) {

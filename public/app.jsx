@@ -5587,7 +5587,22 @@ const CANVAS_BUILDING =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">' +
   '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka</div></div></body></html>';
 function App() {
-  const [globalPreviewItem, setGlobalPreviewItem] = React.useState(null);
+  // --- SIMULASI LOGIC ERROR & ROBOT PENGUJI ---
+  function hitungKapasitasAI(batas) {
+    // AGEN PENGACAU MENGUBAH LOGIKA DI SINI (Harusnya dikali, malah dibagi)
+    return batas / 2; 
+  }
+
+  // 🛡️ ROBOT PENGUJI LOGIKA (Assertion)
+  if (hitungKapasitasAI(10) !== 20) {
+    throw new Error("🚨 FATAL LOGIC ERROR: Perhitungan kapasitas AI salah! Seseorang merusak rumus!");
+  }
+  // -------------------------------------------
+
+  // Melaporkan ke index.html bahwa App berhasil dirender tanpa Runtime Error
+  useEffect(() => {
+    if (window.reportAppSuccess) window.reportAppSuccess();
+  }, []);
   const [hitlRequest, setHitlRequest] = React.useState(null);
   window.testHitl = function() {
     setHitlRequest({
@@ -7625,8 +7640,14 @@ class ErrorBoundary extends React.Component {
     return { hasError: true };
   }
   componentDidCatch(error, errorInfo) {
-    console.error("ErrorBoundary caught an error:", error, errorInfo);
+    console.error("ErrorBoundary caught a Runtime Error:", error, errorInfo);
     this.setState({ error, errorInfo });
+    // Rekam error di sessionStorage agar index.html bisa menampilkannya setelah reload
+    sessionStorage.setItem('wolfspace_rollback_error', (error ? error.toString() : 'Unknown Error') + "\n" + (errorInfo && errorInfo.componentStack ? errorInfo.componentStack : ''));
+    // Beri tahu index.html untuk melakukan Auto-Rollback dengan memuat ulang menggunakan memori cache
+    if (window.location.search.indexOf('rollback=true') === -1) {
+      window.location.replace('/?rollback=true');
+    }
   }
   render() {
     if (this.state.hasError) {
