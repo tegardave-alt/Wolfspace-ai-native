@@ -1958,9 +1958,18 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
     for (const file of files) {
       const relPath = file.webkitRelativePath || file.name;
       const attId = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(file.name) || (file.type && file.type.startsWith("image/"));
+      const isVid = /\.(mp4|webm|mov|mkv)$/i.test(file.name) || (file.type && file.type.startsWith("video/"));
+      let previewUrl = (isImg || isVid) ? URL.createObjectURL(file) : null;
+      let snippet = null;
+      if (!isImg && !isVid && file.size < 100 * 1024 && /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(file.name)) {
+        try {
+          snippet = await file.slice(0, 300).text();
+        } catch (_) {}
+      }
       setAttachments((prev) => [
         ...prev,
-        { id: attId, name: file.name, path: relPath, size: file.size, status: "uploading" },
+        { id: attId, name: file.name, path: relPath, size: file.size, type: file.type, previewUrl, snippet, status: "uploading" },
       ]);
       try {
         const reader = new FileReader();
@@ -1986,7 +1995,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
               uploadedUrl = res.url || ("/uploads/" + res.name);
             }
             setAttachments((prev) =>
-              prev.map((a) => (a.id === attId ? { ...a, status: "ready", url: uploadedUrl } : a))
+              prev.map((a) => (a.id === attId ? { ...a, status: "ready", url: uploadedUrl, previewUrl: a.previewUrl || (isImg ? uploadedUrl : null) } : a))
             );
           } catch (err) {
             console.error("[Attachment upload error]", err);
@@ -2216,24 +2225,81 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
         <div className="composer-input-col">
           {attachments.length > 0 && (
             <div className="composer-attachments">
-              {attachments.map((att) => (
-                <div key={att.id} className="composer-attachment-item" title={att.path}>
-                  <div className="composer-attachment-icon">
-                    {att.status === "uploading" ? "⏳" : att.status === "error" ? "⚠️" : "📄"}
-                  </div>
-                  <div className="composer-attachment-name">
-                    {att.name || att.path}
-                  </div>
-                  <button
-                    type="button"
-                    className="composer-attachment-remove"
-                    onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}
-                    title={att.status === "error" ? att.error : "Remove"}
+              {attachments.map((att) => {
+                const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(att.name || att.path) || (att.type && att.type.startsWith("image/"));
+                const isVid = /\.(mp4|webm|mov|mkv)$/i.test(att.name || att.path) || (att.type && att.type.startsWith("video/"));
+                const isCode = att.snippet || /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(att.name || att.path);
+                const displayUrl = att.previewUrl || att.url;
+
+                return (
+                  <div
+                    key={att.id}
+                    className="composer-attachment-item"
+                    title={att.path}
+                    style={{
+                      width: "60px",
+                      height: "60px",
+                      padding: (isImg && displayUrl) ? "0" : "6px",
+                      overflow: "hidden",
+                      position: "relative",
+                      display: "flex",
+                      flexDirection: "column",
+                      justifyContent: "center",
+                      alignItems: "center",
+                      background: "var(--surface-2, #161b22)",
+                      border: "1px solid var(--line-strong, #30363d)",
+                      borderRadius: "8px"
+                    }}
                   >
-                    ×
-                  </button>
-                </div>
-              ))}
+                    {isImg && displayUrl ? (
+                      <img
+                        src={displayUrl}
+                        alt={att.name || att.path}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }}
+                      />
+                    ) : isVid && displayUrl ? (
+                      <video
+                        src={displayUrl}
+                        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }}
+                        muted
+                      />
+                    ) : att.snippet ? (
+                      <div style={{ width: "100%", height: "100%", padding: "4px", fontSize: "6.5px", fontFamily: "monospace", color: "#4ec9b0", overflow: "hidden", lineHeight: "1.25", wordBreak: "break-all", background: "#0d1117", borderRadius: "6px", textAlign: "left" }}>
+                        {att.snippet}
+                      </div>
+                    ) : (
+                      <>
+                        <div className="composer-attachment-icon">
+                          {att.status === "uploading" ? "⏳" : att.status === "error" ? "⚠️" : isCode ? "💻" : "📄"}
+                        </div>
+                        <div className="composer-attachment-name" style={{ fontSize: "9px", width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                          {att.name || att.path}
+                        </div>
+                      </>
+                    )}
+
+                    {att.status === "uploading" && (
+                      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "8px", fontSize: "14px" }}>
+                        ⏳
+                      </div>
+                    )}
+                    {att.status === "error" && (
+                      <div style={{ position: "absolute", inset: 0, background: "rgba(248,113,113,0.3)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "8px", fontSize: "14px" }} title={att.error}>
+                        ⚠️
+                      </div>
+                    )}
+
+                    <button
+                      type="button"
+                      className="composer-attachment-remove"
+                      onClick={() => setAttachments((p) => p.filter((x) => x.id !== att.id))}
+                      title={att.status === "error" ? att.error : "Remove"}
+                    >
+                      ×
+                    </button>
+                  </div>
+                );
+              })}
             </div>
           )}
           <textarea
