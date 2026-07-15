@@ -5589,6 +5589,8 @@ const CANVAS_BUILDING =
 function App() {
   const [globalPreviewItem, setGlobalPreviewItem] = React.useState(null);
   const [hitlRequest, setHitlRequest] = React.useState(null);
+  window.testHitl = function() {
+    setHitlRequest({
       kind: 'hitl',
       title: "Allow check if node-pty is installed?",
       code: "cmd /c npm ls node-pty",
