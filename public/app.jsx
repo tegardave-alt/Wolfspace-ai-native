@@ -1779,7 +1779,7 @@ function Verdict({ run }) {
       {q && (
         <div className={"quality " + tier}>
           <span className="q-score">kualitas {q.score}/100</span>
-          {q.hasTest ? <span className="q-tag">� ada self-test</span> : null}
+          {q.hasTest ? <span className="q-tag"> ada self-test</span> : null}
           {q.notes && q.notes.length > 0 && (
             <ul className="q-notes">
               {q.notes.map((n, i) => (
@@ -1893,6 +1893,7 @@ const MI = {
       <path d="M12 16v4" />
       <path d="M8 20h8" />
     </>,
+  ),
   more: svg(
     <>
       <circle cx="5" cy="12" r="1" />
