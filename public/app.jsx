@@ -435,7 +435,15 @@ function parseBlocks(text) {
   }
   const tail = text.slice(last);
   const openCode = tail.indexOf("```");
-  if (openCode >= 0) {
+  const openThink = tail.search(/<(?:think|thought)>/i);
+  if (openThink >= 0 && (openCode < 0 || openThink < openCode)) {
+    const pre = tail.slice(0, openThink);
+    if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre.trim()) });
+    out.push({
+      type: "think",
+      html: mdToHtml(tail.slice(openThink).replace(/^<(?:think|thought)>\n?/i, "").trim())
+    });
+  } else if (openCode >= 0) {
     const pre = tail.slice(0, openCode);
     if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre.trim()) });
     out.push({
@@ -1903,8 +1911,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   const [mcpServers, setMcpServers] = useState([
     { id: 'github', name: 'GitHub & Git Tools', desc: 'Access repositories, issues, pull requests, and code diffs', active: true },
     { id: 'filesystem', name: 'Local Filesystem & Ripgrep', desc: 'Direct workspace editing, directory analysis, and fast pattern search', active: true },
-    { id: 'browser', name: 'Browser Subagent (Puppeteer)', desc: 'Web scraping, DOM inspection, screenshot capture, and UI testing', active: false },
-    { id: 'database', name: 'SQL Database Inspector', desc: 'Query table schemas, execute read-only SQL, and analyze data structures', active: false }
+    { id: 'browser', name: 'Browser Subagent (Puppeteer)', desc: 'Web scraping, DOM inspection, screenshot capture, and UI testing', active: false }
   ]);
   const [effort, setEffort] = useState(() => {
     try {
