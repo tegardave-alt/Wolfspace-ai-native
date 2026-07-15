@@ -1924,6 +1924,9 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
     } catch (_) {}
   }, [effort]);
   const [switchFlagged, setSwitchFlagged] = useState(false);
+  const [soon, setSoon] = useState("");
+  const ref = useRef(null);
+  const wrapRef = useRef(null);
   
   useEffect(() => {
     if (!menu) {
@@ -1932,69 +1935,6 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
     }
   }, [menu]);
   
-  const [soon, setSoon] = useState("");
-  const ref = useRef(null);
-  const wrapRef = useRef(null);
-  const grow = () => {
-    const el = ref.current;
-    if (!el) return;
-    el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 180) + "px";
-  };
-
-  console.log("[Composer] render, busy:", busy, "val:", val);
-
-  const submit = () => {
-    const v = val.trim();
-    console.log("[Composer submit] busy:", busy, "v:", v);
-    if (!v || busy) return;
-    console.log("[Composer submit] calling onSend with:", v);
-    onSend(v);
-    console.log("[Composer submit] setting val to empty string");
-    setVal("");
-    console.log("[Composer submit] val after setVal:", val);
-    requestAnimationFrame(() => {
-      if (ref.current) ref.current.style.height = "auto";
-    });
-  };
-
-  // Debug val changes
-  useEffect(() => {
-    console.log("[Composer] val changed to:", val);
-  }, [val]);
-  useEffect(() => {
-    const h = (e) => {
-      const next = String(e.detail || "");
-      setVal(next);
-      requestAnimationFrame(() => {
-        grow();
-        ref.current?.focus();
-      });
-    };
-    window.addEventListener("WOLFSPACE:set-composer", h);
-    return () => window.removeEventListener("WOLFSPACE:set-composer", h);
-  }, []);
-  useEffect(() => {
-    if (!menu) return;
-    const h = (e) => {
-      // Keep menu open when clicking sidebar controls (e.g. Visual Picker button)
-      // or when the visual picker overlay is active, so the user can select
-      // elements inside the + menu with the picker.
-      const inSidebar = e.target.closest && e.target.closest('.sidebar');
-      if (inSidebar) return;
-      if (document.body.classList.contains('vp-on')) return;
-      if (wrapRef.current && !wrapRef.current.contains(e.target))
-        setMenu(false);
-    };
-    document.addEventListener("mousedown", h);
-    return () => document.removeEventListener("mousedown", h);
-  }, [menu]);
-  const notYet = (name) => {
-    setMenu(false);
-    setSoon(name + " segera hadir.");
-    setTimeout(() => setSoon(""), 2600);
-  const ref = useRef(null);
-  const wrapRef = useRef(null);
   const grow = () => {
     const el = ref.current;
     if (!el) return;
