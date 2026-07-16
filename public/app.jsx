@@ -677,9 +677,28 @@ function TopBar({
 }) {
   return (
     <header className="topbar">
-
       <div className="tb-spacer" />
-
+      <button 
+        className={`panel-toggle-btn ${panelOpen ? 'active' : ''}`}
+        onClick={() => setPanelOpen(!panelOpen)}
+        title="Toggle Right Panel"
+        style={{ 
+          opacity: panelOpen ? 1 : 0.7, 
+          background: 'transparent', 
+          border: 'none', 
+          cursor: 'pointer', 
+          color: 'inherit',
+          padding: '6px',
+          borderRadius: '6px',
+          display: 'flex',
+          alignItems: 'center'
+        }}
+      >
+        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+          <line x1="15" x2="15" y1="3" y2="21"/>
+        </svg>
+      </button>
     </header>
   );
 }
@@ -2597,6 +2616,216 @@ function useVisualPicker() {
     document.body.classList.add("vp-on");
     document.addEventListener("mouseover", move, true);
     document.addEventListener("click", click, true);
+    document.addEventListener("keydown", key, true);
+  }, []);
+}
+
+/* ----------------------------- Visual Draw ----------------------------- */
+let VD_STOP = null;
+function useVisualDraw() {
+  return useCallback(() => {
+    if (VD_STOP) {
+      VD_STOP();
+      return;
+    }
+    
+    // Ubah kursor global menjadi crosshair untuk indikasi mode aktif
+    document.body.classList.add("vp-on");
+    
+    const cWrap = document.createElement("div");
+    cWrap.id = "vd-cwrap";
+    Object.assign(cWrap.style, {
+      position: "fixed",
+      inset: "0",
+      overflow: "hidden",
+      background: "transparent",
+      zIndex: "999999",
+      pointerEvents: "none" // Biarkan event jatuh ke document agar bisa dicegat dengan useCapture
+    });
+    
+    const activeSelections = document.createElement("div");
+    Object.assign(activeSelections.style, {
+      position: "absolute",
+      inset: "0",
+      pointerEvents: "none"
+    });
+    cWrap.appendChild(activeSelections);
+    
+    document.body.appendChild(cWrap);
+    
+    const snap = (v) => Math.round(v/24)*24;
+    
+    const copyToClipboard = (domString, btnElement) => {
+      const showSuccess = () => {
+        const oldHTML = btnElement.innerHTML;
+        const oldBg = btnElement.style.background;
+        btnElement.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style="margin-right:4px; vertical-align:text-bottom"><polyline points="20 6 9 17 4 12"></polyline></svg> Berhasil Disalin!`;
+        btnElement.style.background = 'var(--text-success, #2b8a3e)';
+        setTimeout(() => { btnElement.innerHTML = oldHTML; btnElement.style.background = oldBg; }, 2000);
+      };
+      
+      const fallbackCopy = (text) => {
+        const textArea = document.createElement("textarea");
+        textArea.value = text;
+        textArea.style.position = "fixed";
+        textArea.style.left = "-9999px";
+        document.body.appendChild(textArea);
+        textArea.focus();
+        textArea.select();
+        try { document.execCommand('copy'); showSuccess(); } 
+        catch (err) { alert("Salin manual:\\n\\n" + text); }
+        textArea.remove();
+      };
+      
+      if (navigator.clipboard) {
+        navigator.clipboard.writeText(domString).then(showSuccess).catch(() => fallbackCopy(domString));
+      } else {
+        fallbackCopy(domString);
+      }
+    };
+    
+    const checkSidebarClick = (e) => {
+      if (e.target.closest('.sidebar')) return true;
+      return false;
+    };
+    
+    // Cegah semua klik di aplikasi (kecuali sidebar & UI draw)
+    const blockClick = (e) => {
+      if (checkSidebarClick(e)) return;
+      if (e.target.closest('.ui-panel')) return;
+      e.preventDefault();
+      e.stopPropagation();
+    };
+    
+    const handleRightClick = (e) => {
+      if (checkSidebarClick(e)) return;
+      if (e.target.closest('.ui-panel')) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      if (activeSelections.children.length > 0) {
+        activeSelections.innerHTML = '';
+      }
+    };
+    
+    const cvsMD = (e) => {
+      if (checkSidebarClick(e)) return;
+      if (e.target.closest('.ui-panel')) return; 
+      if (e.button !== 0) return;
+      
+      e.preventDefault();
+      e.stopPropagation();
+      
+      const r = cWrap.getBoundingClientRect();
+      const startX = e.clientX - r.left;
+      const startY = e.clientY - r.top;
+      
+      const selBox = document.createElement('div');
+      Object.assign(selBox.style, {
+        position: 'absolute',
+        border: '2px dashed var(--fill-accent, #339af0)',
+        background: 'rgba(51, 154, 240, 0.15)',
+        pointerEvents: 'none',
+        zIndex: '9999',
+        left: startX + 'px',
+        top: startY + 'px',
+        width: '0px',
+        height: '0px',
+        display: 'flex',
+        flexDirection: 'column'
+      });
+      activeSelections.appendChild(selBox);
+      
+      const mm = ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        
+        const currX = ev.clientX - r.left;
+        const currY = ev.clientY - r.top;
+        selBox.style.left = Math.min(startX, currX) + 'px';
+        selBox.style.top = Math.min(startY, currY) + 'px';
+        selBox.style.width = Math.abs(currX - startX) + 'px';
+        selBox.style.height = Math.abs(currY - startY) + 'px';
+      };
+      
+      const mu = ev => {
+        ev.preventDefault();
+        ev.stopPropagation();
+        document.removeEventListener('mousemove', mm, true);
+        document.removeEventListener('mouseup', mu, true);
+        
+        let currX = ev.clientX - r.left;
+        let currY = ev.clientY - r.top;
+        let w = Math.abs(currX - startX);
+        let h = Math.abs(currY - startY);
+        
+        if (w < 10 && h < 10) {
+          selBox.remove();
+          return;
+        }
+        
+        const finalX = snap(Math.min(startX, currX));
+        const finalY = snap(Math.min(startY, currY));
+        const finalW = Math.max(280, snap(w));
+        const finalH = Math.max(160, snap(h));
+        
+        Object.assign(selBox.style, {
+          left: finalX + 'px',
+          top: finalY + 'px',
+          width: finalW + 'px',
+          height: finalH + 'px',
+          pointerEvents: 'auto',
+          border: '2px solid var(--fill-accent, #339af0)',
+          boxShadow: '0 12px 32px rgba(51, 154, 240, 0.15)'
+        });
+        
+        const domString = `<div data-type="empty-slot" style="position: absolute; left: ${finalX}px; top: ${finalY}px; width: ${finalW}px; height: ${finalH}px;"></div>`;
+        const escapedDom = domString.replace(/</g, '&lt;').replace(/>/g, '&gt;');
+        
+        selBox.innerHTML = `
+          <div style="background: var(--fill-accent, #339af0); color: white; font-size: 11px; font-weight: 600; padding: 4px 8px; border-bottom-right-radius: 4px; border-top-left-radius: 1px; display: inline-block; align-self: flex-start; letter-spacing: 0.05em; pointer-events: none;">
+            AREA KOSONG [X: ${finalX}, Y: ${finalY}]
+          </div>
+          <div style="flex: 1;"></div>
+          <div class="ui-panel" style="padding: 12px; background: rgba(255, 255, 255, 0.98); border-top: 1px solid var(--border-accent, #a5d8ff); display: flex; flex-direction: column; gap: 8px;">
+            <code style="display:block; padding:8px; background:var(--surface-2, #f1f3f5); border:1px solid var(--border, #e9ecef); border-radius:4px; font-size:11px; color:var(--text-secondary, #495057); word-break:break-all; font-family:monospace;">${escapedDom}</code>
+            <button class="vd-copy-btn" style="background: var(--text-primary, #212529); color: white; border: none; height: 34px; border-radius: 4px; font-weight: 500; font-size: 13px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#000'" onmouseout="this.style.background='var(--text-primary, #212529)'">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style="margin-right:4px; vertical-align:text-bottom"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Salin Struktur DOM
+            </button>
+          </div>
+        `;
+        
+        const btn = selBox.querySelector(".vd-copy-btn");
+        btn.onclick = () => copyToClipboard(domString, btn);
+      };
+      
+      document.addEventListener('mousemove', mm, true);
+      document.addEventListener('mouseup', mu, true);
+    };
+    
+    document.addEventListener("mousedown", cvsMD, true);
+    document.addEventListener("click", blockClick, true);
+    document.addEventListener("contextmenu", handleRightClick, true);
+    
+    const key = (e) => {
+      if (e.key === "Escape") {
+        e.preventDefault();
+        stop();
+      }
+    };
+    
+    function stop() {
+      VD_STOP = null;
+      document.body.classList.remove("vp-on");
+      cWrap.remove();
+      document.removeEventListener("keydown", key, true);
+      document.removeEventListener("mousedown", cvsMD, true);
+      document.removeEventListener("click", blockClick, true);
+      document.removeEventListener("contextmenu", handleRightClick, true);
+    }
+    
+    VD_STOP = stop;
     document.addEventListener("keydown", key, true);
   }, []);
 }
@@ -4947,6 +5176,7 @@ function Sidebar({
   setView,
   onNewChat,
   onVisualPicker,
+  onVisualDraw,
   canvasAuto,
   onToggleCanvas,
   theme,
@@ -4974,7 +5204,19 @@ function Sidebar({
     </button>
   );
   return (
-    <aside className={"sidebar" + (collapsed ? " collapsed" : "")}> 
+    <aside 
+      className={"sidebar" + (collapsed ? " collapsed" : "")}
+      onClickCapture={(e) => {
+        const btn = e.target.closest('.sb-item');
+        // Jika klik pada tombol Visual Draw atau Picker, biarkan onClick mereka yang toggle
+        if (btn && (btn.textContent.includes('Visual Picker') || btn.textContent.includes('Visual Draw'))) {
+          return;
+        }
+        // Jika klik di tempat lain di sidebar (Chat, Settings, logo, dll), paksa matikan semua mode
+        if (typeof VP_STOP === 'function' && VP_STOP !== null) VP_STOP();
+        if (typeof VD_STOP === 'function' && VD_STOP !== null) VD_STOP();
+      }}
+    > 
       <div className="sb-head">
         <span className="sb-brand">
           <BrandMark />
@@ -5028,6 +5270,11 @@ function Sidebar({
           icon={SB.target({ width: 19, height: 19 })}
           label="Visual Picker"
           onClick={onVisualPicker}
+        />
+        <Item
+          icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path><path d="M13.5 6.5l4 4"></path></svg>}
+          label="Visual Draw"
+          onClick={onVisualDraw}
         />
       </div>
       <div
@@ -5587,18 +5834,6 @@ const CANVAS_BUILDING =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">' +
   '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka</div></div></body></html>';
 function App() {
-  // --- SIMULASI LOGIC ERROR & ROBOT PENGUJI ---
-  function hitungKapasitasAI(batas) {
-    // AGEN PENGACAU MENGUBAH LOGIKA DI SINI (Harusnya dikali, malah dibagi)
-    return batas / 2; 
-  }
-
-  // 🛡️ ROBOT PENGUJI LOGIKA (Assertion)
-  if (hitungKapasitasAI(10) !== 20) {
-    throw new Error("🚨 FATAL LOGIC ERROR: Perhitungan kapasitas AI salah! Seseorang merusak rumus!");
-  }
-  // -------------------------------------------
-
   // Melaporkan ke index.html bahwa App berhasil dirender tanpa Runtime Error
   useEffect(() => {
     if (window.reportAppSuccess) window.reportAppSuccess();
@@ -5693,6 +5928,7 @@ function App() {
   };
   const [canvasPct, setCanvasPct] = useState(46); // canvas width % (draggable divider)
   const [terminalPct, setTerminalPct] = useState(30);
+  const [panelPct, setPanelPct] = useState(35);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalInput, setTerminalInput] = useState("");
   const [terminalOutput, setTerminalOutput] = useState("");
@@ -5704,6 +5940,7 @@ function App() {
       return [];
     }
   });
+  const [globalPreviewItem, setGlobalPreviewItem] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
   // Agent Runner state
   const [agentRunnerOpen, setAgentRunnerOpen] = useState(false);
@@ -5966,7 +6203,24 @@ function App() {
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   };
+  const onPanelDividerDown = (e) => {
+    e.preventDefault();
+    const move = (ev) => {
+      const w = window.innerWidth;
+      const pct = Math.min(60, Math.max(15, ((w - ev.clientX) / w) * 100));
+      setPanelPct(pct);
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.userSelect = "";
+    };
+    document.body.style.userSelect = "none";
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  };
   const startPicker = useVisualPicker();
+  const startVisualDraw = useVisualDraw();
   const doSendRef = useRef(void 0);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -6486,6 +6740,9 @@ function App() {
         onVisualPicker={() => {
           startPicker();
         }}
+        onVisualDraw={() => {
+          startVisualDraw();
+        }}
         canvasAuto={canvasAuto}
         onToggleCanvas={toggleCanvas}
         theme={theme}
@@ -6525,13 +6782,7 @@ function App() {
             <div
               className="chat-col"
               style={{
-                flex: terminalOpen && canvas
-                  ? "1 1 " + (100 - terminalPct - canvasPct) + "%"
-                  : terminalOpen
-                    ? "1 1 " + (100 - terminalPct) + "%"
-                    : canvas
-                      ? "1 1 " + (100 - canvasPct) + "%"
-                      : "1 1 100%",
+                flex: "1 1 " + Math.max(20, 100 - (terminalOpen ? terminalPct : 0) - (canvas ? canvasPct : 0) - (panelOpen ? panelPct : 0)) + "%",
               }}
             >
               <div
@@ -6622,6 +6873,23 @@ function App() {
                 </div>
               </>
             )}
+            {panelOpen && (
+              <>
+                <div className="split-divider" onMouseDown={onPanelDividerDown} />
+                <div
+                  className="canvas-col"
+                  style={{ flex: "0 0 " + panelPct + "%", background: "var(--surface-1)", display: "flex", flexDirection: "column" }}
+                >
+                  <div style={{ height: "46px", borderBottom: "1px solid var(--line)", padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+
+
+                  </div>
+                  <div style={{ flex: 1, padding: "16px", overflowY: "auto", color: "var(--text-soft)", fontSize: "14px" }}>
+
+                  </div>
+                </div>
+              </>
+            )}
           </div>
         </div>
         <div
@@ -6671,6 +6939,8 @@ function App() {
               onStop={stopAgent}
               onSend={sendToAgent}
               currentModel={modelVal}
+              panelOpen={panelOpen}
+              setPanelOpen={setPanelOpen}
             />
           )}
         </div>
@@ -6692,6 +6962,8 @@ function AgentRunnerView({
   onStop,
   onSend,
   currentModel,
+  panelOpen,
+  setPanelOpen,
 }) {
   // Command Palette state (VS Code fork)
   const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
@@ -7217,6 +7489,27 @@ function AgentRunnerView({
               <span className="hub-subtitle">Multi-agent host</span>
             </div>
             <div className="tb-spacer" />
+            <button 
+              className={`panel-toggle-btn ${panelOpen ? 'active' : ''}`}
+              onClick={() => setPanelOpen(!panelOpen)}
+              title="Toggle Right Panel"
+              style={{ 
+                opacity: panelOpen ? 1 : 0.7, 
+                background: 'transparent', 
+                border: 'none', 
+                cursor: 'pointer', 
+                color: 'inherit',
+                padding: '6px',
+                borderRadius: '6px',
+                display: 'flex',
+                alignItems: 'center'
+              }}
+            >
+              <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
+                <line x1="15" x2="15" y1="3" y2="21"/>
+              </svg>
+            </button>
           </header>
 
           {/* Body */}

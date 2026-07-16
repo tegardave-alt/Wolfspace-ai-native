@@ -566,7 +566,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 
           // Emit thought only when this tool actually executes
           if (args.rencana_tindakan) {
-            emit({ t: 'thought', c: args.rencana_tindakan, tool: tc.function.name, ok: true });
+            emit({ t: 'thought', c: args.rencana_tindakan, tool: tc.function.name, ok: true, ts: Date.now() });
           }
 
           const sig = tc.function.name + '|' + (tc.function.arguments || '');
