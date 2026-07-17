@@ -10,6 +10,7 @@ const { exec, spawn, execSync } = require('child_process');
 const util = require('util');
 const execP = util.promisify(exec);
 const { dlog } = require('./debug.cjs');
+const { getPlatformAdapter } = require('./platform/index.cjs');
 
 const QROOT = path.resolve(__dirname, '..');
 
@@ -91,6 +92,7 @@ class SandboxSession {
     this.id = 'sbx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
     this.dir = fs.mkdtempSync(path.join(os.tmpdir(), this.id + '-'));
     this.caps = new CapabilityFS(opts);
+    this.adapter = opts.adapter || getPlatformAdapter(); // OS-specific exec/kill/env
     this.timeout = opts.timeout || 30000;
     this.maxOutput = opts.maxOutput || 50000;
     this.networkAllowed = opts.network !== false;
@@ -143,30 +145,24 @@ class SandboxSession {
     const cmdCwd = opts.cwd || this.dir;
     this._audit('exec', { command, cwd: path.relative(this.dir, cmdCwd), timeout: cmdTimeout });
 
+    const [shellCmd, shellArgs] = this.adapter.shellFor(command);
+
     return new Promise((resolve) => {
       let stdout = '', stderr = '', timedOut = false, settled = false;
-      const child = spawn('cmd.exe', ['/d', '/c', command], {
+      const child = spawn(shellCmd, shellArgs, {
         cwd: cmdCwd,
         windowsHide: true,
+        ...this.adapter.spawnOptions(),
         env: {
-          PATH: process.env.PATH,
-          SystemRoot: process.env.SystemRoot,
-          SystemDrive: process.env.SystemDrive,
-          ComSpec: process.env.ComSpec,
-          TEMP: this.dir,
-          TMP: this.dir,
-          // Point the user-profile family at the sandbox dir so untrusted code
-          // can't read the real home path (and stray writes land in the sandbox).
-          USERPROFILE: this.dir,
-          HOMEDRIVE: path.parse(this.dir).root.replace(/[\\/]$/, ''),
-          HOMEPATH: this.dir.slice(path.parse(this.dir).root.replace(/[\\/]$/, '').length),
-          APPDATA: this.dir,
-          LOCALAPPDATA: this.dir,
-          // Sandbox env markers
+          // OS-specific contained base env (PATH + system vars + home/temp
+          // remapped to the sandbox dir). Home remapping keeps the real home
+          // path out of untrusted code — see the adapter for this OS.
+          ...this.adapter.sandboxEnv(this.dir),
+          // App-level sandbox markers (OS-independent)
           QUANTUM_SANDBOX: '1',
           QUANTUM_SANDBOX_ID: this.id,
           QUANTUM_SANDBOX_DIR: this.dir,
-          // Allow network gating via env
+          // Advisory network flag (real enforcement needs OS isolation)
           QUANTUM_SANDBOX_NETWORK: this.networkAllowed ? '1' : '0',
         },
       });
@@ -179,16 +175,13 @@ class SandboxSession {
         resolve(payload);
       };
 
-      // Kill the WHOLE process tree. child.kill() only kills cmd.exe, leaving the
-      // grandchild (e.g. `node hang.js`) alive — so the timeout wouldn't actually
-      // bound runtime. taskkill /T terminates the tree; /F forces it.
+      // Kill the WHOLE process tree, not just the shell — otherwise a runaway
+      // grandchild (e.g. `node hang.js`) keeps running and the timeout wouldn't
+      // actually bound runtime. The adapter knows how per OS (taskkill /T on
+      // Windows, process-group kill on POSIX).
       const killTree = () => {
-        if (!child.pid) { child.kill('SIGKILL'); return; }
-        try {
-          execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore', timeout: 4000 });
-        } catch (_) {
-          try { child.kill('SIGKILL'); } catch (__) {}
-        }
+        try { this.adapter.killTree(child); }
+        catch (_) { try { child.kill('SIGKILL'); } catch (__) {} }
       };
 
       let graceTimer = null;
