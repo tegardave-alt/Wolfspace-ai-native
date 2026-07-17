@@ -5013,12 +5013,12 @@ img.ar-fs-icon {
   display: flex;
   justify-content: center;
   align-items: center;
-  gap: 14px;
+  gap: 8px;
   margin-bottom: 18px;
 }
 .picker-brand-mark svg {
-  width: 52px;
-  height: 52px;
+  width: 64px;
+  height: 64px;
   color: var(--text, #e6edf3);
   opacity: 0.92;
   flex-shrink: 0;
