@@ -6,3 +6,8 @@ _agent_backups/
 dev.bat
 sync-installed.ps1
 sync-installed.bat
+
+# Runtime artifacts
+.wolfspace/
+public/uploads/
+_archive/web/uploads/

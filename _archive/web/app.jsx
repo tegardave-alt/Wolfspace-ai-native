@@ -2291,10 +2291,160 @@ function OpenCodeTUI({ onClose }) {
 }
 
 
+/* ─────────────────────────────────────────────────────────
+   PROJECT PICKER SCREEN
+   Shown once at startup; disappears after first message.
+───────────────────────────────────────────────────────── */
+const PICKER_WORKSPACES = [
+  { name: "resilient-bose", active: true },
+  { name: "excited-turing" },
+  { name: "peaceful-maxwell" },
+  { name: "eager-hertz" },
+];
+
+function FolderIcon({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" />
+    </svg>
+  );
+}
+function MonitorIcon({ size = 15 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <rect x="2" y="3" width="20" height="14" rx="2" ry="2" />
+      <line x1="8" y1="21" x2="16" y2="21" />
+      <line x1="12" y1="17" x2="12" y2="21" />
+    </svg>
+  );
+}
+function ChevDownIcon({ size = 12 }) {
+  return (
+    <svg width={size} height={size} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2">
+      <polyline points="6 9 12 15 18 9" />
+    </svg>
+  );
+}
+function PlusSmIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+      <line x1="12" y1="5" x2="12" y2="19" />
+      <line x1="5" y1="12" x2="19" y2="12" />
+    </svg>
+  );
+}
+function SendIcon() {
+  return (
+    <svg width="16" height="16" viewBox="0 0 24 24" fill="#9bb1d1" stroke="none">
+      <path d="M2 21L23 12 2 3v7l15 2-15 2z" transform="rotate(-45 12 12)" />
+    </svg>
+  );
+}
+
+function ProjectPickerScreen({ onStart }) {
+  const [project, setProject]   = useState(PICKER_WORKSPACES.find(w => w.active)?.name || PICKER_WORKSPACES[0].name);
+  const [dropOpen, setDropOpen] = useState(false);
+  const [text, setText]         = useState("");
+  const wrapRef = useRef(null);
+  const taRef   = useRef(null);
+
+  useEffect(() => {
+    const h = (e) => { if (wrapRef.current && !wrapRef.current.contains(e.target)) setDropOpen(false); };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+
+  const grow = () => {
+    const el = taRef.current;
+    if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  };
+
+  const submit = () => {
+    const v = text.trim();
+    if (!v) return;
+    onStart(v, project);
+  };
+
+  return (
+    <div className="project-picker-screen">
+      <div className="project-picker-inner">
+
+        {/* Workspace selector */}
+        <div className="picker-ws-wrap" ref={wrapRef}>
+          <button className="picker-workspace-btn" onClick={() => setDropOpen(o => !o)}>
+            <FolderIcon />
+            <span>{project}</span>
+            <ChevDownIcon />
+          </button>
+
+          {dropOpen && (
+            <div className="picker-ws-dropdown">
+              {PICKER_WORKSPACES.map(ws => (
+                <button key={ws.name}
+                  className={"picker-ws-item" + (ws.name === project ? " active" : "")}
+                  onClick={() => { setProject(ws.name); setDropOpen(false); }}>
+                  <FolderIcon />
+                  {ws.name}
+                </button>
+              ))}
+              <div className="picker-ws-divider" />
+              <button className="picker-ws-item" onClick={() => setDropOpen(false)}>
+                <FolderIcon />
+                New Project
+              </button>
+              <button className="picker-ws-item" onClick={() => setDropOpen(false)}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <polyline points="15 3 21 3 21 9" />
+                  <path d="M10 14L21 3" />
+                  <path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+                </svg>
+                Quick Start
+              </button>
+            </div>
+          )}
+        </div>
+
+        {/* Input box */}
+        <div className="picker-input-box">
+          <div className="picker-input-area">
+            <textarea
+              ref={taRef}
+              className="picker-textarea"
+              rows={1}
+              placeholder="Apa yang ingin kamu buat hari ini?"
+              value={text}
+              onChange={e => { setText(e.target.value); grow(); }}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+            />
+            <div className="picker-toolbar">
+              <button className="picker-plus-btn"><PlusSmIcon /></button>
+              <button className="picker-send-btn" onClick={submit} disabled={!text.trim()}>
+                <SendIcon />
+              </button>
+            </div>
+          </div>
+          <div className="picker-divider" />
+          <button className="picker-bottom">
+            <MonitorIcon />
+            Local
+            <ChevDownIcon size={11} />
+          </button>
+        </div>
+
+      </div>
+    </div>
+  );
+}
+
 function App() {
+  const [pickerDone, setPickerDone] = useState(false);
+  const [selectedProject, setSelectedProject] = useState("resilient-bose");
+
   const [models, setModels] = useState([{value:"",label:"Memuat model...",disabled:true}]);
   const [modelVal, setModelVal] = useState("");
-  const [cloudVersion, setCloudVersion] = useState(0); // Trigger reload when cloud config changes
+  const [cloudVersion, setCloudVersion] = useState(0);
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [messages, setMessages] = useState([]);
@@ -2306,17 +2456,18 @@ function App() {
   useEffect(()=>{ try{ localStorage.setItem("quantum_sb", sbCollapsed?"1":"0"); }catch(e){} }, [sbCollapsed]);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem("quantum_theme") || "dark"; } catch(e){ return "dark"; } });
 
-  const [canvas, setCanvas] = useState(null);          // {doc, run} when the split Canvas is open
-  const canvasRef = useRef(null);                       // mirror ref for stale-closure-safe reads
+  const [canvas, setCanvas] = useState(null);
+  const canvasRef = useRef(null);
   const _setCanvas = (v) => { canvasRef.current = v; setCanvas(v); };
-  const [canvasAuto, setCanvasAuto] = useState(false); // toggled from the composer
-  const [canvasPct, setCanvasPct] = useState(46);      // canvas width % (draggable divider)
+  const [canvasAuto, setCanvasAuto] = useState(false);
+  const [canvasPct, setCanvasPct] = useState(46);
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalInput, setTerminalInput] = useState("");
   const [terminalOutput, setTerminalOutput] = useState("");
   const [terminalLoading, setTerminalLoading] = useState(false);
   const [savedChats, setSavedChats] = useState(() => { try { return JSON.parse(localStorage.getItem("quantum_chats") || "[]"); } catch(e){ return []; } });
   const [showHistory, setShowHistory] = useState(false);
+  const [agentCliOpen, setAgentCliOpen] = useState(false);
   const loadSavedChats = () => { try { setSavedChats(JSON.parse(localStorage.getItem("quantum_chats") || "[]")); } catch(e){} };
   const restoreChat = (chat) => { setMessages(chat.messages); setHistory(chat.history || []); setShowHistory(false); setView("chat"); };
   const deleteChat = (id) => {
@@ -2331,11 +2482,7 @@ function App() {
     if (!terminalInput.trim()) return;
     setTerminalLoading(true);
     try {
-      const res = await fetch("/api/bash", {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({command: terminalInput})
-      });
+      const res = await fetch("/api/bash", { method: "POST", headers: {"Content-Type": "application/json"}, body: JSON.stringify({command: terminalInput}) });
       const data = await res.json();
       setTerminalOutput(data.output || "");
     } catch (err) {
@@ -2345,26 +2492,18 @@ function App() {
       setTerminalInput("");
     }
   };
-  const terminal = {
-    input: terminalInput,
-    setInput: setTerminalInput,
-    output: terminalOutput,
-    setOutput: setTerminalOutput,
-    loading: terminalLoading,
-    setLoading: setTerminalLoading,
-    run: runTerminalCommand
-  };
+  const terminal = { input: terminalInput, setInput: setTerminalInput, output: terminalOutput, setOutput: setTerminalOutput, loading: terminalLoading, setLoading: setTerminalLoading, run: runTerminalCommand };
   const lastProject = useRef(null);
   const scrollRef = useRef(null);
   const ctrlRef = useRef(null);
   const toggleCanvas = () => setCanvasAuto(v => {
     const nv = !v;
-    if (nv && lastProject.current) _setCanvas(lastProject.current);   // turning on reopens last web output
-    else if (nv) _setCanvas({ doc: CANVAS_BUILDING, run: null });     // no previous project → show placeholder
-    if (!nv) _setCanvas(null);                                        // turning off closes the split
+    if (nv && lastProject.current) _setCanvas(lastProject.current);
+    else if (nv) _setCanvas({ doc: CANVAS_BUILDING, run: null });
+    if (!nv) _setCanvas(null);
     return nv;
   });
-  const openCanvas = (text, run) => {                                // manual open from a message
+  const openCanvas = (text, run) => {
     const p = buildPreview(text); if(!p.has) return;
     const state = p.flutter
       ? { flutter: p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_COMPILING, files: p.files }
@@ -2388,14 +2527,10 @@ function App() {
     try { list = await (await fetch("/models")).json(); } catch(e) {}
     const opts = list.map(m => ({ value:String(m.port), label:m.name + (m.size ? " · " + fmtSize(m.size) : ""), default:m.default }));
     let cloud = getCloud();
-    // Hydrate from server-configured providers (key stays server-side) when there is
-    // no stored cloud OR the stored provider is no longer configured (e.g. stale key).
     try {
       const provs = await (await fetch("/cloud-providers")).json();
       if (Array.isArray(provs) && provs.length) {
         const pick = provs.find(p=>p.provider==="opencode") || provs.find(p=>p.provider==="nvidia") || provs.find(p=>p.provider==="gemini") || provs.find(p=>p.provider==="puter") || provs[0];
-        // Only override if the user hasn't explicitly set a local key or custom baseUrl.
-        // If they have, we respect their choice.
         const hasUserConfig = cloud && (cloud.key || cloud.baseUrl);
         if (!hasUserConfig) {
           if (!cloud || cloud.provider !== pick.provider || cloud.model !== pick.model) {
@@ -2414,7 +2549,6 @@ function App() {
     setStatus(hasCloud ? "cloud: "+(cloud.name||cloud.provider) : (opts.length?"siap":"jalankan start-models"));
   }, [cloudVersion]);
   useEffect(() => { loadModels(); }, [cloudVersion]);
-  // Warn if server isn't running (for browser users, not Electron)
   useEffect(() => {
     if (!IPC) {
       checkServerHealth().then(ok => {
@@ -2424,24 +2558,19 @@ function App() {
   }, []);
   useEffect(() => { const el=scrollRef.current; if(el) el.scrollTop=el.scrollHeight; }, [messages]);
 
-  const labelOf = (v) => (models.find(m=>m.value===v)||{}).label || v;
+  const flutterFixRef = useRef(0);
 
   const doSend = async (content, display) => {
     if (!content || busy) return;
-    if (!display || !display.startsWith("✦ Auto-fix")) flutterFixRef.current = 0;  // user turn resets the auto-fix budget
+    if (!display || !display.startsWith("✦ Auto-fix")) flutterFixRef.current = 0;
     const newHist = [...history, { role:"user", content }];
     setHistory(newHist);
     setBusy(true); setStatus("typing…");
-    console.log('[doSend] Setting busy=true, content:', content);
     const ctrl = new AbortController(); ctrlRef.current = ctrl;
-    // ONE smart chat: with a tool-capable cloud, the model itself decides (tool_choice
-    // auto) whether to just answer (normal chat) or use tools (a command/edit) — like
-    // chatting with Claude. Local/bridge endpoints can't do tools → plain chat.
     const _cl = getCloud();
     const _localCloud = _cl && _cl.baseUrl && /(127\.0\.0\.1|localhost)/.test(_cl.baseUrl);
     const useAgent = modelVal==="cloud" && !_localCloud;
     if (!canvasAuto && !useAgent) {
-      // Bridge / local model: plain conversational chat (text streaming, no function-calling).
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
       try {
         const res = await streamChat(reqFor(modelVal,getCloud(),newHist),(t,run)=>{
@@ -2449,7 +2578,6 @@ function App() {
         }, ctrl.signal);
         setHistory(h=>[...h,{role:"assistant",content:res.text}]);
         setStatus("siap");
-        // Auto-buka Studio jika response berisi A2UI spec
         if (res.text && !canvasAuto) {
           const proj = buildPreview(res.text);
           if (proj.has && proj.flutter) {
@@ -2457,14 +2585,11 @@ function App() {
             lastProject.current = fstate; _setCanvas(fstate); setCanvasAuto(true);
           }
         }
-        console.log('[doSend] Setting busy=false (normal chat complete)');
-        setBusy(false); // Reset busy state after stream completes
-      } catch(e){ if(e.name!=="AbortError") setStatus("error: "+e.message); else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (normal chat error)'); setBusy(false); }
+        setBusy(false);
+      } catch(e){ if(e.name!=="AbortError") setStatus("error: "+e.message); else setStatus("dibatalkan"); setBusy(false); }
     } else if (!canvasAuto) {
-      // Agentic chat (like Claude Code): the model answers OR uses tools to edit
-      // WOLFSPACE's own source. The live process renders as a clean timeline.
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"agent", agent:{ events:[], busy:true } }]);
-      const upd = (patch)=> setMessages(m=>{ const c=m.slice(); const last={...c[c.length-1]}; last.agent={...last.agent,...patch}; c[c.length-1]=last; return c; });
+      const upd = (patch)=>setMessages(m=>{ const c=m.slice(); const last={...c[c.length-1]}; last.agent={...last.agent,...patch}; c[c.length-1]=last; return c; });
       const evlist = []; let think = ""; let adoneSent = false; let hadError = false;
       try {
         await streamSelfAgent({ history:newHist, cloud:getCloud(), port:modelVal }, (j)=>{
@@ -2476,87 +2601,73 @@ function App() {
           else if(j.t==="err"){ hadError = true; evlist.push({type:"err",m:j.m}); upd({ events:[...evlist], busy:false, error:true }); }
         }, ctrl.signal);
       } catch(e){ if(e.name!=="AbortError") upd({ busy:false, error:true, events:[...evlist,{type:"err",m:e.message}] }); }
-      console.log('[doSend] Setting busy=false (agent stream complete)');
-      // If no "adone" event was sent, provide a default summary based on events
       if (!adoneSent) {
         if (!hadError) {
-          const summary = evlist.length > 0 
-            ? `Selesai. ${evlist.length} operasi dieksekusi.` 
-            : "Selesai. Tidak ada operasi yang dilakukan.";
+          const summary = evlist.length > 0 ? `Selesai. ${evlist.length} operasi dieksekusi.` : "Selesai. Tidak ada operasi yang dilakukan.";
           upd({ busy:false, done:true, summary });
           setHistory(h=>[...h,{role:"assistant",content:summary}]);
-        } else {
-          upd({ busy:false });
-        }
+        } else { upd({ busy:false }); }
       }
-      setBusy(false); // Always reset global busy state after agent stream completes, regardless of events
-      setStatus("siap");
+      setBusy(false); setStatus("siap");
     } else {
       setMessages(m => [...m, { role:"user", text: display||content }, { role:"model", text:"", run:null }]);
-      if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null });   // Web Dev → split opens immediately
+      if (canvasAuto) _setCanvas({ doc: CANVAS_BUILDING, run: null });
       let lastCanvasT = 0;
       try {
         const res = await streamChat(reqFor(modelVal,getCloud(),newHist,canvasAuto),(t,run)=>{
           setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:t,run}; return c; });
           { const now = Date.now(); if (now - lastCanvasT > 450) {
-            const p = canvasAuto ? buildPreview(t) : { has:false };          // web/flutter preview only in Web Dev mode
+            const p = canvasAuto ? buildPreview(t) : { has:false };
             if (p.has) { lastCanvasT = now; _setCanvas(p.flutter
-              ? { flutter: p.streaming ? null : p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_STREAMING, run: null, files: p.files }  // A2UI: only send complete JSON to studio
-              : { doc: p.doc, run: null, files: p.files }); }                 // web: live preview is cheap, keep it
-            else if (run) { lastCanvasT = now; _setCanvas({ doc: consoleDoc(run), run }); }   // any executed code → live terminal view
+              ? { flutter: p.streaming ? null : p.source, doc: p.a2ui ? A2UI_STREAMING : FLUTTER_STREAMING, run: null, files: p.files }
+              : { doc: p.doc, run: null, files: p.files }); }
+            else if (run) { lastCanvasT = now; _setCanvas({ doc: consoleDoc(run), run }); }
           } }
         }, ctrl.signal);
         setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:res.text,run:res.run}; return c; });
         setHistory(h => [...h, { role:"assistant", content: res.text }]);
         setStatus(res.run ? (res.run.ok ? "Terverifikasi" : "Belum lolos pemeriksaan") : "Siap");
-        console.log('[doSend] Setting busy=false (canvas auto complete)');
-        setBusy(false); // Reset busy state after stream completes
-        const proj = buildPreview(res.text);              // finalize the live Canvas
+        setBusy(false);
+        const proj = buildPreview(res.text);
         if (proj.has) {
-          if (proj.flutter) {
-            const fstate = { flutter: proj.source, doc: FLUTTER_COMPILING, files: proj.files };
-            lastProject.current = fstate; _setCanvas(fstate);
-          } else {
-            const wstate = { doc: proj.doc, run: res.run, files: proj.files };
-            lastProject.current = wstate; _setCanvas(wstate);
-          }
-        } else if (res.run) {
-          // No web/flutter content but code WAS executed — show the terminal in Canvas
-          _setCanvas({ doc: consoleDoc(res.run), run: res.run });
-        } else if (canvasAuto && !canvasRef.current?.flutter) _setCanvas(null);  // only close if no A2UI was detected during streaming
-      } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); console.log('[doSend] Setting busy=false (canvas auto error)'); setBusy(false); } else setStatus("dibatalkan"); console.log('[doSend] Setting busy=false (canvas auto abort)'); setBusy(false); }
+          if (proj.flutter) { const fstate = { flutter: proj.source, doc: FLUTTER_COMPILING, files: proj.files }; lastProject.current = fstate; _setCanvas(fstate); }
+          else { const wstate = { doc: proj.doc, run: res.run, files: proj.files }; lastProject.current = wstate; _setCanvas(wstate); }
+        } else if (res.run) { _setCanvas({ doc: consoleDoc(res.run), run: res.run }); }
+        else if (canvasAuto && !canvasRef.current?.flutter) _setCanvas(null);
+      } catch(e){ if(e.name!=="AbortError"){ setMessages(m=>{ const c=m.slice(); c[c.length-1]={role:"model",text:"[error: "+e.message+"]"}; return c; }); setStatus("error"); setBusy(false); } else setStatus("dibatalkan"); setBusy(false); }
     }
     ctrlRef.current=null; setBusy(false);
   };
-    // Flutter compile failed → feed the Dart error back to the model (max 2x per
-  // user turn), mirroring the console verify loop: model guesses, compiler judges.
-  const flutterFixRef = useRef(0);
+
   const autoFixFlutter = (source, error) => {
     if (busy || flutterFixRef.current >= 2) return;
     flutterFixRef.current++;
     const firstErr = (error.split("\n").find(l=>/error/i.test(l)) || "compile error").trim().slice(0,90);
-    doSend(
-      "Kode Flutter berikut GAGAL compile.\n\nError:\n"+error+"\n\nKode:\n```dart\n"+source+"\n```\n\nPerbaiki akar masalahnya dan kembalikan SATU blok ```dart lengkap yang sudah dikoreksi.",
-      "✦ Auto-fix Flutter ("+flutterFixRef.current+"/2): "+firstErr
-    );
+    doSend("Kode Flutter berikut GAGAL compile.\n\nError:\n"+error+"\n\nKode:\n```dart\n"+source+"\n```\n\nPerbaiki akar masalahnya dan kembalikan SATU blok ```dart lengkap yang sudah dikoreksi.", "✦ Auto-fix Flutter ("+flutterFixRef.current+"/2): "+firstErr);
   };
-  const cancel = () => { console.log('[cancel] Aborting and setting busy=false'); if(ctrlRef.current) ctrlRef.current.abort(); setBusy(false); setStatus("dibatalkan"); };
-  const reset = () => { setMessages([]); setHistory([]); setBusy(false); setStatus("Siap."); };
+  const cancel = () => { if(ctrlRef.current) ctrlRef.current.abort(); setBusy(false); setStatus("dibatalkan"); };
+  const reset  = () => { setMessages([]); setHistory([]); setBusy(false); setStatus("Siap."); };
   const saveChat = () => {
     if (messages.length === 0) return;
     try {
       const saved = JSON.parse(localStorage.getItem("quantum_chats") || "[]");
-      saved.push({
-        id: Date.now(),
-        title: messages[0]?.text?.slice(0, 60) || "Chat",
-        messages: messages,
-        history: history,
-        savedAt: new Date().toISOString()
-      });
+      saved.push({ id: Date.now(), title: messages[0]?.text?.slice(0, 60) || "Chat", messages, history, savedAt: new Date().toISOString() });
       localStorage.setItem("quantum_chats", JSON.stringify(saved));
       loadSavedChats();
-    } catch(e) { /* ignore storage errors */ }
+    } catch(e) {}
   };
+
+  if (!pickerDone) {
+    return (
+      <ProjectPickerScreen
+        onStart={(msg, project) => {
+          setSelectedProject(project);
+          setPickerDone(true);
+          setTimeout(() => doSend(msg), 0);
+        }}
+      />
+    );
+  }
 
   return (
     <div className={"app has-sidebar"+(sbCollapsed?" sb-collapsed":"")}>
@@ -2587,23 +2698,6 @@ function App() {
                 )}
               </div>
               <Composer onSend={(t)=>doSend(t)} onCancel={cancel} busy={busy} canvasAuto={canvasAuto} onToggleCanvas={toggleCanvas} onOpenAgentCli={() => setAgentCliOpen(true)} />
-              {agentCliOpen && <OpenCodeTUI onClose={() => setAgentCliOpen(false)} />}
-            </div>
-            {canvas && <div className="split-divider" onMouseDown={onDividerDown} />}
-            {canvas && <div className="canvas-col" style={{ flex: "0 0 " + canvasPct + "%" }}>
-              {canvas.flutter
-                ? <StudioFrame source={canvas.flutter} onClose={()=>{ _setCanvas(null); setCanvasAuto(false); }} />
-                : <CanvasPanel project={canvas} onAutoFix={autoFixFlutter} modelVal={modelVal} onClose={()=>{ _setCanvas(null); setCanvasAuto(false); }} />}
-            </div>}
-          </div>
-        </div>
-        <div className={"page hub-page " + (view==="hub" ? "active" : "enter")}>
-          {view === "hub" && <ModelHubView onBack={()=>setView("chat")} theme={theme} setTheme={setTheme} onChanged={loadModels}
-            onUse={(port)=>{ if(port) setModelVal(String(port)); loadModels(); setView("chat"); }} />}
-        </div>
-        <div className={"page hub-page " + (view==="settings" ? "active" : "enter")}>
-          {view === "settings" && <SettingsView onBack={()=>setView("chat")} onSaved={loadModels} onCloudChanged={()=>setCloudVersion(v=>v+1)} />}
-        </div>
       </div>
     </div>
   );
