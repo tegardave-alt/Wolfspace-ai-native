@@ -142,7 +142,7 @@ trust levels** — know which one a given tool gives you:
 
 | Layer | What it's for | What it actually enforces |
 |---|---|---|
-| **`sandbox_run`** (`agent/sandbox.cjs`) | Isolating crashes/hangs during normal dev use | Runs in a throwaway temp dir with a remapped home, a timeout that kills the *whole* process tree (`taskkill /F /T` / process-group kill), and auto-cleanup. `readRoots`/`writeRoots`/`network` options are **advisory only** — the spawned process has normal OS-level filesystem and network access. This is a resiliency tool, not a security boundary. |
+| **`sandbox_run`** (`agent/sandbox.cjs`) | Isolating crashes/hangs during normal dev use | Runs in a throwaway temp dir with a remapped home, a timeout that kills the *whole* process tree (`taskkill /F /T` / process-group kill), and auto-cleanup. On **Windows** (no `bwrap`), `readRoots`/`writeRoots`/`network` are **advisory only** — the spawned process has normal OS-level access. On **Linux with bubblewrap installed**, the platform adapter transparently wraps the command in `bwrap`, making isolation real (see below) — same tool, same options, stronger guarantee depending on what the OS can actually provide. |
 | **`capability_exec`** (`agent/broker/*`) | Running code that must not read/write outside an explicit scope | Task code runs in a separate process launched with Node's `--permission` flag and **zero** filesystem grants. Its only way to affect anything is `await request(capability, params)`, checked by a deny-by-default `Policy` and logged to an audit trail. Verified against a real attack: the classic `vm`-escape payload (`this.constructor.constructor('return process')()`) still reaches a `process` object, but the subsequent `fs` call is denied by the runtime regardless of how it's reached. Does **not** cover network egress (no `--allow-net` exists yet in Node), worker threads, or native addons. |
 | **Docker sandbox** (`sandbox/`, opt-in via `config.json`) | Hosting WOLFSPACE for people other than yourself | Real OS-level isolation — no network, capped CPU/RAM, read-only filesystem, hard timeout, via a throwaway container per execution. This is the only layer of the three with a genuine security boundary against a deliberately malicious payload. |
 
@@ -150,11 +150,40 @@ trust levels** — know which one a given tool gives you:
 your permissions**, like other local AI coding tools. Keep it bound to `127.0.0.1`;
 **don't expose the server to a network** unless you've enabled the Docker sandbox.
 
+### Linux: namespaces + cgroups (tested, not just designed)
+
+`agent/platform/posix.cjs`'s `LinuxAdapter` wraps sandboxed commands in
+[bubblewrap](https://github.com/containers/bubblewrap) (unprivileged Linux
+namespaces — the same primitive Flatpak uses) instead of running them
+unconfined. This was validated on a real WSL2 Linux kernel, as a **non-root
+user**, against the same attack payloads used to test the Windows path:
+
+| Test | Windows (Job Object, rejected — see project history) | Linux (bubblewrap + cgroup v2) |
+|---|---|---|
+| 300MB alloc vs. a 128MB memory cap | Not enforced — the allocation succeeded | `memory.max` + `memory.swap.max=0` → real kernel OOM kill (`SIGKILL`, `memory.events` showed `oom_kill: 1`) |
+| Outbound HTTP to a non-allowlisted host | Not covered by `capability_exec` (no `--allow-net` in Node) | `--unshare-net` → `ECONNRESET`, no interface exists in the namespace |
+| Reading a file outside the granted scope | `ERR_ACCESS_DENIED` (file visible, access refused) | `ENOENT` — the file isn't mounted, so it doesn't exist from the process's point of view |
+
+**Two honest caveats:**
+- Namespace isolation (`fsIsolation`/`networkIsolation`) works unprivileged and is
+  used automatically whenever `bwrap` is on `PATH` — `capabilities()` probes for
+  it at runtime rather than assuming.
+- The memory-cap path (`wrapWithMemoryLimit`, via `systemd-run --user --scope`)
+  needs cgroup v2 delegation, which systemd-based user sessions get automatically
+  but a bare container/init does not — confirmed by testing: a non-root user got
+  `EACCES` trying to create its own cgroup directly. `capabilities().resourceLimits`
+  reflects whether `systemd-run` was actually found, not whether Linux
+  theoretically supports it.
+
 ## Roadmap
 
-- OS-level enforced isolation for `capability_exec` (Windows AppContainer / macOS
-  Seatbelt / Linux bubblewrap) to close the gap noted above
-- `agent/platform/*` POSIX adapter is written but untested on real macOS/Linux hardware
+- OS-level enforced isolation for `capability_exec` specifically (it currently
+  uses Node's `--permission` flag, not the platform adapter's bwrap wrapping —
+  wiring these together is the next step)
+- Windows AppContainer / restricted-token isolation (Job Object was tried and
+  rejected — see project history — it doesn't reliably bind Node's memory use)
+- macOS Seatbelt (`sandbox-exec`) — `MacAdapter` shares `PosixAdapter`'s
+  advisory-only behavior today, unverified on real macOS hardware
 - MCP tool connections (filesystem, web, etc.)
 - Richer verification (tests-as-spec, coverage)
 

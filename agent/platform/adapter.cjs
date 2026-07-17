@@ -31,7 +31,11 @@ class PlatformAdapter {
   }
 
   // Return [command, argsArray] to run a shell command line on this OS.
-  shellFor(/* command */) { throw new Error(`${this.name}: shellFor() not implemented`); }
+  // opts (optional): { cwd, networkAllowed } -- adapters that can enforce
+  // isolation (e.g. LinuxAdapter via bubblewrap) use these to scope the
+  // sandbox to cwd and decide whether to strip network access; adapters
+  // that can't (Windows, or Linux without bwrap installed) just ignore them.
+  shellFor(/* command, opts */) { throw new Error(`${this.name}: shellFor() not implemented`); }
 
   // Extra spawn() options this OS needs (e.g. detached process group on POSIX
   // so the whole tree can be signalled). Merged into the caller's spawn opts.

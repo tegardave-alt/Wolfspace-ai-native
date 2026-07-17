@@ -54,9 +54,82 @@ class MacAdapter extends PosixAdapter {
   // Future: capabilities().fsIsolation -> 'enforced' via sandbox-exec profile.
 }
 
+// Linux: real namespace isolation via bubblewrap (unprivileged, no root/setuid
+// needed -- confirmed by testing as a plain non-root user). Memory limits via
+// cgroup v2 are a SEPARATE story: writing cgroup.procs/memory.max requires
+// either root or a delegated subtree (systemd user sessions get one; a bare
+// container/init like the one this was tested in does not) -- confirmed by
+// testing: a non-root user got EACCES creating its own cgroup. So
+// resourceLimits is probed at runtime (is systemd-run present?) rather than
+// assumed, consistent with the capability-negotiation design of this adapter
+// layer: report what's actually available, don't promise what isn't.
 class LinuxAdapter extends PosixAdapter {
   get name() { return 'linux'; }
-  // Future: capabilities().fsIsolation -> 'enforced' via bubblewrap/namespaces.
+
+  capabilities() {
+    return {
+      processTreeKill: true,
+      fsIsolation: this._hasBwrap() ? 'enforced' : 'advisory',
+      networkIsolation: this._hasBwrap(),
+      resourceLimits: this._hasSystemdRun(),
+    };
+  }
+
+  _probe(bin) {
+    const key = '__probe_' + bin;
+    if (this[key] === undefined) {
+      try { execSync(`which ${bin}`, { stdio: 'ignore' }); this[key] = true; }
+      catch (_) { this[key] = false; }
+    }
+    return this[key];
+  }
+  _hasBwrap() { return this._probe('bwrap'); }
+  _hasSystemdRun() { return this._probe('systemd-run'); }
+
+  // opts: { cwd, networkAllowed } -- both optional, threaded through by
+  // sandbox.cjs's exec(). Falls back to plain '/bin/sh -c' (PosixAdapter's
+  // behaviour) when bwrap isn't installed, so this degrades gracefully
+  // instead of failing outright on a minimal system.
+  shellFor(command, opts = {}) {
+    if (!this._hasBwrap()) return super.shellFor(command);
+    const workDir = opts.cwd || process.cwd();
+    const args = [
+      '--ro-bind', '/usr', '/usr',
+      '--ro-bind-try', '/lib', '/lib',
+      '--ro-bind-try', '/lib64', '/lib64',
+      '--ro-bind-try', '/bin', '/bin',
+      '--ro-bind-try', '/sbin', '/sbin',
+      '--ro-bind-try', '/etc/resolv.conf', '/etc/resolv.conf',
+      '--proc', '/proc',
+      '--dev', '/dev',
+      '--bind', workDir, workDir, // read-write, but ONLY this directory
+      '--chdir', workDir,
+      '--die-with-parent',
+    ];
+    // Tested: with --unshare-net, an http request gets ECONNRESET at the
+    // kernel level (no interface in the namespace) -- not an app-level
+    // refusal. Only unshare when the caller explicitly disallows network,
+    // since sandbox_run defaults to network-allowed.
+    if (opts.networkAllowed === false) args.unshift('--unshare-net');
+    args.push('--', '/bin/sh', '-c', command);
+    return ['bwrap', args];
+  }
+
+  // Best-effort hard memory cap via systemd-run's cgroup delegation. Returns
+  // the command unmodified if unavailable (see capabilities().resourceLimits
+  // to know ahead of time whether this will actually do anything). Tested:
+  // MemoryMax alone lets the kernel reclaim/swap instead of killing: only
+  // combined with MemorySwapMax=0 does exceeding the limit trigger a real
+  // OOM kill (confirmed: exit 137, cgroup memory.events showed oom_kill=1).
+  wrapWithMemoryLimit(shellCmd, shellArgs, memoryMB) {
+    if (!memoryMB || !this._hasSystemdRun()) return [shellCmd, shellArgs];
+    return ['systemd-run', [
+      '--user', '--scope', '--collect', '--quiet',
+      '-p', `MemoryMax=${memoryMB}M`,
+      '-p', 'MemorySwapMax=0',
+      '--', shellCmd, ...shellArgs,
+    ]];
+  }
 }
 
 module.exports = { PosixAdapter, MacAdapter, LinuxAdapter };

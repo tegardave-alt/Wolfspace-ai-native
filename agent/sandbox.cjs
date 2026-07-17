@@ -145,7 +145,7 @@ class SandboxSession {
     const cmdCwd = opts.cwd || this.dir;
     this._audit('exec', { command, cwd: path.relative(this.dir, cmdCwd), timeout: cmdTimeout });
 
-    const [shellCmd, shellArgs] = this.adapter.shellFor(command);
+    const [shellCmd, shellArgs] = this.adapter.shellFor(command, { cwd: cmdCwd, networkAllowed: this.networkAllowed });
 
     return new Promise((resolve) => {
       let stdout = '', stderr = '', timedOut = false, settled = false;
