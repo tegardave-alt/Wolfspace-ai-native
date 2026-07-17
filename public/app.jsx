@@ -5337,48 +5337,6 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
           <Icon.wolf />
           <span className="picker-brand-name">WOLFSPACE</span>
         </div>
-        <div className="picker-ws-wrap" ref={wrapRef}>
-          <button className="picker-workspace-btn" onClick={() => setDropOpen(o => !o)}>
-            {project === "Quick Start" ? (
-              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                <polyline points="15 3 21 3 21 9" /><path d="M10 14L21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
-              </svg>
-            ) : (
-              <PickerFolderIcon />
-            )}
-            <span>{project}</span>
-            <PickerChevIcon />
-          </button>
-          {dropOpen && (
-            <div className="picker-ws-dropdown">
-              {projectsList.map((p, idx) => (
-                <button
-                  key={idx}
-                  className={"picker-ws-item" + (project === p.name ? " active" : "")}
-                  onClick={() => {
-                    setProject(p.name);
-                    setDropOpen(false);
-                  }}
-                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}
-                >
-                  <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#f8fafc" }}>
-                    <PickerFolderIcon />
-                    <span>{p.name}</span>
-                  </span>
-                  {p.path && (
-                    <span style={{ fontSize: "12px", color: "#6b7280", opacity: 0.85, whiteSpace: "nowrap" }}>
-                      {p.path}
-                    </span>
-                  )}
-                </button>
-              ))}
-              {projectsList.length > 0 && <div className="picker-ws-divider" />}
-              <button className="picker-ws-item" onClick={handleOpenFolderPicker}>
-                <PickerFolderIcon /> New Project
-              </button>
-            </div>
-          )}
-        </div>
         <div className="picker-input-box" style={{ position: 'relative' }}>
           {menu && (
             <div className="am-menu" style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, right: 0, zIndex: 200 }} onMouseDown={(e) => e.stopPropagation()}>
@@ -5498,9 +5456,53 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
             </div>
           </div>
           <div className="picker-divider" />
-          <button className="picker-bottom">
-            <PickerMonitorIcon /> Local <PickerChevIcon size={11} />
-          </button>
+          <div className="picker-bottom-row">
+            <div className="picker-ws-wrap" ref={wrapRef}>
+              <button className="picker-workspace-btn" onClick={() => setDropOpen(o => !o)}>
+                {project === "Quick Start" ? (
+                  <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                    <polyline points="15 3 21 3 21 9" /><path d="M10 14L21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+                  </svg>
+                ) : (
+                  <PickerFolderIcon />
+                )}
+                <span>{project}</span>
+                <PickerChevIcon />
+              </button>
+              {dropOpen && (
+                <div className="picker-ws-dropdown picker-ws-dropdown-up">
+                  {projectsList.map((p, idx) => (
+                    <button
+                      key={idx}
+                      className={"picker-ws-item" + (project === p.name ? " active" : "")}
+                      onClick={() => {
+                        setProject(p.name);
+                        setDropOpen(false);
+                      }}
+                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}
+                    >
+                      <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#f8fafc" }}>
+                        <PickerFolderIcon />
+                        <span>{p.name}</span>
+                      </span>
+                      {p.path && (
+                        <span style={{ fontSize: "12px", color: "#6b7280", opacity: 0.85, whiteSpace: "nowrap" }}>
+                          {p.path}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                  {projectsList.length > 0 && <div className="picker-ws-divider" />}
+                  <button className="picker-ws-item" onClick={handleOpenFolderPicker}>
+                    <PickerFolderIcon /> New Project
+                  </button>
+                </div>
+              )}
+            </div>
+            <button className="picker-bottom">
+              <PickerMonitorIcon /> Local <PickerChevIcon size={11} />
+            </button>
+          </div>
         </div>
       </div>
     </div>
