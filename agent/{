@@ -1,1 +1,0 @@
-const old1 = 'const [theme, setTheme] = useState(() = try { return localStorage.getItem(\"quantum_theme\") 

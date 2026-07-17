@@ -11,3 +11,5 @@ sync-installed.bat
 .wolfspace/
 public/uploads/
 _archive/web/uploads/
+_archive/_temp/
+.server_last_good.cjs
