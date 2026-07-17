@@ -1,1 +1,0 @@
-const fs = require('fs');const p='public/styles.css';let c=fs.readFileSync(p,'utf8');c=c.replace(/\.send-btn \{\s+display: inline-flex;\s+align-items: flex-start;/g,'.send-btn {\n  display: inline-flex;\n  align-items: center;');fs.writeFileSync(p,c,'utf8');console.log('Done');  
