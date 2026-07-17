@@ -5335,6 +5335,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       <div className="project-picker-inner">
         <div className="picker-brand-mark">
           <Icon.wolf />
+          <span className="picker-brand-name">WOLFSPACE</span>
         </div>
         <div className="picker-ws-wrap" ref={wrapRef}>
           <button className="picker-workspace-btn" onClick={() => setDropOpen(o => !o)}>

@@ -5013,13 +5013,22 @@ img.ar-fs-icon {
   display: flex;
   justify-content: center;
   align-items: center;
-  margin-bottom: 8px;
+  gap: 14px;
+  margin-bottom: 18px;
 }
 .picker-brand-mark svg {
-  width: 96px;
-  height: 96px;
+  width: 52px;
+  height: 52px;
   color: var(--text, #e6edf3);
   opacity: 0.92;
+  flex-shrink: 0;
+}
+.picker-brand-name {
+  font-size: 30px;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  color: var(--text, #e6edf3);
+  opacity: 0.94;
 }
 .picker-ws-wrap { position: relative; display: inline-block; }
 .picker-workspace-btn {
