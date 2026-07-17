@@ -7,6 +7,7 @@ const { pickSystem } = require('./prompts.cjs');
 const { runByLang, detectLang, extractCode, askModelStream } = require('./runners.cjs');
 const { runSelfTool, SELF_TOOLS } = require('./tools.cjs');
 const { askCloudStream } = require('./cloud.cjs');
+const { createPseudoTagStreamFilter } = require('./pseudo-tag-filter.cjs');
 
 /**
  * Stream a chat completion to the client.
@@ -31,9 +32,12 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
 
   const messages = [{ role: 'system', content: sys }, ...slicedHistory];
   console.log('[chat] chatStream started', { historyLen: safeHistory.length, useCloud: !!(cloud && cloud.key), port });
+  // Plain chat has no tool-execution loop, so a pseudo tool-call tag from a weak/local
+  // model can never be a real call here — it only ever needs to be kept off the screen.
+  const tagFilter = createPseudoTagStreamFilter(safe => emit({ t: 'tok', c: safe }));
   const onToken = token => {
     console.log('[chat] token:', token);
-    emit({ t: 'tok', c: token });
+    tagFilter.feed(token);
   };
   const onError = err => {
     console.error('[chat] stream error:', err.message || err);
@@ -53,7 +57,7 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
   return streamPromise
     .then(full => {
       dlog('chat', 'info', 'stream completed', { length: full.length });
-
+      tagFilter.flush(); // release any held-back tail (e.g. text that merely started with "<f")
 
       return runReply(full, safeHistory, emit);
     })

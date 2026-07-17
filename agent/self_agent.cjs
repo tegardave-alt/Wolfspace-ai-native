@@ -5,6 +5,7 @@ const { fillCloudKey, detectProvider, CLOUD, CLOUD_KEYS, loadCloudKeys, askCloud
 const { runSelfTool, SELF_TOOLS, qBackup } = require('./tools.cjs');
 const { runReply } = require('./chat.cjs');
 const { getOptimized, optimizeInBackground } = require('./sysprompt_opt.cjs');
+const { parsePseudoCalls, stripPseudoTags } = require('./pseudo-tag-filter.cjs');
 const os = require('os');
 const { StateGraph, START, END, Annotation, MemorySaver } = require('@langchain/langgraph');
 const agentMemory = new MemorySaver();
@@ -253,24 +254,8 @@ function makePhaseEmitter(rawEmit) {
   };
 }
 
-// Helper to parse pseudo‑function calls that some models emit as text
-function parsePseudoCalls(text) {
-  if (!text || text.indexOf('<function') < 0) return [];
-  const out = [];
-  const seen = new Set();
-  const re = /<function\s*=\s*([\w.-]+)\s*=?\s*(\{[\s\S]*?\})?\s*\/?>(?:\s*<\/function>)?/g;
-  let m;
-  while ((m = re.exec(text))) {
-    let args = {};
-    if (m[2]) { try { args = JSON.parse(m[2]); } catch (_) {} }
-    const callStr = JSON.stringify({ name: m[1], args });
-    if (!seen.has(callStr)) {
-      seen.add(callStr);
-      out.push({ name: m[1], args });
-    }
-  }
-  return out;
-}
+// parsePseudoCalls / stripPseudoTags now live in ./pseudo-tag-filter.cjs (shared with
+// chat.cjs so the plain-chat path gets the same protection).
 
 // --- LANGGRAPH STATE DEFINITION ---
 const AgentState = Annotation.Root({
@@ -549,7 +534,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             msg.tool_calls = calls;
           }
         }
-        if (msg.content && !calls) emit({ t: 'tok', c: msg.content });
+        // Safety net: whether or not a call parsed, never let a raw <function...> tag
+        // (unclosed, unknown dialect, malformed JSON) reach the user as visible text.
+        if (msg.content && !calls) {
+          const safe = stripPseudoTags(msg.content);
+          if (safe) emit({ t: 'tok', c: safe });
+        }
         return { messages: [msg] };
       })
       .addNode("tools", async (state) => {
