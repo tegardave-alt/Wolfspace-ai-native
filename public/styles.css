@@ -361,20 +361,17 @@ select {
   background: var(--surface-2);
 }
 .brand-mark {
-  width: 26px;
-  height: 26px;
-  border-radius: 8px;
-  background: linear-gradient(135deg, var(--brand), #5b8bff);
+  width: 40px;
+  height: 40px;
+  background: transparent;
   display: grid;
   place-items: center;
-  box-shadow:
-    0 0 0 1px rgba(255, 255, 255, 0.08),
-    0 4px 12px -4px rgba(139, 109, 255, 0.6);
+  box-shadow: none;
   flex-shrink: 0;
 }
 .brand-mark svg {
-  width: 15px;
-  height: 15px;
+  width: 36px;
+  height: 36px;
 }
 .brand-name {
   font-weight: 700;
@@ -635,13 +632,14 @@ select {
   border-bottom: 1px solid var(--line);
 }
 .panel-head .brand-mark {
-  width: 22px;
-  height: 22px;
-  border-radius: 7px;
+  width: 30px;
+  height: 30px;
+  border-radius: 0;
+  background: transparent;
 }
 .panel-head .brand-mark svg {
-  width: 13px;
-  height: 13px;
+  width: 26px;
+  height: 26px;
 }
 .panel-head .name {
   font-weight: 700;
@@ -1686,9 +1684,8 @@ select {
   --shadow-soft: 0 4px 16px -6px rgba(0, 0, 0, 0.1);
 }
 [data-theme="light"] .brand-mark {
-  box-shadow:
-    0 0 0 1px rgba(0, 0, 0, 0.06),
-    0 4px 12px -4px rgba(139, 109, 255, 0.4);
+  box-shadow: none;
+  color: var(--text, #0f172a);
 }
 [data-theme="light"] .topbar,
 [data-theme="light"] .hub-header {
@@ -5037,7 +5034,9 @@ img.ar-fs-icon {
   background: var(--surface-1);
   border: 1px solid var(--line-strong);
   border-radius: 10px;
-  min-width: 240px;
+  min-width: 320px;
+  width: max-content;
+  max-width: 550px;
   box-shadow: 0 16px 48px rgba(0,0,0,0.5);
   z-index: 200;
   padding: 6px 0;
