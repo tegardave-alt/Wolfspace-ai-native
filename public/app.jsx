@@ -5470,7 +5470,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                 <PickerChevIcon />
               </button>
               {dropOpen && (
-                <div className="picker-ws-dropdown picker-ws-dropdown-up">
+                <div className="picker-ws-dropdown">
                   {projectsList.map((p, idx) => (
                     <button
                       key={idx}
