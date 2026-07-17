@@ -12,6 +12,46 @@ const COMMANDS = [
 
 /* ----------------------------- Icons ----------------------------- */
 const Icon = {
+  // Traced (potrace) from the WOLFSPACE reference mark — a wolf head in profile.
+  wolf: (p) => (
+    <svg viewBox="0 0 416 416" fill="none" {...p}>
+      <g transform="translate(0,416) scale(0.1,-0.1)" fill="currentColor" stroke="none">
+        <path d="M1704 3358 c6 -26 36 -252 36 -265 0 -2 -24 15 -52 38 -62 49 -152
+92 -226 108 -88 18 -88 18 -50 -51 19 -35 52 -111 72 -170 l38 -107 33 24 c47
+37 54 30 13 -12 -49 -51 -196 -278 -210 -325 -8 -28 -8 -55 0 -107 19 -115 16
+-161 -18 -227 -30 -60 -122 -185 -217 -294 -60 -70 -65 -94 -27 -140 26 -30
+130 -90 157 -90 7 0 30 -9 52 -20 72 -37 134 -27 289 45 98 45 160 54 221 31
+75 -29 107 -111 82 -211 l-7 -30 25 28 25 28 0 -28 c0 -27 -22 -142 -36 -187
+-5 -17 1 -14 31 14 36 33 37 34 31 10 -12 -43 -19 -186 -11 -226 l8 -39 10 30
+c10 31 84 135 96 135 3 0 37 27 74 61 37 33 67 58 67 55 0 -11 -25 -62 -43
+-89 -11 -16 -16 -31 -12 -35 11 -11 172 77 223 123 27 24 66 69 87 100 21 30
+40 54 41 52 8 -8 -28 -141 -51 -186 l-26 -52 53 27 c72 36 172 135 205 202 14
+29 34 86 43 125 l17 72 23 -75 c15 -48 23 -101 24 -148 0 -64 2 -71 14 -55 26
+34 60 109 77 168 20 67 23 219 6 274 -6 19 -8 37 -5 40 7 7 91 -38 128 -69 16
+-13 42 -42 59 -65 l29 -40 -7 48 c-19 133 -60 231 -136 325 -56 70 -179 171
+-251 208 -27 13 -48 27 -48 30 0 17 174 -38 263 -83 l68 -34 -22 43 c-85 168
+-268 353 -433 438 -39 20 -108 50 -153 66 -46 16 -83 32 -83 37 0 4 39 7 87 7
+l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
+-3 -32z m146 -125 c64 -59 90 -100 110 -172 14 -52 7 -61 -23 -33 l-23 22 -22
+-30 c-26 -34 -46 -40 -37 -10 10 32 -4 41 -28 17 l-22 -22 -6 100 c-4 55 -11
+119 -17 143 -5 23 -6 42 -2 42 5 0 36 -26 70 -57z m-198 -618 c-2 -14 -26 -47
+-52 -73 -33 -34 -52 -62 -60 -93 -19 -75 -22 -77 -37 -29 -28 92 9 172 92 200
+28 10 53 18 56 19 3 0 4 -10 1 -24z m113 -161 c-22 -52 -53 -92 -85 -109 -42
+-22 -110 -44 -110 -35 0 14 42 60 55 60 23 0 72 48 80 77 8 32 21 43 53 43 22
+0 22 -1 7 -36z m-82 -3 c-12 -48 -74 -67 -82 -26 -3 17 -1 17 12 6 20 -16 37
+-7 37 20 0 12 7 19 19 19 14 0 18 -5 14 -19z m511 -49 c57 -27 183 -128 173
+-139 -2 -2 -24 5 -48 16 -24 10 -55 22 -69 26 -24 7 -24 6 7 -26 35 -38 84
+-118 100 -166 l12 -32 -44 34 c-42 32 -131 72 -140 64 -2 -3 9 -24 26 -48 41
+-62 84 -211 44 -154 -19 26 -69 58 -123 77 l-41 15 40 -61 c21 -34 39 -65 39
+-69 0 -4 -19 3 -43 16 -25 14 -68 27 -102 30 -59 6 -59 6 -32 -10 32 -18 36
+-29 7 -20 -29 9 -183 -22 -247 -51 -31 -13 -58 -23 -60 -21 -5 6 85 87 97 87
+6 0 8 5 5 10 -14 23 -63 7 -152 -51 -121 -78 -200 -110 -287 -117 -67 -5 -68
+-4 -57 16 15 29 14 69 -5 118 l-16 43 46 59 c80 105 159 154 276 173 33 5 88
+13 121 19 72 11 91 25 109 81 15 45 67 96 108 105 15 3 32 8 37 10 6 2 42 2
+81 0 54 -2 87 -10 138 -34z"/>
+      </g>
+    </svg>
+  ),
   spark: (p) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
@@ -310,7 +350,7 @@ const HubIcon = {
 function BrandMark({ className }) {
   return (
     <span className={"brand-mark " + (className || "")}>
-      <Icon.spark style={{ color: "#fff" }} />
+      <Icon.wolf />
     </span>
   );
 }
@@ -899,6 +939,155 @@ function HFModels({ onSaved }) {
         </div>
       )}
       {msg && <div className="hf-msg">{msg}</div>}
+    </div>
+  );
+}
+
+/* ----------------------------- History (full page) ----------------------------- */
+function HistoryView({ savedChats = [], onSelect, onDelete }) {
+  const [searchQuery, setSearchQuery] = useState("");
+
+  const formatTimeAgo = (ts) => {
+    if (!ts) return "now";
+    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return "now";
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    if (diff < 2592000) return `${Math.floor(diff / 86400)}d`;
+    return `${Math.floor(diff / 2592000)}mo`;
+  };
+
+  const filteredChats = savedChats
+    .slice()
+    .reverse()
+    .filter((c) => {
+      if (!searchQuery.trim()) return true;
+      const q = searchQuery.toLowerCase();
+      const title = (c.title || "").toLowerCase();
+      const proj = (c.project || "").toLowerCase();
+      return title.includes(q) || proj.includes(q);
+    });
+
+  return (
+    <div style={{ padding: "40px 60px", maxWidth: "920px", margin: "0 auto", width: "100%", color: "#e2e8f0" }}>
+      <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#f3f4f6", marginBottom: "24px" }}>
+        Conversation History
+      </h1>
+
+      <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "32px" }}>
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            background: "#181b20",
+            border: "1px solid rgba(255, 255, 255, 0.08)",
+            borderRadius: "10px",
+            padding: "10px 16px",
+            gap: "10px",
+          }}
+        >
+          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+            <circle cx="11" cy="11" r="8"></circle>
+            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+          </svg>
+          <input
+            type="text"
+            placeholder="Search conversations..."
+            value={searchQuery}
+            onChange={(e) => setSearchQuery(e.target.value)}
+            style={{
+              background: "transparent",
+              border: "none",
+              outline: "none",
+              color: "#e2e8f0",
+              fontSize: "14px",
+              width: "100%",
+              fontFamily: "inherit",
+            }}
+          />
+        </div>
+      </div>
+
+      <div
+        style={{
+          fontSize: "11px",
+          fontWeight: 700,
+          letterSpacing: "0.8px",
+          color: "#6b7280",
+          textTransform: "uppercase",
+          marginBottom: "12px",
+        }}
+      >
+        ALL CONVERSATIONS
+      </div>
+
+      <div style={{ display: "flex", flexDirection: "column" }}>
+        {filteredChats.length === 0 ? (
+          <div style={{ padding: "40px 0", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
+            Belum ada riwayat percakapan yang tersimpan.
+          </div>
+        ) : (
+          filteredChats.map((chat) => (
+            <div
+              key={chat.id}
+              onClick={() => onSelect(chat)}
+              style={{
+                display: "flex",
+                justifyContent: "space-between",
+                alignItems: "center",
+                padding: "16px 12px",
+                borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
+                cursor: "pointer",
+                borderRadius: "8px",
+                transition: "background 0.15s",
+              }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            >
+              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
+                <div style={{ fontSize: "15px", fontWeight: 500, color: "#e2e8f0" }}>
+                  {chat.title || "Chat"}
+                </div>
+                <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                  {chat.project || "c:\\Users\\dave\\quantum"}
+                </div>
+              </div>
+              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+                <span style={{ fontSize: "13px", color: "#6b7280" }}>
+                  {formatTimeAgo(chat.savedAt)}
+                </span>
+                <button
+                  title="Hapus"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    onDelete(chat.id);
+                  }}
+                  style={{
+                    background: "transparent",
+                    border: "none",
+                    color: "#6b7280",
+                    cursor: "pointer",
+                    fontSize: "16px",
+                    padding: "4px 8px",
+                    borderRadius: "4px",
+                  }}
+                  onMouseEnter={(e) => {
+                    e.currentTarget.style.color = "#ef4444";
+                    e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)";
+                  }}
+                  onMouseLeave={(e) => {
+                    e.currentTarget.style.color = "#6b7280";
+                    e.currentTarget.style.background = "transparent";
+                  }}
+                >
+                  ×
+                </button>
+              </div>
+            </div>
+          ))
+        )}
+      </div>
     </div>
   );
 }
@@ -2255,9 +2444,6 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
               <div className="am-section-label">Context</div>
               <button className="am-item" onClick={() => { setMenu(false); document.getElementById("file-upload-input")?.click(); }}>
                 <span>Attach file...</span>
-              </button>
-              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("folder-upload-input")?.click(); }}>
-                <span>Attach folder...</span>
               </button>
 
               <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
@@ -3778,6 +3964,13 @@ const SB = {
       />
     </svg>
   ),
+  history: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round" {...p}>
+      <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8" />
+      <path d="M3 3v5h5" />
+      <path d="M12 7v5l4 2" />
+    </svg>
+  ),
   chat: (p) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
@@ -3987,10 +4180,54 @@ function Sidebar({
   setShowHistory,
   restoreChat,
   deleteChat,
+  renameChat,
   loadSavedChats,
   onAgentRunner,
+  selectedProject,
 }) {
   const [showTools, setShowTools] = useState(true);
+  const [showView, setShowView] = useState(true);
+  const [showConversation, setShowConversation] = useState(true);
+  const [showWorkspaces, setShowWorkspaces] = useState(true);
+  const [hoveredChatId, setHoveredChatId] = useState(null);
+  const [openMenuChatId, setOpenMenuChatId] = useState(null);
+  const [editingChatId, setEditingChatId] = useState(null);
+  const [editingTitle, setEditingTitle] = useState("");
+
+  React.useEffect(() => {
+    const handleWindowClick = () => setOpenMenuChatId(null);
+    window.addEventListener("click", handleWindowClick);
+    return () => window.removeEventListener("click", handleWindowClick);
+  }, []);
+
+  const workspacesList = React.useMemo(() => {
+    const set = new Set();
+    if (selectedProject) set.add(selectedProject);
+    else set.add("c:\\Users\\dave\\quantum");
+    try {
+      const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      stored.forEach((p) => {
+        if (p.path) set.add(p.path);
+        else if (p.name) set.add(p.name);
+      });
+    } catch (_) {}
+    if (savedChats && savedChats.length > 0) {
+      savedChats.forEach((c) => {
+        if (c.project) set.add(c.project);
+      });
+    }
+    return Array.from(set);
+  }, [savedChats, selectedProject]);
+
+  const formatWsTimeAgo = (ts) => {
+    if (!ts) return "8h";
+    const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
+    if (diff < 60) return "now";
+    if (diff < 3600) return `${Math.floor(diff / 60)}m`;
+    if (diff < 86400) return `${Math.floor(diff / 3600)}h`;
+    if (diff < 2592000) return `${Math.floor(diff / 86400)}d`;
+    return `${Math.floor(diff / 2592000)}mo`;
+  };
 
   const Item = ({ icon, label, active, onClick, badge }) => (
     <button
@@ -4032,40 +4269,329 @@ function Sidebar({
           {SB.panel({ width: 19, height: 19 })}
         </button>
       </div>
-      <div className="sb-group">
-        <Item
-          icon={SB.plus({ width: 19, height: 19 })}
-          label="Chat baru"
-          onClick={onNewChat}
-        />
-        <Item
-          icon={SB.chat({ width: 19, height: 19 })}
-          label="Chat"
-          active={view === "chat"}
-          onClick={() => setView("chat")}
-        />
-        <Item
-          icon={SB.hub({ width: 19, height: 19 })}
-          label="Model Hub"
-          active={view === "hub"}
-          onClick={() => setView("hub")}
-        />
-        <Item
-          icon={SB.key({ width: 19, height: 19 })}
-          label="API Key"
-          active={view === "settings"}
-          onClick={() => setView("settings")}
-        />
-        <Item
-          icon={SB.runner({ width: 19, height: 19 })}
-          label="Agent Runner"
-          active={view === "agents"}
-          onClick={() => {
-            setView("agents");
-            onAgentRunner?.();
-          }}
-        />
+      <div
+        className="sb-sec"
+        style={{ cursor: "pointer" }}
+        onClick={() => setShowConversation(!showConversation)}
+      >
+        Conversation
       </div>
+      {showConversation && (
+        <div className="sb-group">
+          <Item
+            icon={SB.plus({ width: 19, height: 19 })}
+            label="New Conversation"
+            onClick={onNewChat}
+          />
+          <Item
+            icon={SB.history({ width: 19, height: 19 })}
+            label="Conversation History"
+            active={view === "history"}
+            onClick={() => {
+              setView("history");
+              loadSavedChats();
+            }}
+          />
+        </div>
+      )}
+      <div
+        className="sb-sec"
+        style={{
+          display: collapsed ? "none" : "flex",
+          justifyContent: "space-between",
+          alignItems: "center",
+          cursor: "pointer",
+          fontWeight: 600,
+          fontSize: "12px",
+          color: "#8b98a9",
+        }}
+        onClick={() => setShowWorkspaces(!showWorkspaces)}
+      >
+        <span>Workspaces</span>
+        <div style={{ display: "flex", gap: "12px", alignItems: "center", color: "#6b7280" }}>
+          <span
+            title="Filter / Sort"
+            style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+              <line x1="4" y1="6" x2="20" y2="6"></line>
+              <line x1="7" y1="12" x2="17" y2="12"></line>
+              <line x1="10" y1="18" x2="14" y2="18"></line>
+            </svg>
+          </span>
+          <span
+            title="Add Workspace"
+            style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
+            onClick={(e) => e.stopPropagation()}
+          >
+            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+              <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+              <line x1="12" y1="11" x2="12" y2="17"></line>
+              <line x1="9" y1="14" x2="15" y2="14"></line>
+            </svg>
+          </span>
+        </div>
+      </div>
+      {showWorkspaces && (
+        collapsed ? (
+          <div className="sb-group">
+            <Item
+              icon={
+                <svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.7" strokeLinecap="round" strokeLinejoin="round">
+                  <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                </svg>
+              }
+              label="Workspaces"
+              onClick={() => setCollapsed(false)}
+            />
+          </div>
+        ) : (
+          <div className="sb-group" style={{ display: "flex", flexDirection: "column", gap: "4px", marginBottom: "8px" }}>
+            {workspacesList.map((ws) => {
+              const wsChats = savedChats
+                .slice()
+                .reverse()
+                .filter((c) => {
+                  if (c.project) return c.project === ws || (ws.endsWith(`\\${c.project}`) || ws.endsWith(`/${c.project}`));
+                  return ws === selectedProject || ws === "c:\\Users\\dave\\quantum";
+                });
+
+              return (
+                <div key={ws} style={{ display: "flex", flexDirection: "column" }}>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "8px",
+                      padding: "6px 12px",
+                      color: "#a1aab8",
+                      fontSize: "13px",
+                      fontWeight: 500,
+                      cursor: "pointer",
+                      borderRadius: "6px",
+                    }}
+                    onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)")}
+                    onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                  >
+                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                    </svg>
+                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws}</span>
+                  </div>
+                  <div style={{ display: "flex", flexDirection: "column", paddingLeft: "20px", gap: "2px" }}>
+                    {wsChats.map((chat, idx) => {
+                      const showActions = hoveredChatId === chat.id || openMenuChatId === chat.id || (idx === 0 && hoveredChatId === null && openMenuChatId === null);
+                      return (
+                        <div
+                          key={chat.id}
+                          onClick={() => restoreChat?.(chat)}
+                          onMouseEnter={(e) => {
+                            setHoveredChatId(chat.id);
+                            e.currentTarget.style.background = "rgba(255, 255, 255, 0.04)";
+                          }}
+                          onMouseLeave={(e) => {
+                            setHoveredChatId(null);
+                            e.currentTarget.style.background = "transparent";
+                          }}
+                          style={{
+                            display: "flex",
+                            justifyContent: "space-between",
+                            alignItems: "center",
+                            padding: "6px 10px",
+                            color: "#cbd5e1",
+                            fontSize: "13px",
+                            cursor: "pointer",
+                            borderRadius: "6px",
+                            transition: "background 0.15s",
+                            position: "relative",
+                          }}
+                        >
+                          {editingChatId === chat.id ? (
+                            <input
+                              autoFocus
+                              type="text"
+                              value={editingTitle}
+                              onChange={(e) => setEditingTitle(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === "Enter") {
+                                  renameChat?.(chat.id, editingTitle);
+                                  setEditingChatId(null);
+                                } else if (e.key === "Escape") {
+                                  setEditingChatId(null);
+                                }
+                              }}
+                              onBlur={() => {
+                                renameChat?.(chat.id, editingTitle);
+                                setEditingChatId(null);
+                              }}
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                background: "rgba(0, 0, 0, 0.4)",
+                                border: "1px solid rgba(255, 255, 255, 0.2)",
+                                borderRadius: "4px",
+                                color: "#fff",
+                                padding: "2px 6px",
+                                fontSize: "13px",
+                                flex: 1,
+                                outline: "none",
+                                marginRight: "8px",
+                              }}
+                            />
+                          ) : (
+                            <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", flex: 1, paddingRight: "8px" }}>
+                              {chat.title || "Chat"}
+                            </span>
+                          )}
+                          <div style={{ display: "flex", alignItems: "center", color: "#6b7280", fontSize: "12px", flexShrink: 0 }}>
+                            {showActions ? (
+                              <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+                                <span
+                                  title="More options"
+                                  style={{ cursor: "pointer", padding: "2px", display: "flex" }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setOpenMenuChatId(openMenuChatId === chat.id ? null : chat.id);
+                                  }}
+                                >
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><circle cx="12" cy="12" r="1"></circle><circle cx="12" cy="5" r="1"></circle><circle cx="12" cy="19" r="1"></circle></svg>
+                                </span>
+                                <span title="Pin" style={{ cursor: "pointer", padding: "2px", display: "flex" }} onClick={(e) => e.stopPropagation()}>
+                                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="17" x2="12" y2="22"></line><path d="M5 17h14v-1.76a2 2 0 0 0-1.11-1.79l-1.78-.9A2 2 0 0 1 15 10.76V6h1a2 2 0 0 0 0-4H8a2 2 0 0 0 0 4h1v4.76a2 2 0 0 1-1.11 1.79l-1.78.9A2 2 0 0 0 5 15.24Z"></path></svg>
+                                </span>
+                              </div>
+                            ) : (
+                              <span>{formatWsTimeAgo(chat.savedAt)}</span>
+                            )}
+                          </div>
+                          {openMenuChatId === chat.id && (
+                            <div
+                              onClick={(e) => e.stopPropagation()}
+                              style={{
+                                position: "absolute",
+                                top: "100%",
+                                right: "8px",
+                                zIndex: 99999,
+                                background: "#181a1f",
+                                border: "1px solid rgba(255, 255, 255, 0.08)",
+                                borderRadius: "8px",
+                                padding: "6px 0",
+                                boxShadow: "0 10px 25px -5px rgba(0, 0, 0, 0.6), 0 8px 10px -6px rgba(0, 0, 0, 0.4)",
+                                minWidth: "170px",
+                                display: "flex",
+                                flexDirection: "column",
+                              }}
+                            >
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuChatId(null);
+                                  setEditingChatId(chat.id);
+                                  setEditingTitle(chat.title || "Chat");
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+                                  e.currentTarget.style.color = "#f8fafc";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "transparent";
+                                  e.currentTarget.style.color = "#cbd5e1";
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  padding: "8px 14px",
+                                  color: "#cbd5e1",
+                                  fontSize: "13px",
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                  transition: "background 0.15s, color 0.15s",
+                                }}
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                  <path d="M17 3a2.828 2.828 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5L17 3z"></path>
+                                </svg>
+                                <span>Rename</span>
+                              </div>
+                              <div
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setOpenMenuChatId(null);
+                                  deleteChat?.(chat.id);
+                                }}
+                                onMouseEnter={(e) => {
+                                  e.currentTarget.style.background = "rgba(255, 255, 255, 0.06)";
+                                  e.currentTarget.style.color = "#f8fafc";
+                                }}
+                                onMouseLeave={(e) => {
+                                  e.currentTarget.style.background = "transparent";
+                                  e.currentTarget.style.color = "#cbd5e1";
+                                }}
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  padding: "8px 14px",
+                                  color: "#cbd5e1",
+                                  fontSize: "13px",
+                                  fontWeight: 500,
+                                  cursor: "pointer",
+                                  transition: "background 0.15s, color 0.15s",
+                                }}
+                              >
+                                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
+                                  <polyline points="3 6 5 6 21 6"></polyline>
+                                  <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                  <line x1="10" y1="11" x2="10" y2="17"></line>
+                                  <line x1="14" y1="11" x2="14" y2="17"></line>
+                                </svg>
+                                <span>Delete Conversation</span>
+                              </div>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                </div>
+              );
+            })}
+          </div>
+        )
+      )}
+      <div
+        className="sb-sec"
+        style={{ cursor: "pointer" }}
+        onClick={() => setShowView(!showView)}
+      >
+        View
+      </div>
+      {showView && (
+        <div className="sb-group">
+          <Item
+            icon={SB.hub({ width: 19, height: 19 })}
+            label="Model Hub"
+            active={view === "hub"}
+            onClick={() => setView("hub")}
+          />
+          <Item
+            icon={SB.key({ width: 19, height: 19 })}
+            label="API Key"
+            active={view === "settings"}
+            onClick={() => setView("settings")}
+          />
+          <Item
+            icon={SB.runner({ width: 19, height: 19 })}
+            label="Agent Runner"
+            active={view === "agents"}
+            onClick={() => {
+              setView("agents");
+              onAgentRunner?.();
+            }}
+          />
+        </div>
+      )}
       <div
         className="sb-sec"
         style={{ cursor: "pointer" }}
@@ -4085,61 +4611,6 @@ function Sidebar({
             label="Visual Draw"
             onClick={onVisualDraw}
           />
-        </div>
-      )}
-      <div
-        className="sb-sec"
-        style={{ cursor: "pointer" }}
-        onClick={() => {
-          setShowHistory(!showHistory);
-          loadSavedChats();
-        }}
-      >
-        Riwayat Chat{" "}
-        <span style={{ float: "right", opacity: 0.6 }}>
-          {showHistory ? "?" : "?"} {savedChats.length}
-        </span>
-      </div>
-      {showHistory && (
-        <div className="sb-history-list">
-          {savedChats.length === 0 ? (
-            <div className="sb-history-empty">Belum ada percakapan tersimpan</div>
-          ) : (
-            savedChats
-              .slice()
-              .reverse()
-              .map((chat) => (
-                <div
-                  key={chat.id}
-                  className="sb-history-item"
-                  onClick={() => restoreChat(chat)}
-                >
-                  <div className="sb-history-info">
-                    <span className="sb-history-title">
-                      {chat.title || "Chat"}
-                    </span>
-                    <span className="sb-history-date">
-                      {new Date(chat.savedAt).toLocaleDateString("id", {
-                        day: "numeric",
-                        month: "short",
-                        hour: "2-digit",
-                        minute: "2-digit",
-                      })}
-                    </span>
-                  </div>
-                  <button
-                    className="sb-history-del"
-                    title="Hapus"
-                    onClick={(e) => {
-                      e.stopPropagation();
-                      deleteChat(chat.id);
-                    }}
-                  >
-                    ?
-                  </button>
-                </div>
-              ))
-          )}
         </div>
       )}
     </aside>
@@ -4675,8 +5146,23 @@ function PickerSendIcon() {
     React.createElement("path", { d: "M2 21L23 12 2 3v7l15 2-15 2z", transform: "rotate(-45 12 12)" }));
 }
 function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
-  const defaultWs = PICKER_WORKSPACES.find(w => w.active) || PICKER_WORKSPACES[0];
-  const [project, setProject] = useState(defaultWs.name);
+  const [projectsList, setProjectsList] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      if (stored && stored.length > 0) return stored;
+    } catch (_) {}
+    return [
+      { name: "quantum", path: "c:\\Users\\dave\\quantum" },
+      { name: "project", path: "c:\\Users\\dave\\project" },
+    ];
+  });
+  const [project, setProject] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      if (stored && stored.length > 0) return stored[0].name;
+    } catch (_) {}
+    return "quantum";
+  });
   const [dropOpen, setDropOpen] = useState(false);
   const [menu, setMenu] = useState(false);
   const [text, setText] = useState("");
@@ -4779,12 +5265,73 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         .join("\n");
       fullText = v ? `${v}\n\nAttachments:\n${attSummary}` : `Attachments:\n${attSummary}`;
     }
-    onStart(fullText, project); 
+    const selectedObj = projectsList.find((p) => p.name === project);
+    const chosenPath = selectedObj ? selectedObj.path : (project.includes(":") || project.includes("/") || project.includes("\\") ? project : `c:\\Users\\dave\\${project}`);
+    onStart(fullText, chosenPath);
+  };
+  const handleOpenFolderPicker = async () => {
+    setDropOpen(false);
+    try {
+      if (window.showDirectoryPicker) {
+        const dirHandle = await window.showDirectoryPicker();
+        if (dirHandle && dirHandle.name) {
+          const folderName = dirHandle.name;
+          const folderPath = `c:\\Users\\dave\\${folderName}`;
+          setProject(folderName);
+          setProjectsList((prev) => {
+            if (prev.some((p) => p.name === folderName && p.path === folderPath)) return prev;
+            const updated = [{ name: folderName, path: folderPath }, ...prev.filter((p) => p.name !== folderName)];
+            localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
+            return updated;
+          });
+          return;
+        }
+      }
+    } catch (err) {
+      if (err.name === "AbortError") return;
+      console.error("[DirectoryPicker Error]", err);
+    }
+    document.getElementById("picker-workspace-folder-input")?.click();
+  };
+  const handleWorkspaceFolderSelect = (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    let folderName = "New Project";
+    let folderPath = "";
+    const first = files[0];
+    const relPath = first.webkitRelativePath || first.name || "";
+    if (relPath.includes("/")) {
+      folderName = relPath.split("/")[0];
+    } else if (first.path) {
+      const parts = first.path.replace(/\\/g, "/").split("/");
+      const idx = parts.indexOf(relPath);
+      if (idx > 0) {
+        folderName = parts[idx - 1];
+        folderPath = parts.slice(0, idx).join("\\");
+      } else if (parts.length > 1) {
+        folderName = parts[parts.length - 2];
+        folderPath = parts.slice(0, parts.length - 1).join("\\");
+      } else {
+        folderName = relPath;
+      }
+    } else {
+      folderName = relPath;
+    }
+    if (!folderPath) folderPath = `c:\\Users\\dave\\${folderName}`;
+    setProject(folderName);
+    setProjectsList((prev) => {
+      if (prev.some((p) => p.name === folderName && p.path === folderPath)) return prev;
+      const updated = [{ name: folderName, path: folderPath }, ...prev.filter((p) => p.name !== folderName)];
+      localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
+      return updated;
+    });
+    e.target.value = "";
   };
   return (
     <div className="project-picker-screen" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }}>
       <input type="file" id="picker-file-upload" multiple style={{ display: "none" }} onChange={handleAttachmentSelect} />
       <input type="file" id="picker-folder-upload" webkitdirectory="true" directory="true" multiple style={{ display: "none" }} onChange={handleAttachmentSelect} />
+      <input type="file" id="picker-workspace-folder-input" webkitdirectory="true" directory="true" multiple style={{ display: "none" }} onChange={handleWorkspaceFolderSelect} />
       <div className="project-picker-inner">
         <div className="picker-ws-wrap" ref={wrapRef}>
           <button className="picker-workspace-btn" onClick={() => setDropOpen(o => !o)}>
@@ -4800,14 +5347,30 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
           </button>
           {dropOpen && (
             <div className="picker-ws-dropdown">
-              <button className="picker-ws-item" onClick={() => { setProject("New Project"); setDropOpen(false); }}>
+              {projectsList.map((p, idx) => (
+                <button
+                  key={idx}
+                  className={"picker-ws-item" + (project === p.name ? " active" : "")}
+                  onClick={() => {
+                    setProject(p.name);
+                    setDropOpen(false);
+                  }}
+                  style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}
+                >
+                  <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#f8fafc" }}>
+                    <PickerFolderIcon />
+                    <span>{p.name}</span>
+                  </span>
+                  {p.path && (
+                    <span style={{ fontSize: "12px", color: "#6b7280", opacity: 0.85, whiteSpace: "nowrap" }}>
+                      {p.path}
+                    </span>
+                  )}
+                </button>
+              ))}
+              {projectsList.length > 0 && <div className="picker-ws-divider" />}
+              <button className="picker-ws-item" onClick={handleOpenFolderPicker}>
                 <PickerFolderIcon /> New Project
-              </button>
-              <button className="picker-ws-item" onClick={() => { setProject("Quick Start"); setDropOpen(false); }}>
-                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
-                  <polyline points="15 3 21 3 21 9" /><path d="M10 14L21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
-                </svg>
-                Quick Start
               </button>
             </div>
           )}
@@ -4820,9 +5383,6 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               <div className="am-section-label">Context</div>
               <button className="am-item" onClick={() => { setMenu(false); document.getElementById("picker-file-upload")?.click(); }}>
                 <span>Attach file...</span>
-              </button>
-              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("picker-folder-upload")?.click(); }}>
-                <span>Attach folder...</span>
               </button>
 
               <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
@@ -4949,7 +5509,13 @@ function App() {
     if (window.reportAppSuccess) window.reportAppSuccess();
   }, []);
   const [pickerDone, setPickerDone] = useState(false);
-  const [selectedProject, setSelectedProject] = useState("resilient-bose");
+  const [selectedProject, setSelectedProject] = useState(() => {
+    try {
+      const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      if (stored && stored.length > 0 && stored[0].path) return stored[0].path;
+    } catch (_) {}
+    return "c:\\Users\\dave\\quantum";
+  });
   const [hitlRequest, setHitlRequest] = React.useState(null);
   window.testHitl = function() {
     setHitlRequest({
@@ -5151,6 +5717,15 @@ function App() {
     try {
       const list = JSON.parse(localStorage.getItem("quantum_chats") || "[]");
       const updated = list.filter((c) => c.id !== id);
+      localStorage.setItem("quantum_chats", JSON.stringify(updated));
+      setSavedChats(updated);
+    } catch (e) {}
+  };
+  const renameChat = (id, newTitle) => {
+    try {
+      if (!newTitle || !newTitle.trim()) return;
+      const list = JSON.parse(localStorage.getItem("quantum_chats") || "[]");
+      const updated = list.map((c) => (c.id === id ? { ...c, title: newTitle.trim() } : c));
       localStorage.setItem("quantum_chats", JSON.stringify(updated));
       setSavedChats(updated);
     } catch (e) {}
@@ -5659,6 +6234,7 @@ function App() {
         messages: messages,
         history: history,
         savedAt: new Date().toISOString(),
+        project: selectedProject,
       });
       localStorage.setItem("quantum_chats", JSON.stringify(saved));
       loadSavedChats();
@@ -5709,11 +6285,13 @@ function App() {
         setShowHistory={setShowHistory}
         restoreChat={restoreChat}
         deleteChat={deleteChat}
+        renameChat={renameChat}
         loadSavedChats={loadSavedChats}
         onAgentRunner={() => {
           setAgentRunnerOpen(true);
           loadAgents();
         }}
+        selectedProject={selectedProject}
       />
       <div className="page-container">
 
@@ -5865,6 +6443,22 @@ function App() {
               currentModel={modelVal}
               panelOpen={panelOpen}
               setPanelOpen={setPanelOpen}
+            />
+          )}
+        </div>
+        <div
+          className={
+            "page hub-page " + (view === "history" ? "active" : "enter")
+          }
+        >
+          {view === "history" && (
+            <HistoryView
+              savedChats={savedChats}
+              onSelect={(chat) => {
+                restoreChat(chat);
+                setView("chat");
+              }}
+              onDelete={(id) => deleteChat(id)}
             />
           )}
         </div>
