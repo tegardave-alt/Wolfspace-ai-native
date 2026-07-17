@@ -143,10 +143,9 @@ class SandboxSession {
     this._audit('exec', { command, cwd: path.relative(this.dir, cmdCwd), timeout: cmdTimeout });
 
     return new Promise((resolve) => {
-      let stdout = '', stderr = '', timedOut = false;
+      let stdout = '', stderr = '', timedOut = false, settled = false;
       const child = spawn('cmd.exe', ['/d', '/c', command], {
         cwd: cmdCwd,
-        timeout: cmdTimeout,
         windowsHide: true,
         env: {
           PATH: process.env.PATH,
@@ -155,6 +154,13 @@ class SandboxSession {
           ComSpec: process.env.ComSpec,
           TEMP: this.dir,
           TMP: this.dir,
+          // Point the user-profile family at the sandbox dir so untrusted code
+          // can't read the real home path (and stray writes land in the sandbox).
+          USERPROFILE: this.dir,
+          HOMEDRIVE: path.parse(this.dir).root.replace(/[\\/]$/, ''),
+          HOMEPATH: this.dir.slice(path.parse(this.dir).root.replace(/[\\/]$/, '').length),
+          APPDATA: this.dir,
+          LOCALAPPDATA: this.dir,
           // Sandbox env markers
           QUANTUM_SANDBOX: '1',
           QUANTUM_SANDBOX_ID: this.id,
@@ -164,9 +170,36 @@ class SandboxSession {
         },
       });
 
+      const finish = (payload) => {
+        if (settled) return;
+        settled = true;
+        clearTimeout(timer);
+        clearTimeout(graceTimer);
+        resolve(payload);
+      };
+
+      // Kill the WHOLE process tree. child.kill() only kills cmd.exe, leaving the
+      // grandchild (e.g. `node hang.js`) alive — so the timeout wouldn't actually
+      // bound runtime. taskkill /T terminates the tree; /F forces it.
+      const killTree = () => {
+        if (!child.pid) { child.kill('SIGKILL'); return; }
+        try {
+          execSync(`taskkill /F /T /PID ${child.pid}`, { stdio: 'ignore', timeout: 4000 });
+        } catch (_) {
+          try { child.kill('SIGKILL'); } catch (__) {}
+        }
+      };
+
+      let graceTimer = null;
       const timer = setTimeout(() => {
         timedOut = true;
-        child.kill('SIGKILL');
+        killTree();
+        // If 'close' doesn't fire shortly after the kill (detached grandchildren,
+        // stuck pipes), resolve anyway so a runaway process can't hang the caller.
+        graceTimer = setTimeout(() => {
+          this._audit('timeout', { command, timeout: cmdTimeout });
+          finish({ ok: false, output: (stdout || stderr || '').slice(0, this.maxOutput), error: `TIMEOUT (${cmdTimeout}ms)` });
+        }, 1500);
       }, cmdTimeout);
 
       child.stdout.on('data', chunk => {
@@ -179,24 +212,22 @@ class SandboxSession {
       });
 
       child.on('close', code => {
-        clearTimeout(timer);
         const output = (stdout || stderr || '').slice(0, this.maxOutput);
         if (timedOut) {
           this._audit('timeout', { command, timeout: cmdTimeout });
-          resolve({ ok: false, output, error: `TIMEOUT (${cmdTimeout}ms)` });
+          finish({ ok: false, output, error: `TIMEOUT (${cmdTimeout}ms)` });
         } else if (code !== 0 && stderr.trim()) {
           this._audit('fail', { command, exitCode: code, error: stderr.trim().slice(0, 200) });
-          resolve({ ok: false, output, error: `exit ${code}: ${stderr.trim().slice(0, 1000)}` });
+          finish({ ok: false, output, error: `exit ${code}: ${stderr.trim().slice(0, 1000)}` });
         } else {
           this._audit('ok', { command, exitCode: code, bytes: output.length });
-          resolve({ ok: true, output: output || `(exit ${code})` });
+          finish({ ok: true, output: output || `(exit ${code})` });
         }
       });
 
       child.on('error', err => {
-        clearTimeout(timer);
         this._audit('error', { command, error: err.message });
-        resolve({ ok: false, output: '', error: 'spawn error: ' + err.message });
+        finish({ ok: false, output: '', error: 'spawn error: ' + err.message });
       });
     });
   }
