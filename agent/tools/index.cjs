@@ -40,10 +40,11 @@ try { fileTools = require('./file-tools.cjs'); } catch (e) { _modLoadErrors['fil
 try { execTools = require('./exec-tools.cjs'); } catch (e) { _modLoadErrors['exec-tools'] = e.message; execTools = {}; }
 
 // ── Lazy (peripheral) — loaded on first tool call ──
-let _diskTools = null, _webTools = null, _skillTools = null;
+let _diskTools = null, _webTools = null, _skillTools = null, _broker = null;
 function lazyDisk() { return _diskTools || (_diskTools = _ensureMod('disk-tools', './disk-tools.cjs')) || {}; }
 function lazyWeb()  { return _webTools  || (_webTools  = _ensureMod('web-tools',  './web-tools.cjs'))  || {}; }
 function lazySkill() { return _skillTools || (_skillTools = _ensureMod('skill-tools', './skill-tools.cjs')) || {}; }
+function lazyBroker() { return _broker || (_broker = _ensureMod('broker', '../broker/index.cjs')) || {}; }
 
 // Static definitions (pure JSON, never fails)
 const { SELF_TOOLS } = require('./tool-definitions.cjs');
@@ -605,6 +606,25 @@ async function runSelfTool(name, args, emit, context = {}) {
         output: r.output + (r.error ? '\nError: ' + r.error : ''),
         sandboxId: r.sessionId,
       }), e => ({ ok: false, output: e.message }));
+    }
+    if (name === 'capability_exec') {
+      const b = lazyBroker();
+      if (!b.Policy) return { ok: false, output: 'broker module not available: ' + (_modLoadErrors['broker'] || 'unknown error') };
+      const { Policy, Broker, runInCapabilityZone } = b;
+      const workDir = WORKSPACE || path.join(QROOT, 'workspace');
+      try { fs.mkdirSync(workDir, { recursive: true }); } catch (_) {}
+      let cloudHosts = [];
+      try { cloudHosts = Object.values(require('../cloud.cjs').CLOUD || {}).map(c => c.host).filter(Boolean); } catch (_) {}
+      const policy = new Policy({
+        readFile: { roots: [workDir] },
+        writeFile: { roots: [workDir] },
+        fetch: { hosts: [...new Set(cloudHosts)] },
+      });
+      const broker = new Broker(policy);
+      return runInCapabilityZone(args.code, broker, { timeout: args.timeout || 10000 }).then(
+        (result) => ({ ok: true, output: typeof result === 'string' ? result : JSON.stringify(result), auditTrail: broker.auditTrail() }),
+        (e) => ({ ok: false, output: e.message, auditTrail: broker.auditTrail() }),
+      );
     }
     return { ok: false, output: 'unknown tool: ' + name };
   } catch (e) {
