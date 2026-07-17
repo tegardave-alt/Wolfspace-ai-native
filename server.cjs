@@ -3541,9 +3541,9 @@ function openTerminalSession(customCwd, customShell) {
 
   // Forward PTY output to all registered listeners + buffer
   ptyProcess.onData((data) => {
-    outputBuffer += data;
-    if (outputBuffer.length > TERM_OUTPUT_MAX)
-      outputBuffer = outputBuffer.slice(-TERM_OUTPUT_MAX);
+    session.outputBuffer += data;
+    if (session.outputBuffer.length > TERM_OUTPUT_MAX)
+      session.outputBuffer = session.outputBuffer.slice(-TERM_OUTPUT_MAX);
     for (const fn of listeners) {
       try {
         fn(data);
