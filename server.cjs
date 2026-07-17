@@ -148,11 +148,24 @@ function runOpenClawAgent(message) {
       "--timeout",
       "600",
     ];
-    const child = spawn(openclawCommand(), args, {
-      cwd: __dirname,
-      windowsHide: true,
-      shell: false,
-    });
+    let child;
+    try {
+      // Node >=20: spawn .cmd tanpa shell melempar EINVAL sinkron (crash server)
+      child = spawn(openclawCommand(), args, {
+        cwd: __dirname,
+        windowsHide: true,
+        shell: process.platform === "win32",
+      });
+    } catch (err) {
+      try { fs.unlinkSync(tempPath); } catch (_) {}
+      return resolve({
+        ok: false,
+        text: "",
+        raw: "",
+        error: friendlyOpenClawError("", "", err),
+        exitCode: null,
+      });
+    }
     let stdout = "";
     let stderr = "";
     let settled = false;
@@ -3432,6 +3445,8 @@ const { safeWriteFile, quarantine } = require("./agent/safe-edit.cjs");
 const _debugRoutes = require("./server/routes/debug.cjs");
 const _terminalRoutes = require("./server/routes/terminal.cjs");
 const _snapshotRoutes = require("./server/routes/snapshots.cjs");
+const _openclawRoutes = require("./server/routes/openclaw.cjs");
+const _hunkRoutes = require("./server/routes/hunks.cjs");
 
 // Pure self-edit agent loop (function-calling tools over WOLFSPACE's own source).
 // emit(event)/ctl.isCancelled()/ctl.setCurReq() â€” shared by HTTP + IPC.
@@ -3643,68 +3658,8 @@ const server = http.createServer(async (req, res) => {
   if (_debugRoutes.handle(req, res, { trace, LOG_RING, debugSubs, DEBUG_VIEWER, dlog })) return;
   if (_terminalRoutes.handle(req, res, { terminalSessions, openTerminalSession, writeToTerminal, resizeTerminal, closeTerminalSession })) return;
   if (_snapshotRoutes.handle(req, res, { listSnapshots, rollback })) return;
-
-  if (req.method === "GET" && _path === "/api/openclaw/status") {
-    const child = spawn(openclawCommand(), ["--version"], {
-      cwd: __dirname,
-      windowsHide: true,
-      shell: false,
-    });
-    let stdout = "";
-    let stderr = "";
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-    child.on("error", (err) =>
-      writeJson(res, 200, {
-        installed: false,
-        version: "",
-        error: friendlyOpenClawError(stderr, stdout, err),
-      }),
-    );
-    child.on("close", (code) =>
-      writeJson(res, 200, {
-        installed: code === 0,
-        version: code === 0 ? stripAnsi(stdout).trim() : "",
-        error: code === 0 ? "" : friendlyOpenClawError(stderr, stdout),
-      }),
-    );
-    return;
-  }
-
-  if (req.method === "POST" && _path === "/api/openclaw/chat") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      let message = "";
-      try {
-        message = String((JSON.parse(body || "{}") || {}).message || "").trim();
-      } catch (err) {
-        return writeJson(res, 400, {
-          ok: false,
-          text: "",
-          raw: "",
-          error: "bad request: " + err.message,
-          exitCode: null,
-        });
-      }
-      if (!message) {
-        return writeJson(res, 400, {
-          ok: false,
-          text: "",
-          raw: "",
-          error: "Pesan /openclaw tidak boleh kosong.",
-          exitCode: null,
-        });
-      }
-      const result = await runOpenClawAgent(message);
-      writeJson(res, result.ok ? 200 : 500, result);
-    });
-    return;
-  }
+  if (_openclawRoutes.handle(req, res, { spawn, __dirname, openclawCommand, friendlyOpenClawError, stripAnsi, runOpenClawAgent, writeJson })) return;
+  if (_hunkRoutes.handle(req, res, {})) return;
 
   // Persist the BYOK key server-side (cloud-keys.json) so the BACKEND Ã¢â‚¬â€ including
   // the autonomous agent loop Ã¢â‚¬â€ can use it without the browser passing it.
@@ -5710,52 +5665,6 @@ Rules:
         });
         res.writeHead(200, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: result.ok, output: result.output }));
-      } catch (e) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // Revert a hunk (undo an edit made by the agent)
-  if (req.method === "POST" && urlPath === "/api/revert-hunk") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      try {
-        const { hunkId } = JSON.parse(body);
-        if (!hunkId) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          return res.end(JSON.stringify({ error: "hunkId wajib" }));
-        }
-        const { rejectHunk } = require("./agent/tools.cjs");
-        const r = rejectHunk(hunkId);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(r));
-      } catch (e) {
-        res.writeHead(400, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // Apply a hunk (confirm an edit â€” removes from pending buffer)
-  if (req.method === "POST" && urlPath === "/api/apply-hunk") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      try {
-        const { hunkId } = JSON.parse(body);
-        if (!hunkId) {
-          res.writeHead(400, { "Content-Type": "application/json" });
-          return res.end(JSON.stringify({ error: "hunkId wajib" }));
-        }
-        const { applyHunk } = require("./agent/tools.cjs");
-        const r = applyHunk(hunkId);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(r));
       } catch (e) {
         res.writeHead(400, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ error: e.message }));
