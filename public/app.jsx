@@ -5471,6 +5471,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               </button>
               {dropOpen && (
                 <div className="picker-ws-dropdown">
+                  <button className="picker-ws-item" onClick={handleOpenFolderPicker}>
+                    <PickerFolderIcon /> New Project
+                  </button>
+                  {projectsList.length > 0 && <div className="picker-ws-divider" />}
                   {projectsList.map((p, idx) => (
                     <button
                       key={idx}
@@ -5492,10 +5496,6 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                       )}
                     </button>
                   ))}
-                  {projectsList.length > 0 && <div className="picker-ws-divider" />}
-                  <button className="picker-ws-item" onClick={handleOpenFolderPicker}>
-                    <PickerFolderIcon /> New Project
-                  </button>
                 </div>
               )}
             </div>
