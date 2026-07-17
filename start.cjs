@@ -44,6 +44,7 @@ staticServer.on('exit', (code) => {
 let mainServer = null;
 let serverStartTime = 0;
 let lockInTimer = null;
+let crashStreak = 0; // crash beruntun dengan uptime pendek → backoff eksponensial
 
 const SERVER_FILE = path.join(ROOT, 'server.cjs');
 const BACKUP_FILE = path.join(ROOT, '.server_last_good.cjs');
@@ -99,10 +100,18 @@ function startMainServer() {
     }
 
     console.error(`  ✓ Bypass lane MASIH AKTIF di http://localhost:${STATIC_PORT}`);
-    // Auto-restart after 1 second (unless we're shutting down)
+    // Auto-restart dengan backoff eksponensial (unless we're shutting down).
+    // Uptime > 10 detik dianggap sehat → streak direset ke 0.
+    // Crash beruntun (mis. versi cadangan pun crash karena config.json rusak):
+    // 1s → 2s → 4s → 8s → 16s → maks 30s, agar log tidak banjir dan penyebab terlihat.
     if (!_shuttingDown) {
-      console.error(`  🔄 Restart dalam 1 detik...\n`);
-      setTimeout(startMainServer, 1000);
+      crashStreak = uptime > 10000 ? 0 : crashStreak + 1;
+      const delay = Math.min(1000 * Math.pow(2, crashStreak), 30000);
+      if (crashStreak >= 3) {
+        console.error(`  🚨 ${crashStreak} crash beruntun — kemungkinan penyebabnya BUKAN server.cjs (cek config.json / dependensi).`);
+      }
+      console.error(`  🔄 Restart dalam ${delay / 1000} detik...\n`);
+      setTimeout(startMainServer, delay);
     }
   });
 

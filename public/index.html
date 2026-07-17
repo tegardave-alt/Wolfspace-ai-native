@@ -68,11 +68,44 @@
     window._pendingGoodApp = null;
     window.reportAppSuccess = function() {
       if (window._pendingGoodApp) {
-        localStorage.setItem('wolfspace_last_good_app', window._pendingGoodApp);
+        try {
+          localStorage.setItem('wolfspace_last_good_app', window._pendingGoodApp);
+          console.log("✅ WOLFSPACE App berhasil dirender. Versi ini dikunci sebagai versi Aman.");
+        } catch (e) {
+          // QuotaExceededError dsb: versi aman lama tetap terjaga, jangan meledak di alur render
+          console.error("⚠ Gagal mengunci versi Aman (localStorage penuh?):", e.message);
+        }
         window._pendingGoodApp = null;
-        console.log("✅ WOLFSPACE App berhasil dirender. Versi ini dikunci sebagai versi Aman.");
       }
     };
+
+    // ── Global Runtime Guard: tangkap error di luar jangkauan ErrorBoundary ──
+    // (event handler, setTimeout, async/await) → picu Auto-Rollback yang sama.
+    window.triggerAppRollback = function(errText) {
+      try {
+        // Anti-loop: kalau baru saja rollback (<60 detik), jangan reload lagi —
+        // versi aman pun melempar error yang sama, cukup catat di console.
+        var last = parseInt(sessionStorage.getItem('wolfspace_rollback_ts') || '0', 10);
+        if (Date.now() - last < 60000) {
+          console.error("⚠ Rollback ditahan (baru terjadi <60 dtk). Error:", errText);
+          return;
+        }
+        sessionStorage.setItem('wolfspace_rollback_ts', String(Date.now()));
+        sessionStorage.setItem('wolfspace_rollback_error', errText);
+      } catch (_) {}
+      if (window.location.search.indexOf('rollback=true') === -1) {
+        window.location.replace('/?rollback=true');
+      }
+    };
+    window.addEventListener('error', function(ev) {
+      // Abaikan error resource (img/script gagal load) — hanya exception JS
+      if (!ev || !ev.error) return;
+      window.triggerAppRollback('[window.onerror] ' + (ev.error.stack || ev.message || ev.error));
+    });
+    window.addEventListener('unhandledrejection', function(ev) {
+      var r = ev && ev.reason;
+      window.triggerAppRollback('[unhandledrejection] ' + (r && r.stack ? r.stack : String(r)));
+    });
 
     (async function() {
       // 1. Cek apakah kita sedang dalam mode Recovery (Auto-Rollback dari Runtime Error)
