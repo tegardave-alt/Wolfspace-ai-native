@@ -25,6 +25,7 @@ class CapabilityFS {
       /[\\/]node_modules[\\/]/,
       /[\\/]\.git[\\/]/,
       /cloud-keys\.json$/,
+      /[\\/]\.wolfspace[\\/]/, // secrets now live in ~/.wolfspace (see agent/keys-path.cjs)
       /\.env$/,
       /[\\/]System32[\\/]/,
       /[\\/]Windows[\\/]/,

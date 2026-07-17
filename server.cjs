@@ -687,6 +687,7 @@ const PY_BIN = findPython();
 // Ã¢â€â‚¬Ã¢â€â‚¬ Shared patch machinery for visual edits + compile auto-fix Ã¢â€â‚¬Ã¢â€â‚¬
 // Apply <<<<ORIGINAL/====/>>>> hunks by literal string replacement; null on any miss.
 const { fillCloudKey } = require("./agent/cloud.cjs");
+const { resolveKeysPath } = require("./agent/keys-path.cjs");
 function applyHunks(src, reply) {
   const re = new RegExp(
     "<<<<ORIGINAL\\r?\\n([\\s\\S]*?)\\r?\\n====\\r?\\n([\\s\\S]*?)\\r?\\n>>>>",
@@ -1658,7 +1659,7 @@ function loadCloudKeys() {
   CLOUD_KEYS = {};
   try {
     const raw = JSON.parse(
-      fs.readFileSync(path.join(__dirname, "cloud-keys.json"), "utf8"),
+      fs.readFileSync(resolveKeysPath(), "utf8"),
     );
     for (const [p, v] of Object.entries(raw))
       CLOUD_KEYS[p] = typeof v === "string" ? { key: v } : v;
@@ -3653,7 +3654,7 @@ const server = http.createServer(async (req, res) => {
         let store = {};
         try {
           store = JSON.parse(
-            fs.readFileSync(path.join(__dirname, "cloud-keys.json"), "utf8"),
+            fs.readFileSync(resolveKeysPath(), "utf8"),
           );
         } catch {}
         store[provider] = {
@@ -3662,7 +3663,7 @@ const server = http.createServer(async (req, res) => {
           ...(baseUrl ? { baseUrl } : {}),
         };
         fs.writeFileSync(
-          path.join(__dirname, "cloud-keys.json"),
+          resolveKeysPath(),
           JSON.stringify(store, null, 2),
         );
         loadCloudKeys(); // hot-reload so it's usable immediately
@@ -3718,12 +3719,12 @@ const server = http.createServer(async (req, res) => {
       let store = {};
       try {
         store = JSON.parse(
-          fs.readFileSync(path.join(__dirname, "cloud-keys.json"), "utf8"),
+          fs.readFileSync(resolveKeysPath(), "utf8"),
         );
       } catch {}
       delete store[prov];
       fs.writeFileSync(
-        path.join(__dirname, "cloud-keys.json"),
+        resolveKeysPath(),
         JSON.stringify(store, null, 2),
       );
       loadCloudKeys();

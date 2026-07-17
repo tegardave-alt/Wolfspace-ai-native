@@ -5,6 +5,7 @@ const path = require('path');
 const http = require('http');
 const https = require('https');
 const { dlog } = require('./debug.cjs');
+const { resolveKeysPath } = require('./keys-path.cjs');
 
 // Load configuration (shared with other modules)
 const CONFIG_PATH = path.join(__dirname, '..', 'config.json');
@@ -52,7 +53,7 @@ let CLOUD_KEYS = {};
 function loadCloudKeys() {
   CLOUD_KEYS = {};
   try {
-    const raw = JSON.parse(fs.readFileSync(path.join(__dirname, '..', 'cloud-keys.json'), 'utf8'));
+    const raw = JSON.parse(fs.readFileSync(resolveKeysPath(), 'utf8'));
     for (const [p, v] of Object.entries(raw)) CLOUD_KEYS[p] = typeof v === 'string' ? { key: v } : v;
   } catch (_) {}
   for (const p of Object.keys(PROVIDER_NAMES)) {
