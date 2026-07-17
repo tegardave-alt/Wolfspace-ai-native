@@ -3426,6 +3426,13 @@ const { chatStream } = require("./agent/chat.cjs");
 const { createSnapshot, rollback, listSnapshots } = require("./agent/snapshot.cjs");
 const { safeWriteFile, quarantine } = require("./agent/safe-edit.cjs");
 
+// ── Modular route handlers (server/routes/*) ──
+// Each exports handle(req, res, deps) → truthy when the request was handled.
+// State stays in server.cjs and is injected via deps; modules hold logic only.
+const _debugRoutes = require("./server/routes/debug.cjs");
+const _terminalRoutes = require("./server/routes/terminal.cjs");
+const _snapshotRoutes = require("./server/routes/snapshots.cjs");
+
 // Pure self-edit agent loop (function-calling tools over WOLFSPACE's own source).
 // emit(event)/ctl.isCancelled()/ctl.setCurReq() â€” shared by HTTP + IPC.
 // If a chat reply contains a runnable code block, execute it (model guesses, CPU judges)
@@ -3632,77 +3639,10 @@ const server = http.createServer(async (req, res) => {
   if (req.method === "POST" && _path !== "/complete" && _path !== "/pycomplete")
     dlog("http", "info", "POST " + _path);
 
-  // Debug: list recent runs
-  if (req.method === "GET" && _path === "/debug/runs") {
-    const runs = trace.listRuns(30);
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify(runs));
-  }
-
-  // Debug: get run timeline by ID
-  if (req.method === "GET" && _path.startsWith("/debug/runs/")) {
-    const runId = (req.url || "").split("/").pop();
-    const timeline = trace.getRunTimeline(runId);
-    if (!timeline) {
-      res.writeHead(404);
-      return res.end(JSON.stringify({ error: "run not found" }));
-    }
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify(timeline));
-  }
-
-  // Debug: export bundle for reproduction
-  if (req.method === "GET" && _path.startsWith("/debug/export/")) {
-    const runId = (req.url || "").split("/").pop();
-    const bundle = trace.exportBundle(runId, { includeConfig: true });
-    if (!bundle) {
-      res.writeHead(404);
-      return res.end(JSON.stringify({ error: "run not found" }));
-    }
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify(bundle));
-  }
-
-  if (req.method === "GET" && _path === "/debug/log") {
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify(LOG_RING));
-  }
-  // Beacon: studio (Dart) + React shell post trace points here so the whole
-  // handshake/compile flow is captured in /debug. /dbg?src=&m=&n=
-  if (req.method === "GET" && _path === "/dbg") {
-    const sp = new URL("http://x" + req.url).searchParams;
-    dlog(
-      "studio",
-      "info",
-      (sp.get("src") || "?") + ": " + (sp.get("m") || ""),
-      sp.get("n") ? { n: +sp.get("n") } : {},
-    );
-    res.writeHead(200, {
-      "Content-Type": "text/plain",
-      "Cache-Control": "no-store",
-    });
-    return res.end("ok");
-  }
-  if (req.method === "GET" && _path === "/debug/stream") {
-    res.writeHead(200, {
-      "Content-Type": "text/event-stream",
-      "Cache-Control": "no-cache",
-      Connection: "keep-alive",
-    });
-    const w = (s) => {
-      if (!res.writableEnded) res.write(s);
-    };
-    for (const e of LOG_RING.slice(-120))
-      w("data: " + JSON.stringify(e) + "\n\n");
-    debugSubs.add(w);
-    req.on("close", () => debugSubs.delete(w));
-    res.on("close", () => debugSubs.delete(w)); // IPC stream cancel destroys res
-    return;
-  }
-  if (req.method === "GET" && _path === "/debug") {
-    res.writeHead(200, { "Content-Type": "text/html; charset=utf-8" });
-    return res.end(DEBUG_VIEWER);
-  }
+  // ── Modular routes (server/routes/*) — first match wins, state injected ──
+  if (_debugRoutes.handle(req, res, { trace, LOG_RING, debugSubs, DEBUG_VIEWER, dlog })) return;
+  if (_terminalRoutes.handle(req, res, { terminalSessions, openTerminalSession, writeToTerminal, resizeTerminal, closeTerminalSession })) return;
+  if (_snapshotRoutes.handle(req, res, { listSnapshots, rollback })) return;
 
   if (req.method === "GET" && _path === "/api/openclaw/status") {
     const child = spawn(openclawCommand(), ["--version"], {
@@ -5390,33 +5330,6 @@ Rules:
     return;
   }
 
-  // ── Safe-Edit Protocol: Snapshot & Rollback API ──────────────────────────
-  if (req.method === "GET" && req.url === "/api/snapshots") {
-    const snaps = listSnapshots().slice(0, 20).map(s => ({
-      id: s.id,
-      ts: s.ts,
-      label: s.label,
-      files: s.files,
-      age: Math.round((Date.now() - s.ts) / 1000 / 60) + " menit lalu",
-    }));
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify({ ok: true, snapshots: snaps }));
-  }
-
-  if (req.method === "POST" && req.url === "/api/rollback") {
-    let body = "";
-    req.on("data", c => (body += c));
-    req.on("end", () => {
-      let id;
-      try { ({ id } = JSON.parse(body)); } catch { res.writeHead(400); return res.end("bad json"); }
-      if (!id) { res.writeHead(400); return res.end("id required"); }
-      const result = rollback(id);
-      res.writeHead(result.ok ? 200 : 404, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(result));
-    });
-    return;
-  }
-
   // Run one code block manually
   if (req.method === "POST" && req.url === "/run") {
     let body = "";
@@ -5544,104 +5457,6 @@ Rules:
     return res.end(
       "studio belum di-build Ã¢â‚¬â€ jalankan: cd studio && flutter build web",
     );
-  }
-
-  // â”€â”€ Terminal API (HTTP routes for PTY sessions) â”€â”€
-  if (req.method === "POST" && urlPath === "/api/terminal/open") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      try {
-        const { cwd, shell } = JSON.parse(body || "{}");
-        const r = openTerminalSession(cwd || undefined, shell || undefined);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify(r));
-      } catch (e) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-  if (req.method === "POST" && urlPath === "/api/terminal/write") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      try {
-        const { id, data } = JSON.parse(body);
-        writeToTerminal(id, data);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true }));
-      } catch (e) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-  if (req.method === "POST" && urlPath === "/api/terminal/resize") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      try {
-        const { id, cols, rows } = JSON.parse(body);
-        resizeTerminal(id, cols, rows);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true }));
-      } catch (e) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-  if (req.method === "POST" && urlPath === "/api/terminal/read") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      try {
-        const { id, clear } = JSON.parse(body || "{}");
-        const session = terminalSessions.get(id);
-        if (!session) {
-          res.writeHead(404);
-          return res.end(JSON.stringify({ error: "session not found" }));
-        }
-        const output = session.outputBuffer || "";
-        if (clear) session.outputBuffer = "";
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ output }));
-      } catch (e) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-  if (req.method === "POST" && urlPath === "/api/terminal/close") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      try {
-        const { id } = JSON.parse(body);
-        closeTerminalSession(id);
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: true }));
-      } catch (e) {
-        res.writeHead(400);
-        res.end(JSON.stringify({ error: e.message }));
-      }
-    });
-    return;
-  }
-  if (req.method === "GET" && urlPath === "/api/terminal/list") {
-    const out = Array.from(terminalSessions.entries()).map(([id, s]) => ({
-      id,
-      shell: s.shell,
-      cwd: s.cwd,
-      createdAt: s.createdAt,
-    }));
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify(out));
   }
 
   // ── Agent Runner API (host external CLI agents) ──
