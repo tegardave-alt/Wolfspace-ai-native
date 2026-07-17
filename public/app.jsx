@@ -399,11 +399,69 @@ function escHtml(s) {
     (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c],
   );
 }
-function mdToHtml(s) {
+function mdInline(s) {
   let h = escHtml(s);
   h = h.replace(/`([^`\n]+)`/g, '<span class="inline-code">$1</span>');
   h = h.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
-  return h.replace(/\n/g, "<br/>");
+  return h;
+}
+function mdToHtml(s) {
+  const lines = s.split(/\r?\n/);
+  const outBlocks = [];
+  let normalLines = [];
+
+  const flushNormal = () => {
+    if (normalLines.length > 0) {
+      outBlocks.push(mdInline(normalLines.join("\n")).replace(/\n/g, "<br/>"));
+      normalLines = [];
+    }
+  };
+
+  let i = 0;
+  while (i < lines.length) {
+    const line = lines[i];
+    const nextLine = lines[i + 1];
+    if (
+      i + 1 < lines.length &&
+      line.includes("|") &&
+      /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(nextLine)
+    ) {
+      flushNormal();
+      const parseRow = (r) => {
+        let trimmed = r.trim();
+        if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
+        if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
+        return trimmed.split("|").map((c) => c.trim());
+      };
+      const headers = parseRow(line);
+      i += 2;
+      const rows = [];
+      while (i < lines.length && lines[i].trim().includes("|") && lines[i].trim() !== "") {
+        rows.push(parseRow(lines[i]));
+        i++;
+      }
+      let html = '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
+      headers.forEach((h) => {
+        html += `<th>${mdInline(h)}</th>`;
+      });
+      html += '</tr></thead><tbody>';
+      rows.forEach((row) => {
+        html += '<tr>';
+        for (let c = 0; c < headers.length; c++) {
+          const cell = row[c] || "";
+          html += `<td>${mdInline(cell)}</td>`;
+        }
+        html += '</tr>';
+      });
+      html += '</tbody></table></div>';
+      outBlocks.push(html);
+    } else {
+      normalLines.push(line);
+      i++;
+    }
+  }
+  flushNormal();
+  return outBlocks.join("");
 }
 function parseBlocks(text) {
   // Pre-processing: Jika model hanya memberikan tag penutup tapi lupa tag pembuka
@@ -2685,7 +2743,10 @@ function useVisualDraw() {
     };
     
     const checkSidebarClick = (e) => {
-      if (e.target.closest('.sidebar')) return true;
+      const btn = e.target.closest('.sb-item');
+      if (btn && (btn.textContent.includes('Visual Picker') || btn.textContent.includes('Visual Draw'))) {
+        return true;
+      }
       return false;
     };
     
@@ -2766,8 +2827,8 @@ function useVisualDraw() {
         
         const finalX = snap(Math.min(startX, currX));
         const finalY = snap(Math.min(startY, currY));
-        const finalW = Math.max(280, snap(w));
-        const finalH = Math.max(160, snap(h));
+        const finalW = Math.max(10, snap(w));
+        const finalH = Math.max(10, snap(h));
         
         Object.assign(selBox.style, {
           left: finalX + 'px',
@@ -2776,19 +2837,60 @@ function useVisualDraw() {
           height: finalH + 'px',
           pointerEvents: 'auto',
           border: '2px solid var(--fill-accent, #339af0)',
-          boxShadow: '0 12px 32px rgba(51, 154, 240, 0.15)'
+          boxShadow: '0 12px 32px rgba(51, 154, 240, 0.15)',
+          overflow: 'visible'
         });
         
-        const domString = `<div data-type="empty-slot" style="position: absolute; left: ${finalX}px; top: ${finalY}px; width: ${finalW}px; height: ${finalH}px;"></div>`;
+        // --- DOM Context Detection ---
+        cWrap.style.pointerEvents = 'none';
+        selBox.style.pointerEvents = 'none';
+        const globalX = ev.clientX;
+        const globalY = ev.clientY;
+        const targetEl = document.elementFromPoint(globalX, globalY) || document.body;
+        cWrap.style.pointerEvents = 'auto'; // (or back to whatever it was)
+        selBox.style.pointerEvents = 'auto';
+        
+        // Generate selector (same logic as Picker)
+        const realCls = (el) => typeof el.className === "string" ? el.className.trim().split(/\s+/).filter(c => c && !/^vp-/.test(c)) : [];
+        const seg = (el) => {
+          if (el.id) return "#" + el.id;
+          let s = el.tagName.toLowerCase();
+          const cls = realCls(el);
+          if (cls.length) s += "." + cls.join(".");
+          const p = el.parentElement;
+          if (p) {
+            const same = Array.from(p.children).filter(c => c.tagName === el.tagName);
+            if (same.length > 1) s += ":nth-of-type(" + (same.indexOf(el) + 1) + ")";
+          }
+          return s;
+        };
+        const sel = (el) => {
+          const parts = [];
+          let cur = el, depth = 0;
+          while (cur && cur.nodeType === 1 && depth < 6) {
+            parts.unshift(seg(cur));
+            if (cur.id || realCls(cur).length) break;
+            cur = cur.parentElement;
+            depth++;
+          }
+          return parts.join(" > ");
+        };
+        
+        const targetSelector = sel(targetEl);
+        const tr = targetEl.getBoundingClientRect();
+        // Calculate relative coordinates
+        const relX = Math.round((finalX + r.left) - tr.left);
+        const relY = Math.round((finalY + r.top) - tr.top);
+        
+        const domString = `<div data-target="${targetSelector}" style="position: absolute; left: ${relX}px; top: ${relY}px; width: ${finalW}px; height: ${finalH}px;"></div>`;
         const escapedDom = domString.replace(/</g, '&lt;').replace(/>/g, '&gt;');
         
         selBox.innerHTML = `
-          <div style="background: var(--fill-accent, #339af0); color: white; font-size: 11px; font-weight: 600; padding: 4px 8px; border-bottom-right-radius: 4px; border-top-left-radius: 1px; display: inline-block; align-self: flex-start; letter-spacing: 0.05em; pointer-events: none;">
+          <div style="position: absolute; top: 0; left: 0; background: var(--fill-accent, #339af0); color: white; font-size: 11px; font-weight: 600; padding: 4px 8px; border-bottom-right-radius: 4px; border-top-left-radius: 1px; display: inline-block; letter-spacing: 0.05em; pointer-events: none; white-space: nowrap; z-index: 2;">
             AREA KOSONG [X: ${finalX}, Y: ${finalY}]
           </div>
-          <div style="flex: 1;"></div>
-          <div class="ui-panel" style="padding: 12px; background: rgba(255, 255, 255, 0.98); border-top: 1px solid var(--border-accent, #a5d8ff); display: flex; flex-direction: column; gap: 8px;">
-            <code style="display:block; padding:8px; background:var(--surface-2, #f1f3f5); border:1px solid var(--border, #e9ecef); border-radius:4px; font-size:11px; color:var(--text-secondary, #495057); word-break:break-all; font-family:monospace;">${escapedDom}</code>
+          <div class="ui-panel" style="position: absolute; top: calc(100% + 2px); left: -2px; width: max-content; max-width: 300px; padding: 12px; background: rgba(255, 255, 255, 0.98); border: 2px solid var(--fill-accent, #339af0); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 8px; z-index: 3;">
+            <code style="display:block; padding:8px; background:var(--surface-2, #f1f3f5); border:1px solid var(--border, #e9ecef); border-radius:4px; font-size:11px; color:var(--text-secondary, #495057); word-break:break-all; font-family:monospace; white-space: normal;">${escapedDom}</code>
             <button class="vd-copy-btn" style="background: var(--text-primary, #212529); color: white; border: none; height: 34px; border-radius: 4px; font-weight: 500; font-size: 13px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#000'" onmouseout="this.style.background='var(--text-primary, #212529)'">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style="margin-right:4px; vertical-align:text-bottom"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
               Salin Struktur DOM
@@ -5192,6 +5294,8 @@ function Sidebar({
   loadSavedChats,
   onAgentRunner,
 }) {
+  const [showTools, setShowTools] = useState(true);
+
   const Item = ({ icon, label, active, onClick, badge }) => (
     <button
       className={"sb-item" + (active ? " active" : "")}
@@ -5217,6 +5321,8 @@ function Sidebar({
         if (typeof VD_STOP === 'function' && VD_STOP !== null) VD_STOP();
       }}
     > 
+
+
       <div className="sb-head">
         <span className="sb-brand">
           <BrandMark />
@@ -5264,19 +5370,27 @@ function Sidebar({
           }}
         />
       </div>
-      <div className="sb-sec">Alat</div>
-      <div className="sb-group">
-        <Item
-          icon={SB.target({ width: 19, height: 19 })}
-          label="Visual Picker"
-          onClick={onVisualPicker}
-        />
-        <Item
-          icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path><path d="M13.5 6.5l4 4"></path></svg>}
-          label="Visual Draw"
-          onClick={onVisualDraw}
-        />
+      <div
+        className="sb-sec"
+        style={{ cursor: "pointer" }}
+        onClick={() => setShowTools(!showTools)}
+      >
+        Alat
       </div>
+      {showTools && (
+        <div className="sb-group">
+          <Item
+            icon={SB.target({ width: 19, height: 19 })}
+            label="Visual Picker"
+            onClick={onVisualPicker}
+          />
+          <Item
+            icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path><path d="M13.5 6.5l4 4"></path></svg>}
+            label="Visual Draw"
+            onClick={onVisualDraw}
+          />
+        </div>
+      )}
       <div
         className="sb-sec"
         style={{ cursor: "pointer" }}
@@ -5833,11 +5947,316 @@ const SUGGESTIONS = [];
 const CANVAS_BUILDING =
   '<!doctype html><html><head><meta charset="utf-8"></head><body style="margin:0;display:grid;place-items:center;height:100vh;background:#0b0d11;color:#5eead4;font-family:system-ui">' +
   '<div style="text-align:center"><div style="font-size:13px;letter-spacing:2px;opacity:.7">WOLFSPACE</div><div style="margin-top:10px;font-size:15px">membangun antarmuka</div></div></body></html>';
+
+/* ═══════════════════════════════════════════════════════════
+   PROJECT PICKER SCREEN
+   Shown once on startup. Disappears after first message sent.
+═══════════════════════════════════════════════════════════ */
+const PICKER_WORKSPACES = [
+  { name: "resilient-bose", active: true },
+  { name: "excited-turing" },
+  { name: "peaceful-maxwell" },
+  { name: "eager-hertz" },
+];
+function PickerFolderIcon({ size = 15 }) {
+  return React.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5" },
+    React.createElement("path", { d: "M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z" }));
+}
+function PickerMonitorIcon({ size = 15 }) {
+  return React.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" },
+    React.createElement("rect", { x: "2", y: "3", width: "20", height: "14", rx: "2", ry: "2" }),
+    React.createElement("line", { x1: "8", y1: "21", x2: "16", y2: "21" }),
+    React.createElement("line", { x1: "12", y1: "17", x2: "12", y2: "21" }));
+}
+function PickerChevIcon({ size = 12 }) {
+  return React.createElement("svg", { width: size, height: size, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "2" },
+    React.createElement("polyline", { points: "6 9 12 15 18 9" }));
+}
+function PickerPlusIcon() {
+  return React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", strokeWidth: "1.5" },
+    React.createElement("line", { x1: "12", y1: "5", x2: "12", y2: "19" }),
+    React.createElement("line", { x1: "5", y1: "12", x2: "19", y2: "12" }));
+}
+function PickerSendIcon() {
+  return React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "#9bb1d1", stroke: "none" },
+    React.createElement("path", { d: "M2 21L23 12 2 3v7l15 2-15 2z", transform: "rotate(-45 12 12)" }));
+}
+function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
+  const defaultWs = PICKER_WORKSPACES.find(w => w.active) || PICKER_WORKSPACES[0];
+  const [project, setProject] = useState(defaultWs.name);
+  const [dropOpen, setDropOpen] = useState(false);
+  const [menu, setMenu] = useState(false);
+  const [text, setText] = useState("");
+  const [attachments, setAttachments] = useState([]);
+  const [showModelMenu, setShowModelMenu] = useState(false);
+  const [showMcpMenu, setShowMcpMenu] = useState(false);
+  const [pickerEffort, setPickerEffort] = useState(() => {
+    try {
+      const cl = getCloud();
+      if (cl && typeof cl.effort !== "undefined") return Number(cl.effort);
+      return parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 0;
+    } catch { return 1; }
+  });
+  const [pickerMcp, setPickerMcp] = useState([
+    { id: 'github', name: 'GitHub & Git Tools', desc: 'Access repositories, issues, pull requests, and code diffs', active: true },
+    { id: 'filesystem', name: 'Local Filesystem & Ripgrep', desc: 'Direct workspace editing, directory analysis, and fast pattern search', active: true },
+    { id: 'browser', name: 'Browser Subagent (Puppeteer)', desc: 'Web scraping, DOM inspection, screenshot capture, and UI testing', active: false }
+  ]);
+  useEffect(() => {
+    try {
+      localStorage.setItem("quantum_effort", String(pickerEffort));
+      const cl = getCloud();
+      if (cl) { cl.effort = pickerEffort; setCloudLS(cl); }
+    } catch (_) {}
+  }, [pickerEffort]);
+  const wrapRef = useRef(null);
+  const taRef = useRef(null);
+  useEffect(() => {
+    const h = (e) => { 
+      if (wrapRef.current && !wrapRef.current.contains(e.target)) setDropOpen(false); 
+    };
+    document.addEventListener("mousedown", h);
+    return () => document.removeEventListener("mousedown", h);
+  }, []);
+  const grow = () => {
+    const el = taRef.current; if (!el) return;
+    el.style.height = "auto";
+    el.style.height = Math.min(el.scrollHeight, 160) + "px";
+  };
+  const handleAttachmentSelect = async (e) => {
+    const files = Array.from(e.target.files || []);
+    if (!files.length) return;
+    const target = e.target;
+    for (const file of files) {
+      const relPath = file.webkitRelativePath || file.name;
+      const attId = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+      const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(file.name) || (file.type && file.type.startsWith("image/"));
+      const isVid = /\.(mp4|webm|mov|mkv)$/i.test(file.name) || (file.type && file.type.startsWith("video/"));
+      let previewUrl = (isImg || isVid) ? URL.createObjectURL(file) : null;
+      let snippet = null;
+      if (!isImg && !isVid && file.size < 100 * 1024 && /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(file.name)) {
+        try { snippet = await file.slice(0, 300).text(); } catch (_) {}
+      }
+      setAttachments((prev) => [
+        ...prev,
+        { id: attId, name: file.name, path: relPath, size: file.size, type: file.type, previewUrl, snippet, status: "uploading" },
+      ]);
+      try {
+        const reader = new FileReader();
+        reader.onload = async () => {
+          try {
+            const base64 = reader.result.split(',')[1] || reader.result;
+            const payload = { name: relPath, data: base64 };
+            let uploadedUrl = "";
+            if (window.IPC && window.IPC.invoke) {
+              const res = await window.IPC.invoke("api", { method: "POST", path: "/upload", body: payload });
+              let parsed; try { parsed = typeof res.body === 'string' ? JSON.parse(res.body) : res; } catch (_) { parsed = res; }
+              if (res.status >= 400 || parsed.error) throw new Error(parsed.error || "Upload failed");
+              uploadedUrl = parsed.url || ("/uploads/" + parsed.name);
+            } else {
+              const r = await fetch("/upload", { method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(payload) });
+              const res = await r.json();
+              if (res.error) throw new Error(res.error);
+              uploadedUrl = res.url || ("/uploads/" + res.name);
+            }
+            setAttachments((prev) => prev.map((a) => (a.id === attId ? { ...a, status: "ready", url: uploadedUrl, previewUrl: a.previewUrl || (isImg ? uploadedUrl : null) } : a)));
+          } catch (err) {
+            console.error("[Attachment upload error]", err);
+            setAttachments((prev) => prev.map((a) => (a.id === attId ? { ...a, status: "error", error: err.message } : a)));
+          }
+        };
+        reader.onerror = () => {
+          setAttachments((prev) => prev.map((a) => (a.id === attId ? { ...a, status: "error", error: "Failed reading file" } : a)));
+        };
+        reader.readAsDataURL(file);
+      } catch (err) {
+        setAttachments((prev) => prev.map((a) => (a.id === attId ? { ...a, status: "error", error: err.message } : a)));
+      }
+    }
+    target.value = "";
+  };
+  const onRemoveAttachment = (id) => setAttachments(prev => prev.filter(a => a.id !== id));
+  const submit = () => { 
+    const v = text.trim(); 
+    if (!v && attachments.length === 0) return; 
+    let fullText = v;
+    if (attachments.length > 0) {
+      const attSummary = attachments
+        .map((a) => `- [Attached]: ${a.path} (${Math.round(a.size / 1024)} KB${a.url ? `, url: ${a.url}` : ""})`)
+        .join("\n");
+      fullText = v ? `${v}\n\nAttachments:\n${attSummary}` : `Attachments:\n${attSummary}`;
+    }
+    onStart(fullText, project); 
+  };
+  return (
+    <div className="project-picker-screen" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }}>
+      <input type="file" id="picker-file-upload" multiple style={{ display: "none" }} onChange={handleAttachmentSelect} />
+      <input type="file" id="picker-folder-upload" webkitdirectory="true" directory="true" multiple style={{ display: "none" }} onChange={handleAttachmentSelect} />
+      <div className="project-picker-inner">
+        <div className="picker-ws-wrap" ref={wrapRef}>
+          <button className="picker-workspace-btn" onClick={() => setDropOpen(o => !o)}>
+            {project === "Quick Start" ? (
+              <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                <polyline points="15 3 21 3 21 9" /><path d="M10 14L21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+              </svg>
+            ) : (
+              <PickerFolderIcon />
+            )}
+            <span>{project}</span>
+            <PickerChevIcon />
+          </button>
+          {dropOpen && (
+            <div className="picker-ws-dropdown">
+              <button className="picker-ws-item" onClick={() => { setProject("New Project"); setDropOpen(false); }}>
+                <PickerFolderIcon /> New Project
+              </button>
+              <button className="picker-ws-item" onClick={() => { setProject("Quick Start"); setDropOpen(false); }}>
+                <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5">
+                  <polyline points="15 3 21 3 21 9" /><path d="M10 14L21 3" /><path d="M21 14v5a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5" />
+                </svg>
+                Quick Start
+              </button>
+            </div>
+          )}
+        </div>
+        <div className="picker-input-box" style={{ position: 'relative' }}>
+          {menu && (
+            <div className="am-menu" style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, right: 0, zIndex: 200 }} onMouseDown={(e) => e.stopPropagation()}>
+              <input type="text" className="am-search" placeholder="Filter actions..." autoFocus />
+
+              <div className="am-section-label">Context</div>
+              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("picker-file-upload")?.click(); }}>
+                <span>Attach file...</span>
+              </button>
+              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("picker-folder-upload")?.click(); }}>
+                <span>Attach folder...</span>
+              </button>
+
+              <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
+              <div style={{ position: 'relative' }}>
+                <button
+                  className={"am-item" + (showModelMenu ? " active" : "")}
+                  onClick={(e) => { e.stopPropagation(); setShowMcpMenu(false); setShowModelMenu(!showModelMenu); }}
+                >
+                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>Switch model...</span>
+                  <span className="am-item-right">{models.find(m => m.value === modelVal)?.label || "Sonnet"}</span>
+                </button>
+                {showModelMenu && (
+                  <div className="am-submenu">
+                    <div className="am-section-label" style={{ marginBottom: '4px' }}>Select a model</div>
+                    {models.filter(m => !m.disabled).map(m => (
+                      <button key={m.value} className="am-item" style={{ padding: '8px 12px' }} onClick={(e) => { e.stopPropagation(); if (setModelVal) setModelVal(m.value); setShowModelMenu(false); }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+                          <span style={{ display: 'flex', justifyContent: 'space-between' }}>
+                            {m.label} {m.value === modelVal && <span>✓</span>}
+                          </span>
+                          <span className="am-item-desc">Efficient for routine tasks</span>
+                        </div>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+              <button className="am-item" onClick={(e) => { e.stopPropagation(); setPickerEffort((pickerEffort + 1) % 3); }}>
+                <span>Effort ({pickerEffort === 0 ? "Low" : pickerEffort === 1 ? "Medium" : "High"})</span>
+                <span className="am-item-right">
+                  <div className="am-slider">
+                    <div className={"am-slider-dot" + (pickerEffort >= 0 ? " active" : "")}></div>
+                    <div className={"am-slider-dot" + (pickerEffort >= 1 ? " active" : "")}></div>
+                    <div className={"am-slider-dot" + (pickerEffort >= 2 ? " active" : "")}></div>
+                  </div>
+                </span>
+              </button>
+
+              <div className="am-section-label" style={{ marginTop: '8px' }}>Connection</div>
+              <div style={{ position: 'relative' }}>
+                <button
+                  className={"am-item" + (showMcpMenu ? " active" : "")}
+                  onClick={(e) => { e.stopPropagation(); setShowModelMenu(false); setShowMcpMenu(!showMcpMenu); }}
+                >
+                  <span>MCP</span>
+                  <span className="am-item-right">
+                    <span>Manage servers</span>
+                    <span style={{ fontSize: '10px' }}>▶</span>
+                  </span>
+                </button>
+                {showMcpMenu && (
+                  <div className="am-submenu">
+                    <div className="am-section-label" style={{ marginBottom: '4px' }}>Select an MCP connection</div>
+                    {pickerMcp.map(srv => (
+                      <button key={srv.id} className="am-item" style={{ padding: '8px 12px' }} onClick={(e) => { e.stopPropagation(); setPickerMcp(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item)); }}>
+                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+                          <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                            <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
+                            {srv.active ? (
+                              <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
+                            ) : (
+                              <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
+                            )}
+                          </span>
+                          <span className="am-item-desc">{srv.desc}</span>
+                        </div>
+                      </button>
+                    ))}
+                    <div style={{ padding: '8px 12px', borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
+                      <span style={{ fontSize: '11px', color: '#b594f5', cursor: 'pointer', fontWeight: 500 }}>+ Add custom MCP server (JSON)...</span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            </div>
+          )}
+          <div className="picker-input-area">
+            {attachments.length > 0 && (
+              <div className="composer-attachments" style={{ paddingBottom: '10px' }}>
+                {attachments.map((a) => (
+                  <div key={a.id} className="composer-attachment-item">
+                    {a.previewUrl ? (
+                      <img src={a.previewUrl} className="composer-attachment-icon" alt="" />
+                    ) : (
+                      <div className="composer-attachment-icon">{a.name.slice(0, 2).toUpperCase()}</div>
+                    )}
+                    <div className="composer-attachment-name" style={{ fontSize: "9px", width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{a.name}</div>
+                    <button className="composer-attachment-remove" onClick={() => onRemoveAttachment(a.id)}>×</button>
+                  </div>
+                ))}
+              </div>
+            )}
+            <textarea
+              ref={taRef}
+              className="picker-textarea"
+              rows={1}
+              placeholder="Apa yang ingin kamu buat hari ini?"
+              value={text}
+              onChange={e => { setText(e.target.value); grow(); }}
+              onKeyDown={e => { if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); submit(); } }}
+            />
+            <div className="picker-toolbar">
+              <button className={"picker-plus-btn" + (menu ? " open" : "")} onClick={() => setMenu(m => !m)}>
+                <PickerPlusIcon />
+              </button>
+              <button className="picker-send-btn" onClick={submit} disabled={!text.trim() && attachments.length === 0}>
+                <PickerSendIcon />
+              </button>
+            </div>
+          </div>
+          <div className="picker-divider" />
+          <button className="picker-bottom">
+            <PickerMonitorIcon /> Local <PickerChevIcon size={11} />
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   // Melaporkan ke index.html bahwa App berhasil dirender tanpa Runtime Error
   useEffect(() => {
     if (window.reportAppSuccess) window.reportAppSuccess();
   }, []);
+  const [pickerDone, setPickerDone] = useState(false);
+  const [selectedProject, setSelectedProject] = useState("resilient-bose");
   const [hitlRequest, setHitlRequest] = React.useState(null);
   window.testHitl = function() {
     setHitlRequest({
@@ -6725,7 +7144,20 @@ function App() {
   };
 
   return (
-    <div className={"app has-sidebar" + (sbCollapsed ? " sb-collapsed" : "")}>
+    <>
+      <div className={"app has-sidebar" + (sbCollapsed ? " sb-collapsed" : "")}>
+      {!pickerDone && (
+        <ProjectPickerScreen
+          models={models}
+          modelVal={modelVal}
+          setModelVal={setModelVal}
+          onStart={(msg, project) => {
+            setSelectedProject(project);
+            setPickerDone(true);
+            setTimeout(() => doSend(msg), 0);
+          }}
+        />
+      )}
       <Sidebar
         collapsed={sbCollapsed}
         setCollapsed={setSbCollapsed}
@@ -6762,6 +7194,7 @@ function App() {
         }}
       />
       <div className="page-container">
+
         <div
           className={"page chat-page " + (view === "chat" ? "active" : "exit")}
         >
@@ -6881,10 +7314,10 @@ function App() {
                   style={{ flex: "0 0 " + panelPct + "%", background: "var(--surface-1)", display: "flex", flexDirection: "column" }}
                 >
                   <div style={{ height: "46px", borderBottom: "1px solid var(--line)", padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
-
-
                   </div>
-                  <div style={{ flex: 1, padding: "16px", overflowY: "auto", color: "var(--text-soft)", fontSize: "14px" }}>
+                  <div style={{ flex: 1, padding: "16px", overflowY: "auto", color: "var(--text-soft)", fontSize: "14px", position: "relative" }}>
+
+
 
                   </div>
                 </div>
@@ -6946,6 +7379,7 @@ function App() {
         </div>
       </div>
     </div>
+    </>
   );
 }
 /* ============================================================
@@ -7935,11 +8369,16 @@ class ErrorBoundary extends React.Component {
   componentDidCatch(error, errorInfo) {
     console.error("ErrorBoundary caught a Runtime Error:", error, errorInfo);
     this.setState({ error, errorInfo });
-    // Rekam error di sessionStorage agar index.html bisa menampilkannya setelah reload
-    sessionStorage.setItem('wolfspace_rollback_error', (error ? error.toString() : 'Unknown Error') + "\n" + (errorInfo && errorInfo.componentStack ? errorInfo.componentStack : ''));
-    // Beri tahu index.html untuk melakukan Auto-Rollback dengan memuat ulang menggunakan memori cache
-    if (window.location.search.indexOf('rollback=true') === -1) {
-      window.location.replace('/?rollback=true');
+    // Rekam error + picu Auto-Rollback lewat guard terpusat di index.html
+    // (triggerAppRollback punya anti-loop: tidak reload berulang jika versi aman pun error)
+    const errText = (error ? error.toString() : 'Unknown Error') + "\n" + (errorInfo && errorInfo.componentStack ? errorInfo.componentStack : '');
+    if (window.triggerAppRollback) {
+      window.triggerAppRollback('[ErrorBoundary] ' + errText);
+    } else {
+      sessionStorage.setItem('wolfspace_rollback_error', errText);
+      if (window.location.search.indexOf('rollback=true') === -1) {
+        window.location.replace('/?rollback=true');
+      }
     }
   }
   render() {
