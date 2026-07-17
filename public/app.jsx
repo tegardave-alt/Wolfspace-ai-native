@@ -5333,6 +5333,9 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       <input type="file" id="picker-folder-upload" webkitdirectory="true" directory="true" multiple style={{ display: "none" }} onChange={handleAttachmentSelect} />
       <input type="file" id="picker-workspace-folder-input" webkitdirectory="true" directory="true" multiple style={{ display: "none" }} onChange={handleWorkspaceFolderSelect} />
       <div className="project-picker-inner">
+        <div className="picker-brand-mark">
+          <Icon.wolf />
+        </div>
         <div className="picker-ws-wrap" ref={wrapRef}>
           <button className="picker-workspace-btn" onClick={() => setDropOpen(o => !o)}>
             {project === "Quick Start" ? (

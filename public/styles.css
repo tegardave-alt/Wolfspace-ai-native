@@ -5009,6 +5009,18 @@ img.ar-fs-icon {
   gap: 14px;
   transform: translateY(45px);
 }
+.picker-brand-mark {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  margin-bottom: 4px;
+}
+.picker-brand-mark svg {
+  width: 56px;
+  height: 56px;
+  color: var(--text, #e6edf3);
+  opacity: 0.92;
+}
 .picker-ws-wrap { position: relative; display: inline-block; }
 .picker-workspace-btn {
   display: inline-flex;
