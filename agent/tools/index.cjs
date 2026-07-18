@@ -341,10 +341,25 @@ async function runSelfTool(name, args, emit, context = {}) {
       return { ok: true, edited: true, output: 'replace_file_content (Verify-Then-Commit) ' + args.path + ' (' + oldStr.length + '->' + patched.length + ' b, sintaks OK)' };
     }
     if (name === 'write_artifact') {
+      // Validasi: jangan pernah menulis "# undefined\n\nundefined" lalu melapor sukses.
+      // Args kosong biasanya berarti JSON argumen gagal parse (content besar terpotong).
+      const title = (args.title || '').trim();
+      const content = (args.content || '').trim();
+      if (!title || !content) {
+        return { ok: false, output: 'GAGAL menulis artifact: title/content kosong (kemungkinan argumen tidak lengkap atau JSON terpotong). JANGAN anggap berhasil — panggil ulang write_artifact dengan title DAN content terisi.' };
+      }
       const artifactDir = path.join(QROOT, 'artifacts');
       if (!fs.existsSync(artifactDir)) fs.mkdirSync(artifactDir, { recursive: true });
-      const dest = path.join(artifactDir, (args.filename || 'artifact.md').replace(/[\\/]/g, ''));
-      fs.writeFileSync(dest, `# ${args.title}\n\n${args.content}`, 'utf8');
+      // Turunkan filename dari title bila tak diberikan, supaya artifact berbeda tidak
+      // saling menimpa ke "artifact.md" default yang sama.
+      let fname = (args.filename || '').replace(/[\\/]/g, '').trim();
+      if (!fname) {
+        const slug = title.toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-+|-+$/g, '').slice(0, 40) || 'artifact';
+        fname = slug + '.md';
+      }
+      if (!/\.md$/i.test(fname)) fname += '.md';
+      const dest = path.join(artifactDir, fname);
+      fs.writeFileSync(dest, `# ${title}\n\n${content}`, 'utf8');
       return { ok: true, edited: true, output: `Artifact created successfully at ${dest}` };
     }
     if (name === 'write') {

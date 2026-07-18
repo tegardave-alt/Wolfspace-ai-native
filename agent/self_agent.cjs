@@ -609,7 +609,20 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         
         const runOne = async (tc) => {
           let args = {};
-          try { args = JSON.parse(tc.function.arguments || '{}'); } catch (_) {}
+          const rawArgs = tc.function.arguments || '';
+          if (rawArgs.trim()) {
+            try {
+              args = JSON.parse(rawArgs);
+            } catch (e) {
+              // JSON argumen gagal parse (mis. content besar yang ter-truncate). JANGAN
+              // jalankan tool dengan args kosong — itulah yang membuat write_artifact
+              // menulis "undefined" lalu melapor sukses (halusinasi). Kembalikan error
+              // agar model mengirim ulang JSON yang valid & ringkas.
+              const out = `[ERROR: argumen untuk tool "${tc.function.name}" bukan JSON valid (kemungkinan terpotong). JANGAN anggap berhasil. Kirim ulang pemanggilan dengan JSON yang benar; untuk konten panjang, persingkat. Detail: ${(e.message || '').slice(0, 80)}]`;
+              emit({ t: 'act', kind: tc.function.name, arg: '', ok: false, output: out });
+              return { out };
+            }
+          }
 
           // Emit thought only when this tool actually executes
           if (args.rencana_tindakan) {
