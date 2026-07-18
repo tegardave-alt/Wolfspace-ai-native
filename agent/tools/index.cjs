@@ -43,6 +43,8 @@ try { execTools = require('./exec-tools.cjs'); } catch (e) { _modLoadErrors['exe
 let _diskTools = null, _webTools = null, _skillTools = null, _broker = null;
 function lazyDisk() { return _diskTools || (_diskTools = _ensureMod('disk-tools', './disk-tools.cjs')) || {}; }
 function lazyWeb()  { return _webTools  || (_webTools  = _ensureMod('web-tools',  './web-tools.cjs'))  || {}; }
+let _archTools = null;
+function lazyArch() { return _archTools || (_archTools = _ensureMod('arch-tools', './arch-tools.cjs')) || {}; }
 function lazySkill() { return _skillTools || (_skillTools = _ensureMod('skill-tools', './skill-tools.cjs')) || {}; }
 function lazyBroker() { return _broker || (_broker = _ensureMod('broker', '../broker/index.cjs')) || {}; }
 
@@ -582,6 +584,11 @@ async function runSelfTool(name, args, emit, context = {}) {
       if (!args.id) return { ok: false, output: 'parameter id wajib' };
       const ok = term.destroy(args.id);
       return { ok, output: ok ? 'session closed: ' + args.id : 'session not found: ' + args.id };
+    }
+    if (name === 'architecture_map') {
+      const m = lazyArch();
+      if (!m.architectureMap) return { ok: false, output: 'arch-tools tidak termuat' };
+      try { return m.architectureMap(args); } catch (e) { return { ok: false, output: 'architecture_map error: ' + e.message }; }
     }
     if (name === 'web_search') return webSearch(args.query).then(r => ({ ok: true, output: r }), e => ({ ok: false, output: e.message }));
     if (name === 'web_fetch')  return webFetch(args.url).then(r => ({ ok: true, output: r }), e => ({ ok: false, output: e.message }));

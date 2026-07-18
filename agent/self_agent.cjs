@@ -83,6 +83,17 @@ function stripToolRecap(text) {
 function truncateToConcise(text, maxChars = 2000) {
   if (!text) return text;
   if (text.length <= maxChars) return text;
+  // Jangan memotong di tengah blok berpagar (```mermaid / ```code) — itu merusak
+  // fence penutup sehingga diagram/kode gagal dirender. Kalau ada jumlah fence yang
+  // seimbang, perpanjang batas sampai setelah fence penutup terakhir agar blok utuh.
+  const fences = (text.match(/```/g) || []).length;
+  if (fences >= 2 && fences % 2 === 0) {
+    const lastFence = text.lastIndexOf('```');
+    const nl = text.indexOf('\n', lastFence);
+    const keepTo = nl === -1 ? text.length : nl + 1;
+    if (keepTo <= maxChars) return text.slice(0, maxChars).trim() + '...';
+    return text.slice(0, keepTo).trim();
+  }
   return text.slice(0, maxChars).trim() + '...';
 }
 
@@ -300,7 +311,7 @@ const _sessionState = globalThis.__wolfspaceSessionState || (globalThis.__wolfsp
 // --- PHASED EXECUTION TREE HELPERS ---
 // Map a tool name to its execution phase for the visual tree.
 function phaseForTool(name) {
-  const observe = /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|mcp_[a-z0-9_]+)$/i;
+  const observe = /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|architecture_map|mcp_[a-z0-9_]+)$/i;
   const act = /^(edit|write|bash|exec|task|replace_file_content|write_artifact)$/i;
   if (observe.test(name)) return 'observe';
   if (act.test(name)) return 'act';
@@ -439,6 +450,11 @@ async function selfAgentStream(payload, emit, ctl = {}) {
 ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab langsung ke inti." : (effortLevel === 2 ? "Fokus pada analisis mendalam, RCA secara kritis, dan verifikasi silang semua bukti." : "Lakukan investigasi standar secara terukur.")}`;
   const MAX_STEPS = effortLevel === 0 ? 6 : (effortLevel === 2 ? 20 : 14);
   let edits = 0;
+  // Diagram Mermaid dari architecture_map: DIAGRAM adalah jawabannya. Prompt menyuruh
+  // model ringkas & jangan copy output tool, jadi ia sering tak menempel blok mermaid.
+  // Kita simpan blok terakhir lalu tempelkan otomatis di finalisasi bila summary tak
+  // memuatnya — supaya diagram selalu terender, tak bergantung kepatuhan model.
+  let lastArchMermaid = null;
   let fallbackCount = 0;
   let forceRetryCount = 0;
   // Session state persists across HITL resumes (keyed by thread_id)
@@ -480,7 +496,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 
   // --- INJEKSI CHAIN-OF-THOUGHT (CoT) ---
   // Inject rencana_tindakan for all tools: required for modifying tools, optional for read-only.
-  const READ_ONLY_TOOLS = ['grep', 'read', 'glob', 'list', 'web_search', 'web_fetch',
+  const READ_ONLY_TOOLS = ['grep', 'read', 'glob', 'list', 'architecture_map', 'web_search', 'web_fetch',
     'question', 'todowrite', 'skill_list', 'terminal_read'];
   currentTools = currentTools.map(t => {
     const newTool = JSON.parse(JSON.stringify(t));
@@ -636,7 +652,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           // non-trivial task — killing the run at the 6th `read` was a false positive
           // that also made the readFileCount>=8 notice below unreachable. Identical-args
           // loops are still caught for every tool by the callCounts[sig] check above.
-          const isReadOnlyTool = /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|terminal_read|skill_list|mcp_[a-z0-9_]+)$/i.test(tc.function.name);
+          const isReadOnlyTool = /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|architecture_map|terminal_read|skill_list|mcp_[a-z0-9_]+)$/i.test(tc.function.name);
           if (!isReadOnlyTool && callCountsByName[tc.function.name] > 5) return { stop: true, reason: 'tool_name_loop' }; // same action-tool > 5x: hard stop
 
           if (/^(edit|write|replace_file_content|write_artifact)$/i.test(tc.function.name)) ensureBackup();
@@ -648,6 +664,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           // the catch-block's rollback guard reads — without this it stays 0 forever
           // and a crash after successful edits would always roll them back.
           if (r.edited) { localEdits++; edits++; }
+          if (tc.function.name === 'architecture_map' && r.ok) {
+            const mm = (r.output || '').match(/```mermaid[\s\S]*?```/);
+            if (mm) lastArchMermaid = mm[0];
+          }
           // Rekam bukti edit yang kaya untuk hallucination guard: apakah tool edit
           // benar-benar SUKSES (ok) dan berapa byte isi yang ditulis. "undefined"
           // atau konten kosong -> bytes 0 -> tak bisa menopang klaim "sudah ditulis".
@@ -904,6 +924,14 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         fallback = sanitizeOutput(fallback);
         fallback = stripToolRecap(fallback);
         fallback = truncateToConcise(fallback, 2000);
+        // Jaring pengaman: pastikan diagram architecture_map ikut terkirim (terender di UI)
+        // walau model tak menempelnya, atau menempel PARSIAL (fence pembuka tanpa penutup —
+        // sering terjadi saat model meringkas/memotong sendiri). Ditambahkan SETELAH
+        // truncation agar blok utuh.
+        if (lastArchMermaid && !/```mermaid[\s\S]*?```/.test(fallback)) {
+          fallback = fallback.replace(/```mermaid[\s\S]*$/i, '').trim(); // buang fence parsial
+          fallback = (fallback && fallback !== '(tidak ada respons dari model)' ? fallback + '\n\n' : '') + lastArchMermaid;
+        }
         
         if (state.failedTools.size < SYSTEM_RULES.MIN_FAILED_TOOLS && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.some(t => state.failedTools.has(t))) {
           const nextTool = SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.find(t => !state.failedTools.has(t));
