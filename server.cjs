@@ -513,7 +513,7 @@ function isBrowserJs(code) {
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Execution sandbox (Docker) Ã¢â‚¬â€ gate #1 for serving untrusted/other-user code Ã¢â€â‚¬Ã¢â€â‚¬
-const SANDBOX_IMAGE = "WOLFSPACE-sandbox";
+const SANDBOX_IMAGE = "wolfspace-sandbox"; // Docker requires lowercase repo names
 function hasDocker() {
   try {
     execSync("docker version", { stdio: "ignore", timeout: 8000 });

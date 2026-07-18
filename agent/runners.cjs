@@ -146,7 +146,7 @@ function isBrowserJs(code) {
 // -------------------------------------------------------------------
 // Sandbox execution (Docker) – optional, based on config
 // -------------------------------------------------------------------
-const SANDBOX_IMAGE = "WOLFSPACE-sandbox";
+const SANDBOX_IMAGE = "wolfspace-sandbox"; // Docker requires lowercase repo names
 function hasDocker() {
   try {
     execSync("docker version", { stdio: "ignore", timeout: 8000 });

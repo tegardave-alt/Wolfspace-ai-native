@@ -14,7 +14,7 @@ runs Python/JavaScript code like this instead of natively:
 ```
 docker run --rm --network none --memory 256m --memory-swap 256m \
   --cpus 0.5 --pids-limit 128 --read-only --tmpfs /tmp:size=16m \
-  -v <tempdir>:/code:ro -w /code WOLFSPACE-sandbox sh -c "python /code/main.py"
+  -v <tempdir>:/code:ro -w /code wolfspace-sandbox sh -c "python /code/main.py"
 ```
 
 - `--network none` — no internet / no LAN access
