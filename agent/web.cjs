@@ -1,7 +1,6 @@
 // Web search + fetch for WOLFSPACE agent
 const https = require('https');
 const http = require('http');
-const { execSync, exec } = require('child_process'); // exec dipakai _fetchWithEdge (dulu tak diimpor -> web_fetch selalu "exec is not defined")
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -24,65 +23,75 @@ function _get(opts) {
 const UA = 'QuantumAgent/1.0';
 function trunc(s, n) { s = String(s||''); return s.length <= n ? s : s.slice(0, n) + '…'; }
 
-// ── Find Microsoft Edge binary ──
-function findEdge() {
-  const candidates = [
-    'C:\\Program Files (x86)\\Microsoft\\Edge\\Application\\msedge.exe',
-    'C:\\Program Files\\Microsoft\\Edge\\Application\\msedge.exe',
-    process.env['ProgramFiles(x86)'] + '\\Microsoft\\Edge\\Application\\msedge.exe',
-    process.env.ProgramFiles + '\\Microsoft\\Edge\\Application\\msedge.exe',
-    process.env.LOCALAPPDATA + '\\Microsoft\\Edge\\Application\\msedge.exe',
-  ];
-  for (const c of candidates) { if (fs.existsSync(c)) return c; }
-  return null;
-}
-const EDGE = findEdge();
-// Profil Edge terdedikasi & PERSISTEN untuk headless. Terisolasi dari profil default
-// user (jadi tak menyentuh cookie/history/login mereka, dan tak bentrok dengan Edge
-// yang sedang mereka buka), tapi persisten -> hangat setelah panggilan pertama
-// (cold-start ~15s hanya sekali, berikutnya jauh lebih cepat).
-const EDGE_PROFILE = path.join(os.tmpdir(), 'wolfspace-edge-profile');
+// ── Playwright headless (mesin scraping utama) ──
+// Lebih andal dari Edge `--dump-dom`: menunggu konten ter-render, ekstrak via selector
+// DOM sungguhan, dan pakai browser Chromium bundel Playwright sendiri (bukan Edge user,
+// jadi tak menyentuh profil/cookie/login mereka). Browser di-launch sekali lalu dipakai
+// ulang (singleton), dan ditutup otomatis setelah idle agar tak membocorkan proses.
+const BROWSER_UA = 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36';
+const BROWSER_IDLE_MS = 3 * 60 * 1000;
+let _pw = null, _browser = null, _browserPromise = null, _idleTimer = null;
 
-// ── Dump raw DOM via Edge headless (untuk parsing hasil pencarian nyata) ──
-// PENTING: pakai --user-data-dir sementara & unik. Tanpa itu, Edge headless memakai
-// profil default yang SAMA dengan Edge milik user yang sedang terbuka → bentrok
-// (timeout) dan berisiko menyentuh data browsing user. Dibersihkan setelah selesai.
-function _edgeDumpRaw(urlStr, timeoutMs) {
-  return new Promise((resolve, reject) => {
-    if (!EDGE) return reject(new Error('Edge tidak tersedia'));
-    exec(
-      `"${EDGE}" --headless=new --disable-gpu --no-sandbox --user-data-dir="${EDGE_PROFILE}" --dump-dom --virtual-time-budget=8000 "${urlStr}"`,
-      { timeout: timeoutMs || 15000, encoding: 'utf8', windowsHide: true, maxBuffer: 12 * 1024 * 1024 },
-      (error, stdout) => {
-        if (error && !stdout) return reject(error);
-        resolve(stdout || '');
-      }
-    );
-  });
+function _loadPw() {
+  if (_pw !== null) return _pw;
+  try { _pw = require('playwright'); } catch (_) { _pw = false; }
+  return _pw;
 }
-
-// ── Real web search via Bing SERP (Edge headless bypasses bot detection) ──
-// Ini yang sebelumnya HILANG: tanpa sumber web umum, satu-satunya sumber yang
-// selalu mengembalikan sesuatu adalah npm (fuzzy-match) — jadi query non-teknis
-// seperti "gaji AI engineer" dijawab dengan paket npm acak. Bing mengembalikan
-// hasil web sesungguhnya.
-async function _bingSearch(query) {
-  const url = 'https://www.bing.com/search?q=' + encodeURIComponent(query) + '&setlang=id&count=8';
-  // Bound 12s: Edge headless bisa lambat/flaky. Kalau tak balas cepat, biar
-  // fallback ke sumber lain daripada menggantung lama. Best-effort, bukan andalan.
-  const html = await _edgeDumpRaw(url, 12000);
-  const results = [];
-  const strip = s => String(s || '')
-    .replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'")
-    .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim();
-  const blocks = html.split(/<li class="b_algo"/).slice(1);
-  for (const blk of blocks.slice(0, 6)) {
-    const href = (blk.match(/<h2>\s*<a[^>]+href="([^"]+)"/i) || [])[1];
-    const title = strip((blk.match(/<h2>\s*<a[^>]+>([\s\S]*?)<\/a>/i) || [])[1]);
-    const snip = trunc(strip((blk.match(/<p[^>]*>([\s\S]*?)<\/p>/i) || [])[1]), 260);
-    if (title && href) results.push(`**${trunc(title, 90)}** [web]\n   ${href}\n   ${snip}`);
+function _touchIdle() {
+  if (_idleTimer) clearTimeout(_idleTimer);
+  _idleTimer = setTimeout(() => {
+    const b = _browser; _browser = null; _browserPromise = null;
+    if (b) b.close().catch(() => {});
+  }, BROWSER_IDLE_MS);
+  if (_idleTimer.unref) _idleTimer.unref(); // jangan menahan proses tetap hidup
+}
+async function _getBrowser() {
+  const pw = _loadPw();
+  if (!pw) throw new Error('playwright tidak tersedia');
+  if (_browser && _browser.isConnected()) { _touchIdle(); return _browser; }
+  if (!_browserPromise) {
+    _browserPromise = pw.chromium.launch({ headless: true })
+      .then(b => { _browser = b; b.on('disconnected', () => { _browser = null; _browserPromise = null; }); return b; })
+      .catch(e => { _browserPromise = null; throw e; });
   }
-  return results;
+  const b = await _browserPromise;
+  _touchIdle();
+  return b;
+}
+// Jalankan fn dengan satu context+page terisolasi, selalu dibersihkan.
+async function _withPage(fn, contextOpts) {
+  const browser = await _getBrowser();
+  const ctx = await browser.newContext({ userAgent: BROWSER_UA, ...(contextOpts || {}) });
+  const page = await ctx.newPage();
+  try { return await fn(page); }
+  finally { await ctx.close().catch(() => {}); }
+}
+
+// ── Real web search via Bing SERP (Playwright — tunggu render, ekstrak via selector) ──
+// Ini yang sebelumnya HILANG: tanpa sumber web umum, satu-satunya sumber yang selalu
+// mengembalikan sesuatu adalah npm (fuzzy-match) — jadi query non-teknis seperti
+// "gaji AI engineer" dijawab dengan paket npm acak. Bing memberi hasil web sungguhan.
+async function _bingSearch(query) {
+  // mkt + Accept-Language WAJIB: tanpa penanda locale yang jelas, Bing menebak lokasi
+  // klien datacenter dan menyajikan hasil region acak (mis. Korea/China) untuk query
+  // Indonesia. Dengan id-ID hasilnya relevan & konsisten.
+  return _withPage(async (page) => {
+    await page.goto('https://www.bing.com/search?q=' + encodeURIComponent(query) + '&mkt=id-ID',
+      { waitUntil: 'domcontentloaded', timeout: 20000 });
+    await page.waitForSelector('li.b_algo', { timeout: 8000 }).catch(() => {});
+    const items = await page.$$eval('li.b_algo', els => els.slice(0, 6).map(el => {
+      const a = el.querySelector('h2 a');
+      const cite = el.querySelector('cite');
+      const p = el.querySelector('.b_caption p, p');
+      return {
+        title: a ? a.innerText.trim() : '',
+        url: (cite && cite.innerText.trim()) || (a ? a.href : ''),
+        snippet: p ? p.innerText.trim() : ''
+      };
+    }));
+    return items.filter(r => r.title)
+      .map(r => `**${trunc(r.title, 90)}** [web]\n   ${trunc(r.url, 110)}\n   ${trunc(r.snippet, 260)}`);
+  }, { locale: 'id-ID', extraHTTPHeaders: { 'Accept-Language': 'id-ID,id;q=0.9,en-US;q=0.8' } });
 }
 
 // ── Web Search (multi-source) ──
@@ -90,7 +99,7 @@ async function webSearch(query) {
   const q = encodeURIComponent(query);
   const results = [];
 
-  // 0) HASIL WEB NYATA (Bing via Edge) — sumber utama untuk pertanyaan apa pun.
+  // 0) HASIL WEB NYATA (Bing via Playwright) — sumber utama untuk pertanyaan apa pun.
   try { const web = await _bingSearch(query); results.push(...web); } catch (_) {}
 
   // 1) StackExchange
@@ -148,8 +157,8 @@ async function webSearch(query) {
 }
 
 // ── Web Fetch ──
-// Uses Microsoft Edge headless mode as primary engine (bypasses bot detection).
-// Falls back to raw HTTPS request if Edge is not available.
+// Playwright headless sebagai mesin utama (menunggu render, ambil innerText bersih).
+// Fallback ke HTTPS mentah kalau Playwright/Chromium tak tersedia atau gagal.
 let activeFetches = 0;
 let lastFetchTime = 0;
 async function webFetch(urlStr) {
@@ -159,8 +168,9 @@ async function webFetch(urlStr) {
   if (activeFetches >= 3) return Promise.reject(new Error('RATE_LIMIT: Terlalu banyak request (max 3)'));
   activeFetches++;
   try {
-    if (EDGE) {
-      return await _fetchWithEdge(urlStr);
+    if (_loadPw()) {
+      try { return await _fetchWithPlaywright(urlStr); }
+      catch (_) { return await _fetchWithHttp(urlStr); } // Playwright gagal -> HTTP mentah
     }
     return await _fetchWithHttp(urlStr);
   } finally {
@@ -168,41 +178,16 @@ async function webFetch(urlStr) {
   }
 }
 
-function _fetchWithEdge(urlStr) {
-  // Async via exec (not execSync) to avoid blocking the event loop
-  return new Promise((resolve, reject) => {
-    // Profil terdedikasi persisten: isolasi dari Edge user + hangat setelah call pertama.
-    exec(
-      `"${EDGE}" --headless=new --disable-gpu --no-sandbox --user-data-dir="${EDGE_PROFILE}" --dump-dom --virtual-time-budget=10000 "${urlStr}"`,
-      { timeout: 25000, encoding: 'utf8', windowsHide: true, maxBuffer: 12 * 1024 * 1024 },
-      (error, stdout) => {
-        if (error) {
-          // Edge headless failed — fall back to raw HTTP
-          return _fetchWithHttp(urlStr).then(resolve, reject);
-        }
-        let body = stdout || '';
-        if (!body.trim()) return resolve('(halaman kosong)');
-        body = body
-          .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, '')
-          .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, '')
-          .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, '')
-          .replace(/<br\s*\/?>/gi, '\n')
-          .replace(/<\/p>/gi, '\n\n')
-          .replace(/<\/h[1-6]>/gi, '\n\n')
-          .replace(/<\/li>/gi, '\n')
-          .replace(/<[^>]+>/g, '')
-          .replace(/&amp;/g, '&')
-          .replace(/&lt;/g, '<')
-          .replace(/&gt;/g, '>')
-          .replace(/&quot;/g, '"')
-          .replace(/&#39;/g, "'")
-          .replace(/&nbsp;/g, ' ')
-          .replace(/\n{3,}/g, '\n\n')
-          .replace(/[ \t]+\n/g, '\n')
-          .trim();
-        resolve(trunc(body, 8000) || '(konten kosong)');
-      }
-    );
+async function _fetchWithPlaywright(urlStr) {
+  return _withPage(async (page) => {
+    await page.goto(urlStr, { waitUntil: 'domcontentloaded', timeout: 25000 });
+    await page.waitForTimeout(400); // beri sedikit waktu konten dinamis
+    let text = await page.evaluate(() => {
+      document.querySelectorAll('script,style,noscript,svg,head').forEach(e => e.remove());
+      return document.body ? document.body.innerText : '';
+    });
+    text = String(text || '').replace(/\n{3,}/g, '\n\n').replace(/[ \t]+\n/g, '\n').trim();
+    return trunc(text, 8000) || '(konten kosong)';
   });
 }
 
