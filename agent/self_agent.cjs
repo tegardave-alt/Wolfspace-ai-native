@@ -1007,9 +1007,18 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           toolResults.push({ tc: pendingTc, output: toolResult, edited: !!r.edited });
         }
         
-        // Build new messages: current history + all tool results, then continue graph fresh
+        // Build new messages: current history + all tool results, then continue graph fresh.
+        // The checkpoint's messages end with PLACEHOLDER tool responses ("Menunggu
+        // persetujuan user...") that were pushed for the pending calls when HITL fired.
+        // Appending the real results would leave TWO tool messages for the same
+        // tool_call_id — strict providers (deepseek et al.) reject that as an invalid
+        // sequence. Drop the placeholders first so each tool_call has exactly one response.
+        const pendingIds = new Set(pendingTools.map(tc => tc.id));
+        const historyWithoutPlaceholders = (savedState.messages || []).filter(
+          m => !(m.role === 'tool' && pendingIds.has(m.tool_call_id))
+        );
         const continuationMessages = [
-          ...savedState.messages,
+          ...historyWithoutPlaceholders,
           ...toolResults.map(({ tc, output }) => ({ role: 'tool', tool_call_id: tc.id, content: output }))
         ];
         
