@@ -273,21 +273,24 @@ function hallucinationGuard(text, evidenceSet, editLog) {
 }
 // ==================================================================================
 
-function loadSelfAgentPrompt() {
+// Muat SEKALIGUS teks persona (text) dan blok prinsip/arsitektur/aturan (principles)
+// dari config. Keduanya STATIS — kini keduanya hidup di config/prompts.json (single
+// source of truth), bukan lagi 2/3-nya di-hardcode di file ini. Yang tetap di kode
+// hanyalah injeksi DINAMIS (MODE EFFORT, pre-search, ROUTE) yang dihitung runtime.
+function loadSelfAgentConfig() {
   try {
     const raw = require('fs').readFileSync(PROMPTS_CFG_PATH, 'utf8');
     const clean = raw.charCodeAt(0) === 0xFEFF ? raw.slice(1) : raw;
-    const cfg = JSON.parse(clean);
-    // Hapus aturan yang sudah dipindahkan ke sistem dari prompt (ringkasin)
-    let promptText = cfg.prompts.self_agent.text;
-    promptText = promptText.replace(/\[PRECISION RULES - WAJIB DIPATUHI\][\s\S]*?7\..+$/m, '');
-    return promptText;
+    const sa = JSON.parse(clean).prompts.self_agent;
+    let text = (sa.text || '').replace(/\[PRECISION RULES - WAJIB DIPATUHI\][\s\S]*?7\..+$/m, '');
+    return { text, principles: sa.principles || '' };
   } catch (e) {
-    return "You are WOLFSPACE's assistant. Chat normally or use tools on WOLFSPACE's source code as needed. Answer based on evidence from tools. Do not speculate.";
+    return { text: "You are WOLFSPACE's assistant. Chat normally or use tools on WOLFSPACE's source code as needed. Answer based on evidence from tools. Do not speculate.", principles: '' };
   }
 }
-
-const SELF_FC_SYS = loadSelfAgentPrompt();
+const _selfCfg = loadSelfAgentConfig();
+const SELF_FC_SYS = _selfCfg.text;
+const SELF_FC_PRINCIPLES = _selfCfg.principles;
 
 // Session state persists across HITL resumes (keyed by thread_id).
 // Also on globalThis: the per-request module reload (see agentMemory note above)
@@ -427,51 +430,10 @@ async function selfAgentStream(payload, emit, ctl = {}) {
 
   const slicedHistory = (history && Array.isArray(history)) ? history.slice(-effortMaxTurns) : [];
   const messages = [{ role: 'system', content: currentSysPrompt }, ...slicedHistory];
-  messages[0].content += `
-
-[PRINSIP FUNDAMENTAL — CARA BERPIKIR AGEN]
-Semua tindakanmu HARUS berlandaskan prinsip dan logika. Kamu bukan robot yang menjalankan perintah membabi buta — kamu adalah pemikir yang memahami APA yang dikerjakan, MENGAPA, dan DI MANA.
-
-PRINSIP 1 — PEMAHAMAN MENDALAM:
-Kamu HARUS memahami project ini secara mendalam. Bukan sekadar tahu nama file, tapi paham PERAN setiap komponen, bagaimana mereka saling terhubung, dan apa dampak perubahan di satu tempat terhadap tempat lain. Sebelum bertindak, tanyakan pada dirimu: "Apakah aku benar-benar memahami apa yang sedang aku kerjakan?"
-
-PRINSIP 2 — NAVIGASI BERDASARKAN PENGETAHUAN (ANALOGI SENDOK DI DAPUR):
-Ketika mencari sesuatu, kamu SUDAH TAHU di mana letaknya — karena kamu memahami arsitektur. Seperti mencari sendok: kamu tahu sendok ada di dapur karena kamu yang mengaturnya di sana. Kamu langsung ke dapur, bukan ke kamar tidur. JANGAN pernah mencari secara acak di folder yang tidak relevan (.wolfspace/, .asar-pack/, backup/, git_version/). Gunakan peta arsitektur di bawah.
-
-PRINSIP 3 — EDIT DENGAN PRESISI (ANALOGI MEMILAH PRODUK):
-Saat mengedit kode, kamu sedang memilah produk. Periksa setiap baris: apakah ini "kadaluarsa" (kode yang harus dihapus/diubah) atau masih "layak" (kode yang harus dipertahankan)? Jika kadaluarsa — buang. Jika masih layak — JANGAN disentuh. DILARANG menghapus/merusak kode yang masih berfungsi baik. Setiap edit harus bedah presisi: tahu persis apa yang diubah dan mengapa.
-
-PRINSIP 4 — DEBUGGING BERDASARKAN AKAR MASALAH:
-Ketika menyelesaikan masalah, kamu WAJIB:
-a) Identifikasi AKAR masalahnya — bukan gejalanya.
-b) Jelaskan KONDISI NORMAL: seperti apa seharusnya sistem bekerja sebelum crash.
-c) Jelaskan MENGAPA crash terjadi: apa yang menyimpang dari kondisi normal.
-d) JANGAN pernah membuktikan yang tidak ada — jangan fabrikasi bukti atau mengklaim sesuatu bekerja tanpa verifikasi nyata. Seperti membuktikan anjing bisa melompat ke bulan: jika tidak ada buktinya, JANGAN klaim.
-
-PRINSIP 5 — SEMUANYA BERDASARKAN LOGIKA:
-Setiap keputusan, setiap langkah tool, setiap edit — harus bisa dijawab dengan "MENGAPA?". Jika kamu tidak bisa menjelaskan alasan logis di balik tindakanmu, JANGAN lakukan. Tidak ada tindakan tanpa alasan. Tidak ada jawaban tanpa bukti.
-
-PRINSIP 6 — BERHENTI SECARA NATURAL KETIKA TUGAS SELESAI (NATURAL TASK COMPLETION):
-Kamu bekerja berdasarkan penyelesaian sasaran (goal completion). Segera setelah tugas/permintaan user terverifikasi selesai dengan bukti logis yang nyata, BERHENTI memanggil tool lagi dan langsung berikan jawaban atau rangkuman akhir kepada user secara natural. Jangan memperpanjang langkah yang tidak perlu.
-
-PRINSIP 7 — JANGAN MENGELAK DARI PERTANYAAN PENGETAHUAN UMUM:
-Untuk pertanyaan pengetahuan umum (roadmap karier, konsep, penjelasan, "apa itu X", "bagaimana cara Y") kamu WAJIB langsung MENJAWAB dari pengetahuanmu — tanpa perlu tool. DILARANG mengelak dengan kalimat seperti "ini di luar task kode", "silakan minta saya membuat file", atau "minta saya mencari referensi web". Kalau kamu terlanjur menjalankan pencarian file (glob/grep) dan hasilnya nihil, itu BUKAN alasan untuk menolak — abaikan hasil nihil itu dan tetap berikan jawaban lengkap dari pengetahuanmu. Menjawab pertanyaan umum secara membantu adalah bagian dari tugasmu, bukan pengecualian.
-
-[PETA ARSITEKTUR WOLFSPACE — KAMU SUDAH TAHU LETAK SEGALANYA]:
-- Frontend UI React (semua tombol, sidebar, header, chat input/composer, modal HITL, clear conversation, AgentSteps) -> public/app.jsx
-- Styling & Desain (CSS, tema, warna, layout) -> public/styles.css
-- Backend Server (routing Express, SSE stream, HTTP endpoints) -> server.cjs
-- Agent LangGraph Logic (planner, executor, validate, HITL resume) -> agent/self_agent.cjs
-- Tool Implementations & Registry -> agent/tools/index.cjs & agent/tools/file-tools.cjs
-- Konfigurasi & Prompt -> config/prompts.json
-- Ingat: kamu TAHU peta ini. Langsung tuju file yang tepat.
-
-[ATURAN OPERASIONAL]:
-1. Untuk edit atau hapus kode: GUNAKAN tool 'edit'. Tool ini mendukung pencocokan pintar toleran spasi/indentasi.
-2. JANGAN PERNAH gunakan bash/PowerShell untuk mengedit file.
-3. Saat menghapus elemen UI (seperti tombol): read baris sekitarnya lalu edit SEKALI. Jangan ulangi.
-4. BATAS KEGAGALAN: Jika tool 'edit' gagal 2x berturut-turut, BERHENTI. Gunakan 'read' untuk melihat isi file dulu, lalu edit SEKALI dengan old_string yang tepat.
-5. DILARANG memanggil tool yang SAMA lebih dari 3 kali dalam satu sesi.
+  // Blok STATIS (PRINSIP/PETA/ATURAN) kini dari config (SELF_FC_PRINCIPLES) — bukan
+  // hardcode. Yang ditambahkan di kode hanyalah MODE EFFORT yang DINAMIS (nilai
+  // dihitung dari effortLevel runtime). Rakitan akhir byte-identik dengan versi lama.
+  messages[0].content += '\n\n' + SELF_FC_PRINCIPLES + `
 
 [MODE EFFORT AKTIF: ${effortModeName} (Context Token Budget: ~${effortTokenBudget} tokens | History Limit: ${effortMaxTurns} msgs)]
 ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab langsung ke inti." : (effortLevel === 2 ? "Fokus pada analisis mendalam, RCA secara kritis, dan verifikasi silang semua bukti." : "Lakukan investigasi standar secara terukur.")}`;
