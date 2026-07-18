@@ -1,0 +1,18 @@
+{
+  "server": {
+    "host": "0.0.0.0",
+    "port": 8090
+  },
+  "modelDir": "/data/models",
+  "llama": {
+    "threads": 2,
+    "ctxSize": 2048
+  },
+  "ghostPort": 8083,
+  "runners": {},
+  "models": [],
+  "verbose": true,
+  "eraser": {
+    "apiKey": ""
+  }
+}
