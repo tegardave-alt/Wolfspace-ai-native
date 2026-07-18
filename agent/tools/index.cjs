@@ -477,7 +477,11 @@ async function runSelfTool(name, args, emit, context = {}) {
         const customEnv = { ...process.env };
         try {
           const fs = require('fs');
-          const keysStr = fs.readFileSync(path.join(__dirname, '..', '..', 'cloud-keys.json'), 'utf8');
+          // Baca dari lokasi kunci yang benar (~/.wolfspace via keys-path.cjs). Path lama
+          // <project>/cloud-keys.json sudah dipindah keluar demi keamanan sesi lalu, jadi
+          // pembacaan lama SELALU gagal (ditelan catch) dan opencode_run kehilangan kunci.
+          const { resolveKeysPath } = require('../keys-path.cjs');
+          const keysStr = fs.readFileSync(resolveKeysPath(), 'utf8');
           const keys = JSON.parse(keysStr);
           if (keys.opencode?.key) customEnv['OPENCODE_API_KEY'] = keys.opencode.key;
           if (keys.anthropic?.key) customEnv['ANTHROPIC_API_KEY'] = keys.anthropic.key;
