@@ -136,14 +136,26 @@ function extractClaims(text) {
     claims.push({ type: 'file_location', value: m[1], raw: m[0] });
   }
 
-  // POLA B — Klaim keberadaan fungsi/variabel (misal: "fungsi handleClear", "variabel MAX_STEPS")
-  const symbolClaimRegex = /(?:fungsi|function|const|let|var|class|komponen|component)\s+([A-Za-z_$][A-Za-z0-9_$]{2,})/g;
+  // POLA B — Klaim keberadaan fungsi/variabel (misal: "fungsi handleClear", "variabel MAX_STEPS").
+  // Flag /i: tanpa itu, kalimat berawalan kapital ("Fungsi Xyz") lolos pemeriksaan sepenuhnya.
+  const symbolClaimRegex = /(?:fungsi|function|const|let|var|class|komponen|component)\s+([A-Za-z_$][A-Za-z0-9_$]{2,})/gi;
   while ((m = symbolClaimRegex.exec(text)) !== null) {
     claims.push({ type: 'symbol_existence', value: m[1], raw: m[0] });
   }
 
-  // POLA C — Klaim penyelesaian/keberhasilan tanpa bukti
-  const completionClaimRegex = /(?:sudah\s+(?:diperbaiki|diedit|diubah|dihapus|ditambahkan|berhasil)|(?:fix|edit|update|delete|remove|add)(?:ed|d)\s+successfully|berhasil\s+(?:diedit|diperbaiki|diubah))/gi;
+  // POLA C — Klaim penyelesaian/keberhasilan. Termasuk active-voice ("telah menulis",
+  // "berhasil membuat") supaya klaim seperti "Saya telah menulis roadmap" tertangkap —
+  // itu persis kalimat yang dulu lolos sambil file-nya berisi "undefined".
+  // Toleransi kata sisipan ("sudah SAYA perbaiki") + bentuk aktif-imperatif
+  // ("perbaiki", "tambahkan") selain pasif ("diperbaiki") dan active-progressive
+  // ("memperbaiki") — model memakai ketiganya bergantian.
+  const EDIT_VERB = '(?:menulis|tulis|membuat|buat|menyimpan|simpan|menambahkan|tambahkan|memperbaiki|perbaiki|mengubah|ubah|mengganti|ganti|menghapus|hapus|hilangkan|diperbaiki|diedit|diubah|dihapus|ditambahkan|ditulis|dibuat|disimpan)';
+  const completionClaimRegex = new RegExp(
+    '(?:sudah|telah)\\s+(?:(?:saya|kami|berhasil)\\s+){0,2}' + EDIT_VERB
+    + '|(?:fix|edit|updat|creat|writ|sav|delet|remov|add)(?:e)?(?:ed|d)\\s+successfully'
+    + '|berhasil\\s+(?:(?:saya|kami)\\s+)?' + EDIT_VERB,
+    'gi'
+  );
   while ((m = completionClaimRegex.exec(text)) !== null) {
     claims.push({ type: 'completion_claim', value: m[0], raw: m[0] });
   }
@@ -155,8 +167,11 @@ function extractClaims(text) {
  * Cross-reference klaim terhadap evidence nyata dari tool.
  * Return: { grounded: [...], hallucinated: [...] }
  */
-function crossReferenceWithEvidence(claims, evidenceSet, editCount) {
+function crossReferenceWithEvidence(claims, evidenceSet, editLog) {
   const evidenceText = [...evidenceSet].join('\n').toLowerCase();
+  const edits = Array.isArray(editLog) ? editLog : [];
+  const successfulEdits = edits.filter(e => e.ok);          // tool edit benar-benar sukses
+  const substantiveEdits = successfulEdits.filter(e => e.bytes > 0); // DAN menulis isi nyata
   const grounded = [];
   const hallucinated = [];
 
@@ -171,8 +186,17 @@ function crossReferenceWithEvidence(claims, evidenceSet, editCount) {
       // Symbol grounded jika muncul di output tool (grep/read)
       verified = evidenceText.includes(claim.value.toLowerCase());
     } else if (claim.type === 'completion_claim') {
-      // Klaim "selesai" hanya valid jika ada bukti edit yang berhasil (editCount > 0)
-      verified = editCount > 0;
+      // INTI PENGUATAN: "sebuah edit terjadi" != "edit itu benar & bermakna".
+      // Klaim penyelesaian TIDAK cukup dibuktikan oleh editCount>0 (menulis
+      // "undefined" pun dulu lolos). Sekarang:
+      //   - klaim penghapusan  -> butuh minimal 1 edit yang SUKSES (isi kosong sah)
+      //   - klaim menulis/buat -> butuh minimal 1 edit sukses yang MENULIS isi nyata
+      const isDeletion = /hapus|hilang|remov|delet/i.test(claim.raw);
+      if (isDeletion) {
+        verified = successfulEdits.length > 0;
+      } else {
+        verified = substantiveEdits.length > 0;
+      }
     }
 
     if (verified) {
@@ -199,9 +223,12 @@ function crossReferenceWithEvidence(claims, evidenceSet, editCount) {
  *
  * @returns {{ pass: boolean, verdict: 'clean'|'warn'|'block', hallucinated: Array, sanitized: string }}
  */
-function hallucinationGuard(text, evidenceSet, editCount) {
-  // TAHAP 1: Bypass jika tidak ada tool yang dijalankan (percakapan biasa)
-  if (!evidenceSet || evidenceSet.size === 0) {
+function hallucinationGuard(text, evidenceSet, editLog) {
+  // TAHAP 1: Bypass hanya jika BENAR-BENAR tak ada aktivitas tool: tak ada evidence
+  // baca/grep DAN tak ada edit. (Sebelumnya cuma cek evidenceSet — sebuah giliran
+  // yang murni mengedit tanpa membaca bisa lolos tanpa verifikasi klaim "selesai".)
+  const hasEdits = Array.isArray(editLog) && editLog.length > 0;
+  if ((!evidenceSet || evidenceSet.size === 0) && !hasEdits) {
     return { pass: true, verdict: 'clean', hallucinated: [], sanitized: text };
   }
 
@@ -214,7 +241,7 @@ function hallucinationGuard(text, evidenceSet, editCount) {
   }
 
   // TAHAP 3: Cross-reference dengan evidence
-  const { grounded, hallucinated } = crossReferenceWithEvidence(claims, evidenceSet, editCount);
+  const { grounded, hallucinated } = crossReferenceWithEvidence(claims, evidenceSet || new Set(), editLog);
 
   // TAHAP 4: Verdict
   const hallucinationRate = hallucinated.length / claims.length;
@@ -302,6 +329,10 @@ const AgentState = Annotation.Root({
   }),
   step: Annotation({ reducer: (x, y) => y, default: () => 1 }),
   edits: Annotation({ reducer: (x, y) => x + y, default: () => 0 }),
+  // Bukti edit yang kaya (bukan cuma hitungan): tiap entri {tool, target, ok, bytes}.
+  // Dipakai hallucination guard untuk memverifikasi klaim "selesai" berdasarkan
+  // edit yang BENAR-BENAR sukses & menulis isi nyata, bukan sekadar tool dipanggil.
+  editLog: Annotation({ reducer: (x, y) => x.concat(y), default: () => [] }),
   failedTools: Annotation({
     reducer: (x, y) => { const set = new Set(x); y.forEach(item => set.add(item)); return set; },
     default: () => new Set(),
@@ -606,6 +637,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         let localEdits = 0;
         const localAccessed = new Set();
         const localFailed = new Set();
+        const localEditLog = [];
         
         const runOne = async (tc) => {
           let args = {};
@@ -651,6 +683,19 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           // the catch-block's rollback guard reads — without this it stays 0 forever
           // and a crash after successful edits would always roll them back.
           if (r.edited) { localEdits++; edits++; }
+          // Rekam bukti edit yang kaya untuk hallucination guard: apakah tool edit
+          // benar-benar SUKSES (ok) dan berapa byte isi yang ditulis. "undefined"
+          // atau konten kosong -> bytes 0 -> tak bisa menopang klaim "sudah ditulis".
+          if (/^(edit|write|replace_file_content|write_artifact)$/i.test(tc.function.name)) {
+            const written = args.content != null ? String(args.content)
+                          : (args.new_string != null ? String(args.new_string) : '');
+            localEditLog.push({
+              tool: tc.function.name,
+              target: String(args.path || args.filename || args.title || ''),
+              ok: !!r.ok,
+              bytes: written.trim().length
+            });
+          }
           if (r.output) localAccessed.add(r.output);
           if (!r.ok && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)) localFailed.add(tc.function.name);
           
@@ -743,6 +788,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             messages: nonExecMessages,
             step: state.step + 1,
             edits: localEdits,
+            editLog: localEditLog,
             accessedEvidence: Array.from(localAccessed),
             failedTools: Array.from(localFailed),
             stopReason: 'hitl',
@@ -838,13 +884,14 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         sess.editFailCount = editFailCount;
         
         return {
-          messages: toolMessages, 
-          step: state.step + 1, 
-          edits: localEdits, 
+          messages: toolMessages,
+          step: state.step + 1,
+          edits: localEdits,
+          editLog: localEditLog,
           accessedEvidence: Array.from(localAccessed),
           failedTools: Array.from(localFailed),
-          stopReason, 
-          waitForAnswer, 
+          stopReason,
+          waitForAnswer,
           hitlPending: stopReason === "hitl",
           hitlApproved: state.hitlApproved, // Keep approval through the session (reset only on new user message)
           finalSummary: localSummary 
@@ -917,7 +964,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // Jangan sentuh jawaban sampai proses evaluasi selesai.
         // Jika jawaban mengandung halusinasi mayoritas → retry.
         // Jika minoritas → strip klaim palsu, kirim versi bersih.
-        const hGuard = hallucinationGuard(fallback, state.accessedEvidence, state.edits || 0);
+        const hGuard = hallucinationGuard(fallback, state.accessedEvidence, state.editLog || []);
         dlog('self', 'info', 'hallucination_guard', { verdict: hGuard.verdict, hallucinated: hGuard.hallucinated.length });
 
         if (hGuard.verdict === 'block') {
