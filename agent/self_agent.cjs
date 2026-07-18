@@ -319,7 +319,11 @@ const AgentState = Annotation.Root({
   hitlApproved: Annotation({ reducer: (x, y) => y, default: () => false }),
   pendingToolCall: Annotation({ reducer: (x, y) => y, default: () => null }),
   pendingToolCalls: Annotation({ reducer: (x, y) => y, default: () => [] }),
-  task_checklist: Annotation({ reducer: (x, y) => y, default: () => [] })
+  task_checklist: Annotation({ reducer: (x, y) => y, default: () => [] }),
+  // Plafon langkah untuk giliran ini. 0 = pakai MAX_STEPS default. Saat user memilih
+  // "lanjutkan" setelah jeda budget, plafon diperpanjang (bukan direset), sehingga
+  // langkah menjadi checkpoint "masih lanjut?" alih-alih tebing yang menggagalkan.
+  stepCeiling: Annotation({ reducer: (x, y) => y, default: () => 0 })
 });
 
 /**
@@ -329,7 +333,7 @@ const AgentState = Annotation.Root({
  * @param {Object} ctl - {isCancelled, setCurReq, depth}
  */
 async function selfAgentStream(payload, emit, ctl = {}) {
-  let { history, port, cloud, thread_id, hitl_response } = payload;
+  let { history, port, cloud, thread_id, hitl_response, continue_response } = payload;
   thread_id = thread_id || 'thread_' + Date.now() + '_' + Math.random().toString(36).slice(2, 8);
   const isCancelled = ctl.isCancelled || (() => false);
   const setCurReq = ctl.setCurReq || (() => {});
@@ -968,7 +972,11 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       })
       .addConditionalEdges("tools", (state) => {
         if (state.stopReason) return END;
-        if (state.step >= MAX_STEPS) return END;
+        // Jeda-checkpoint (bukan tebing): kalau plafon langkah tercapai, graph berhenti
+        // di sini DENGAN state tersimpan di checkpointer — final handler menandainya
+        // sebagai "dijeda, bisa dilanjutkan", tanpa rollback. Jalur utama tetap natural
+        // completion (validate -> finished); ini hanya rem yang memberi user pilihan.
+        if (state.step >= (state.stepCeiling || MAX_STEPS)) return END;
         return "executor";
       })
       .addConditionalEdges("validate", (state) => {
@@ -1037,6 +1045,23 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // No pending tool call found — just restart normally
         finalState = await app.invoke({ messages, hitlApproved: true }, config);
       }
+    } else if (continue_response) {
+      // Continue setelah jeda-budget: ambil checkpoint, perpanjang plafon satu window
+      // lagi, lalu lanjutkan dari state yang tersimpan. Tidak ada rollback, tidak ada
+      // re-plan — persis melanjutkan pekerjaan yang tadi dijeda.
+      const checkpoint = await app.getState(config);
+      const savedState = (checkpoint && checkpoint.values) || {};
+      const prevCeiling = savedState.stepCeiling || MAX_STEPS;
+      emit({ t: 'step', n: (savedState.step || 0) });
+      emit({ t: 'act', kind: 'continue', arg: '', ok: true, output: `Melanjutkan (plafon → ${prevCeiling + MAX_STEPS} langkah)` });
+      finalState = await app.invoke({
+        messages: savedState.messages || [],
+        step: savedState.step || 0,
+        edits: savedState.edits || 0,
+        task_checklist: savedState.task_checklist || [],
+        stepCeiling: prevCeiling + MAX_STEPS,
+        stopReason: ''
+      }, { configurable: { thread_id: thread_id + '_cont_' + Date.now() } });
     } else {
       // Initial run — pre-search injection + intent-based routing
       try {
@@ -1112,16 +1137,15 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
          const runRes = finalState.finalSummary ? await runReply(finalState.finalSummary) : null;
          emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalState.finalSummary, backup: sessionSnapshotId, run: runRes });
        }
-    } else if (finalState.step >= MAX_STEPS && finalState.stopReason !== "finished") {
-       dlog('self', 'info', 'stop', { reason: 'max_steps', step: finalState.step });
-       if (sessionSnapshotId && (finalState.edits || 0) === 0) {
-         rollback(sessionSnapshotId);
-         emit({ t: 'err', m: `[Auto-Rollback] Agen gagal (Batas Langkah). Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).` });
-         finalSummary = 'Batas langkah (' + MAX_STEPS + ').';
-       } else {
-         finalSummary = `Batas langkah (${MAX_STEPS}). ${finalState.edits || 0} file berhasil diedit.`;
-       }
-       emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalSummary, backup: sessionSnapshotId });
+    } else if (finalState.step >= (finalState.stepCeiling || MAX_STEPS) && finalState.stopReason !== "finished") {
+       // Plafon langkah tercapai TANPA natural completion. Ini BUKAN kegagalan —
+       // agent masih bekerja produktif, cuma butuh window langkah berikutnya. Jangan
+       // rollback: state tersimpan di checkpointer (thread_id), jadi tawarkan lanjut.
+       // Natural completion tetap jalur selesai yang sebenarnya; ini jeda, bukan tebing.
+       dlog('self', 'info', 'stop', { reason: 'paused_budget', step: finalState.step });
+       const editedNote = (finalState.edits || 0) > 0 ? ` (${finalState.edits} file diedit sejauh ini)` : '';
+       finalSummary = `Dijeda di langkah ${finalState.step}${editedNote} — belum selesai. Pilih "Lanjutkan" untuk meneruskan.`;
+       emit({ t: 'adone', steps: finalState.step, edits: finalState.edits, summary: finalSummary, backup: sessionSnapshotId, paused: true, continuable: true, thread_id });
     } else if (finalState.stopReason === 'finished') {
        dlog('self', 'info', 'stop', { reason: 'finished', step: finalState.step });
        finalSummary = finalState.finalSummary || 'Selesai.';
