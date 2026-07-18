@@ -8,7 +8,12 @@ const { getOptimized, optimizeInBackground } = require('./sysprompt_opt.cjs');
 const { parsePseudoCalls, stripPseudoTags } = require('./pseudo-tag-filter.cjs');
 const os = require('os');
 const { StateGraph, START, END, Annotation, MemorySaver } = require('@langchain/langgraph');
-const agentMemory = new MemorySaver();
+// server.cjs me-`delete require.cache` untuk modul ini di SETIAP request /self-agent
+// (hot-reload agar agent melihat perubahan source-nya sendiri). Itu me-recreate semua
+// state module-level — termasuk checkpointer HITL. Kalau MemorySaver dibuat ulang tiap
+// request, checkpoint dari run yang dijeda HITL hilang dan resume tak pernah menemukan
+// pending tool call-nya. Simpan di globalThis supaya SATU instance bertahan lintas reload.
+const agentMemory = globalThis.__wolfspaceAgentMemory || (globalThis.__wolfspaceAgentMemory = new MemorySaver());
 // System prompt for function-calling self-agent
 const path = require('path');
 const PROMPTS_CFG_PATH = path.join(__dirname, '..', 'config', 'prompts.json');
@@ -257,8 +262,10 @@ function loadSelfAgentPrompt() {
 
 const SELF_FC_SYS = loadSelfAgentPrompt();
 
-// Session state persists across HITL resumes (keyed by thread_id)
-const _sessionState = new Map();
+// Session state persists across HITL resumes (keyed by thread_id).
+// Also on globalThis: the per-request module reload (see agentMemory note above)
+// would otherwise wipe this Map between the paused run and its HITL resume.
+const _sessionState = globalThis.__wolfspaceSessionState || (globalThis.__wolfspaceSessionState = new Map());
 
 // --- PHASED EXECUTION TREE HELPERS ---
 // Map a tool name to its execution phase for the visual tree.
