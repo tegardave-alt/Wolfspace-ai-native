@@ -2249,7 +2249,7 @@ function LightboxModal({ item, onClose }) {
               style={{ maxWidth: "100%", maxHeight: "calc(85vh - 80px)", borderRadius: "6px" }}
             />
           ) : item.snippet ? (
-            <pre style={{ margin: 0, fontFamily: "Consolas, Courier New, monospace", fontSize: "13px", color: "#4ec9b0", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "#0d1117", padding: "16px", borderRadius: "8px", width: "100%", maxHeight: "calc(82vh - 80px)", overflow: "auto" }}>
+            <pre style={{ margin: 0, fontFamily: '"JetBrains Mono", Consolas, Courier New, monospace', fontSize: "13px", color: "#4ec9b0", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "#0d1117", padding: "16px", borderRadius: "8px", width: "100%", maxHeight: "calc(82vh - 80px)", overflow: "auto" }}>
               {item.snippet}
             </pre>
           ) : (
@@ -2449,131 +2449,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   };
   return (
     <div className="composer-wrap">
-      <div className="composer">
-        <div className="composer-add-wrap" ref={wrapRef}>
-          <div className="composer-action-btns">
-            <button
-              className={"composer-add" + (menu ? " open" : "")}
-              title="Tambah"
-              onClick={() => { setMenu((m) => !m); setShowModelMenu(false); setShowMcpMenu(false); }}
-            >
-              {MI.plus}
-            </button>
-          </div>
-          {menu && (
-            <div className="am-menu" onMouseDown={(e) => e.stopPropagation()}>
-              <input type="text" className="am-search" placeholder="Filter actions..." autoFocus />
-              
-              <div className="am-section-label">Context</div>
-              <button className="am-item" onClick={() => { setMenu(false); document.getElementById("file-upload-input")?.click(); }}>
-                <span>Attach file...</span>
-              </button>
-
-              <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
-              <div style={{ position: 'relative' }}>
-                <button 
-                  className={"am-item" + (showModelMenu ? " active" : "")} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowMcpMenu(false);
-                    setShowModelMenu(!showModelMenu);
-                  }}
-                >
-                  <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
-                    Switch model...
-                  </span>
-                  <span className="am-item-right">{models.find(m => m.value === modelVal)?.label || "Sonnet"}</span>
-                </button>
-                {showModelMenu && (
-                  <div className="am-submenu">
-                    <div className="am-section-label" style={{ marginBottom: '4px' }}>Select a model</div>
-                    {models.map(m => (
-                      <button 
-                        key={m.value}
-                        className="am-item" 
-                        style={{ padding: '8px 12px' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          if (setModelVal) setModelVal(m.value);
-                          setShowModelMenu(false);
-                          // Keep main + menu open so user can continue configuring other options
-                        }}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-                          <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-                            {m.label} 
-                            {m.value === modelVal && <span>✓</span>}
-                          </span>
-                          <span className="am-item-desc">Efficient for routine tasks</span>
-                        </div>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-              <button className="am-item" onClick={(e) => { e.stopPropagation(); setEffort((effort + 1) % 3); }}>
-                <span>Effort ({effort === 0 ? "Low" : effort === 1 ? "Medium" : "High"})</span>
-                <span className="am-item-right">
-                  <div className="am-slider">
-                    <div className={"am-slider-dot" + (effort >= 0 ? " active" : "")}></div>
-                    <div className={"am-slider-dot" + (effort >= 1 ? " active" : "")}></div>
-                    <div className={"am-slider-dot" + (effort >= 2 ? " active" : "")}></div>
-                  </div>
-                </span>
-              </button>
-
-              <div className="am-section-label" style={{ marginTop: '8px' }}>Connection</div>
-              <div style={{ position: 'relative' }}>
-                <button 
-                  className={"am-item" + (showMcpMenu ? " active" : "")} 
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    setShowModelMenu(false);
-                    setShowMcpMenu(!showMcpMenu);
-                  }}
-                >
-                  <span>MCP</span>
-                  <span className="am-item-right">
-                    <span>Manage servers</span>
-                    <span style={{ fontSize: '10px' }}>▶</span>
-                  </span>
-                </button>
-                {showMcpMenu && (
-                  <div className="am-submenu">
-                    <div className="am-section-label" style={{ marginBottom: '4px' }}>Select an MCP connection</div>
-                    {mcpServers.map(srv => (
-                      <button 
-                        key={srv.id}
-                        className="am-item" 
-                        style={{ padding: '8px 12px' }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setMcpServers(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item));
-                        }}
-                      >
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-                          <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
-                            {srv.active ? (
-                              <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
-                            ) : (
-                              <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
-                            )}
-                          </span>
-                          <span className="am-item-desc">{srv.desc}</span>
-                        </div>
-                      </button>
-                    ))}
-                    <div style={{ padding: '8px 12px', borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
-                      <span style={{ fontSize: '11px', color: '#b594f5', cursor: 'pointer', fontWeight: 500 }} onClick={(e) => { e.stopPropagation(); notYet("Add custom MCP server"); }}>+ Add custom MCP server (JSON)...</span>
-                    </div>
-                  </div>
-                )}
-              </div>
-
-            </div>
-          )}
-        </div>
+      <div className="composer" style={{ flexDirection: "column", gap: "14px", padding: "16px 16px 12px 18px", alignItems: "stretch" }}>
         <input
           type="file"
           id="file-upload-input"
@@ -2716,25 +2592,152 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
             onBlur={() => console.log("[Textarea] blurred")}
           />
         </div>
-        <button
-          className={"send-btn" + (busy ? " cancel" : "")}
-          onClick={busy ? onCancel : submit}
-          disabled={!busy && !val.trim() && attachments.length === 0}
-          onClickCapture={(e) => {
-            console.log(
-              "[Send button] clicked, busy:",
-              busy,
-              "disabled:",
-              !busy && !val.trim() && attachments.length === 0,
-            );
-          }}
-        >
-          {busy ? (
-            <Icon.square />
-          ) : (
-            <Icon.send />
-          )}
-        </button>
+        <div className="picker-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+          <div className="composer-add-wrap" ref={wrapRef}>
+            <div className="composer-action-btns">
+              <button
+                className={"composer-add" + (menu ? " open" : "")}
+                title="Tambah"
+                onClick={() => { setMenu((m) => !m); setShowModelMenu(false); setShowMcpMenu(false); }}
+              >
+                {MI.plus}
+              </button>
+            </div>
+            {menu && (
+              <div className="am-menu" onMouseDown={(e) => e.stopPropagation()}>
+                <input type="text" className="am-search" placeholder="Filter actions..." autoFocus />
+                
+                <div className="am-section-label">Context</div>
+                <button className="am-item" onClick={() => { setMenu(false); document.getElementById("file-upload-input")?.click(); }}>
+                  <span>Attach file...</span>
+                </button>
+
+                <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
+                <div style={{ position: 'relative' }}>
+                  <button 
+                    className={"am-item" + (showModelMenu ? " active" : "")} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowMcpMenu(false);
+                      setShowModelMenu(!showModelMenu);
+                    }}
+                  >
+                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                      Switch model...
+                    </span>
+                    <span className="am-item-right">{models.find(m => m.value === modelVal)?.label || "Sonnet"}</span>
+                  </button>
+                  {showModelMenu && (
+                    <div className="am-submenu">
+                      <div className="am-section-label" style={{ marginBottom: '4px' }}>Select a model</div>
+                      {models.map(m => (
+                        <button 
+                          key={m.value}
+                          className="am-item" 
+                          style={{ padding: '8px 12px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (setModelVal) setModelVal(m.value);
+                            setShowModelMenu(false);
+                            // Keep main + menu open so user can continue configuring other options
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+                            <span style={{ display: 'flex', justifyContent: 'space-between' }}>
+                              {m.label} 
+                              {m.value === modelVal && <span>✓</span>}
+                            </span>
+                            <span className="am-item-desc">Efficient for routine tasks</span>
+                          </div>
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
+                <button className="am-item" onClick={(e) => { e.stopPropagation(); setEffort((effort + 1) % 3); }}>
+                  <span>Effort ({effort === 0 ? "Low" : effort === 1 ? "Medium" : "High"})</span>
+                  <span className="am-item-right">
+                    <div className="am-slider">
+                      <div className={"am-slider-dot" + (effort >= 0 ? " active" : "")}></div>
+                      <div className={"am-slider-dot" + (effort >= 1 ? " active" : "")}></div>
+                      <div className={"am-slider-dot" + (effort >= 2 ? " active" : "")}></div>
+                    </div>
+                  </span>
+                </button>
+
+                <div className="am-section-label" style={{ marginTop: '8px' }}>Connection</div>
+                <div style={{ position: 'relative' }}>
+                  <button 
+                    className={"am-item" + (showMcpMenu ? " active" : "")} 
+                    onClick={(e) => {
+                      e.stopPropagation();
+                      setShowModelMenu(false);
+                      setShowMcpMenu(!showMcpMenu);
+                    }}
+                  >
+                    <span>MCP</span>
+                    <span className="am-item-right">
+                      <span>Manage servers</span>
+                      <span style={{ fontSize: '10px' }}>▶</span>
+                    </span>
+                  </button>
+                  {showMcpMenu && (
+                    <div className="am-submenu">
+                      <div className="am-section-label" style={{ marginBottom: '4px' }}>Select an MCP connection</div>
+                      {mcpServers.map(srv => (
+                        <button 
+                          key={srv.id}
+                          className="am-item" 
+                          style={{ padding: '8px 12px' }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setMcpServers(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item));
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+                            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
+                              {srv.active ? (
+                                <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
+                              ) : (
+                                <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
+                              )}
+                            </span>
+                            <span className="am-item-desc">{srv.desc}</span>
+                          </div>
+                        </button>
+                      ))}
+                      <div style={{ padding: '8px 12px', borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
+                        <span style={{ fontSize: '11px', color: '#b594f5', cursor: 'pointer', fontWeight: 500 }} onClick={(e) => { e.stopPropagation(); notYet("Add custom MCP server"); }}>+ Add custom MCP server (JSON)...</span>
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+              </div>
+            )}
+          </div>
+          <button
+            className={"send-btn" + (busy ? " cancel" : "")}
+            onClick={busy ? onCancel : submit}
+            disabled={!busy && !val.trim() && attachments.length === 0}
+            onClickCapture={(e) => {
+              console.log(
+                "[Send button] clicked, busy:",
+                busy,
+                "disabled:",
+                !busy && !val.trim() && attachments.length === 0,
+              );
+            }}
+            style={{ height: "34px", width: "44px", borderRadius: "10px", padding: 0, justifyContent: "center" }}
+          >
+            {busy ? (
+              <Icon.square />
+            ) : (
+              <Icon.send />
+            )}
+          </button>
+        </div>
       </div>
       <div className="composer-hint">
         {soon ? (
@@ -4185,6 +4188,35 @@ const SB = {
     </svg>
   ),
 };
+
+function deleteWorkspaceGlobal(wsToDelete) {
+  try {
+    if (!wsToDelete) return;
+    const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+    const updated = stored.filter((p) => {
+      if (p.path === wsToDelete || p.name === wsToDelete) return false;
+      if (wsToDelete.endsWith(`\\${p.name}`) || wsToDelete.endsWith(`/${p.name}`)) return false;
+      if (p.path && (p.path.endsWith(`\\${wsToDelete}`) || p.path.endsWith(`/${wsToDelete}`))) return false;
+      return true;
+    });
+    localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
+
+    const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+    const toAdd = [wsToDelete];
+    stored.forEach((p) => {
+      if (p.path === wsToDelete || p.name === wsToDelete || (p.path && (p.path.endsWith(`\\${wsToDelete}`) || p.path.endsWith(`/${wsToDelete}`))) || wsToDelete.endsWith(`\\${p.name}`) || wsToDelete.endsWith(`/${p.name}`)) {
+        if (p.path && !deleted.includes(p.path)) toAdd.push(p.path);
+        if (p.name && !deleted.includes(p.name)) toAdd.push(p.name);
+      }
+    });
+    toAdd.forEach((item) => {
+      if (!deleted.includes(item)) deleted.push(item);
+    });
+    localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(deleted));
+    window.dispatchEvent(new Event("quantum_workspaces_changed"));
+  } catch (_) {}
+}
+
 function Sidebar({
   collapsed,
   setCollapsed,
@@ -4207,40 +4239,106 @@ function Sidebar({
   loadSavedChats,
   onAgentRunner,
   selectedProject,
+  onOpenPicker,
 }) {
-  const [showTools, setShowTools] = useState(true);
-  const [showView, setShowView] = useState(true);
-  const [showConversation, setShowConversation] = useState(true);
+  const [showTools, setShowTools] = useState(false);
+  const [showView, setShowView] = useState(false);
+  const [showConversation, setShowConversation] = useState(false);
   const [showWorkspaces, setShowWorkspaces] = useState(true);
   const [hoveredChatId, setHoveredChatId] = useState(null);
   const [openMenuChatId, setOpenMenuChatId] = useState(null);
   const [editingChatId, setEditingChatId] = useState(null);
   const [editingTitle, setEditingTitle] = useState("");
+  const [filterMenuOpen, setFilterMenuOpen] = useState(false);
+  const [filterGroupBy, setFilterGroupBy] = useState("Environment");
+  const [filterSortBy, setFilterSortBy] = useState("Last Updated");
+  const [filterSubtitle, setFilterSubtitle] = useState("Project + Worktree");
+  const [filterScheduled, setFilterScheduled] = useState(false);
+  const [openFolderMenuWs, setOpenFolderMenuWs] = useState(null);
+  const [wsRefreshKey, setWsRefreshKey] = useState(0);
+  const [sidebarWidth, setSidebarWidth] = useState(() => {
+    try {
+      const w = parseInt(localStorage.getItem("quantum_sidebar_width") || "232", 10);
+      return isNaN(w) ? 232 : Math.max(160, Math.min(600, w));
+    } catch (_) {
+      return 232;
+    }
+  });
+  const [isResizing, setIsResizing] = useState(false);
+
+  const handleResizerMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsResizing(true);
+    const startX = e.clientX;
+    const startWidth = sidebarWidth;
+
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(160, Math.min(600, startWidth + deltaX));
+      setSidebarWidth(newWidth);
+    };
+
+    const handleMouseUp = (upEvent) => {
+      const deltaX = upEvent.clientX - startX;
+      const finalWidth = Math.max(160, Math.min(600, startWidth + deltaX));
+      setIsResizing(false);
+      try {
+        localStorage.setItem("quantum_sidebar_width", String(finalWidth));
+      } catch (_) {}
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
 
   React.useEffect(() => {
-    const handleWindowClick = () => setOpenMenuChatId(null);
+    const handleWindowClick = () => {
+      setOpenMenuChatId(null);
+      setFilterMenuOpen(false);
+      setOpenFolderMenuWs(null);
+    };
+    const handleWsChanged = () => {
+      setWsRefreshKey((prev) => prev + 1);
+    };
     window.addEventListener("click", handleWindowClick);
-    return () => window.removeEventListener("click", handleWindowClick);
+    window.addEventListener("quantum_workspaces_changed", handleWsChanged);
+    return () => {
+      window.removeEventListener("click", handleWindowClick);
+      window.removeEventListener("quantum_workspaces_changed", handleWsChanged);
+    };
   }, []);
+
+  const handleDeleteFolder = (wsToDelete) => {
+    deleteWorkspaceGlobal(wsToDelete);
+  };
 
   const workspacesList = React.useMemo(() => {
     const set = new Set();
-    if (selectedProject) set.add(selectedProject);
-    else set.add("c:\\Users\\dave\\quantum");
+    const deletedSet = new Set();
+    try {
+      const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+      deleted.forEach((d) => deletedSet.add(d));
+    } catch (_) {}
+
+    if (selectedProject && !deletedSet.has(selectedProject)) set.add(selectedProject);
+    else if (!deletedSet.has("c:\\Users\\dave\\quantum")) set.add("c:\\Users\\dave\\quantum");
     try {
       const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
       stored.forEach((p) => {
-        if (p.path) set.add(p.path);
-        else if (p.name) set.add(p.name);
+        if (p.path && !deletedSet.has(p.path)) set.add(p.path);
+        else if (p.name && !deletedSet.has(p.name)) set.add(p.name);
       });
     } catch (_) {}
     if (savedChats && savedChats.length > 0) {
       savedChats.forEach((c) => {
-        if (c.project) set.add(c.project);
+        if (c.project && !deletedSet.has(c.project)) set.add(c.project);
       });
     }
     return Array.from(set);
-  }, [savedChats, selectedProject]);
+  }, [savedChats, selectedProject, wsRefreshKey]);
 
   const formatWsTimeAgo = (ts) => {
     if (!ts) return "8h";
@@ -4265,11 +4363,12 @@ function Sidebar({
   );
   return (
     <aside 
-      className={"sidebar" + (collapsed ? " collapsed" : "")}
+      className={"sidebar" + (collapsed ? " collapsed" : "") + (isResizing ? " resizing" : "")}
+      style={{ width: collapsed ? undefined : `${sidebarWidth}px` }}
       onClickCapture={(e) => {
         const btn = e.target.closest('.sb-item');
-        // Jika klik pada tombol Visual Draw atau Picker, biarkan onClick mereka yang toggle
-        if (btn && (btn.textContent.includes('Visual Picker') || btn.textContent.includes('Visual Draw'))) {
+        // Jika klik pada tombol Visual Draw, Picker, atau Terminal, biarkan onClick mereka yang toggle
+        if (btn && (btn.textContent.includes('Visual Picker') || btn.textContent.includes('Visual Draw') || btn.textContent.includes('Terminal'))) {
           return;
         }
         // Jika klik di tempat lain di sidebar (Chat, Settings, logo, dll), paksa matikan semua mode
@@ -4277,6 +4376,13 @@ function Sidebar({
         if (typeof VD_STOP === 'function' && VD_STOP !== null) VD_STOP();
       }}
     > 
+      {!collapsed && (
+        <div
+          className="sb-resizer"
+          onMouseDown={handleResizerMouseDown}
+          title="Geser untuk menyesuaikan ukuran sidebar"
+        />
+      )}
 
 
       <div className="sb-head">
@@ -4327,6 +4433,7 @@ function Sidebar({
           fontWeight: 600,
           fontSize: "12px",
           color: "#8b98a9",
+          position: "relative",
         }}
         onClick={() => setShowWorkspaces(!showWorkspaces)}
       >
@@ -4335,7 +4442,10 @@ function Sidebar({
           <span
             title="Filter / Sort"
             style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              setFilterMenuOpen(!filterMenuOpen);
+            }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
               <line x1="4" y1="6" x2="20" y2="6"></line>
@@ -4346,7 +4456,10 @@ function Sidebar({
           <span
             title="Add Workspace"
             style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e) => {
+              e.stopPropagation();
+              if (onOpenPicker) onOpenPicker();
+            }}
           >
             <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
               <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
@@ -4355,6 +4468,75 @@ function Sidebar({
             </svg>
           </span>
         </div>
+        {filterMenuOpen && (
+          <div
+            className="filter-sort-menu"
+            onClick={(e) => e.stopPropagation()}
+          >
+            {/* Section 1: Group By */}
+            <div className="filter-sort-header">Group By</div>
+            {["Project", "Environment", "Status", "None"].map((opt) => (
+              <button
+                key={opt}
+                className={"filter-sort-item" + (filterGroupBy === opt ? " active" : "")}
+                onClick={() => {
+                  setFilterGroupBy(opt);
+                  setFilterMenuOpen(false);
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+
+            <div className="filter-sort-divider" />
+
+            {/* Section 2: Sort Conversations */}
+            <div className="filter-sort-header">Sort Conversations</div>
+            {["Last Updated", "Alphabetical (A-Z)", "Date Added"].map((opt) => (
+              <button
+                key={opt}
+                className={"filter-sort-item" + (filterSortBy === opt ? " active" : "")}
+                onClick={() => {
+                  setFilterSortBy(opt);
+                  setFilterMenuOpen(false);
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+
+            <div className="filter-sort-divider" />
+
+            {/* Section 3: Subtitles */}
+            <div className="filter-sort-header">Subtitles</div>
+            {["Project + Worktree", "No Subtitle"].map((opt) => (
+              <button
+                key={opt}
+                className={"filter-sort-item" + (filterSubtitle === opt ? " active" : "")}
+                onClick={() => {
+                  setFilterSubtitle(opt);
+                  setFilterMenuOpen(false);
+                }}
+              >
+                {opt}
+              </button>
+            ))}
+
+            <div className="filter-sort-divider" />
+
+            {/* Section 4: Filter */}
+            <div className="filter-sort-header">Filter</div>
+            <button
+              className={"filter-sort-item" + (filterScheduled ? " active" : "")}
+              onClick={() => {
+                setFilterScheduled(!filterScheduled);
+                setFilterMenuOpen(false);
+              }}
+            >
+              Scheduled
+            </button>
+          </div>
+        )}
       </div>
       {showWorkspaces && (
         collapsed ? (
@@ -4381,11 +4563,12 @@ function Sidebar({
                 });
 
               return (
-                <div key={ws} style={{ display: "flex", flexDirection: "column" }}>
+                <div key={ws} style={{ display: "flex", flexDirection: "column", position: "relative" }}>
                   <div
                     style={{
                       display: "flex",
                       alignItems: "center",
+                      justifyContent: "space-between",
                       gap: "8px",
                       padding: "6px 12px",
                       color: "#a1aab8",
@@ -4397,11 +4580,93 @@ function Sidebar({
                     onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.03)")}
                     onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                   >
-                    <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round">
-                      <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
-                    </svg>
-                    <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws}</span>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px", minWidth: 0, overflow: "hidden" }}>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+                        <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
+                      </svg>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws}</span>
+                    </div>
+                    <span
+                      title="Folder options"
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        padding: "4px",
+                        borderRadius: "4px",
+                        color: "#6b7280",
+                        cursor: "pointer",
+                        flexShrink: 0,
+                      }}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setOpenFolderMenuWs(openFolderMenuWs === ws ? null : ws);
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)";
+                        e.currentTarget.style.color = "#f8fafc";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = "#6b7280";
+                      }}
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <circle cx="12" cy="12" r="1"></circle>
+                        <circle cx="12" cy="5" r="1"></circle>
+                        <circle cx="12" cy="19" r="1"></circle>
+                      </svg>
+                    </span>
                   </div>
+                  {openFolderMenuWs === ws && (
+                    <div
+                      onClick={(e) => e.stopPropagation()}
+                      style={{
+                        position: "absolute",
+                        top: "-4px",
+                        left: "calc(100% + 14px)",
+                        right: "auto",
+                        background: "#161b22",
+                        border: "1px solid #30363d",
+                        borderRadius: "8px",
+                        boxShadow: "0 12px 36px rgba(0,0,0,0.65)",
+                        padding: "4px 0",
+                        zIndex: 2000,
+                        minWidth: "155px",
+                      }}
+                    >
+                      <button
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                          width: "100%",
+                          padding: "8px 14px",
+                          color: "#f85149",
+                          fontSize: "13px",
+                          border: "none",
+                          background: "none",
+                          cursor: "pointer",
+                          fontFamily: "inherit",
+                          textAlign: "left",
+                        }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(248, 81, 73, 0.12)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                        onClick={() => {
+                          handleDeleteFolder(ws);
+                          setOpenFolderMenuWs(null);
+                        }}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                          <polyline points="3 6 5 6 21 6"></polyline>
+                          <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                          <line x1="10" y1="11" x2="10" y2="17"></line>
+                          <line x1="14" y1="11" x2="14" y2="17"></line>
+                        </svg>
+                        <span>Hapus folder</span>
+                      </button>
+                    </div>
+                  )}
                   <div style={{ display: "flex", flexDirection: "column", paddingLeft: "20px", gap: "2px" }}>
                     {wsChats.map((chat, idx) => {
                       const showActions = hoveredChatId === chat.id || openMenuChatId === chat.id || (idx === 0 && hoveredChatId === null && openMenuChatId === null);
@@ -4633,6 +4898,12 @@ function Sidebar({
             icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path><path d="M13.5 6.5l4 4"></path></svg>}
             label="Visual Draw"
             onClick={onVisualDraw}
+          />
+          <Item
+            icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>}
+            label="Terminal"
+            active={terminalOpen}
+            onClick={() => setTerminalOpen(!terminalOpen)}
           />
         </div>
       )}
@@ -5168,24 +5439,48 @@ function PickerSendIcon() {
   return React.createElement("svg", { width: 16, height: 16, viewBox: "0 0 24 24", fill: "#9bb1d1", stroke: "none" },
     React.createElement("path", { d: "M2 21L23 12 2 3v7l15 2-15 2z", transform: "rotate(-45 12 12)" }));
 }
+function getPickerProjectsList() {
+  const defaultDefaults = [
+    { name: "quantum", path: "c:\\Users\\dave\\quantum" },
+    { name: "project", path: "c:\\Users\\dave\\project" },
+  ];
+  try {
+    const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+    const isDel = (p) => {
+      if (!p) return false;
+      if (deleted.includes(p.path) || deleted.includes(p.name)) return true;
+      if (p.path && deleted.some(d => p.path.endsWith(`\\${d}`) || p.path.endsWith(`/${d}`))) return true;
+      if (p.name && deleted.some(d => d.endsWith(`\\${p.name}`) || d.endsWith(`/${p.name}`))) return true;
+      return false;
+    };
+    const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+    if (stored && stored.length > 0) {
+      const filtered = stored.filter((p) => !isDel(p));
+      if (filtered.length > 0) return filtered;
+    }
+    return defaultDefaults.filter((p) => !isDel(p));
+  } catch (_) {}
+  return defaultDefaults;
+}
+
 function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
-  const [projectsList, setProjectsList] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
-      if (stored && stored.length > 0) return stored;
-    } catch (_) {}
-    return [
-      { name: "quantum", path: "c:\\Users\\dave\\quantum" },
-      { name: "project", path: "c:\\Users\\dave\\project" },
-    ];
-  });
+  const [projectsList, setProjectsList] = useState(() => getPickerProjectsList());
   const [project, setProject] = useState(() => {
-    try {
-      const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
-      if (stored && stored.length > 0) return stored[0].name;
-    } catch (_) {}
-    return "quantum";
+    const list = getPickerProjectsList();
+    return list.length > 0 ? list[0].name : "quantum";
   });
+  React.useEffect(() => {
+    const reloadProjects = () => {
+      const list = getPickerProjectsList();
+      setProjectsList(list);
+      setProject((cur) => {
+        if (list.some((p) => p.name === cur)) return cur;
+        return list.length > 0 ? list[0].name : "";
+      });
+    };
+    window.addEventListener("quantum_workspaces_changed", reloadProjects);
+    return () => window.removeEventListener("quantum_workspaces_changed", reloadProjects);
+  }, []);
   const [dropOpen, setDropOpen] = useState(false);
   const [menu, setMenu] = useState(false);
   const [text, setText] = useState("");
@@ -5498,27 +5793,29 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                     <PickerFolderIcon /> New Project
                   </button>
                   {projectsList.length > 0 && <div className="picker-ws-divider" />}
-                  {projectsList.map((p, idx) => (
-                    <button
-                      key={idx}
-                      className={"picker-ws-item" + (project === p.name ? " active" : "")}
-                      onClick={() => {
-                        setProject(p.name);
-                        setDropOpen(false);
-                      }}
-                      style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}
-                    >
-                      <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#f8fafc" }}>
-                        <PickerFolderIcon />
-                        <span>{p.name}</span>
-                      </span>
-                      {p.path && (
-                        <span style={{ fontSize: "12px", color: "#6b7280", opacity: 0.85, whiteSpace: "nowrap" }}>
-                          {p.path}
+                  <div className="picker-ws-scroll-area">
+                    {projectsList.map((p, idx) => (
+                      <button
+                        key={idx}
+                        className={"picker-ws-item" + (project === p.name ? " active" : "")}
+                        onClick={() => {
+                          setProject(p.name);
+                          setDropOpen(false);
+                        }}
+                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}
+                      >
+                        <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#f8fafc" }}>
+                          <PickerFolderIcon />
+                          <span>{p.name}</span>
                         </span>
-                      )}
-                    </button>
-                  ))}
+                        {p.path && (
+                          <span style={{ fontSize: "12px", color: "#6b7280", opacity: 0.85, whiteSpace: "nowrap" }}>
+                            {p.path}
+                          </span>
+                        )}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               )}
             </div>
@@ -5532,12 +5829,384 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   );
 }
 
+/* ----------------------------- VS Code Style Terminal ----------------------------- */
+function VSCodeTerminal({ selectedProject, onClose, agentOutput, terminalOutput, messages = [] }) {
+  const containerRef = useRef(null);
+  const termRef = useRef(null);
+  const fitRef = useRef(null);
+  const sessionIdRef = useRef(null);
+  const [activeTab, setActiveTab] = useState("TERMINAL");
+  const [statusText, setStatusText] = useState("Connecting PTY...");
+
+  // Build a clean, formatted AI output log from the main UI messages + any agent/terminal output
+  const mainUiAiLog = useMemo(() => {
+    if (agentOutput) return agentOutput;
+    if (terminalOutput) return terminalOutput;
+
+    // Filter for model / agent / assistant messages from main chat UI
+    const aiMsgs = messages.filter(
+      (m) => m && (m.role === "model" || m.role === "agent" || m.role === "assistant" || m.role === "ai")
+    );
+
+    if (aiMsgs.length === 0) return null;
+
+    return aiMsgs
+      .map((m, idx) => {
+        if (m.role === "agent" && m.agent) {
+          const ag = m.agent;
+          let log = `[Main UI AI Agent Phase #${idx + 1}]`;
+          if (ag.thinking) log += `\nThinking:\n${ag.thinking}`;
+          if (ag.events && ag.events.length > 0) {
+            log += `\nActions Executed (${ag.events.length}):`;
+            ag.events.forEach((ev) => {
+              if (ev.type === "thought") log += `\n  - Tool ${ev.kind || ""}: ${ev.arg || ev.output || ""}`;
+              else if (ev.type === "act") log += `\n  - Executed ${ev.kind || ""}: ${ev.arg || ""} => ${ev.ok ? "OK" : "ERR"} ${ev.output || ""}`;
+              else if (ev.type === "err") log += `\n  - Error: ${ev.m || ""}`;
+            });
+          }
+          if (ag.summary) log += `\nSummary: ${ag.summary}`;
+          return log;
+        } else {
+          return `[Main UI AI Output #${idx + 1}]\n${m.text || m.content || ""}`;
+        }
+      })
+      .join("\n\n------------------------------------------------------------\n\n");
+  }, [agentOutput, terminalOutput, messages]);
+
+  const restartSession = async () => {
+    if (sessionIdRef.current) {
+      try {
+        await fetch("/api/terminal/close", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: sessionIdRef.current }),
+        });
+      } catch (_) {}
+      sessionIdRef.current = null;
+    }
+    if (termRef.current) {
+      termRef.current.clear();
+    }
+    const targetCwd =
+      typeof selectedProject === "object" && selectedProject !== null
+        ? selectedProject.path || selectedProject.dir || undefined
+        : typeof selectedProject === "string" && selectedProject.trim() !== ""
+        ? selectedProject.trim()
+        : undefined;
+    try {
+      const res = await fetch("/api/terminal/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd: targetCwd }),
+      });
+      if (res.ok) {
+        const data = await res.json();
+        sessionIdRef.current = data.id;
+        setStatusText(`Shell: ${data.shell || "powershell"} (${targetCwd || "default"})`);
+        if (termRef.current) {
+          termRef.current.focus();
+        }
+      } else {
+        const err = await res.json().catch(() => ({ error: res.statusText }));
+        setStatusText("Error spawning terminal");
+        if (termRef.current) termRef.current.write(`\r\n\x1b[31m[Error] Failed to open PTY session: ${err.error || "Unknown error"}\x1b[0m\r\n`);
+      }
+    } catch (e) {
+      setStatusText("Offline / No PTY");
+      if (termRef.current) termRef.current.write(`\r\n\x1b[31m[Error] Cannot connect to /api/terminal/open (${e.message}). Ensure server is running.\x1b[0m\r\n`);
+    }
+  };
+
+  useEffect(() => {
+    if (!containerRef.current || !window.Terminal) return;
+    const term = new window.Terminal({
+      cols: 100,
+      rows: 25,
+      scrollback: 5000,
+      fontFamily: '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
+      fontSize: 13,
+      cursorStyle: "block",
+      cursorBlink: true,
+      theme: {
+        background: "#181c20",
+        foreground: "#e2e8f0",
+        cursor: "#ffffff",
+        cursorAccent: "#181c20",
+        selection: "rgba(56, 139, 253, 0.4)",
+      },
+      allowProposedApi: true,
+    });
+
+    const FitAddonCtor =
+      window.FitAddon?.FitAddon ||
+      window.FitAddon ||
+      window.fitAddon?.FitAddon ||
+      window.xterm?.FitAddon;
+    let fit = null;
+    if (FitAddonCtor) {
+      fit = new FitAddonCtor();
+      term.loadAddon(fit);
+    }
+
+    term.open(containerRef.current);
+    if (fit) {
+      try { fit.fit(); } catch (_) {}
+    }
+    termRef.current = term;
+    fitRef.current = fit;
+    term.focus();
+
+    term.onData((data) => {
+      if (!sessionIdRef.current) return;
+      fetch("/api/terminal/write", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sessionIdRef.current, data }),
+      }).catch(() => {});
+    });
+
+    term.onResize(({ cols, rows }) => {
+      if (!sessionIdRef.current) return;
+      fetch("/api/terminal/resize", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: sessionIdRef.current, cols, rows }),
+      }).catch(() => {});
+    });
+
+    let resizeDebounce = null;
+    const doFit = () => {
+      clearTimeout(resizeDebounce);
+      resizeDebounce = setTimeout(() => {
+        if (fitRef.current) {
+          try { fitRef.current.fit(); } catch (_) {}
+        }
+      }, 100);
+    };
+    const ro = new ResizeObserver(() => doFit());
+    ro.observe(containerRef.current);
+    window.addEventListener("resize", doFit);
+
+    restartSession();
+
+    const readInterval = setInterval(async () => {
+      if (!sessionIdRef.current || !termRef.current) return;
+      try {
+        const res = await fetch("/api/terminal/read", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: sessionIdRef.current, clear: true }),
+        });
+        if (res.ok) {
+          const data = await res.json();
+          if (data.output && termRef.current) {
+            termRef.current.write(data.output);
+          }
+        }
+      } catch (_) {}
+    }, 75);
+
+    return () => {
+      clearInterval(readInterval);
+      clearTimeout(resizeDebounce);
+      ro.disconnect();
+      window.removeEventListener("resize", doFit);
+      if (sessionIdRef.current) {
+        fetch("/api/terminal/close", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: sessionIdRef.current }),
+        }).catch(() => {});
+      }
+      try { term.dispose(); } catch (_) {}
+      termRef.current = null;
+    };
+  }, [selectedProject]);
+
+  return (
+    <div style={{ display: "flex", flexDirection: "column", height: "100%", width: "100%", background: "#181c20", borderTop: "1px solid var(--line, #1f2733)" }}>
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", height: "36px", padding: "0 12px", background: "var(--surface-1, #0f1318)", borderBottom: "1px solid var(--line, #1f2733)", flexShrink: 0, userSelect: "none" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "18px", height: "100%" }}>
+          <button
+            onClick={() => {
+              setActiveTab("TERMINAL");
+              setTimeout(() => {
+                fitRef.current?.fit();
+                termRef.current?.focus();
+              }, 10);
+            }}
+            style={{
+              background: "transparent",
+              border: "none",
+              borderBottom: activeTab === "TERMINAL" ? "2px solid var(--brand, #5eead4)" : "2px solid transparent",
+              color: activeTab === "TERMINAL" ? "#ffffff" : "#8b949e",
+              fontSize: "11px",
+              fontWeight: 600,
+              letterSpacing: "0.5px",
+              cursor: "pointer",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "0 4px",
+              fontFamily: "inherit"
+            }}
+          >
+            <span>TERMINAL</span>
+            <span style={{ fontSize: "10px", background: "rgba(255,255,255,0.08)", padding: "1px 5px", borderRadius: "8px", color: "#8b949e" }}>local</span>
+          </button>
+          <button
+            onClick={() => setActiveTab("OUTPUT")}
+            style={{
+              background: "transparent",
+              border: "none",
+              borderBottom: activeTab === "OUTPUT" ? "2px solid var(--brand, #5eead4)" : "2px solid transparent",
+              color: activeTab === "OUTPUT" ? "#ffffff" : "#8b949e",
+              fontSize: "11px",
+              fontWeight: 600,
+              letterSpacing: "0.5px",
+              cursor: "pointer",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              padding: "0 4px",
+              fontFamily: "inherit"
+            }}
+          >
+            OUTPUT
+          </button>
+        </div>
+        <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+          <span style={{ fontSize: "11px", color: "#6e7681", marginRight: "6px" }}>{statusText}</span>
+          <button
+            onClick={restartSession}
+            title="New / Restart Terminal Session"
+            style={{ background: "transparent", border: "none", color: "#c9d1d9", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: "4px", borderRadius: "4px" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+          </button>
+          <button
+            onClick={() => {
+              if (termRef.current) termRef.current.clear();
+            }}
+            title="Clear Terminal"
+            style={{ background: "transparent", border: "none", color: "#c9d1d9", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: "4px", borderRadius: "4px" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round"><path d="M3 6h18"></path><path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path><path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path></svg>
+          </button>
+          <button
+            onClick={onClose}
+            title="Close Terminal Panel"
+            style={{ background: "transparent", border: "none", color: "#c9d1d9", cursor: "pointer", display: "flex", alignItems: "center", justifyContent: "center", padding: "4px", borderRadius: "4px" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"></line><line x1="6" y1="6" x2="18" y2="18"></line></svg>
+          </button>
+        </div>
+      </div>
+
+      <div style={{ flex: 1, width: "100%", height: "100%", position: "relative", overflow: "hidden" }}>
+        <div
+          ref={containerRef}
+          style={{
+            width: "100%",
+            height: "100%",
+            padding: "6px 8px",
+            display: activeTab === "TERMINAL" ? "block" : "none",
+          }}
+        />
+        <div
+          style={{
+            display: activeTab === "OUTPUT" ? "block" : "none",
+            padding: "12px",
+            color: "#c9d1d9",
+            fontSize: "12px",
+            fontFamily: '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
+            overflowY: "auto",
+            height: "100%",
+            whiteSpace: "pre-wrap",
+            lineHeight: "1.5",
+          }}
+        >
+          {mainUiAiLog ? (
+            <div>{mainUiAiLog}</div>
+          ) : (
+            <div style={{ color: "#8b949e" }}>
+              <div style={{ color: "#5eead4", fontWeight: 600, marginBottom: "6px" }}>[Quantum AI & System Output Stream]</div>
+              Belum ada log aktivitas atau output AI dari UI utama saat ini.<br />
+              Saat Anda mengobrol dengan AI di UI utama atau menjalankan perintah, semua log proses dan hasil respons AI akan otomatis mengalir ke panel ini.
+            </div>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function App() {
   // Melaporkan ke index.html bahwa App berhasil dirender tanpa Runtime Error
   useEffect(() => {
     if (window.reportAppSuccess) window.reportAppSuccess();
   }, []);
   const [pickerDone, setPickerDone] = useState(false);
+  const [panelMenuOpen, setPanelMenuOpen] = useState(false);
+  useEffect(() => {
+    const closePanelMenu = () => setPanelMenuOpen(false);
+    window.addEventListener("click", closePanelMenu);
+    return () => window.removeEventListener("click", closePanelMenu);
+  }, []);
+
+  // Command Palette state (VS Code fork). Lives here (App level, not
+  // AgentRunnerView) because the trigger button that opens it is in App's own
+  // panel menu — a sibling/child component's local state isn't reachable from
+  // there, which previously threw "setCommandPaletteOpen is not defined".
+  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
+  const [commandSearch, setCommandSearch] = useState("");
+  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
+  const filteredCommands = useMemo(() => {
+    if (!commandSearch.trim()) return COMMANDS;
+    return COMMANDS.filter(cmd =>
+      cmd.label.toLowerCase().includes(commandSearch.toLowerCase())
+    );
+  }, [commandSearch]);
+  const runSelectedCommand = () => {
+    const cmd = filteredCommands[selectedCommandIndex];
+    if (cmd) {
+      cmd.action();
+      setCommandPaletteOpen(false);
+      setCommandSearch("");
+    }
+  };
+  useEffect(() => {
+    const handleKeyDown = (e) => {
+      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+        e.preventDefault();
+        setCommandPaletteOpen(true);
+        setCommandSearch("");
+        setSelectedCommandIndex(0);
+      }
+      if (commandPaletteOpen) {
+        if (e.key === 'Escape') {
+          setCommandPaletteOpen(false);
+        } else if (e.key === 'ArrowDown') {
+          e.preventDefault();
+          setSelectedCommandIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
+        } else if (e.key === 'ArrowUp') {
+          e.preventDefault();
+          setSelectedCommandIndex(prev => Math.max(prev - 1, 0));
+        } else if (e.key === 'Enter') {
+          runSelectedCommand();
+        }
+      }
+    };
+    window.addEventListener('keydown', handleKeyDown);
+    return () => window.removeEventListener('keydown', handleKeyDown);
+  }, [commandPaletteOpen, selectedCommandIndex, filteredCommands]);
   const [selectedProject, setSelectedProject] = useState(() => {
     try {
       const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
@@ -5546,6 +6215,27 @@ function App() {
     return "c:\\Users\\dave\\quantum";
   });
   const [hitlRequest, setHitlRequest] = React.useState(null);
+
+  React.useEffect(() => {
+    const checkSelectedProject = () => {
+      try {
+        const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+        const isDel = (pStr) => {
+          if (!pStr) return false;
+          return deleted.some(d => pStr === d || pStr.endsWith(`\\${d}`) || pStr.endsWith(`/${d}`) || d.endsWith(`\\${pStr}`) || d.endsWith(`/${pStr}`));
+        };
+        if (isDel(selectedProject)) {
+          const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+          const valid = stored.filter(p => !isDel(p.path) && !isDel(p.name));
+          if (valid.length > 0 && valid[0].path) setSelectedProject(valid[0].path);
+          else if (!isDel("c:\\Users\\dave\\quantum")) setSelectedProject("c:\\Users\\dave\\quantum");
+          else setSelectedProject("");
+        }
+      } catch (_) {}
+    };
+    window.addEventListener("quantum_workspaces_changed", checkSelectedProject);
+    return () => window.removeEventListener("quantum_workspaces_changed", checkSelectedProject);
+  }, [selectedProject]);
   window.testHitl = function() {
     setHitlRequest({
       kind: 'hitl',
@@ -6333,6 +7023,9 @@ function App() {
           loadAgents();
         }}
         selectedProject={selectedProject}
+        onOpenPicker={() => {
+          setPickerDone(false);
+        }}
       />
       <div className="page-container">
 
@@ -6397,22 +7090,8 @@ function App() {
             {terminalOpen && (
               <>
                 <div className="split-divider" onMouseDown={onTerminalDividerDown} />
-                <div className="terminal-col" style={{ flex: "0 0 " + terminalPct + "%" }}>
-                  <div className="terminal-panel">
-                    <div className="terminal-header">
-                      <span>Terminal</span>
-                      <button
-                        className="terminal-close"
-                        onClick={() => setTerminalOpen(false)}
-                        title="Tutup terminal"
-                      >
-                        ?
-                      </button>
-                    </div>
-                    <div className="terminal-output">
-                      {terminal.output || ""}
-                    </div>
-                  </div>
+                <div className="terminal-col" style={{ flex: "0 0 " + terminalPct + "%", display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
+                  <VSCodeTerminal selectedProject={selectedProject} onClose={() => setTerminalOpen(false)} agentOutput={agentOutput} terminalOutput={terminalOutput} messages={messages} />
                 </div>
               </>
             )}
@@ -6423,7 +7102,127 @@ function App() {
                   className="canvas-col"
                   style={{ flex: "0 0 " + panelPct + "%", background: "var(--surface-1)", display: "flex", flexDirection: "column" }}
                 >
-                  <div style={{ height: "46px", borderBottom: "1px solid var(--line)", padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
+                  <div style={{ height: "46px", borderBottom: "1px solid var(--line)", padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, position: "relative" }}>
+                    <div
+                      style={{
+                        position: "absolute",
+                        left: "10px",
+                        top: "50%",
+                        transform: "translateY(-50%)",
+                        width: "16px",
+                        height: "28px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "center",
+                        cursor: "pointer",
+                        color: "#ffffff",
+                        zIndex: 10,
+                      }}
+                      title="Menu panel"
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        setPanelMenuOpen(!panelMenuOpen);
+                      }}
+                    >
+                      <svg width="10" height="20" viewBox="0 0 10 20" fill="none" xmlns="http://www.w3.org/2000/svg">
+                        <circle cx="5" cy="4" r="1.6" fill="#ffffff"></circle>
+                        <circle cx="5" cy="10" r="1.6" fill="#ffffff"></circle>
+                        <circle cx="5" cy="16" r="1.6" fill="#ffffff"></circle>
+                      </svg>
+                    </div>
+                    {panelMenuOpen && (
+                      <div
+                        onClick={(e) => e.stopPropagation()}
+                        style={{
+                          position: "absolute",
+                          top: "38px",
+                          left: "8px",
+                          background: "#181c20",
+                          border: "1px solid #282e36",
+                          borderRadius: "6px",
+                          boxShadow: "0 12px 36px rgba(0,0,0,0.65)",
+                          padding: "6px 0",
+                          zIndex: 2000,
+                          minWidth: "235px",
+                        }}
+                      >
+                        <button
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            width: "100%",
+                            padding: "8px 16px",
+                            color: "#e2e8f0",
+                            fontSize: "13px",
+                            border: "none",
+                            background: "transparent",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            textAlign: "left",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          onClick={() => {
+                            setPanelMenuOpen(false);
+                            setTerminalOpen(!terminalOpen);
+                          }}
+                        >
+                          <span>Terminal</span>
+                        </button>
+                        <button
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            width: "100%",
+                            padding: "8px 16px",
+                            color: "#e2e8f0",
+                            fontSize: "13px",
+                            border: "none",
+                            background: "transparent",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            textAlign: "left",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          onClick={() => {
+                            setPanelMenuOpen(false);
+                            setPickerDone(false);
+                          }}
+                        >
+                          <span>Create Project</span>
+                        </button>
+                        <button
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            width: "100%",
+                            padding: "8px 16px",
+                            color: "#e2e8f0",
+                            fontSize: "13px",
+                            border: "none",
+                            background: "transparent",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            textAlign: "left",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          onClick={() => {
+                            setPanelMenuOpen(false);
+                            setCommandPaletteOpen(true);
+                            setCommandSearch("");
+                            setSelectedCommandIndex(0);
+                          }}
+                        >
+                          <span>Command Palette</span>
+                          <span style={{ fontSize: "12px", color: "#6b7280", marginLeft: "24px" }}>Ctrl+Shift+P</span>
+                        </button>
+                      </div>
+                    )}
                   </div>
                   <div style={{ flex: 1, padding: "16px", overflowY: "auto", color: "var(--text-soft)", fontSize: "14px", position: "relative" }}>
 
@@ -6505,6 +7304,37 @@ function App() {
         </div>
       </div>
     </div>
+
+    {/* Command Palette UI (VS Code fork) */}
+    {commandPaletteOpen && (
+      <div className="command-palette-overlay" onClick={() => setCommandPaletteOpen(false)}>
+        <div className="command-palette" onClick={e => e.stopPropagation()}>
+          <input
+            type="text"
+            placeholder="Cari perintah... (Ctrl+Shift+P untuk membuka)"
+            value={commandSearch}
+            onChange={e => { setCommandSearch(e.target.value); setSelectedCommandIndex(0); }}
+            autoFocus
+            className="command-palette-input"
+          />
+          <div className="command-palette-list">
+            {filteredCommands.map((cmd, idx) => (
+              <div
+                key={cmd.id}
+                className={`command-palette-item ${idx === selectedCommandIndex ? 'selected' : ''}`}
+                onClick={() => { setSelectedCommandIndex(idx); runSelectedCommand(); }}
+              >
+                <span className="command-icon">{cmd.icon}</span>
+                <span className="command-label">{cmd.label}</span>
+              </div>
+            ))}
+            {filteredCommands.length === 0 && (
+              <div className="command-palette-empty">Tidak ada perintah yang cocok</div>
+            )}
+          </div>
+        </div>
+      </div>
+    )}
     </>
   );
 }
@@ -6525,57 +7355,8 @@ function AgentRunnerView({
   panelOpen,
   setPanelOpen,
 }) {
-  // Command Palette state (VS Code fork)
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [commandSearch, setCommandSearch] = useState("");
-  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
-  
-  // Filter commands based on search
-  const filteredCommands = useMemo(() => {
-    if (!commandSearch.trim()) return COMMANDS;
-    return COMMANDS.filter(cmd => 
-      cmd.label.toLowerCase().includes(commandSearch.toLowerCase())
-    );
-  }, [commandSearch]);
-  
-  // Execute selected command
-  const runSelectedCommand = () => {
-    const cmd = filteredCommands[selectedCommandIndex];
-    if (cmd) {
-      cmd.action();
-      setCommandPaletteOpen(false);
-      setCommandSearch("");
-    }
-  };
-  
-  // Keyboard shortcut for Command Palette (Ctrl+Shift+P / Cmd+Shift+P)
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'P') {
-        e.preventDefault();
-        setCommandPaletteOpen(true);
-        setCommandSearch("");
-        setSelectedCommandIndex(0);
-      }
-      // Navigate in command palette
-      if (commandPaletteOpen) {
-        if (e.key === 'Escape') {
-          setCommandPaletteOpen(false);
-        } else if (e.key === 'ArrowDown') {
-          e.preventDefault();
-          setSelectedCommandIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
-        } else if (e.key === 'ArrowUp') {
-          e.preventDefault();
-          setSelectedCommandIndex(prev => Math.max(prev - 1, 0));
-        } else if (e.key === 'Enter') {
-          runSelectedCommand();
-        }
-      }
-    };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
-  }, [commandPaletteOpen, selectedCommandIndex, filteredCommands]);
-
+  // Command Palette: state/logic now lives in App() (see App's own hooks) —
+  // this component's local copy was never reachable from App's trigger button.
   const [selected, setSelected] = useState("");
   const [fullScreenAgent, setFullScreenAgent] = useState(null);
   const [installing, setInstalling] = useState(false);
@@ -6659,7 +7440,7 @@ function AgentRunnerView({
       rows: 40,
       scrollback: 10000,
       altClickMovesCursor: true,
-      fontFamily: 'Consolas, "Cascadia Code", monospace',
+      fontFamily: '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
       fontSize: 13,
       theme: {
         background: "#0d1117",
@@ -7144,37 +7925,6 @@ function AgentRunnerView({
             </div>
           </div>
         </>
-      )}
-      
-      {/* Command Palette UI (VS Code fork) */}
-      {commandPaletteOpen && (
-        <div className="command-palette-overlay" onClick={() => setCommandPaletteOpen(false)}>
-          <div className="command-palette" onClick={e => e.stopPropagation()}>
-            <input
-              type="text"
-              placeholder="Cari perintah... (Ctrl+Shift+P untuk membuka)"
-              value={commandSearch}
-              onChange={e => { setCommandSearch(e.target.value); setSelectedCommandIndex(0); }}
-              autoFocus
-              className="command-palette-input"
-            />
-            <div className="command-palette-list">
-              {filteredCommands.map((cmd, idx) => (
-                <div
-                  key={cmd.id}
-                  className={`command-palette-item ${idx === selectedCommandIndex ? 'selected' : ''}`}
-                  onClick={() => { setSelectedCommandIndex(idx); runSelectedCommand(); }}
-                >
-                  <span className="command-icon">{cmd.icon}</span>
-                  <span className="command-label">{cmd.label}</span>
-                </div>
-              ))}
-              {filteredCommands.length === 0 && (
-                <div className="command-palette-empty">Tidak ada perintah yang cocok</div>
-              )}
-            </div>
-          </div>
-        </div>
       )}
     </div>
   );
