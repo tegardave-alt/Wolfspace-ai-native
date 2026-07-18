@@ -597,29 +597,6 @@ const IPC =
     ? window.WOLFSPACE
     : null;
 
-// Jarak edit (Levenshtein) sederhana — dipakai untuk toleransi typo pada deteksi
-// kata kunci tugas (mis. "jalaankan" harus tetap kena walau typo dari "jalankan",
-// karena TASK_KEYWORDS literal gagal cocok dan itu diam-diam menjatuhkan pesan
-// ke chat biasa TANPA tool, membuat model mengarang narasi eksekusi palsu).
-function levenshtein(a, b) {
-  if (a === b) return 0;
-  const m = a.length, n = b.length;
-  if (m === 0) return n;
-  if (n === 0) return m;
-  let prev = new Array(n + 1);
-  for (let j = 0; j <= n; j++) prev[j] = j;
-  for (let i = 1; i <= m; i++) {
-    const cur = new Array(n + 1);
-    cur[0] = i;
-    for (let j = 1; j <= n; j++) {
-      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
-      cur[j] = Math.min(prev[j] + 1, cur[j - 1] + 1, prev[j - 1] + cost);
-    }
-    prev = cur;
-  }
-  return prev[n];
-}
-
 async function streamChat(reqBody, onText, signal) {
   let acc = "",
     run = null;
@@ -6721,6 +6698,18 @@ function App() {
       }
       return;
     }
+    // /ask: mode tanya EKSPLISIT — dijamin TANPA tool (tidak akan pernah edit atau
+    // eksekusi file), bahkan pada model cloud. Ini escape-hatch keamanan, kebalikan
+    // dari perilaku default di mana model sendiri yang memutuskan pakai tool atau tidak.
+    let askMode = false;
+    {
+      const t = (content || "").trim();
+      if (/^\/ask(\s|$)/i.test(t)) {
+        askMode = true;
+        content = t.replace(/^\/ask\b\s*/i, "");
+        if (!content) { setStatus("Ketik pertanyaan setelah /ask, mis. /ask apa fungsi X"); return; }
+      }
+    }
     if (content.trim().startsWith("/") && (await handleSlashCommand(content))) return;
     if (busy && !hitlData) return;
     let newHist = history;
@@ -6740,24 +6729,14 @@ function App() {
     const _localCloud =
       _cl && _cl.baseUrl && /(127\.0\.0\.1|localhost)/.test(_cl.baseUrl);
     
-    // Deteksi apakah input adalah instruksi tugas atau chat biasa
-    const TASK_KEYWORDS = /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|perbaiki|refactor|optimi[sz]e|sort|parse|regex|api|loop|array|string|hitung|kalkulator|baca|file|folder|cari|search|hapus|edit|ubah|ganti|tambah(?:kan)?|jalankan|eksekusi|test|bantu)\b/i;
-    // Fallback toleran-typo: kata kerja EKSEKUSI eksplisit (bukan sekadar diskusi/tanya)
-    // dicek juga via jarak-edit, supaya salah eja satu-dua huruf ("jalaankan") tidak
-    // diam-diam menjatuhkan permintaan eksekusi ke chat biasa (yang tanpa tool sama
-    // sekali, sehingga model cuma bisa mengarang output alih-alih benar-benar menjalankan).
-    // Jarak-edit 1 (bukan 2): cukup untuk typo satu-huruf ("jalaankan") tanpa
-    // menjaring kata tak-terkait seperti "jelaskan" (explain) yang berjarak 2.
-    const EXEC_VERB_STEMS = ['jalankan', 'eksekusi', 'execute', 'jalanin'];
-    const fuzzyExecMatch = content
-      .toLowerCase()
-      .split(/[^a-z]+/)
-      .filter(w => w.length >= 5)
-      .some(w => EXEC_VERB_STEMS.some(stem => levenshtein(w, stem) <= 1));
-    const isTask = TASK_KEYWORDS.test(content) || fuzzyExecMatch;
-    
-    // Gunakan agent HANYA jika model cloud DAN (terdeteksi sebagai tugas ATAU ini adalah HITL resume)
-    const useAgent = modelVal === "cloud" && !_localCloud && (isTask || !!hitlData);
+    // Default: model cloud tool-capable selalu lewat agent, dan MODEL sendiri yang
+    // memutuskan (tool_choice auto) apakah cukup menjawab atau memakai tool. Tak ada
+    // lagi gerbang regex tebak-menebak yang bisa salah-rute (dulu typo "jalaankan"
+    // diam-diam jatuh ke chat tanpa-tool → model mengarang output). Pengecualian:
+    //   - /ask  -> paksa jalur tanpa-tool (jaminan tak menyentuh file)
+    //   - HITL/continue resume -> selalu agent
+    //   - model lokal/bridge  -> memang tak bisa tool, plain chat
+    const useAgent = !!hitlData || (modelVal === "cloud" && !_localCloud && !askMode);
     if (!useAgent) {
       // Bridge / local model: plain conversational chat (text streaming, no function-calling).
       setMessages((m) => [
