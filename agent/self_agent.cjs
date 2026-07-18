@@ -33,6 +33,19 @@ function sanitizeOutput(text) {
   return text.replace(SYSTEM_RULES.FORBIDDEN_SPECULATIVE, '[kata-spekulatif-dihapus]');
 }
 
+// Buang blok reasoning (<think>...</think>) dan tag think yang nyasar/tak berpasangan.
+// cloud.cjs membungkus reasoning-delta dengan tag ini untuk tampilan streaming, dan
+// beberapa model (DeepSeek R1 dkk.) juga mengeluarkannya sendiri — apapun sumbernya,
+// isi think TIDAK BOLEH tampil sebagai jawaban ke user.
+function stripThinkBlocks(text) {
+  if (!text || text.indexOf('think>') < 0) return text;
+  return text
+    .replace(/<think>[\s\S]*?<\/think>/gi, '')
+    .replace(/^[\s\S]*?<\/think>/i, '')   // closer tanpa opener: semua sebelum </think> adalah reasoning bocor
+    .replace(/<think>[\s\S]*$/i, '')      // opener tanpa closer: sisa stream adalah reasoning
+    .trim();
+}
+
 // Hapus rekapitulasi tool / daftar bukti / kalimat pengantar yang tidak perlu
 function stripToolRecap(text) {
   if (!text) return text;
@@ -526,6 +539,22 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         }
         if (isCancelled()) return { stopReason: 'cancelled_after_tools' };
 
+        // Reasoning bisa bocor lewat dua jalur: terselip di content (tag <think> dari
+        // cloud.cjs/model) atau model menghabiskan giliran HANYA berpikir (content
+        // kosong, field reasoning terisi). Bersihkan yang pertama; untuk yang kedua,
+        // dorong model menjawab ulang alih-alih menampilkan monolog internalnya.
+        if (msg.content) msg.content = stripThinkBlocks(msg.content);
+        if (!msg.content && !(msg.tool_calls && msg.tool_calls.length) && msg.reasoning) {
+          if (state.forceRetryCount < 3) {
+            emit({ t: 'force_retry', m: 'Model hanya berpikir tanpa jawaban final — meminta ulang...' });
+            return {
+              messages: [{ role: 'user', content: 'Kamu berhenti di tengah proses berpikir tanpa memberikan jawaban final. JANGAN menarasikan rencana atau simulasi. Langsung PANGGIL tool yang dibutuhkan (bash/read/grep/edit) atau berikan jawaban final yang singkat.' }],
+              forceRetryCount: state.forceRetryCount + 1
+            };
+          }
+          msg.content = '(model tidak memberikan jawaban final)';
+        }
+
         let calls = (msg.tool_calls && msg.tool_calls.length) ? msg.tool_calls : null;
         if (!calls) {
           const pseudo = parsePseudoCalls(msg.content || '');
@@ -564,14 +593,23 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           // Per-name counter: detects loop where agent retries same tool with slightly different args
           callCountsByName[tc.function.name] = (callCountsByName[tc.function.name] || 0) + 1;
           if (callCounts[sig] > 3) return { stop: true }; // exact same call > 3x: hard stop
-          if (callCountsByName[tc.function.name] > 5) return { stop: true, reason: 'tool_name_loop' }; // same tool-type > 5x: hard stop
+          // Name-based loop detection only applies to ACTION tools. Read-only tools
+          // (read/grep/glob/...) legitimately repeat across DIFFERENT files on any
+          // non-trivial task — killing the run at the 6th `read` was a false positive
+          // that also made the readFileCount>=8 notice below unreachable. Identical-args
+          // loops are still caught for every tool by the callCounts[sig] check above.
+          const isReadOnlyTool = /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|terminal_read|skill_list|mcp_[a-z0-9_]+)$/i.test(tc.function.name);
+          if (!isReadOnlyTool && callCountsByName[tc.function.name] > 5) return { stop: true, reason: 'tool_name_loop' }; // same action-tool > 5x: hard stop
 
           if (/^(edit|write|replace_file_content|write_artifact)$/i.test(tc.function.name)) ensureBackup();
           if (tc.function.name === 'bash') {
             emit({ t: 'act', kind: 'bash', arg: args.command || '', ok: true, output: '⟳ running…' });
           }
           const r = await runSelfTool(tc.function.name, args, emit);
-          if (r.edited) localEdits++;
+          // Increment BOTH: localEdits feeds graph state; the outer `edits` is what
+          // the catch-block's rollback guard reads — without this it stays 0 forever
+          // and a crash after successful edits would always roll them back.
+          if (r.edited) { localEdits++; edits++; }
           if (r.output) localAccessed.add(r.output);
           if (!r.ok && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)) localFailed.add(tc.function.name);
           
@@ -629,8 +667,11 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 
         // Thoughts are emitted inside runOne or HITL branch — only for tools that actually execute.
 
-        // HITL disabled for testing — all tools execute directly
-        const EXECUTION_TOOLS = [];
+        // HITL gates only the unprotected path: `bash` runs PowerShell directly on
+        // the host — no broker (that's capability_exec only), no sandbox (that's
+        // sandbox_run only), so it needs user approval. edit/write stay HITL-free:
+        // they're covered by auto-snapshot + rollback.
+        const EXECUTION_TOOLS = ['bash'];
         const executionCalls = calls.filter(tc => EXECUTION_TOOLS.includes(tc.function.name));
         const nonExecutionCalls = calls.filter(tc => !EXECUTION_TOOLS.includes(tc.function.name));
         
@@ -742,7 +783,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
                 out = 'DITOLAK edit via bash. Baca file dulu dengan read tool, lalu gunakan edit tool.';
               }
             } else {
-              out = 'DITOLANG edit via bash. Gunakan tool "edit" — baca file dulu dengan read tool jika perlu.';
+              out = 'DITOLAK edit via bash. Gunakan tool "edit" — baca file dulu dengan read tool jika perlu.';
             }
           }
           toolMessages.push({ role: 'tool', tool_call_id: calls[i].id, content: out });
@@ -770,8 +811,22 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       })
       .addNode("validate", async (state) => {
         const msg = state.messages[state.messages.length - 1];
-        const hasContent = msg.content && msg.content.trim();
-        const rawContent = hasContent ? msg.content : '(tidak ada respons dari model)';
+        const cleanContent = stripThinkBlocks(msg.content || '');
+        const hasContent = cleanContent && cleanContent.trim();
+        const rawContent = hasContent ? cleanContent : '(tidak ada respons dari model)';
+
+        // Anti-tutorial: model punya tool eksekusi nyata (bash/sandbox_run), jadi jawaban
+        // yang MENSIMULASIKAN hasil atau menyerah dengan "sebagai AI saya tidak bisa
+        // menjalankan" adalah halusinasi peran — paksa ia benar-benar memanggil tool.
+        const SIMULATION_CLAIMS = /sebagai AI[^.]{0,60}(tidak (bisa|dapat|punya)|akses)|tidak (punya|memiliki) akses real-?time|saya (tidak bisa|tidak dapat) (menjalankan|mengeksekusi)|saya (akan )?(asumsikan|anggap|simulasikan)|dalam simulasi|outputnya (mungkin|kira-kira|misal)/i;
+        if (hasContent && SIMULATION_CLAIMS.test(cleanContent) && state.forceRetryCount < 3) {
+          emit({ t: 'force_retry', m: '[ANTI-TUTORIAL] Jawaban mensimulasikan eksekusi — memaksa pemanggilan tool nyata...' });
+          return {
+            messages: [{ role: 'user', content: 'PERINGATAN SISTEM: Kamu BISA mengeksekusi perintah secara nyata — kamu punya tool bash (PowerShell di host) dan sandbox_run. DILARANG mensimulasikan, mengasumsikan, atau menarasikan output. PANGGIL tool yang sesuai SEKARANG dan laporkan output aslinya.' }],
+            forceRetryCount: state.forceRetryCount + 1
+          };
+        }
+
         const evidenceValid = hasValidEvidence(rawContent, state.accessedEvidence);
         
         let fallback = rawContent;
@@ -911,6 +966,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           if (/^(edit|write|replace_file_content|write_artifact)$/i.test(pendingTc.function.name)) ensureBackup();
           
           const r = await runSelfTool(pendingTc.function.name, args, emit);
+          if (r.edited) edits++; // keep the crash-rollback guard's counter honest
           const toolResult = r.output || '(ok)';
           
           emit({ t: 'act', kind: pendingTc.function.name, arg: args.path || args.command || '', ok: !!r.ok, output: toolResult });

@@ -352,7 +352,13 @@ function _askCloudToolsOnce(cloud, messages, tools) {
           return reject(new Error(provider + ' ' + s.statusCode + ': ' + errBody.slice(0, 300)));
         }
         const validToolCalls = tcs.filter(Boolean);
-        const response = { role: 'assistant', content: content || (reasoning || null) };
+        // NEVER substitute raw chain-of-thought as the answer: when a reasoning
+        // model burns its turn thinking without a final answer, `content` is empty
+        // and the old `content || reasoning` fallback streamed the model's internal
+        // monologue ("Saya asumsikan...", stray </think>) straight to the user.
+        // Expose it as a separate field so callers can retry instead of leaking it.
+        const response = { role: 'assistant', content: content || null };
+        if (!content && reasoning) response.reasoning = reasoning;
         // Hanya kirim tool_calls jika ada minimal 1 (hindari error DeepSeek)
         if (validToolCalls.length > 0) response.tool_calls = validToolCalls;
         resolve(response);
