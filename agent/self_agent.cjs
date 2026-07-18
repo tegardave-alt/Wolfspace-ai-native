@@ -454,6 +454,9 @@ Setiap keputusan, setiap langkah tool, setiap edit — harus bisa dijawab dengan
 PRINSIP 6 — BERHENTI SECARA NATURAL KETIKA TUGAS SELESAI (NATURAL TASK COMPLETION):
 Kamu bekerja berdasarkan penyelesaian sasaran (goal completion). Segera setelah tugas/permintaan user terverifikasi selesai dengan bukti logis yang nyata, BERHENTI memanggil tool lagi dan langsung berikan jawaban atau rangkuman akhir kepada user secara natural. Jangan memperpanjang langkah yang tidak perlu.
 
+PRINSIP 7 — JANGAN MENGELAK DARI PERTANYAAN PENGETAHUAN UMUM:
+Untuk pertanyaan pengetahuan umum (roadmap karier, konsep, penjelasan, "apa itu X", "bagaimana cara Y") kamu WAJIB langsung MENJAWAB dari pengetahuanmu — tanpa perlu tool. DILARANG mengelak dengan kalimat seperti "ini di luar task kode", "silakan minta saya membuat file", atau "minta saya mencari referensi web". Kalau kamu terlanjur menjalankan pencarian file (glob/grep) dan hasilnya nihil, itu BUKAN alasan untuk menolak — abaikan hasil nihil itu dan tetap berikan jawaban lengkap dari pengetahuanmu. Menjawab pertanyaan umum secara membantu adalah bagian dari tugasmu, bukan pengecualian.
+
 [PETA ARSITEKTUR WOLFSPACE — KAMU SUDAH TAHU LETAK SEGALANYA]:
 - Frontend UI React (semua tombol, sidebar, header, chat input/composer, modal HITL, clear conversation, AgentSteps) -> public/app.jsx
 - Styling & Desain (CSS, tema, warna, layout) -> public/styles.css
@@ -696,7 +699,15 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               bytes: written.trim().length
             });
           }
-          if (r.output) localAccessed.add(r.output);
+          // Hanya output tool yang SUBSTANTIF dihitung sebagai evidence. Hasil kosong /
+          // "(tidak ada file cocok)" / "(ok)" bukan bukti apa pun; kalau dimasukkan,
+          // hasValidEvidence akan memaksa jawaban "mengutip" ketiadaan itu, dan untuk
+          // pertanyaan pengetahuan umum model malah mengelak ("silakan minta saya membuat
+          // file...") alih-alih menjawab dari pengetahuannya.
+          const _outStr = (r.output || '').trim();
+          const _nonSubstantive = !_outStr ||
+            /^\(?\s*(ok|tidak ada|tidak ditemukan|no match|not found|nothing|kosong|empty|0\s+(hasil|match|file|baris))/i.test(_outStr);
+          if (r.ok && !_nonSubstantive) localAccessed.add(r.output);
           if (!r.ok && SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)) localFailed.add(tc.function.name);
           
           // Track consecutive edit failures
