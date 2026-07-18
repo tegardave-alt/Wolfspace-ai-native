@@ -6254,6 +6254,16 @@ function App() {
     const req = hitlRequest;
     setHitlRequest(null);
     if (!req) return;
+    if (req.kind === 'continue') {
+      // Jeda batas-langkah (checkpoint) — bukan HITL persetujuan. "Lanjutkan"
+      // meneruskan run dari checkpoint dengan plafon langkah diperpanjang.
+      if (val === "continue") {
+        doSend("", null, { thread_id: req.thread_id, continue_response: true });
+      } else {
+        setBusy(false); // user memilih berhenti; edit yang sudah ada dipertahankan
+      }
+      return;
+    }
     if (req.kind === 'ask') {
       // Question tool: send the selected answer as a normal user message so the agent can continue.
       if (val === "deny" || val === null || val === undefined) {
@@ -6888,6 +6898,24 @@ function App() {
                 });
                 upd({ thinking: "Menunggu persetujuan Anda...", busy: true });
                 return; // Don't set done/busy=false
+              }
+              if (j.continuable && j.thread_id) {
+                // Agent dijeda karena plafon langkah (checkpoint) — belum selesai,
+                // bukan gagal. Tutup timeline dengan rapi lalu tawarkan "Lanjutkan".
+                adoneSent = true;
+                waitingForInput = true;
+                upd({ busy: false, done: true, summary: j.summary, editCount: j.edits, backup: j.backup });
+                setHitlRequest({
+                  kind: 'continue',
+                  title: "Agent dijeda (batas langkah)",
+                  code: j.summary || "",
+                  thread_id: j.thread_id,
+                  options: [
+                    { value: "continue", text: "Lanjutkan" },
+                    { value: "deny", text: "Selesai (berhenti di sini)" }
+                  ]
+                });
+                return;
               }
               adoneSent = true;
               upd({
