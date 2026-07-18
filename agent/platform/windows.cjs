@@ -2,6 +2,9 @@
 'use strict';
 
 const path = require('path');
+const fs = require('fs');
+const os = require('os');
+const crypto = require('crypto');
 const { execSync } = require('child_process');
 const { PlatformAdapter } = require('./adapter.cjs');
 
@@ -18,7 +21,28 @@ class WindowsAdapter extends PlatformAdapter {
   }
 
   shellFor(command) {
-    return ['cmd.exe', ['/d', '/c', command]];
+    // Passing `command` directly as a single `/c` argument requires it to
+    // survive TWO layers of reparsing (Node's Windows spawn-arg escaping,
+    // then cmd.exe's own quote handling). Proven to mis-handle embedded
+    // double quotes -- e.g. `node -e "console.log(1)"` either silently
+    // drops all output or hands node a corrupted string (a stray leading
+    // `"` ends up as literal source text). Writing the command to a script
+    // file and running THAT sidesteps both layers: the only thing that
+    // needs quoting is a plain file path with no embedded quotes.
+    try {
+      const scriptPath = path.join(
+        os.tmpdir(),
+        `wolfspace-cmd-${Date.now()}-${crypto.randomBytes(4).toString('hex')}.cmd`
+      );
+      fs.writeFileSync(scriptPath, command, 'utf8');
+      // Not deleted inline: chaining `& del ...` after the command would
+      // replace cmd.exe's exit code with del's, breaking exit-code
+      // reporting. These are tiny one-shot files in the OS temp dir; leave
+      // cleanup to the OS rather than corrupt the result.
+      return ['cmd.exe', ['/d', '/c', 'call', scriptPath]];
+    } catch (_) {
+      return ['cmd.exe', ['/d', '/c', command]];
+    }
   }
 
   killTree(child) {
