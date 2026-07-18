@@ -23,6 +23,48 @@ function _get(opts) {
 const UA = 'QuantumAgent/1.0';
 function trunc(s, n) { s = String(s||''); return s.length <= n ? s : s.slice(0, n) + '…'; }
 
+// ── Tavily search API (sumber utama bila key tersedia) ──
+// Purpose-built untuk agent AI: 1 request HTTP, hasil bersih + jawaban tersintesis,
+// tanpa scraping/CAPTCHA/locale. Key dibaca dari ~/.wolfspace/cloud-keys.json (di luar
+// repo, konsisten dengan kunci cloud lain). Di-cache setelah pembacaan pertama.
+let _tavilyKey; // undefined = belum dibaca, null = tak ada
+function _getTavilyKey() {
+  if (_tavilyKey !== undefined) return _tavilyKey;
+  try {
+    const { resolveKeysPath } = require('./keys-path.cjs');
+    const keys = JSON.parse(fs.readFileSync(resolveKeysPath(), 'utf8'));
+    _tavilyKey = (keys.tavily && keys.tavily.key) || (keys.tavily && typeof keys.tavily === 'string' ? keys.tavily : null) || null;
+  } catch (_) { _tavilyKey = null; }
+  return _tavilyKey;
+}
+function _tavilySearch(query) {
+  return new Promise((resolve, reject) => {
+    const key = _getTavilyKey();
+    if (!key) return reject(new Error('no tavily key'));
+    const body = JSON.stringify({ query, search_depth: 'basic', max_results: 5, include_answer: true });
+    const req = https.request({
+      hostname: 'api.tavily.com', path: '/search', method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Authorization': 'Bearer ' + key, 'Content-Length': Buffer.byteLength(body) },
+      timeout: 20000,
+    }, res => {
+      let d = ''; res.on('data', c => d += c);
+      res.on('end', () => {
+        if (res.statusCode >= 400) return reject(new Error('tavily HTTP ' + res.statusCode));
+        let j; try { j = JSON.parse(d); } catch (e) { return reject(new Error('tavily bad JSON')); }
+        const out = [];
+        if (j.answer) out.push(`**Ringkasan:** ${trunc(j.answer, 500)}`);
+        for (const r of (j.results || []).slice(0, 5)) {
+          out.push(`**${trunc(r.title || '', 90)}** [web]\n   ${r.url || ''}\n   ${trunc((r.content || '').replace(/\s+/g, ' ').trim(), 260)}`);
+        }
+        resolve(out);
+      });
+    });
+    req.on('timeout', () => { req.destroy(); reject(new Error('tavily timeout')); });
+    req.on('error', reject);
+    req.write(body); req.end();
+  });
+}
+
 // ── Playwright headless (mesin scraping utama) ──
 // Lebih andal dari Edge `--dump-dom`: menunggu konten ter-render, ekstrak via selector
 // DOM sungguhan, dan pakai browser Chromium bundel Playwright sendiri (bukan Edge user,
@@ -99,7 +141,20 @@ async function webSearch(query) {
   const q = encodeURIComponent(query);
   const results = [];
 
-  // 0) HASIL WEB NYATA (Bing via Playwright) — sumber utama untuk pertanyaan apa pun.
+  // 0a) TAVILY — sumber utama bila key tersedia (API andal, hasil relevan + ringkasan,
+  //     tanpa scraping). Kalau berhasil, cukup ini (+ SO/GH teknis) — Bing tak perlu.
+  let tavilyOk = false;
+  try {
+    const tv = await _tavilySearch(query);
+    if (tv.length) { results.push(...tv); tavilyOk = true; }
+  } catch (_) {}
+
+  // Tavily sudah memberi jawaban + 5 hasil relevan; jangan tambah latensi dengan
+  // sumber lain (DDG-instant sering timeout ~10s). Langsung kembalikan (~3s).
+  if (tavilyOk) return results.join('\n\n');
+
+  // 0b) Fallback: Bing via Playwright HANYA jika Tavily tak tersedia/gagal (scraping
+  //     lebih lambat & kadang salah-parse; dipakai kalau tak ada API).
   try { const web = await _bingSearch(query); results.push(...web); } catch (_) {}
 
   // 1) StackExchange
