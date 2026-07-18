@@ -28,9 +28,22 @@ const SYSTEM_RULES = {
 const accessedEvidence = new Set();
 let failedTools = new Set();
 
-// Bersihkan output dari kata spekulatif
+// Bersihkan output dari kata spekulatif — TAPI jangan sentuh isi kutipan/backtick/code.
+// Kata seperti "seems"/"maybe" sering muncul sah di dalam pesan error yang dikutip atau
+// contoh kode; menyapunya di sana justru merusak jawaban yang benar (mis. pesan error
+// '"seems to be offline"' menjadi korup). Kita mask dulu span terlindung, sapu, lalu pulihkan.
 function sanitizeOutput(text) {
-  return text.replace(SYSTEM_RULES.FORBIDDEN_SPECULATIVE, '[kata-spekulatif-dihapus]');
+  if (!text) return text;
+  // Sentinel di Private Use Area — takkan pernah muncul di output model, jadi
+  // pemulihan tidak akan salah menargetkan angka asli dalam prosa.
+  const protectedSpans = [];
+  const wrap = (i) => '' + i + '';
+  const maskedText = text.replace(/```[\s\S]*?```|`[^`]*`|"[^"]*"|'[^']*'/g, (m) => {
+    protectedSpans.push(m);
+    return wrap(protectedSpans.length - 1);
+  });
+  const sweptText = maskedText.replace(SYSTEM_RULES.FORBIDDEN_SPECULATIVE, '[kata-spekulatif-dihapus]');
+  return sweptText.replace(/(\d+)/g, (_, i) => protectedSpans[Number(i)]);
 }
 
 // Buang blok reasoning (<think>...</think>) dan tag think yang nyasar/tak berpasangan.
@@ -38,11 +51,15 @@ function sanitizeOutput(text) {
 // beberapa model (DeepSeek R1 dkk.) juga mengeluarkannya sendiri — apapun sumbernya,
 // isi think TIDAK BOLEH tampil sebagai jawaban ke user.
 function stripThinkBlocks(text) {
-  if (!text || text.indexOf('think>') < 0) return text;
+  // Fast-path HARUS case-insensitive: regex di bawah pakai flag /i, jadi cek awal
+  // yang case-sensitive (indexOf) akan salah early-return untuk <THINK>/</Think>
+  // dan membocorkannya mentah. Toleransi spasi opsional (< think >) juga, karena
+  // sebagian model mengeluarkan dialek itu.
+  if (!text || !/think\s*>/i.test(text)) return text;
   return text
-    .replace(/<think>[\s\S]*?<\/think>/gi, '')
-    .replace(/^[\s\S]*?<\/think>/i, '')   // closer tanpa opener: semua sebelum </think> adalah reasoning bocor
-    .replace(/<think>[\s\S]*$/i, '')      // opener tanpa closer: sisa stream adalah reasoning
+    .replace(/<\s*think[^>]*>[\s\S]*?<\s*\/\s*think\s*>/gi, '')
+    .replace(/^[\s\S]*?<\s*\/\s*think\s*>/i, '')   // closer tanpa opener: semua sebelumnya = reasoning bocor
+    .replace(/<\s*think[^>]*>[\s\S]*$/i, '')       // opener tanpa closer: sisa stream = reasoning
     .trim();
 }
 
@@ -818,7 +835,17 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // Anti-tutorial: model punya tool eksekusi nyata (bash/sandbox_run), jadi jawaban
         // yang MENSIMULASIKAN hasil atau menyerah dengan "sebagai AI saya tidak bisa
         // menjalankan" adalah halusinasi peran — paksa ia benar-benar memanggil tool.
-        const SIMULATION_CLAIMS = /sebagai AI[^.]{0,60}(tidak (bisa|dapat|punya)|akses)|tidak (punya|memiliki) akses real-?time|saya (tidak bisa|tidak dapat) (menjalankan|mengeksekusi)|saya (akan )?(asumsikan|anggap|simulasikan)|dalam simulasi|outputnya (mungkin|kira-kira|misal)/i;
+        const SIMULATION_CLAIMS = new RegExp([
+          'sebagai AI[^.]{0,60}(tidak (bisa|dapat|punya)|akses)',
+          'as an? AI[^.]{0,60}(cannot|can\'?t|unable|no (access|way))',
+          'tidak (punya|memiliki) akses real-?time',
+          '(saya|aku)?\\s*(tidak (bisa|dapat)|(cannot|can\'?t|unable to)) (menjalankan|mengeksekusi|execute|run)',
+          '(saya|kita|mari kita|let\'?s)\\s*(akan\\s*)?(asumsikan|anggap|bayangkan|misalkan|assume|imagine|pretend|simulate|simulasikan)',
+          'seolah-?olah[^.]{0,40}(sudah|berjalan|jadi)',
+          'dalam simulasi|in (a )?simulation',
+          'output(nya)?\\s*(yang diharapkan\\s*)?(mungkin|kira-?kira|biasanya|misal|expected|would be|typically)',
+          '(hasil|hasilnya)\\s*(kira-?kira|mungkin|misal|diperkirakan|kurang lebih)'
+        ].join('|'), 'i');
         if (hasContent && SIMULATION_CLAIMS.test(cleanContent) && state.forceRetryCount < 3) {
           emit({ t: 'force_retry', m: '[ANTI-TUTORIAL] Jawaban mensimulasikan eksekusi — memaksa pemanggilan tool nyata...' });
           return {
