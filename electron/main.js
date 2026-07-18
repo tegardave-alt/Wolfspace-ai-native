@@ -17,12 +17,10 @@ protocol.registerSchemesAsPrivileged([
   { scheme: 'app', privileges: { standard: true, secure: true, supportFetchAPI: true, stream: true, codeCache: true } },
 ]);
 
-// SINGLE SOURCE: run everything from one folder. Prefer the working folder
-// C:\Users\dave\WOLFSPACE (so edits there are live with no sync/copy); fall back to
-// the packaged app.asar.unpacked if it's ever absent.
+// SINGLE SOURCE: run everything from one folder. ROOT already resolves to the
+// live project directory in dev (relative to this file, not a hardcoded user
+// path) and to the packaged app.asar.unpacked location once built.
 function unpackedRoot() {
-  const dev = 'C:\\Users\\dave\\WOLFSPACE';
-  try { if (fs.existsSync(path.join(dev, 'server.cjs'))) return dev; } catch (e) {}
   return app.isPackaged ? ROOT.replace('app.asar', 'app.asar.unpacked') : ROOT;
 }
 
