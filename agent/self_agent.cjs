@@ -1046,7 +1046,15 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       });
 
     const app = workflow.compile({ checkpointer: agentMemory });
-    const config = { configurable: { thread_id } };
+    // recursionLimit LangGraph menghitung SUPER-STEP (tiap eksekusi node), sedang app
+    // menghitung "step" hanya di node tools. Satu app-step = executor + tools = ~2
+    // super-step, plus planner/validate/retry. Default LangGraph (25) lebih kecil dari
+    // super-step yang dibutuhkan untuk mencapai MAX_STEPS (14-20) -> graph dilempar
+    // "Recursion limit reached" SEBELUM logika stop/pause graceful app jalan. Skalakan
+    // supaya app selalu berhenti duluan (loop app sendiri sudah bounded: callCounts,
+    // forceRetryCount<3, fallbackCount<3, step>=ceiling).
+    const recLimit = (ceil) => (Math.max(ceil || MAX_STEPS, 1) * 2) + 40;
+    const config = { configurable: { thread_id }, recursionLimit: recLimit(MAX_STEPS) };
     
     let finalState;
     if (hitl_response) {
@@ -1101,7 +1109,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           pendingToolCall: null,
           pendingToolCalls: [],
           task_checklist: savedState.task_checklist || []
-        }, { configurable: { thread_id: thread_id + '_resume_' + Date.now() } });
+        }, { configurable: { thread_id: thread_id + '_resume_' + Date.now() }, recursionLimit: recLimit(savedState.stepCeiling) });
       } else {
         // No pending tool call found — just restart normally
         finalState = await app.invoke({ messages, hitlApproved: true }, config);
@@ -1122,7 +1130,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         task_checklist: savedState.task_checklist || [],
         stepCeiling: prevCeiling + MAX_STEPS,
         stopReason: ''
-      }, { configurable: { thread_id: thread_id + '_cont_' + Date.now() } });
+      }, { configurable: { thread_id: thread_id + '_cont_' + Date.now() }, recursionLimit: recLimit(prevCeiling + MAX_STEPS) });
     } else {
       // Initial run — pre-search injection + intent-based routing
       try {
@@ -1228,7 +1236,19 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     
     finalSummary = finalState.finalSummary || finalSummary;
   } catch (e) {
-    dlog('self', 'info', 'stop', { reason: 'unhandled_exception', error: (e && e.message || String(e)).slice(0, 100) });
+    const msg = (e && e.message || String(e));
+    // Pertahanan berlapis: kalau recursionLimit LangGraph tetap terpicu (kasus tepi),
+    // itu BUKAN crash — agent kehabisan "putaran", bukan gagal. Jangan rollback edit
+    // yang sudah sukses, dan beri pesan yang bisa dilanjutkan (bukan error mentah).
+    if (/recursion limit/i.test(msg)) {
+      dlog('self', 'info', 'stop', { reason: 'recursion_limit', edits: edits || 0 });
+      finalSummary = (edits || 0) > 0
+        ? `Dijeda: mencapai batas putaran internal (${edits} file sudah diedit). Minta "lanjutkan" untuk meneruskan.`
+        : 'Dijeda: mencapai batas putaran internal sebelum selesai. Minta "lanjutkan" atau perjelas tugasnya.';
+      emit({ t: 'adone', steps: 0, edits: edits || 0, summary: finalSummary, backup: sessionSnapshotId, paused: true, continuable: true, thread_id });
+      return finalSummary;
+    }
+    dlog('self', 'info', 'stop', { reason: 'unhandled_exception', error: msg.slice(0, 100) });
     if (sessionSnapshotId && (edits || 0) === 0) {
       rollback(sessionSnapshotId);
       emit({ t: 'err', m: `[Auto-Rollback] Agen crash internal. Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).` });
