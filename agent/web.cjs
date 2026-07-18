@@ -1,7 +1,7 @@
 // Web search + fetch for WOLFSPACE agent
 const https = require('https');
 const http = require('http');
-const { execSync } = require('child_process');
+const { execSync, exec } = require('child_process'); // exec dipakai _fetchWithEdge (dulu tak diimpor -> web_fetch selalu "exec is not defined")
 const fs = require('fs');
 const path = require('path');
 const os = require('os');
@@ -37,11 +37,61 @@ function findEdge() {
   return null;
 }
 const EDGE = findEdge();
+// Profil Edge terdedikasi & PERSISTEN untuk headless. Terisolasi dari profil default
+// user (jadi tak menyentuh cookie/history/login mereka, dan tak bentrok dengan Edge
+// yang sedang mereka buka), tapi persisten -> hangat setelah panggilan pertama
+// (cold-start ~15s hanya sekali, berikutnya jauh lebih cepat).
+const EDGE_PROFILE = path.join(os.tmpdir(), 'wolfspace-edge-profile');
+
+// ── Dump raw DOM via Edge headless (untuk parsing hasil pencarian nyata) ──
+// PENTING: pakai --user-data-dir sementara & unik. Tanpa itu, Edge headless memakai
+// profil default yang SAMA dengan Edge milik user yang sedang terbuka → bentrok
+// (timeout) dan berisiko menyentuh data browsing user. Dibersihkan setelah selesai.
+function _edgeDumpRaw(urlStr, timeoutMs) {
+  return new Promise((resolve, reject) => {
+    if (!EDGE) return reject(new Error('Edge tidak tersedia'));
+    exec(
+      `"${EDGE}" --headless=new --disable-gpu --no-sandbox --user-data-dir="${EDGE_PROFILE}" --dump-dom --virtual-time-budget=8000 "${urlStr}"`,
+      { timeout: timeoutMs || 15000, encoding: 'utf8', windowsHide: true, maxBuffer: 12 * 1024 * 1024 },
+      (error, stdout) => {
+        if (error && !stdout) return reject(error);
+        resolve(stdout || '');
+      }
+    );
+  });
+}
+
+// ── Real web search via Bing SERP (Edge headless bypasses bot detection) ──
+// Ini yang sebelumnya HILANG: tanpa sumber web umum, satu-satunya sumber yang
+// selalu mengembalikan sesuatu adalah npm (fuzzy-match) — jadi query non-teknis
+// seperti "gaji AI engineer" dijawab dengan paket npm acak. Bing mengembalikan
+// hasil web sesungguhnya.
+async function _bingSearch(query) {
+  const url = 'https://www.bing.com/search?q=' + encodeURIComponent(query) + '&setlang=id&count=8';
+  // Bound 12s: Edge headless bisa lambat/flaky. Kalau tak balas cepat, biar
+  // fallback ke sumber lain daripada menggantung lama. Best-effort, bukan andalan.
+  const html = await _edgeDumpRaw(url, 12000);
+  const results = [];
+  const strip = s => String(s || '')
+    .replace(/<[^>]+>/g, '').replace(/&amp;/g, '&').replace(/&#39;/g, "'")
+    .replace(/&quot;/g, '"').replace(/&lt;/g, '<').replace(/&gt;/g, '>').replace(/&nbsp;/g, ' ').trim();
+  const blocks = html.split(/<li class="b_algo"/).slice(1);
+  for (const blk of blocks.slice(0, 6)) {
+    const href = (blk.match(/<h2>\s*<a[^>]+href="([^"]+)"/i) || [])[1];
+    const title = strip((blk.match(/<h2>\s*<a[^>]+>([\s\S]*?)<\/a>/i) || [])[1]);
+    const snip = trunc(strip((blk.match(/<p[^>]*>([\s\S]*?)<\/p>/i) || [])[1]), 260);
+    if (title && href) results.push(`**${trunc(title, 90)}** [web]\n   ${href}\n   ${snip}`);
+  }
+  return results;
+}
 
 // ── Web Search (multi-source) ──
 async function webSearch(query) {
   const q = encodeURIComponent(query);
   const results = [];
+
+  // 0) HASIL WEB NYATA (Bing via Edge) — sumber utama untuk pertanyaan apa pun.
+  try { const web = await _bingSearch(query); results.push(...web); } catch (_) {}
 
   // 1) StackExchange
   try {
@@ -66,17 +116,20 @@ async function webSearch(query) {
     }
   } catch (_) {}
 
-  // 3) npm
-  try {
-    const npm = await _get({
-      hostname: 'registry.npmjs.org', path: '/-/v1/search?text=' + q + '&size=3',
-      headers: { 'User-Agent': UA }, timeout: 10000,
-    });
-    if (npm.objects) for (const obj of npm.objects.slice(0, 3)) {
-      const p = obj.package;
-      results.push(`**[npm] ${p.name}**  v${p.version}\n   https://www.npmjs.com/package/${p.name}\n   ${trunc(p.description,200)}`);
-    }
-  } catch (_) {}
+  // 3) npm — HANYA jika query jelas tentang paket/library (dulu selalu jalan dan
+  // mengembalikan paket acak untuk query apa pun, mencemari hasil web nyata).
+  if (/\b(npm|package|paket|library|pustaka|module|modul|dependency|dependensi|install)\b/i.test(query)) {
+    try {
+      const npm = await _get({
+        hostname: 'registry.npmjs.org', path: '/-/v1/search?text=' + q + '&size=3',
+        headers: { 'User-Agent': UA }, timeout: 10000,
+      });
+      if (npm.objects) for (const obj of npm.objects.slice(0, 3)) {
+        const p = obj.package;
+        results.push(`**[npm] ${p.name}**  v${p.version}\n   https://www.npmjs.com/package/${p.name}\n   ${trunc(p.description,200)}`);
+      }
+    } catch (_) {}
+  }
 
   // 4) DuckDuckGo Instant Answer
   try {
@@ -118,12 +171,11 @@ async function webFetch(urlStr) {
 function _fetchWithEdge(urlStr) {
   // Async via exec (not execSync) to avoid blocking the event loop
   return new Promise((resolve, reject) => {
-    const tmpFile = path.join(os.tmpdir(), '_qfetch_' + Date.now() + '.html');
+    // Profil terdedikasi persisten: isolasi dari Edge user + hangat setelah call pertama.
     exec(
-      `"${EDGE}" --headless=new --disable-gpu --no-sandbox --dump-dom --virtual-time-budget=10000 "${urlStr}"`,
-      { timeout: 25000, encoding: 'utf8', windowsHide: true },
+      `"${EDGE}" --headless=new --disable-gpu --no-sandbox --user-data-dir="${EDGE_PROFILE}" --dump-dom --virtual-time-budget=10000 "${urlStr}"`,
+      { timeout: 25000, encoding: 'utf8', windowsHide: true, maxBuffer: 12 * 1024 * 1024 },
       (error, stdout) => {
-        try { fs.rmSync(tmpFile, { force: true }); } catch (_) {}
         if (error) {
           // Edge headless failed — fall back to raw HTTP
           return _fetchWithHttp(urlStr).then(resolve, reject);
