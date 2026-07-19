@@ -1789,14 +1789,46 @@ function parseMermaidFlowchart(code) {
 // elements Cytoscape supaya diagram jadi INTERAKTIF (drag/zoom/ganti-layout), bukan
 // gambar mati. Mendaur ulang parseMermaidFlowchart yang sudah mengekstrak node+edge.
 function mermaidToCytoElements(code) {
-  const parsed = parseMermaidFlowchart(code);
+  const raw = String(code || "");
+  // Subgraph -> compound node. parseMermaidFlowchart tak paham `subgraph`/`end` dan
+  // malah membuat node sampah, jadi kita pisahkan baris itu dulu sambil merekam node
+  // mana milik grup mana. Node bergrup dapat data.parent; grup jadi compound node.
+  const subs = {};        // subId -> title
+  const parentOf = {};    // nodeId -> subId (grup terdalam yang pertama merujuknya)
+  const stack = [];
+  const clean = [];
+  for (const rawLine of raw.split(/\r?\n/)) {
+    const line = rawLine.trim();
+    if (/^subgraph\b/i.test(line)) {
+      const rest = line.replace(/^subgraph\s+/i, "");
+      const mB = rest.match(/^([A-Za-z0-9_:-]+)\s*\[([^\]]*)\]/) || rest.match(/^([A-Za-z0-9_:-]+)\s*"([^"]*)"/);
+      let id, title;
+      if (mB) { id = mB[1]; title = mB[2]; }
+      else if (/^[A-Za-z0-9_:-]+$/.test(rest.trim())) { id = rest.trim(); title = id; }
+      else { id = "sg" + Object.keys(subs).length; title = rest.replace(/["']/g, "").trim(); }
+      subs[id] = String(title).replace(/^["']|["']$/g, "");
+      stack.push(id);
+      continue;
+    }
+    if (/^end$/i.test(line)) { stack.pop(); continue; }
+    if (stack.length) {
+      const cur = stack[stack.length - 1];
+      for (const t of (line.match(/[A-Za-z0-9_:-]+/g) || [])) if (!parentOf[t]) parentOf[t] = cur;
+    }
+    clean.push(rawLine);
+  }
+  const parsed = parseMermaidFlowchart(clean.join("\n"));
   if (!parsed || !parsed.nodes || !parsed.nodes.size) return null;
+
+  const cleanLabel = (l) => String(l || "").replace(/<br\s*\/?>/gi, "\n").replace(/^\s*["']|["']\s*$/g, "");
+  const usedSubs = new Set();
+  for (const id of parsed.nodes.keys()) if (parentOf[id] && subs[parentOf[id]]) usedSubs.add(parentOf[id]);
+  const parents = [...usedSubs].map((id) => ({ data: { id, label: subs[id], isParent: 1 } }));
+
   const nodes = [...parsed.nodes.values()].map((n) => ({
     data: {
-      id: n.id,
-      label: String(n.label || n.id).replace(/<br\s*\/?>/gi, "\n").replace(/^\s*["']|["']\s*$/g, ""),
-      shape: n.shape || "rect",
-      deg: 0,
+      id: n.id, label: cleanLabel(n.label || n.id), shape: n.shape || "rect", deg: 0,
+      parent: (parentOf[n.id] && usedSubs.has(parentOf[n.id])) ? parentOf[n.id] : undefined,
     },
   }));
   const byId = new Map(nodes.map((n) => [n.data.id, n]));
@@ -1805,7 +1837,7 @@ function mermaidToCytoElements(code) {
     if (byId.get(e.to)) byId.get(e.to).data.deg++;
     return { data: { id: "ce" + i, source: e.from, target: e.to, label: e.label || "" } };
   });
-  return [...nodes, ...edges];
+  return [...parents, ...nodes, ...edges];
 }
 
 function cyLayoutOpts(name) {
@@ -1820,16 +1852,19 @@ const CY_STYLE = [
   { selector: "node", style: { "background-color": "#141d2b", "border-color": "#8fb3ff", "border-width": 1.5, "label": "data(label)", "color": "#dce4f0", "font-family": "ui-monospace, monospace", "font-size": 11, "text-valign": "center", "text-halign": "center", "text-wrap": "wrap", "text-max-width": 150, "shape": "round-rectangle", "width": "label", "height": "label", "padding": "9px" } },
   { selector: 'node[shape="diamond"]', style: { "shape": "diamond", "width": 76, "height": 54 } },
   { selector: 'node[shape="circle"]', style: { "shape": "ellipse" } },
+  { selector: 'node[shape="round"]', style: { "shape": "round-rectangle" } },
+  { selector: 'node[shape="subroutine"]', style: { "shape": "cut-rectangle" } },
+  // compound node = grup subgraph: kotak transparan berlabel di atas, anak-anak di dalam
+  { selector: "node[?isParent]", style: { "background-color": "#8fb3ff", "background-opacity": 0.05, "border-color": "#3a4a63", "border-width": 1, "shape": "round-rectangle", "label": "data(label)", "text-valign": "top", "text-halign": "center", "font-size": 10, "color": "#8fb3ff", "padding": "16px", "text-margin-y": 3, "width": "label", "height": "label" } },
   { selector: "node[deg >= 4]", style: { "border-width": 2.5, "border-color": "#a9c6ff", "background-color": "#182741" } },
   { selector: "edge", style: { "width": 1.4, "line-color": "#3f5578", "target-arrow-color": "#5f7bb0", "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.9, "opacity": 0.9, "label": "data(label)", "font-family": "ui-monospace, monospace", "font-size": 9, "color": "#9fb7d9", "text-background-color": "#0d1117", "text-background-opacity": 0.85, "text-background-padding": 2 } },
   { selector: "node.hl", style: { "border-color": "#ffd479", "border-width": 2.5 } },
   { selector: "edge.hl", style: { "line-color": "#8fb3ff", "target-arrow-color": "#8fb3ff", "opacity": 1, "width": 2 } },
 ];
 
-// Renderer INTERAKTIF: mermaid (teks) -> Cytoscape (kanvas). Untuk diagram non-flowchart
-// (sequence/gantt/dll) parseMermaidFlowchart gagal -> jatuh ke MermaidBlock (mermaid.js
-// statis) -> MermaidBlockFallback (parser custom). Tiga jenjang, tak pernah kode mentah.
-function CytoscapeBlock({ code }) {
+// Renderer INTERAKTIF: mermaid (teks) -> Cytoscape (kanvas). Dipakai lewat DiagramBlock
+// hanya saat user menekan "interaktif" (default tetap mermaid.js fidelitas-penuh).
+function CytoscapeBlock({ code, onStatic }) {
   const ref = useRef(null);
   const cyRef = useRef(null);
   const [failed, setFailed] = useState(false);
@@ -1860,13 +1895,14 @@ function CytoscapeBlock({ code }) {
           <span style={{ background: "#febc2e" }} />
           <span style={{ background: "#28c840" }} />
         </span>
-        <span className="code-lang">graph</span>
+        <span className="code-lang">graph · interaktif</span>
         <span className="lang-spacer" />
         <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
           {["breadthfirst", "cose", "concentric"].map((l) => (
             <button key={l} style={btn(l)} onClick={() => setLayout(l)}>{l}</button>
           ))}
           <button style={btn("_fit")} onClick={() => cyRef.current && cyRef.current.animate({ fit: { padding: 22 } }, { duration: 250 })}>fit</button>
+          {onStatic ? <button style={btn("_st")} onClick={onStatic} title="Kembali ke diagram statis (fidelitas penuh)">← statis</button> : null}
         </div>
       </div>
       <div ref={ref} style={{ height: 360, width: "100%", background: "radial-gradient(circle at 50% 40%, #0f1620, #0d1117)", borderRadius: "0 0 8px 8px" }} />
@@ -1874,11 +1910,26 @@ function CytoscapeBlock({ code }) {
   );
 }
 
+// Wrapper yang dipakai chat untuk setiap blok ```mermaid. DEFAULT = mermaid.js asli
+// (fidelitas penuh: semua jenis diagram, bentuk, subgraph, warna). Kalau diagram itu
+// flowchart yang bisa dikonversi ke graph, tampilkan tombol "interaktif" -> Cytoscape.
+// Jadi kekayaan mermaid tak pernah dikorbankan; interaktivitas bersifat opt-in.
+function DiagramBlock({ code }) {
+  const [interactive, setInteractive] = useState(false);
+  const canInteractive = useMemo(() => {
+    if (typeof window === "undefined" || typeof window.cytoscape !== "function") return false;
+    try { const els = mermaidToCytoElements(code); return !!(els && els.some((e) => !e.data.source && !e.data.isParent)); }
+    catch (e) { return false; }
+  }, [code]);
+  if (interactive && canInteractive) return <CytoscapeBlock code={code} onStatic={() => setInteractive(false)} />;
+  return <MermaidBlock code={code} onInteractive={canInteractive ? () => setInteractive(true) : null} />;
+}
+
 // Renderer utama: mermaid.js ASLI (window.mermaid, di-vendor di index.html). Paham
 // <br/>, subgraph, bentuk node, dan layout dagre yang rapih. Kalau mermaid gagal /
 // belum termuat, jatuh ke MermaidBlockFallback (parser SVG custom) supaya tak pernah
 // menampilkan kode mentah.
-function MermaidBlock({ code }) {
+function MermaidBlock({ code, onInteractive }) {
   const ref = useRef(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
@@ -1909,6 +1960,15 @@ function MermaidBlock({ code }) {
         </span>
         <span className="code-lang">mermaid</span>
         <span className="lang-spacer" />
+        {onInteractive ? (
+          <button
+            onClick={onInteractive}
+            title="Buka sebagai graph interaktif (drag / zoom / layout)"
+            style={{ marginLeft: "auto", fontFamily: "ui-monospace,monospace", fontSize: 11, color: "#8fb3ff", background: "rgba(143,179,255,0.12)", border: "1px solid #8fb3ff", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
+          >
+            ⇱ interaktif
+          </button>
+        ) : null}
       </div>
       <div className="mermaid-canvas" ref={ref} style={{ overflowX: "auto", padding: "12px 14px 16px", display: "flex", justifyContent: "center" }} />
     </div>
@@ -2131,7 +2191,7 @@ function Blocks({ text }) {
   return blocks.map((b, i) =>
     b.type === "code" ? (
       b.lang && /^(mermaid|mmd)$/i.test(b.lang) ? (
-        <CytoscapeBlock key={i} code={b.code} />
+        <DiagramBlock key={i} code={b.code} />
       ) : (
         <CodeBlock
           key={i}
