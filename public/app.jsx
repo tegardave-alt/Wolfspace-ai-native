@@ -4433,6 +4433,27 @@ function Sidebar({
   const [filterScheduled, setFilterScheduled] = useState(false);
   const [openFolderMenuWs, setOpenFolderMenuWs] = useState(null);
   const [wsRefreshKey, setWsRefreshKey] = useState(0);
+  // Folder ww dari DISK (kebenaran) — bukan localStorage. Diisi dari GET /ww/list.
+  const [wwLive, setWwLive] = useState(null); // null=belum load; {root, paths:[]}
+  React.useEffect(() => {
+    let alive = true;
+    const load = () =>
+      fetch("/ww/list")
+        .then((r) => r.json())
+        .then((d) => {
+          if (alive && d && Array.isArray(d.workspaces))
+            setWwLive({ root: d.root, paths: d.workspaces.map((w) => w.path) });
+        })
+        .catch(() => {});
+    load();
+    const iv = setInterval(load, 6000);
+    window.addEventListener("quantum_workspaces_changed", load);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+      window.removeEventListener("quantum_workspaces_changed", load);
+    };
+  }, []);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
       const w = parseInt(localStorage.getItem("quantum_sidebar_width") || "232", 10);
@@ -4514,8 +4535,30 @@ function Sidebar({
         if (c.project && !deletedSet.has(c.project)) set.add(c.project);
       });
     }
+    // ── ww = kebenaran disk ── Tambah folder ww yang NYATA ada; buang "hantu"
+    // (entri di bawah root ww yang sudah tak ada di disk, mis. dihapus di Explorer).
+    if (wwLive && wwLive.root && Array.isArray(wwLive.paths)) {
+      // Normalisasi separator (\\ vs /) + lowercase supaya prefix-check konsisten,
+      // apa pun gaya path (config pakai /, path.join pakai \\ di Windows).
+      const norm = (s) =>
+        String(s)
+          .replace(/\\/g, "/")
+          .replace(/\/+$/, "")
+          .toLowerCase();
+      const rootN = norm(wwLive.root);
+      const liveN = new Set(wwLive.paths.map(norm));
+      for (const p of Array.from(set)) {
+        const pn = norm(p);
+        if (pn === rootN || pn.startsWith(rootN + "/")) {
+          if (!liveN.has(pn)) set.delete(p); // hantu: di bawah root ww tapi tak ada di disk
+        }
+      }
+      wwLive.paths.forEach((p) => {
+        if (!deletedSet.has(p)) set.add(p);
+      });
+    }
     return Array.from(set);
-  }, [savedChats, selectedProject, wsRefreshKey]);
+  }, [savedChats, selectedProject, wsRefreshKey, wwLive]);
 
   const formatWsTimeAgo = (ts) => {
     if (!ts) return "8h";
