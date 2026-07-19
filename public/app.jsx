@@ -616,6 +616,63 @@ async function wwApi(path, { method = "GET", body = null } = {}) {
 }
 const wwListFetch = () => wwApi("/ww/list");
 
+// ── Electron fetch-shim ──
+// Electron TAK punya server HTTP (zero open ports). Rutekan setiap fetch path-relatif
+// ("/…") ke backend in-process lewat IPC.invoke("api"), supaya SEMUA endpoint non-stream
+// (models, cloud-providers, detect-key, cloud-save, hf, ollama, agents, terminal, run, dst)
+// hidup di Electron TANPA mengubah call-site. Di browser (IPC null) shim TIDAK dipasang —
+// fetch asli tetap dipakai. Chat/self-agent pakai IPC.stream (bukan fetch), tak terpengaruh.
+if (
+  typeof window !== "undefined" &&
+  IPC &&
+  IPC.invoke &&
+  window.fetch &&
+  !window.__wwFetchShimmed
+) {
+  window.__wwFetchShimmed = true;
+  const _realFetch = window.fetch.bind(window);
+  window.fetch = async (input, init) => {
+    init = init || {};
+    const url = typeof input === "string" ? input : (input && input.url) || "";
+    // Hanya API path-relatif same-origin. URL absolut/eksternal/blob → fetch asli.
+    if (typeof url !== "string" || !url.startsWith("/")) return _realFetch(input, init);
+    const method = String(
+      init.method || (typeof input === "object" && input.method) || "GET",
+    ).toUpperCase();
+    let body = init.body != null ? init.body : typeof input === "object" ? input.body : null;
+    // FormData/stream tak didukung shim → serahkan ke fetch asli (jarang di path relatif).
+    if (body != null && typeof body !== "string") return _realFetch(input, init);
+    let payload = null;
+    if (body != null) {
+      try {
+        payload = JSON.parse(body);
+      } catch (_) {
+        payload = body;
+      }
+    }
+    let r;
+    try {
+      r = await IPC.invoke("api", { method, path: url, body: payload });
+    } catch (_) {
+      return _realFetch(input, init); // IPC gagal → coba fetch asli (mis. aset statis app://)
+    }
+    const status = (r && r.status) || 200;
+    const text = r && typeof r.body === "string" ? r.body : "";
+    const hdr = (r && r.headers) || {};
+    return {
+      ok: status >= 200 && status < 300,
+      status,
+      statusText: "",
+      headers: { get: (k) => hdr[String(k).toLowerCase()] ?? null },
+      json: async () => JSON.parse(text || "null"),
+      text: async () => text,
+      clone() {
+        return this;
+      },
+    };
+  };
+}
+
 async function streamChat(reqBody, onText, signal) {
   let acc = "",
     run = null;
