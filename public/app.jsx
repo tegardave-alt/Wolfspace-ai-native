@@ -673,6 +673,63 @@ if (
   };
 }
 
+// ── Electron EventSource-shim ──
+// EventSource (SSE) BUKAN fetch, jadi fetch-shim tak menangkapnya → di Electron
+// `new EventSource("/api/agents/stream")` nyasar ke app:// (404), mematikan output
+// live Agent Runner / opencode CLI. Di Electron, rutekan EventSource path-relatif
+// ke IPC.stream("api", …) (apiStream) dan parse SSE jadi event onmessage.
+if (
+  typeof window !== "undefined" &&
+  IPC &&
+  IPC.stream &&
+  !window.__wwEventSourceShimmed
+) {
+  window.__wwEventSourceShimmed = true;
+  const _RealES = window.EventSource;
+  window.EventSource = function (url) {
+    if (typeof url !== "string" || !url.startsWith("/")) {
+      return _RealES ? new _RealES(url) : { close() {}, onmessage: null, onerror: null };
+    }
+    const es = { onmessage: null, onerror: null, onopen: null, readyState: 1, close() {} };
+    let buf = "";
+    let cancel = null;
+    try {
+      cancel = IPC.stream(
+        "api",
+        { method: "GET", path: url },
+        (chunk) => {
+          if (typeof chunk !== "string") return;
+          buf += chunk;
+          let i;
+          while ((i = buf.indexOf("\n\n")) >= 0) {
+            const raw = buf.slice(0, i);
+            buf = buf.slice(i + 2);
+            const dataLines = raw
+              .split("\n")
+              .filter((l) => l.slice(0, 5) === "data:")
+              .map((l) => l.slice(5).replace(/^ /, ""));
+            if (dataLines.length && typeof es.onmessage === "function")
+              es.onmessage({ data: dataLines.join("\n") });
+          }
+        },
+        () => {
+          es.readyState = 2;
+          if (typeof es.onerror === "function") es.onerror({ type: "done" });
+        },
+      );
+    } catch (e) {
+      if (typeof es.onerror === "function") setTimeout(() => es.onerror(e), 0);
+    }
+    es.close = () => {
+      es.readyState = 2;
+      try {
+        cancel && cancel();
+      } catch (_) {}
+    };
+    return es;
+  };
+}
+
 // ── Auto-migrasi localStorage (Electron, sekali jalan) ──
 // Kalau ada file jembatan dari browser (~/.wolfspace/ls-migrate.json via /ww/ls-load)
 // dan Electron ini belum pernah migrasi, TERAPKAN OTOMATIS saat load — tanpa perlu
