@@ -599,17 +599,22 @@ const IPC =
 
 // Ambil /ww/list lewat IPC (Electron: tanpa server HTTP) ATAU fetch (browser).
 // Tanpa ini, di app Electron origin app:// fetch("/ww/list") jadi 404 → hantu tak terbuang.
-async function wwListFetch() {
+async function wwApi(path, { method = "GET", body = null } = {}) {
   try {
     if (IPC && IPC.invoke) {
-      const r = await IPC.invoke("api", { method: "GET", path: "/ww/list" });
+      const r = await IPC.invoke("api", { method, path, body });
       return JSON.parse((r && r.body) || "null");
     }
-    return await (await fetch("/ww/list")).json();
+    const opts =
+      body != null
+        ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+        : { method };
+    return await (await fetch(path, opts)).json();
   } catch (_) {
     return null;
   }
 }
+const wwListFetch = () => wwApi("/ww/list");
 
 async function streamChat(reqBody, onText, signal) {
   let acc = "",
@@ -5714,38 +5719,36 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     window.addEventListener("quantum_workspaces_changed", reloadProjects);
     return () => window.removeEventListener("quantum_workspaces_changed", reloadProjects);
   }, []);
-  // Rekonsiliasi disk: buang "hantu" dari quantum_projects_list — entri di bawah
-  // root ww yang foldernya sudah tak ada di disk (mis. dihapus di Explorer). Ini
-  // membersihkan localStorage secara permanen, jadi picker & sidebar sama-sama bersih.
+  // Rekonsiliasi disk: buang "hantu" dari quantum_projects_list — project yang
+  // FOLDERNYA sudah tak ada di disk, DI MANA PUN lokasinya (bukan cuma di bawah root
+  // ww). Verifikasi keberadaan tiap path ke backend (/ww/verify); hanya yang
+  // dipastikan TIDAK ADA yang dibuang (konservatif). Membersihkan localStorage
+  // permanen → picker & sidebar sama-sama bersih.
   React.useEffect(() => {
-    wwListFetch()
-      .then((d) => {
-        if (!d || !d.root || !Array.isArray(d.workspaces)) return;
-        const norm = (s) =>
-          String(s || "")
-            .replace(/\\/g, "/")
-            .replace(/\/+$/, "")
-            .toLowerCase();
-        const rootN = norm(d.root);
-        const liveN = new Set(d.workspaces.map((w) => norm(w.path)));
-        let stored;
-        try {
-          stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
-        } catch {
-          return;
-        }
-        if (!Array.isArray(stored) || !stored.length) return;
-        const kept = stored.filter((p) => {
-          const pn = norm(p.path || p.name);
-          const underRoot = pn === rootN || pn.startsWith(rootN + "/");
-          return !(underRoot && !liveN.has(pn)); // hantu di bawah root ww → buang
-        });
-        if (kept.length !== stored.length) {
-          localStorage.setItem("quantum_projects_list", JSON.stringify(kept));
-          window.dispatchEvent(new Event("quantum_workspaces_changed"));
-        }
-      })
-      .catch(() => {});
+    (async () => {
+      let stored;
+      try {
+        stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      } catch {
+        return;
+      }
+      if (!Array.isArray(stored) || !stored.length) return;
+      const paths = stored.map((p) => p && p.path).filter(Boolean);
+      if (!paths.length) return;
+      const res = await wwApi("/ww/verify", { method: "POST", body: { paths } });
+      if (!res || !res.exists) return; // gagal cek → jangan buang apa-apa
+      const gone = new Set(
+        Object.entries(res.exists)
+          .filter(([, ok]) => ok === false)
+          .map(([p]) => p),
+      );
+      if (!gone.size) return;
+      const kept = stored.filter((p) => !(p && p.path && gone.has(p.path)));
+      if (kept.length !== stored.length) {
+        localStorage.setItem("quantum_projects_list", JSON.stringify(kept));
+        window.dispatchEvent(new Event("quantum_workspaces_changed"));
+      }
+    })();
   }, []);
   const [dropOpen, setDropOpen] = useState(false);
   const [menu, setMenu] = useState(false);
