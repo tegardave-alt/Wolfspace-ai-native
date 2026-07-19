@@ -4569,6 +4569,54 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ww ls-save / ls-load: jembatan migrasi localStorage antar-origin (browser
+  // 127.0.0.1:8090 ↔ Electron app://). localStorage tak bisa dibaca lintas origin,
+  // jadi browser menyimpan dump-nya ke satu file bersama di ~/.wolfspace, Electron
+  // membacanya. Sekali jalan; file bisa dihapus setelahnya.
+  if (req.method === "POST" && req.url === "/ww/ls-save") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const data = JSON.parse(body || "{}").data || {};
+        const dir = path.join(
+          process.env.USERPROFILE || require("os").homedir(),
+          ".wolfspace",
+        );
+        fs.mkdirSync(dir, { recursive: true });
+        fs.writeFileSync(
+          path.join(dir, "ls-migrate.json"),
+          JSON.stringify(data),
+          "utf8",
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, keys: Object.keys(data).length }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+  if (req.method === "GET" && req.url === "/ww/ls-load") {
+    try {
+      const f = path.join(
+        process.env.USERPROFILE || require("os").homedir(),
+        ".wolfspace",
+        "ls-migrate.json",
+      );
+      const data = fs.existsSync(f)
+        ? JSON.parse(fs.readFileSync(f, "utf8"))
+        : {};
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ data }));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: e.message }));
+    }
+    return;
+  }
+
   // ww attach: PASANG folder mana pun sebagai workspace terisolasi. Saat sebuah
   // folder dipasang ke WOLFSPACE, di sinilah ia mendapat worktree+branch terikat ke
   // alamat aslinya (bukan lewat watcher root-tetap). Idempoten & non-destruktif.
