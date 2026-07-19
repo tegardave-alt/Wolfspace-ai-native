@@ -22,9 +22,9 @@
   },
   "models": [],
   "ww": {
-    "watch": true,
+    "watch": false,
     "root": "C:/Users/dave/Desktop/project",
-    "_note": "Auto-isolasi: folder baru di root ini otomatis jadi repo+branch sendiri saat dibuat (watcher menyala bersama server). Kosongkan root untuk pakai ~/ww."
+    "_note": "Isolasi kini dipicu saat folder DIPASANG ke WOLFSPACE (POST /ww/attach), bukan lewat watcher root-tetap — folder bebas di mana saja. Set watch:true hanya jika mau auto-isolasi setiap folder baru di 'root'."
   },
   "verbose": true,
   "eraser": {

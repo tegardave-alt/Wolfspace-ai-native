@@ -129,7 +129,8 @@ function initWorkspace(dir, name, branchArg) {
   git(["config", "user.name", "ww"], dir);
   git(["config", "user.email", "ww@local"], dir);
 
-  // Seed minimal supaya branch termaterialisasi (branch butuh ≥1 commit untuk tampil).
+  // Marker ww (selalu ditulis — ini milik kita; menjamin ada ≥1 file untuk commit
+  // pertama supaya branch termaterialisasi).
   const meta = {
     name,
     branch,
@@ -140,16 +141,24 @@ function initWorkspace(dir, name, branchArg) {
     path.join(dir, ".ww.json"),
     JSON.stringify(meta, null, 2) + "\n",
   );
-  fs.writeFileSync(
-    path.join(dir, ".gitignore"),
-    ["node_modules/", "dist/", "build/", ".env", "*.log", ".DS_Store"].join(
-      "\n",
-    ) + "\n",
-  );
-  fs.writeFileSync(
-    path.join(dir, "README.md"),
-    `# ${name}\n\nWorkspace terisolasi (branch \`${branch}\`).\n`,
-  );
+  // Seed HANYA jika belum ada — JANGAN menimpa file milik user saat attach folder
+  // yang sudah berisi proyek nyata.
+  const giPath = path.join(dir, ".gitignore");
+  if (!fs.existsSync(giPath)) {
+    fs.writeFileSync(
+      giPath,
+      ["node_modules/", "dist/", "build/", ".env", "*.log", ".DS_Store"].join(
+        "\n",
+      ) + "\n",
+    );
+  }
+  const rmPath = path.join(dir, "README.md");
+  if (!fs.existsSync(rmPath)) {
+    fs.writeFileSync(
+      rmPath,
+      `# ${name}\n\nWorkspace terisolasi (branch \`${branch}\`).\n`,
+    );
+  }
 
   git(["add", "-A"], dir);
   git(["commit", "-m", `chore: initialize workspace ${name}`], dir);

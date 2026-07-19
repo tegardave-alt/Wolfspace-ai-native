@@ -4569,6 +4569,44 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ww attach: PASANG folder mana pun sebagai workspace terisolasi. Saat sebuah
+  // folder dipasang ke WOLFSPACE, di sinilah ia mendapat worktree+branch terikat ke
+  // alamat aslinya (bukan lewat watcher root-tetap). Idempoten & non-destruktif.
+  if (req.method === "POST" && req.url === "/ww/attach") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let p = "";
+      try {
+        p = JSON.parse(body || "{}").path || "";
+      } catch (_) {}
+      if (!p) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "path kosong" }));
+      }
+      try {
+        const st = fs.statSync(p);
+        if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+        const ww = require("./scripts/ww.cjs");
+        const r = ww.initWorkspace(p, path.basename(p.replace(/[\\/]+$/, "")));
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            name: r.name,
+            path: r.dir,
+            branch: r.branch,
+            skipped: !!r.skipped,
+          }),
+        );
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ww verify: cek keberadaan folder project (kebenaran disk) untuk path APA PUN,
   // supaya UI bisa membuang "hantu" (project yang foldernya sudah tak ada) di mana pun.
   if (req.method === "POST" && req.url === "/ww/verify") {
