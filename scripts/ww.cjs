@@ -180,6 +180,24 @@ function cmdAdopt(name, opts) {
   initWorkspace(dir, name, opts.branch);
 }
 
+// Kembalikan daftar workspace di root sebagai DATA (untuk server/UI). Kebenaran disk.
+function listWorkspaces(root) {
+  const r = path.resolve(root || DEFAULT_ROOT);
+  if (!fs.existsSync(r)) return [];
+  return fs
+    .readdirSync(r, { withFileTypes: true })
+    .filter((d) => d.isDirectory() && !isIgnorableName(d.name))
+    .map((d) => {
+      const dir = path.join(r, d.name);
+      const repo = isRepo(dir);
+      const branch = repo
+        ? gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir) || "?"
+        : null;
+      const dirty = repo ? !!gitTry(["status", "--porcelain"], dir) : false;
+      return { name: d.name, path: dir, isRepo: repo, branch, dirty };
+    });
+}
+
 function cmdList(opts) {
   ensureRoot(opts.root);
   const entries = fs
@@ -335,6 +353,7 @@ function main() {
 module.exports = {
   initWorkspace,
   startWatcher,
+  listWorkspaces,
   toBranch,
   isRepo,
   DEFAULT_ROOT,

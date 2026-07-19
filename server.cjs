@@ -4555,6 +4555,20 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ww workspaces: daftar folder terisolasi dari DISK (kebenaran, bukan localStorage UI).
+  if (req.method === "GET" && req.url === "/ww/list") {
+    try {
+      const ww = require("./scripts/ww.cjs");
+      const root = (CONFIG.ww && CONFIG.ww.root) || ww.DEFAULT_ROOT;
+      const workspaces = ww.listWorkspaces(root);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ root, workspaces }));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+
   // Self-edit agent: edits WOLFSPACE's OWN source (dev copy) with backup + syntax-gate.
   // Edits the dev files; you review and run sync-app.ps1 to apply to the live app.
   if (req.method === "POST" && req.url === "/self-agent") {
