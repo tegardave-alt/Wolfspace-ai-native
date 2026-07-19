@@ -5701,6 +5701,40 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     window.addEventListener("quantum_workspaces_changed", reloadProjects);
     return () => window.removeEventListener("quantum_workspaces_changed", reloadProjects);
   }, []);
+  // Rekonsiliasi disk: buang "hantu" dari quantum_projects_list — entri di bawah
+  // root ww yang foldernya sudah tak ada di disk (mis. dihapus di Explorer). Ini
+  // membersihkan localStorage secara permanen, jadi picker & sidebar sama-sama bersih.
+  React.useEffect(() => {
+    fetch("/ww/list")
+      .then((r) => r.json())
+      .then((d) => {
+        if (!d || !d.root || !Array.isArray(d.workspaces)) return;
+        const norm = (s) =>
+          String(s || "")
+            .replace(/\\/g, "/")
+            .replace(/\/+$/, "")
+            .toLowerCase();
+        const rootN = norm(d.root);
+        const liveN = new Set(d.workspaces.map((w) => norm(w.path)));
+        let stored;
+        try {
+          stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+        } catch {
+          return;
+        }
+        if (!Array.isArray(stored) || !stored.length) return;
+        const kept = stored.filter((p) => {
+          const pn = norm(p.path || p.name);
+          const underRoot = pn === rootN || pn.startsWith(rootN + "/");
+          return !(underRoot && !liveN.has(pn)); // hantu di bawah root ww → buang
+        });
+        if (kept.length !== stored.length) {
+          localStorage.setItem("quantum_projects_list", JSON.stringify(kept));
+          window.dispatchEvent(new Event("quantum_workspaces_changed"));
+        }
+      })
+      .catch(() => {});
+  }, []);
   const [dropOpen, setDropOpen] = useState(false);
   const [menu, setMenu] = useState(false);
   const [text, setText] = useState("");
