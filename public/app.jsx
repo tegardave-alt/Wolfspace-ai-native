@@ -1784,6 +1784,96 @@ function parseMermaidFlowchart(code) {
   };
 }
 
+// ── Jembatan mermaid -> Cytoscape ──
+// mermaid dipakai sebagai BAHASA MASUKAN (mudah bagi model menulisnya); kita ubah jadi
+// elements Cytoscape supaya diagram jadi INTERAKTIF (drag/zoom/ganti-layout), bukan
+// gambar mati. Mendaur ulang parseMermaidFlowchart yang sudah mengekstrak node+edge.
+function mermaidToCytoElements(code) {
+  const parsed = parseMermaidFlowchart(code);
+  if (!parsed || !parsed.nodes || !parsed.nodes.size) return null;
+  const nodes = [...parsed.nodes.values()].map((n) => ({
+    data: {
+      id: n.id,
+      label: String(n.label || n.id).replace(/<br\s*\/?>/gi, "\n").replace(/^\s*["']|["']\s*$/g, ""),
+      shape: n.shape || "rect",
+      deg: 0,
+    },
+  }));
+  const byId = new Map(nodes.map((n) => [n.data.id, n]));
+  const edges = (parsed.edges || []).map((e, i) => {
+    if (byId.get(e.from)) byId.get(e.from).data.deg++;
+    if (byId.get(e.to)) byId.get(e.to).data.deg++;
+    return { data: { id: "ce" + i, source: e.from, target: e.to, label: e.label || "" } };
+  });
+  return [...nodes, ...edges];
+}
+
+function cyLayoutOpts(name) {
+  const o = { name, padding: 22, animate: true, animationDuration: 350 };
+  if (name === "breadthfirst") { o.directed = true; o.spacingFactor = 1.1; }
+  else if (name === "cose") { o.idealEdgeLength = 80; o.nodeRepulsion = 8000; o.gravity = 0.3; }
+  else if (name === "concentric") { o.concentric = (n) => n.degree(); o.levelWidth = () => 3; }
+  return o;
+}
+
+const CY_STYLE = [
+  { selector: "node", style: { "background-color": "#141d2b", "border-color": "#8fb3ff", "border-width": 1.5, "label": "data(label)", "color": "#dce4f0", "font-family": "ui-monospace, monospace", "font-size": 11, "text-valign": "center", "text-halign": "center", "text-wrap": "wrap", "text-max-width": 150, "shape": "round-rectangle", "width": "label", "height": "label", "padding": "9px" } },
+  { selector: 'node[shape="diamond"]', style: { "shape": "diamond", "width": 76, "height": 54 } },
+  { selector: 'node[shape="circle"]', style: { "shape": "ellipse" } },
+  { selector: "node[deg >= 4]", style: { "border-width": 2.5, "border-color": "#a9c6ff", "background-color": "#182741" } },
+  { selector: "edge", style: { "width": 1.4, "line-color": "#3f5578", "target-arrow-color": "#5f7bb0", "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.9, "opacity": 0.9, "label": "data(label)", "font-family": "ui-monospace, monospace", "font-size": 9, "color": "#9fb7d9", "text-background-color": "#0d1117", "text-background-opacity": 0.85, "text-background-padding": 2 } },
+  { selector: "node.hl", style: { "border-color": "#ffd479", "border-width": 2.5 } },
+  { selector: "edge.hl", style: { "line-color": "#8fb3ff", "target-arrow-color": "#8fb3ff", "opacity": 1, "width": 2 } },
+];
+
+// Renderer INTERAKTIF: mermaid (teks) -> Cytoscape (kanvas). Untuk diagram non-flowchart
+// (sequence/gantt/dll) parseMermaidFlowchart gagal -> jatuh ke MermaidBlock (mermaid.js
+// statis) -> MermaidBlockFallback (parser custom). Tiga jenjang, tak pernah kode mentah.
+function CytoscapeBlock({ code }) {
+  const ref = useRef(null);
+  const cyRef = useRef(null);
+  const [failed, setFailed] = useState(false);
+  const [layout, setLayout] = useState("breadthfirst");
+  const elements = useMemo(() => { try { return mermaidToCytoElements(code); } catch (e) { return null; } }, [code]);
+
+  useEffect(() => {
+    if (!elements || typeof window === "undefined" || typeof window.cytoscape !== "function" || !ref.current) { setFailed(true); return; }
+    let cy;
+    try {
+      cy = window.cytoscape({ container: ref.current, elements, style: CY_STYLE, layout: cyLayoutOpts("breadthfirst"), wheelSensitivity: 0.2, minZoom: 0.2, maxZoom: 3 });
+    } catch (e) { setFailed(true); return; }
+    cyRef.current = cy;
+    cy.on("mouseover", "node", (e) => { const n = e.target; n.addClass("hl"); n.connectedEdges().addClass("hl").connectedNodes().addClass("hl"); });
+    cy.on("mouseout", "node", () => cy.elements().removeClass("hl"));
+    return () => { try { cy.destroy(); } catch (_) {} cyRef.current = null; };
+  }, [elements]);
+
+  useEffect(() => { if (cyRef.current) cyRef.current.layout(cyLayoutOpts(layout)).run(); }, [layout]);
+
+  if (failed || !elements) return <MermaidBlock code={code} />;
+  const btn = (l) => ({ fontFamily: "ui-monospace,monospace", fontSize: 11, color: layout === l ? "#dce4f0" : "#8b98ac", background: layout === l ? "rgba(143,179,255,0.16)" : "transparent", border: "1px solid " + (layout === l ? "#8fb3ff" : "#2a3542"), borderRadius: 6, padding: "3px 9px", cursor: "pointer" });
+  return (
+    <div className="mermaid-block">
+      <div className="code-head">
+        <span className="code-dots">
+          <span style={{ background: "#ff5f57" }} />
+          <span style={{ background: "#febc2e" }} />
+          <span style={{ background: "#28c840" }} />
+        </span>
+        <span className="code-lang">graph</span>
+        <span className="lang-spacer" />
+        <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
+          {["breadthfirst", "cose", "concentric"].map((l) => (
+            <button key={l} style={btn(l)} onClick={() => setLayout(l)}>{l}</button>
+          ))}
+          <button style={btn("_fit")} onClick={() => cyRef.current && cyRef.current.animate({ fit: { padding: 22 } }, { duration: 250 })}>fit</button>
+        </div>
+      </div>
+      <div ref={ref} style={{ height: 360, width: "100%", background: "radial-gradient(circle at 50% 40%, #0f1620, #0d1117)", borderRadius: "0 0 8px 8px" }} />
+    </div>
+  );
+}
+
 // Renderer utama: mermaid.js ASLI (window.mermaid, di-vendor di index.html). Paham
 // <br/>, subgraph, bentuk node, dan layout dagre yang rapih. Kalau mermaid gagal /
 // belum termuat, jatuh ke MermaidBlockFallback (parser SVG custom) supaya tak pernah
@@ -2041,7 +2131,7 @@ function Blocks({ text }) {
   return blocks.map((b, i) =>
     b.type === "code" ? (
       b.lang && /^(mermaid|mmd)$/i.test(b.lang) ? (
-        <MermaidBlock key={i} code={b.code} />
+        <CytoscapeBlock key={i} code={b.code} />
       ) : (
         <CodeBlock
           key={i}
