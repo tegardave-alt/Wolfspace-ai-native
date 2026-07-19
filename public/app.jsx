@@ -1938,7 +1938,16 @@ function MermaidBlock({ code, onInteractive }) {
     let cancelled = false;
     try {
       if (!window.__mermaidInit) {
-        m.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose", flowchart: { curve: "basis", htmlLabels: true, nodeSpacing: 40, rankSpacing: 55 } });
+        m.initialize({
+          startOnLoad: false, securityLevel: "loose", theme: "base",
+          themeVariables: {
+            background: "#0d1117", primaryColor: "#1c2634", primaryBorderColor: "#c8d3e0",
+            primaryTextColor: "#eaf0f7", lineColor: "#8fb3ff", secondaryColor: "#161b22",
+            tertiaryColor: "#0d1117", clusterBkg: "#12161d", clusterBorder: "#2b3546",
+            edgeLabelBackground: "#0d1117", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif", fontSize: "15px",
+          },
+          flowchart: { curve: "basis", htmlLabels: true, nodeSpacing: 46, rankSpacing: 54, padding: 10, useMaxWidth: true },
+        });
         window.__mermaidInit = true;
       }
       const id = "mmd-" + Math.random().toString(36).slice(2, 9);
@@ -2191,7 +2200,7 @@ function Blocks({ text }) {
   return blocks.map((b, i) =>
     b.type === "code" ? (
       b.lang && /^(mermaid|mmd)$/i.test(b.lang) ? (
-        <DiagramBlock key={i} code={b.code} />
+        <MermaidBlock key={i} code={b.code} />
       ) : (
         <CodeBlock
           key={i}
