@@ -1784,7 +1784,48 @@ function parseMermaidFlowchart(code) {
   };
 }
 
+// Renderer utama: mermaid.js ASLI (window.mermaid, di-vendor di index.html). Paham
+// <br/>, subgraph, bentuk node, dan layout dagre yang rapih. Kalau mermaid gagal /
+// belum termuat, jatuh ke MermaidBlockFallback (parser SVG custom) supaya tak pernah
+// menampilkan kode mentah.
 function MermaidBlock({ code }) {
+  const ref = useRef(null);
+  const [failed, setFailed] = useState(false);
+  useEffect(() => {
+    const m = typeof window !== "undefined" ? window.mermaid : null;
+    if (!m || !m.render) { setFailed(true); return; }
+    let cancelled = false;
+    try {
+      if (!window.__mermaidInit) {
+        m.initialize({ startOnLoad: false, theme: "dark", securityLevel: "loose", flowchart: { curve: "basis", htmlLabels: true, nodeSpacing: 40, rankSpacing: 55 } });
+        window.__mermaidInit = true;
+      }
+      const id = "mmd-" + Math.random().toString(36).slice(2, 9);
+      Promise.resolve(m.render(id, code)).then(({ svg }) => {
+        if (!cancelled && ref.current) ref.current.innerHTML = svg;
+      }).catch(() => { if (!cancelled) setFailed(true); });
+    } catch (e) { setFailed(true); }
+    return () => { cancelled = true; };
+  }, [code]);
+
+  if (failed) return <MermaidBlockFallback code={code} />;
+  return (
+    <div className="mermaid-block">
+      <div className="code-head">
+        <span className="code-dots">
+          <span style={{ background: "#ff5f57" }} />
+          <span style={{ background: "#febc2e" }} />
+          <span style={{ background: "#28c840" }} />
+        </span>
+        <span className="code-lang">mermaid</span>
+        <span className="lang-spacer" />
+      </div>
+      <div className="mermaid-canvas" ref={ref} style={{ overflowX: "auto", padding: "12px 14px 16px", display: "flex", justifyContent: "center" }} />
+    </div>
+  );
+}
+
+function MermaidBlockFallback({ code }) {
   const diagram = useMemo(() => parseMermaidFlowchart(code), [code]);
   if (!diagram) {
     return (
