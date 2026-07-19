@@ -1,180 +1,249 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="id">
-<head>
-  <meta charset="utf-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <meta name="description" content="Wolfspace UI" />
-  <title>Wolfspace UI</title>
-  
-  <script>
-    // Polyfill process.env for browser (required by some libraries like LangChain/OpenAI if loaded)
-    window.process = { env: { NODE_ENV: 'development' } };
-    
-    // Intercept API keys and configuration safely at boot
-    window._env_config = {};
-    (function() {
-      try {
-        var params = new URLSearchParams(window.location.search);
-        var qStr = params.get('q');
-        if (qStr) {
-          window._env_config = JSON.parse(decodeURIComponent(qStr));
-          // Clean up the URL so keys aren't sitting in the address bar
-          window.history.replaceState({}, document.title, window.location.pathname);
-        } else {
-          var ls = localStorage.getItem("wolfspace_config");
-          if (ls) window._env_config = JSON.parse(ls);
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="description" content="Wolfspace UI" />
+    <title>Wolfspace UI</title>
+
+    <script>
+      // Polyfill process.env for browser (required by some libraries like LangChain/OpenAI if loaded)
+      window.process = { env: { NODE_ENV: "development" } };
+
+      // Intercept API keys and configuration safely at boot
+      window._env_config = {};
+      (function () {
+        try {
+          var params = new URLSearchParams(window.location.search);
+          var qStr = params.get("q");
+          if (qStr) {
+            window._env_config = JSON.parse(decodeURIComponent(qStr));
+            // Clean up the URL so keys aren't sitting in the address bar
+            window.history.replaceState(
+              {},
+              document.title,
+              window.location.pathname,
+            );
+          } else {
+            var ls = localStorage.getItem("wolfspace_config");
+            if (ls) window._env_config = JSON.parse(ls);
+          }
+        } catch (e) {
+          console.error("Failed to parse config string", e);
         }
-      } catch (e) {
-        console.error("Failed to parse config string", e);
+
+        // Auto save on change
+        window.saveConfig = function (cfg) {
+          window._env_config = cfg;
+          localStorage.setItem("wolfspace_config", JSON.stringify(cfg));
+        };
+      })();
+    </script>
+    <link rel="icon" href="/icon.png" />
+    <link rel="stylesheet" href="/vendor/fonts.css" />
+    <link rel="stylesheet" href="/styles.css?v=3" />
+    <style>
+      .composer-hint:nth-of-type(2) {
+        display: none;
       }
-      
-      // Auto save on change
-      window.saveConfig = function(cfg) {
-        window._env_config = cfg;
-        localStorage.setItem("wolfspace_config", JSON.stringify(cfg));
-      };
-    })();
-  </script>
-  <link rel="icon" href="/icon.png" />
-  <link rel="stylesheet" href="/vendor/fonts.css" />
-  <link rel="stylesheet" href="/styles.css?v=3" />
-  <style>.composer-hint:nth-of-type(2){display:none}</style>
-  <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-</head>
-<body>
-  <div id="root"></div>
-  <!-- xterm.js — fullscreen terminal for Agent Runner -->
-  <script src="/vendor/xterm/xterm.js"></script>
-  <script src="/vendor/xterm/addon-fit.js"></script>
-  <script src="/vendor/xterm/addon-webgl.js"></script>
-  <!-- Mermaid JS (lokal, v11) — render diagram. Dulu dari CDN (gagal offline di
+    </style>
+    <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
+    <link rel="stylesheet" href="/vendor/reactflow.css" />
+  </head>
+  <body>
+    <div id="root"></div>
+    <!-- xterm.js — fullscreen terminal for Agent Runner -->
+    <script src="/vendor/xterm/xterm.js"></script>
+    <script src="/vendor/xterm/addon-fit.js"></script>
+    <script src="/vendor/xterm/addon-webgl.js"></script>
+    <!-- Mermaid JS (lokal, v11) — render diagram. Dulu dari CDN (gagal offline di
        Electron) DAN tak terpakai karena UI memakai parser SVG custom. Sekarang lokal
        + dipakai MermaidBlock. IIFE esbuild menaruh API di global internal; normalkan. -->
-  <script src="/vendor/mermaid.min.js"></script>
-  <script>
-    try { var _m = window.__esbuild_esm_mermaid_nm && window.__esbuild_esm_mermaid_nm.mermaid; if (_m) window.mermaid = _m.default || _m; } catch (e) {}
-  </script>
-  <!-- Cytoscape.js — kanvas graph interaktif (Graph Canvas) -->
-  <script src="/vendor/cytoscape.min.js"></script>
-  <!-- React + Babel bundled locally for full offline use -->
-  <script src="/vendor/react.production.min.js"></script>
-  <script src="/vendor/react-dom.production.min.js"></script>
-  <script src="/vendor/babel.min.js"></script>
-  <!-- Monaco (VS Code editor) — bundled locally, real highlighting + autocomplete -->
-  <script src="/vendor/monaco/vs/loader.js"></script>
-  <script>
-    var MB = location.origin;
-    window.MonacoEnvironment = { getWorkerUrl: function() {
-      return URL.createObjectURL(new Blob([
-        "self.MonacoEnvironment={baseUrl:'" + MB + "/vendor/monaco/'};" +
-        "importScripts('" + MB + "/vendor/monaco/vs/base/worker/workerMain.js');"], { type: 'text/javascript' }));
-    } };
-    require.config({ paths: { vs: MB + '/vendor/monaco/vs' } });
-    window.monacoReady = new Promise(function(res){ require(['vs/editor/editor.main'], function(){ res(window.monaco); }); });
-  </script>
-  <script type="text/javascript">
-    // Babel Sandbox with Auto-Rollback: Catch syntax & runtime errors
-    window._pendingGoodApp = null;
-    window.reportAppSuccess = function() {
-      if (window._pendingGoodApp) {
-        try {
-          localStorage.setItem('wolfspace_last_good_app', window._pendingGoodApp);
-          console.log("✅ WOLFSPACE App berhasil dirender. Versi ini dikunci sebagai versi Aman.");
-        } catch (e) {
-          // QuotaExceededError dsb: versi aman lama tetap terjaga, jangan meledak di alur render
-          console.error("⚠ Gagal mengunci versi Aman (localStorage penuh?):", e.message);
-        }
-        window._pendingGoodApp = null;
-      }
-    };
-
-    // ── Global Runtime Guard: tangkap error di luar jangkauan ErrorBoundary ──
-    // (event handler, setTimeout, async/await) → picu Auto-Rollback yang sama.
-    window.triggerAppRollback = function(errText) {
+    <script src="/vendor/mermaid.min.js"></script>
+    <script>
       try {
-        // Anti-loop: kalau baru saja rollback (<60 detik), jangan reload lagi —
-        // versi aman pun melempar error yang sama, cukup catat di console.
-        var last = parseInt(sessionStorage.getItem('wolfspace_rollback_ts') || '0', 10);
-        if (Date.now() - last < 60000) {
-          console.error("⚠ Rollback ditahan (baru terjadi <60 dtk). Error:", errText);
-          return;
+        var _m =
+          window.__esbuild_esm_mermaid_nm &&
+          window.__esbuild_esm_mermaid_nm.mermaid;
+        if (_m) window.mermaid = _m.default || _m;
+      } catch (e) {}
+    </script>
+    <!-- Cytoscape.js — kanvas graph interaktif (Graph Canvas) -->
+    <script src="/vendor/cytoscape.min.js"></script>
+    <!-- React + Babel bundled locally for full offline use -->
+    <script src="/vendor/react.production.min.js"></script>
+    <script src="/vendor/react-dom.production.min.js"></script>
+    <!-- React Flow (node-editor untuk Graph Canvas) — di-vendor pre-bundle (esbuild,
+       React external -> window.React di atas). Regen: npm run vendor:reactflow.
+       Ekspos window.RFLib.XY (React Flow) + window.RFLib.dagre (auto-layout). -->
+    <script src="/vendor/reactflow.bundle.js"></script>
+    <script src="/vendor/babel.min.js"></script>
+    <!-- Monaco (VS Code editor) — bundled locally, real highlighting + autocomplete -->
+    <script src="/vendor/monaco/vs/loader.js"></script>
+    <script>
+      var MB = location.origin;
+      window.MonacoEnvironment = {
+        getWorkerUrl: function () {
+          return URL.createObjectURL(
+            new Blob(
+              [
+                "self.MonacoEnvironment={baseUrl:'" +
+                  MB +
+                  "/vendor/monaco/'};" +
+                  "importScripts('" +
+                  MB +
+                  "/vendor/monaco/vs/base/worker/workerMain.js');",
+              ],
+              { type: "text/javascript" },
+            ),
+          );
+        },
+      };
+      require.config({ paths: { vs: MB + "/vendor/monaco/vs" } });
+      window.monacoReady = new Promise(function (res) {
+        require(["vs/editor/editor.main"], function () {
+          res(window.monaco);
+        });
+      });
+    </script>
+    <script type="text/javascript">
+      // Babel Sandbox with Auto-Rollback: Catch syntax & runtime errors
+      window._pendingGoodApp = null;
+      window.reportAppSuccess = function () {
+        if (window._pendingGoodApp) {
+          try {
+            localStorage.setItem(
+              "wolfspace_last_good_app",
+              window._pendingGoodApp,
+            );
+            console.log(
+              "✅ WOLFSPACE App berhasil dirender. Versi ini dikunci sebagai versi Aman.",
+            );
+          } catch (e) {
+            // QuotaExceededError dsb: versi aman lama tetap terjaga, jangan meledak di alur render
+            console.error(
+              "⚠ Gagal mengunci versi Aman (localStorage penuh?):",
+              e.message,
+            );
+          }
+          window._pendingGoodApp = null;
         }
-        sessionStorage.setItem('wolfspace_rollback_ts', String(Date.now()));
-        sessionStorage.setItem('wolfspace_rollback_error', errText);
-      } catch (_) {}
-      if (window.location.search.indexOf('rollback=true') === -1) {
-        window.location.replace('/?rollback=true');
-      }
-    };
-    window.addEventListener('error', function(ev) {
-      // Abaikan error resource (img/script gagal load) — hanya exception JS
-      if (!ev || !ev.error) return;
-      window.triggerAppRollback('[window.onerror] ' + (ev.error.stack || ev.message || ev.error));
-    });
-    window.addEventListener('unhandledrejection', function(ev) {
-      var r = ev && ev.reason;
-      window.triggerAppRollback('[unhandledrejection] ' + (r && r.stack ? r.stack : String(r)));
-    });
+      };
 
-    (async function() {
-      // 1. Cek apakah kita sedang dalam mode Recovery (Auto-Rollback dari Runtime Error)
-      if (window.location.search.includes('rollback=true')) {
-        console.warn("Memasuki mode Auto-Rollback untuk Runtime Error...");
-        
-        const rollErr = sessionStorage.getItem('wolfspace_rollback_error');
-        if (rollErr) {
-          console.error("💥 REKAMAN RUNTIME ERROR YANG MENYEBABKAN CRASH:\n", rollErr);
-          sessionStorage.removeItem('wolfspace_rollback_error');
-        }
-
-        // Hapus param agar refresh selanjutnya kembali normal
-        const newUrl = window.location.protocol + "//" + window.location.host + window.location.pathname;
-        window.history.replaceState({path:newUrl}, '', newUrl);
-
-        const lastGood = localStorage.getItem('wolfspace_last_good_app');
-        if (lastGood) {
-          console.log("✅ Memulihkan UI dari versi Aman terakhir (Runtime Auto-Rollback).");
-          const script = document.createElement('script');
-          script.type = 'text/javascript';
-          script.innerHTML = lastGood;
-          document.body.appendChild(script);
-          return; // Hentikan eksekusi fetch
-        }
-      }
-
-      // 2. Alur Normal
-      try {
-        const res = await fetch('/app.jsx?v=' + Date.now());
-        const jsxCode = await res.text();
-        
+      // ── Global Runtime Guard: tangkap error di luar jangkauan ErrorBoundary ──
+      // (event handler, setTimeout, async/await) → picu Auto-Rollback yang sama.
+      window.triggerAppRollback = function (errText) {
         try {
-          const compiled = Babel.transform(jsxCode, { presets: ['react'] }).code;
-          // TAHAN! Jangan simpan ke localStorage dulu sampai React merendernya tanpa error
-          window._pendingGoodApp = compiled;
-          
-          const script = document.createElement('script');
-          script.type = 'text/javascript';
-          script.innerHTML = compiled;
-          document.body.appendChild(script);
-        } catch (compileError) {
-          console.error("💥 Babel Compilation Error:", compileError);
-          console.warn("Mencoba memuat ulang dari versi terakhir yang berfungsi (Syntax Auto-Rollback)...");
-          
-          const lastGood = localStorage.getItem('wolfspace_last_good_app');
+          // Anti-loop: kalau baru saja rollback (<60 detik), jangan reload lagi —
+          // versi aman pun melempar error yang sama, cukup catat di console.
+          var last = parseInt(
+            sessionStorage.getItem("wolfspace_rollback_ts") || "0",
+            10,
+          );
+          if (Date.now() - last < 60000) {
+            console.error(
+              "⚠ Rollback ditahan (baru terjadi <60 dtk). Error:",
+              errText,
+            );
+            return;
+          }
+          sessionStorage.setItem("wolfspace_rollback_ts", String(Date.now()));
+          sessionStorage.setItem("wolfspace_rollback_error", errText);
+        } catch (_) {}
+        if (window.location.search.indexOf("rollback=true") === -1) {
+          window.location.replace("/?rollback=true");
+        }
+      };
+      window.addEventListener("error", function (ev) {
+        // Abaikan error resource (img/script gagal load) — hanya exception JS
+        if (!ev || !ev.error) return;
+        window.triggerAppRollback(
+          "[window.onerror] " + (ev.error.stack || ev.message || ev.error),
+        );
+      });
+      window.addEventListener("unhandledrejection", function (ev) {
+        var r = ev && ev.reason;
+        window.triggerAppRollback(
+          "[unhandledrejection] " + (r && r.stack ? r.stack : String(r)),
+        );
+      });
+
+      (async function () {
+        // 1. Cek apakah kita sedang dalam mode Recovery (Auto-Rollback dari Runtime Error)
+        if (window.location.search.includes("rollback=true")) {
+          console.warn("Memasuki mode Auto-Rollback untuk Runtime Error...");
+
+          const rollErr = sessionStorage.getItem("wolfspace_rollback_error");
+          if (rollErr) {
+            console.error(
+              "💥 REKAMAN RUNTIME ERROR YANG MENYEBABKAN CRASH:\n",
+              rollErr,
+            );
+            sessionStorage.removeItem("wolfspace_rollback_error");
+          }
+
+          // Hapus param agar refresh selanjutnya kembali normal
+          const newUrl =
+            window.location.protocol +
+            "//" +
+            window.location.host +
+            window.location.pathname;
+          window.history.replaceState({ path: newUrl }, "", newUrl);
+
+          const lastGood = localStorage.getItem("wolfspace_last_good_app");
           if (lastGood) {
-            console.log("✅ Syntax Auto-Rollback berhasil. UI WOLFSPACE diselamatkan.");
-            const script = document.createElement('script');
-            script.type = 'text/javascript';
+            console.log(
+              "✅ Memulihkan UI dari versi Aman terakhir (Runtime Auto-Rollback).",
+            );
+            const script = document.createElement("script");
+            script.type = "text/javascript";
             script.innerHTML = lastGood;
             document.body.appendChild(script);
-          } else {
-            console.error("❌ Auto-Rollback gagal: Tidak ada versi sebelumnya.");
+            return; // Hentikan eksekusi fetch
           }
         }
-      } catch (fetchError) {
-        console.error("Gagal mengambil app.jsx:", fetchError);
-      }
-    })();
-  </script>
-</body>
+
+        // 2. Alur Normal
+        try {
+          const res = await fetch("/app.jsx?v=" + Date.now());
+          const jsxCode = await res.text();
+
+          try {
+            const compiled = Babel.transform(jsxCode, {
+              presets: ["react"],
+            }).code;
+            // TAHAN! Jangan simpan ke localStorage dulu sampai React merendernya tanpa error
+            window._pendingGoodApp = compiled;
+
+            const script = document.createElement("script");
+            script.type = "text/javascript";
+            script.innerHTML = compiled;
+            document.body.appendChild(script);
+          } catch (compileError) {
+            console.error("💥 Babel Compilation Error:", compileError);
+            console.warn(
+              "Mencoba memuat ulang dari versi terakhir yang berfungsi (Syntax Auto-Rollback)...",
+            );
+
+            const lastGood = localStorage.getItem("wolfspace_last_good_app");
+            if (lastGood) {
+              console.log(
+                "✅ Syntax Auto-Rollback berhasil. UI WOLFSPACE diselamatkan.",
+              );
+              const script = document.createElement("script");
+              script.type = "text/javascript";
+              script.innerHTML = lastGood;
+              document.body.appendChild(script);
+            } else {
+              console.error(
+                "❌ Auto-Rollback gagal: Tidak ada versi sebelumnya.",
+              );
+            }
+          }
+        } catch (fetchError) {
+          console.error("Gagal mengambil app.jsx:", fetchError);
+        }
+      })();
+    </script>
+  </body>
 </html>
