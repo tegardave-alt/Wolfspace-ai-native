@@ -5856,27 +5856,43 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     const chosenPath = selectedObj ? selectedObj.path : (project.includes(":") || project.includes("/") || project.includes("\\") ? project : `c:\\Users\\dave\\${project}`);
     onStart(fullText, chosenPath);
   };
+  // Pasang folder ke WOLFSPACE = beri worktree+branch terikat ke alamat aslinya
+  // (lewat /ww/attach). Idempoten & non-destruktif. Simpan dgn path yang benar.
+  const attachFolder = async (folderPath, folderName) => {
+    const att = await wwApi("/ww/attach", { method: "POST", body: { path: folderPath } });
+    const finalPath = (att && att.path) || folderPath;
+    const finalName = (att && att.name) || folderName;
+    setProject(finalName);
+    setProjectsList((prev) => {
+      const rest = prev.filter((p) => (p.path || "") !== finalPath);
+      const updated = [{ name: finalName, path: finalPath, branch: att && att.branch }, ...rest];
+      localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
+      return updated;
+    });
+    window.dispatchEvent(new Event("quantum_workspaces_changed"));
+  };
   const handleOpenFolderPicker = async () => {
     setDropOpen(false);
     try {
+      // Electron: dialog native → path absolut ASLI (folder di C:, D:, Desktop, mana pun).
+      if (IPC && IPC.invoke) {
+        const r = await IPC.invoke("selectFolder");
+        if (!r || r.canceled || !r.path) return;
+        const name = r.path.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
+        await attachFolder(r.path, name);
+        return;
+      }
+      // Browser: File System Access API (path tak asli — ditebak di home).
       if (window.showDirectoryPicker) {
         const dirHandle = await window.showDirectoryPicker();
         if (dirHandle && dirHandle.name) {
-          const folderName = dirHandle.name;
-          const folderPath = `c:\\Users\\dave\\${folderName}`;
-          setProject(folderName);
-          setProjectsList((prev) => {
-            if (prev.some((p) => p.name === folderName && p.path === folderPath)) return prev;
-            const updated = [{ name: folderName, path: folderPath }, ...prev.filter((p) => p.name !== folderName)];
-            localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
-            return updated;
-          });
+          await attachFolder(`c:\\Users\\dave\\${dirHandle.name}`, dirHandle.name);
           return;
         }
       }
     } catch (err) {
-      if (err.name === "AbortError") return;
-      console.error("[DirectoryPicker Error]", err);
+      if (err && err.name === "AbortError") return;
+      console.error("[FolderPicker]", err);
     }
     document.getElementById("picker-workspace-folder-input")?.click();
   };
@@ -5905,14 +5921,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       folderName = relPath;
     }
     if (!folderPath) folderPath = `c:\\Users\\dave\\${folderName}`;
-    setProject(folderName);
-    setProjectsList((prev) => {
-      if (prev.some((p) => p.name === folderName && p.path === folderPath)) return prev;
-      const updated = [{ name: folderName, path: folderPath }, ...prev.filter((p) => p.name !== folderName)];
-      localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
-      return updated;
-    });
     e.target.value = "";
+    attachFolder(folderPath, folderName); // pasang = isolasi terikat ke path
   };
   return (
     <div className="project-picker-screen" style={{ position: 'fixed', top: 0, left: 0, right: 0, bottom: 0, zIndex: 9999 }}>
