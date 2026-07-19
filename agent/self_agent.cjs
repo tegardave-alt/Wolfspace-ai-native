@@ -82,17 +82,21 @@ function stripToolRecap(text) {
 // Potong jawaban akhir menjadi maksimal 2000 karakter sebagai safety net
 function truncateToConcise(text, maxChars = 2000) {
   if (!text) return text;
-  if (text.length <= maxChars) return text;
-  // Jangan memotong di tengah blok berpagar (```mermaid / ```code) — itu merusak
-  // fence penutup sehingga diagram/kode gagal dirender. Kalau ada jumlah fence yang
-  // seimbang, perpanjang batas sampai setelah fence penutup terakhir agar blok utuh.
+  // Blok berpagar (```mermaid / ```code) TIDAK dihitung ke kuota keringkasan — diagram
+  // dan kode memang panjang & disengaja. Kuota 2000 hanya untuk PROSA. Tanpa ini,
+  // diagram besar "memakan" jatah prosa sehingga penjelasan setelahnya terpotong
+  // menggantung ("...1. Server Layer (server.cjs)...").
+  const prose = text.replace(/```[\s\S]*?```/g, '');
+  if (prose.length <= maxChars) return text; // prosa muat -> kirim utuh (diagram gratis)
+
+  // Prosa kepanjangan: potong, tapi jangan di tengah blok berpagar (rusak fence penutup).
   const fences = (text.match(/```/g) || []).length;
   if (fences >= 2 && fences % 2 === 0) {
     const lastFence = text.lastIndexOf('```');
     const nl = text.indexOf('\n', lastFence);
     const keepTo = nl === -1 ? text.length : nl + 1;
-    if (keepTo <= maxChars) return text.slice(0, maxChars).trim() + '...';
-    return text.slice(0, keepTo).trim();
+    const cap = maxChars + (text.length - prose.length); // beri ruang untuk blok
+    return text.slice(0, Math.max(cap, keepTo)).trim();
   }
   return text.slice(0, maxChars).trim() + '...';
 }
