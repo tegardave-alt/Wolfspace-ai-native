@@ -609,8 +609,42 @@ async function runSelfTool(name, args, emit, context = {}) {
         (context && context.workspaceRoot) ||
         process.env.WW_WORKSPACE_ROOT ||
         null;
-      if (_wsRoot && (name === "read" || name === "write" || name === "edit")) {
-        return await _brokeredFileOp(name, args, _wsRoot);
+      if (_wsRoot) {
+        // Mutasi file → broker (deny-by-default, roots:[folder]).
+        if (name === "read" || name === "write" || name === "edit") {
+          return await _brokeredFileOp(name, args, _wsRoot);
+        }
+        // Eksplorasi read-only → scope ke folder ww (bukan QROOT).
+        if (name === "list") return { ok: true, output: diskList(_wsRoot) };
+        if (name === "glob")
+          return {
+            ok: true,
+            output: diskGlob(_wsRoot, args.pattern, { intent: args.intent }),
+          };
+        if (name === "grep")
+          return {
+            ok: true,
+            output: diskGrep(_wsRoot, args.pattern, {
+              intent: args.intent,
+              semantic: args.semantic,
+            }),
+          };
+        if (name === "architecture_map") {
+          const m = lazyArch();
+          if (!m.architectureMap)
+            return { ok: false, output: "arch-tools tidak termuat" };
+          try {
+            return m.architectureMap({
+              scope: args.scope || "all",
+              root: _wsRoot,
+            });
+          } catch (e) {
+            return {
+              ok: false,
+              output: "architecture_map error: " + e.message,
+            };
+          }
+        }
       }
     }
 
