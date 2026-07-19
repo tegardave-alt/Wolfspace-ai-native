@@ -204,26 +204,28 @@ function cmdList(opts) {
   }
 }
 
-function cmdWatch(opts) {
-  ensureRoot(opts.root);
-  let chokidar;
-  try {
-    chokidar = require("chokidar");
-  } catch {
-    die(
-      "chokidar tidak terpasang. `npm i chokidar` atau jalankan dari root project WOLFSPACE.",
-    );
-  }
+// Core watcher — dipakai CLI `watch` DAN server WOLFSPACE (auto-start). Mengembalikan
+// handle chokidar (pemanggil yang menutup lewat .close()). `throw` (bukan die) supaya
+// aman dipanggil di dalam proses server. opts.log(msg) opsional untuk laporan event.
+function startWatcher(root, opts = {}) {
+  const rootResolved = path.resolve(root || DEFAULT_ROOT);
+  // Validasi root tanpa mematikan proses (throw, bukan die).
+  if (!fs.existsSync(rootResolved))
+    fs.mkdirSync(rootResolved, { recursive: true });
+  if (!fs.statSync(rootResolved).isDirectory())
+    throw new Error("root bukan direktori: " + rootResolved);
+  if (
+    gitTry(["rev-parse", "--is-inside-work-tree"], rootResolved) === "true" &&
+    !isRepo(rootResolved)
+  )
+    throw new Error("root berada di dalam repo git lain: " + rootResolved);
 
-  log(`\x1b[36m▶ ww watch\x1b[0m — memantau folder baru di ${opts.root}`);
-  log(
-    `  Buat folder di sana (Explorer/mkdir) → otomatis jadi repo + branch. Ctrl+C untuk berhenti.\n`,
-  );
-
+  const chokidar = require("chokidar"); // throw bila tak terpasang → ditangani pemanggil
+  const onLog = typeof opts.log === "function" ? opts.log : () => {};
   const pending = new Map(); // dir → timer (debounce)
   const inFlight = new Set();
 
-  const watcher = chokidar.watch(opts.root, {
+  const watcher = chokidar.watch(rootResolved, {
     depth: 0, // hanya level teratas
     ignoreInitial: true, // jangan proses folder yang sudah ada saat start
     persistent: true,
@@ -231,11 +233,10 @@ function cmdWatch(opts) {
   });
 
   watcher.on("addDir", (dir) => {
-    if (path.resolve(dir) === path.resolve(opts.root)) return; // root sendiri
+    if (path.resolve(dir) === rootResolved) return; // root sendiri
     const name = path.basename(dir);
     if (isIgnorableName(name)) return;
     if (inFlight.has(dir)) return;
-
     // Debounce: tunggu folder selesai dibuat sebelum menyentuhnya.
     clearTimeout(pending.get(dir));
     pending.set(
@@ -246,18 +247,37 @@ function cmdWatch(opts) {
         if (isRepo(dir)) return; // sudah repo (mis. dibuat via `create`) — abaikan
         inFlight.add(dir);
         try {
-          log(`\x1b[35m↳ folder baru terdeteksi:\x1b[0m ${name}`);
-          initWorkspace(dir, name);
+          onLog(`folder baru terdeteksi: ${name}`);
+          const res = initWorkspace(dir, name);
+          if (res && res.branch)
+            onLog(`'${name}' → repo+branch '${res.branch}' tertanam`);
         } catch (e) {
-          warn(`gagal adopt '${name}': ${e.message.split("\n")[0]}`);
+          onLog(`gagal adopt '${name}': ${e.message.split("\n")[0]}`);
         } finally {
           inFlight.delete(dir);
         }
       }, 900),
     );
   });
+  watcher.on("error", (e) => onLog("watcher error: " + e.message));
+  return watcher;
+}
 
-  watcher.on("error", (e) => warn("watcher error: " + e.message));
+function cmdWatch(opts) {
+  let watcher;
+  try {
+    watcher = startWatcher(opts.root, {
+      log: (m) => log(`  \x1b[35m↳\x1b[0m ${m}`),
+    });
+  } catch (e) {
+    die(e.message);
+  }
+  log(
+    `\x1b[36m▶ ww watch\x1b[0m — memantau folder baru di ${path.resolve(opts.root)}`,
+  );
+  log(
+    `  Buat folder di sana (Explorer/mkdir) → otomatis jadi repo + branch. Ctrl+C untuk berhenti.\n`,
+  );
   process.on("SIGINT", () => {
     log("\n\x1b[36m■ watcher dihentikan.\x1b[0m");
     watcher.close().then(() => process.exit(0));
@@ -308,4 +328,12 @@ function main() {
   }
 }
 
-main();
+// Dipakai sebagai modul oleh server (auto-start watcher) ATAU sebagai CLI.
+module.exports = {
+  initWorkspace,
+  startWatcher,
+  toBranch,
+  isRepo,
+  DEFAULT_ROOT,
+};
+if (require.main === module) main();

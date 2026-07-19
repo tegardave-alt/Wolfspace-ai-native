@@ -96,7 +96,11 @@ function friendlyOpenClawError(stderr, stdout, err) {
   if (/timeout|timed out/i.test(raw)) {
     return "OpenClaw terlalu lama merespons. Coba lagi, atau jalankan: openclaw.cmd status";
   }
-  if (/gateway|onboard|configure|not configured|auth|api key|credential/i.test(raw)) {
+  if (
+    /gateway|onboard|configure|not configured|auth|api key|credential/i.test(
+      raw,
+    )
+  ) {
     return "OpenClaw belum siap dikonfigurasi. Jalankan: openclaw.cmd onboard";
   }
   return raw.trim() || "OpenClaw gagal dijalankan.";
@@ -157,7 +161,9 @@ function runOpenClawAgent(message) {
         shell: process.platform === "win32",
       });
     } catch (err) {
-      try { fs.unlinkSync(tempPath); } catch (_) {}
+      try {
+        fs.unlinkSync(tempPath);
+      } catch (_) {}
       return resolve({
         ok: false,
         text: "",
@@ -262,13 +268,23 @@ function dlog(cat, level, msg, data) {
   try {
     fs.appendFileSync(LOG_FILE, JSON.stringify(e) + "\n");
   } catch (_) {}
-    if (VERBOSE) {
+  if (VERBOSE) {
     const prefix = `[WOLFSPACE:${cat}]`;
     if (level === "error")
       _writeSafe(_origError, prefix, msg, data && data.error ? data.error : "");
-    else _writeSafe(_origLog, prefix, msg, data ? JSON.stringify(data, null, 0) : "");
+    else
+      _writeSafe(
+        _origLog,
+        prefix,
+        msg,
+        data ? JSON.stringify(data, null, 0) : "",
+      );
   } else if (DEBUG_ON && level === "error") {
-    _writeSafe(_origError, `[WOLFSPACE:${cat}] ${msg}`, data && data.error ? data.error : "");
+    _writeSafe(
+      _origError,
+      `[WOLFSPACE:${cat}] ${msg}`,
+      data && data.error ? data.error : "",
+    );
   }
   return e;
 }
@@ -279,7 +295,11 @@ function dlog(cat, level, msg, data) {
 const _origLog = console.log;
 const _origError = console.error;
 const _origWarn = console.warn;
-const _writeSafe = (fn, ...args) => { try { fn(...args); } catch (_) {} };
+const _writeSafe = (fn, ...args) => {
+  try {
+    fn(...args);
+  } catch (_) {}
+};
 let _qLogReentrant = false;
 console.log = function (...args) {
   _writeSafe(_origLog, console, ...args);
@@ -289,9 +309,13 @@ console.log = function (...args) {
     dlog(
       "console",
       "info",
-      args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "),
+      args
+        .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+        .join(" "),
     );
-  } finally { _qLogReentrant = false; }
+  } finally {
+    _qLogReentrant = false;
+  }
 };
 console.error = function (...args) {
   _writeSafe(_origError, console, ...args);
@@ -301,9 +325,13 @@ console.error = function (...args) {
     dlog(
       "console",
       "error",
-      args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "),
+      args
+        .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+        .join(" "),
     );
-  } finally { _qLogReentrant = false; }
+  } finally {
+    _qLogReentrant = false;
+  }
 };
 console.warn = function (...args) {
   _writeSafe(_origWarn, console, ...args);
@@ -313,9 +341,13 @@ console.warn = function (...args) {
     dlog(
       "console",
       "warn",
-      args.map((a) => (typeof a === "string" ? a : JSON.stringify(a))).join(" "),
+      args
+        .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+        .join(" "),
     );
-  } finally { _qLogReentrant = false; }
+  } finally {
+    _qLogReentrant = false;
+  }
 };
 
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
@@ -817,7 +849,12 @@ function needsStdin(lang, code) {
     .replace(/"[^"]*"/g, ""); // strip double-quoted strings
   return /\binput\s*\(/.test(cleaned);
 }
-const SAFE_ENV = { PATH: process.env.PATH, SystemRoot: process.env.SystemRoot, SystemDrive: process.env.SystemDrive, ComSpec: process.env.ComSpec };
+const SAFE_ENV = {
+  PATH: process.env.PATH,
+  SystemRoot: process.env.SystemRoot,
+  SystemDrive: process.env.SystemDrive,
+  ComSpec: process.env.ComSpec,
+};
 
 async function runPy(code) {
   if (needsStdin("python", code)) {
@@ -829,8 +866,11 @@ async function runPy(code) {
     };
   }
   if (USE_SANDBOX) return await runSandboxed("python", code);
-  
-  const tmpPy = path.join(os.tmpdir(), `_quantum_run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`);
+
+  const tmpPy = path.join(
+    os.tmpdir(),
+    `_quantum_run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`,
+  );
   fs.writeFileSync(tmpPy, code, "utf8");
   try {
     const { stdout } = await execP(`"${PY_BIN}" "${tmpPy}"`, {
@@ -843,7 +883,9 @@ async function runPy(code) {
     fs.rmSync(tmpPy, { force: true });
     return { ok: true, output: stdout };
   } catch (e) {
-    try { fs.rmSync(tmpPy, { force: true }); } catch(_) {}
+    try {
+      fs.rmSync(tmpPy, { force: true });
+    } catch (_) {}
     return {
       ok: false,
       output: (e.stdout || "").toString(),
@@ -1658,9 +1700,7 @@ let CLOUD_KEYS = {};
 function loadCloudKeys() {
   CLOUD_KEYS = {};
   try {
-    const raw = JSON.parse(
-      fs.readFileSync(resolveKeysPath(), "utf8"),
-    );
+    const raw = JSON.parse(fs.readFileSync(resolveKeysPath(), "utf8"));
     for (const [p, v] of Object.entries(raw))
       CLOUD_KEYS[p] = typeof v === "string" ? { key: v } : v;
   } catch {}
@@ -2894,7 +2934,7 @@ function _askCloudToolsOnce(cloud, messages) {
               )
                 return resolve({
                   role: "assistant",
-                  content: String(err.failed_generation)
+                  content: String(err.failed_generation),
                   // Jangan kirim tool_calls: [] karena DeepSeek menolak array kosong
                 });
             } catch (_) {}
@@ -2907,7 +2947,7 @@ function _askCloudToolsOnce(cloud, messages) {
           const validToolCalls = tcs.filter(Boolean);
           const response = {
             role: "assistant",
-            content: content || reasoning || null
+            content: content || reasoning || null,
           };
           // Hanya kirim tool_calls jika ada setidaknya 1 tool call (hindari error DeepSeek)
           if (validToolCalls.length > 0) {
@@ -2976,18 +3016,31 @@ function runSelfTool(name, args, emit) {
       if (!editResult.ok) {
         return {
           ok: false,
-          output: "DITOLAK & ROLLBACK otomatis (sintaks rusak):\n" + editResult.error +
-            "\n[Snapshot: " + editResult.snapshotId + "]" +
-            "\n[Karantina: " + (editResult.quarantineFile || '-') + "]",
+          output:
+            "DITOLAK & ROLLBACK otomatis (sintaks rusak):\n" +
+            editResult.error +
+            "\n[Snapshot: " +
+            editResult.snapshotId +
+            "]" +
+            "\n[Karantina: " +
+            (editResult.quarantineFile || "-") +
+            "]",
         };
       }
       return {
         ok: true,
         edited: true,
         output:
-          "edited " + args.path +
-          " (" + old.length + "->" + patched.length + " b, sintaks OK)" +
-          " [snapshot: " + editResult.snapshotId + "]",
+          "edited " +
+          args.path +
+          " (" +
+          old.length +
+          "->" +
+          patched.length +
+          " b, sintaks OK)" +
+          " [snapshot: " +
+          editResult.snapshotId +
+          "]",
       };
     }
 
@@ -2998,15 +3051,26 @@ function runSelfTool(name, args, emit) {
       if (!writeResult.ok) {
         return {
           ok: false,
-          output: "DITOLAK & ROLLBACK otomatis (sintaks rusak):\n" + writeResult.error +
-            "\n[Snapshot: " + writeResult.snapshotId + "]" +
-            "\n[Karantina: " + (writeResult.quarantineFile || '-') + "]",
+          output:
+            "DITOLAK & ROLLBACK otomatis (sintaks rusak):\n" +
+            writeResult.error +
+            "\n[Snapshot: " +
+            writeResult.snapshotId +
+            "]" +
+            "\n[Karantina: " +
+            (writeResult.quarantineFile || "-") +
+            "]",
         };
       }
       return {
         ok: true,
         edited: true,
-        output: "created/overwrote " + args.path + " (sintaks OK) [snapshot: " + writeResult.snapshotId + "]",
+        output:
+          "created/overwrote " +
+          args.path +
+          " (sintaks OK) [snapshot: " +
+          writeResult.snapshotId +
+          "]",
       };
     }
     if (name === "bash") {
@@ -3414,7 +3478,11 @@ const DEBUG_VIEWER = `<!doctype html><html><head><meta charset="utf-8"><title>WO
 // AND the Electron IPC layer. `emit(event)` replaces SSE writes; `ctl.isCancelled()`
 // for cooperative cancel; `ctl.setCurReq(r)` exposes the in-flight model request.
 const { chatStream } = require("./agent/chat.cjs");
-const { createSnapshot, rollback, listSnapshots } = require("./agent/snapshot.cjs");
+const {
+  createSnapshot,
+  rollback,
+  listSnapshots,
+} = require("./agent/snapshot.cjs");
 const { safeWriteFile, quarantine } = require("./agent/safe-edit.cjs");
 
 // ── Modular route handlers (server/routes/*) ──
@@ -3621,7 +3689,9 @@ const agentSessions = new Map();
 
 const server = http.createServer(async (req, res) => {
   // Dynamic CORS: in bypass mode, allow only the frontend origin
-  const CORS_ORIGIN = process.env.STATIC_PORT ? `http://localhost:${process.env.STATIC_PORT}` : "*";
+  const CORS_ORIGIN = process.env.STATIC_PORT
+    ? `http://localhost:${process.env.STATIC_PORT}`
+    : "*";
   res.setHeader("Access-Control-Allow-Origin", CORS_ORIGIN);
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
   if (req.method === "OPTIONS") {
@@ -3635,12 +3705,52 @@ const server = http.createServer(async (req, res) => {
     dlog("http", "info", "POST " + _path);
 
   // ── Modular routes (server/routes/*) — first match wins, state injected ──
-  if (_debugRoutes.handle(req, res, { trace, LOG_RING, debugSubs, DEBUG_VIEWER, dlog })) return;
-  if (_terminalRoutes.handle(req, res, { terminalSessions, openTerminalSession, writeToTerminal, resizeTerminal, closeTerminalSession })) return;
+  if (
+    _debugRoutes.handle(req, res, {
+      trace,
+      LOG_RING,
+      debugSubs,
+      DEBUG_VIEWER,
+      dlog,
+    })
+  )
+    return;
+  if (
+    _terminalRoutes.handle(req, res, {
+      terminalSessions,
+      openTerminalSession,
+      writeToTerminal,
+      resizeTerminal,
+      closeTerminalSession,
+    })
+  )
+    return;
   if (_snapshotRoutes.handle(req, res, { listSnapshots, rollback })) return;
-  if (_openclawRoutes.handle(req, res, { spawn, __dirname, openclawCommand, friendlyOpenClawError, stripAnsi, runOpenClawAgent, writeJson })) return;
+  if (
+    _openclawRoutes.handle(req, res, {
+      spawn,
+      __dirname,
+      openclawCommand,
+      friendlyOpenClawError,
+      stripAnsi,
+      runOpenClawAgent,
+      writeJson,
+    })
+  )
+    return;
   if (_hunkRoutes.handle(req, res, {})) return;
-  if (_cloudRoutes.handle(req, res, { CLOUD_KEYS, CLOUD, PROVIDER_NAMES, loadCloudKeys, detectKey, fillCloudKey, dlog })) return;
+  if (
+    _cloudRoutes.handle(req, res, {
+      CLOUD_KEYS,
+      CLOUD,
+      PROVIDER_NAMES,
+      loadCloudKeys,
+      detectKey,
+      fillCloudKey,
+      dlog,
+    })
+  )
+    return;
 
   // HuggingFace: search GGUF models
   if (req.method === "GET" && (req.url || "").startsWith("/hf/search")) {
@@ -4347,7 +4457,11 @@ const server = http.createServer(async (req, res) => {
               });
               continue;
             }
-            ev({ t: "adone", steps: step, summary: act ? act.body || "Selesai." : reply });
+            ev({
+              t: "adone",
+              steps: step,
+              summary: act ? act.body || "Selesai." : reply,
+            });
             break;
           }
 
@@ -4476,7 +4590,9 @@ const server = http.createServer(async (req, res) => {
       };
       // Logic lives in the pure selfAgentStream() (shared with the IPC layer).
       delete require.cache[require.resolve("./agent/self_agent.cjs")];
-      const { selfAgentStream: freshSelfAgentStream } = require("./agent/self_agent.cjs");
+      const {
+        selfAgentStream: freshSelfAgentStream,
+      } = require("./agent/self_agent.cjs");
       await freshSelfAgentStream(payload, ev, {
         isCancelled: () => cancelled,
         setCurReq: (r) => {
@@ -4560,7 +4676,16 @@ const server = http.createServer(async (req, res) => {
   // bersama blok Flutter; nilainya identik dengan _path di atas)
   const urlPath = _path;
 
-  if (_agentRunnerRoutes.handle(req, res, { AGENT_REGISTRY, agentSessions, pty, CORS_ORIGIN, runSelfTool })) return;
+  if (
+    _agentRunnerRoutes.handle(req, res, {
+      AGENT_REGISTRY,
+      agentSessions,
+      pty,
+      CORS_ORIGIN,
+      runSelfTool,
+    })
+  )
+    return;
 
   // Static files from public/ (e.g. /vendor/codemirror/*) Ã¢â‚¬â€ path-traversal safe
   if (req.method === "GET" && urlPath !== "/") {
@@ -4608,11 +4733,11 @@ const server = http.createServer(async (req, res) => {
       return res.end("public/index.html not found");
     }
     // Prevent browser from caching index.html so updates are always seen
-    res.writeHead(200, { 
+    res.writeHead(200, {
       "Content-Type": "text/html; charset=utf-8",
       "Cache-Control": "no-cache, no-store, must-revalidate",
-      "Pragma": "no-cache",
-      "Expires": "0"
+      Pragma: "no-cache",
+      Expires: "0",
     });
     res.end(data);
   });
@@ -4663,7 +4788,28 @@ if (require.main === module) {
     console.log(
       `\n  WOLFSPACE  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`,
     );
+    startWwWatcher();
   });
+}
+
+// ── ww auto-watcher ──
+// Folder baru di root ww → OTOMATIS jadi workspace terisolasi (repo+branch sendiri)
+// saat dibuat, tanpa perintah manual. Watcher menyala bersama server, mati bersamanya.
+let _wwWatcher = null;
+function startWwWatcher() {
+  try {
+    if (!(CONFIG.ww && CONFIG.ww.watch)) return;
+    const ww = require("./scripts/ww.cjs");
+    const root = CONFIG.ww.root || ww.DEFAULT_ROOT;
+    _wwWatcher = ww.startWatcher(root, {
+      log: (m) => console.log("  [ww] " + m),
+    });
+    console.log(
+      `  [ww] auto-watcher aktif di ${root} — folder baru otomatis ter-isolasi (repo+branch).`,
+    );
+  } catch (e) {
+    console.log("  [ww] watcher gagal start: " + e.message);
+  }
 }
 
 // Pure logic surface (no req/res) for reuse by both HTTP and Electron IPC.
@@ -4706,4 +4852,3 @@ module.exports = {
   resizeTerminal,
   closeTerminalSession,
 };
-

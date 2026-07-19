@@ -21,6 +21,11 @@
     "kotlinc": "C:/langs/kotlinc/bin/kotlinc.bat"
   },
   "models": [],
+  "ww": {
+    "watch": true,
+    "root": "C:/Users/dave/Desktop/project",
+    "_note": "Auto-isolasi: folder baru di root ini otomatis jadi repo+branch sendiri saat dibuat (watcher menyala bersama server). Kosongkan root untuk pakai ~/ww."
+  },
   "verbose": true,
   "eraser": {
     "apiKey": ""
