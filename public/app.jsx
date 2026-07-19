@@ -1050,7 +1050,7 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
                   {chat.title || "Chat"}
                 </div>
                 <div style={{ fontSize: "13px", color: "#6b7280" }}>
-                  {chat.project || "c:\\Users\\dave\\quantum"}
+                  {chat.project || "WOLFSPACE"}
                 </div>
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
@@ -4804,7 +4804,7 @@ function Sidebar({
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                       </svg>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws}</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws === "c:\\Users\\dave\\quantum" ? "WOLFSPACE" : ws}</span>
                     </div>
                     <span
                       title="Folder options"
@@ -5446,7 +5446,7 @@ function GroupedActionRow({ group, expanded, setExpanded }) {
           {acts.map((a, j) => (
             <div key={j} style={j > 0 ? { borderTop: "1px solid rgba(175,184,193,0.3)" } : {}}>
               <div style={{ background: "#21262d", padding: "4px 12px", fontSize: "12px", color: "#8c959f", fontFamily: "monospace", display: "flex", alignItems: "center", gap: "8px" }}>
-                <span style={{ color: "#3fb950" }}>...\quantum &gt;</span> {a.arg || a.kind}
+                <span style={{ color: "#3fb950" }}>...\wolfspace &gt;</span> {a.arg || a.kind}
               </div>
               <ToolOutput text={a.output} ok={a.ok} kind={a.kind} arg={a.arg} />
             </div>
@@ -5661,7 +5661,7 @@ function PickerSendIcon() {
 }
 function getPickerProjectsList() {
   const defaultDefaults = [
-    { name: "quantum", path: "c:\\Users\\dave\\quantum" },
+    { name: "WOLFSPACE", path: "c:\\Users\\dave\\quantum" },
     { name: "project", path: "c:\\Users\\dave\\project" },
   ];
   try {
@@ -5687,7 +5687,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   const [projectsList, setProjectsList] = useState(() => getPickerProjectsList());
   const [project, setProject] = useState(() => {
     const list = getPickerProjectsList();
-    return list.length > 0 ? list[0].name : "quantum";
+    return list.length > 0 ? list[0].name : "WOLFSPACE";
   });
   React.useEffect(() => {
     const reloadProjects = () => {
@@ -6357,7 +6357,7 @@ function VSCodeTerminal({ selectedProject, onClose, agentOutput, terminalOutput,
             <div>{mainUiAiLog}</div>
           ) : (
             <div style={{ color: "#8b949e" }}>
-              <div style={{ color: "#5eead4", fontWeight: 600, marginBottom: "6px" }}>[Quantum AI & System Output Stream]</div>
+              <div style={{ color: "#5eead4", fontWeight: 600, marginBottom: "6px" }}>[WOLFSPACE AI & System Output Stream]</div>
               Belum ada log aktivitas atau output AI dari UI utama saat ini.<br />
               Saat Anda mengobrol dengan AI di UI utama atau menjalankan perintah, semua log proses dan hasil respons AI akan otomatis mengalir ke panel ini.
             </div>
