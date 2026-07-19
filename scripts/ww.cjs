@@ -79,6 +79,9 @@ function isIgnorableName(name) {
     name.startsWith("_") ||
     name.startsWith("$") ||
     name.startsWith("~") ||
+    // Nama default Explorer/Finder SEBELUM di-rename user: jangan buru-buru adopt
+    // "New folder" lalu identitasnya terlanjur salah. Tunggu sampai diberi nama asli.
+    /^(new folder|untitled folder|new folder \(\d+\))$/i.test(name) ||
     /^(node_modules|System Volume Information|\$RECYCLE\.BIN)$/i.test(name)
   );
 }
