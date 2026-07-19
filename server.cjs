@@ -4569,6 +4569,31 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ww verify: cek keberadaan folder project (kebenaran disk) untuk path APA PUN,
+  // supaya UI bisa membuang "hantu" (project yang foldernya sudah tak ada) di mana pun.
+  if (req.method === "POST" && req.url === "/ww/verify") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let paths = [];
+      try {
+        paths = JSON.parse(body || "{}").paths || [];
+      } catch (_) {}
+      const exists = {};
+      for (const p of paths) {
+        if (typeof p !== "string" || !p) continue;
+        try {
+          exists[p] = fs.statSync(p).isDirectory();
+        } catch (_) {
+          exists[p] = false;
+        }
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ exists }));
+    });
+    return;
+  }
+
   // Self-edit agent: edits WOLFSPACE's OWN source (dev copy) with backup + syntax-gate.
   // Edits the dev files; you review and run sync-app.ps1 to apply to the live app.
   if (req.method === "POST" && req.url === "/self-agent") {
