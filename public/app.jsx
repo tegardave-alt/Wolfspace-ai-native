@@ -673,6 +673,35 @@ if (
   };
 }
 
+// ── Auto-migrasi localStorage (Electron, sekali jalan) ──
+// Kalau ada file jembatan dari browser (~/.wolfspace/ls-migrate.json via /ww/ls-load)
+// dan Electron ini belum pernah migrasi, TERAPKAN OTOMATIS saat load — tanpa perlu
+// menempel apa pun di DevTools console (yang diblokir proteksi self-XSS).
+if (
+  typeof window !== "undefined" &&
+  IPC &&
+  IPC.invoke &&
+  !localStorage.getItem("quantum_migrated")
+) {
+  IPC.invoke("api", { method: "GET", path: "/ww/ls-load" })
+    .then((r) => {
+      if (!r || r.status !== 200) return;
+      let data = {};
+      try {
+        data = JSON.parse(r.body).data || {};
+      } catch (_) {
+        return;
+      }
+      const keys = Object.keys(data).filter((k) => k !== "quantum_migrated");
+      if (!keys.length) return; // belum ada dump dari browser → cek lagi lain kali
+      for (const k of keys) localStorage.setItem(k, data[k]);
+      localStorage.setItem("quantum_migrated", "1");
+      console.log("[ww] auto-migrasi localStorage: " + keys.length + " kunci diimpor — reload…");
+      location.reload();
+    })
+    .catch(() => {});
+}
+
 async function streamChat(reqBody, onText, signal) {
   let acc = "",
     run = null;
