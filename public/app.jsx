@@ -597,6 +597,20 @@ const IPC =
     ? window.WOLFSPACE
     : null;
 
+// Ambil /ww/list lewat IPC (Electron: tanpa server HTTP) ATAU fetch (browser).
+// Tanpa ini, di app Electron origin app:// fetch("/ww/list") jadi 404 → hantu tak terbuang.
+async function wwListFetch() {
+  try {
+    if (IPC && IPC.invoke) {
+      const r = await IPC.invoke("api", { method: "GET", path: "/ww/list" });
+      return JSON.parse((r && r.body) || "null");
+    }
+    return await (await fetch("/ww/list")).json();
+  } catch (_) {
+    return null;
+  }
+}
+
 async function streamChat(reqBody, onText, signal) {
   let acc = "",
     run = null;
@@ -4438,8 +4452,7 @@ function Sidebar({
   React.useEffect(() => {
     let alive = true;
     const load = () =>
-      fetch("/ww/list")
-        .then((r) => r.json())
+      wwListFetch()
         .then((d) => {
           if (alive && d && Array.isArray(d.workspaces))
             setWwLive({ root: d.root, paths: d.workspaces.map((w) => w.path) });
@@ -5705,8 +5718,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   // root ww yang foldernya sudah tak ada di disk (mis. dihapus di Explorer). Ini
   // membersihkan localStorage secara permanen, jadi picker & sidebar sama-sama bersih.
   React.useEffect(() => {
-    fetch("/ww/list")
-      .then((r) => r.json())
+    wwListFetch()
       .then((d) => {
         if (!d || !d.root || !Array.isArray(d.workspaces)) return;
         const norm = (s) =>
