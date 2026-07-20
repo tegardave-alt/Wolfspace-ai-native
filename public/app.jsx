@@ -6002,7 +6002,15 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   // Pasang folder ke WOLFSPACE = beri worktree+branch terikat ke alamat aslinya
   // (lewat /ww/attach). Idempoten & non-destruktif. Simpan dgn path yang benar.
   const attachFolder = async (folderPath, folderName) => {
-    const att = await wwApi("/ww/attach", { method: "POST", body: { path: folderPath } });
+    const key = folderPath.toLowerCase();
+    if (attachInFlightRef.current.has(key)) return;
+    attachInFlightRef.current.add(key);
+    let att;
+    try {
+      att = await wwApi("/ww/attach", { method: "POST", body: { path: folderPath } });
+    } finally {
+      attachInFlightRef.current.delete(key);
+    }
     const finalPath = (att && att.path) || folderPath;
     const finalName = (att && att.name) || folderName;
     setProject(finalName);
