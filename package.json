@@ -10,7 +10,7 @@
   "scripts": {
     "start": "node server.cjs",
     "dev": "nodemon server.cjs",
-    "app": "electron electron/main.js",
+    "app": "node scripts/app.cjs",
     "dist": "electron-builder --win",
     "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles --passWithNoTests",
