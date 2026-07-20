@@ -5920,9 +5920,21 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   }, [pickerEffort]);
   const wrapRef = useRef(null);
   const taRef = useRef(null);
+  // Penjaga anti-tutup BERBASIS STATUS (bukan tebakan durasi — terbukti rapuh,
+  // penutupan pernah terjadi >500ms setelah attachFolder selesai). Aktif TERUS
+  // sepanjang: dialog native dibuka → attach selesai → dropdown reopen dirender.
+  // Root cause TERKONFIRMASI via trace: dropdown reopen (dropOpen=true, item baru
+  // ADA di daftar) tapi tertutup lagi oleh mousedown pada DIV.project-picker-screen
+  // (BUKAN item spesifik) — event "sisa" saat fokus jendela kembali dari dialog OS.
+  const nativeDialogActiveRef = useRef(false);
   useEffect(() => {
-    const h = (e) => { 
-      if (wrapRef.current && !wrapRef.current.contains(e.target)) setDropOpen(false); 
+    const h = (e) => {
+      const outside = wrapRef.current && !wrapRef.current.contains(e.target);
+      if (!outside) return;
+      if (nativeDialogActiveRef.current) {
+        return;
+      }
+      setDropOpen(false);
     };
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
@@ -6001,9 +6013,15 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   };
   // Pasang folder ke WOLFSPACE = beri worktree+branch terikat ke alamat aslinya
   // (lewat /ww/attach). Idempoten & non-destruktif. Simpan dgn path yang benar.
+  // Guard anti-dobel: cegah 2 panggilan attach untuk path yang sama nyaris bersamaan
+  // (mis. double-fire dari native dialog / event) — bukan berbahaya (backend
+  // idempoten), tapi tak perlu 2x panggilan untuk 1 aksi user.
+  const attachInFlightRef = useRef(new Set());
   const attachFolder = async (folderPath, folderName) => {
     const key = folderPath.toLowerCase();
-    if (attachInFlightRef.current.has(key)) return;
+    if (attachInFlightRef.current.has(key)) {
+      return;
+    }
     attachInFlightRef.current.add(key);
     let att;
     try {
@@ -6025,18 +6043,30 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     // kembali supaya folder yang baru dipasang LANGSUNG terlihat (di puncak daftar,
     // ter-highlight aktif), bukan diam tanpa umpan balik sampai user membukanya lagi.
     setDropOpen(true);
+    // Lepas penjaga SESAAT setelah render (2 frame) — bukan langsung, supaya mousedown
+    // "sisa" yang tiba tepat bersamaan dengan render dropdown ini juga masih tertekan.
+    requestAnimationFrame(() =>
+      requestAnimationFrame(() => {
+        nativeDialogActiveRef.current = false;
+      }),
+    );
   };
   const handleOpenFolderPicker = async () => {
     setDropOpen(false);
+    nativeDialogActiveRef.current = true; // aktif dari SEBELUM dialog dibuka
     try {
       // Electron: dialog native → path absolut ASLI (folder di C:, D:, Desktop, mana pun).
       if (IPC && IPC.invoke) {
         const r = await IPC.invoke("selectFolder");
-        if (!r || r.canceled || !r.path) return;
+        if (!r || r.canceled || !r.path) {
+          nativeDialogActiveRef.current = false;
+          return;
+        }
         const name = r.path.replace(/[\\/]+$/, "").split(/[\\/]/).pop();
         await attachFolder(r.path, name);
         return;
       }
+      nativeDialogActiveRef.current = false;
       // Browser: File System Access API (path tak asli — ditebak di home).
       if (window.showDirectoryPicker) {
         const dirHandle = await window.showDirectoryPicker();
@@ -6046,6 +6076,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         }
       }
     } catch (err) {
+      nativeDialogActiveRef.current = false; // jangan macet permanen kalau error
       if (err && err.name === "AbortError") return;
       console.error("[FolderPicker]", err);
     }
