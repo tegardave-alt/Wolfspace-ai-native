@@ -6013,6 +6013,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       return updated;
     });
     window.dispatchEvent(new Event("quantum_workspaces_changed"));
+    // Dropdown tertutup sejak dialog native dibuka (handleOpenFolderPicker) — buka
+    // kembali supaya folder yang baru dipasang LANGSUNG terlihat (di puncak daftar,
+    // ter-highlight aktif), bukan diam tanpa umpan balik sampai user membukanya lagi.
+    setDropOpen(true);
   };
   const handleOpenFolderPicker = async () => {
     setDropOpen(false);
