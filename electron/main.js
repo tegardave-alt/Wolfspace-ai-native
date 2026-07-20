@@ -11,6 +11,18 @@ const ROOT = path.join(__dirname, "..");
 const PORT = 8090;
 const procs = [];
 
+// Kunci nama app SEBELUM apa pun lain — menentukan folder userData (localStorage,
+// dsb). Tanpa ini, Electron menebak nama dari package.json terdekat DI ATAS entry
+// script; karena electron/main.js ada di subfolder tanpa package.json sendiri,
+// caranya menemukan root project TAK KONSISTEN antar cara peluncuran (electron
+// binary langsung vs lewat launcher npm run app) — kadang berhasil (userData
+// "quantum", nama lama sebelum rebrand), kadang gagal dan jatuh ke folder DEFAULT
+// generik "Electron" (profil kosong/berbeda). Akibatnya localStorage (project,
+// riwayat chat, hasil migrasi) tampak "hilang" karena sebenarnya tersimpan di
+// profil yang beda tiap kali app dimulai dengan cara berbeda. Nama TETAP di sini
+// menjamin SATU folder userData (%APPDATA%\WOLFSPACE) apa pun cara peluncurannya.
+app.setName("WOLFSPACE");
+
 // Custom app:// scheme serves the UI + studio from disk (no HTTP needed to LOAD
 // the app). Must be declared privileged BEFORE app is ready. See docs/A2UI-DESIGN.md.
 protocol.registerSchemesAsPrivileged([
@@ -480,7 +492,42 @@ function registerIpc() {
   });
 }
 
+// Migrasi userData SEKALI: sebelum stabil di "WOLFSPACE" (fix di atas), sesi
+// sebelumnya sempat tersebar ke "quantum" (nama lama) dan/atau default generik
+// "Electron" (fallback saat Electron gagal deteksi nama). Salin "Local Storage"
+// dari profil lama itu ke profil stabil BARU (kalau baru belum punya data),
+// supaya project/riwayat/hasil migrasi browser tak hilang akibat pergantian
+// profil ini. Aman: hanya menyalin kalau tujuan belum ada isinya sama sekali.
+function migrateOldUserDataOnce() {
+  try {
+    const newDir = app.getPath("userData");
+    const newLS = path.join(newDir, "Local Storage");
+    if (fs.existsSync(newLS)) return; // profil baru sudah punya data — jangan timpa
+    const roaming = path.dirname(newDir); // %APPDATA%
+    const candidates = ["quantum", "Electron"]
+      .map((n) => path.join(roaming, n))
+      .filter((p) => p !== newDir && fs.existsSync(path.join(p, "Local Storage")));
+    if (!candidates.length) return;
+    // Pilih yang paling BARU diubah (LOG file) sebagai sumber paling relevan.
+    const withMtime = candidates.map((p) => {
+      let m = 0;
+      try {
+        m = fs.statSync(path.join(p, "Local Storage", "LOG")).mtimeMs;
+      } catch (_) {}
+      return { p, m };
+    });
+    withMtime.sort((a, b) => b.m - a.m);
+    const src = path.join(withMtime[0].p, "Local Storage");
+    fs.mkdirSync(newDir, { recursive: true });
+    fs.cpSync(src, newLS, { recursive: true });
+    console.log("[userData] migrasi localStorage dari", withMtime[0].p, "→", newDir);
+  } catch (e) {
+    console.log("[userData] migrasi gagal (non-fatal):", e.message);
+  }
+}
+
 app.whenReady().then(() => {
+  migrateOldUserDataOnce();
   registerAppProtocol();
   registerIpc();
   startBackend();
