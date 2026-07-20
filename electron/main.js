@@ -516,6 +516,44 @@ app.whenReady().then(() => {
       const rel = path.relative(root, fp).replace(/\\/g, "/");
       return rel.startsWith("public/");
     };
+    // Baseline hash tiap file backend → event fs.watch PALSU (Windows sering memicu
+    // event untuk file yang isinya tak berubah / salah nama) tak akan me-restart app.
+    const crypto = require("crypto");
+    const _bkHash = new Map();
+    const _hashFile = (fp) => {
+      try {
+        return crypto
+          .createHash("md5")
+          .update(fs.readFileSync(fp))
+          .digest("hex");
+      } catch (_) {
+        return null;
+      }
+    };
+    const _seedHashes = (dir, depth) => {
+      if (depth > 4) return;
+      let ents;
+      try {
+        ents = fs.readdirSync(dir, { withFileTypes: true });
+      } catch (_) {
+        return;
+      }
+      for (const e of ents) {
+        if (e.name === "node_modules" || e.name.startsWith(".")) continue;
+        const fp = path.join(dir, e.name);
+        if (e.isDirectory()) _seedHashes(fp, depth + 1);
+        else if (/\.(c?js|json)$/.test(e.name)) _bkHash.set(fp, _hashFile(fp));
+      }
+    };
+    for (const d of backendDirs) {
+      const p = path.join(root, d);
+      if (fs.existsSync(p)) _seedHashes(p, 0);
+    }
+    for (const f of backendFiles) {
+      const p = path.join(root, f);
+      if (fs.existsSync(p)) _bkHash.set(p, _hashFile(p));
+    }
+    const _watchStart = Date.now();
     if (fs.existsSync(root) && !process.env.ELECTRON_RUN_AS_NODE) {
       fs.watch(root, { recursive: true }, (eventType, filename) => {
         if (
@@ -537,6 +575,12 @@ app.whenReady().then(() => {
               console.log("[hot-reload] frontend reloaded due to:", filename);
             } catch (_) {}
           } else if (isBackend(fullPath)) {
+            // Abaikan event di ~4 detik pertama (event startup) + hanya restart
+            // kalau ISI file benar-benar berubah (dedupe event palsu fs.watch).
+            if (Date.now() - _watchStart < 4000) return;
+            const h = _hashFile(fullPath);
+            if (h && _bkHash.get(fullPath) === h) return; // isi sama → event palsu
+            if (h) _bkHash.set(fullPath, h);
             clearTimeout(backendTimer);
             backendTimer = setTimeout(() => {
               console.log(
