@@ -217,13 +217,28 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Default Electron/Chromium MENAHAN render/timer (rAF, dst) saat window
+      // kehilangan fokus/dianggap "background" — persis yang terjadi saat dialog
+      // folder native dibuka (window utama sementara tak fokus). Dugaan kuat untuk
+      // gejala "state sudah benar di localStorage, tapi UI baru terlihat setelah
+      // reload memaksa repaint baru". Matikan throttling itu di window utama.
+      backgroundThrottling: false,
     },
   });
+  win.webContents.setBackgroundThrottling(false); // lapis kedua, beberapa versi Electron butuh ini juga
   win.loadURL("app://WOLFSPACE/index.html"); // served from disk via the app:// protocol
   // open real external links in the system browser, not inside the app
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
     return { action: "deny" };
+  });
+  // Teruskan console.log/warn/error dari RENDERER ke stdout proses main — tanpa ini
+  // console.log di app.jsx (browser DevTools) tak pernah terlihat lewat terminal/log
+  // dev, hanya lewat DevTools yang tak selalu dibuka. Beda dari dlog/[WOLFSPACE:xxx]
+  // yang berasal dari proses BACKEND (Node), bukan renderer.
+  const LEVELS = ["log", "warning", "error"];
+  win.webContents.on("console-message", (_e, level, message) => {
+    console.log("[renderer:" + (LEVELS[level] || level) + "]", message);
   });
 }
 
