@@ -4532,6 +4532,21 @@ function deleteWorkspaceGlobal(wsToDelete) {
   try {
     if (!wsToDelete) return;
     const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+    // Cari path FISIK folder ini SEBELUM localStorage diubah — dipakai untuk hapus
+    // nyata di disk. wsToDelete kadang berupa nama, kadang path; cari entri yang
+    // cocok (persis logika filter di bawah) untuk mendapat p.path yang benar.
+    const match = stored.find(
+      (p) =>
+        p.path === wsToDelete ||
+        p.name === wsToDelete ||
+        (p.path && (p.path.endsWith(`\\${wsToDelete}`) || p.path.endsWith(`/${wsToDelete}`))) ||
+        wsToDelete.endsWith(`\\${p.name}`) ||
+        wsToDelete.endsWith(`/${p.name}`),
+    );
+    const realPath =
+      (match && match.path) ||
+      (wsToDelete.includes(":") || wsToDelete.includes("/") || wsToDelete.includes("\\") ? wsToDelete : null);
+
     const updated = stored.filter((p) => {
       if (p.path === wsToDelete || p.name === wsToDelete) return false;
       if (wsToDelete.endsWith(`\\${p.name}`) || wsToDelete.endsWith(`/${p.name}`)) return false;
@@ -4553,6 +4568,12 @@ function deleteWorkspaceGlobal(wsToDelete) {
     });
     localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(deleted));
     window.dispatchEvent(new Event("quantum_workspaces_changed"));
+
+    // Hapus FISIK folder+repo dari disk (backend menolak kalau bukan workspace ww
+    // yang sah — lihat POST /ww/delete). UI sudah bersih di atas terlepas hasil ini.
+    if (realPath) {
+      wwApi("/ww/delete", { method: "POST", body: { path: realPath } }).catch(() => {});
+    }
   } catch (_) {}
 }
 
