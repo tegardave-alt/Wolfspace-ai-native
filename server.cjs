@@ -4655,6 +4655,45 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ww delete: HAPUS FISIK folder+repo dari disk saat user hapus workspace di UI.
+  // Sebelumnya "hapus" hanya menyembunyikan dari daftar (localStorage) — folder
+  // asli tetap ada selamanya. Pengaman: hanya hapus kalau ada .ww.json di dalam
+  // folder (bukti itu memang workspace ww yang kita buat/kelola, bukan folder
+  // sembarang yang kebetulan namanya cocok) — mencegah rm -rf pada path salah.
+  if (req.method === "POST" && req.url === "/ww/delete") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let p = "";
+      try {
+        p = JSON.parse(body || "{}").path || "";
+      } catch (_) {}
+      if (!p) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ error: "path kosong" }));
+      }
+      try {
+        const resolved = path.resolve(p);
+        const marker = path.join(resolved, ".ww.json");
+        if (!fs.existsSync(marker)) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(
+            JSON.stringify({
+              error: "ditolak: tak ada .ww.json — bukan workspace ww yang dikelola",
+            }),
+          );
+        }
+        fs.rmSync(resolved, { recursive: true, force: true });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, path: resolved }));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ error: e.message }));
+      }
+    });
+    return;
+  }
+
   // ww verify: cek keberadaan folder project (kebenaran disk) untuk path APA PUN,
   // supaya UI bisa membuang "hantu" (project yang foldernya sudah tak ada) di mana pun.
   if (req.method === "POST" && req.url === "/ww/verify") {
