@@ -20,9 +20,14 @@ const outCss = path.join(root, "public", "vendor", "reactflow.css");
     format: "iife",
     globalName: "RFLib",
     outfile: outJs,
-    loader: { ".js": "jsx" },
+    // Build dari SOURCE TS/TSX yang di-vendor (lihat entry.js). esbuild menanggalkan
+    // tipe & meng-compile TSX (JSX otomatis -> react/jsx-runtime yang di-shim ke
+    // window.React). @xyflow/system dipetakan ke source vendored.
+    loader: { ".js": "jsx", ".ts": "ts", ".tsx": "tsx" },
+    jsx: "automatic",
     define: { "process.env.NODE_ENV": '"production"' },
     alias: {
+      "@xyflow/system": path.join(here, "vendor", "system", "index.ts"),
       react: path.join(here, "react-shim.js"),
       "react-dom": path.join(here, "reactdom-shim.js"),
       "react/jsx-runtime": path.join(here, "jsx-shim.js"),
@@ -30,7 +35,8 @@ const outCss = path.join(root, "public", "vendor", "reactflow.css");
     },
     logLevel: "info",
   });
-  fs.copyFileSync(require.resolve("@xyflow/react/dist/style.css"), outCss);
+  // CSS terkompilasi di-vendor juga (lepas dari node_modules @xyflow).
+  fs.copyFileSync(path.join(here, "vendor", "style.css"), outCss);
   const kb = (p) => (fs.statSync(p).size / 1024).toFixed(0);
   console.log(
     "OK -> reactflow.bundle.js (" +
