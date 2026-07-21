@@ -4528,6 +4528,40 @@ const SB = {
   ),
 };
 
+// Identitas sebuah workspace = PATH-nya yang persis, bukan namanya. Windows tak
+// peka huruf besar/kecil dan mencampur "/" vs "\", jadi normalkan sebelum banding.
+function normDelPath(s) {
+  return String(s || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+}
+// Apakah path ada di daftar-hapus? HANYA cocok berdasar path persis (dinormalkan)
+// — TIDAK dengan nama telanjang/suffix. Ini memutus bug lama: menghapus folder
+// bernama "x" tak boleh memblokir folder "x" lain di lokasi berbeda selamanya.
+function isPathDeleted(deletedArr, p) {
+  if (!p) return false;
+  const np = normDelPath(p);
+  for (const d of deletedArr || []) if (normDelPath(d) === np) return true;
+  return false;
+}
+// Sekali-jalan: buang "racun" dari daftar-hapus lama — entri NAMA TELANJANG (bukan
+// path absolut) yang, di bawah pencocokan-nama lama, memblokir folder apa pun yang
+// namanya kebetulan sama. Setelah ini blacklist hanya berisi path (invarian baru).
+function sanitizeDeletedWorkspaces() {
+  try {
+    const raw = localStorage.getItem("quantum_deleted_workspaces");
+    if (!raw) return;
+    const arr = JSON.parse(raw);
+    if (!Array.isArray(arr)) return;
+    const isAbsPath = (s) => /^[a-zA-Z]:[\\/]/.test(String(s || "")) || String(s || "").startsWith("/");
+    const cleaned = arr.filter(isAbsPath);
+    if (cleaned.length !== arr.length) {
+      localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(cleaned));
+    }
+  } catch (_) {}
+}
+
+// Bersihkan racun blacklist lama sekali, saat app.jsx dimuat (aman & idempoten).
+try { sanitizeDeletedWorkspaces(); } catch (_) {}
+
 function deleteWorkspaceGlobal(wsToDelete) {
   try {
     if (!wsToDelete) return;
@@ -4555,18 +4589,15 @@ function deleteWorkspaceGlobal(wsToDelete) {
     });
     localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
 
+    // Blacklist HANYA menyimpan path penuh (identitas). Menyimpan nama telanjang
+    // dulu (p.name / wsToDelete-nama) meracuni daftar: folder baru bernama sama
+    // ikut tersaring selamanya. Bila path tak bisa diresolusi, entri sudah dibuang
+    // dari projects_list di atas — cukup, tak perlu diblacklist by-name.
     const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
-    const toAdd = [wsToDelete];
-    stored.forEach((p) => {
-      if (p.path === wsToDelete || p.name === wsToDelete || (p.path && (p.path.endsWith(`\\${wsToDelete}`) || p.path.endsWith(`/${wsToDelete}`))) || wsToDelete.endsWith(`\\${p.name}`) || wsToDelete.endsWith(`/${p.name}`)) {
-        if (p.path && !deleted.includes(p.path)) toAdd.push(p.path);
-        if (p.name && !deleted.includes(p.name)) toAdd.push(p.name);
-      }
-    });
-    toAdd.forEach((item) => {
-      if (!deleted.includes(item)) deleted.push(item);
-    });
-    localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(deleted));
+    if (realPath && !isPathDeleted(deleted, realPath)) {
+      deleted.push(realPath);
+      localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(deleted));
+    }
     window.dispatchEvent(new Event("quantum_workspaces_changed"));
 
     // Hapus FISIK folder+repo dari disk (backend menolak kalau bukan workspace ww
@@ -4793,24 +4824,24 @@ function Sidebar({
 
   const workspacesList = React.useMemo(() => {
     const set = new Set();
-    const deletedSet = new Set();
+    let deleted = [];
     try {
-      const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
-      deleted.forEach((d) => deletedSet.add(d));
+      deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
     } catch (_) {}
+    const isDel = (x) => isPathDeleted(deleted, x); // path-exact, bukan nama/suffix
 
-    if (selectedProject && !deletedSet.has(selectedProject)) set.add(selectedProject);
-    else if (!deletedSet.has("c:\\Users\\dave\\quantum")) set.add("c:\\Users\\dave\\quantum");
+    if (selectedProject && !isDel(selectedProject)) set.add(selectedProject);
+    else if (!isDel("c:\\Users\\dave\\quantum")) set.add("c:\\Users\\dave\\quantum");
     try {
       const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
       stored.forEach((p) => {
-        if (p.path && !deletedSet.has(p.path)) set.add(p.path);
-        else if (p.name && !deletedSet.has(p.name)) set.add(p.name);
+        if (p.path && !isDel(p.path)) set.add(p.path);
+        else if (p.name && !isDel(p.name)) set.add(p.name);
       });
     } catch (_) {}
     if (savedChats && savedChats.length > 0) {
       savedChats.forEach((c) => {
-        if (c.project && !deletedSet.has(c.project)) set.add(c.project);
+        if (c.project && !isDel(c.project)) set.add(c.project);
       });
     }
     // ── ww = kebenaran disk ── Tambah folder ww yang NYATA ada; buang "hantu"
@@ -4832,7 +4863,7 @@ function Sidebar({
         }
       }
       wwLive.paths.forEach((p) => {
-        if (!deletedSet.has(p)) set.add(p);
+        if (!isDel(p)) set.add(p);
       });
     }
     return Array.from(set);
@@ -5948,13 +5979,8 @@ function getPickerProjectsList() {
   ];
   try {
     const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
-    const isDel = (p) => {
-      if (!p) return false;
-      if (deleted.includes(p.path) || deleted.includes(p.name)) return true;
-      if (p.path && deleted.some(d => p.path.endsWith(`\\${d}`) || p.path.endsWith(`/${d}`))) return true;
-      if (p.name && deleted.some(d => d.endsWith(`\\${p.name}`) || d.endsWith(`/${p.name}`))) return true;
-      return false;
-    };
+    // Cocok HANYA berdasar path persis — bukan nama/suffix (lihat isPathDeleted).
+    const isDel = (p) => isPathDeleted(deleted, p && p.path);
     const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
     if (stored && stored.length > 0) {
       const filtered = stored.filter((p) => !isDel(p));
@@ -6201,6 +6227,15 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     const rest = getPickerProjectsList().filter((p) => (p.path || "") !== finalPath);
     const updated = [{ name: finalName, path: finalPath, branch: att && att.branch }, ...rest];
     localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
+    // Memasang ulang sebuah folder = MENCORETNYA dari daftar-hapus. Tanpa ini,
+    // folder yang pernah dihapus lalu ditambах lagi akan tetap tersaring isDel.
+    try {
+      const del = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+      const pruned = del.filter((d) => normDelPath(d) !== normDelPath(finalPath));
+      if (pruned.length !== del.length) {
+        localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(pruned));
+      }
+    } catch (_) {}
     setProject(finalName);
     window.dispatchEvent(new Event("quantum_workspaces_changed"));
     // Dropdown tertutup sejak dialog native dibuka (handleOpenFolderPicker). Set
@@ -6830,13 +6865,11 @@ function App() {
     const checkSelectedProject = () => {
       try {
         const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
-        const isDel = (pStr) => {
-          if (!pStr) return false;
-          return deleted.some(d => pStr === d || pStr.endsWith(`\\${d}`) || pStr.endsWith(`/${d}`) || d.endsWith(`\\${pStr}`) || d.endsWith(`/${pStr}`));
-        };
+        // Path-exact saja (lihat isPathDeleted) — tak lagi cocok nama/suffix.
+        const isDel = (pStr) => isPathDeleted(deleted, pStr);
         if (isDel(selectedProject)) {
           const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
-          const valid = stored.filter(p => !isDel(p.path) && !isDel(p.name));
+          const valid = stored.filter(p => !isDel(p.path));
           if (valid.length > 0 && valid[0].path) setSelectedProject(valid[0].path);
           else if (!isDel("c:\\Users\\dave\\quantum")) setSelectedProject("c:\\Users\\dave\\quantum");
           else setSelectedProject("");
