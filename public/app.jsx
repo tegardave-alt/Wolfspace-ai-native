@@ -8242,8 +8242,11 @@ function WorkflowBuilderInner({ onBack }) {
     { id: "e1", source: "n1", target: "n2", animated: true, style: { stroke: "#8fb3ff" } },
   ]);
   const [showJson, setShowJson] = React.useState(false);
+  // "custom" = kartu bergaya WOLFSPACE (WFNodeCard); "default" = node BAWAAN React
+  // Flow (kotak putih klasik + tema terang), untuk membandingkan rupa aslinya.
+  const [nodeStyle, setNodeStyle] = React.useState("custom");
   const rf = useReactFlow();
-  const nodeTypes = React.useMemo(() => ({ wf: WFNodeCard }), []);
+  const nodeTypes = React.useMemo(() => (nodeStyle === "custom" ? { wf: WFNodeCard } : {}), [nodeStyle]);
 
   const onConnect = React.useCallback(
     (c) => setEdges((eds) => addEdge({ ...c, animated: true, style: { stroke: "#8fb3ff" } }, eds)),
@@ -8285,12 +8288,15 @@ function WorkflowBuilderInner({ onBack }) {
           </div>
         ))}
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <button style={btn} onClick={() => setNodeStyle((s) => (s === "custom" ? "default" : "custom"))} title="Bandingkan skin WOLFSPACE vs node bawaan React Flow">
+            Gaya: {nodeStyle === "custom" ? "Kustom" : "Bawaan RF"}
+          </button>
           <button style={btn} onClick={() => setShowJson((s) => !s)}>{showJson ? "Tutup JSON" : "Export JSON"}</button>
           <button style={btn} onClick={() => { setNodes([]); setEdges([]); }}>Bersihkan</button>
         </div>
       </div>
       <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
-        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
+        <ReactFlow nodes={nodeStyle === "custom" ? nodes : nodes.map((n) => ({ ...n, type: "default" }))} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} colorMode={nodeStyle === "custom" ? "dark" : "light"} fitView proOptions={{ hideAttribution: true }}>
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#26313f" />
           <Controls />
           <MiniMap pannable zoomable nodeColor={(n) => (n.data && n.data.accent) || "#8fb3ff"} maskColor="rgba(13,17,23,.72)" style={{ background: "#0c1219", border: "1px solid #212a36" }} />
