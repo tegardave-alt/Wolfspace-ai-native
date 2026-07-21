@@ -7365,6 +7365,7 @@ function App() {
     run: runTerminalCommand,
   };
   const scrollRef = useRef(null);
+  const wfChatScrollRef = useRef(null); // panel chat di view Workflow (split)
   const ctrlRef = useRef(null);
   const onTerminalDividerDown = (e) => {
     e.preventDefault();
@@ -7486,6 +7487,8 @@ function App() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
+    const wf = wfChatScrollRef.current;
+    if (wf) wf.scrollTop = wf.scrollHeight;
   }, [messages]);
 
   const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
@@ -8168,7 +8171,44 @@ function App() {
           }
         >
           {view === "workflow" && (
-            <WorkflowBuilder onBack={() => setView("chat")} />
+            <div style={{ display: "flex", height: "100%", width: "100%", minHeight: 0 }}>
+              {/* KIRI: React Flow (Workflow / live agent graph) */}
+              <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+                <WorkflowBuilder onBack={() => setView("chat")} />
+              </div>
+              {/* KANAN: chat agent — pakai UI chat yang sama (Message + Composer) */}
+              <div style={{ width: "400px", flexShrink: 0, borderLeft: "1px solid #212a36", display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: "#0d1117" }}>
+                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", borderBottom: "1px solid #212a36", flexShrink: 0 }}>
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: (busy || agentRunning) ? "#3fb950" : "#6f7d92", boxShadow: (busy || agentRunning) ? "0 0 6px #3fb950" : "none" }} />
+                  <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px", letterSpacing: ".1em", textTransform: "uppercase", color: "#8b949e" }}>Agent</span>
+                </div>
+                <div
+                  className="chat-scroll"
+                  ref={wfChatScrollRef}
+                  style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+                  onClick={(e) => {
+                    if (e.target.tagName === "IMG" && (e.target.src || e.target.getAttribute("src"))) {
+                      setGlobalPreviewItem({ url: e.target.src || e.target.getAttribute("src"), name: e.target.alt || "Preview Gambar / Screenshot" });
+                    }
+                  }}
+                >
+                  <div className="chat-inner">
+                    {messages.map((m, i) => (
+                      <Message key={i} msg={m} />
+                    ))}
+                  </div>
+                </div>
+                <Composer
+                  models={models}
+                  modelVal={modelVal}
+                  setModelVal={setModelVal}
+                  onSend={(t) => doSend(t)}
+                  onCancel={cancel}
+                  busy={busy || agentRunning}
+                  onAgentCli={() => setAgentRunnerOpen(true)}
+                />
+              </div>
+            </div>
           )}
         </div>
       </div>
@@ -8389,7 +8429,6 @@ function WorkflowBuilderInner({ onBack }) {
         <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} colorMode={(!isLive && nodeStyle === "default") ? "light" : "dark"} fitView proOptions={{ hideAttribution: true }}>
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#26313f" />
           <Controls />
-          <MiniMap pannable zoomable nodeColor={(n) => (n.data && (n.data.ok === false ? "#f85149" : n.data.accent)) || "#8fb3ff"} maskColor="rgba(13,17,23,.72)" style={{ background: "#0c1219", border: "1px solid #212a36" }} />
         </ReactFlow>
         {showJson && !isLive && (
           <pre style={{ position: "absolute", right: "14px", top: "14px", maxHeight: "60%", maxWidth: "340px", overflow: "auto", margin: 0, fontFamily: "ui-monospace, monospace", fontSize: "11px", lineHeight: 1.5, color: "#9fb7d9", background: "#0c1219", border: "1px solid #212a36", borderRadius: "8px", padding: "10px 12px" }}>{JSON.stringify(wf, null, 2)}</pre>
