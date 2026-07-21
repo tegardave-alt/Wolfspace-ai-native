@@ -578,10 +578,14 @@ app.whenReady().then(() => {
       const rel = path.relative(root, fp).replace(/\\/g, "/");
       return rel.startsWith("public/");
     };
-    // Baseline hash tiap file backend → event fs.watch PALSU (Windows sering memicu
-    // event untuk file yang isinya tak berubah / salah nama) tak akan me-restart app.
+    // Baseline hash tiap file backend DAN frontend → event fs.watch PALSU (Windows
+    // sering melapor "berubah" untuk file yang isinya SAMA SEKALI TIDAK berubah —
+    // terbukti: file vendor lama seperti babel.min.js/monaco/fonts memicu reload
+    // walau mtime-nya jauh lebih tua dari waktu proses ini start). Tanpa penjaga
+    // ini, reload/restart bisa terpicu acak, terasa seperti "electron reload
+    // sendiri" tanpa sebab jelas.
     const crypto = require("crypto");
-    const _bkHash = new Map();
+    const _bkHash = new Map(); // dipakai backend & frontend — nama historis, cakupan digeneralisasi
     const _hashFile = (fp) => {
       try {
         return crypto
@@ -592,8 +596,8 @@ app.whenReady().then(() => {
         return null;
       }
     };
-    const _seedHashes = (dir, depth) => {
-      if (depth > 4) return;
+    const _seedHashes = (dir, depth, maxDepth, extFilter) => {
+      if (depth > maxDepth) return;
       let ents;
       try {
         ents = fs.readdirSync(dir, { withFileTypes: true });
@@ -603,17 +607,24 @@ app.whenReady().then(() => {
       for (const e of ents) {
         if (e.name === "node_modules" || e.name.startsWith(".")) continue;
         const fp = path.join(dir, e.name);
-        if (e.isDirectory()) _seedHashes(fp, depth + 1);
-        else if (/\.(c?js|json)$/.test(e.name)) _bkHash.set(fp, _hashFile(fp));
+        if (e.isDirectory()) _seedHashes(fp, depth + 1, maxDepth, extFilter);
+        else if (!extFilter || extFilter.test(e.name)) _bkHash.set(fp, _hashFile(fp));
       }
     };
     for (const d of backendDirs) {
       const p = path.join(root, d);
-      if (fs.existsSync(p)) _seedHashes(p, 0);
+      if (fs.existsSync(p)) _seedHashes(p, 0, 4, /\.(c?js|json)$/);
     }
     for (const f of backendFiles) {
       const p = path.join(root, f);
       if (fs.existsSync(p)) _bkHash.set(p, _hashFile(p));
+    }
+    // public/ butuh kedalaman jauh lebih besar (mis. monaco bersarang ~10 level)
+    // dan TANPA filter ekstensi — semua tipe file (js, css, html, font, dst) bisa
+    // memicu event palsu yang sama, jadi semua perlu baseline hash.
+    {
+      const pubDir = path.join(root, "public");
+      if (fs.existsSync(pubDir)) _seedHashes(pubDir, 0, 20, null);
     }
     const _watchStart = Date.now();
     if (fs.existsSync(root) && !process.env.ELECTRON_RUN_AS_NODE) {
@@ -631,6 +642,12 @@ app.whenReady().then(() => {
         debounceTimer = setTimeout(() => {
           const fullPath = path.join(root, filename);
           if (isFrontend(fullPath)) {
+            // Sama seperti backend: abaikan event palsu (isi TIDAK berubah) dan
+            // jendela startup, sebelum benar-benar reload renderer.
+            if (Date.now() - _watchStart < 4000) return;
+            const hf = _hashFile(fullPath);
+            if (hf && _bkHash.get(fullPath) === hf) return; // isi sama → event palsu
+            if (hf) _bkHash.set(fullPath, hf);
             try {
               const wins = BrowserWindow.getAllWindows();
               for (const w of wins) w.webContents.reload();
