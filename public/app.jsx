@@ -5844,8 +5844,51 @@ function getPickerProjectsList() {
   return defaultDefaults;
 }
 
+// Isi dropdown project — DIPISAH dari ProjectPickerScreen supaya "hidup" hanya
+// selama dropdown terbuka: setiap kali di-mount (dropdown dibuka), ia MEMBACA
+// ULANG localStorage dari nol (bukan mewarisi state induk yang di-patch). Ini
+// men-decouple "tulis data" (attachFolder, sudah selalu benar — terbukti lewat
+// reload) dari "tampilkan data": render di sini tidak pernah bergantung pada
+// apakah patch state sebelumnya sempat ter-commit+ter-paint saat window
+// kehilangan/mendapat fokus OS (dialog folder native) — ia selalu mulai fresh,
+// persis seperti reload manual, tanpa reload sungguhan dan tanpa reset layar lain.
+function ProjectDropdownMenu({ currentProject, onSelectProject, onNewProject }) {
+  const [projectsList] = useState(() => getPickerProjectsList());
+  return (
+    <div className="picker-ws-dropdown">
+      <button className="picker-ws-item" onClick={onNewProject}>
+        <PickerFolderIcon /> New Project
+      </button>
+      {projectsList.length > 0 && <div className="picker-ws-divider" />}
+      <div className="picker-ws-scroll-area">
+        {projectsList.map((p, idx) => (
+          <button
+            key={idx}
+            className={"picker-ws-item" + (currentProject === p.name ? " active" : "")}
+            onClick={() => onSelectProject(p.name)}
+            style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}
+          >
+            <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#f8fafc" }}>
+              <PickerFolderIcon />
+              <span>{p.name}</span>
+            </span>
+            {p.path && (
+              <span style={{ fontSize: "12px", color: "#6b7280", opacity: 0.85, whiteSpace: "nowrap" }}>
+                {p.path}
+              </span>
+            )}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
-  const [projectsList, setProjectsList] = useState(() => getPickerProjectsList());
+  // CATATAN: daftar project TIDAK disimpan sebagai state di sini lagi — sengaja.
+  // ProjectDropdownMenu membaca localStorage sendiri, fresh, tiap kali di-mount
+  // (dropdown dibuka). Ini memutus ketergantungan pada patch state yang rentan
+  // gagal ter-paint saat window kehilangan/mendapat fokus OS (dialog native).
   const [project, setProject] = useState(() => {
     const list = getPickerProjectsList();
     return list.length > 0 ? list[0].name : "WOLFSPACE";
@@ -5853,7 +5896,6 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   React.useEffect(() => {
     const reloadProjects = () => {
       const list = getPickerProjectsList();
-      setProjectsList(list);
       setProject((cur) => {
         if (list.some((p) => p.name === cur)) return cur;
         return list.length > 0 ? list[0].name : "";
@@ -6007,7 +6049,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         .join("\n");
       fullText = v ? `${v}\n\nAttachments:\n${attSummary}` : `Attachments:\n${attSummary}`;
     }
-    const selectedObj = projectsList.find((p) => p.name === project);
+    const selectedObj = getPickerProjectsList().find((p) => p.name === project);
     const chosenPath = selectedObj ? selectedObj.path : (project.includes(":") || project.includes("/") || project.includes("\\") ? project : `c:\\Users\\dave\\${project}`);
     onStart(fullText, chosenPath);
   };
@@ -6031,17 +6073,20 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     }
     const finalPath = (att && att.path) || folderPath;
     const finalName = (att && att.name) || folderName;
+    // Tulis LANGSUNG ke localStorage (sumber kebenaran) — tanpa lewat state React.
+    // ProjectDropdownMenu akan membaca ini FRESH begitu ia mount (lihat setDropOpen
+    // di bawah), jadi urutan "tulis dulu, baru render" terjamin oleh urutan
+    // eksekusi JS itu sendiri, bukan oleh timing commit/paint React yang rentan.
+    const rest = getPickerProjectsList().filter((p) => (p.path || "") !== finalPath);
+    const updated = [{ name: finalName, path: finalPath, branch: att && att.branch }, ...rest];
+    localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
     setProject(finalName);
-    setProjectsList((prev) => {
-      const rest = prev.filter((p) => (p.path || "") !== finalPath);
-      const updated = [{ name: finalName, path: finalPath, branch: att && att.branch }, ...rest];
-      localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
-      return updated;
-    });
     window.dispatchEvent(new Event("quantum_workspaces_changed"));
-    // Dropdown tertutup sejak dialog native dibuka (handleOpenFolderPicker) — buka
-    // kembali supaya folder yang baru dipasang LANGSUNG terlihat (di puncak daftar,
-    // ter-highlight aktif), bukan diam tanpa umpan balik sampai user membukanya lagi.
+    // Dropdown tertutup sejak dialog native dibuka (handleOpenFolderPicker). Set
+    // true di sini MEMBANGUN ProjectDropdownMenu dari NOL (mount baru, bukan
+    // patch instance lama) — ia membaca localStorage yang BARU SAJA ditulis di
+    // atas, sehingga folder baru LANGSUNG terlihat tanpa bergantung pada apakah
+    // render sebelumnya sempat ter-paint saat window kehilangan fokus OS.
     setDropOpen(true);
     // Lepas penjaga SESAAT setelah render (2 frame) — bukan langsung, supaya mousedown
     // "sisa" yang tiba tepat bersamaan dengan render dropdown ini juga masih tertekan.
@@ -6253,35 +6298,14 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                 <PickerChevIcon />
               </button>
               {dropOpen && (
-                <div className="picker-ws-dropdown">
-                  <button className="picker-ws-item" onClick={handleOpenFolderPicker}>
-                    <PickerFolderIcon /> New Project
-                  </button>
-                  {projectsList.length > 0 && <div className="picker-ws-divider" />}
-                  <div className="picker-ws-scroll-area">
-                    {projectsList.map((p, idx) => (
-                      <button
-                        key={idx}
-                        className={"picker-ws-item" + (project === p.name ? " active" : "")}
-                        onClick={() => {
-                          setProject(p.name);
-                          setDropOpen(false);
-                        }}
-                        style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: "16px" }}
-                      >
-                        <span style={{ display: "flex", alignItems: "center", gap: "8px", fontWeight: 600, color: "#f8fafc" }}>
-                          <PickerFolderIcon />
-                          <span>{p.name}</span>
-                        </span>
-                        {p.path && (
-                          <span style={{ fontSize: "12px", color: "#6b7280", opacity: 0.85, whiteSpace: "nowrap" }}>
-                            {p.path}
-                          </span>
-                        )}
-                      </button>
-                    ))}
-                  </div>
-                </div>
+                <ProjectDropdownMenu
+                  currentProject={project}
+                  onNewProject={handleOpenFolderPicker}
+                  onSelectProject={(name) => {
+                    setProject(name);
+                    setDropOpen(false);
+                  }}
+                />
               )}
             </div>
             <button className="picker-bottom">
