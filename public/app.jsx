@@ -5614,6 +5614,12 @@ function Sidebar({
             active={terminalOpen}
             onClick={() => setTerminalOpen(!terminalOpen)}
           />
+          <Item
+            icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="6" height="5" rx="1"></rect><rect x="15" y="9" width="6" height="5" rx="1"></rect><rect x="9" y="15" width="6" height="5" rx="1"></rect><path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path></svg>}
+            label="Workflow"
+            active={view === "workflow"}
+            onClick={() => setView("workflow")}
+          />
         </div>
       )}
     </aside>
@@ -8151,6 +8157,15 @@ function App() {
             />
           )}
         </div>
+        <div
+          className={
+            "page hub-page " + (view === "workflow" ? "active" : "enter")
+          }
+        >
+          {view === "workflow" && (
+            <WorkflowBuilder onBack={() => setView("chat")} />
+          )}
+        </div>
       </div>
     </div>
 
@@ -8187,6 +8202,123 @@ function App() {
     </>
   );
 }
+/* ============================================================
+   Workflow Builder (React Flow) — kanvas node/edge ala workflow: seret node dari
+   palette, sambung antar-titik, export JSON. Memakai React Flow yang di-vendor
+   (window.RFLib.XY) — tanpa bundler runtime, sama pola Monaco/mermaid/cytoscape.
+   ============================================================ */
+const WF_PALETTE = [
+  { type: "prompt", label: "Prompt", accent: "#3fb950", desc: "input / instruksi awal" },
+  { type: "agent", label: "Agent", accent: "#2f81f7", desc: "loop LLM + pemanggilan tool" },
+  { type: "tool", label: "Tool", accent: "#d29922", desc: "bash / edit / grep / dst" },
+  { type: "condition", label: "Condition", accent: "#bc8cff", desc: "cabang if / else" },
+  { type: "output", label: "Output", accent: "#f85149", desc: "hasil akhir" },
+];
+
+function WFNodeCard({ data }) {
+  const XY = window.RFLib && window.RFLib.XY;
+  const Handle = XY && XY.Handle;
+  const Position = XY && XY.Position;
+  const accent = (data && data.accent) || "#8fb3ff";
+  return (
+    <div style={{ minWidth: "128px", background: "#131922", border: "1px solid " + accent + "55", borderLeft: "3px solid " + accent, borderRadius: "8px", padding: "8px 12px", color: "#dce4f0", fontFamily: "ui-monospace, monospace", boxShadow: "0 4px 14px rgba(0,0,0,.4)" }}>
+      {Handle && <Handle type="target" position={Position.Left} style={{ background: accent, width: 8, height: 8, border: "none" }} />}
+      <div style={{ fontSize: "9px", letterSpacing: ".12em", textTransform: "uppercase", color: accent, marginBottom: "3px" }}>{data.kind}</div>
+      <div style={{ fontSize: "12.5px", fontWeight: 600 }}>{data.label}</div>
+      {Handle && <Handle type="source" position={Position.Right} style={{ background: accent, width: 8, height: 8, border: "none" }} />}
+    </div>
+  );
+}
+
+function WorkflowBuilderInner({ onBack }) {
+  const XY = window.RFLib.XY;
+  const { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge, useReactFlow, BackgroundVariant } = XY;
+  const idRef = React.useRef(3);
+  const [nodes, setNodes, onNodesChange] = useNodesState([
+    { id: "n1", type: "wf", position: { x: 60, y: 110 }, data: { label: "User prompt", kind: "prompt", accent: "#3fb950" } },
+    { id: "n2", type: "wf", position: { x: 320, y: 110 }, data: { label: "Coding agent", kind: "agent", accent: "#2f81f7" } },
+  ]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([
+    { id: "e1", source: "n1", target: "n2", animated: true, style: { stroke: "#8fb3ff" } },
+  ]);
+  const [showJson, setShowJson] = React.useState(false);
+  const rf = useReactFlow();
+  const nodeTypes = React.useMemo(() => ({ wf: WFNodeCard }), []);
+
+  const onConnect = React.useCallback(
+    (c) => setEdges((eds) => addEdge({ ...c, animated: true, style: { stroke: "#8fb3ff" } }, eds)),
+    [setEdges, addEdge],
+  );
+  const onDragOver = React.useCallback((e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }, []);
+  const addNode = React.useCallback((item, clientX, clientY) => {
+    const pos = rf && rf.screenToFlowPosition ? rf.screenToFlowPosition({ x: clientX, y: clientY }) : { x: 220, y: 180 };
+    const id = "n" + idRef.current++;
+    setNodes((nds) => nds.concat({ id, type: "wf", position: pos, data: { label: item.label, kind: item.type, accent: item.accent } }));
+  }, [rf, setNodes]);
+  const onDrop = React.useCallback((e) => {
+    e.preventDefault();
+    const raw = e.dataTransfer.getData("application/wf");
+    if (!raw) return;
+    try { addNode(JSON.parse(raw), e.clientX, e.clientY); } catch (_) {}
+  }, [addNode]);
+
+  const wf = {
+    nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind, label: n.data.label, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) } })),
+    edges: edges.map((e) => ({ from: e.source, to: e.target })),
+  };
+  const btn = { fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#dce4f0", background: "#131922", border: "1px solid #2f4056", borderRadius: "6px", padding: "6px 9px", cursor: "pointer" };
+
+  return (
+    <div style={{ display: "flex", height: "100%", width: "100%", background: "#0d1117" }}>
+      <div style={{ width: "152px", flexShrink: 0, borderRight: "1px solid #212a36", background: "#0c1219", padding: "12px 10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
+          <button onClick={onBack} title="Kembali ke chat" style={{ ...btn, padding: "3px 8px" }}>←</button>
+          <span style={{ fontSize: "10px", letterSpacing: ".14em", textTransform: "uppercase", color: "#6f7d92", fontFamily: "ui-monospace, monospace" }}>Nodes</span>
+        </div>
+        {WF_PALETTE.map((it) => (
+          <div key={it.type} draggable
+            onDragStart={(e) => { e.dataTransfer.setData("application/wf", JSON.stringify(it)); e.dataTransfer.effectAllowed = "move"; }}
+            onDoubleClick={() => addNode(it, window.innerWidth / 2, window.innerHeight / 2)}
+            title={it.desc + " — seret ke kanvas atau dobel-klik"}
+            style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#dce4f0", background: "#131922", border: "1px solid #212a36", borderLeft: "3px solid " + it.accent, borderRadius: "7px", padding: "7px 9px", cursor: "grab", userSelect: "none" }}>
+            {it.label}
+          </div>
+        ))}
+        <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
+          <button style={btn} onClick={() => setShowJson((s) => !s)}>{showJson ? "Tutup JSON" : "Export JSON"}</button>
+          <button style={btn} onClick={() => { setNodes([]); setEdges([]); }}>Bersihkan</button>
+        </div>
+      </div>
+      <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
+        <ReactFlow nodes={nodes} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
+          <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#26313f" />
+          <Controls />
+          <MiniMap pannable zoomable nodeColor={(n) => (n.data && n.data.accent) || "#8fb3ff"} maskColor="rgba(13,17,23,.72)" style={{ background: "#0c1219", border: "1px solid #212a36" }} />
+        </ReactFlow>
+        {showJson && (
+          <pre style={{ position: "absolute", right: "14px", top: "14px", maxHeight: "60%", maxWidth: "340px", overflow: "auto", margin: 0, fontFamily: "ui-monospace, monospace", fontSize: "11px", lineHeight: 1.5, color: "#9fb7d9", background: "#0c1219", border: "1px solid #212a36", borderRadius: "8px", padding: "10px 12px" }}>{JSON.stringify(wf, null, 2)}</pre>
+        )}
+        <div style={{ position: "absolute", left: "14px", bottom: "14px", fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#6f7d92", background: "rgba(19,25,34,.82)", border: "1px solid #212a36", borderRadius: "7px", padding: "5px 11px", pointerEvents: "none" }}>
+          Seret node dari kiri · tarik antar-titik untuk menyambung · <b>Del</b> untuk hapus
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function WorkflowBuilder({ onBack }) {
+  const XY = window.RFLib && window.RFLib.XY;
+  if (!XY || !XY.ReactFlow || !XY.ReactFlowProvider) {
+    return <div style={{ padding: "40px", color: "#6f7d92", fontFamily: "ui-monospace, monospace" }}>React Flow tak termuat (window.RFLib.XY tak tersedia).</div>;
+  }
+  const { ReactFlowProvider } = XY;
+  return (
+    <ReactFlowProvider>
+      <WorkflowBuilderInner onBack={onBack} />
+    </ReactFlowProvider>
+  );
+}
+
 /* ============================================================
    Agent Runner View
    ============================================================ */
