@@ -7121,6 +7121,12 @@ function App() {
   const [messages, setMessages] = useState([]);
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
+  // Sesi chat TERPISAH untuk panel Workflow (kokpit agent) — thread & konteksnya
+  // sendiri, tak tercampur/terduplikasi dengan chat utama.
+  const [wfMessages, setWfMessages] = useState([]);
+  const [wfHistory, setWfHistory] = useState([]);
+  const [wfBusy, setWfBusy] = useState(false);
+  const wfCtrlRef = useRef(null);
   const [status, setStatus] = useState("Memuat model...");
   const [view, setView] = useState("chat");
   const [sbCollapsed, setSbCollapsed] = useState(() => {
@@ -7487,9 +7493,11 @@ function App() {
   useEffect(() => {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
+  }, [messages]);
+  useEffect(() => {
     const wf = wfChatScrollRef.current;
     if (wf) wf.scrollTop = wf.scrollHeight;
-  }, [messages]);
+  }, [wfMessages]);
 
   const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
 
@@ -7645,9 +7653,6 @@ function App() {
         });
       const evlist = [];
       const phaseNodes = [];
-      // Live agent graph (Workflow view, mode "Live") mendengar event ini. Run baru
-      // (bukan lanjutan HITL) mereset graph; tiap act menambah node; adone menutup.
-      if (!hitlData) { try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "start" } })); } catch (_) {} }
       let think = "";
       let adoneSent = false;
       let waitingForInput = false;
@@ -7678,7 +7683,6 @@ function App() {
                 output: j.output,
               });
               upd({ events: [...evlist], thinking: "" });
-              try { window.dispatchEvent(new CustomEvent("wolfspace_agent_act", { detail: { kind: j.kind, arg: j.arg, ok: j.ok, output: j.output } })); } catch (_) {}
             } else if (j.t === "phase") {
               phaseNodes.push({
                 phase: j.phase,
@@ -7716,7 +7720,6 @@ function App() {
               });
               upd({ thinking: "Menunggu jawaban Anda...", busy: true });
             } else if (j.t === "adone") {
-              try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "done" } })); } catch (_) {}
               if (j.hitlPending && j.thread_id) {
                 // Agent paused for HITL — keep busy=true, just ensure thread_id is updated
                 adoneSent = true;
@@ -7812,6 +7815,66 @@ function App() {
     setBusy(false);
     setStatus("dibatalkan");
   };
+  // Kirim untuk panel chat Workflow — sesi agent INDEPENDEN (wfMessages/wfHistory),
+  // memakai streamSelfAgent yang sama tapi menulis ke state-nya sendiri. Hanya sesi
+  // inilah yang menggerakkan live agent graph (dispatch event dari sini, bukan chat
+  // utama), sehingga data kedua sisi tak tercampur.
+  const wfSend = async (content) => {
+    if (!content || !content.trim() || wfBusy) return;
+    const newHist = [...wfHistory, { role: "user", content }];
+    setWfHistory(newHist);
+    setWfMessages((m) => [...m, { role: "user", text: content }, { role: "agent", agent: { events: [], busy: true } }]);
+    setWfBusy(true);
+    const upd = (patch) => setWfMessages((m) => {
+      const c = m.slice();
+      const last = { ...c[c.length - 1] };
+      last.agent = { ...last.agent, ...patch };
+      c[c.length - 1] = last;
+      return c;
+    });
+    const evlist = [];
+    let think = "", adoneSent = false, hadError = false;
+    try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "start" } })); } catch (_) {}
+    const ctrl = new AbortController();
+    wfCtrlRef.current = ctrl;
+    try {
+      const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
+      await streamSelfAgent(
+        { history: newHist, cloud: getCloud(), port: modelVal, effort: curEffort },
+        (j) => {
+          if (j.t === "step") { think = ""; upd({ thinking: "" }); }
+          else if (j.t === "tok") { think += j.c; upd({ thinking: think }); }
+          else if (j.t === "thought") { think = ""; evlist.push({ type: "thought", kind: j.tool, arg: j.c, ok: j.ok, output: j.c }); upd({ events: [...evlist], thinking: "" }); }
+          else if (j.t === "act") {
+            think = "";
+            evlist.push({ type: "act", kind: j.kind, arg: j.arg, ok: j.ok, output: j.output });
+            upd({ events: [...evlist], thinking: "" });
+            try { window.dispatchEvent(new CustomEvent("wolfspace_agent_act", { detail: { kind: j.kind, arg: j.arg, ok: j.ok, output: j.output } })); } catch (_) {}
+          } else if (j.t === "adone") {
+            try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "done" } })); } catch (_) {}
+            adoneSent = true;
+            upd({ busy: false, done: true, summary: j.summary, editCount: j.edits, backup: j.backup });
+            setWfHistory((h) => [...h, { role: "assistant", content: j.summary || "" }]);
+          } else if (j.t === "err") {
+            hadError = true;
+            evlist.push({ type: "err", m: j.m });
+            upd({ events: [...evlist], busy: false, error: true });
+          }
+        },
+        ctrl.signal,
+      );
+    } catch (e) {
+      if (e.name !== "AbortError") upd({ busy: false, error: true, events: [...evlist, { type: "err", m: e.message }] });
+    }
+    if (!adoneSent && !hadError) {
+      const summary = evlist.length > 0 ? `Selesai. ${evlist.length} operasi dieksekusi.` : "Selesai. Tidak ada operasi.";
+      upd({ busy: false, done: true, summary });
+      setWfHistory((h) => [...h, { role: "assistant", content: summary }]);
+    }
+    setWfBusy(false);
+    wfCtrlRef.current = null;
+  };
+  const wfCancel = () => { if (wfCtrlRef.current) wfCtrlRef.current.abort(); setWfBusy(false); };
   const reset = () => {
     setMessages([]);
     setHistory([]);
@@ -8179,7 +8242,7 @@ function App() {
               {/* KANAN: chat agent — pakai UI chat yang sama (Message + Composer) */}
               <div style={{ width: "400px", flexShrink: 0, borderLeft: "1px solid #212a36", display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: "#0d1117" }}>
                 <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", borderBottom: "1px solid #212a36", flexShrink: 0 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: (busy || agentRunning) ? "#3fb950" : "#6f7d92", boxShadow: (busy || agentRunning) ? "0 0 6px #3fb950" : "none" }} />
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: wfBusy ? "#3fb950" : "#6f7d92", boxShadow: wfBusy ? "0 0 6px #3fb950" : "none" }} />
                   <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px", letterSpacing: ".1em", textTransform: "uppercase", color: "#8b949e" }}>Agent</span>
                 </div>
                 <div
@@ -8193,7 +8256,12 @@ function App() {
                   }}
                 >
                   <div className="chat-inner">
-                    {messages.map((m, i) => (
+                    {wfMessages.length === 0 && (
+                      <div style={{ padding: "18px 16px", color: "#6f7d92", fontFamily: "ui-monospace, monospace", fontSize: "12px", lineHeight: 1.6 }}>
+                        Sesi agent terpisah. Kirim perintah di sini — langkahnya muncul sebagai graph di kiri.
+                      </div>
+                    )}
+                    {wfMessages.map((m, i) => (
                       <Message key={i} msg={m} />
                     ))}
                   </div>
@@ -8202,11 +8270,12 @@ function App() {
                   models={models}
                   modelVal={modelVal}
                   setModelVal={setModelVal}
-                  onSend={(t) => doSend(t)}
-                  onCancel={cancel}
-                  busy={busy || agentRunning}
+                  onSend={(t) => wfSend(t)}
+                  onCancel={wfCancel}
+                  busy={wfBusy}
                   onAgentCli={() => setAgentRunnerOpen(true)}
                 />
+
               </div>
             </div>
           )}
