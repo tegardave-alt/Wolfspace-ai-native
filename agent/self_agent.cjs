@@ -1523,15 +1523,33 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 
         if (hGuard.verdict === "block") {
           if (state.forceRetryCount >= 3) {
-            // Batas retry tercapai — kirim pesan jujur kepada user bahwa tidak ada data cukup
+            // Batas retry tercapai. JANGAN buang jawaban model: tampilkan apa adanya
+            // di UI, dan taruh peringatan "belum terverifikasi" HANYA di output agent
+            // (timeline) sebagai satu langkah — bukan menempel di teks jawaban.
             dlog(
               "self",
               "warn",
-              "hallucination_guard block, retry limit reached",
+              "hallucination_guard block, retry limit reached — answer kept, note to timeline",
               { step: state.step },
             );
-            fallback =
-              "Tidak dapat memverifikasi jawaban ini dari hasil pencarian yang ada. Mohon berikan informasi lebih spesifik atau jalankan pencarian ulang.";
+            const _unv = hGuard.hallucinated
+              .map((h) => h.raw)
+              .filter(Boolean)
+              .slice(0, 6)
+              .join("; ");
+            emit({
+              t: "act",
+              kind: "verify",
+              arg: "sebagian klaim belum terverifikasi",
+              ok: false,
+              output:
+                hGuard.hallucinated.length +
+                " klaim tak cocok dengan bukti tool run ini" +
+                (_unv ? " — " + _unv : "") +
+                ". Jawaban tetap ditampilkan; mohon verifikasi mandiri.",
+            });
+            // fallback TETAP = jawaban asli model (rawContent yg sudah disanitasi di
+            // atas). Sengaja tak diganti pesan generik.
           } else {
             const hallucinatedList = hGuard.hallucinated
               .map((h) => `"${h.raw}"`)
