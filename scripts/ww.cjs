@@ -381,6 +381,96 @@ function gitInfo(dir) {
   return { repo: true, branch, dirtyCount, dirty: dirtyCount > 0, lastCommit };
 }
 
+// Jalankan git & tangkap hasil/eror rapi (untuk aksi yang perlu lapor sukses/gagal).
+function gitRun(args, cwd) {
+  try {
+    const out = execFileSync("git", args, {
+      cwd,
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "pipe"],
+    }).trim();
+    return { ok: true, out };
+  } catch (e) {
+    const err = ((e.stderr || "") + (e.stdout || "") || e.message || "").toString().trim();
+    return { ok: false, err: err || "git gagal" };
+  }
+}
+
+// Daftar branch lokal + branch aktif. Tak melempar.
+function listBranches(dir) {
+  if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
+  const current = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+  const r = gitRun(["for-each-ref", "--format=%(refname:short)", "refs/heads"], dir);
+  const branches = r.ok ? r.out.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+  return { repo: true, current: current || null, branches };
+}
+
+// Pindah ke branch lain (checkout). Gagal bila ada konflik/perubahan menghalangi.
+function switchBranch(dir, branch) {
+  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  if (!branch) return { ok: false, err: "nama branch kosong" };
+  return gitRun(["checkout", branch], dir);
+}
+
+// Buat branch baru (opsional dari branch/ref lain) lalu pindah ke sana.
+function createBranch(dir, branch, from) {
+  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  const name = toBranch(branch);
+  if (!name) return { ok: false, err: "nama branch tak valid" };
+  const args = from ? ["checkout", "-b", name, from] : ["checkout", "-b", name];
+  const r = gitRun(args, dir);
+  return r.ok ? { ok: true, out: r.out, name } : r;
+}
+
+// Ganti nama branch (git branch -m). Bila oldName = branch aktif, boleh diringkas.
+function renameBranch(dir, oldName, newName) {
+  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  const nn = toBranch(newName);
+  if (!nn) return { ok: false, err: "nama branch baru tak valid" };
+  const r = gitRun(["branch", "-m", oldName, nn], dir);
+  return r.ok ? { ok: true, name: nn } : r;
+}
+
+// Hapus branch lokal (-D paksa). Menolak menghapus branch yang sedang aktif.
+function deleteBranch(dir, branch) {
+  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  const cur = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+  if (cur === branch) return { ok: false, err: "tak bisa menghapus branch yang sedang aktif" };
+  return gitRun(["branch", "-D", branch], dir);
+}
+
+// Ganti nama FOLDER workspace di disk (fs.rename) + perbarui .ww.json. Aman:
+// hanya folder ber-.ww.json (workspace ww sah), target belum ada, nama valid.
+function renameWorkspaceFolder(dir, newName) {
+  try {
+    if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory())
+      return { ok: false, err: "folder tak ditemukan" };
+    // Nama folder: tanpa pemisah path / .. / karakter ilegal Windows.
+    const nm = String(newName || "").trim();
+    if (!nm || /[\\/:*?"<>|]/.test(nm) || nm === "." || nm === "..")
+      return { ok: false, err: "nama folder tak valid" };
+    const marker = path.join(dir, ".ww.json");
+    if (!fs.existsSync(marker))
+      return { ok: false, err: "bukan workspace WOLFSPACE (.ww.json tak ada)" };
+    const parent = path.dirname(dir);
+    const newPath = path.join(parent, nm);
+    if (path.resolve(newPath) === path.resolve(dir)) return { ok: true, path: dir, unchanged: true };
+    if (fs.existsSync(newPath))
+      return { ok: false, err: "sudah ada folder/berkas bernama itu" };
+    fs.renameSync(dir, newPath);
+    // Perbarui .ww.json (menyimpan nama/label) bila ada field-nya.
+    try {
+      const mk = path.join(newPath, ".ww.json");
+      const j = JSON.parse(fs.readFileSync(mk, "utf8"));
+      j.name = nm;
+      fs.writeFileSync(mk, JSON.stringify(j, null, 2));
+    } catch (_) {}
+    return { ok: true, path: newPath, name: nm };
+  } catch (e) {
+    return { ok: false, err: e.message };
+  }
+}
+
 module.exports = {
   initWorkspace,
   startWatcher,
@@ -388,6 +478,12 @@ module.exports = {
   toBranch,
   isRepo,
   gitInfo,
+  listBranches,
+  switchBranch,
+  createBranch,
+  renameBranch,
+  deleteBranch,
+  renameWorkspaceFolder,
   DEFAULT_ROOT,
 };
 if (require.main === module) main();

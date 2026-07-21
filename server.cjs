@@ -4735,6 +4735,53 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // ww branches: daftar branch lokal + branch aktif. GET /ww/branches?path=<abs>.
+  if (req.method === "GET" && req.url.startsWith("/ww/branches")) {
+    try {
+      const q = new URL(req.url, "http://x").searchParams.get("path") || "";
+      const ww = require("./scripts/ww.cjs");
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(ww.listBranches(q)));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ repo: false, error: e.message }));
+    }
+  }
+
+  // ww aksi git & rename folder (semua POST { path, ... }). Satu handler, dispatch
+  // per-url; tiap operasi memanggil helper di scripts/ww.cjs dan melapor {ok|err}.
+  if (
+    req.method === "POST" &&
+    (req.url === "/ww/branch/switch" ||
+      req.url === "/ww/branch/create" ||
+      req.url === "/ww/branch/rename" ||
+      req.url === "/ww/branch/delete" ||
+      req.url === "/ww/rename")
+  ) {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let b = {};
+      try {
+        b = JSON.parse(body || "{}");
+      } catch (_) {}
+      const ww = require("./scripts/ww.cjs");
+      let out;
+      try {
+        if (req.url === "/ww/branch/switch") out = ww.switchBranch(b.path, b.branch);
+        else if (req.url === "/ww/branch/create") out = ww.createBranch(b.path, b.branch, b.from);
+        else if (req.url === "/ww/branch/rename") out = ww.renameBranch(b.path, b.oldName, b.newName);
+        else if (req.url === "/ww/branch/delete") out = ww.deleteBranch(b.path, b.branch);
+        else if (req.url === "/ww/rename") out = ww.renameWorkspaceFolder(b.path, b.newName);
+      } catch (e) {
+        out = { ok: false, err: e.message };
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(out || { ok: false, err: "no-op" }));
+    });
+    return;
+  }
+
   // Self-edit agent: edits WOLFSPACE's OWN source (dev copy) with backup + syntax-gate.
   // Edits the dev files; you review and run sync-app.ps1 to apply to the live app.
   if (req.method === "POST" && req.url === "/self-agent") {

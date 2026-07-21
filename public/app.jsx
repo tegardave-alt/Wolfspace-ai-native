@@ -4611,7 +4611,7 @@ function deleteWorkspaceGlobal(wsToDelete) {
 // Ambil ringkasan git READ-ONLY untuk satu folder workspace. Pola decoupling:
 // fetch fresh saat mount, tak pernah simpan di state parent — jadi tiap kali
 // baris/popover ter-mount, datanya selalu terkini (bukan snapshot beku).
-function useWwGit(path) {
+function useWwGit(path, refreshKey) {
   const [info, setInfo] = React.useState(null);
   React.useEffect(() => {
     let alive = true;
@@ -4627,8 +4627,24 @@ function useWwGit(path) {
     return () => {
       alive = false;
     };
-  }, [path]);
+  }, [path, refreshKey]);
   return info;
+}
+
+// Perbarui localStorage setelah FOLDER di-rename di disk: ganti path+name di
+// projects_list, lalu umumkan perubahan agar sidebar & picker menyusun ulang.
+function applyFolderRenameLS(oldPath, newPath, newName) {
+  try {
+    const norm = (s) => String(s || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+    const list = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+    let changed = false;
+    const upd = list.map((p) => {
+      if (p && norm(p.path) === norm(oldPath)) { changed = true; return { ...p, path: newPath, name: newName }; }
+      return p;
+    });
+    if (changed) localStorage.setItem("quantum_projects_list", JSON.stringify(upd));
+    window.dispatchEvent(new Event("quantum_workspaces_changed"));
+  } catch (_) {}
 }
 
 // Pill branch + titik status di baris sidebar (selalu terlihat, "sekilas").
@@ -4671,26 +4687,183 @@ function WorkspaceGitPill({ path }) {
 }
 
 // Panel detail git di dalam popover "Folder options". Mount = fetch fresh.
-function WorkspaceGitPanel({ path }) {
-  const g = useWwGit(path);
-  if (g === null) {
+// Normalkan input jadi nama branch git valid (mirror scripts/ww.cjs toBranch).
+function toBranchName(name) {
+  let b = String(name || "").trim()
+    .replace(/[^\w.\-/]+/g, "-").replace(/\.\.+/g, ".")
+    .replace(/^[-/.]+|[-/.]+$/g, "").replace(/-{2,}/g, "-");
+  return b || "work";
+}
+const gitBranchIcon = (sz) => (
+  <svg width={sz} height={sz} viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
+    <line x1="6" y1="3" x2="6" y2="15"></line>
+    <circle cx="18" cy="6" r="3"></circle>
+    <circle cx="6" cy="18" r="3"></circle>
+    <path d="M18 9a9 9 0 0 1-9 9"></path>
+  </svg>
+);
+
+// Panel git INTERAKTIF di popover "Folder options": rename folder (disk), ganti/
+// buat/ganti-nama/hapus branch — semua lewat endpoint /ww/* nyata (git asli).
+function WorkspaceGitPanel({ path, onClose }) {
+  const [refreshKey, setRefreshKey] = React.useState(0);
+  const g = useWwGit(path, refreshKey);
+  const [br, setBr] = React.useState(null); // { repo, current, branches:[] }
+  const [pickerOpen, setPickerOpen] = React.useState(false);
+  const [query, setQuery] = React.useState("");
+  const [renamingBranch, setRenamingBranch] = React.useState(null);
+  const [editingFolder, setEditingFolder] = React.useState(false);
+  const [busy, setBusy] = React.useState(false);
+  const [msg, setMsg] = React.useState(null); // { ok, text }
+
+  React.useEffect(() => {
+    let alive = true;
+    const abs = typeof path === "string" && /^[a-zA-Z]:[\\/]|^\//.test(path);
+    if (!abs) { setBr({ repo: false, current: null, branches: [] }); return; }
+    wwApi("/ww/branches?path=" + encodeURIComponent(path)).then((r) => {
+      if (alive) setBr(r || { repo: false, current: null, branches: [] });
+    });
+    return () => { alive = false; };
+  }, [path, refreshKey]);
+
+  const flash = (ok, text) => { setMsg({ ok, text }); setTimeout(() => setMsg((m) => (m && m.text === text ? null : m)), 2800); };
+  const refresh = () => setRefreshKey((k) => k + 1);
+  const run = async (url, body, okText, after) => {
+    setBusy(true);
+    const r = await wwApi(url, { method: "POST", body });
+    setBusy(false);
+    if (r && r.ok) { flash(true, typeof okText === "function" ? okText(r) : okText); if (after) after(r); refresh(); return true; }
+    flash(false, (r && r.err) || "gagal");
+    return false;
+  };
+
+  const doSwitch = (b) => run("/ww/branch/switch", { path, branch: b }, "beralih ke " + b, () => setPickerOpen(false));
+  const doCreate = (name) => { const nm = toBranchName(name); run("/ww/branch/create", { path, branch: nm }, (r) => "branch dibuat: " + (r.name || nm), () => { setPickerOpen(false); setQuery(""); }); };
+  const doRenameBranch = (oldN, newN) => { setRenamingBranch(null); const nn = toBranchName(newN); if (nn === oldN) return; run("/ww/branch/rename", { path, oldName: oldN, newName: nn }, (r) => "branch → " + (r.name || nn)); };
+  const doDeleteBranch = (b) => run("/ww/branch/delete", { path, branch: b }, "branch dihapus: " + b);
+  const doRenameFolder = (newName) => {
+    const nm = String(newName || "").trim();
+    setEditingFolder(false);
+    if (!nm || nm === basename) return;
+    run("/ww/rename", { path, newName: nm }, (r) => "folder → " + (r.name || nm), (r) => {
+      applyFolderRenameLS(path, r.path || path, r.name || nm);
+      if (onClose) setTimeout(onClose, 500);
+    });
+  };
+
+  const basename = String(path || "").split(/[\\/]/).filter(Boolean).pop() || String(path || "");
+  if (g === null || br === null) {
     return <div style={{ padding: "8px 14px", color: "#6b7280", fontSize: "12px" }}>memuat git…</div>;
   }
   if (!g.repo) {
     return <div style={{ padding: "8px 14px", color: "#6b7280", fontSize: "12px" }}>bukan repo git</div>;
   }
   const dot = g.dirty ? "#d29922" : "#3fb950";
+  const cur = (br && br.current) || g.branch;
+  const branches = (br && br.branches) || [];
+  const q = query.trim();
+  const norm = q ? toBranchName(q) : "";
+  const filtered = branches.filter((b) => b.toLowerCase().includes(q.toLowerCase()));
+  const typedNew = q && !branches.some((b) => b === norm);
+
+  const miniBtn = (onClick, title, color, children) => (
+    <button
+      onClick={(e) => { e.stopPropagation(); onClick(); }}
+      title={title}
+      style={{ width: "22px", height: "22px", borderRadius: "5px", border: "none", cursor: "pointer", background: "transparent", color: color || "#6b7280", display: "inline-flex", alignItems: "center", justifyContent: "center", flexShrink: 0 }}
+      onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.09)")}
+      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+    >{children}</button>
+  );
+  const pencil = <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M12 20h9"></path><path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path></svg>;
+  const trash = <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="3 6 5 6 21 6"></polyline><path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6"></path></svg>;
+
   return (
-    <div style={{ padding: "8px 14px", borderBottom: "1px solid #21262d", display: "flex", flexDirection: "column", gap: "4px" }}>
-      <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#e6edf3", fontSize: "12.5px", fontWeight: 600 }}>
-        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.8 }}>
-          <line x1="6" y1="3" x2="6" y2="15"></line>
-          <circle cx="18" cy="6" r="3"></circle>
-          <circle cx="6" cy="18" r="3"></circle>
-          <path d="M18 9a9 9 0 0 1-9 9"></path>
-        </svg>
-        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.branch}</span>
+    <div style={{ padding: "8px 12px", borderBottom: "1px solid #21262d", display: "flex", flexDirection: "column", gap: "7px", opacity: busy ? 0.7 : 1, pointerEvents: busy ? "none" : "auto" }}>
+      {/* nama folder + rename */}
+      <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+        <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b949e" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path></svg>
+        {editingFolder ? (
+          <input
+            autoFocus defaultValue={basename}
+            onKeyDown={(e) => { if (e.key === "Enter") doRenameFolder(e.currentTarget.value); else if (e.key === "Escape") setEditingFolder(false); }}
+            onBlur={(e) => doRenameFolder(e.currentTarget.value)}
+            style={{ flex: 1, minWidth: 0, background: "#1c2128", border: "1px solid #2f81f7", borderRadius: "5px", color: "#e6edf3", fontFamily: "inherit", fontSize: "12.5px", fontWeight: 600, padding: "2px 6px", outline: "none" }}
+          />
+        ) : (
+          <React.Fragment>
+            <span style={{ flex: 1, minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", color: "#e6edf3", fontSize: "12.5px", fontWeight: 600 }}>{basename}</span>
+            {miniBtn(() => setEditingFolder(true), "Ganti nama folder (disk)", "#6b7280", pencil)}
+          </React.Fragment>
+        )}
       </div>
+
+      {/* branch aktif → picker */}
+      <div style={{ position: "relative" }}>
+        <button
+          onClick={() => setPickerOpen((o) => !o)}
+          title="Kelola branch"
+          style={{ display: "flex", alignItems: "center", gap: "7px", width: "100%", textAlign: "left", background: "#1c2128", border: "1px solid #30363d", color: "#e6edf3", borderRadius: "6px", padding: "5px 8px", cursor: "pointer", fontFamily: "inherit", fontSize: "12px" }}
+        >
+          <span style={{ color: "#8b949e", display: "inline-flex" }}>{gitBranchIcon(13)}</span>
+          <span style={{ flex: 1, fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{cur}</span>
+          <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round" style={{ transform: pickerOpen ? "rotate(180deg)" : "none", transition: "transform .15s" }}><polyline points="6 9 12 15 18 9"></polyline></svg>
+        </button>
+
+        {pickerOpen && (
+          <div style={{ marginTop: "5px", background: "#0d1117", border: "1px solid #30363d", borderRadius: "7px", overflow: "hidden" }}>
+            <input
+              autoFocus value={query} onChange={(e) => setQuery(e.target.value)}
+              onKeyDown={(e) => { if (e.key === "Enter" && typedNew) doCreate(q); else if (e.key === "Escape") setPickerOpen(false); }}
+              placeholder="Pilih branch / ketik untuk membuat…"
+              style={{ margin: "7px", width: "calc(100% - 14px)", background: "#161b22", border: "1px solid #30363d", borderRadius: "5px", color: "#e6edf3", fontFamily: "inherit", fontSize: "12px", padding: "5px 8px", outline: "none" }}
+            />
+            <div style={{ maxHeight: "190px", overflowY: "auto", padding: "0 5px 7px" }}>
+              {typedNew && (
+                <div onClick={() => doCreate(q)} style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 7px", borderRadius: "5px", cursor: "pointer", color: "#2f81f7", fontSize: "12px" }}
+                  onMouseEnter={(e) => (e.currentTarget.style.background = "#21262d")} onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}>
+                  <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="12" y1="5" x2="12" y2="19"></line><line x1="5" y1="12" x2="19" y2="12"></line></svg>
+                  <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>Buat branch “{norm}”</span>
+                </div>
+              )}
+              {filtered.length === 0 && !typedNew && (
+                <div style={{ padding: "8px 7px", fontSize: "11.5px", color: "#6b7280" }}>Tak ada branch cocok.</div>
+              )}
+              {filtered.map((b) => {
+                const isCur = b === cur;
+                if (renamingBranch === b) {
+                  return (
+                    <div key={b} style={{ display: "flex", alignItems: "center", gap: "6px", padding: "5px 7px" }}>
+                      <span style={{ width: "15px" }}></span>
+                      <input autoFocus defaultValue={b}
+                        onKeyDown={(e) => { if (e.key === "Enter") doRenameBranch(b, e.currentTarget.value); else if (e.key === "Escape") setRenamingBranch(null); }}
+                        onBlur={(e) => doRenameBranch(b, e.currentTarget.value)}
+                        style={{ flex: 1, minWidth: 0, background: "#1c2128", border: "1px solid #2f81f7", borderRadius: "5px", color: "#e6edf3", fontFamily: "ui-monospace, monospace", fontSize: "12px", padding: "2px 6px", outline: "none" }} />
+                    </div>
+                  );
+                }
+                return (
+                  <div key={b} onClick={() => !isCur && doSwitch(b)} title={isCur ? "branch aktif" : "beralih ke " + b}
+                    style={{ display: "flex", alignItems: "center", gap: "7px", padding: "6px 7px", borderRadius: "5px", cursor: isCur ? "default" : "pointer", background: isCur ? "#21262d" : "transparent", fontSize: "12px", color: "#e6edf3" }}
+                    onMouseEnter={(e) => { if (!isCur) e.currentTarget.style.background = "#21262d"; }}
+                    onMouseLeave={(e) => { if (!isCur) e.currentTarget.style.background = "transparent"; }}>
+                    <span style={{ width: "15px", display: "inline-flex", justifyContent: "center", color: "#3fb950", flexShrink: 0 }}>
+                      {isCur && <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg>}
+                    </span>
+                    <span style={{ flex: 1, fontFamily: "ui-monospace, monospace", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{b}</span>
+                    <span style={{ display: "flex", gap: "1px", flexShrink: 0 }} onClick={(e) => e.stopPropagation()}>
+                      {miniBtn(() => setRenamingBranch(b), "Ganti nama branch", "#6b7280", pencil)}
+                      {miniBtn(() => { if (!isCur) doDeleteBranch(b); }, isCur ? "branch aktif tak bisa dihapus" : "Hapus branch", isCur ? "#3a3f46" : "#f85149", trash)}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+
+      {/* status + commit */}
       <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", color: "#8b949e" }}>
         <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: dot, flexShrink: 0 }}></span>
         <span>{g.dirty ? g.dirtyCount + " perubahan belum di-commit" : "bersih — tak ada perubahan"}</span>
@@ -4699,6 +4872,9 @@ function WorkspaceGitPanel({ path }) {
         <div style={{ fontSize: "11px", color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.lastCommit.hash + " " + g.lastCommit.subject}>
           {g.lastCommit.hash} · {g.lastCommit.subject} · {g.lastCommit.when}
         </div>
+      )}
+      {msg && (
+        <div style={{ fontSize: "11px", color: msg.ok ? "#3fb950" : "#f85149", overflow: "hidden", textOverflow: "ellipsis" }}>{msg.text}</div>
       )}
     </div>
   );
@@ -5164,10 +5340,10 @@ function Sidebar({
                         boxShadow: "0 12px 36px rgba(0,0,0,0.65)",
                         padding: "4px 0",
                         zIndex: 2000,
-                        minWidth: "205px",
+                        minWidth: "250px",
                       }}
                     >
-                      <WorkspaceGitPanel path={ws} />
+                      <WorkspaceGitPanel path={ws} onClose={() => setOpenFolderMenuWs(null)} />
                       <button
                         style={{
                           display: "flex",
