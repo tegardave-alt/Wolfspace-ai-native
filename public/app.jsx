@@ -4577,6 +4577,102 @@ function deleteWorkspaceGlobal(wsToDelete) {
   } catch (_) {}
 }
 
+// Ambil ringkasan git READ-ONLY untuk satu folder workspace. Pola decoupling:
+// fetch fresh saat mount, tak pernah simpan di state parent — jadi tiap kali
+// baris/popover ter-mount, datanya selalu terkini (bukan snapshot beku).
+function useWwGit(path) {
+  const [info, setInfo] = React.useState(null);
+  React.useEffect(() => {
+    let alive = true;
+    // Hanya path absolut yang bermakna sbagai repo di disk; nama telanjang dilewati.
+    const looksAbsolute = typeof path === "string" && /^[a-zA-Z]:[\\/]|^\//.test(path);
+    if (!looksAbsolute) {
+      setInfo({ repo: false });
+      return;
+    }
+    wwApi("/ww/git?path=" + encodeURIComponent(path)).then((r) => {
+      if (alive) setInfo(r || { repo: false });
+    });
+    return () => {
+      alive = false;
+    };
+  }, [path]);
+  return info;
+}
+
+// Pill branch + titik status di baris sidebar (selalu terlihat, "sekilas").
+// Titik: kuning = ada perubahan belum di-commit, hijau-abu = bersih.
+function WorkspaceGitPill({ path }) {
+  const g = useWwGit(path);
+  if (!g || !g.repo) return null;
+  const dot = g.dirty ? "#d29922" : "#3fb950";
+  return (
+    <span
+      title={
+        (g.dirty ? g.dirtyCount + " perubahan belum di-commit" : "bersih (tak ada perubahan)") +
+        (g.branch ? " — branch " + g.branch : "")
+      }
+      style={{
+        display: "inline-flex",
+        alignItems: "center",
+        gap: "4px",
+        flexShrink: 0,
+        maxWidth: "130px",
+        padding: "1px 6px 1px 5px",
+        borderRadius: "10px",
+        background: "rgba(255,255,255,0.05)",
+        border: "1px solid rgba(255,255,255,0.07)",
+        fontSize: "10.5px",
+        color: "#8b949e",
+        lineHeight: 1.4,
+      }}
+    >
+      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.85 }}>
+        <line x1="6" y1="3" x2="6" y2="15"></line>
+        <circle cx="18" cy="6" r="3"></circle>
+        <circle cx="6" cy="18" r="3"></circle>
+        <path d="M18 9a9 9 0 0 1-9 9"></path>
+      </svg>
+      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.branch}</span>
+      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: dot, flexShrink: 0 }}></span>
+    </span>
+  );
+}
+
+// Panel detail git di dalam popover "Folder options". Mount = fetch fresh.
+function WorkspaceGitPanel({ path }) {
+  const g = useWwGit(path);
+  if (g === null) {
+    return <div style={{ padding: "8px 14px", color: "#6b7280", fontSize: "12px" }}>memuat git…</div>;
+  }
+  if (!g.repo) {
+    return <div style={{ padding: "8px 14px", color: "#6b7280", fontSize: "12px" }}>bukan repo git</div>;
+  }
+  const dot = g.dirty ? "#d29922" : "#3fb950";
+  return (
+    <div style={{ padding: "8px 14px", borderBottom: "1px solid #21262d", display: "flex", flexDirection: "column", gap: "4px" }}>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", color: "#e6edf3", fontSize: "12.5px", fontWeight: 600 }}>
+        <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.8 }}>
+          <line x1="6" y1="3" x2="6" y2="15"></line>
+          <circle cx="18" cy="6" r="3"></circle>
+          <circle cx="6" cy="18" r="3"></circle>
+          <path d="M18 9a9 9 0 0 1-9 9"></path>
+        </svg>
+        <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.branch}</span>
+      </div>
+      <div style={{ display: "flex", alignItems: "center", gap: "6px", fontSize: "11.5px", color: "#8b949e" }}>
+        <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: dot, flexShrink: 0 }}></span>
+        <span>{g.dirty ? g.dirtyCount + " perubahan belum di-commit" : "bersih — tak ada perubahan"}</span>
+      </div>
+      {g.lastCommit && (
+        <div style={{ fontSize: "11px", color: "#6b7280", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title={g.lastCommit.hash + " " + g.lastCommit.subject}>
+          {g.lastCommit.hash} · {g.lastCommit.subject} · {g.lastCommit.when}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function Sidebar({
   collapsed,
   setCollapsed,
@@ -4988,6 +5084,8 @@ function Sidebar({
                       </svg>
                       <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws === "c:\\Users\\dave\\quantum" ? "WOLFSPACE" : ws}</span>
                     </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
+                    <WorkspaceGitPill path={ws} />
                     <span
                       title="Folder options"
                       style={{
@@ -5019,6 +5117,7 @@ function Sidebar({
                         <circle cx="12" cy="19" r="1"></circle>
                       </svg>
                     </span>
+                    </div>
                   </div>
                   {openFolderMenuWs === ws && (
                     <div
@@ -5034,9 +5133,10 @@ function Sidebar({
                         boxShadow: "0 12px 36px rgba(0,0,0,0.65)",
                         padding: "4px 0",
                         zIndex: 2000,
-                        minWidth: "155px",
+                        minWidth: "205px",
                       }}
                     >
+                      <WorkspaceGitPanel path={ws} />
                       <button
                         style={{
                           display: "flex",

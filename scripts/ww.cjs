@@ -359,12 +359,35 @@ function main() {
 }
 
 // Dipakai sebagai modul oleh server (auto-start watcher) ATAU sebagai CLI.
+// Ringkasan git read-only untuk SATU folder workspace (dipakai UI untuk
+// menampilkan branch + status kotor/bersih di sidebar). Tak pernah melempar —
+// folder yang belum jadi repo mengembalikan { repo:false }.
+function gitInfo(dir) {
+  if (!dir || !fs.existsSync(dir)) return { repo: false, error: "not-found" };
+  if (!isRepo(dir)) return { repo: false };
+  const branch = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir) || "?";
+  // --porcelain: satu baris per perubahan (staged/unstaged/untracked). Jumlah
+  // baris tak kosong = jumlah perubahan yang belum tercermin di commit.
+  const porcelain = gitTry(["status", "--porcelain"], dir);
+  const dirtyCount =
+    porcelain == null ? 0 : porcelain.split("\n").filter((l) => l.trim()).length;
+  // Commit terakhir: hash pendek + subject + waktu relatif. null bila belum ada commit.
+  const last = gitTry(["log", "-1", "--format=%h%s%cr"], dir);
+  let lastCommit = null;
+  if (last) {
+    const [hash, subject, when] = last.split("");
+    lastCommit = { hash, subject, when };
+  }
+  return { repo: true, branch, dirtyCount, dirty: dirtyCount > 0, lastCommit };
+}
+
 module.exports = {
   initWorkspace,
   startWatcher,
   listWorkspaces,
   toBranch,
   isRepo,
+  gitInfo,
   DEFAULT_ROOT,
 };
 if (require.main === module) main();

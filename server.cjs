@@ -4719,6 +4719,22 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // ww git: ringkasan git READ-ONLY untuk satu folder (branch, kotor/bersih,
+  // commit terakhir). Dipakai sidebar untuk menampilkan status tiap workspace.
+  // GET /ww/git?path=<absolut>. Tak pernah 500 karena bukan repo — { repo:false }.
+  if (req.method === "GET" && req.url.startsWith("/ww/git")) {
+    try {
+      const q = new URL(req.url, "http://x").searchParams.get("path") || "";
+      const ww = require("./scripts/ww.cjs");
+      const info = ww.gitInfo(q);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(info));
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ repo: false, error: e.message }));
+    }
+  }
+
   // Self-edit agent: edits WOLFSPACE's OWN source (dev copy) with backup + syntax-gate.
   // Edits the dev files; you review and run sync-app.ps1 to apply to the live app.
   if (req.method === "POST" && req.url === "/self-agent") {
