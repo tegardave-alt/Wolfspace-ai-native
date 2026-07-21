@@ -1320,6 +1320,14 @@ async function runSelfTool(name, args, emit, context = {}) {
         (r) => ({ ok: true, output: r }),
         (e) => ({ ok: false, output: e.message }),
       );
+    if (name === "retrieve") {
+      // RAG: recall PENGETAHUAN (memori proyek + docs). P1 = satu store "global"
+      // agar ingest (frontend) & retrieve (di sini) selalu sekunci. Isolasi per-ww
+      // (scope via workspaceRoot) = P3 — saat itu ingest juga dikunci ke ref sama.
+      const rag = require("../rag.cjs");
+      const out = rag.retrieveFormatted("global", args.query, { k: args.k, kind: args.kind || undefined });
+      return { ok: true, output: out };
+    }
     if (name === "dspy") {
       // Real DSpy optimization via native JS (WOLFSPACE's cloud LLM, no Python)
       const dspyTool = require("./dspy_tool.cjs");

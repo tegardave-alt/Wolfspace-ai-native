@@ -7855,6 +7855,12 @@ function App() {
             adoneSent = true;
             upd({ busy: false, done: true, summary: j.summary, editCount: j.edits, backup: j.backup });
             setWfHistory((h) => [...h, { role: "assistant", content: j.summary || "" }]);
+            // RAG ingest: simpan memori run (permintaan → hasil) agar bisa diingat
+            // di sesi mendatang lewat tool `retrieve`. Fire-and-forget, store global.
+            if (j.summary && j.summary.trim().length > 8) {
+              const mem = ("Permintaan: " + content + "\nHasil: " + j.summary).slice(0, 1200);
+              wwApi("/rag/ingest", { method: "POST", body: { project: "global", text: mem, kind: "memory", meta: { source: "wf-run" } } }).catch(() => {});
+            }
           } else if (j.t === "err") {
             hadError = true;
             evlist.push({ type: "err", m: j.m });

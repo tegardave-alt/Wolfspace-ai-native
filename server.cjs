@@ -4735,6 +4735,32 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // RAG (P1): simpan/ambil PENGETAHUAN (memori proyek + docs). Store per-proyek
+  // di ~/.wolfspace/rag/<key>. Ingest dipanggil frontend saat run agent selesai
+  // (adone); retrieve juga tersedia sbg tool agent (agent/tools/index.cjs).
+  if (req.method === "POST" && (req.url === "/rag/ingest" || req.url === "/rag/retrieve")) {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      let b = {};
+      try { b = JSON.parse(body || "{}"); } catch (_) {}
+      let out;
+      try {
+        const rag = require("./agent/rag.cjs");
+        if (req.url === "/rag/ingest") {
+          out = rag.ingest(b.project || "global", { text: b.text, kind: b.kind, meta: b.meta });
+        } else {
+          out = rag.retrieve(b.project || "global", b.query, { k: b.k, kind: b.kind });
+        }
+      } catch (e) {
+        out = { ok: false, err: e.message };
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(out || { ok: false, err: "no-op" }));
+    });
+    return;
+  }
+
   // ww branches: daftar branch lokal + branch aktif. GET /ww/branches?path=<abs>.
   if (req.method === "GET" && req.url.startsWith("/ww/branches")) {
     try {
