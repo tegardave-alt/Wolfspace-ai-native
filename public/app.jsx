@@ -7642,6 +7642,9 @@ function App() {
         });
       const evlist = [];
       const phaseNodes = [];
+      // Live agent graph (Workflow view, mode "Live") mendengar event ini. Run baru
+      // (bukan lanjutan HITL) mereset graph; tiap act menambah node; adone menutup.
+      if (!hitlData) { try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "start" } })); } catch (_) {} }
       let think = "";
       let adoneSent = false;
       let waitingForInput = false;
@@ -7672,6 +7675,7 @@ function App() {
                 output: j.output,
               });
               upd({ events: [...evlist], thinking: "" });
+              try { window.dispatchEvent(new CustomEvent("wolfspace_agent_act", { detail: { kind: j.kind, arg: j.arg, ok: j.ok, output: j.output } })); } catch (_) {}
             } else if (j.t === "phase") {
               phaseNodes.push({
                 phase: j.phase,
@@ -7709,6 +7713,7 @@ function App() {
               });
               upd({ thinking: "Menunggu jawaban Anda...", busy: true });
             } else if (j.t === "adone") {
+              try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "done" } })); } catch (_) {}
               if (j.hitlPending && j.thread_id) {
                 // Agent paused for HITL — keep busy=true, just ensure thread_id is updated
                 adoneSent = true;
@@ -8215,24 +8220,44 @@ const WF_PALETTE = [
   { type: "output", label: "Output", accent: "#f85149", desc: "hasil akhir" },
 ];
 
+// Warna node live per-`kind` langkah agent (dari event t:"act" self_agent.cjs).
+const WF_KIND_ACCENT = {
+  workspace: "#8b949e", planner: "#bc8cff", bash: "#d29922", task: "#2f81f7",
+  read: "#3fb950", edit: "#f0883e", write: "#f0883e", grep: "#56d4dd",
+  glob: "#56d4dd", list: "#8fb3ff", hitl_approved: "#3fb950", thought: "#6f7d92",
+};
+const wfKindAccent = (k) => WF_KIND_ACCENT[k] || "#8fb3ff";
+
 function WFNodeCard({ data }) {
   const XY = window.RFLib && window.RFLib.XY;
   const Handle = XY && XY.Handle;
   const Position = XY && XY.Position;
   const accent = (data && data.accent) || "#8fb3ff";
+  const err = data && data.ok === false;           // langkah agent gagal
+  const active = data && data.active;               // langkah agent yang sedang jalan
+  const edge = err ? "#f85149" : accent;
   return (
-    <div style={{ minWidth: "128px", background: "#131922", border: "1px solid " + accent + "55", borderLeft: "3px solid " + accent, borderRadius: "8px", padding: "8px 12px", color: "#dce4f0", fontFamily: "ui-monospace, monospace", boxShadow: "0 4px 14px rgba(0,0,0,.4)" }}>
-      {Handle && <Handle type="target" position={Position.Left} style={{ background: accent, width: 8, height: 8, border: "none" }} />}
-      <div style={{ fontSize: "9px", letterSpacing: ".12em", textTransform: "uppercase", color: accent, marginBottom: "3px" }}>{data.kind}</div>
-      <div style={{ fontSize: "12.5px", fontWeight: 600 }}>{data.label}</div>
-      {Handle && <Handle type="source" position={Position.Right} style={{ background: accent, width: 8, height: 8, border: "none" }} />}
+    <div style={{
+      minWidth: "128px", maxWidth: "220px", background: "#131922",
+      border: "1px solid " + (active ? edge : edge + "55"), borderLeft: "3px solid " + edge,
+      borderRadius: "8px", padding: "8px 12px", color: "#dce4f0", fontFamily: "ui-monospace, monospace",
+      boxShadow: active ? "0 0 0 2px " + edge + "88, 0 4px 14px rgba(0,0,0,.5)" : "0 4px 14px rgba(0,0,0,.4)",
+    }}>
+      {Handle && <Handle type="target" position={Position.Left} style={{ background: edge, width: 8, height: 8, border: "none" }} />}
+      <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "9px", letterSpacing: ".12em", textTransform: "uppercase", color: edge, marginBottom: "3px" }}>
+        <span>{data.kind}</span>
+        {active && <span style={{ width: 6, height: 6, borderRadius: "50%", background: edge, boxShadow: "0 0 6px " + edge }} />}
+        {err && <span title="gagal">✕</span>}
+      </div>
+      <div style={{ fontSize: "12.5px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.label}</div>
+      {Handle && <Handle type="source" position={Position.Right} style={{ background: edge, width: 8, height: 8, border: "none" }} />}
     </div>
   );
 }
 
 function WorkflowBuilderInner({ onBack }) {
   const XY = window.RFLib.XY;
-  const { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge, useReactFlow, BackgroundVariant } = XY;
+  const { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge, useReactFlow, BackgroundVariant, applyNodeChanges } = XY;
   const idRef = React.useRef(3);
   const [nodes, setNodes, onNodesChange] = useNodesState([
     { id: "n1", type: "wf", position: { x: 60, y: 110 }, data: { label: "User prompt", kind: "prompt", accent: "#3fb950" } },
@@ -8245,8 +8270,51 @@ function WorkflowBuilderInner({ onBack }) {
   // "custom" = kartu bergaya WOLFSPACE (WFNodeCard); "default" = node BAWAAN React
   // Flow (kotak putih klasik + tema terang), untuk membandingkan rupa aslinya.
   const [nodeStyle, setNodeStyle] = React.useState("custom");
+  // mode "builder" = kanvas manual; "live" = cermin eksekusi agent (Fase 1) —
+  // tiap langkah t:"act" dari self_agent.cjs jadi node berurut, yang terbaru disorot.
+  const [mode, setMode] = React.useState("builder");
+  const [liveNodes, setLiveNodes] = React.useState([]);
+  const [liveEdges, setLiveEdges] = React.useState([]);
+  const liveRef = React.useRef({ i: 0, lastId: null });
   const rf = useReactFlow();
-  const nodeTypes = React.useMemo(() => (nodeStyle === "custom" ? { wf: WFNodeCard } : {}), [nodeStyle]);
+  const isLive = mode === "live";
+  const nodeTypes = React.useMemo(() => ((isLive || nodeStyle === "custom") ? { wf: WFNodeCard } : {}), [isLive, nodeStyle]);
+
+  // Dengar stream agent (dipancarkan dari doSend): bangun graph eksekusi live.
+  React.useEffect(() => {
+    const COLS = 4, DX = 210, DY = 120;
+    const onRun = (e) => {
+      const phase = e.detail && e.detail.phase;
+      if (phase === "start") {
+        liveRef.current = { i: 0, lastId: null };
+        setLiveNodes([]); setLiveEdges([]);
+        setMode("live"); // auto-pindah ke Live saat agent mulai bekerja
+      } else if (phase === "done") {
+        setLiveNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, active: false } })));
+      }
+    };
+    const onAct = (e) => {
+      const d = e.detail || {};
+      const st = liveRef.current;
+      const i = st.i++;
+      const col = i % COLS, row = Math.floor(i / COLS);
+      const x = (row % 2 === 0 ? col : COLS - 1 - col) * DX; // snake kiri↔kanan
+      const y = row * DY;
+      const id = "L" + i;
+      const label = (String(d.arg || "").trim() || d.kind || "step").slice(0, 42);
+      const node = { id, type: "wf", position: { x, y }, data: { label, kind: d.kind || "step", accent: wfKindAccent(d.kind), ok: d.ok, active: true } };
+      setLiveNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, active: false } })).concat(node));
+      if (st.lastId) setLiveEdges((eds) => eds.concat({ id: "Le" + i, source: st.lastId, target: id, animated: true, style: { stroke: "#8fb3ff" } }));
+      st.lastId = id;
+      setTimeout(() => { try { rf && rf.fitView && rf.fitView({ duration: 300, padding: 0.25 }); } catch (_) {} }, 40);
+    };
+    window.addEventListener("wolfspace_agent_run", onRun);
+    window.addEventListener("wolfspace_agent_act", onAct);
+    return () => { window.removeEventListener("wolfspace_agent_run", onRun); window.removeEventListener("wolfspace_agent_act", onAct); };
+  }, [rf]);
+
+  const liveOnNodesChange = React.useCallback((changes) => setLiveNodes((nds) => applyNodeChanges(changes, nds)), [applyNodeChanges]);
+  const noop = React.useCallback(() => {}, []);
 
   const onConnect = React.useCallback(
     (c) => setEdges((eds) => addEdge({ ...c, animated: true, style: { stroke: "#8fb3ff" } }, eds)),
@@ -8260,10 +8328,11 @@ function WorkflowBuilderInner({ onBack }) {
   }, [rf, setNodes]);
   const onDrop = React.useCallback((e) => {
     e.preventDefault();
+    if (isLive) return;
     const raw = e.dataTransfer.getData("application/wf");
     if (!raw) return;
     try { addNode(JSON.parse(raw), e.clientX, e.clientY); } catch (_) {}
-  }, [addNode]);
+  }, [addNode, isLive]);
 
   const wf = {
     nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind, label: n.data.label, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) } })),
@@ -8271,41 +8340,64 @@ function WorkflowBuilderInner({ onBack }) {
   };
   const btn = { fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#dce4f0", background: "#131922", border: "1px solid #2f4056", borderRadius: "6px", padding: "6px 9px", cursor: "pointer" };
 
+  const shownNodes = isLive ? liveNodes : (nodeStyle === "custom" ? nodes : nodes.map((n) => ({ ...n, type: "default" })));
+  const shownEdges = isLive ? liveEdges : edges;
+
   return (
     <div style={{ display: "flex", height: "100%", width: "100%", background: "#0d1117" }}>
-      <div style={{ width: "152px", flexShrink: 0, borderRight: "1px solid #212a36", background: "#0c1219", padding: "12px 10px", display: "flex", flexDirection: "column", gap: "8px" }}>
+      <div style={{ width: "158px", flexShrink: 0, borderRight: "1px solid #212a36", background: "#0c1219", padding: "12px 10px", display: "flex", flexDirection: "column", gap: "8px" }}>
         <div style={{ display: "flex", alignItems: "center", gap: "8px", marginBottom: "2px" }}>
           <button onClick={onBack} title="Kembali ke chat" style={{ ...btn, padding: "3px 8px" }}>←</button>
-          <span style={{ fontSize: "10px", letterSpacing: ".14em", textTransform: "uppercase", color: "#6f7d92", fontFamily: "ui-monospace, monospace" }}>Nodes</span>
+          <span style={{ fontSize: "10px", letterSpacing: ".14em", textTransform: "uppercase", color: "#6f7d92", fontFamily: "ui-monospace, monospace" }}>{isLive ? "Live" : "Nodes"}</span>
         </div>
-        {WF_PALETTE.map((it) => (
-          <div key={it.type} draggable
-            onDragStart={(e) => { e.dataTransfer.setData("application/wf", JSON.stringify(it)); e.dataTransfer.effectAllowed = "move"; }}
-            onDoubleClick={() => addNode(it, window.innerWidth / 2, window.innerHeight / 2)}
-            title={it.desc + " — seret ke kanvas atau dobel-klik"}
-            style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#dce4f0", background: "#131922", border: "1px solid #212a36", borderLeft: "3px solid " + it.accent, borderRadius: "7px", padding: "7px 9px", cursor: "grab", userSelect: "none" }}>
-            {it.label}
+        {isLive ? (
+          <div style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#8fb3ff", lineHeight: 1.6, background: "#0f1620", border: "1px solid #212a36", borderRadius: "7px", padding: "8px 9px" }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+              <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#3fb950", boxShadow: "0 0 6px #3fb950" }} />
+              cermin eksekusi agent
+            </div>
+            <div style={{ color: "#6f7d92", marginTop: "5px" }}>{liveNodes.length} langkah</div>
+            <div style={{ color: "#6f7d92", marginTop: "3px" }}>Jalankan agent di chat — langkahnya muncul di sini.</div>
           </div>
-        ))}
+        ) : (
+          WF_PALETTE.map((it) => (
+            <div key={it.type} draggable
+              onDragStart={(e) => { e.dataTransfer.setData("application/wf", JSON.stringify(it)); e.dataTransfer.effectAllowed = "move"; }}
+              onDoubleClick={() => addNode(it, window.innerWidth / 2, window.innerHeight / 2)}
+              title={it.desc + " — seret ke kanvas atau dobel-klik"}
+              style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#dce4f0", background: "#131922", border: "1px solid #212a36", borderLeft: "3px solid " + it.accent, borderRadius: "7px", padding: "7px 9px", cursor: "grab", userSelect: "none" }}>
+              {it.label}
+            </div>
+          ))
+        )}
         <div style={{ marginTop: "auto", display: "flex", flexDirection: "column", gap: "6px" }}>
-          <button style={btn} onClick={() => setNodeStyle((s) => (s === "custom" ? "default" : "custom"))} title="Bandingkan skin WOLFSPACE vs node bawaan React Flow">
-            Gaya: {nodeStyle === "custom" ? "Kustom" : "Bawaan RF"}
+          <button style={{ ...btn, borderColor: isLive ? "#3fb95088" : "#2f4056" }} onClick={() => setMode((m) => (m === "live" ? "builder" : "live"))} title="Beralih antara kanvas manual dan cermin eksekusi agent">
+            Mode: {isLive ? "Live" : "Builder"}
           </button>
-          <button style={btn} onClick={() => setShowJson((s) => !s)}>{showJson ? "Tutup JSON" : "Export JSON"}</button>
-          <button style={btn} onClick={() => { setNodes([]); setEdges([]); }}>Bersihkan</button>
+          {!isLive && (
+            <React.Fragment>
+              <button style={btn} onClick={() => setNodeStyle((s) => (s === "custom" ? "default" : "custom"))} title="Bandingkan skin WOLFSPACE vs node bawaan React Flow">
+                Gaya: {nodeStyle === "custom" ? "Kustom" : "Bawaan RF"}
+              </button>
+              <button style={btn} onClick={() => setShowJson((s) => !s)}>{showJson ? "Tutup JSON" : "Export JSON"}</button>
+            </React.Fragment>
+          )}
+          <button style={btn} onClick={() => { if (isLive) { setLiveNodes([]); setLiveEdges([]); liveRef.current = { i: 0, lastId: null }; } else { setNodes([]); setEdges([]); } }}>Bersihkan</button>
         </div>
       </div>
       <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
-        <ReactFlow nodes={nodeStyle === "custom" ? nodes : nodes.map((n) => ({ ...n, type: "default" }))} edges={edges} onNodesChange={onNodesChange} onEdgesChange={onEdgesChange} onConnect={onConnect} nodeTypes={nodeTypes} colorMode={nodeStyle === "custom" ? "dark" : "light"} fitView proOptions={{ hideAttribution: true }}>
+        <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} colorMode={(!isLive && nodeStyle === "default") ? "light" : "dark"} fitView proOptions={{ hideAttribution: true }}>
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#26313f" />
           <Controls />
-          <MiniMap pannable zoomable nodeColor={(n) => (n.data && n.data.accent) || "#8fb3ff"} maskColor="rgba(13,17,23,.72)" style={{ background: "#0c1219", border: "1px solid #212a36" }} />
+          <MiniMap pannable zoomable nodeColor={(n) => (n.data && (n.data.ok === false ? "#f85149" : n.data.accent)) || "#8fb3ff"} maskColor="rgba(13,17,23,.72)" style={{ background: "#0c1219", border: "1px solid #212a36" }} />
         </ReactFlow>
-        {showJson && (
+        {showJson && !isLive && (
           <pre style={{ position: "absolute", right: "14px", top: "14px", maxHeight: "60%", maxWidth: "340px", overflow: "auto", margin: 0, fontFamily: "ui-monospace, monospace", fontSize: "11px", lineHeight: 1.5, color: "#9fb7d9", background: "#0c1219", border: "1px solid #212a36", borderRadius: "8px", padding: "10px 12px" }}>{JSON.stringify(wf, null, 2)}</pre>
         )}
         <div style={{ position: "absolute", left: "14px", bottom: "14px", fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#6f7d92", background: "rgba(19,25,34,.82)", border: "1px solid #212a36", borderRadius: "7px", padding: "5px 11px", pointerEvents: "none" }}>
-          Seret node dari kiri · tarik antar-titik untuk menyambung · <b>Del</b> untuk hapus
+          {isLive
+            ? (liveNodes.length ? "Cermin langkah agent — node terbaru = sedang berjalan" : "Menunggu agent… jalankan sesuatu di chat")
+            : "Seret node dari kiri · tarik antar-titik untuk menyambung · Del untuk hapus"}
         </div>
       </div>
     </div>
