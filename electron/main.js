@@ -634,6 +634,13 @@ app.whenReady().then(() => {
           path.basename(filename).startsWith(".") ||
           filename.includes("node_modules") ||
           filename.includes(".git") ||
+          // Churn buatan (bukan sumber): snapshot backup self-agent, artefak, asar.
+          // Tanpa ini, tiap backup memicu "backend changed" → restart tiba-tiba.
+          filename.includes("_agent_backups") ||
+          filename.includes("_backups") ||
+          filename.includes(".asar") ||
+          filename.startsWith("artifacts" + path.sep) ||
+          filename.startsWith("artifacts/") ||
           filename.endsWith("~") ||
           filename.endsWith(".swp")
         )
