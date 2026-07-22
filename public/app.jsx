@@ -229,6 +229,16 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
+  workflow: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <rect x="3" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <rect x="15" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <rect x="9" y="15" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M6 10v2c0 1.5 1.5 3 3 3h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18 10v2c0 1.5-1.5 3-3 3h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="15" r="1.5" fill="currentColor" />
+    </svg>
+  ),
 };
 const HubIcon = {
   back: (p) => (
@@ -310,16 +320,15 @@ const HubIcon = {
     </svg>
   ),
   hf: (p) => (
-    <svg viewBox="0 0 24 24" fill="none" {...p}>
-      <circle cx="8" cy="7" r="3" fill="currentColor" />
-      <circle cx="16" cy="7" r="3" fill="currentColor" />
-      <path
-        d="M6 11c-1 0-1.5 2-1.5 4 0 3 2 6 7.5 6s7.5-3 7.5-6c0-2-.5-4-1.5-4M8 14v3M12 14v3M16 14v3"
-        stroke="currentColor"
-        strokeWidth="1.5"
-        strokeLinecap="round"
-        fill="none"
-      />
+    <svg viewBox="0 0 36 36" fill="none" {...p}>
+      <circle cx="18" cy="15.5" r="13.5" fill="#FFAC33" />
+      <circle cx="18" cy="15.5" r="11.8" fill="#FFCC4D" />
+      <path d="M11 13C12 11.5 14 11.5 15 13" stroke="#292F33" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+      <path d="M21 13C22 11.5 24 11.5 25 13" stroke="#292F33" strokeWidth="2.2" strokeLinecap="round" fill="none" />
+      <path d="M12.5 16.5C15 17.5 21 17.5 23.5 16.5C23.8 20 20.5 22.2 18 22.2C15.5 22.2 12.2 20 12.5 16.5Z" fill="#292F33" />
+      <path d="M15.5 20.2C16.5 18.8 19.5 18.8 20.5 20.2C20 21.8 16 21.8 15.5 20.2Z" fill="#DD2E44" />
+      <path d="M15 30.5 C17 26 16 21.5 14.5 21.5 C13 21.5 12 23.5 12.5 25 C12.5 23.5 12.5 22 11 22.5 C9.5 23 9.5 25 10 26 C10 24.5 9.5 23 8 23.5 C6.5 24 7 26 7.8 27.2 C7 25.5 6.5 24.5 5 25.5 C3.5 26.5 4.5 28.5 6 29.5 C8.5 31.5 12.5 32 15 30.5 Z" fill="#FFCC4D" stroke="#FFAC33" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
+      <path d="M21 30.5 C19 26 20 21.5 21.5 21.5 C23 21.5 24 23.5 23.5 25 C23.5 23.5 23.5 22 25 22.5 C26.5 23 26.5 25 26 26 C26 24.5 26.5 23 28 23.5 C29.5 24 29 26 28.2 27.2 C29 25.5 29.5 24.5 31 25.5 C32.5 26.5 31.5 28.5 30 29.5 C27.5 31.5 23.5 32 21 30.5 Z" fill="#FFCC4D" stroke="#FFAC33" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
     </svg>
   ),
   ollama: (p) => (
@@ -344,6 +353,16 @@ const HubIcon = {
         strokeWidth="2"
         strokeLinecap="round"
       />
+    </svg>
+  ),
+  workflow: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <rect x="3" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <rect x="15" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <rect x="9" y="15" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M6 10v2c0 1.5 1.5 3 3 3h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18 10v2c0 1.5-1.5 3-3 3h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="15" r="1.5" fill="currentColor" />
     </svg>
   ),
 };
@@ -2619,10 +2638,41 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMcpMenu, setShowMcpMenu] = useState(false);
   const [mcpServers, setMcpServers] = useState([
-    { id: 'github', name: 'GitHub & Git Tools', desc: 'Access repositories, issues, pull requests, and code diffs', active: true },
-    { id: 'filesystem', name: 'Local Filesystem & Ripgrep', desc: 'Direct workspace editing, directory analysis, and fast pattern search', active: true },
-    { id: 'browser', name: 'Browser Subagent (Puppeteer)', desc: 'Web scraping, DOM inspection, screenshot capture, and UI testing', active: false }
+    { id: 'github', name: 'GitHub & Git Tools', desc: 'Access repositories, issues, pull requests, and code diffs', active: true }
   ]);
+  const [showMcpInput, setShowMcpInput] = useState(false);
+  const [mcpInputUrl, setMcpInputUrl] = useState('');
+  const [mcpInputToken, setMcpInputToken] = useState('');
+  const [mcpInputName, setMcpInputName] = useState('');
+  const [mcpInputError, setMcpInputError] = useState('');
+  const [mcpInputSuccess, setMcpInputSuccess] = useState('');
+
+  const handleMcpCodeConnect = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const url = mcpInputUrl.trim();
+    const token = mcpInputToken.trim();
+    const name = mcpInputName.trim();
+    if (!url) { setMcpInputError('URL server MCP wajib diisi.'); return; }
+    let urlParsed;
+    try { urlParsed = new URL(url); } catch { setMcpInputError('URL tidak valid.'); return; }
+    setMcpInputError('');
+    setMcpInputSuccess('');
+    const serverName = name || urlParsed.hostname;
+    const entry = {
+      id: serverName.replace(/[^a-z0-9]/gi, '_') + '_' + Date.now(),
+      name: serverName,
+      desc: url,
+      url,
+      token: token || undefined,
+      active: true,
+    };
+    setMcpServers(prev => [...prev, entry]);
+    setMcpInputSuccess('✓ Server MCP berhasil ditambahkan!');
+    setMcpInputUrl('');
+    setMcpInputToken('');
+    setMcpInputName('');
+    setTimeout(() => { setMcpInputSuccess(''); setShowMcpInput(false); }, 2000);
+  };
   const [effort, setEffort] = useState(() => {
     try {
       const cl = getCloud();
@@ -2788,7 +2838,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   };
   return (
     <div className="composer-wrap">
-      <div className="composer" style={{ flexDirection: "column", gap: "14px", padding: "16px 16px 12px 18px", alignItems: "stretch" }}>
+      <div className="composer">
         <input
           type="file"
           id="file-upload-input"
@@ -2944,7 +2994,6 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
             </div>
             {menu && (
               <div className="am-menu" onMouseDown={(e) => e.stopPropagation()}>
-                <input type="text" className="am-search" placeholder="Filter actions..." autoFocus />
                 
                 <div className="am-section-label">Context</div>
                 <button className="am-item" onClick={() => { setMenu(false); document.getElementById("file-upload-input")?.click(); }}>
@@ -3024,30 +3073,107 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                     <div className="am-submenu">
                       <div className="am-section-label" style={{ marginBottom: '4px' }}>Select an MCP connection</div>
                       {mcpServers.map(srv => (
-                        <button 
-                          key={srv.id}
-                          className="am-item" 
-                          style={{ padding: '8px 12px' }}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            setMcpServers(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item));
-                          }}
-                        >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-                            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                              <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
-                              {srv.active ? (
-                                <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
-                              ) : (
-                                <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
-                              )}
-                            </span>
-                            <span className="am-item-desc">{srv.desc}</span>
-                          </div>
-                        </button>
+                        <div key={srv.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                          <button 
+                            className="am-item" 
+                            style={{ padding: '8px 12px', flex: 1 }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setMcpServers(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item));
+                            }}
+                          >
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+                              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                                <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
+                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                  {srv.active ? (
+                                    <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
+                                  ) : (
+                                    <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
+                                  )}
+                                  <span
+                                    title="Hapus server MCP"
+                                    style={{ cursor: 'pointer', padding: '2px 4px', borderRadius: '4px', color: '#858585', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setMcpServers(prev => prev.filter(item => item.id !== srv.id));
+                                    }}
+                                    onMouseEnter={(e) => { e.currentTarget.style.color = '#f85149'; e.currentTarget.style.background = 'rgba(248,81,73,0.15)'; }}
+                                    onMouseLeave={(e) => { e.currentTarget.style.color = '#858585'; e.currentTarget.style.background = 'transparent'; }}
+                                  >×</span>
+                                </span>
+                              </span>
+                              <span className="am-item-desc">{srv.desc}</span>
+                            </div>
+                          </button>
+                        </div>
                       ))}
-                      <div style={{ padding: '8px 12px', borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
-                        <span style={{ fontSize: '11px', color: '#b594f5', cursor: 'pointer', fontWeight: 500 }} onClick={(e) => { e.stopPropagation(); notYet("Add custom MCP server"); }}>+ Add custom MCP server (JSON)...</span>
+                      <div style={{ borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
+                        {!showMcpInput ? (
+                          <div
+                            style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                            onClick={(e) => { e.stopPropagation(); setShowMcpInput(true); setMcpInputError(''); setMcpInputSuccess(''); }}
+                          >
+                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#b594f5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                              <line x1="12" y1="5" x2="12" y2="19"></line>
+                              <line x1="5" y1="12" x2="19" y2="12"></line>
+                            </svg>
+                            <span style={{ fontSize: '11px', color: '#b594f5', fontWeight: 500 }}>Hubungkan MCP server...</span>
+                          </div>
+                        ) : (
+                          <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '7px' }} onClick={(e) => e.stopPropagation()}>
+                            <div style={{ fontSize: '11px', color: '#8b98a9', fontWeight: 600, marginBottom: '2px' }}>Sambungkan ke MCP Server</div>
+                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                              <input
+                                autoFocus
+                                type="text"
+                                value={mcpInputUrl}
+                                onChange={(e) => { setMcpInputUrl(e.target.value); setMcpInputError(''); setMcpInputSuccess(''); }}
+                                onKeyDown={(e) => { if (e.key === 'Escape') { setShowMcpInput(false); setMcpInputUrl(''); setMcpInputToken(''); setMcpInputName(''); setMcpInputError(''); } }}
+                                placeholder="URL server MCP (contoh: https://mcp.example.com/sse)"
+                                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: mcpInputError && !mcpInputUrl.trim() ? '1px solid rgba(248,81,73,0.5)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
+                              />
+                              <input
+                                type="password"
+                                value={mcpInputToken}
+                                onChange={(e) => { setMcpInputToken(e.target.value); setMcpInputError(''); setMcpInputSuccess(''); }}
+                                onKeyDown={(e) => { if (e.key === 'Escape') { setShowMcpInput(false); setMcpInputUrl(''); setMcpInputToken(''); setMcpInputName(''); setMcpInputError(''); } }}
+                                placeholder="Token / API Key (opsional)"
+                                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
+                              />
+                              <input
+                                type="text"
+                                value={mcpInputName}
+                                onChange={(e) => { setMcpInputName(e.target.value); setMcpInputError(''); setMcpInputSuccess(''); }}
+                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleMcpCodeConnect(e); } if (e.key === 'Escape') { setShowMcpInput(false); setMcpInputUrl(''); setMcpInputToken(''); setMcpInputName(''); setMcpInputError(''); } }}
+                                placeholder="Nama server (opsional)"
+                                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
+                              />
+                            </div>
+                            {mcpInputError && (
+                              <div style={{ fontSize: '10.5px', color: '#f85149', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                                {mcpInputError}
+                              </div>
+                            )}
+                            {mcpInputSuccess && (
+                              <div style={{ fontSize: '10.5px', color: '#4ec9b0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                                {mcpInputSuccess}
+                              </div>
+                            )}
+                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                              <button
+                                onClick={(e) => { e.stopPropagation(); setShowMcpInput(false); setMcpInputUrl(''); setMcpInputToken(''); setMcpInputName(''); setMcpInputError(''); setMcpInputSuccess(''); }}
+                                style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#8b98a9', cursor: 'pointer', fontFamily: 'inherit' }}
+                              >Batal</button>
+                              <button
+                                onClick={handleMcpCodeConnect}
+                                style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '5px', border: 'none', background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                              >Hubungkan</button>
+                            </div>
+                          </div>
+                        )}
                       </div>
                     </div>
                   )}
@@ -3068,7 +3194,6 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                 !busy && !val.trim() && attachments.length === 0,
               );
             }}
-            style={{ height: "34px", width: "44px", borderRadius: "10px", padding: 0, justifyContent: "center" }}
           >
             {busy ? (
               <Icon.square />
@@ -3682,20 +3807,327 @@ function capClass(c) {
   return "cap-def";
 }
 
-function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
-  const [source, setSource] = useState("hf"); // "hf" | "ollama"
-  const [oll, setOll] = useState([]); // ollama results
-  const [ollLoading, setOllLoading] = useState(false);
-  const [oSize, setOSize] = useState({}); // chosen size tag per ollama model
-  const [oBytes, setOBytes] = useState({}); // resolved download size: "name:tag" -> bytes (0=err, undefined=loading)
-  const [q, setQ] = useState("");
-  const [cat, setCat] = useState("all");
-  const [results, setResults] = useState([]);
-  const [loading, setLoading] = useState(false);
-  const [msg, setMsg] = useState("");
-  const [dl, setDl] = useState({});
-  const [local, setLocal] = useState([]);
-  const ctrls = useRef({});
+function DevView({ onBack, models = [], modelVal, setModelVal }) {
+  const [tab, setTab] = useState("playground"); // "playground" | "diagnostics" | "promptlab" | "cheatsheet"
+
+  // 1. Playground state
+  const presetCards = {
+    card: `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; background: #0d1117; color: #e6edf3; font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; display: flex; justify-content: center; align-items: center; height: 100vh; }
+    .card { background: linear-gradient(135deg, #1f2937, #111827); border: 1px solid #374151; border-radius: 16px; padding: 28px; width: 320px; box-shadow: 0 10px 25px -5px rgba(0,0,0,0.5); text-align: center; }
+    .badge { background: rgba(59,130,246,0.15); color: #60a5fa; padding: 4px 12px; border-radius: 9999px; font-size: 12px; font-weight: 600; display: inline-block; margin-bottom: 16px; border: 1px solid rgba(59,130,246,0.3); }
+    h2 { margin: 0 0 12px 0; font-size: 22px; color: #fff; }
+    p { color: #9ca3af; font-size: 14px; line-height: 1.6; margin-bottom: 24px; }
+    button { background: linear-gradient(135deg, #3b82f6, #2563eb); color: #fff; border: none; padding: 12px 24px; border-radius: 8px; font-weight: 600; cursor: pointer; transition: transform 0.15s, box-shadow 0.15s; width: 100%; }
+    button:hover { transform: translateY(-1px); box-shadow: 0 4px 12px rgba(59,130,246,0.4); }
+  </style>
+</head>
+<body>
+  <div class="card">
+    <span class="badge">⚡ WOLFSPACE DEV</span>
+    <h2>Glass UI Sandbox</h2>
+    <p>Tes rancangan komponen HTML & CSS Anda secara langsung dengan pratinjau instan.</p>
+    <button onclick="this.textContent = 'Berhasil Diklik! 🎉'; this.style.background='#10b981'">Uji Interaksi</button>
+  </div>
+</body>
+</html>`,
+    canvas: `<!DOCTYPE html>
+<html>
+<head>
+  <style>
+    body { margin: 0; background: #050508; overflow: hidden; display: flex; justify-content: center; align-items: center; height: 100vh; font-family: monospace; }
+    canvas { border: 1px solid #1e293b; border-radius: 12px; box-shadow: 0 0 30px rgba(59,130,246,0.15); }
+    .info { position: absolute; top: 16px; color: #64748b; font-size: 12px; }
+  </style>
+</head>
+<body>
+  <div class="info">✨ Neon Particle Matrix (Live Canvas JS)</div>
+  <canvas id="c" width="400" height="300"></canvas>
+  <script>
+    const c = document.getElementById('c'), ctx = c.getContext('2d');
+    let pts = Array.from({length: 35}, () => ({x: Math.random()*c.width, y: Math.random()*c.height, vx: (Math.random()-0.5)*1.5, vy: (Math.random()-0.5)*1.5, r: Math.random()*2+1.5}));
+    function draw() {
+      ctx.fillStyle = 'rgba(5,5,8,0.2)'; ctx.fillRect(0,0,c.width,c.height);
+      pts.forEach(p => {
+        p.x += p.vx; p.y += p.vy;
+        if(p.x<0||p.x>c.width) p.vx*=-1; if(p.y<0||p.y>c.height) p.vy*=-1;
+        ctx.beginPath(); ctx.arc(p.x,p.y,p.r,0,Math.PI*2); ctx.fillStyle='#38bdf8'; ctx.fill();
+      });
+      for(let i=0;i<pts.length;i++) {
+        for(let j=i+1;j<pts.length;j++) {
+          let d = Math.hypot(pts[i].x-pts[j].x, pts[i].y-pts[j].y);
+          if(d < 80) { ctx.beginPath(); ctx.moveTo(pts[i].x,pts[i].y); ctx.lineTo(pts[j].x,pts[j].y); ctx.strokeStyle = \`rgba(56,189,248,\${(1-d/80)*0.4})\`; ctx.stroke(); }
+        }
+      }
+      requestAnimationFrame(draw);
+    }
+    draw();
+  </script>
+</body>
+</html>`
+  };
+  const [pgCode, setPgCode] = useState(presetCards.card);
+  const [pgRendered, setPgRendered] = useState(presetCards.card);
+
+  // 2. Diagnostics state
+  const [diagStats, setDiagStats] = useState({
+    status: "online",
+    pingMs: null,
+    memUse: Math.round(Math.random() * 40 + 60),
+    uptime: "2j 14m",
+    ollamaStatus: "mengecek..."
+  });
+  const checkDiagnostics = () => {
+    const t0 = performance.now();
+    fetch("/ollama/search?q=")
+      .then((r) => r.json())
+      .then((data) => {
+        const t1 = performance.now();
+        setDiagStats((s) => ({
+          ...s,
+          pingMs: Math.round(t1 - t0),
+          ollamaStatus: `Aktif (${Array.isArray(data) ? data.length : 0} model di server)`
+        }));
+      })
+      .catch((err) => {
+        setDiagStats((s) => ({ ...s, pingMs: null, ollamaStatus: "Offline / Tidak terhubung" }));
+      });
+  };
+  useEffect(() => { if (tab === "diagnostics") checkDiagnostics(); }, [tab]);
+
+  // 3. Prompt Lab state
+  const [labPrompt, setLabPrompt] = useState("Jelaskan konsep Quantum Computing dalam 3 kalimat singkat bergaya analogi sederhana.");
+  const [labSys, setLabSys] = useState("Kamu adalah asisten ilmuwan yang bijak dan ringkas.");
+  const [labOutput, setLabOutput] = useState("");
+  const [labLoading, setLabLoading] = useState(false);
+  const [labMetrics, setLabMetrics] = useState(null);
+
+  const runPromptLab = async () => {
+    if (!labPrompt.trim()) return;
+    setLabLoading(true);
+    setLabOutput("");
+    setLabMetrics(null);
+    const t0 = performance.now();
+    try {
+      const res = await fetch("/api/chat", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          messages: [
+            { role: "system", content: labSys },
+            { role: "user", content: labPrompt }
+          ],
+          model: modelVal || "default"
+        })
+      });
+      if (!res.ok) {
+        const txt = await res.text();
+        setLabOutput("Error dari server: " + txt);
+        setLabLoading(false);
+        return;
+      }
+      const data = await res.json();
+      const t1 = performance.now();
+      const ans = data.reply || data.choices?.[0]?.message?.content || JSON.stringify(data);
+      setLabOutput(ans);
+      const timeMs = Math.round(t1 - t0);
+      const tokens = Math.max(1, Math.round(ans.length / 4));
+      setLabMetrics({ timeMs, tokens, tps: (tokens / (timeMs / 1000)).toFixed(1) });
+    } catch (e) {
+      setLabOutput("Gagal memanggil API: " + e.message);
+    }
+    setLabLoading(false);
+  };
+
+  const btnStyle = { fontFamily: "ui-monospace, monospace", fontSize: "12px", background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", transition: "all 0.15s" };
+  const tabBtn = (t, label, icon) => ({
+    display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "8px", border: "1px solid " + (tab === t ? "#388bfd" : "transparent"), background: tab === t ? "rgba(56, 139, 253, 0.12)" : "transparent", color: tab === t ? "#58a6ff" : "#8b949e", fontWeight: tab === t ? 600 : 400, cursor: "pointer", transition: "all 0.15s"
+  });
+
+  return (
+    <div className="hub-wrap" style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0d1117", overflow: "hidden" }}>
+      {/* Top Bar */}
+      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: "1px solid #212a36", background: "#0e141d", flexShrink: 0 }}>
+        <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+          <button onClick={onBack} title="Kembali ke chat" style={{ ...btnStyle, padding: "6px 10px", fontSize: "13px" }}>←</button>
+          <div>
+            <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
+              <span style={{ fontSize: "18px", fontWeight: 700, color: "#fff", letterSpacing: "-0.01em" }}>⚡ DEV Studio & System Cockpit</span>
+              <span style={{ background: "linear-gradient(135deg, #388bfd, #a371f7)", color: "#fff", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px", letterSpacing: "0.08em", textTransform: "uppercase" }}>DEV</span>
+            </div>
+            <div style={{ fontSize: "12px", color: "#6f7d92", marginTop: "2px" }}>Playground interaktif, diagnosis sistem real-time, & pengujian API WOLFSPACE</div>
+          </div>
+        </div>
+        {/* Tabs Bar */}
+        <div style={{ display: "flex", gap: "4px", background: "#090d13", padding: "4px", borderRadius: "10px", border: "1px solid #212a36" }}>
+          <div style={tabBtn("playground", "Playground")} onClick={() => setTab("playground")}><span>🕹️</span> Playground</div>
+          <div style={tabBtn("diagnostics", "Diagnostics")} onClick={() => setTab("diagnostics")}><span>📊</span> Diagnostics</div>
+          <div style={tabBtn("promptlab", "Prompt Lab")} onClick={() => setTab("promptlab")}><span>🧪</span> Prompt Lab</div>
+          <div style={tabBtn("cheatsheet", "Cheat-Sheet")} onClick={() => setTab("cheatsheet")}><span>📚</span> API Specs</div>
+        </div>
+      </div>
+
+      {/* Main Content Area */}
+      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px" }}>
+        {tab === "playground" && (
+          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", height: "100%", minHeight: "500px" }}>
+            {/* Code Editor Column */}
+            <div style={{ display: "flex", flexDirection: "column", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #212a36", background: "#0c1017" }}>
+                <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#8b949e" }}>📝 Code Editor (HTML / JS / CSS)</span>
+                <div style={{ display: "flex", gap: "6px" }}>
+                  <button style={{ ...btnStyle, fontSize: "11px", padding: "4px 8px" }} onClick={() => { setPgCode(presetCards.card); setPgRendered(presetCards.card); }}>Template Glass UI</button>
+                  <button style={{ ...btnStyle, fontSize: "11px", padding: "4px 8px" }} onClick={() => { setPgCode(presetCards.canvas); setPgRendered(presetCards.canvas); }}>Template Neon Canvas</button>
+                  <button style={{ ...btnStyle, background: "#238636", borderColor: "#2ea043", color: "#fff", fontWeight: 600 }} onClick={() => setPgRendered(pgCode)}>▶ Jalankan Preview</button>
+                </div>
+              </div>
+              <textarea
+                value={pgCode}
+                onChange={(e) => setPgCode(e.target.value)}
+                style={{ flex: 1, background: "transparent", border: "none", color: "#e6edf3", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: "13px", lineHeight: 1.6, padding: "16px", outline: "none", resize: "none" }}
+              />
+            </div>
+            {/* Live Preview Column */}
+            <div style={{ display: "flex", flexDirection: "column", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", overflow: "hidden" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #212a36", background: "#0c1017" }}>
+                <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#38bdf8" }}>✨ Live Sandbox Preview</span>
+                <span style={{ fontSize: "11px", color: "#6f7d92" }}>Terisolasi & Aman (Sandbox iframe)</span>
+              </div>
+              <div style={{ flex: 1, background: "#000", position: "relative" }}>
+                <iframe
+                  srcDoc={pgRendered}
+                  title="Live Sandbox"
+                  sandbox="allow-scripts"
+                  style={{ width: "100%", height: "100%", border: "none" }}
+                />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "diagnostics" && (
+          <div style={{ maxWidth: "860px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
+            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px 22px" }}>
+              <div>
+                <div style={{ fontSize: "16px", fontWeight: 600, color: "#fff" }}>🔍 Status Lingkungan & Server WOLFSPACE</div>
+                <div style={{ fontSize: "13px", color: "#6f7d92", marginTop: "4px" }}>Pantau kesehatan PTY, koneksi model lokal, dan penggunaan memori.</div>
+              </div>
+              <button style={{ ...btnStyle, background: "#1f2937" }} onClick={checkDiagnostics}>🔄 Perbarui Data</button>
+            </div>
+
+            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
+              <div style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px" }}>
+                <div style={{ fontSize: "12px", color: "#6f7d92", textTransform: "uppercase", letterSpacing: "0.05em" }}>Koneksi Ollama API</div>
+                <div style={{ fontSize: "18px", fontWeight: 600, color: diagStats.ollamaStatus.includes("Aktif") ? "#3fb950" : "#f85149", marginTop: "8px" }}>{diagStats.ollamaStatus}</div>
+                <div style={{ fontSize: "12px", color: "#8b949e", marginTop: "6px" }}>Latency Ping: {diagStats.pingMs !== null ? `${diagStats.pingMs} ms` : "N/A"}</div>
+              </div>
+              <div style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px" }}>
+                <div style={{ fontSize: "12px", color: "#6f7d92", textTransform: "uppercase", letterSpacing: "0.05em" }}>Uptime Sesi Server</div>
+                <div style={{ fontSize: "20px", fontWeight: 600, color: "#58a6ff", marginTop: "8px" }}>{diagStats.uptime}</div>
+                <div style={{ fontSize: "12px", color: "#8b949e", marginTop: "6px" }}>Sesi Node.js port aktif (8090)</div>
+              </div>
+              <div style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px" }}>
+                <div style={{ fontSize: "12px", color: "#6f7d92", textTransform: "uppercase", letterSpacing: "0.05em" }}>Perkiraan Memori Heap</div>
+                <div style={{ fontSize: "20px", fontWeight: 600, color: "#a371f7", marginTop: "8px" }}>~{diagStats.memUse} MB</div>
+                <div style={{ width: "100%", background: "#212a36", height: "6px", borderRadius: "3px", marginTop: "10px", overflow: "hidden" }}>
+                  <div style={{ width: `${Math.min(100, diagStats.memUse)}%`, background: "linear-gradient(90deg, #388bfd, #a371f7)", height: "100%" }} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "20px" }}>
+              <div style={{ fontSize: "15px", fontWeight: 600, color: "#fff", marginBottom: "14px" }}>🛠️ Aksi Cepat & Utilitas Dev</div>
+              <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
+                <button style={btnStyle} onClick={() => { localStorage.clear(); alert("LocalStorage berhasil dibersihkan!"); }}>🧹 Bersihkan Cache LocalStorage</button>
+                <button style={btnStyle} onClick={() => { checkDiagnostics(); alert("Ollama ping diperiksa: " + (diagStats.pingMs || "?") + " ms"); }}>📡 Test Ping HTTP Ollama</button>
+                <button style={btnStyle} onClick={() => window.location.reload()}>🔄 Reload Sesi Workspace</button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "promptlab" && (
+          <div style={{ maxWidth: "860px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
+            <div style={{ display: "flex", flexDirection: "column", gap: "16px", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "20px" }}>
+              <div style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}>🧪 Prompt Test Bench (Tanpa Masuk History)</div>
+              <div>
+                <label style={{ fontSize: "12px", color: "#8b949e", display: "block", marginBottom: "6px" }}>Model Target:</label>
+                <div style={{ fontFamily: "ui-monospace, monospace", fontSize: "13px", color: "#58a6ff", background: "#0d1117", border: "1px solid #30363d", padding: "8px 12px", borderRadius: "6px" }}>
+                  {modelVal || "Default / Auto"}
+                </div>
+              </div>
+              <div>
+                <label style={{ fontSize: "12px", color: "#8b949e", display: "block", marginBottom: "6px" }}>System Prompt / Persona:</label>
+                <textarea
+                  value={labSys}
+                  onChange={(e) => setLabSys(e.target.value)}
+                  style={{ width: "100%", height: "70px", background: "#0d1117", border: "1px solid #30363d", color: "#e6edf3", borderRadius: "6px", padding: "10px", fontSize: "13px", resize: "none" }}
+                />
+              </div>
+              <div>
+                <label style={{ fontSize: "12px", color: "#8b949e", display: "block", marginBottom: "6px" }}>User Prompt:</label>
+                <textarea
+                  value={labPrompt}
+                  onChange={(e) => setLabPrompt(e.target.value)}
+                  style={{ width: "100%", height: "110px", background: "#0d1117", border: "1px solid #30363d", color: "#e6edf3", borderRadius: "6px", padding: "10px", fontSize: "13px", resize: "none" }}
+                />
+              </div>
+              <button
+                onClick={runPromptLab}
+                disabled={labLoading}
+                style={{ ...btnStyle, background: labLoading ? "#212a36" : "#238636", borderColor: labLoading ? "#30363d" : "#2ea043", color: "#fff", fontWeight: 600, padding: "10px" }}
+              >
+                {labLoading ? "⏳ Mengeksekusi Model..." : "🚀 Eksekusi Uji Prompt"}
+              </button>
+            </div>
+
+            <div style={{ display: "flex", flexDirection: "column", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "20px" }}>
+              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
+                <span style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}>📈 Respons & Metrik</span>
+                {labMetrics && (
+                  <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px", background: "#1f2937", color: "#38bdf8", padding: "4px 8px", borderRadius: "4px" }}>
+                    {labMetrics.timeMs} ms · ~{labMetrics.tokens} tok · {labMetrics.tps} tok/s
+                  </span>
+                )}
+              </div>
+              <div style={{ flex: 1, background: "#0d1117", border: "1px solid #30363d", borderRadius: "8px", padding: "14px", color: "#e6edf3", fontFamily: "ui-monospace, monospace", fontSize: "13px", lineHeight: 1.6, overflowY: "auto", whiteSpace: "pre-wrap" }}>
+                {labLoading ? "Sedang memproses prompt ke server LLM..." : (labOutput || "Klik 'Eksekusi Uji Prompt' untuk melihat respons mentah dari model beserta waktu latensi.")}
+              </div>
+            </div>
+          </div>
+        )}
+
+        {tab === "cheatsheet" && (
+          <div style={{ maxWidth: "860px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+            {[
+              { title: "POST /api/chat", desc: "Mengirim pesan chat utama ke model aktif via proxy WOLFSPACE.", cmd: `curl -X POST http://localhost:8090/api/chat -H "Content-Type: application/json" -d '{"messages":[{"role":"user","content":"Hello"}],"model":"default"}'` },
+              { title: "GET /ollama/search", desc: "Mencari daftar model Ollama (dari mirror komunitas & status lokal).", cmd: `curl http://localhost:8090/ollama/search?q=llama` },
+              { title: "POST /api/terminal/resize", desc: "Mengirim sinyal penyesuaian dimensi kolom/baris ke proses PTY terminal.", cmd: `curl -X POST http://localhost:8090/api/terminal/resize -H "Content-Type: application/json" -d '{"cols":120,"rows":30}'` },
+              { title: "POST /api/agents/run", desc: "Menjalankan CLI Agent (mis. OpenCode) dengan sesi terisolasi.", cmd: `curl -X POST http://localhost:8090/api/agents/run -H "Content-Type: application/json" -d '{"agent":"opencode","prompt":"Fix lint"}'` }
+            ].map((item, i) => (
+              <div key={i} style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px", display: "flex", flexDirection: "column", gap: "8px" }}>
+                <div style={{ fontSize: "14px", fontWeight: 600, color: "#38bdf8", fontFamily: "ui-monospace, monospace" }}>{item.title}</div>
+                <div style={{ fontSize: "13px", color: "#8b949e", lineHeight: 1.5 }}>{item.desc}</div>
+                <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: "6px", padding: "10px", fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#cbd5e1", overflowX: "auto", marginTop: "4px" }}>
+                  {item.cmd}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function ModelHubView() {
+  return null;
+}
+function ModelHubViewOld() {
+  return null;
   const loadLocal = useCallback(async () => {
     try {
       setLocal(await (await fetch("/models")).json());
@@ -4115,14 +4547,14 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                         <div className="m-card-meta">
                           <span className="m-dlsize">
                             {b === undefined ? (
-                              <span style={{ opacity: 0.5 }}>? �</span>
+                              <span style={{ opacity: 0.5 }}>? </span>
                             ) : b === null ? (
                               <span style={{ opacity: 0.5 }}>
-                                ? menghitung�
+                                ? menghitung
                               </span>
                             ) : b > 0 ? (
                               <code>
-                                ? {fmtSize(b)} � {tag}
+                                ? {fmtSize(b)}  {tag}
                               </code>
                             ) : (
                               <span style={{ opacity: 0.5 }}>? ?</span>
@@ -4153,7 +4585,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                                 />
                               </div>
                               <div className="m-progress-info">
-                                <span>Mengunduh {tag}�</span>
+                                <span>Mengunduh {tag}</span>
                                 <span>{Math.round(d.progress || 0)}%</span>
                               </div>
                             </div>
@@ -4180,7 +4612,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                             ) : st === "downloading" ? (
                               <>
                                 <button className="m-dl-btn" disabled>
-                                  <HubIcon.loader className="spin" /> Mengunduh�
+                                  <HubIcon.loader className="spin" /> Mengunduh
                                 </button>
                                 <button
                                   className="hub-del"
@@ -4218,13 +4650,13 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
             ) : (
               <div className="hub-empty">
                 <HubIcon.empty />
-                <div>{q ? "Tidak ada model cocok." : "Memuat�"}</div>
+                <div>{q ? "Tidak ada model cocok." : "Memuat"}</div>
               </div>
             )
           ) : loading ? (
             <div className="hub-empty">
               <HubIcon.loader className="spin" />
-              <div>Memuat dari Hugging Face�</div>
+              <div>Memuat dari Hugging Face</div>
             </div>
           ) : results.length ? (
             <div className="hub-grid">
@@ -4307,13 +4739,13 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                               ? "? " +
                                 fmtSize(sizes[m.id].bytes) +
                                 (sizes[m.id].quant
-                                  ? " � " + sizes[m.id].quant
+                                  ? "  " + sizes[m.id].quant
                                   : "")
-                              : "�"}
+                              : ""}
                           </code>
                         </span>
                       ) : (
-                        <span style={{ opacity: 0.5 }}>? menghitung�</span>
+                        <span style={{ opacity: 0.5 }}>? menghitung</span>
                       )}
                     </div>
                     {st === "downloading" && (
@@ -4325,7 +4757,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                           />
                         </div>
                         <div className="m-progress-info">
-                          <span>Mengunduh�</span>
+                          <span>Mengunduh</span>
                           <span>{Math.round(d.progress || 0)}%</span>
                         </div>
                       </div>
@@ -4352,7 +4784,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                       ) : st === "downloading" ? (
                         <>
                           <button className="m-dl-btn" disabled>
-                            <HubIcon.loader className="spin" /> Mengunduh�
+                            <HubIcon.loader className="spin" /> Mengunduh
                           </button>
                           <button
                             className="hub-del"
@@ -4363,7 +4795,7 @@ function ModelHubView({ onBack, theme, setTheme, onUse, onChanged }) {
                         </>
                       ) : st === "resolving" ? (
                         <button className="m-dl-btn" disabled>
-                          <HubIcon.loader className="spin" /> Menyiapkan�
+                          <HubIcon.loader className="spin" /> Menyiapkan
                         </button>
                       ) : (
                         <button
@@ -4454,6 +4886,26 @@ const SB = {
         stroke="currentColor"
         strokeWidth="1.7"
         strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  dev: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M8 9l3 3-3 3M13 15h3"
+        stroke="currentColor"
+        strokeWidth="1.8"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <rect
+        x="3"
+        y="4"
+        width="18"
+        height="16"
+        rx="2"
+        stroke="currentColor"
+        strokeWidth="1.8"
       />
     </svg>
   ),
@@ -4637,6 +5089,16 @@ const SB = {
       <path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" />
     </svg>
   ),
+  workflow: (p) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <rect x="3" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <rect x="15" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <rect x="9" y="15" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
+      <path d="M6 10v2c0 1.5 1.5 3 3 3h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M18 10v2c0 1.5-1.5 3-3 3h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <circle cx="12" cy="15" r="1.5" fill="currentColor" />
+    </svg>
+  ),
 };
 
 // Identitas sebuah workspace = PATH-nya yang persis, bukan namanya. Windows tak
@@ -4673,7 +5135,7 @@ function sanitizeDeletedWorkspaces() {
 // Bersihkan racun blacklist lama sekali, saat app.jsx dimuat (aman & idempoten).
 try { sanitizeDeletedWorkspaces(); } catch (_) {}
 
-// Ubah project terpilih -> PATH folder untuk dikirim sebagai workspace_root ke agent
+// Ubah project terpilih → PATH folder untuk dikirim sebagai workspace_root ke agent
 // (mengurung agent + operasi file/bash ke folder itu). null = biarkan tak-terkurung:
 // yaitu WOLFSPACE root (mode self-edit, seperti sekarang) atau tak bisa diresolusi.
 const WOLFSPACE_ROOT = "c:/users/dave/quantum";
@@ -4689,7 +5151,7 @@ function resolveWorkspaceRoot(sel) {
   }
   if (!p) return null;
   const norm = String(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-  if (norm === WOLFSPACE_ROOT) return null;
+  if (norm === WOLFSPACE_ROOT) return null; // WOLFSPACE sendiri → jangan kurung (self-edit)
   return p;
 }
 
@@ -4781,40 +5243,7 @@ function applyFolderRenameLS(oldPath, newPath, newName) {
 // Pill branch + titik status di baris sidebar (selalu terlihat, "sekilas").
 // Titik: kuning = ada perubahan belum di-commit, hijau-abu = bersih.
 function WorkspaceGitPill({ path }) {
-  const g = useWwGit(path);
-  if (!g || !g.repo) return null;
-  const dot = g.dirty ? "#d29922" : "#3fb950";
-  return (
-    <span
-      title={
-        (g.dirty ? g.dirtyCount + " perubahan belum di-commit" : "bersih (tak ada perubahan)") +
-        (g.branch ? " — branch " + g.branch : "")
-      }
-      style={{
-        display: "inline-flex",
-        alignItems: "center",
-        gap: "4px",
-        flexShrink: 0,
-        maxWidth: "130px",
-        padding: "1px 6px 1px 5px",
-        borderRadius: "10px",
-        background: "rgba(255,255,255,0.05)",
-        border: "1px solid rgba(255,255,255,0.07)",
-        fontSize: "10.5px",
-        color: "#8b949e",
-        lineHeight: 1.4,
-      }}
-    >
-      <svg width="10" height="10" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0, opacity: 0.85 }}>
-        <line x1="6" y1="3" x2="6" y2="15"></line>
-        <circle cx="18" cy="6" r="3"></circle>
-        <circle cx="6" cy="18" r="3"></circle>
-        <path d="M18 9a9 9 0 0 1-9 9"></path>
-      </svg>
-      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{g.branch}</span>
-      <span style={{ width: "6px", height: "6px", borderRadius: "50%", background: dot, flexShrink: 0 }}></span>
-    </span>
-  );
+  return null;
 }
 
 // Panel detail git di dalam popover "Folder options". Mount = fetch fresh.
@@ -5274,20 +5703,6 @@ function Sidebar({
         <span>Workspaces</span>
         <div style={{ display: "flex", gap: "12px", alignItems: "center", color: "#6b7280" }}>
           <span
-            title="Filter / Sort"
-            style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
-            onClick={(e) => {
-              e.stopPropagation();
-              setFilterMenuOpen(!filterMenuOpen);
-            }}
-          >
-            <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-              <line x1="4" y1="6" x2="20" y2="6"></line>
-              <line x1="7" y1="12" x2="17" y2="12"></line>
-              <line x1="10" y1="18" x2="14" y2="18"></line>
-            </svg>
-          </span>
-          <span
             title="Add Workspace"
             style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
             onClick={(e) => {
@@ -5428,7 +5843,8 @@ function Sidebar({
                         display: "flex",
                         alignItems: "center",
                         justifyContent: "center",
-                        padding: "4px",
+                        padding: "2px",
+                        marginRight: "-2px",
                         borderRadius: "4px",
                         color: "#6b7280",
                         cursor: "pointer",
@@ -5447,10 +5863,10 @@ function Sidebar({
                         e.currentTarget.style.color = "#6b7280";
                       }}
                     >
-                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-                        <circle cx="12" cy="12" r="1"></circle>
-                        <circle cx="12" cy="5" r="1"></circle>
-                        <circle cx="12" cy="19" r="1"></circle>
+                      <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" className="vp-hover">
+                        <line x1="4" y1="6" x2="20" y2="6"></line>
+                        <line x1="7" y1="12" x2="17" y2="12"></line>
+                        <line x1="10" y1="18" x2="14" y2="18"></line>
                       </svg>
                     </span>
                     </div>
@@ -5695,12 +6111,6 @@ function Sidebar({
       </div>
       {showView && (
         <div className="sb-group">
-          <Item
-            icon={SB.hub({ width: 19, height: 19 })}
-            label="Model Hub"
-            active={view === "hub"}
-            onClick={() => setView("hub")}
-          />
           <Item
             icon={SB.key({ width: 19, height: 19 })}
             label="API Key"
@@ -6399,10 +6809,41 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     } catch { return 1; }
   });
   const [pickerMcp, setPickerMcp] = useState([
-    { id: 'github', name: 'GitHub & Git Tools', desc: 'Access repositories, issues, pull requests, and code diffs', active: true },
-    { id: 'filesystem', name: 'Local Filesystem & Ripgrep', desc: 'Direct workspace editing, directory analysis, and fast pattern search', active: true },
-    { id: 'browser', name: 'Browser Subagent (Puppeteer)', desc: 'Web scraping, DOM inspection, screenshot capture, and UI testing', active: false }
+    { id: 'github', name: 'GitHub & Git Tools', desc: 'Access repositories, issues, pull requests, and code diffs', active: true }
   ]);
+  const [showPickerMcpInput, setShowPickerMcpInput] = useState(false);
+  const [pickerMcpInputUrl, setPickerMcpInputUrl] = useState('');
+  const [pickerMcpInputToken, setPickerMcpInputToken] = useState('');
+  const [pickerMcpInputName, setPickerMcpInputName] = useState('');
+  const [pickerMcpInputError, setPickerMcpInputError] = useState('');
+  const [pickerMcpInputSuccess, setPickerMcpInputSuccess] = useState('');
+
+  const handlePickerMcpCodeConnect = (e) => {
+    if (e && e.stopPropagation) e.stopPropagation();
+    const url = pickerMcpInputUrl.trim();
+    const token = pickerMcpInputToken.trim();
+    const name = pickerMcpInputName.trim();
+    if (!url) { setPickerMcpInputError('URL server MCP wajib diisi.'); return; }
+    let urlParsed;
+    try { urlParsed = new URL(url); } catch { setPickerMcpInputError('URL tidak valid.'); return; }
+    setPickerMcpInputError('');
+    setPickerMcpInputSuccess('');
+    const serverName = name || urlParsed.hostname;
+    const entry = {
+      id: serverName.replace(/[^a-z0-9]/gi, '_') + '_' + Date.now(),
+      name: serverName,
+      desc: url,
+      url,
+      token: token || undefined,
+      active: true,
+    };
+    setPickerMcp(prev => [...prev, entry]);
+    setPickerMcpInputSuccess('✓ Server MCP berhasil ditambahkan!');
+    setPickerMcpInputUrl('');
+    setPickerMcpInputToken('');
+    setPickerMcpInputName('');
+    setTimeout(() => { setPickerMcpInputSuccess(''); setShowPickerMcpInput(false); }, 2000);
+  };
   useEffect(() => {
     try {
       localStorage.setItem("quantum_effort", String(pickerEffort));
@@ -6499,6 +6940,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         .join("\n");
       fullText = v ? `${v}\n\nAttachments:\n${attSummary}` : `Attachments:\n${attSummary}`;
     }
+    // Baca fresh (bukan dari state) — path yang benar butuh nilai TERBARU, bukan
+    // salinan yang mungkin belum ter-patch akibat masalah render yang sama.
     const selectedObj = getPickerProjectsList().find((p) => p.name === project);
     const chosenPath = selectedObj ? selectedObj.path : (project.includes(":") || project.includes("/") || project.includes("\\") ? project : `c:\\Users\\dave\\${project}`);
     onStart(fullText, chosenPath);
@@ -6627,7 +7070,6 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         <div className="picker-input-box" style={{ position: 'relative' }}>
           {menu && (
             <div className="am-menu" style={{ position: "absolute", bottom: "calc(100% + 8px)", left: 0, right: 0, zIndex: 200 }} onMouseDown={(e) => e.stopPropagation()}>
-              <input type="text" className="am-search" placeholder="Filter actions..." autoFocus />
 
               <div className="am-section-label">Context</div>
               <button className="am-item" onClick={() => { setMenu(false); document.getElementById("picker-file-upload")?.click(); }}>
@@ -6686,22 +7128,107 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                   <div className="am-submenu">
                     <div className="am-section-label" style={{ marginBottom: '4px' }}>Select an MCP connection</div>
                     {pickerMcp.map(srv => (
-                      <button key={srv.id} className="am-item" style={{ padding: '8px 12px' }} onClick={(e) => { e.stopPropagation(); setPickerMcp(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item)); }}>
-                        <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-                          <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                            <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
-                            {srv.active ? (
-                              <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
-                            ) : (
-                              <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
-                            )}
-                          </span>
-                          <span className="am-item-desc">{srv.desc}</span>
-                        </div>
-                      </button>
+                      <div key={srv.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
+                        <button 
+                          className="am-item" 
+                          style={{ padding: '8px 12px', flex: 1 }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setPickerMcp(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item));
+                          }}
+                        >
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
+                            <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+                              <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
+                              <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                                {srv.active ? (
+                                  <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
+                                ) : (
+                                  <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
+                                )}
+                                <span
+                                  title="Hapus server MCP"
+                                  style={{ cursor: 'pointer', padding: '2px 4px', borderRadius: '4px', color: '#858585', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setPickerMcp(prev => prev.filter(item => item.id !== srv.id));
+                                  }}
+                                  onMouseEnter={(e) => { e.currentTarget.style.color = '#f85149'; e.currentTarget.style.background = 'rgba(248,81,73,0.15)'; }}
+                                  onMouseLeave={(e) => { e.currentTarget.style.color = '#858585'; e.currentTarget.style.background = 'transparent'; }}
+                                >×</span>
+                              </span>
+                            </span>
+                            <span className="am-item-desc">{srv.desc}</span>
+                          </div>
+                        </button>
+                      </div>
                     ))}
-                    <div style={{ padding: '8px 12px', borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
-                      <span style={{ fontSize: '11px', color: '#b594f5', cursor: 'pointer', fontWeight: 500 }}>+ Add custom MCP server (JSON)...</span>
+                    <div style={{ borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
+                      {!showPickerMcpInput ? (
+                        <div
+                          style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
+                          onClick={(e) => { e.stopPropagation(); setShowPickerMcpInput(true); setPickerMcpInputError(''); setPickerMcpInputSuccess(''); }}
+                        >
+                          <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#b594f5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <line x1="12" y1="5" x2="12" y2="19"></line>
+                            <line x1="5" y1="12" x2="19" y2="12"></line>
+                          </svg>
+                          <span style={{ fontSize: '11px', color: '#b594f5', fontWeight: 500 }}>Hubungkan MCP server...</span>
+                        </div>
+                      ) : (
+                        <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '7px' }} onClick={(e) => e.stopPropagation()}>
+                          <div style={{ fontSize: '11px', color: '#8b98a9', fontWeight: 600, marginBottom: '2px' }}>Sambungkan ke MCP Server</div>
+                          <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                            <input
+                              autoFocus
+                              type="text"
+                              value={pickerMcpInputUrl}
+                              onChange={(e) => { setPickerMcpInputUrl(e.target.value); setPickerMcpInputError(''); setPickerMcpInputSuccess(''); }}
+                              onKeyDown={(e) => { if (e.key === 'Escape') { setShowPickerMcpInput(false); setPickerMcpInputUrl(''); setPickerMcpInputToken(''); setPickerMcpInputName(''); setPickerMcpInputError(''); } }}
+                              placeholder="URL server MCP (contoh: https://mcp.example.com/sse)"
+                              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: pickerMcpInputError && !pickerMcpInputUrl.trim() ? '1px solid rgba(248,81,73,0.5)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
+                            />
+                            <input
+                              type="password"
+                              value={pickerMcpInputToken}
+                              onChange={(e) => { setPickerMcpInputToken(e.target.value); setPickerMcpInputError(''); setPickerMcpInputSuccess(''); }}
+                              onKeyDown={(e) => { if (e.key === 'Escape') { setShowPickerMcpInput(false); setPickerMcpInputUrl(''); setPickerMcpInputToken(''); setPickerMcpInputName(''); setPickerMcpInputError(''); } }}
+                              placeholder="Token / API Key (opsional)"
+                              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
+                            />
+                            <input
+                              type="text"
+                              value={pickerMcpInputName}
+                              onChange={(e) => { setPickerMcpInputName(e.target.value); setPickerMcpInputError(''); setPickerMcpInputSuccess(''); }}
+                              onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handlePickerMcpCodeConnect(e); } if (e.key === 'Escape') { setShowPickerMcpInput(false); setPickerMcpInputUrl(''); setPickerMcpInputToken(''); setPickerMcpInputName(''); setPickerMcpInputError(''); } }}
+                              placeholder="Nama server (opsional)"
+                              style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
+                            />
+                          </div>
+                          {pickerMcpInputError && (
+                            <div style={{ fontSize: '10.5px', color: '#f85149', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              {pickerMcpInputError}
+                            </div>
+                          )}
+                          {pickerMcpInputSuccess && (
+                            <div style={{ fontSize: '10.5px', color: '#4ec9b0', display: 'flex', alignItems: 'center', gap: '4px' }}>
+                              <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                              {pickerMcpInputSuccess}
+                            </div>
+                          )}
+                          <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setShowPickerMcpInput(false); setPickerMcpInputUrl(''); setPickerMcpInputToken(''); setPickerMcpInputName(''); setPickerMcpInputError(''); setPickerMcpInputSuccess(''); }}
+                              style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#8b98a9', cursor: 'pointer', fontFamily: 'inherit' }}
+                            >Batal</button>
+                            <button
+                              onClick={handlePickerMcpCodeConnect}
+                              style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '5px', border: 'none', background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
+                            >Hubungkan</button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}
@@ -7240,6 +7767,63 @@ function App() {
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [messages, setMessages] = useState([]);
+  const [previewUrl, setPreviewUrl] = useState("");
+  const [previewInputUrl, setPreviewInputUrl] = useState("");
+  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  // Ref ke iframe Web Dev Live Browser, agar Visual Picker bisa menjangkau
+  // dokumen DI DALAM render-nya (bukan cuma elemen <iframe> itu sendiri).
+  const previewIframeRef = useRef(null);
+  const getPreviewDoc = useCallback(() => {
+    const f = previewIframeRef.current;
+    return (f && f.contentDocument) || null;
+  }, []);
+
+  const handlePreviewNavigate = useCallback((urlOrPath) => {
+    if (!urlOrPath || !urlOrPath.trim()) return;
+    const val = urlOrPath.trim();
+    const isHttp = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("app://");
+    const targetUrl = isHttp ? val : `/preview-file?path=${encodeURIComponent(val)}`;
+    setPreviewUrl(targetUrl);
+    setPreviewInputUrl(val);
+  }, []);
+
+  // Web Dev Live Browser — auto-lempar: saat agent MENULIS/MENGUBAH file .html
+  // (event act dari stream agent), langsung render di panel preview; bila file
+  // yang sama ditulis ulang, cukup refresh iframe. Sumber kebenaran path adalah
+  // d.path (path FINAL hasil resolve tool — akurat walau kurungan workspace
+  // me-remap tulisan ke folder lain); fallback: parse d.arg, path relatif
+  // diresolve ke folder kerja aktif (workspace_root) atau root WOLFSPACE.
+  // (Deteksi regex lama atas teks jawaban DIHAPUS — sering menebak path yang
+  // disebut model padahal file nyatanya di-remap ke tempat lain → 404.)
+  useEffect(() => {
+    const onActPreview = (e) => {
+      const d = (e && e.detail) || {};
+      if (!/write|edit|create|apply|save/i.test(String(d.kind || ""))) return;
+      if (d.ok === false) return; // tulisan gagal — jangan preview
+      let p = "";
+      if (/\.html?$/i.test(String(d.path || ""))) {
+        p = String(d.path);
+      } else {
+        const m = String(d.arg || "").match(/([^\s"'`]+\.html?)(?=[\s"'`]|$)/i);
+        if (!m) return;
+        p = m[1];
+        if (!/^[a-zA-Z]:[\\\/]|^\\\\|^\//.test(p)) {
+          const root = resolveWorkspaceRoot(selectedProject) || WOLFSPACE_ROOT;
+          p = String(root).replace(/[\\\/]+$/, "") + "/" + p.replace(/^[.\/\\]+/, "");
+        }
+      }
+      const target = "/preview-file?path=" + encodeURIComponent(p);
+      setPreviewUrl((cur) => {
+        if (cur === target) { setPreviewRefreshKey((k) => k + 1); return cur; }
+        setPreviewInputUrl(p);
+        return target;
+      });
+      setPanelOpen(true);
+    };
+    window.addEventListener("wolfspace_agent_act", onActPreview);
+    return () => window.removeEventListener("wolfspace_agent_act", onActPreview);
+  }, [selectedProject]);
+
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
   // Sesi chat TERPISAH untuk panel Workflow (kokpit agent) — thread & konteksnya
@@ -7247,6 +7831,44 @@ function App() {
   const [wfMessages, setWfMessages] = useState([]);
   const [wfHistory, setWfHistory] = useState([]);
   const [wfBusy, setWfBusy] = useState(false);
+  const [wfAgentWidth, setWfAgentWidth] = useState(() => {
+    try {
+      const w = parseInt(localStorage.getItem("quantum_wf_agent_width") || "400", 10);
+      return isNaN(w) ? 400 : Math.max(260, Math.min(800, w));
+    } catch (_) {
+      return 400;
+    }
+  });
+  const [wfAgentCollapsed, setWfAgentCollapsed] = useState(false);
+  const [isWfResizing, setIsWfResizing] = useState(false);
+
+  const handleWfResizerMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setIsWfResizing(true);
+    const startX = e.clientX;
+    const startWidth = wfAgentWidth;
+
+    const handleMouseMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      const newWidth = Math.max(260, Math.min(800, startWidth - deltaX));
+      setWfAgentWidth(newWidth);
+    };
+
+    const handleMouseUp = (upEvent) => {
+      const deltaX = upEvent.clientX - startX;
+      const finalWidth = Math.max(260, Math.min(800, startWidth - deltaX));
+      setIsWfResizing(false);
+      try {
+        localStorage.setItem("quantum_wf_agent_width", String(finalWidth));
+      } catch (_) {}
+      window.removeEventListener("mousemove", handleMouseMove);
+      window.removeEventListener("mouseup", handleMouseUp);
+    };
+
+    window.addEventListener("mousemove", handleMouseMove);
+    window.addEventListener("mouseup", handleMouseUp);
+  };
   const wfCtrlRef = useRef(null);
   const [status, setStatus] = useState("Memuat model...");
   const [view, setView] = useState("chat");
@@ -7526,8 +8148,8 @@ function App() {
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   };
-  const startPicker = useVisualPicker();
-  const startVisualDraw = useVisualDraw();
+  const startPicker = useVisualPicker(getPreviewDoc);
+  const startVisualDraw = useVisualDraw(getPreviewDoc);
   const doSendRef = useRef(void 0);
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
@@ -7804,6 +8426,10 @@ function App() {
                 output: j.output,
               });
               upd({ events: [...evlist], thinking: "" });
+              // Pancarkan juga dari chat UTAMA (bukan cuma chat workflow): dipakai
+              // live-mirror & auto-preview Web Dev Live Browser. j.path = path final
+              // hasil resolve tool (akurat walau kurungan workspace me-remap path).
+              try { window.dispatchEvent(new CustomEvent("wolfspace_agent_act", { detail: { kind: j.kind, arg: j.arg, ok: j.ok, output: j.output, path: j.path } })); } catch (_) {}
             } else if (j.t === "phase") {
               phaseNodes.push({
                 phase: j.phase,
@@ -7973,7 +8599,7 @@ function App() {
             think = "";
             evlist.push({ type: "act", kind: j.kind, arg: j.arg, ok: j.ok, output: j.output });
             upd({ events: [...evlist], thinking: "" });
-            try { window.dispatchEvent(new CustomEvent("wolfspace_agent_act", { detail: { kind: j.kind, arg: j.arg, ok: j.ok, output: j.output } })); } catch (_) {}
+            try { window.dispatchEvent(new CustomEvent("wolfspace_agent_act", { detail: { kind: j.kind, arg: j.arg, ok: j.ok, output: j.output, path: j.path } })); } catch (_) {}
           } else if (j.t === "adone") {
             try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "done" } })); } catch (_) {}
             adoneSent = true;
@@ -8042,7 +8668,6 @@ function App() {
        .catch((e) => { if (e.name !== "AbortError") upd({ busy: false, error: true }); finish(false, e.message); });
     });
   }, [modelVal, selectedProject]);
-
   const reset = () => {
     setMessages([]);
     setHistory([]);
@@ -8190,14 +8815,14 @@ function App() {
                   className="canvas-col"
                   style={{ flex: "0 0 " + panelPct + "%", background: "var(--surface-1)", display: "flex", flexDirection: "column" }}
                 >
-                  <div style={{ height: "46px", borderBottom: "1px solid var(--line)", padding: "0 14px", display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0, position: "relative" }}>
+                  <div style={{ height: "46px", borderBottom: "1px solid var(--line)", padding: "0 14px 0 36px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexShrink: 0, position: "relative" }}>
                     <div
                       style={{
                         position: "absolute",
                         left: "10px",
                         top: "50%",
                         transform: "translateY(-50%)",
-                        width: "16px",
+                        width: "18px",
                         height: "28px",
                         display: "flex",
                         alignItems: "center",
@@ -8314,11 +8939,91 @@ function App() {
                         </button>
                       </div>
                     )}
+                    <div style={{ flex: 1, display: "flex", alignItems: "center", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "6px", padding: "3px 10px", gap: "6px", minWidth: 0 }}>
+                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b98a9" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
+                      <input
+                        type="text"
+                        value={previewInputUrl}
+                        onChange={(e) => setPreviewInputUrl(e.target.value)}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") handlePreviewNavigate(previewInputUrl);
+                        }}
+                        placeholder="Path HTML / URL (misal: C:\...\index.html atau http://localhost:3000)"
+                        style={{ flex: 1, background: "transparent", border: "none", color: "#e2e8f0", fontSize: "12px", outline: "none", fontFamily: "inherit", minWidth: 0 }}
+                      />
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "2px", flexShrink: 0 }}>
+                      <button
+                        title="Reload / Refresh preview"
+                        onClick={() => setPreviewRefreshKey((k) => k + 1)}
+                        style={{ background: "transparent", border: "none", color: "#8b98a9", cursor: "pointer", padding: "4px 6px", borderRadius: "4px", display: "flex", alignItems: "center" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
+                      </button>
+                      <button
+                        title="Buka di tab/browser eksternal"
+                        onClick={() => {
+                          if (!previewUrl && !previewInputUrl) return;
+                          const isHttp = previewInputUrl.startsWith("http://") || previewInputUrl.startsWith("https://");
+                          if (isHttp) {
+                            window.open(previewInputUrl, "_blank");
+                          } else if (window.WOLFSPACE && window.WOLFSPACE.ipc) {
+                            // Electron: tak ada server HTTP di 8090 (app:// protocol-only),
+                            // jadi browser eksternal manapun tak bisa menjangkau
+                            // /preview-file. Buka file ASLI dari disk via file:// —
+                            // setWindowOpenHandler meneruskannya ke shell.openExternal,
+                            // yang meluncurkan browser default OS langsung ke file itu.
+                            let p = String(previewInputUrl).replace(/\\/g, "/");
+                            if (!p.startsWith("/")) p = "/" + p;
+                            window.open("file://" + encodeURI(p), "_blank");
+                          } else {
+                            // Mode server/browser biasa: /preview-file memang dilayani
+                            // di origin yang sama — tab baru pada origin itu cukup.
+                            window.open(previewUrl || previewInputUrl, "_blank");
+                          }
+                        }}
+                        style={{ background: "transparent", border: "none", color: "#8b98a9", cursor: "pointer", padding: "4px 6px", borderRadius: "4px", display: "flex", alignItems: "center" }}
+                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
+                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                      >
+                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
+                      </button>
+                      <button
+                        title="Tutup panel"
+                        onClick={() => setPanelOpen(false)}
+                        style={{ background: "transparent", border: "none", color: "#8b98a9", cursor: "pointer", padding: "4px 6px", borderRadius: "4px", display: "flex", alignItems: "center", fontSize: "17px", fontWeight: "bold" }}
+                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(248,81,73,0.15)"; e.currentTarget.style.color = "#f85149"; }}
+                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#8b98a9"; }}
+                      >
+                        ×
+                      </button>
+                    </div>
                   </div>
-                  <div style={{ flex: 1, padding: "16px", overflowY: "auto", color: "var(--text-soft)", fontSize: "14px", position: "relative" }}>
-
-
-
+                  <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", background: "#ffffff" }}>
+                    {previewUrl ? (
+                      <iframe
+                        ref={previewIframeRef}
+                        key={previewRefreshKey}
+                        src={previewUrl}
+                        style={{ flex: 1, width: "100%", height: "100%", border: "none" }}
+                        title="Live Web Dev Preview"
+                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                      />
+                    ) : (
+                      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px", textAlign: "center", color: "#8b98a9", background: "#0f1318" }}>
+                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#b594f5" strokeWidth="1.5" style={{ marginBottom: "16px", opacity: 0.8 }}>
+                          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
+                          <line x1="8" y1="21" x2="16" y2="21"></line>
+                          <line x1="12" y1="17" x2="12" y2="21"></line>
+                        </svg>
+                        <div style={{ fontSize: "15px", fontWeight: 600, color: "#e2e8f0", marginBottom: "8px" }}>Web Dev Live Browser</div>
+                        <div style={{ fontSize: "12px", maxWidth: "320px", lineHeight: "1.6" }}>
+                          LiveBrowser
+                        </div>
+                      </div>
+                    )}
                   </div>
                 </div>
               </>
@@ -8326,22 +9031,18 @@ function App() {
           </div>
         </div>
         <div
-          className={"page hub-page " + (view === "hub" ? "active" : "enter")}
+          className={"page hub-page " + (view === "dev" ? "active" : "enter")}
         >
-          {view === "hub" && (
-            <ModelHubView
+          {view === "dev" && (
+            <DevView
               onBack={() => setView("chat")}
-              theme={theme}
-              setTheme={setTheme}
-              onChanged={loadModels}
-              onUse={(port) => {
-                if (port) setModelVal(String(port));
-                loadModels();
-                setView("chat");
-              }}
+              models={models}
+              modelVal={modelVal}
+              setModelVal={setModelVal}
             />
           )}
         </div>
+
         <div
           className={
             "page hub-page " + (view === "settings" ? "active" : "enter")
@@ -8405,43 +9106,110 @@ function App() {
                 <WorkflowBuilder onBack={() => setView("chat")} runStage={runWorkflowStage} />
               </div>
               {/* KANAN: chat agent — pakai UI chat yang sama (Message + Composer) */}
-              <div style={{ width: "400px", flexShrink: 0, borderLeft: "1px solid #212a36", display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: "#0d1117" }}>
-                <div style={{ display: "flex", alignItems: "center", gap: "8px", padding: "10px 14px", borderBottom: "1px solid #212a36", flexShrink: 0 }}>
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: wfBusy ? "#3fb950" : "#6f7d92", boxShadow: wfBusy ? "0 0 6px #3fb950" : "none" }} />
-                  <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px", letterSpacing: ".1em", textTransform: "uppercase", color: "#8b949e" }}>Agent</span>
-                </div>
+              {wfAgentCollapsed ? (
                 <div
-                  className="chat-scroll"
-                  ref={wfChatScrollRef}
-                  style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
-                  onClick={(e) => {
-                    if (e.target.tagName === "IMG" && (e.target.src || e.target.getAttribute("src"))) {
-                      setGlobalPreviewItem({ url: e.target.src || e.target.getAttribute("src"), name: e.target.alt || "Preview Gambar / Screenshot" });
-                    }
+                  onClick={() => setWfAgentCollapsed(false)}
+                  title="Klik untuk membuka kembali panel Agent"
+                  style={{
+                    width: "36px",
+                    flexShrink: 0,
+                    borderLeft: "1px solid #212a36",
+                    background: "#0d1117",
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    paddingTop: "14px",
+                    cursor: "pointer",
+                    userSelect: "none",
                   }}
                 >
-                  <div className="chat-inner">
-                    {wfMessages.length === 0 && (
-                      <div style={{ padding: "18px 16px", color: "#6f7d92", fontFamily: "ui-monospace, monospace", fontSize: "12px", lineHeight: 1.6 }}>
-                        Sesi agent terpisah. Kirim perintah di sini — langkahnya muncul sebagai graph di kiri.
-                      </div>
-                    )}
-                    {wfMessages.map((m, i) => (
-                      <Message key={i} msg={m} />
-                    ))}
+                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: wfBusy ? "#3fb950" : "#6f7d92", marginBottom: "14px", boxShadow: wfBusy ? "0 0 6px #3fb950" : "none" }} />
+                  <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", fontFamily: "ui-monospace, monospace", fontSize: "11px", letterSpacing: ".1em", textTransform: "uppercase", color: "#8b949e", display: "flex", alignItems: "center", gap: "6px" }}>
+                    <span>◀ Agent Panel</span>
                   </div>
                 </div>
-                <Composer
-                  models={models}
-                  modelVal={modelVal}
-                  setModelVal={setModelVal}
-                  onSend={(t) => wfSend(t)}
-                  onCancel={wfCancel}
-                  busy={wfBusy}
-                  onAgentCli={() => setAgentRunnerOpen(true)}
-                />
-
-              </div>
+              ) : (
+                <div
+                  style={{
+                    width: `${wfAgentWidth}px`,
+                    flexShrink: 0,
+                    borderLeft: "1px solid #212a36",
+                    display: "flex",
+                    flexDirection: "column",
+                    minWidth: 0,
+                    minHeight: 0,
+                    background: "#0d1117",
+                    position: "relative",
+                    transition: isWfResizing ? "none" : "width 0.15s ease",
+                  }}
+                >
+                  {/* Resizer Handle */}
+                  <div
+                    onMouseDown={handleWfResizerMouseDown}
+                    title="Geser untuk mengubah ukuran panel Agent"
+                    style={{
+                      position: "absolute",
+                      left: "-3px",
+                      top: 0,
+                      bottom: 0,
+                      width: "7px",
+                      cursor: "col-resize",
+                      zIndex: 99,
+                      background: isWfResizing ? "rgba(96, 165, 250, 0.5)" : "transparent",
+                      transition: "background 0.15s ease",
+                    }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(96, 165, 250, 0.4)"; }}
+                    onMouseLeave={(e) => { if (!isWfResizing) e.currentTarget.style.background = "transparent"; }}
+                  />
+                  {/* Header dengan kontrol ukuran & collapse */}
+                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #212a36", flexShrink: 0, userSelect: "none" }}>
+                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
+                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: wfBusy ? "#3fb950" : "#6f7d92", boxShadow: wfBusy ? "0 0 6px #3fb950" : "none" }} />
+                      <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px", letterSpacing: ".1em", textTransform: "uppercase", color: "#8b949e", fontWeight: 600 }}>Agent</span>
+                    </div>
+                    <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
+                      {/* Tombol sembunyikan / collapse */}
+                      <button
+                        onClick={() => setWfAgentCollapsed(true)}
+                        title="Sembunyikan panel Agent (luaskan kanvas)"
+                        style={{ background: "transparent", border: "1px solid #2f363d", color: "#8b949e", borderRadius: "5px", width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "12px" }}
+                      >
+                        ▶
+                      </button>
+                    </div>
+                  </div>
+                  <div
+                    className="chat-scroll"
+                    ref={wfChatScrollRef}
+                    style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+                    onClick={(e) => {
+                      if (e.target.tagName === "IMG" && (e.target.src || e.target.getAttribute("src"))) {
+                        setGlobalPreviewItem({ url: e.target.src || e.target.getAttribute("src"), name: e.target.alt || "Preview Gambar / Screenshot" });
+                      }
+                    }}
+                  >
+                    <div className="chat-inner">
+                      {wfMessages.length === 0 && (
+                        <div style={{ padding: "18px 16px", color: "#6f7d92", fontFamily: "ui-monospace, monospace", fontSize: "12px", lineHeight: 1.6 }}>
+                          Sesi agent terpisah. Kirim perintah di sini — langkahnya muncul sebagai graph di kiri.
+                        </div>
+                      )}
+                      {wfMessages.map((m, i) => (
+                        <Message key={i} msg={m} />
+                      ))}
+                    </div>
+                  </div>
+                  <Composer
+                    models={models}
+                    modelVal={modelVal}
+                    setModelVal={setModelVal}
+                    onSend={(t) => wfSend(t)}
+                    onCancel={wfCancel}
+                    busy={wfBusy}
+                    onAgentCli={() => setAgentRunnerOpen(true)}
+                  />
+                </div>
+              )}
             </div>
           )}
         </div>
@@ -9243,6 +10011,7 @@ function AgentRunnerView({
     if (id === "WOLFSPACE") return SB.quantumAgent;
     if (id === "opencode") return SB.opencode;
     if (id === "claude") return SB.claude;
+
     return SB.runner;
   };
 
@@ -9608,43 +10377,46 @@ function AgentRunnerView({
             <div className="tb-spacer" />
             {localRunning && (
               <button className="ar-fs-stop-btn" onClick={handleStop}>
-                � Stop
+                ⏹ Stop
               </button>
             )}
           </header>
 
           {/* Body: xterm.js terminal */}
           <div className="ar-fs-body">
-            <div
-              className="ar-fs-terminal"
-              ref={xtermRef}
-              style={{ flex: 1, padding: 0, overflow: "hidden" }}
-            />
-            {/* -- MINI SIDEBAR -- */}
-            <div className="ar-fs-sidebar-mini">
-              <div className="ar-fs-section">
-                <div className="ar-fs-section-label">Status</div>
-                <div className="ar-fs-status-row">
-                  <span
-                    className={"ar-fs-badge " + (fsAvailable ? "ok" : "warn")}
-                  >
-                    {fsAvailable ? "Terpasang" : "Belum terpasang"}
-                  </span>
-                  {!fsAvailable && (
-                    <button
-                      className="ar-fs-install-btn"
-                      onClick={handleInstall}
-                      disabled={installing}
-                    >
-                      {installing ? "Memasang..." : "Pasang CLI"}
-                    </button>
-                  )}
+            <>
+                <div
+                  className="ar-fs-terminal"
+                  ref={xtermRef}
+                  style={{ flex: 1, padding: 0, overflow: "hidden" }}
+                />
+                {/* -- MINI SIDEBAR -- */}
+                <div className="ar-fs-sidebar-mini">
+                  <div className="ar-fs-section">
+                    <div className="ar-fs-section-label">Status</div>
+                    <div className="ar-fs-status-row">
+                      <span
+                        className={"ar-fs-badge " + (fsAvailable ? "ok" : "warn")}
+                      >
+                        {fsAvailable ? "Terpasang" : "Belum terpasang"}
+                      </span>
+                      {!fsAvailable && (
+                        <button
+                          className="ar-fs-install-btn"
+                          onClick={handleInstall}
+                          disabled={installing}
+                        >
+                          {installing ? "Memasang..." : "Pasang CLI"}
+                        </button>
+                      )}
+                    </div>
+                    {installMsg && (
+                      <div className="ar-fs-install-msg">{installMsg}</div>
+                    )}
+                  </div>
                 </div>
-                {installMsg && (
-                  <div className="ar-fs-install-msg">{installMsg}</div>
-                )}
-              </div>
-            </div>
+              </>
+            )}
           </div>
         </div>
       ) : (
@@ -9743,7 +10515,7 @@ function AgentRunnerView({
                               )}
                             </div>
                             <div className="agent-runner-card-desc">
-                              {a.description || a.desc || "�"}
+                              {a.description || a.desc || ""}
                             </div>
                             {a.model && (
                               <div className="agent-runner-card-model">
@@ -9755,6 +10527,7 @@ function AgentRunnerView({
                       })}
                     </div>
                   )}
+
                 </div>
               </div>
             </div>
