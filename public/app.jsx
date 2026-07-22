@@ -8254,6 +8254,32 @@ function App() {
                           onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
                           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                           onClick={() => {
+                            // Placeholder: kustom kontrol berbasis React Flow — logika/isinya
+                            // sengaja belum diimplementasikan (menyusul).
+                            setPanelMenuOpen(false);
+                          }}
+                        >
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="6" height="5" rx="1"></rect><rect x="15" y="9" width="6" height="5" rx="1"></rect><rect x="9" y="15" width="6" height="5" rx="1"></rect><path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path></svg>
+                          <span>Logic</span>
+                        </button>
+                        <button
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            gap: "10px",
+                            width: "100%",
+                            padding: "8px 16px",
+                            color: "#e2e8f0",
+                            fontSize: "13px",
+                            border: "none",
+                            background: "transparent",
+                            cursor: "pointer",
+                            fontFamily: "inherit",
+                            textAlign: "left",
+                          }}
+                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
+                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+                          onClick={() => {
                             setPanelMenuOpen(false);
                             startPicker();
                           }}
