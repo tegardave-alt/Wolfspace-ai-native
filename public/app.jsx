@@ -8504,14 +8504,29 @@ function stripDesignBlocks(text) {
     .trim();
 }
 
-function WFNodeCard({ data }) {
+// Context: memberi node akses untuk MENGUBAH dirinya (label/kind) di state kanvas.
+// editable=false di mode Live (cermin agent tak boleh diedit).
+const WFNodeCtx = React.createContext(null);
+const WF_KINDS = ["prompt", "agent", "tool", "condition", "output"];
+
+function WFNodeCard({ id, data }) {
   const XY = window.RFLib && window.RFLib.XY;
   const Handle = XY && XY.Handle;
   const Position = XY && XY.Position;
-  const accent = (data && data.accent) || "#8fb3ff";
+  const ctx = React.useContext(WFNodeCtx);
+  const editable = !!(ctx && ctx.editable);
+  const [editing, setEditing] = React.useState(false);
+  const accent = (data && data.accent) || wfKindAccent(data && data.kind);
   const err = data && data.ok === false;           // langkah agent gagal
   const active = data && data.active;               // langkah agent yang sedang jalan
   const edge = err ? "#f85149" : accent;
+  const update = (patch) => ctx && ctx.setNodes && ctx.setNodes((nds) => nds.map((n) => (n.id === id ? { ...n, data: { ...n.data, ...patch } } : n)));
+  const cycleKind = () => {
+    if (!editable) return;
+    const nx = WF_KINDS[(WF_KINDS.indexOf(data.kind) + 1) % WF_KINDS.length];
+    update({ kind: nx, accent: wfKindAccent(nx) });
+  };
+  const commit = (v) => { const t = String(v || "").trim(); if (t) update({ label: t }); setEditing(false); };
   return (
     <div style={{
       minWidth: "128px", maxWidth: "220px", background: "#131922",
@@ -8521,11 +8536,25 @@ function WFNodeCard({ data }) {
     }}>
       {Handle && <Handle type="target" position={Position.Left} style={{ background: edge, width: 8, height: 8, border: "none" }} />}
       <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "9px", letterSpacing: ".12em", textTransform: "uppercase", color: edge, marginBottom: "3px" }}>
-        <span>{data.kind}</span>
+        <span onClick={(e) => { e.stopPropagation(); cycleKind(); }} title={editable ? "klik: ganti jenis node" : undefined} style={{ cursor: editable ? "pointer" : "default", userSelect: "none" }}>{data.kind}{editable ? " ▾" : ""}</span>
         {active && <span style={{ width: 6, height: 6, borderRadius: "50%", background: edge, boxShadow: "0 0 6px " + edge }} />}
         {err && <span title="gagal">✕</span>}
       </div>
-      <div style={{ fontSize: "12.5px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{data.label}</div>
+      {editing ? (
+        <input
+          className="nodrag" autoFocus defaultValue={data.label}
+          onMouseDown={(e) => e.stopPropagation()}
+          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") commit(e.currentTarget.value); else if (e.key === "Escape") setEditing(false); }}
+          onBlur={(e) => commit(e.currentTarget.value)}
+          style={{ width: "100%", background: "#0d1117", border: "1px solid " + edge, borderRadius: "5px", color: "#dce4f0", fontFamily: "ui-monospace, monospace", fontSize: "12.5px", fontWeight: 600, padding: "2px 6px", outline: "none" }}
+        />
+      ) : (
+        <div
+          onDoubleClick={(e) => { e.stopPropagation(); if (editable) setEditing(true); }}
+          title={editable ? "dobel-klik: ubah label" : undefined}
+          style={{ fontSize: "12.5px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default" }}
+        >{data.label}</div>
+      )}
       {Handle && <Handle type="source" position={Position.Right} style={{ background: edge, width: 8, height: 8, border: "none" }} />}
     </div>
   );
@@ -8732,9 +8761,11 @@ function WorkflowBuilderInner({ onBack, runStage }) {
       </div>
       <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
         <style>{"@keyframes wfflow{to{stroke-dashoffset:-22}}"}</style>
-        <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "wf" }} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
-          <Background variant={BackgroundVariant.Diagonal} gap={26} lineWidth={1} color="#1c2a3a" />
-        </ReactFlow>
+        <WFNodeCtx.Provider value={{ setNodes, editable: !isLive }}>
+          <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "wf" }} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
+            <Background variant={BackgroundVariant.Diagonal} gap={26} lineWidth={1} color="#1c2a3a" />
+          </ReactFlow>
+        </WFNodeCtx.Provider>
         {/* Kontrol custom WOLFSPACE (ganti <Controls> bawaan) */}
         <div style={{ position: "absolute", right: "14px", bottom: "14px", display: "flex", flexDirection: "column", gap: "4px", zIndex: 5 }}>
           {[["＋", () => rf.zoomIn({ duration: 150 }), "Perbesar"], ["－", () => rf.zoomOut({ duration: 150 }), "Perkecil"], ["⤢", () => rf.fitView({ duration: 300, padding: 0.2 }), "Pas ke layar"]].map(([lbl, fn, t]) => (
