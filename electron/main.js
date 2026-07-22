@@ -63,6 +63,46 @@ const _MIME = {
   ".map": "application/json",
 };
 
+// Web Dev Live Browser: layani file dari disk untuk iframe preview (paritas
+// endpoint /preview-file di server.cjs). iframe adalah document load — TIDAK
+// lewat fetch-shim IPC — jadi protocol app:// harus melayaninya sendiri.
+// Untuk HTML, <base> di-inject agar aset relatif (css/js/img) ikut terlayani
+// via /preview-file-assets/<path-absolut>.
+async function servePreviewFile(reqPath, injectBase) {
+  try {
+    if (!reqPath) return new Response("Missing ?path=", { status: 400 });
+    const resolved = path.resolve(reqPath);
+    const st = await fs.promises.stat(resolved).catch(() => null);
+    if (!st || st.isDirectory())
+      return new Response(
+        '<html><body style="background:#0b0d11;color:#aaa;font-family:system-ui;padding:40px"><h3>404 — File not found</h3><p>' +
+          resolved + "</p></body></html>",
+        { status: 404, headers: { "content-type": "text/html; charset=utf-8" } },
+      );
+    const ext = path.extname(resolved).toLowerCase();
+    const ct = _MIME[ext] || "application/octet-stream";
+    let data = await fs.promises.readFile(resolved);
+    if (injectBase && (ext === ".html" || ext === ".htm")) {
+      const dir = resolved.replace(/\\/g, "/").replace(/\/[^\/]*$/, "/");
+      const baseTag = '<base href="/preview-file-assets/' + encodeURI(dir) + '">';
+      let html = data.toString("utf8");
+      html = /<head[^>]*>/i.test(html)
+        ? html.replace(/<head[^>]*>/i, (m) => m + baseTag)
+        : baseTag + html;
+      data = Buffer.from(html, "utf8");
+    }
+    return new Response(data, {
+      status: 200,
+      headers: {
+        "content-type": ct + (ct.startsWith("text/") ? "; charset=utf-8" : ""),
+        "cache-control": "no-store",
+      },
+    });
+  } catch (e) {
+    return new Response("preview error: " + (e && e.message), { status: 500 });
+  }
+}
+
 function registerAppProtocol() {
   const pubDir = path.join(unpackedRoot(), "public");
   const studioDir = path.join(unpackedRoot(), "studio", "build", "web");
@@ -70,6 +110,10 @@ function registerAppProtocol() {
     try {
       const url = new URL(request.url); // app://WOLFSPACE/<path>
       let p = decodeURIComponent(url.pathname || "/");
+      if (p === "/preview-file")
+        return servePreviewFile(url.searchParams.get("path") || "", true);
+      if (p.startsWith("/preview-file-assets/"))
+        return servePreviewFile(p.slice("/preview-file-assets/".length), false);
       let base = pubDir,
         rel = p;
       if (p === "/" || p === "") rel = "/index.html";
