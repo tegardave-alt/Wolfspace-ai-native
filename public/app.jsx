@@ -2546,7 +2546,7 @@ function Model3DViewer({ url, name }) {
       setErrMsg("Pustaka 3D (three.js) belum termuat.");
       return;
     }
-    const { THREE, GLTFLoader, STLLoader, OrbitControls } = lib;
+    const { THREE, GLTFLoader, STLLoader, OrbitControls, RoomEnvironment } = lib;
     let raf = 0;
     let disposed = false;
     const disposables = [];
@@ -2555,37 +2555,74 @@ function Model3DViewer({ url, name }) {
     const h = mount.clientHeight || 400;
 
     const scene = new THREE.Scene();
-    scene.background = new THREE.Color(0x0d1117);
+    scene.background = new THREE.Color(0x14181f);
     const camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 5000);
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h);
     // three r160: default output sudah sRGB; set eksplisit untuk konsistensi warna GLB.
     if ("outputColorSpace" in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
+    // ACES filmic tone mapping — kunci look "filmic" Blender (EEVEE/Cycles default);
+    // tanpa ini warna PBR terlihat datar & mudah over-bright.
+    renderer.toneMapping = THREE.ACESFilmicToneMapping;
+    renderer.toneMappingExposure = 1.0;
+    // Bayangan lembut (PCF) untuk contact shadow di bawah model.
+    renderer.shadowMap.enabled = true;
+    renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
 
-    // Pencahayaan: ambient lembut + 2 directional (key/fill) supaya STL polos (tanpa
-    // material bawaan) tetap terbaca bentuknya, dan GLB ber-PBR terlihat wajar.
-    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
-    const key = new THREE.DirectionalLight(0xffffff, 1.1);
-    key.position.set(3, 5, 4);
+    // IBL: environment studio prosedural (RoomEnvironment) -> PMREM. Inilah sumber
+    // cahaya & refleksi utama untuk material PBR (GLB) yang memberi kesan "render
+    // studio Blender". Dibangkitkan di runtime — tanpa file HDR eksternal, tetap offline.
+    const pmrem = new THREE.PMREMGenerator(renderer);
+    const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
+    scene.environment = envTex;
+    disposables.push(envTex, pmrem);
+
+    // Satu key light directional untuk highlight + PENCETAK bayangan (IBL tak mencetak
+    // bayangan tajam). Ambient tipis hanya mengangkat area paling gelap sedikit.
+    scene.add(new THREE.AmbientLight(0xffffff, 0.25));
+    const key = new THREE.DirectionalLight(0xffffff, 2.2);
+    key.castShadow = true;
+    key.shadow.mapSize.set(2048, 2048);
+    key.shadow.bias = -0.0004;
     scene.add(key);
-    const fill = new THREE.DirectionalLight(0xffffff, 0.5);
-    fill.position.set(-4, -2, -3);
-    scene.add(fill);
+    scene.add(key.target);
 
     const controls = new OrbitControls(camera, renderer.domElement);
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
 
-    // Bingkai kamera ke bounding box objek: hitung radius, mundurkan kamera sesuai
-    // FOV agar model pas di layar berapa pun skala aslinya (mm vs meter, dll).
+    // Bingkai kamera ke bounding box objek + pasang contact-shadow ground + atur
+    // frustum shadow camera. Auto-frame agar model pas di layar berapa pun skala
+    // aslinya (mm vs meter, dll).
     const frameObject = (obj) => {
+      obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
       const box = new THREE.Box3().setFromObject(obj);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
       obj.position.sub(center); // pusatkan model ke origin
       const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const minY = -size.y / 2; // dasar model setelah dipusatkan
+
+      // Contact shadow: lantai netral halus (sedikit lebih terang dari background)
+      // yang menerima bayangan — memberi kesan model "menapak", bukan melayang.
+      const gmat = new THREE.MeshStandardMaterial({ color: 0x1c222b, roughness: 0.95, metalness: 0 });
+      const ground = new THREE.Mesh(new THREE.PlaneGeometry(maxDim * 14, maxDim * 14), gmat);
+      ground.rotation.x = -Math.PI / 2;
+      ground.position.y = minY - maxDim * 0.002;
+      ground.receiveShadow = true;
+      scene.add(ground);
+
+      // Frustum shadow camera key light harus menutupi model.
+      const sh = maxDim * 1.3;
+      key.shadow.camera.left = -sh; key.shadow.camera.right = sh;
+      key.shadow.camera.top = sh; key.shadow.camera.bottom = -sh;
+      key.shadow.camera.near = 0.01; key.shadow.camera.far = maxDim * 20;
+      key.position.set(maxDim * 0.6, maxDim * 1.5, maxDim * 0.9);
+      key.target.position.set(0, 0, 0);
+      key.shadow.camera.updateProjectionMatrix();
+
       const fov = (camera.fov * Math.PI) / 180;
       const dist = (maxDim / 2 / Math.tan(fov / 2)) * 1.6;
       camera.position.set(0, maxDim * 0.15, dist);

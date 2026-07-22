@@ -6,5 +6,8 @@ import * as THREE from "three";
 import { GLTFLoader } from "three/examples/jsm/loaders/GLTFLoader.js";
 import { STLLoader } from "three/examples/jsm/loaders/STLLoader.js";
 import { OrbitControls } from "three/examples/jsm/controls/OrbitControls.js";
+// RoomEnvironment: studio-light prosedural (dibangkitkan di runtime, TANPA file HDR
+// eksternal) — sumber IBL untuk look "sekelas Blender studio" yang tetap 100% offline.
+import { RoomEnvironment } from "three/examples/jsm/environments/RoomEnvironment.js";
 
-export { THREE, GLTFLoader, STLLoader, OrbitControls };
+export { THREE, GLTFLoader, STLLoader, OrbitControls, RoomEnvironment };
