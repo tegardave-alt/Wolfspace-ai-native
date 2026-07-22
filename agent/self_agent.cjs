@@ -926,7 +926,17 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           // Per-name counter: detects loop where agent retries same tool with slightly different args
           callCountsByName[tc.function.name] =
             (callCountsByName[tc.function.name] || 0) + 1;
-          if (callCounts[sig] > 3) return { stop: true }; // exact same call > 3x: hard stop
+          if (callCounts[sig] > 3) {
+            // exact same call > 3x: hard stop — catat & beri tahu APA yang berulang
+            dlog("hard-stop repeated_call", { sig: sig.slice(0, 140) });
+            return {
+              stop: true,
+              stopNote:
+                "tool «" + tc.function.name + "» dipanggil dengan argumen identik " +
+                callCounts[sig] + "x (arg: " +
+                (tc.function.arguments || "").slice(0, 80) + "…)",
+            };
+          }
           // Name-based loop detection only applies to ACTION tools. Read-only tools
           // (read/grep/glob/...) legitimately repeat across DIFFERENT files on any
           // non-trivial task — killing the run at the 6th `read` was a false positive
@@ -936,8 +946,19 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|architecture_map|terminal_read|skill_list|mcp_[a-z0-9_]+)$/i.test(
               tc.function.name,
             );
-          if (!isReadOnlyTool && callCountsByName[tc.function.name] > 5)
-            return { stop: true, reason: "tool_name_loop" }; // same action-tool > 5x: hard stop
+          if (!isReadOnlyTool && callCountsByName[tc.function.name] > 5) {
+            dlog("hard-stop tool_name_loop", {
+              tool: tc.function.name,
+              count: callCountsByName[tc.function.name],
+            });
+            return {
+              stop: true,
+              reason: "tool_name_loop",
+              stopNote:
+                "tool «" + tc.function.name + "» dipanggil " +
+                callCountsByName[tc.function.name] + "x beruntun tanpa hasil",
+            }; // same action-tool > 5x: hard stop
+          }
 
           if (
             /^(edit|write|replace_file_content|write_artifact)$/i.test(
@@ -1293,7 +1314,11 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               stopReason = "repeated_tool_calls";
               localSummary =
                 msg.content ||
-                "Berhenti: panggilan tool berulang tanpa kemajuan.";
+                "Berhenti: panggilan tool berulang tanpa kemajuan" +
+                  (results[i].stopNote
+                    ? " — " + results[i].stopNote +
+                      ". Coba: instruksi lebih spesifik, atau pecah tugasnya."
+                    : ".");
             }
           }
           let out = (results[i] && results[i].out) || "(ok)";

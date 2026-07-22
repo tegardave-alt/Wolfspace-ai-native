@@ -508,11 +508,63 @@ async function _brokeredFileOp(name, args, wsRoot) {
     }
     if (name === "edit") {
       const old = await broker.request("readFile", { path: abs });
-      if (!old.includes(args.old_string))
-        return { ok: false, output: "old_string tidak ditemukan di " + rel };
-      if (args.old_string === args.new_string)
+      let target = args.old_string;
+      if (!old.includes(target)) {
+        // Paritas dengan edit reguler (non-broker): fallback whitespace-tolerant.
+        // Tanpa ini, edit terkurung yang meleset indentasi hanya membalas
+        // "tidak ditemukan" tanpa info baru -> model mengulang panggilan identik
+        // sampai kena guard "panggilan tool berulang tanpa kemajuan".
+        const oldLines = old.split(/\r?\n/);
+        const tLines = String(args.old_string || "").split(/\r?\n/);
+        let matchIndex = -1,
+          matchCount = 0;
+        for (let i = 0; i <= oldLines.length - tLines.length; i++) {
+          let matched = true;
+          for (let j = 0; j < tLines.length; j++) {
+            if (oldLines[i + j].trim() !== tLines[j].trim()) {
+              matched = false;
+              break;
+            }
+          }
+          if (matched) {
+            matchIndex = i;
+            matchCount++;
+          }
+        }
+        if (matchCount === 1 && matchIndex >= 0) {
+          target = oldLines
+            .slice(matchIndex, matchIndex + tLines.length)
+            .join("\n");
+        } else {
+          // Beri KONTEN NYATA di sekitar area termirip supaya percobaan berikut
+          // model membawa informasi baru (bukan mengulang buta).
+          const probe = (
+            tLines.find((l) => l.trim().length > 8) || tLines[0] || ""
+          )
+            .trim()
+            .slice(0, 30);
+          let hint = "";
+          if (probe) {
+            const hit = oldLines.findIndex((l) => l.includes(probe.slice(0, 15)));
+            if (hit >= 0)
+              hint =
+                "\nKonten SEBENARNYA di sekitar baris " + (hit + 1) + ":\n" +
+                oldLines
+                  .slice(Math.max(0, hit - 2), hit + tLines.length + 3)
+                  .join("\n");
+          }
+          return {
+            ok: false,
+            output:
+              "old_string tidak ditemukan di " + rel +
+              " (harus PERSIS, termasuk spasi/indentasi)." +
+              (hint || " Gunakan tool read dulu untuk melihat konten file."),
+          };
+        }
+      }
+      if (target === args.new_string)
         return { ok: false, output: "NOOP: old_string sama dengan new_string" };
-      const patched = old.replace(args.old_string, args.new_string);
+      const patched = old.replace(target, args.new_string);
       await broker.request("writeFile", { path: abs, content: patched });
       return {
         ok: true,
