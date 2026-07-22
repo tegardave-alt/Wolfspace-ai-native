@@ -3101,17 +3101,31 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
 // sidebar item toggles it off instead of stacking capture-listeners that would
 // keep swallowing clicks (the "chat jadi tak bisa diklik" bug).
 let VP_STOP = null;
-function useVisualPicker() {
+// getFrameDoc (opsional): fungsi yang mengembalikan contentDocument iframe preview
+// (Web Dev Live Browser) bila sedang terbuka & same-origin. Tanpa ini, picker HANYA
+// memantau document WOLFSPACE sendiri — hover di atas iframe cuma "mengenali" elemen
+// <iframe>-nya, bukan apa pun di DALAM halaman yang di-render.
+function useVisualPicker(getFrameDoc) {
   return useCallback(() => {
     if (VP_STOP) {
       VP_STOP();
       return;
     } // already active ? toggle off
+    const docs = [document];
+    try {
+      const frameDoc = getFrameDoc && getFrameDoc();
+      // .defaultView null bila dokumen cross-origin (akses ditolak browser sebelum
+      // sampai sini pun sudah throw) — cek ini jaga-jaga untuk dokumen "mati"/lepas.
+      if (frameDoc && frameDoc.defaultView) docs.push(frameDoc);
+    } catch (_) {
+      // Cross-origin (preview arah ke URL eksternal, bukan file lokal same-origin):
+      // picker tetap jalan di WOLFSPACE saja, tanpa melempar error ke pengguna.
+    }
     let hover = null;
     const cleanHovers = () =>
-      document
-        .querySelectorAll(".vp-hover")
-        .forEach((el) => el.classList.remove("vp-hover"));
+      docs.forEach((d) =>
+        d.querySelectorAll(".vp-hover").forEach((el) => el.classList.remove("vp-hover")),
+      );
     const move = (e) => {
       const el = e.target;
       if (hover && hover !== el) hover.classList.remove("vp-hover");
@@ -3189,20 +3203,40 @@ function useVisualPicker() {
         stop();
       }
     };
+    // Halaman di dalam iframe punya <head> sendiri — tak kebagian styles.css
+    // WOLFSPACE — jadi cursor crosshair & outline hover diinjeksi langsung ke situ
+    // (nilai polos, bukan var() CSS, karena var itu tak terdefinisi di dokumen lain).
+    const frameStyleEls = [];
+    docs.forEach((d) => {
+      if (d === document) return;
+      try {
+        const st = d.createElement("style");
+        st.setAttribute("data-wf-vp", "1");
+        st.textContent =
+          ".vp-on, .vp-on * { cursor: crosshair !important; } .vp-hover { outline: 2px solid #8fb3ff !important; outline-offset: -2px; }";
+        (d.head || d.documentElement).appendChild(st);
+        frameStyleEls.push(st);
+      } catch (_) {}
+    });
     function stop() {
       VP_STOP = null;
-      document.body.classList.remove("vp-on");
       cleanHovers();
-      document.removeEventListener("mouseover", move, true);
-      document.removeEventListener("click", click, true);
-      document.removeEventListener("keydown", key, true);
+      docs.forEach((d) => {
+        if (d.body) d.body.classList.remove("vp-on");
+        d.removeEventListener("mouseover", move, true);
+        d.removeEventListener("click", click, true);
+        d.removeEventListener("keydown", key, true);
+      });
+      frameStyleEls.forEach((st) => { try { st.remove(); } catch (_) {} });
     }
     VP_STOP = stop;
-    document.body.classList.add("vp-on");
-    document.addEventListener("mouseover", move, true);
-    document.addEventListener("click", click, true);
-    document.addEventListener("keydown", key, true);
-  }, []);
+    docs.forEach((d) => {
+      if (d.body) d.body.classList.add("vp-on");
+      d.addEventListener("mouseover", move, true);
+      d.addEventListener("click", click, true);
+      d.addEventListener("keydown", key, true);
+    });
+  }, [getFrameDoc]);
 }
 
 /* ----------------------------- Visual Draw ----------------------------- */
