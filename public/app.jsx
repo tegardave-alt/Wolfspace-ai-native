@@ -4565,6 +4565,26 @@ function sanitizeDeletedWorkspaces() {
 // Bersihkan racun blacklist lama sekali, saat app.jsx dimuat (aman & idempoten).
 try { sanitizeDeletedWorkspaces(); } catch (_) {}
 
+// Ubah project terpilih -> PATH folder untuk dikirim sebagai workspace_root ke agent
+// (mengurung agent + operasi file/bash ke folder itu). null = biarkan tak-terkurung:
+// yaitu WOLFSPACE root (mode self-edit, seperti sekarang) atau tak bisa diresolusi.
+const WOLFSPACE_ROOT = "c:/users/dave/quantum";
+function resolveWorkspaceRoot(sel) {
+  if (!sel) return null;
+  let p = /[:\\/]/.test(sel) ? sel : null;
+  if (!p) {
+    try {
+      const list = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      const hit = list.find((x) => x && (x.name === sel || (x.path && (x.path.endsWith("\\" + sel) || x.path.endsWith("/" + sel)))));
+      if (hit && hit.path) p = hit.path;
+    } catch (_) {}
+  }
+  if (!p) return null;
+  const norm = String(p).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
+  if (norm === WOLFSPACE_ROOT) return null;
+  return p;
+}
+
 function deleteWorkspaceGlobal(wsToDelete) {
   try {
     if (!wsToDelete) return;
@@ -7663,7 +7683,7 @@ function App() {
       try {
         const curEffort = (getCloud() && typeof getCloud().effort !== 'undefined') ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
         await streamSelfAgent(
-          { history: newHist, cloud: getCloud(), port: modelVal, effort: curEffort, ...hitlData },
+          { history: newHist, cloud: getCloud(), port: modelVal, effort: curEffort, workspace_root: resolveWorkspaceRoot(selectedProject) || undefined, ...hitlData },
           (j) => {
             if (j.t === "backup") upd({ backup: j.dir });
             else if (j.t === "step") {
@@ -7846,7 +7866,7 @@ function App() {
       // pakai `content` biasa). Riwayat tersimpan tetap versi bersih (newHist).
       const sendHist = [...wfHistory, { role: "user", content: content + "\n\n" + WF_GEN_HINT }];
       await streamSelfAgent(
-        { history: sendHist, cloud: getCloud(), port: modelVal, effort: curEffort },
+        { history: sendHist, cloud: getCloud(), port: modelVal, effort: curEffort, workspace_root: resolveWorkspaceRoot(selectedProject) || undefined },
         (j) => {
           if (j.t === "step") { think = ""; upd({ thinking: "" }); }
           else if (j.t === "tok") { think += j.c; upd({ thinking: think }); }
