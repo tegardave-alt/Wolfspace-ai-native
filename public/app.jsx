@@ -8436,21 +8436,30 @@ function WFNodeCard({ data }) {
   );
 }
 
+// Edge custom WOLFSPACE: bezier dengan rel gelap + partikel mengalir (dash animasi).
+function WFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected }) {
+  const XY = window.RFLib && window.RFLib.XY;
+  const [path] = XY.getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  return (
+    <g>
+      <path d={path} fill="none" stroke={selected ? "#8fb3ff" : "#24384f"} strokeWidth={3} strokeLinecap="round" />
+      <path d={path} fill="none" stroke="#8fb3ff" strokeWidth={1.7} strokeLinecap="round" strokeDasharray="1 10" style={{ animation: "wfflow 0.7s linear infinite" }} />
+    </g>
+  );
+}
+
 function WorkflowBuilderInner({ onBack, runStage }) {
   const XY = window.RFLib.XY;
-  const { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge, useReactFlow, BackgroundVariant, applyNodeChanges } = XY;
+  const { ReactFlow, Background, useNodesState, useEdgesState, addEdge, useReactFlow, BackgroundVariant, applyNodeChanges } = XY;
   const idRef = React.useRef(3);
   const [nodes, setNodes, onNodesChange] = useNodesState([
     { id: "n1", type: "wf", position: { x: 60, y: 110 }, data: { label: "User prompt", kind: "prompt", accent: "#3fb950" } },
     { id: "n2", type: "wf", position: { x: 320, y: 110 }, data: { label: "Coding agent", kind: "agent", accent: "#2f81f7" } },
   ]);
   const [edges, setEdges, onEdgesChange] = useEdgesState([
-    { id: "e1", source: "n1", target: "n2", animated: true, style: { stroke: "#8fb3ff" } },
+    { id: "e1", source: "n1", target: "n2", type: "wf" },
   ]);
   const [showJson, setShowJson] = React.useState(false);
-  // "custom" = kartu bergaya WOLFSPACE (WFNodeCard); "default" = node BAWAAN React
-  // Flow (kotak putih klasik + tema terang), untuk membandingkan rupa aslinya.
-  const [nodeStyle, setNodeStyle] = React.useState("custom");
   // mode "builder" = kanvas manual; "live" = cermin eksekusi agent (Fase 1) —
   // tiap langkah t:"act" dari self_agent.cjs jadi node berurut, yang terbaru disorot.
   const [mode, setMode] = React.useState("builder");
@@ -8463,7 +8472,8 @@ function WorkflowBuilderInner({ onBack, runStage }) {
   const runAbort = React.useRef(false);
   const rf = useReactFlow();
   const isLive = mode === "live";
-  const nodeTypes = React.useMemo(() => ((isLive || nodeStyle === "custom") ? { wf: WFNodeCard } : {}), [isLive, nodeStyle]);
+  const nodeTypes = React.useMemo(() => ({ wf: WFNodeCard }), []);
+  const edgeTypes = React.useMemo(() => ({ wf: WFEdge }), []);
 
   // Dengar stream agent (dipancarkan dari doSend): bangun graph eksekusi live.
   React.useEffect(() => {
@@ -8489,7 +8499,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
       const label = (String(d.arg || "").trim() || d.kind || "step").slice(0, 42);
       const node = { id, type: "wf", position: { x, y }, data: { label, kind: d.kind || "step", accent: wfKindAccent(d.kind), ok: d.ok, active: true } };
       setLiveNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, active: false } })).concat(node));
-      if (st.lastId) setLiveEdges((eds) => eds.concat({ id: "Le" + i, source: st.lastId, target: id, animated: true, style: { stroke: "#8fb3ff" } }));
+      if (st.lastId) setLiveEdges((eds) => eds.concat({ id: "Le" + i, source: st.lastId, target: id, type: "wf" }));
       st.lastId = id;
       setTimeout(() => { try { rf && rf.fitView && rf.fitView({ duration: 300, padding: 0.25 }); } catch (_) {} }, 40);
     };
@@ -8502,7 +8512,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
   const noop = React.useCallback(() => {}, []);
 
   const onConnect = React.useCallback(
-    (c) => setEdges((eds) => addEdge({ ...c, animated: true, style: { stroke: "#8fb3ff" } }, eds)),
+    (c) => setEdges((eds) => addEdge({ ...c, type: "wf" }, eds)),
     [setEdges, addEdge],
   );
   const onDragOver = React.useCallback((e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; }, []);
@@ -8559,7 +8569,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
   };
   const btn = { fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#dce4f0", background: "#131922", border: "1px solid #2f4056", borderRadius: "6px", padding: "6px 9px", cursor: "pointer" };
 
-  const shownNodes = isLive ? liveNodes : (nodeStyle === "custom" ? nodes : nodes.map((n) => ({ ...n, type: "default" })));
+  const shownNodes = isLive ? liveNodes : nodes;
   const shownEdges = isLive ? liveEdges : edges;
 
   return (
@@ -8603,9 +8613,6 @@ function WorkflowBuilderInner({ onBack, runStage }) {
                 {running ? "■ Hentikan" : "▶ Jalankan graph"}
               </button>
               {runErr && <div style={{ fontSize: "10.5px", color: "#f0776b", lineHeight: 1.4 }}>{runErr}</div>}
-              <button style={btn} onClick={() => setNodeStyle((s) => (s === "custom" ? "default" : "custom"))} title="Bandingkan skin WOLFSPACE vs node bawaan React Flow">
-                Gaya: {nodeStyle === "custom" ? "Kustom" : "Bawaan RF"}
-              </button>
               <button style={btn} onClick={() => setShowJson((s) => !s)}>{showJson ? "Tutup JSON" : "Export JSON"}</button>
             </React.Fragment>
           )}
@@ -8613,10 +8620,19 @@ function WorkflowBuilderInner({ onBack, runStage }) {
         </div>
       </div>
       <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
-        <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} colorMode={(!isLive && nodeStyle === "default") ? "light" : "dark"} fitView proOptions={{ hideAttribution: true }}>
+        <style>{"@keyframes wfflow{to{stroke-dashoffset:-22}}"}</style>
+        <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "wf" }} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
           <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#26313f" />
-          <Controls />
         </ReactFlow>
+        {/* Kontrol custom WOLFSPACE (ganti <Controls> bawaan) */}
+        <div style={{ position: "absolute", right: "14px", bottom: "14px", display: "flex", flexDirection: "column", gap: "4px", zIndex: 5 }}>
+          {[["＋", () => rf.zoomIn({ duration: 150 }), "Perbesar"], ["－", () => rf.zoomOut({ duration: 150 }), "Perkecil"], ["⤢", () => rf.fitView({ duration: 300, padding: 0.2 }), "Pas ke layar"]].map(([lbl, fn, t]) => (
+            <button key={t} onClick={fn} title={t}
+              style={{ width: "30px", height: "30px", borderRadius: "7px", border: "1px solid #212a36", background: "#131922", color: "#8fb3ff", cursor: "pointer", fontSize: "15px", lineHeight: 1, display: "flex", alignItems: "center", justifyContent: "center" }}
+              onMouseEnter={(e) => (e.currentTarget.style.background = "#1a2430")}
+              onMouseLeave={(e) => (e.currentTarget.style.background = "#131922")}>{lbl}</button>
+          ))}
+        </div>
         {showJson && !isLive && (
           <pre style={{ position: "absolute", right: "14px", top: "14px", maxHeight: "60%", maxWidth: "340px", overflow: "auto", margin: 0, fontFamily: "ui-monospace, monospace", fontSize: "11px", lineHeight: 1.5, color: "#9fb7d9", background: "#0c1219", border: "1px solid #212a36", borderRadius: "8px", padding: "10px 12px" }}>{JSON.stringify(wf, null, 2)}</pre>
         )}
