@@ -2536,6 +2536,13 @@ function Model3DViewer({ url, name }) {
   const mountRef = useRef(null);
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [errMsg, setErrMsg] = useState("");
+  // Animasi glTF: mixer & actions hidup di dalam effect (butuh objek three), tapi
+  // kontrol UI (play/pause, pilih klip) ada di JSX luar — jembatani lewat ref.
+  const mixerRef = useRef(null);
+  const actionsRef = useRef([]);
+  const [clips, setClips] = useState([]); // nama klip animasi (kosong = model statis)
+  const [playing, setPlaying] = useState(true);
+  const [activeClip, setActiveClip] = useState(0);
 
   useEffect(() => {
     const lib = typeof window !== "undefined" && window.WOLFSPACE3D;
@@ -2550,6 +2557,12 @@ function Model3DViewer({ url, name }) {
     let raf = 0;
     let disposed = false;
     const disposables = [];
+    // Reset state animasi tiap model baru (effect re-run saat url/name berubah).
+    mixerRef.current = null;
+    actionsRef.current = [];
+    setClips([]);
+    setPlaying(true);
+    setActiveClip(0);
 
     const w = mount.clientWidth || 600;
     const h = mount.clientHeight || 400;
@@ -2666,7 +2679,19 @@ function Model3DViewer({ url, name }) {
       } else {
         new GLTFLoader().load(
           url,
-          (gltf) => onReady(gltf.scene),
+          (gltf) => {
+            onReady(gltf.scene);
+            // Animasi glTF (skeletal/morph/keyframe) — inilah "animasi ala Unity":
+            // GLB bisa membawa beberapa klip, diputar native lewat AnimationMixer.
+            if (!disposed && gltf.animations && gltf.animations.length) {
+              const mixer = new THREE.AnimationMixer(gltf.scene);
+              const actions = gltf.animations.map((clip) => mixer.clipAction(clip));
+              actions[0].play(); // auto-play klip pertama
+              mixerRef.current = mixer;
+              actionsRef.current = actions;
+              setClips(gltf.animations.map((c, i) => c.name || "Klip " + (i + 1)));
+            }
+          },
           undefined,
           onErr,
         );
@@ -2675,8 +2700,11 @@ function Model3DViewer({ url, name }) {
       onErr(e);
     }
 
+    const clock = new THREE.Clock();
     const animate = () => {
       raf = requestAnimationFrame(animate);
+      const dt = clock.getDelta();
+      if (mixerRef.current) mixerRef.current.update(dt); // majukan animasi
       controls.update();
       renderer.render(scene, camera);
     };
@@ -2694,6 +2722,8 @@ function Model3DViewer({ url, name }) {
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
+      if (mixerRef.current) { try { mixerRef.current.stopAllAction(); } catch (_) {} mixerRef.current = null; }
+      actionsRef.current = [];
       ro.disconnect();
       controls.dispose();
       disposables.forEach((d) => { try { d.dispose && d.dispose(); } catch (_) {} });
@@ -2713,6 +2743,24 @@ function Model3DViewer({ url, name }) {
     };
   }, [url, name]);
 
+  // Jeda/putar dengan membekukan timeScale mixer (0 = beku, 1 = normal).
+  const togglePlay = () => {
+    const m = mixerRef.current;
+    if (!m) return;
+    const nx = !playing;
+    m.timeScale = nx ? 1 : 0;
+    setPlaying(nx);
+  };
+  // Ganti klip aktif: mainkan yang dipilih, hentikan sisanya.
+  const selectClip = (i) => {
+    const acts = actionsRef.current;
+    if (!acts[i]) return;
+    acts.forEach((a, idx) => (idx === i ? a.reset().play() : a.stop()));
+    if (mixerRef.current) mixerRef.current.timeScale = 1;
+    setActiveClip(i);
+    setPlaying(true);
+  };
+
   return (
     <div style={{ position: "relative", width: "70vw", maxWidth: "900px", height: "calc(85vh - 80px)", background: "#0d1117", borderRadius: "8px", overflow: "hidden" }}>
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
@@ -2721,11 +2769,34 @@ function Model3DViewer({ url, name }) {
           {status === "loading" ? <><div style={{ fontSize: "32px" }}>🧊</div><div>Memuat model 3D…</div></> : <><div style={{ fontSize: "32px" }}>⚠️</div><div>{errMsg}</div></>}
         </div>
       )}
-      {status === "ready" && (
+      {status === "ready" && clips.length > 0 ? (
+        <div style={{ position: "absolute", bottom: "10px", left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: "8px", background: "rgba(0,0,0,0.62)", padding: "5px 10px 5px 6px", borderRadius: "20px" }}>
+          <button
+            onClick={togglePlay}
+            title={playing ? "Jeda animasi" : "Putar animasi"}
+            style={{ background: "transparent", border: "none", color: "#e2e8f0", cursor: "pointer", fontSize: "14px", width: "26px", height: "26px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
+            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.12)")}
+            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+          >
+            {playing ? "⏸" : "▶"}
+          </button>
+          {clips.length > 1 ? (
+            <select
+              value={activeClip}
+              onChange={(e) => selectClip(Number(e.target.value))}
+              style={{ background: "#1c222b", color: "#c9d1d9", border: "1px solid #30363d", borderRadius: "6px", fontSize: "11px", padding: "3px 6px", fontFamily: "inherit", cursor: "pointer", maxWidth: "180px" }}
+            >
+              {clips.map((c, i) => (<option key={i} value={i}>{c}</option>))}
+            </select>
+          ) : (
+            <span style={{ color: "#c9d1d9", fontSize: "11px", paddingRight: "4px", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🎞 {clips[0]}</span>
+          )}
+        </div>
+      ) : status === "ready" ? (
         <div style={{ position: "absolute", bottom: "10px", left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.55)", color: "#c9d1d9", fontSize: "11px", padding: "4px 12px", borderRadius: "12px", pointerEvents: "none", whiteSpace: "nowrap" }}>
           Seret untuk memutar · scroll untuk zoom
         </div>
-      )}
+      ) : null}
     </div>
   );
 }
