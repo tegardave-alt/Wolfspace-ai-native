@@ -609,16 +609,32 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   let forceRetryCount = 0;
   // Session state persists across HITL resumes (keyed by thread_id)
   if (!_sessionState.has(thread_id)) {
+    // Bersihkan sesi basi (thread selesai/terbengkalai) — tanpa ini map tumbuh
+    // tanpa batas dan counter lama bisa meracuni thread yang di-resume lama kemudian.
+    try {
+      const _now = Date.now();
+      for (const [k, v] of _sessionState) {
+        if (_now - (v.ts || 0) > 2 * 3600e3) _sessionState.delete(k);
+      }
+    } catch (_) {}
     _sessionState.set(thread_id, {
+      ts: Date.now(),
       callCounts: {},
       callCountsByName: {},
       editFailCount: 0,
       grepReadSteps: 0,
       lastReadFile: null,
       readFileCount: 0,
+      // Deteksi KEMANDEKAN (bukan volume): output terakhir per-signature + hitungan
+      // hasil-identik, dan kegagalan beruntun per-nama tool (reset saat sukses).
+      lastOutBySig: {},
+      noProgressBySig: {},
+      failsByName: {},
     });
   }
   const sess = _sessionState.get(thread_id);
+  sess.ts = Date.now();
+  if (!sess.lastOutBySig) { sess.lastOutBySig = {}; sess.noProgressBySig = {}; sess.failsByName = {}; }
   const callCounts = sess.callCounts;
   const callCountsByName = sess.callCountsByName;
   let editFailCount = sess.editFailCount || 0;
@@ -923,12 +939,18 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 
           const sig = tc.function.name + "|" + (tc.function.arguments || "");
           callCounts[sig] = (callCounts[sig] || 0) + 1;
-          // Per-name counter: detects loop where agent retries same tool with slightly different args
+          // Per-name counter: dipakai untuk NOTICE lunak & backstop, BUKAN hard-stop.
           callCountsByName[tc.function.name] =
             (callCountsByName[tc.function.name] || 0) + 1;
-          if (callCounts[sig] > 3) {
-            // exact same call > 3x: hard stop — catat & beri tahu APA yang berulang
-            dlog("hard-stop repeated_call", { sig: sig.slice(0, 140) });
+          // PRINSIP GUARD: hukum KEMANDEKAN, bukan VOLUME. Dulu: >3 panggilan identik
+          // atau >5 panggilan per-nama = hard stop MESKI SEMUA SUKSES — membunuh tugas
+          // multi-langkah yang sah (6 perintah bash berbeda; `npm test` 4x di siklus
+          // edit->test). Kini hard-stop hanya dari deteksi PASCA-eksekusi di bawah
+          // (hasil identik berulang / gagal beruntun; sukses me-reset). Yang tersisa
+          // di sini hanya backstop mutlak untuk loop tak berhingga yang outputnya
+          // selalu berubah (mis. timestamp) sehingga lolos deteksi kemandekan.
+          if (callCounts[sig] > 8) {
+            dlog("hard-stop repeated_call_backstop", { sig: sig.slice(0, 140) });
             return {
               stop: true,
               stopNote:
@@ -937,28 +959,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
                 (tc.function.arguments || "").slice(0, 80) + "…)",
             };
           }
-          // Name-based loop detection only applies to ACTION tools. Read-only tools
-          // (read/grep/glob/...) legitimately repeat across DIFFERENT files on any
-          // non-trivial task — killing the run at the 6th `read` was a false positive
-          // that also made the readFileCount>=8 notice below unreachable. Identical-args
-          // loops are still caught for every tool by the callCounts[sig] check above.
           const isReadOnlyTool =
             /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|architecture_map|terminal_read|skill_list|mcp_[a-z0-9_]+)$/i.test(
               tc.function.name,
             );
-          if (!isReadOnlyTool && callCountsByName[tc.function.name] > 5) {
-            dlog("hard-stop tool_name_loop", {
-              tool: tc.function.name,
-              count: callCountsByName[tc.function.name],
-            });
-            return {
-              stop: true,
-              reason: "tool_name_loop",
-              stopNote:
-                "tool «" + tc.function.name + "» dipanggil " +
-                callCountsByName[tc.function.name] + "x beruntun tanpa hasil",
-            }; // same action-tool > 5x: hard stop
-          }
 
           if (
             /^(edit|write|replace_file_content|write_artifact)$/i.test(
@@ -1089,11 +1093,54 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           });
 
           let out = r.output || "(ok)";
-          if (callCounts[sig] >= 2)
+          // ── Deteksi kemandekan pasca-eksekusi (sumber hard-stop yang sebenarnya) ──
+          // (a) Per-signature: panggilan identik yang mengembalikan OUTPUT IDENTIK
+          //     berulang = nol informasi baru -> peringatkan di 2x, stop di 3x.
+          //     Output berbeda = ada progres -> reset.
+          const _outKey = String(out).slice(0, 2000);
+          const _sameResult = sess.lastOutBySig[sig] === _outKey;
+          sess.noProgressBySig[sig] = _sameResult
+            ? (sess.noProgressBySig[sig] || 0) + 1
+            : 0;
+          sess.lastOutBySig[sig] = _outKey;
+          // (b) Per-nama: KEGAGALAN beruntun (sukses me-reset). 6 kegagalan beruntun
+          //     pada tool aksi = pendekatan buntu.
+          if (r.ok) sess.failsByName[tc.function.name] = 0;
+          else
+            sess.failsByName[tc.function.name] =
+              (sess.failsByName[tc.function.name] || 0) + 1;
+          if (sess.noProgressBySig[sig] >= 3) {
+            dlog("hard-stop no_progress", { sig: sig.slice(0, 140) });
+            return {
+              out,
+              stop: true,
+              stopNote:
+                "tool «" + tc.function.name + "» dipanggil identik " +
+                (sess.noProgressBySig[sig] + 1) + "x dengan HASIL SAMA persis (arg: " +
+                (tc.function.arguments || "").slice(0, 80) + "…)",
+            };
+          }
+          if (!isReadOnlyTool && sess.failsByName[tc.function.name] >= 6) {
+            dlog("hard-stop consecutive_fails", {
+              tool: tc.function.name,
+              fails: sess.failsByName[tc.function.name],
+            });
+            return {
+              out,
+              stop: true,
+              reason: "tool_name_loop",
+              stopNote:
+                "tool «" + tc.function.name + "» GAGAL " +
+                sess.failsByName[tc.function.name] +
+                "x beruntun (kegagalan terakhir: " +
+                String(out).replace(/\s+/g, " ").slice(0, 100) + "…)",
+            };
+          }
+          if (_sameResult && sess.noProgressBySig[sig] >= 1)
             out +=
-              "\n[SYSTEM: Panggilan identik diulang " +
-              callCounts[sig] +
-              "x — HASILNYA SAMA. Jangan ulangi. Gunakan read untuk melihat konten file, lalu edit SEKALI dengan old_string yang tepat.]";
+              "\n[SYSTEM: Panggilan identik diulang dengan HASIL SAMA (" +
+              (sess.noProgressBySig[sig] + 1) +
+              "x). Jangan ulangi persis — ganti pendekatan, atau read dulu lalu edit SEKALI dengan old_string yang tepat.]";
           if (editFailCount >= 2)
             out +=
               "\n[SYSTEM: edit gagal " +
