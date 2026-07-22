@@ -8553,43 +8553,62 @@ function WFNodeCard({ id, data }) {
     update({ kind: nx, accent: wfKindAccent(nx) });
   };
   const commit = (v) => { const t = String(v || "").trim(); if (t) update({ label: t }); setEditing(false); };
+  // Bentuk per-kind (konvensi flowchart): condition = belah ketupat, prompt/output
+  // = pil (terminator), agent/tool = kotak (proses).
+  const kind = data && data.kind;
+  const shape = kind === "condition" ? "diamond" : (kind === "prompt" || kind === "output") ? "pill" : "rect";
+  const hStyle = { background: edge, width: 8, height: 8, border: "none" };
+  const chip = (
+    <div style={{ display: "flex", alignItems: "center", justifyContent: shape === "diamond" ? "center" : "flex-start", gap: "5px", fontSize: "9px", letterSpacing: ".12em", textTransform: "uppercase", color: edge, marginBottom: "2px" }}>
+      <span onClick={(e) => { e.stopPropagation(); cycleKind(); }} title={editable ? "klik: ganti jenis node" : undefined} style={{ cursor: editable ? "pointer" : "default", userSelect: "none" }}>{data.kind}{editable ? " ▾" : ""}</span>
+      {active && <span style={{ width: 6, height: 6, borderRadius: "50%", background: edge, boxShadow: "0 0 6px " + edge }} />}
+      {err && <span title="gagal">✕</span>}
+    </div>
+  );
+  const labelEl = editing ? (
+    <input className="nodrag" autoFocus defaultValue={data.label}
+      onMouseDown={(e) => e.stopPropagation()}
+      onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") commit(e.currentTarget.value); else if (e.key === "Escape") setEditing(false); }}
+      onBlur={(e) => commit(e.currentTarget.value)}
+      style={{ width: "100%", background: "#0d1117", border: "1px solid " + edge, borderRadius: "5px", color: "#dce4f0", fontFamily: "ui-monospace, monospace", fontSize: "12px", fontWeight: 600, padding: "2px 6px", outline: "none", textAlign: shape === "diamond" ? "center" : "left" }} />
+  ) : (
+    <div onDoubleClick={(e) => { e.stopPropagation(); if (editable) setEditing(true); }} title={editable ? "dobel-klik: ubah label" : undefined}
+      style={{ fontSize: "12.5px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default", textAlign: shape === "diamond" ? "center" : "left" }}>{data.label}</div>
+  );
+  const resultEl = data && data.result ? (
+    <div onClick={(e) => { e.stopPropagation(); ctx && ctx.openDetail && ctx.openDetail({ label: data.label, kind: data.kind, result: data.result, accent: edge }); }}
+      title="klik: lihat hasil lengkap"
+      style={{ marginTop: "5px", paddingTop: shape === "diamond" ? 0 : "5px", borderTop: shape === "diamond" ? "none" : "1px solid #21324a", fontSize: "10.5px", color: "#8fb3ff", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+      📄 {shape === "diamond" ? "hasil" : (String(data.result).replace(/\s+/g, " ").slice(0, 40) + "…")}</div>
+  ) : null;
+
+  if (shape === "diamond") {
+    const diaClip = "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)";
+    return (
+      <div style={{ position: "relative", width: "138px", height: "116px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {Handle && <Handle type="target" position={Position.Left} style={hStyle} />}
+        <div style={{ position: "absolute", inset: 0, background: active ? edge : edge + "88", clipPath: diaClip }} />
+        <div style={{ position: "absolute", inset: "1.6px", background: "#131922", clipPath: diaClip }} />
+        <div style={{ position: "relative", textAlign: "center", maxWidth: "74%", color: "#dce4f0", fontFamily: "ui-monospace, monospace" }}>
+          {chip}{labelEl}{resultEl}
+        </div>
+        {Handle && <Handle type="source" position={Position.Right} style={hStyle} />}
+      </div>
+    );
+  }
+  const pill = shape === "pill";
   return (
     <div style={{
-      minWidth: "128px", maxWidth: "220px", background: "#131922",
-      border: "1px solid " + (active ? edge : edge + "55"), borderLeft: "3px solid " + edge,
-      borderRadius: "8px", padding: "8px 12px", color: "#dce4f0", fontFamily: "ui-monospace, monospace",
+      minWidth: pill ? "120px" : "128px", maxWidth: "220px", background: "#131922",
+      border: "1px solid " + (active ? edge : edge + "55"),
+      borderLeft: pill ? "1px solid " + (active ? edge : edge + "55") : "3px solid " + edge,
+      borderRadius: pill ? "999px" : "8px", padding: pill ? "8px 18px" : "8px 12px",
+      color: "#dce4f0", fontFamily: "ui-monospace, monospace",
       boxShadow: active ? "0 0 0 2px " + edge + "88, 0 4px 14px rgba(0,0,0,.5)" : "0 4px 14px rgba(0,0,0,.4)",
     }}>
-      {Handle && <Handle type="target" position={Position.Left} style={{ background: edge, width: 8, height: 8, border: "none" }} />}
-      <div style={{ display: "flex", alignItems: "center", gap: "5px", fontSize: "9px", letterSpacing: ".12em", textTransform: "uppercase", color: edge, marginBottom: "3px" }}>
-        <span onClick={(e) => { e.stopPropagation(); cycleKind(); }} title={editable ? "klik: ganti jenis node" : undefined} style={{ cursor: editable ? "pointer" : "default", userSelect: "none" }}>{data.kind}{editable ? " ▾" : ""}</span>
-        {active && <span style={{ width: 6, height: 6, borderRadius: "50%", background: edge, boxShadow: "0 0 6px " + edge }} />}
-        {err && <span title="gagal">✕</span>}
-      </div>
-      {editing ? (
-        <input
-          className="nodrag" autoFocus defaultValue={data.label}
-          onMouseDown={(e) => e.stopPropagation()}
-          onKeyDown={(e) => { e.stopPropagation(); if (e.key === "Enter") commit(e.currentTarget.value); else if (e.key === "Escape") setEditing(false); }}
-          onBlur={(e) => commit(e.currentTarget.value)}
-          style={{ width: "100%", background: "#0d1117", border: "1px solid " + edge, borderRadius: "5px", color: "#dce4f0", fontFamily: "ui-monospace, monospace", fontSize: "12.5px", fontWeight: 600, padding: "2px 6px", outline: "none" }}
-        />
-      ) : (
-        <div
-          onDoubleClick={(e) => { e.stopPropagation(); if (editable) setEditing(true); }}
-          title={editable ? "dobel-klik: ubah label" : undefined}
-          style={{ fontSize: "12.5px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default" }}
-        >{data.label}</div>
-      )}
-      {data && data.result && (
-        // #2: cuplikan hasil tahap + klik untuk detail penuh
-        <div
-          onClick={(e) => { e.stopPropagation(); ctx && ctx.openDetail && ctx.openDetail({ label: data.label, kind: data.kind, result: data.result, accent: edge }); }}
-          title="klik: lihat hasil lengkap"
-          style={{ marginTop: "5px", paddingTop: "5px", borderTop: "1px solid #21324a", fontSize: "10.5px", color: "#8fb3ff", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
-        >📄 {String(data.result).replace(/\s+/g, " ").slice(0, 40) || "hasil"}…</div>
-      )}
-      {Handle && <Handle type="source" position={Position.Right} style={{ background: edge, width: 8, height: 8, border: "none" }} />}
+      {Handle && <Handle type="target" position={Position.Left} style={hStyle} />}
+      {chip}{labelEl}{resultEl}
+      {Handle && <Handle type="source" position={Position.Right} style={hStyle} />}
     </div>
   );
 }
