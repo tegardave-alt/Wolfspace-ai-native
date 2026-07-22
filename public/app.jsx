@@ -8678,31 +8678,56 @@ function WorkflowBuilderInner({ onBack, runStage }) {
 
   // Dengar stream agent (dipancarkan dari doSend): bangun graph eksekusi live.
   React.useEffect(() => {
-    const COLS = 4, DX = 210, DY = 120;
+    // Live "loop nyata": cermin STRUKTUR LangGraph agent (planner → executor ⇄
+    // tools → validate) sebagai node peran tetap dalam layout loop; langkah konkret
+    // dikelompokkan per-peran (klik node → semua langkahnya). kind act → peran.
+    const ROLES = [
+      { id: "R_planner", role: "planner", pos: { x: 0, y: 30 }, accent: "#bc8cff" },
+      { id: "R_executor", role: "executor", pos: { x: 250, y: 30 }, accent: "#2f81f7" },
+      { id: "R_tools", role: "tools", pos: { x: 510, y: 30 }, accent: "#d29922" },
+      { id: "R_validate", role: "validate", pos: { x: 250, y: 190 }, accent: "#3fb950" },
+    ];
+    const roleOf = (kind) => {
+      if (kind === "planner") return "planner";
+      if (kind === "validate" || kind === "verify") return "validate";
+      if (["bash", "read", "edit", "write", "grep", "glob", "list", "task", "architecture_map"].indexOf(kind) >= 0) return "tools";
+      return "executor"; // workspace, hitl, continue, thought, dll = giliran executor
+    };
+    const baseNodes = () => ROLES.map((r) => ({ id: r.id, type: "wf", position: { ...r.pos }, data: { label: r.role, kind: r.role, accent: r.accent, steps: [], active: false } }));
+    const baseEdges = () => [
+      { id: "le1", source: "R_planner", target: "R_executor", type: "wf" },
+      { id: "le2", source: "R_executor", target: "R_tools", type: "wf", data: { label: "panggil" } },
+      { id: "le3", source: "R_tools", target: "R_executor", type: "wf", data: { label: "hasil" } }, // loop-back
+      { id: "le4", source: "R_executor", target: "R_validate", type: "wf" },
+    ];
     const onRun = (e) => {
       const phase = e.detail && e.detail.phase;
       if (phase === "start") {
-        liveRef.current = { i: 0, lastId: null };
-        setLiveNodes([]); setLiveEdges([]);
-        setMode("live"); // auto-pindah ke Live saat agent mulai bekerja
+        liveRef.current = { steps: { planner: [], executor: [], tools: [], validate: [] } };
+        setLiveNodes(baseNodes()); setLiveEdges(baseEdges());
+        setMode("live");
+        setTimeout(() => { try { rf && rf.fitView && rf.fitView({ duration: 300, padding: 0.25 }); } catch (_) {} }, 60);
       } else if (phase === "done") {
         setLiveNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, active: false } })));
       }
     };
     const onAct = (e) => {
       const d = e.detail || {};
-      const st = liveRef.current;
-      const i = st.i++;
-      const col = i % COLS, row = Math.floor(i / COLS);
-      const x = (row % 2 === 0 ? col : COLS - 1 - col) * DX; // snake kiri↔kanan
-      const y = row * DY;
-      const id = "L" + i;
-      const label = (String(d.arg || "").trim() || d.kind || "step").slice(0, 42);
-      const node = { id, type: "wf", position: { x, y }, data: { label, kind: d.kind || "step", accent: wfKindAccent(d.kind), ok: d.ok, active: true } };
-      setLiveNodes((nds) => nds.map((n) => ({ ...n, data: { ...n.data, active: false } })).concat(node));
-      if (st.lastId) setLiveEdges((eds) => eds.concat({ id: "Le" + i, source: st.lastId, target: id, type: "wf" }));
-      st.lastId = id;
-      setTimeout(() => { try { rf && rf.fitView && rf.fitView({ duration: 300, padding: 0.25 }); } catch (_) {} }, 40);
+      const role = roleOf(d.kind);
+      const rid = "R_" + role;
+      const st = liveRef.current || (liveRef.current = { steps: { planner: [], executor: [], tools: [], validate: [] } });
+      if (!st.steps[role]) st.steps[role] = [];
+      st.steps[role].push((String(d.arg || "").trim() || d.kind || "langkah").slice(0, 60));
+      const list = st.steps[role];
+      setLiveNodes((nds) => {
+        const has = nds.some((n) => n.id === rid);
+        const src = has ? nds : baseNodes();
+        return src.map((n) => {
+          if (n.id === rid) return { ...n, data: { ...n.data, active: true, ok: d.ok, label: role + " · " + list.length, result: list.map((s, i) => (i + 1) + ". " + s).join("\n") } };
+          return { ...n, data: { ...n.data, active: false } };
+        });
+      });
+      setLiveEdges((eds) => (eds.length ? eds : baseEdges()));
     };
     window.addEventListener("wolfspace_agent_run", onRun);
     window.addEventListener("wolfspace_agent_act", onAct);
@@ -8899,7 +8924,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
               <span style={{ width: 7, height: 7, borderRadius: "50%", background: "#3fb950", boxShadow: "0 0 6px #3fb950" }} />
               cermin eksekusi agent
             </div>
-            <div style={{ color: "#6f7d92", marginTop: "5px" }}>{liveNodes.length} langkah</div>
+            <div style={{ color: "#6f7d92", marginTop: "5px" }}>{liveNodes.length ? "struktur graph aktif" : "menunggu…"}</div>
             <div style={{ color: "#6f7d92", marginTop: "3px" }}>Jalankan agent di chat — langkahnya muncul di sini.</div>
           </div>
         ) : (
@@ -8988,7 +9013,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
         )}
         <div style={{ position: "absolute", left: "14px", bottom: "14px", fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#6f7d92", background: "rgba(19,25,34,.82)", border: "1px solid #212a36", borderRadius: "7px", padding: "5px 11px", pointerEvents: "none" }}>
           {isLive
-            ? (liveNodes.length ? "Cermin langkah agent — node terbaru = sedang berjalan" : "Menunggu agent… jalankan sesuatu di chat")
+            ? (liveNodes.length ? "Struktur graph agent (planner→executor⇄tools→validate) — peran aktif disorot, klik node untuk langkahnya" : "Menunggu agent… jalankan sesuatu di chat")
             : "Seret node dari kiri · tarik antar-titik untuk menyambung · Del untuk hapus"}
         </div>
       </div>
