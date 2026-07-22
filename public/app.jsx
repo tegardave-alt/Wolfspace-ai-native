@@ -8481,16 +8481,30 @@ function specToFlow(spec) {
     type: "wf",
     data: e.label ? { label: String(e.label) } : undefined, // cabang kondisi ("ya"/"tidak")
   })).filter((e) => nodes.some((n) => n.id === e.source) && nodes.some((n) => n.id === e.target));
-  // tata-letak berdasarkan urutan topological (fallback: urutan asli)
-  const comp = compileWorkflow(nodes, edges);
-  const order = comp.ok ? comp.order : nodes;
+  // Tata-letak: pakai dagre (arah aliran kiri→kanan, per-rank) supaya hasil generate
+  // langsung terstruktur & rapih — sama seperti tombol "⇄ Rapikan". Fallback ke grid
+  // serpentine berbasis urutan topological bila dagre tak tersedia.
+  const dagre = window.RFLib && window.RFLib.dagre;
   const byId = new Map(nodes.map((n) => [n.id, n]));
-  const COLS = 4, DX = 210, DY = 120;
-  order.forEach((n, i) => {
-    const col = i % COLS, row = Math.floor(i / COLS);
-    const nn = byId.get(n.id);
-    if (nn) nn.position = { x: (row % 2 === 0 ? col : COLS - 1 - col) * DX, y: row * DY };
-  });
+  if (dagre && nodes.length) {
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "LR", nodesep: 42, ranksep: 96 });
+    g.setDefaultEdgeLabel(() => ({}));
+    const W = 168, H = 62;
+    nodes.forEach((n) => g.setNode(n.id, { width: W, height: H }));
+    edges.forEach((e) => g.setEdge(e.source, e.target));
+    dagre.layout(g);
+    nodes.forEach((n) => { const p = g.node(n.id); if (p) n.position = { x: p.x - W / 2, y: p.y - H / 2 }; });
+  } else {
+    const comp = compileWorkflow(nodes, edges);
+    const order = comp.ok ? comp.order : nodes;
+    const COLS = 4, DX = 210, DY = 120;
+    order.forEach((n, i) => {
+      const col = i % COLS, row = Math.floor(i / COLS);
+      const nn = byId.get(n.id);
+      if (nn) nn.position = { x: (row % 2 === 0 ? col : COLS - 1 - col) * DX, y: row * DY };
+    });
+  }
   return { nodes, edges };
 }
 
