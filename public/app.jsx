@@ -3309,7 +3309,9 @@ function useVisualDraw(getFrameDoc) {
     
     document.body.appendChild(cWrap);
     
-    const snap = (v) => Math.round(v/24)*24;
+    // Dulu snap ke grid 24px — kotak final "melompat" sampai ±12px dari yang
+    // digambar (keluhan: posisi tak sesuai koordinat). Sekarang presisi 1px.
+    const snap = (v) => Math.round(v);
     
     const copyToClipboard = (domString, btnElement) => {
       const showSuccess = () => {
@@ -3445,18 +3447,28 @@ function useVisualDraw(getFrameDoc) {
         });
         
         // --- DOM Context Detection ---
-        // Event dari IFRAME: elementFromPoint milik dokumen iframe dengan koordinat
-        // lokal frame (bukan koordinat parent) — mengembalikan elemen halaman yang
-        // di-render. Event dari parent: logika lama (matikan overlay sesaat).
-        let targetEl, targetDoc;
-        if (ev.view && ev.view !== window && ev.view.document) {
-          targetDoc = ev.view.document;
-          targetEl = targetDoc.elementFromPoint(ev.clientX, ev.clientY) || targetDoc.body;
-        } else {
-          targetDoc = document;
+        // Titik uji = TENGAH KOTAK final (bukan titik lepas mouse): merepresentasikan
+        // area yang digambar, dan tak meleset saat mouse dilepas sedikit di luar kotak.
+        // Bila titik tengah jatuh di dalam iframe preview -> elementFromPoint milik
+        // dokumen IFRAME dengan koordinat lokal frame (elemen halaman yang di-render).
+        const cx = finalX + r.left + finalW / 2;
+        const cy = finalY + r.top + finalH / 2;
+        let targetEl = null, targetDoc = document, frRect = null;
+        try {
+          const fd = docs.find((d) => d !== document);
+          if (fd && fd.defaultView && fd.defaultView.frameElement) {
+            const fr = fd.defaultView.frameElement.getBoundingClientRect();
+            if (cx >= fr.left && cx <= fr.right && cy >= fr.top && cy <= fr.bottom) {
+              targetDoc = fd;
+              frRect = fr;
+              targetEl = fd.elementFromPoint(cx - fr.left, cy - fr.top) || fd.body;
+            }
+          }
+        } catch (_) {}
+        if (!targetEl) {
           cWrap.style.pointerEvents = 'none';
           selBox.style.pointerEvents = 'none';
-          targetEl = document.elementFromPoint(pu.x, pu.y) || document.body;
+          targetEl = document.elementFromPoint(cx, cy) || document.body;
           cWrap.style.pointerEvents = 'auto'; // (or back to whatever it was)
           selBox.style.pointerEvents = 'auto';
         }
@@ -3492,12 +3504,7 @@ function useVisualDraw(getFrameDoc) {
         // Rect elemen di dalam iframe berkoordinat viewport FRAME — geser ke
         // koordinat parent agar konsisten dengan finalX/finalY (koordinat overlay).
         let trLeft = tr.left, trTop = tr.top;
-        try {
-          if (targetDoc !== document && targetDoc.defaultView && targetDoc.defaultView.frameElement) {
-            const fr = targetDoc.defaultView.frameElement.getBoundingClientRect();
-            trLeft += fr.left; trTop += fr.top;
-          }
-        } catch (_) {}
+        if (frRect) { trLeft += frRect.left; trTop += frRect.top; }
         // Calculate relative coordinates
         const relX = Math.round((finalX + r.left) - trLeft);
         const relY = Math.round((finalY + r.top) - trTop);
