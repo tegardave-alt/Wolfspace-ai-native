@@ -8450,8 +8450,9 @@ function buildStagePrompt(kind, label, ctx) {
 const WF_GEN_HINT =
   "(Jika permintaan ini tentang MEMBUAT/merancang sebuah workflow/alur/pipeline: " +
   "keluarkan HANYA satu blok berpagar ```wolfspace-workflow berisi JSON valid: " +
-  '{"nodes":[{"id":"n1","kind":"prompt","label":"..."}],"edges":[{"from":"n1","to":"n2"}]} ' +
+  '{"nodes":[{"id":"n1","kind":"prompt","label":"..."}],"edges":[{"from":"n1","to":"n2","label":"opsional"}]} ' +
   "— kind salah satu dari prompt|agent|tool|condition|output, id unik & pendek, label RINGKAS tanpa \\n. " +
+  "Untuk node kind:condition, beri >1 edge keluar dan isi \"label\" tiap edge dengan nama cabang (mis. ya/tidak). " +
   "DILARANG memakai mermaid atau format diagram lain. Boleh 1 kalimat penjelasan singkat di luar blok. " +
   "Jika BUKAN permintaan workflow, abaikan instruksi ini.)";
 
@@ -8478,6 +8479,7 @@ function specToFlow(spec) {
     source: String(e.from != null ? e.from : e.source),
     target: String(e.to != null ? e.to : e.target),
     type: "wf",
+    data: e.label ? { label: String(e.label) } : undefined, // cabang kondisi ("ya"/"tidak")
   })).filter((e) => nodes.some((n) => n.id === e.source) && nodes.some((n) => n.id === e.target));
   // tata-letak berdasarkan urutan topological (fallback: urutan asli)
   const comp = compileWorkflow(nodes, edges);
@@ -8510,11 +8512,12 @@ function mermaidToSpec(text) {
   let m;
   while ((m = reNode.exec(body))) addNode(m[1], m[2], m[3]);
   const edges = [];
-  const reEdge = /([A-Za-z0-9_]+)[^\n>]*?(?:--+>|-\.->|==+>)(?:\s*\|[^|]*\|)?\s*([A-Za-z0-9_]+)/g;
+  const reEdge = /([A-Za-z0-9_]+)[^\n>]*?(?:--+>|-\.->|==+>)(?:\s*\|([^|]*)\|)?\s*([A-Za-z0-9_]+)/g;
   while ((m = reEdge.exec(body))) {
-    if (!nodes.has(m[1])) nodes.set(m[1], { label: m[1], kind: "agent" });
-    if (!nodes.has(m[2])) nodes.set(m[2], { label: m[2], kind: "agent" });
-    edges.push({ from: m[1], to: m[2] });
+    const src = m[1], lbl = m[2], dst = m[3];
+    if (!nodes.has(src)) nodes.set(src, { label: src, kind: "agent" });
+    if (!nodes.has(dst)) nodes.set(dst, { label: dst, kind: "agent" });
+    edges.push({ from: src, to: dst, label: lbl ? lbl.trim() : undefined });
   }
   if (!nodes.size) return null;
   return { nodes: [...nodes.entries()].map(([id, v]) => ({ id, label: v.label, kind: v.kind })), edges };
@@ -8592,14 +8595,21 @@ function WFNodeCard({ id, data }) {
 }
 
 // Edge custom WOLFSPACE: bezier dengan rel gelap + partikel mengalir (dash animasi).
-function WFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected }) {
+// Label (mis. cabang "ya"/"tidak") dirender via EdgeLabelRenderer bila ada.
+function WFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, targetPosition, selected, label, data }) {
   const XY = window.RFLib && window.RFLib.XY;
-  const [path] = XY.getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  const [path, labelX, labelY] = XY.getBezierPath({ sourceX, sourceY, sourcePosition, targetX, targetY, targetPosition });
+  const lbl = (data && data.label) || label;
   return (
-    <g>
+    <React.Fragment>
       <path d={path} fill="none" stroke={selected ? "#8fb3ff" : "#24384f"} strokeWidth={3} strokeLinecap="round" />
       <path d={path} fill="none" stroke="#8fb3ff" strokeWidth={1.7} strokeLinecap="round" strokeDasharray="1 10" style={{ animation: "wfflow 0.7s linear infinite" }} />
-    </g>
+      {lbl && XY.EdgeLabelRenderer && (
+        <XY.EdgeLabelRenderer>
+          <div className="nodrag nopan" style={{ position: "absolute", transform: `translate(-50%,-50%) translate(${labelX}px,${labelY}px)`, background: "#0d1117", border: "1px solid #2f4056", borderRadius: "5px", padding: "1px 7px", fontSize: "10px", color: "#8fb3ff", fontFamily: "ui-monospace, monospace", pointerEvents: "all" }}>{lbl}</div>
+        </XY.EdgeLabelRenderer>
+      )}
+    </React.Fragment>
   );
 }
 
@@ -8712,24 +8722,50 @@ function WorkflowBuilderInner({ onBack, runStage }) {
   const clearActive = () => setNodes((nds) => nds.map((x) => ({ ...x, data: { ...x.data, active: false } })));
   const runGraph = async () => {
     if (running || !runStage) return;
-    const comp = compileWorkflow(nodes, edges);
-    if (!comp.ok) { setRunErr(comp.error); setTimeout(() => setRunErr(""), 4000); return; }
+    if (!nodes.length) { setRunErr("Kanvas kosong — tambah node dulu."); setTimeout(() => setRunErr(""), 4000); return; }
     setRunErr(""); setRunning(true); runAbort.current = false;
-    // bersihkan status lama
-    setNodes((nds) => nds.map((x) => ({ ...x, data: { ...x.data, active: false, ok: undefined } })));
-    let ctx = "";
+    setNodes((nds) => nds.map((x) => ({ ...x, data: { ...x.data, active: false, ok: undefined, result: undefined } })));
+    // #4: TRAVERSAL BERCABANG. Mulai dari node tanpa masukan; di node Condition,
+    // agent MEMILIH satu cabang (cocokkan jawaban ke label edge / label node target)
+    // — hanya jalur itu diikuti. Non-condition mengikuti semua edge keluar.
+    const byId = new Map(nodes.map((n) => [n.id, n]));
+    const outOf = (id) => edges.filter((e) => e.source === id);
+    const edgeLabel = (e) => String((e.data && e.data.label) || e.label || "");
+    const indeg = new Map(nodes.map((n) => [n.id, 0]));
+    edges.forEach((e) => { if (indeg.has(e.target)) indeg.set(e.target, indeg.get(e.target) + 1); });
+    let queue = nodes.filter((n) => indeg.get(n.id) === 0).map((n) => n.id);
+    if (!queue.length) queue = [nodes[0].id];
+    const visited = new Set();
+    let ctx = "", steps = 0;
     try {
-      for (const n of comp.order) {
-        if (runAbort.current) break;
-        clearActive();
-        setNodeData(n.id, { active: true });
-        const kind = n.data.kind, label = n.data.label;
+      while (queue.length && !runAbort.current && steps < 60) {
+        const id = queue.shift();
+        if (visited.has(id)) continue;
+        visited.add(id); steps++;
+        const n = byId.get(id); if (!n) continue;
+        clearActive(); setNodeData(id, { active: true });
+        const kind = n.data.kind, label = n.data.label, outs = outOf(id);
         if (kind === "prompt") {
-          ctx = label || ""; // node prompt = seed konteks (tanpa giliran agent)
+          ctx = label || "";
+          outs.forEach((e) => queue.push(e.target));
+          continue;
+        }
+        if (kind === "condition" && outs.length > 1) {
+          const choices = outs.map((e) => edgeLabel(e) || (byId.get(e.target) && byId.get(e.target).data.label) || e.target);
+          const q = `Evaluasi kondisi: "${label}". Pilih SATU cabang dari daftar berikut dan jawab HANYA dengan nama cabang itu: [${choices.join(", ")}].` + (ctx ? "\n\nKonteks:\n" + ctx : "");
+          const r = await runStage(q, { kind, label });
+          setNodeData(id, { ok: r.ok, result: r.summary || "" });
+          const ans = String(r.summary || "").toLowerCase();
+          let picked = outs.find((e) => { const l = edgeLabel(e).toLowerCase(); return l && ans.includes(l); });
+          if (!picked) picked = outs.find((e) => { const t = byId.get(e.target); return t && t.data.label && ans.includes(String(t.data.label).toLowerCase()); });
+          if (!picked) picked = outs[0];
+          ctx += `\n\n[condition] ${label} → ${edgeLabel(picked) || (byId.get(picked.target) && byId.get(picked.target).data.label) || picked.target}`;
+          queue.push(picked.target);
         } else {
           const r = await runStage(buildStagePrompt(kind, label, ctx), { kind, label });
           ctx += `\n\n[${kind}] ${label}:\n${(r.summary || "").slice(0, 700)}`;
-          setNodeData(n.id, { ok: r.ok, result: r.summary || "" }); // #2 simpan hasil tahap
+          setNodeData(id, { ok: r.ok, result: r.summary || "" });
+          outs.forEach((e) => queue.push(e.target));
         }
       }
     } catch (e) {
@@ -8853,7 +8889,13 @@ function WorkflowBuilderInner({ onBack, runStage }) {
       <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
         <style>{"@keyframes wfflow{to{stroke-dashoffset:-22}}"}</style>
         <WFNodeCtx.Provider value={{ setNodes, editable: !isLive, openDetail: setDetailNode }}>
-          <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "wf" }} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
+          <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect}
+            onEdgeDoubleClick={isLive ? undefined : (ev, edge) => {
+              const cur = (edge.data && edge.data.label) || edge.label || "";
+              const l = window.prompt("Label edge (mis. cabang kondisi 'ya'/'tidak'):", cur);
+              if (l !== null) setEdges((eds) => eds.map((x) => (x.id === edge.id ? { ...x, data: { ...x.data, label: l.trim() }, label: undefined } : x)));
+            }}
+            nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "wf" }} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
             <Background variant={BackgroundVariant.Diagonal} gap={26} lineWidth={1} color="#1c2a3a" />
           </ReactFlow>
         </WFNodeCtx.Provider>
