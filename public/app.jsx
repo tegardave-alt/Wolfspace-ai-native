@@ -3174,7 +3174,10 @@ function useVisualPicker() {
       }
 
       try {
-        navigator.clipboard && navigator.clipboard.writeText(d);
+        // writeText() mengembalikan Promise — try/catch TAK menangkap penolakan async
+        // (mis. "Document is not focused"). .catch mencegahnya jadi unhandledrejection
+        // yang dulu memicu auto-rollback (app reload sendiri saat proses jalan).
+        navigator.clipboard && navigator.clipboard.writeText(d).catch(function () {});
       } catch (_) {}
       stop();
       // Gunakan alert yang rapi

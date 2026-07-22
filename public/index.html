@@ -133,6 +133,17 @@
       // ── Global Runtime Guard: tangkap error di luar jangkauan ErrorBoundary ──
       // (event handler, setTimeout, async/await) → picu Auto-Rollback yang sama.
       window.triggerAppRollback = function (errText) {
+        // Abaikan error JINAK yang BUKAN crash app — jangan rollback/reload karenanya.
+        // Penyebab "reload sendiri saat proses jalan": clipboard.writeText DITOLAK
+        // saat window tak fokus (NotAllowedError: Document is not focused) → menjadi
+        // unhandledrejection → dulu memicu rollback. Juga: ResizeObserver loop,
+        // fetch AbortError (pembatalan streaming). Semua ini tak merusak app.
+        var _benign =
+          /NotAllowedError|Clipboard|writeText|Document is not focused|ResizeObserver loop|AbortError/i;
+        if (_benign.test(String(errText || ""))) {
+          console.warn("⚠ Error jinak diabaikan (tanpa rollback):", errText);
+          return;
+        }
         try {
           // Anti-loop: kalau baru saja rollback (<60 detik), jangan reload lagi —
           // versi aman pun melempar error yang sama, cukup catat di console.
