@@ -7881,6 +7881,34 @@ function App() {
     wfCtrlRef.current = null;
   };
   const wfCancel = () => { if (wfCtrlRef.current) wfCtrlRef.current.abort(); setWfBusy(false); };
+  // Fase 2: jalankan SATU tahap graph Workflow (satu giliran agent), log ke panel
+  // chat Workflow, kembalikan { ok, summary }. Sengaja TIDAK memancarkan event live-
+  // graph (biar kanvas Builder yang menyala per-node, bukan pindah ke mode Live).
+  const runWorkflowStage = React.useCallback((prompt, meta = {}) => {
+    return new Promise((resolve) => {
+      setWfMessages((m) => [...m, { role: "user", text: "▶ " + (meta.label || meta.kind || "tahap") }, { role: "agent", agent: { events: [], busy: true } }]);
+      const upd = (patch) => setWfMessages((m) => {
+        const c = m.slice(); const last = { ...c[c.length - 1] }; last.agent = { ...last.agent, ...patch }; c[c.length - 1] = last; return c;
+      });
+      let think = "", evlist = [], summary = "", done = false;
+      const finish = (ok, s) => { if (done) return; done = true; resolve({ ok, summary: s }); };
+      const ctrl = new AbortController();
+      const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
+      streamSelfAgent(
+        { history: [{ role: "user", content: prompt }], cloud: getCloud(), port: modelVal, effort: curEffort },
+        (j) => {
+          if (j.t === "tok") { think += j.c; upd({ thinking: think }); }
+          else if (j.t === "thought") { think = ""; evlist.push({ type: "thought", kind: j.tool, arg: j.c, ok: j.ok, output: j.c }); upd({ events: [...evlist], thinking: "" }); }
+          else if (j.t === "act") { think = ""; evlist.push({ type: "act", kind: j.kind, arg: j.arg, ok: j.ok, output: j.output }); upd({ events: [...evlist], thinking: "" }); }
+          else if (j.t === "adone") { summary = j.summary || summary; upd({ busy: false, done: true, summary }); finish(true, summary); }
+          else if (j.t === "err") { upd({ busy: false, error: true, events: [...evlist, { type: "err", m: j.m }] }); finish(false, j.m || "error"); }
+        },
+        ctrl.signal,
+      ).then(() => { upd({ busy: false, done: true, summary }); finish(true, summary); })
+       .catch((e) => { if (e.name !== "AbortError") upd({ busy: false, error: true }); finish(false, e.message); });
+    });
+  }, [modelVal]);
+
   const reset = () => {
     setMessages([]);
     setHistory([]);
@@ -8243,7 +8271,7 @@ function App() {
             <div style={{ display: "flex", height: "100%", width: "100%", minHeight: 0 }}>
               {/* KIRI: React Flow (Workflow / live agent graph) */}
               <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
-                <WorkflowBuilder onBack={() => setView("chat")} />
+                <WorkflowBuilder onBack={() => setView("chat")} runStage={runWorkflowStage} />
               </div>
               {/* KANAN: chat agent — pakai UI chat yang sama (Message + Composer) */}
               <div style={{ width: "400px", flexShrink: 0, borderLeft: "1px solid #212a36", display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, background: "#0d1117" }}>
@@ -8343,6 +8371,44 @@ const WF_KIND_ACCENT = {
 };
 const wfKindAccent = (k) => WF_KIND_ACCENT[k] || "#8fb3ff";
 
+// ── Fase 2: kompilasi graph tergambar → urutan eksekusi (topological) ──────────
+// Kahn's algorithm. Kembalikan { ok, order:[node...] } atau { ok:false, error }.
+function compileWorkflow(nodes, edges) {
+  if (!nodes || nodes.length === 0) return { ok: false, error: "Kanvas kosong — tambah node dulu." };
+  const indeg = new Map(nodes.map((n) => [n.id, 0]));
+  const adj = new Map(nodes.map((n) => [n.id, []]));
+  for (const e of edges || []) {
+    if (adj.has(e.source) && indeg.has(e.target)) {
+      adj.get(e.source).push(e.target);
+      indeg.set(e.target, indeg.get(e.target) + 1);
+    }
+  }
+  const ind = new Map(indeg);
+  const q = nodes.filter((n) => ind.get(n.id) === 0).map((n) => n.id);
+  const order = [];
+  while (q.length) {
+    const id = q.shift();
+    order.push(id);
+    for (const t of adj.get(id) || []) {
+      ind.set(t, ind.get(t) - 1);
+      if (ind.get(t) === 0) q.push(t);
+    }
+  }
+  if (order.length !== nodes.length) return { ok: false, error: "Ada siklus di graph — alur harus searah." };
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  return { ok: true, order: order.map((id) => byId.get(id)) };
+}
+// Bingkai prompt per-tahap sesuai jenis node + konteks dari node hulu.
+function buildStagePrompt(kind, label, ctx) {
+  const c = ctx ? "\n\nKonteks dari tahap sebelumnya:\n" + ctx : "";
+  const L = label || kind;
+  if (kind === "agent") return `Kerjakan langkah ini sebagai agent: ${L}.${c}`;
+  if (kind === "tool") return `Gunakan tool yang sesuai untuk: ${L}. Laporkan hasil nyatanya.${c}`;
+  if (kind === "condition") return `Evaluasi kondisi/cabang: ${L}. Jelaskan keputusan berdasarkan konteks.${c}`;
+  if (kind === "output") return `Susun hasil akhir/ringkasan untuk: ${L}, berdasarkan seluruh konteks.${c}`;
+  return `${L}.${c}`;
+}
+
 function WFNodeCard({ data }) {
   const XY = window.RFLib && window.RFLib.XY;
   const Handle = XY && XY.Handle;
@@ -8370,7 +8436,7 @@ function WFNodeCard({ data }) {
   );
 }
 
-function WorkflowBuilderInner({ onBack }) {
+function WorkflowBuilderInner({ onBack, runStage }) {
   const XY = window.RFLib.XY;
   const { ReactFlow, Background, Controls, MiniMap, useNodesState, useEdgesState, addEdge, useReactFlow, BackgroundVariant, applyNodeChanges } = XY;
   const idRef = React.useRef(3);
@@ -8391,6 +8457,10 @@ function WorkflowBuilderInner({ onBack }) {
   const [liveNodes, setLiveNodes] = React.useState([]);
   const [liveEdges, setLiveEdges] = React.useState([]);
   const liveRef = React.useRef({ i: 0, lastId: null });
+  // Fase 2: eksekusi graph tergambar (Builder) sebagai pipeline agent berurutan.
+  const [running, setRunning] = React.useState(false);
+  const [runErr, setRunErr] = React.useState("");
+  const runAbort = React.useRef(false);
   const rf = useReactFlow();
   const isLive = mode === "live";
   const nodeTypes = React.useMemo(() => ((isLive || nodeStyle === "custom") ? { wf: WFNodeCard } : {}), [isLive, nodeStyle]);
@@ -8449,6 +8519,40 @@ function WorkflowBuilderInner({ onBack }) {
     try { addNode(JSON.parse(raw), e.clientX, e.clientY); } catch (_) {}
   }, [addNode, isLive]);
 
+  // Fase 2: JALANKAN graph tergambar. Kompilasi → urutan topological → eksekusi tiap
+  // node berurutan (prompt = seed; agent/tool/condition/output = 1 giliran agent),
+  // node menyala saat berjalan, konteks di-thread antar-node. Hasil ke panel chat.
+  const setNodeData = (id, patch) => setNodes((nds) => nds.map((x) => (x.id === id ? { ...x, data: { ...x.data, ...patch } } : x)));
+  const clearActive = () => setNodes((nds) => nds.map((x) => ({ ...x, data: { ...x.data, active: false } })));
+  const runGraph = async () => {
+    if (running || !runStage) return;
+    const comp = compileWorkflow(nodes, edges);
+    if (!comp.ok) { setRunErr(comp.error); setTimeout(() => setRunErr(""), 4000); return; }
+    setRunErr(""); setRunning(true); runAbort.current = false;
+    // bersihkan status lama
+    setNodes((nds) => nds.map((x) => ({ ...x, data: { ...x.data, active: false, ok: undefined } })));
+    let ctx = "";
+    try {
+      for (const n of comp.order) {
+        if (runAbort.current) break;
+        clearActive();
+        setNodeData(n.id, { active: true });
+        const kind = n.data.kind, label = n.data.label;
+        if (kind === "prompt") {
+          ctx = label || ""; // node prompt = seed konteks (tanpa giliran agent)
+        } else {
+          const r = await runStage(buildStagePrompt(kind, label, ctx), { kind, label });
+          ctx += `\n\n[${kind}] ${label}:\n${(r.summary || "").slice(0, 700)}`;
+          setNodeData(n.id, { ok: r.ok });
+        }
+      }
+    } catch (e) {
+      setRunErr(e.message || "gagal menjalankan graph");
+    }
+    clearActive();
+    setRunning(false);
+  };
+
   const wf = {
     nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind, label: n.data.label, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) } })),
     edges: edges.map((e) => ({ from: e.source, to: e.target })),
@@ -8491,6 +8595,14 @@ function WorkflowBuilderInner({ onBack }) {
           </button>
           {!isLive && (
             <React.Fragment>
+              <button
+                style={{ ...btn, background: running ? "#21262d" : "#132a1c", borderColor: running ? "#2f4056" : "#2e6b3f", color: running ? "#8b949e" : "#7ee2a8", fontWeight: 600 }}
+                onClick={() => (running ? (runAbort.current = true) : runGraph())}
+                title="Kompilasi graph → jalankan node berurutan sebagai pipeline agent"
+              >
+                {running ? "■ Hentikan" : "▶ Jalankan graph"}
+              </button>
+              {runErr && <div style={{ fontSize: "10.5px", color: "#f0776b", lineHeight: 1.4 }}>{runErr}</div>}
               <button style={btn} onClick={() => setNodeStyle((s) => (s === "custom" ? "default" : "custom"))} title="Bandingkan skin WOLFSPACE vs node bawaan React Flow">
                 Gaya: {nodeStyle === "custom" ? "Kustom" : "Bawaan RF"}
               </button>
@@ -8518,7 +8630,7 @@ function WorkflowBuilderInner({ onBack }) {
   );
 }
 
-function WorkflowBuilder({ onBack }) {
+function WorkflowBuilder({ onBack, runStage }) {
   const XY = window.RFLib && window.RFLib.XY;
   if (!XY || !XY.ReactFlow || !XY.ReactFlowProvider) {
     return <div style={{ padding: "40px", color: "#6f7d92", fontFamily: "ui-monospace, monospace" }}>React Flow tak termuat (window.RFLib.XY tak tersedia).</div>;
@@ -8526,7 +8638,7 @@ function WorkflowBuilder({ onBack }) {
   const { ReactFlowProvider } = XY;
   return (
     <ReactFlowProvider>
-      <WorkflowBuilderInner onBack={onBack} />
+      <WorkflowBuilderInner onBack={onBack} runStage={runStage} />
     </ReactFlowProvider>
   );
 }
