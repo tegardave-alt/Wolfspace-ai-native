@@ -20,23 +20,23 @@ const outCss = path.join(root, "public", "vendor", "reactflow.css");
     format: "iife",
     globalName: "RFLib",
     outfile: outJs,
-    // Build dari SOURCE TS/TSX yang di-vendor (lihat entry.js). esbuild menanggalkan
-    // tipe & meng-compile TSX (JSX otomatis -> react/jsx-runtime yang di-shim ke
-    // window.React). @xyflow/system dipetakan ke source vendored.
-    loader: { ".js": "jsx", ".ts": "ts", ".tsx": "tsx" },
-    jsx: "automatic",
+    // Build dari paket npm @xyflow/react (lihat entry.js). React/react-dom di-shim
+    // ke window.React (UMD yang sudah dimuat index.html) agar tak ada React ganda.
     define: { "process.env.NODE_ENV": '"production"' },
     alias: {
-      "@xyflow/system": path.join(here, "vendor", "system", "index.ts"),
       react: path.join(here, "react-shim.js"),
       "react-dom": path.join(here, "reactdom-shim.js"),
       "react/jsx-runtime": path.join(here, "jsx-shim.js"),
       "react/jsx-dev-runtime": path.join(here, "jsx-shim.js"),
     },
+    banner: { js: "/*! bundle: @xyflow/react + @dagrejs/dagre — MIT; see the packages' LICENSE files */" },
     logLevel: "info",
   });
-  // CSS terkompilasi di-vendor juga (lepas dari node_modules @xyflow).
-  fs.copyFileSync(path.join(here, "vendor", "style.css"), outCss);
+  // CSS resmi dari paket npm (varian diagonal WOLFSPACE kini komponen kustom di app.jsx).
+  fs.copyFileSync(
+    path.join(root, "node_modules", "@xyflow", "react", "dist", "style.css"),
+    outCss,
+  );
   const kb = (p) => (fs.statSync(p).size / 1024).toFixed(0);
   console.log(
     "OK -> reactflow.bundle.js (" +

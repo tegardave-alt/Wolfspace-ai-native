@@ -8671,9 +8671,26 @@ function WFEdge({ id, sourceX, sourceY, targetX, targetY, sourcePosition, target
   );
 }
 
+// Background diagonal cross-hatch WOLFSPACE — komponen kustom di atas API publik
+// React Flow (useStore -> transform viewport), tanpa menyentuh internal library.
+// Menggantikan varian fork "BackgroundVariant.Diagonal" (fork sudah dilepas ke npm).
+function WFDiagonalBackground({ gap = 26, color = "#1c2a3a", lineWidth = 1 }) {
+  const XY = window.RFLib.XY;
+  const transform = XY.useStore((s) => s.transform); // [x, y, zoom]
+  const g = gap * transform[2];
+  return (
+    <svg style={{ position: "absolute", inset: 0, width: "100%", height: "100%", pointerEvents: "none" }}>
+      <pattern id="wf-diag-bg" x={transform[0] % g} y={transform[1] % g} width={g} height={g} patternUnits="userSpaceOnUse">
+        <path d={`M0 0 L${g} ${g} M${g} 0 L0 ${g}`} stroke={color} strokeWidth={lineWidth} fill="none" />
+      </pattern>
+      <rect x="0" y="0" width="100%" height="100%" fill="url(#wf-diag-bg)" />
+    </svg>
+  );
+}
+
 function WorkflowBuilderInner({ onBack, runStage }) {
   const XY = window.RFLib.XY;
-  const { ReactFlow, Background, useNodesState, useEdgesState, addEdge, useReactFlow, BackgroundVariant, applyNodeChanges } = XY;
+  const { ReactFlow, useNodesState, useEdgesState, addEdge, useReactFlow, applyNodeChanges } = XY;
   const idRef = React.useRef(3);
   const [nodes, setNodes, onNodesChange] = useNodesState([
     { id: "n1", type: "wf", position: { x: 60, y: 110 }, data: { label: "User prompt", kind: "prompt", accent: "#3fb950" } },
@@ -9012,7 +9029,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
               if (l !== null) setEdges((eds) => eds.map((x) => (x.id === edge.id ? { ...x, data: { ...x.data, label: l.trim() }, label: undefined } : x)));
             }}
             nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "wf" }} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
-            <Background variant={BackgroundVariant.Diagonal} gap={26} lineWidth={1} color="#1c2a3a" />
+            <WFDiagonalBackground gap={26} lineWidth={1} color="#1c2a3a" />
           </ReactFlow>
         </WFNodeCtx.Provider>
         {/* Kontrol custom WOLFSPACE (ganti <Controls> bawaan) */}
