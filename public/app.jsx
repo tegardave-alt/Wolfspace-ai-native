@@ -7839,8 +7839,11 @@ function App() {
     wfCtrlRef.current = ctrl;
     try {
       const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
+      // Kirim pesan terakhir DENGAN hint pembuat-workflow (tampilan chat tetap bersih,
+      // pakai `content` biasa). Riwayat tersimpan tetap versi bersih (newHist).
+      const sendHist = [...wfHistory, { role: "user", content: content + "\n\n" + WF_GEN_HINT }];
       await streamSelfAgent(
-        { history: newHist, cloud: getCloud(), port: modelVal, effort: curEffort },
+        { history: sendHist, cloud: getCloud(), port: modelVal, effort: curEffort },
         (j) => {
           if (j.t === "step") { think = ""; upd({ thinking: "" }); }
           else if (j.t === "tok") { think += j.c; upd({ thinking: think }); }
@@ -7853,7 +7856,15 @@ function App() {
           } else if (j.t === "adone") {
             try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "done" } })); } catch (_) {}
             adoneSent = true;
-            upd({ busy: false, done: true, summary: j.summary, editCount: j.edits, backup: j.backup });
+            // Deteksi spec workflow di jawaban → render ke kanvas kiri; bersihkan blok
+            // JSON dari teks yang DITAMPILKAN agar chat tak berisik.
+            const spec = extractWorkflowSpec(j.summary);
+            let disp = j.summary || "";
+            if (spec) {
+              try { window.dispatchEvent(new CustomEvent("wolfspace_workflow_spec", { detail: spec })); } catch (_) {}
+              disp = disp.replace(/```(?:wolfspace-workflow|json)\s*[\s\S]*?```/i, "› Workflow dirender di kanvas ←").trim();
+            }
+            upd({ busy: false, done: true, summary: disp, editCount: j.edits, backup: j.backup });
             setWfHistory((h) => [...h, { role: "assistant", content: j.summary || "" }]);
             // RAG ingest: simpan memori run (permintaan → hasil) agar bisa diingat
             // di sesi mendatang lewat tool `retrieve`. Fire-and-forget, store global.
@@ -8409,6 +8420,52 @@ function buildStagePrompt(kind, label, ctx) {
   return `${L}.${c}`;
 }
 
+// Instruksi (digabung ke pesan yang DIKIRIM, bukan yang ditampilkan): bila user
+// minta MEMBUAT workflow, agent mengeluarkan satu blok spec yang bisa dirender.
+const WF_GEN_HINT =
+  "(Jika permintaan ini tentang MEMBUAT/merancang sebuah workflow/alur/pipeline, " +
+  "sertakan SATU blok berpagar ```wolfspace-workflow berisi JSON valid: " +
+  '{"nodes":[{"id":"n1","kind":"prompt","label":"..."}],"edges":[{"from":"n1","to":"n2"}]} ' +
+  "— kind salah satu dari prompt|agent|tool|condition|output, id unik & pendek. " +
+  "Beri penjelasan singkat DI LUAR blok. Jika BUKAN permintaan workflow, abaikan instruksi ini.)";
+
+// Ambil spec workflow dari teks jawaban agent (blok ```wolfspace-workflow / ```json).
+function extractWorkflowSpec(text) {
+  const m = /```(?:wolfspace-workflow|json)\s*([\s\S]*?)```/i.exec(text || "");
+  if (!m) return null;
+  try {
+    const j = JSON.parse(m[1].trim());
+    if (j && Array.isArray(j.nodes) && j.nodes.length) return j;
+  } catch (_) {}
+  return null;
+}
+// Ubah spec {nodes,edges} → node/edge React Flow (type wf) + tata-letak snake.
+function specToFlow(spec) {
+  const nodes = (spec.nodes || []).map((n, i) => ({
+    id: String(n.id || "n" + (i + 1)),
+    type: "wf",
+    position: { x: 0, y: 0 },
+    data: { label: n.label || n.kind || "node", kind: n.kind || "agent", accent: wfKindAccent(n.kind) },
+  }));
+  const edges = (spec.edges || []).map((e, i) => ({
+    id: "e" + i,
+    source: String(e.from != null ? e.from : e.source),
+    target: String(e.to != null ? e.to : e.target),
+    type: "wf",
+  })).filter((e) => nodes.some((n) => n.id === e.source) && nodes.some((n) => n.id === e.target));
+  // tata-letak berdasarkan urutan topological (fallback: urutan asli)
+  const comp = compileWorkflow(nodes, edges);
+  const order = comp.ok ? comp.order : nodes;
+  const byId = new Map(nodes.map((n) => [n.id, n]));
+  const COLS = 4, DX = 210, DY = 120;
+  order.forEach((n, i) => {
+    const col = i % COLS, row = Math.floor(i / COLS);
+    const nn = byId.get(n.id);
+    if (nn) nn.position = { x: (row % 2 === 0 ? col : COLS - 1 - col) * DX, y: row * DY };
+  });
+  return { nodes, edges };
+}
+
 function WFNodeCard({ data }) {
   const XY = window.RFLib && window.RFLib.XY;
   const Handle = XY && XY.Handle;
@@ -8507,6 +8564,22 @@ function WorkflowBuilderInner({ onBack, runStage }) {
     window.addEventListener("wolfspace_agent_act", onAct);
     return () => { window.removeEventListener("wolfspace_agent_run", onRun); window.removeEventListener("wolfspace_agent_act", onAct); };
   }, [rf]);
+
+  // Chat kanan minta "buat workflow" → agent kirim spec → render ke kanvas (Builder).
+  React.useEffect(() => {
+    const onSpec = (e) => {
+      const spec = e.detail;
+      if (!spec || !Array.isArray(spec.nodes) || !spec.nodes.length) return;
+      const { nodes: nn, edges: ee } = specToFlow(spec);
+      if (!nn.length) return;
+      setMode("builder");
+      setNodes(nn);
+      setEdges(ee);
+      setTimeout(() => { try { rf && rf.fitView && rf.fitView({ duration: 400, padding: 0.2 }); } catch (_) {} }, 80);
+    };
+    window.addEventListener("wolfspace_workflow_spec", onSpec);
+    return () => window.removeEventListener("wolfspace_workflow_spec", onSpec);
+  }, [rf, setNodes, setEdges]);
 
   const liveOnNodesChange = React.useCallback((changes) => setLiveNodes((nds) => applyNodeChanges(changes, nds)), [applyNodeChanges]);
   const noop = React.useCallback(() => {}, []);
