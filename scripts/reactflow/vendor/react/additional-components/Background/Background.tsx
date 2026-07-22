@@ -3,7 +3,7 @@ import cc from 'classcat';
 import { shallow } from 'zustand/shallow';
 
 import { useStore } from '../../hooks/useStore';
-import { DotPattern, LinePattern } from './Patterns';
+import { DotPattern, LinePattern, DiagonalPattern } from './Patterns';
 import { containerStyle } from '../../styles/utils';
 import { type BackgroundProps, BackgroundVariant } from './types';
 import { type ReactFlowState } from '../../types';
@@ -36,6 +36,7 @@ function BackgroundComponent({
   const patternSize = size || defaultSize[variant];
   const isDots = variant === BackgroundVariant.Dots;
   const isCross = variant === BackgroundVariant.Cross;
+  const isDiagonal = variant === BackgroundVariant.Diagonal; // WOLFSPACE fork
   const gapXY: [number, number] = Array.isArray(gap) ? gap : [gap, gap];
   const scaledGap: [number, number] = [gapXY[0] * transform[2] || 1, gapXY[1] * transform[2] || 1];
   const scaledSize = patternSize * transform[2];
@@ -74,6 +75,8 @@ function BackgroundComponent({
       >
         {isDots ? (
           <DotPattern radius={scaledSize / 2} className={patternClassName} />
+        ) : isDiagonal ? (
+          <DiagonalPattern dimensions={patternDimensions} lineWidth={lineWidth} className={patternClassName} />
         ) : (
           <LinePattern
             dimensions={patternDimensions}

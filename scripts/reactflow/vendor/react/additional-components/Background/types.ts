@@ -10,6 +10,9 @@ export enum BackgroundVariant {
   Lines = 'lines',
   Dots = 'dots',
   Cross = 'cross',
+  // WOLFSPACE fork (internal-only): pola diagonal cross-hatch (argyle). Tak ada
+  // di rilis upstream — hanya bisa ditambah dengan mengedit source ini.
+  Diagonal = 'diagonal',
 }
 
 /**

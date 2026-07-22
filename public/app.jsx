@@ -8622,7 +8622,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
       <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
         <style>{"@keyframes wfflow{to{stroke-dashoffset:-22}}"}</style>
         <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "wf" }} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
-          <Background variant={BackgroundVariant.Dots} gap={18} size={1} color="#26313f" />
+          <Background variant={BackgroundVariant.Diagonal} gap={26} lineWidth={1} color="#1c2a3a" />
         </ReactFlow>
         {/* Kontrol custom WOLFSPACE (ganti <Controls> bawaan) */}
         <div style={{ position: "absolute", right: "14px", bottom: "14px", display: "flex", flexDirection: "column", gap: "4px", zIndex: 5 }}>
