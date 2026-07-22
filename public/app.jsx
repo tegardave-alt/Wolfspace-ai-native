@@ -4909,8 +4909,6 @@ function Sidebar({
   view,
   setView,
   onNewChat,
-  onVisualPicker,
-  onVisualDraw,
   theme,
   setTheme,
   terminalOpen,
@@ -5621,16 +5619,8 @@ function Sidebar({
       </div>
       {showTools && (
         <div className="sb-group">
-          <Item
-            icon={SB.target({ width: 19, height: 19 })}
-            label="Visual Picker"
-            onClick={onVisualPicker}
-          />
-          <Item
-            icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path><path d="M13.5 6.5l4 4"></path></svg>}
-            label="Visual Draw"
-            onClick={onVisualDraw}
-          />
+          {/* Visual Picker & Visual Draw dipindah ke tombol menu panel (⋮ vertikal)
+              di header "Web Dev Live Browser" — tak lagi di sidebar. */}
           <Item
             icon={<svg width="19" height="19" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><polyline points="4 17 10 11 4 5"></polyline><line x1="12" y1="19" x2="20" y2="19"></line></svg>}
             label="Terminal"
@@ -7996,12 +7986,6 @@ function App() {
           setView("chat");
           loadSavedChats();
         }}
-        onVisualPicker={() => {
-          startPicker();
-        }}
-        onVisualDraw={() => {
-          startVisualDraw();
-        }}
         theme={theme}
         setTheme={setTheme}
         terminalOpen={terminalOpen}
@@ -8142,11 +8126,13 @@ function App() {
                           minWidth: "235px",
                         }}
                       >
+                        {/* Visual Picker & Visual Draw dipindah kemari dari sidebar (bagian "Alat")
+                            — akses langsung dari tombol menu panel ini, bukan lagi di sidebar. */}
                         <button
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            justifyContent: "space-between",
+                            gap: "10px",
                             width: "100%",
                             padding: "8px 16px",
                             color: "#e2e8f0",
@@ -8161,16 +8147,17 @@ function App() {
                           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                           onClick={() => {
                             setPanelMenuOpen(false);
-                            setTerminalOpen(!terminalOpen);
+                            startPicker();
                           }}
                         >
-                          <span>Terminal</span>
+                          {SB.target({ width: 16, height: 16 })}
+                          <span>Visual Picker</span>
                         </button>
                         <button
                           style={{
                             display: "flex",
                             alignItems: "center",
-                            justifyContent: "space-between",
+                            gap: "10px",
                             width: "100%",
                             padding: "8px 16px",
                             color: "#e2e8f0",
@@ -8185,37 +8172,11 @@ function App() {
                           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                           onClick={() => {
                             setPanelMenuOpen(false);
-                            setPickerDone(false);
+                            startVisualDraw();
                           }}
                         >
-                          <span>Create Project</span>
-                        </button>
-                        <button
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            justifyContent: "space-between",
-                            width: "100%",
-                            padding: "8px 16px",
-                            color: "#e2e8f0",
-                            fontSize: "13px",
-                            border: "none",
-                            background: "transparent",
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                            textAlign: "left",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                          onClick={() => {
-                            setPanelMenuOpen(false);
-                            setCommandPaletteOpen(true);
-                            setCommandSearch("");
-                            setSelectedCommandIndex(0);
-                          }}
-                        >
-                          <span>Command Palette</span>
-                          <span style={{ fontSize: "12px", color: "#6b7280", marginLeft: "24px" }}>Ctrl+Shift+P</span>
+                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path><path d="M13.5 6.5l4 4"></path></svg>
+                          <span>Visual Draw</span>
                         </button>
                       </div>
                     )}
