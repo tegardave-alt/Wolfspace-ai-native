@@ -2523,9 +2523,180 @@ const MI = {
   ),
 };
 
+// Deteksi file 3D (GLB/GLTF/STL) dari nama/path.
+const is3DFile = (nameOrPath) => /\.(glb|gltf|stl)$/i.test(nameOrPath || "");
+
+/* ----------------------------- Viewer 3D (GLB/STL) ----------------------------- */
+// Viewer interaktif berbasis three.js (di-vendor offline via window.WOLFSPACE3D).
+// Memutar orbit + zoom + auto-frame ke bounding box model. Membersihkan seluruh
+// resource WebGL (renderer, geometry, material, RAF, ResizeObserver) saat unmount —
+// tanpa itu, membuka-tutup beberapa model membocorkan konteks WebGL sampai browser
+// menolak membuat yang baru ("Too many active WebGL contexts").
+function Model3DViewer({ url, name }) {
+  const mountRef = useRef(null);
+  const [status, setStatus] = useState("loading"); // loading | ready | error
+  const [errMsg, setErrMsg] = useState("");
+
+  useEffect(() => {
+    const lib = typeof window !== "undefined" && window.WOLFSPACE3D;
+    const mount = mountRef.current;
+    if (!mount) return;
+    if (!lib || !lib.THREE) {
+      setStatus("error");
+      setErrMsg("Pustaka 3D (three.js) belum termuat.");
+      return;
+    }
+    const { THREE, GLTFLoader, STLLoader, OrbitControls } = lib;
+    let raf = 0;
+    let disposed = false;
+    const disposables = [];
+
+    const w = mount.clientWidth || 600;
+    const h = mount.clientHeight || 400;
+
+    const scene = new THREE.Scene();
+    scene.background = new THREE.Color(0x0d1117);
+    const camera = new THREE.PerspectiveCamera(45, w / h, 0.01, 5000);
+    const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
+    renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
+    renderer.setSize(w, h);
+    // three r160: default output sudah sRGB; set eksplisit untuk konsistensi warna GLB.
+    if ("outputColorSpace" in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
+    mount.appendChild(renderer.domElement);
+
+    // Pencahayaan: ambient lembut + 2 directional (key/fill) supaya STL polos (tanpa
+    // material bawaan) tetap terbaca bentuknya, dan GLB ber-PBR terlihat wajar.
+    scene.add(new THREE.AmbientLight(0xffffff, 0.9));
+    const key = new THREE.DirectionalLight(0xffffff, 1.1);
+    key.position.set(3, 5, 4);
+    scene.add(key);
+    const fill = new THREE.DirectionalLight(0xffffff, 0.5);
+    fill.position.set(-4, -2, -3);
+    scene.add(fill);
+
+    const controls = new OrbitControls(camera, renderer.domElement);
+    controls.enableDamping = true;
+    controls.dampingFactor = 0.08;
+
+    // Bingkai kamera ke bounding box objek: hitung radius, mundurkan kamera sesuai
+    // FOV agar model pas di layar berapa pun skala aslinya (mm vs meter, dll).
+    const frameObject = (obj) => {
+      const box = new THREE.Box3().setFromObject(obj);
+      const size = box.getSize(new THREE.Vector3());
+      const center = box.getCenter(new THREE.Vector3());
+      obj.position.sub(center); // pusatkan model ke origin
+      const maxDim = Math.max(size.x, size.y, size.z) || 1;
+      const fov = (camera.fov * Math.PI) / 180;
+      const dist = (maxDim / 2 / Math.tan(fov / 2)) * 1.6;
+      camera.position.set(0, maxDim * 0.15, dist);
+      camera.near = dist / 100;
+      camera.far = dist * 100;
+      camera.updateProjectionMatrix();
+      controls.target.set(0, 0, 0);
+      controls.update();
+    };
+
+    const onReady = (obj) => {
+      if (disposed) return;
+      scene.add(obj);
+      frameObject(obj);
+      setStatus("ready");
+    };
+    const onErr = (e) => {
+      if (disposed) return;
+      setStatus("error");
+      setErrMsg((e && e.message) || "Gagal memuat model 3D.");
+    };
+
+    try {
+      if (/\.stl$/i.test(name || url)) {
+        new STLLoader().load(
+          url,
+          (geometry) => {
+            geometry.computeVertexNormals();
+            const material = new THREE.MeshStandardMaterial({
+              color: 0x9aa4b2,
+              metalness: 0.1,
+              roughness: 0.75,
+            });
+            const mesh = new THREE.Mesh(geometry, material);
+            disposables.push(geometry, material);
+            onReady(mesh);
+          },
+          undefined,
+          onErr,
+        );
+      } else {
+        new GLTFLoader().load(
+          url,
+          (gltf) => onReady(gltf.scene),
+          undefined,
+          onErr,
+        );
+      }
+    } catch (e) {
+      onErr(e);
+    }
+
+    const animate = () => {
+      raf = requestAnimationFrame(animate);
+      controls.update();
+      renderer.render(scene, camera);
+    };
+    animate();
+
+    const ro = new ResizeObserver(() => {
+      const nw = mount.clientWidth || w;
+      const nh = mount.clientHeight || h;
+      camera.aspect = nw / nh;
+      camera.updateProjectionMatrix();
+      renderer.setSize(nw, nh);
+    });
+    ro.observe(mount);
+
+    return () => {
+      disposed = true;
+      cancelAnimationFrame(raf);
+      ro.disconnect();
+      controls.dispose();
+      disposables.forEach((d) => { try { d.dispose && d.dispose(); } catch (_) {} });
+      // Buang geometry/material sisa di scene (mis. GLB multi-mesh) lalu konteks WebGL.
+      scene.traverse((o) => {
+        if (o.geometry) { try { o.geometry.dispose(); } catch (_) {} }
+        if (o.material) {
+          const mats = Array.isArray(o.material) ? o.material : [o.material];
+          mats.forEach((m) => { try { m.dispose && m.dispose(); } catch (_) {} });
+        }
+      });
+      try { renderer.dispose(); } catch (_) {}
+      try { renderer.forceContextLoss && renderer.forceContextLoss(); } catch (_) {}
+      if (renderer.domElement && renderer.domElement.parentNode) {
+        renderer.domElement.parentNode.removeChild(renderer.domElement);
+      }
+    };
+  }, [url, name]);
+
+  return (
+    <div style={{ position: "relative", width: "70vw", maxWidth: "900px", height: "calc(85vh - 80px)", background: "#0d1117", borderRadius: "8px", overflow: "hidden" }}>
+      <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
+      {status !== "ready" && (
+        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#8b98a9", fontSize: "13px", pointerEvents: "none", gap: "8px" }}>
+          {status === "loading" ? <><div style={{ fontSize: "32px" }}>🧊</div><div>Memuat model 3D…</div></> : <><div style={{ fontSize: "32px" }}>⚠️</div><div>{errMsg}</div></>}
+        </div>
+      )}
+      {status === "ready" && (
+        <div style={{ position: "absolute", bottom: "10px", left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.55)", color: "#c9d1d9", fontSize: "11px", padding: "4px 12px", borderRadius: "12px", pointerEvents: "none", whiteSpace: "nowrap" }}>
+          Seret untuk memutar · scroll untuk zoom
+        </div>
+      )}
+    </div>
+  );
+}
+
 function LightboxModal({ item, onClose }) {
   if (!item) return null;
-  const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(item.name || item.path || "") || (item.type && item.type.startsWith("image/")) || (item.url && /\.(png|jpe?g|webp|gif|svg|bmp|ico)(?:\?.*)?$/i.test(item.url)) || (!item.snippet && !/\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || ""));
+  const is3D = is3DFile(item.name || item.path || "");
+  const isImg = !is3D && (/\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(item.name || item.path || "") || (item.type && item.type.startsWith("image/")) || (item.url && /\.(png|jpe?g|webp|gif|svg|bmp|ico)(?:\?.*)?$/i.test(item.url)) || (!item.snippet && !/\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || "")));
   const isVid = /\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || "") || (item.type && item.type.startsWith("video/"));
   const displayUrl = item.previewUrl || item.url;
 
@@ -2573,7 +2744,7 @@ function LightboxModal({ item, onClose }) {
           }}
         >
           <span style={{ fontWeight: 600, color: "var(--text, #e5e5e5)", fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%" }}>
-            📄 {item.name || item.path || "Preview"}
+            {is3D ? "🧊" : "📄"} {item.name || item.path || "Preview"}
           </span>
           <button
             type="button"
@@ -2593,7 +2764,9 @@ function LightboxModal({ item, onClose }) {
           </button>
         </div>
         <div style={{ padding: "16px", overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center", maxHeight: "calc(92vh - 55px)", minWidth: "300px", minHeight: "200px" }}>
-          {isImg && displayUrl ? (
+          {is3D && displayUrl ? (
+            <Model3DViewer url={displayUrl} name={item.name || item.path} />
+          ) : isImg && displayUrl ? (
             <img
               src={displayUrl}
               alt={item.name || item.path}
@@ -2720,7 +2893,10 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
       const attId = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
       const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(file.name) || (file.type && file.type.startsWith("image/"));
       const isVid = /\.(mp4|webm|mov|mkv)$/i.test(file.name) || (file.type && file.type.startsWith("video/"));
-      let previewUrl = (isImg || isVid) ? URL.createObjectURL(file) : null;
+      const is3D = is3DFile(file.name);
+      // File 3D butuh blob URL agar Model3DViewer bisa memuatnya (three.js loader
+      // menerima URL, bukan File). Sama seperti img/vid — object URL lokal.
+      let previewUrl = (isImg || isVid || is3D) ? URL.createObjectURL(file) : null;
       let snippet = null;
       if (!isImg && !isVid && file.size < 100 * 1024 && /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(file.name)) {
         try {
@@ -2909,7 +3085,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                     ) : (
                       <>
                         <div className="composer-attachment-icon">
-                          {att.status === "uploading" ? "⏳" : att.status === "error" ? "⚠️" : isCode ? "💻" : "📄"}
+                          {att.status === "uploading" ? "⏳" : att.status === "error" ? "⚠️" : is3DFile(att.name || att.path) ? "🧊" : isCode ? "💻" : "📄"}
                         </div>
                         <div className="composer-attachment-name" style={{ fontSize: "9px", width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
                           {att.name || att.path}
@@ -6886,7 +7062,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       const attId = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
       const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(file.name) || (file.type && file.type.startsWith("image/"));
       const isVid = /\.(mp4|webm|mov|mkv)$/i.test(file.name) || (file.type && file.type.startsWith("video/"));
-      let previewUrl = (isImg || isVid) ? URL.createObjectURL(file) : null;
+      const is3D = is3DFile(file.name);
+      // File 3D butuh blob URL agar Model3DViewer bisa memuatnya (three.js loader
+      // menerima URL, bukan File). Sama seperti img/vid — object URL lokal.
+      let previewUrl = (isImg || isVid || is3D) ? URL.createObjectURL(file) : null;
       let snippet = null;
       if (!isImg && !isVid && file.size < 100 * 1024 && /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(file.name)) {
         try { snippet = await file.slice(0, 300).text(); } catch (_) {}

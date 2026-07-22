@@ -17,7 +17,8 @@
     "test:watch": "jest --watch --verbose",
     "prepare": "husky",
     "start:bypass": "node start.cjs",
-    "vendor:reactflow": "node scripts/reactflow/build.cjs"
+    "vendor:reactflow": "node scripts/reactflow/build.cjs",
+    "vendor:three": "node scripts/three/build.cjs"
   },
   "keywords": [
     "ai",
