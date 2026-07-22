@@ -501,6 +501,7 @@ async function _brokeredFileOp(name, args, wsRoot) {
       return {
         ok: true,
         edited: true,
+        path: abs, // path final hasil resolve kurungan — dipakai UI (preview panel)
         output: "brokered write " + rel,
         auditTrail: broker.auditTrail(),
       };
@@ -516,6 +517,7 @@ async function _brokeredFileOp(name, args, wsRoot) {
       return {
         ok: true,
         edited: true,
+        path: abs,
         output: "brokered edit " + rel,
         auditTrail: broker.auditTrail(),
       };
@@ -787,6 +789,7 @@ async function runSelfTool(name, args, emit, context = {}) {
       return {
         ok: true,
         edited: true,
+        path: absDest,
         output:
           "edited (Verify-Then-Commit) " +
           args.path +
@@ -941,6 +944,7 @@ async function runSelfTool(name, args, emit, context = {}) {
       return {
         ok: true,
         edited: true,
+        path: absDest,
         output:
           (existed ? "overwrote" : "created") +
           " (Verify-Then-Commit) " +

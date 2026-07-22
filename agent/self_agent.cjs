@@ -1026,6 +1026,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             arg: args.path || args.pattern || args.command || "",
             ok: !!r.ok,
             output: r.output || "",
+            // path final hasil resolve tool (kurungan workspace bisa me-remap ke
+            // folder lain dari yang diminta) — dipakai UI utk preview yang akurat.
+            path: r.path || undefined,
             ...extra,
           });
 
