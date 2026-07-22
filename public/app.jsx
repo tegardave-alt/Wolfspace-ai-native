@@ -7931,7 +7931,7 @@ function App() {
       const ctrl = new AbortController();
       const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
       streamSelfAgent(
-        { history: [{ role: "user", content: prompt }], cloud: getCloud(), port: modelVal, effort: curEffort },
+        { history: [{ role: "user", content: prompt }], cloud: getCloud(), port: modelVal, effort: curEffort, workspace_root: meta.workspaceRoot || resolveWorkspaceRoot(selectedProject) || undefined },
         (j) => {
           if (j.t === "tok") { think += j.c; upd({ thinking: think }); }
           else if (j.t === "thought") { think = ""; evlist.push({ type: "thought", kind: j.tool, arg: j.c, ok: j.ok, output: j.c }); upd({ events: [...evlist], thinking: "" }); }
@@ -7943,7 +7943,7 @@ function App() {
       ).then(() => { upd({ busy: false, done: true, summary }); finish(true, summary); })
        .catch((e) => { if (e.name !== "AbortError") upd({ busy: false, error: true }); finish(false, e.message); });
     });
-  }, [modelVal]);
+  }, [modelVal, selectedProject]);
 
   const reset = () => {
     setMessages([]);
@@ -8554,6 +8554,17 @@ function WFNodeCard({ id, data, selected }) {
     update({ kind: nx, accent: wfKindAccent(nx) });
   };
   const commit = (v) => { const t = String(v || "").trim(); if (t) update({ label: t }); setEditing(false); };
+  // Fase 3: tiap node bisa diikat ke FOLDER sendiri. Saat graph jalan, agent tahap
+  // itu terkurung ke folder ini (workspace_root) — jadi satu graph bisa
+  // mengorkestrasi banyak agent, masing-masing di folder/repo berbeda.
+  const wsRoot = data && data.workspaceRoot;
+  const wsBase = wsRoot ? String(wsRoot).replace(/[\\/]+$/, "").split(/[\\/]/).pop() : "";
+  const setFolder = () => {
+    const cur = wsRoot || "";
+    const v = window.prompt("Folder untuk node ini (path absolut). Kosongkan = ikut folder aktif:", cur);
+    if (v === null) return;
+    update({ workspaceRoot: String(v).trim() || undefined });
+  };
   // Bentuk per-kind (konvensi flowchart): condition = belah ketupat, prompt/output
   // = pil (terminator), agent/tool = kotak (proses).
   const kind = data && data.kind;
@@ -8564,6 +8575,7 @@ function WFNodeCard({ id, data, selected }) {
       <span onClick={(e) => { e.stopPropagation(); cycleKind(); }} title={editable ? "klik: ganti jenis node" : undefined} style={{ cursor: editable ? "pointer" : "default", userSelect: "none" }}>{data.kind}{editable ? " ▾" : ""}</span>
       {active && <span style={{ width: 6, height: 6, borderRadius: "50%", background: edge, boxShadow: "0 0 6px " + edge }} />}
       {err && <span title="gagal">✕</span>}
+      {wsBase && <span title={"terkurung ke folder: " + wsRoot} onClick={editable ? (e) => { e.stopPropagation(); setFolder(); } : undefined} style={{ marginLeft: "auto", color: "#d29922", cursor: editable ? "pointer" : "default", textTransform: "none", letterSpacing: 0, fontSize: "9px" }}>📁 {wsBase}</span>}
     </div>
   );
   const labelEl = editing ? (
@@ -8587,6 +8599,7 @@ function WFNodeCard({ id, data, selected }) {
     <NodeToolbar isVisible={selected} position={Position.Top} offset={8}>
       <div style={{ display: "flex", gap: "4px" }}>
         <button title="Duplikat (Ctrl+V dari salinan)" style={_tb} onClick={(e) => { e.stopPropagation(); ctx.duplicateNode && ctx.duplicateNode(id); }}>⧉</button>
+        <button title={wsRoot ? "Folder node: " + wsRoot : "Ikat node ke folder sendiri (agent terkurung ke sana)"} style={{ ..._tb, color: wsRoot ? "#d29922" : "#dce4f0" }} onClick={(e) => { e.stopPropagation(); setFolder(); }}>📁</button>
         <button title="Hapus" style={{ ..._tb, color: "#f0776b" }} onClick={(e) => { e.stopPropagation(); ctx.deleteNode && ctx.deleteNode(id); }}>🗑</button>
       </div>
     </NodeToolbar>
@@ -8809,7 +8822,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
         if (kind === "condition" && outs.length > 1) {
           const choices = outs.map((e) => edgeLabel(e) || (byId.get(e.target) && byId.get(e.target).data.label) || e.target);
           const q = `Evaluasi kondisi: "${label}". Pilih SATU cabang dari daftar berikut dan jawab HANYA dengan nama cabang itu: [${choices.join(", ")}].` + (ctx ? "\n\nKonteks:\n" + ctx : "");
-          const r = await runStage(q, { kind, label });
+          const r = await runStage(q, { kind, label, workspaceRoot: n.data.workspaceRoot });
           setNodeData(id, { ok: r.ok, result: r.summary || "" });
           const ans = String(r.summary || "").toLowerCase();
           let picked = outs.find((e) => { const l = edgeLabel(e).toLowerCase(); return l && ans.includes(l); });
@@ -8818,7 +8831,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
           ctx += `\n\n[condition] ${label} → ${edgeLabel(picked) || (byId.get(picked.target) && byId.get(picked.target).data.label) || picked.target}`;
           queue.push(picked.target);
         } else {
-          const r = await runStage(buildStagePrompt(kind, label, ctx), { kind, label });
+          const r = await runStage(buildStagePrompt(kind, label, ctx), { kind, label, workspaceRoot: n.data.workspaceRoot });
           ctx += `\n\n[${kind}] ${label}:\n${(r.summary || "").slice(0, 700)}`;
           setNodeData(id, { ok: r.ok, result: r.summary || "" });
           outs.forEach((e) => queue.push(e.target));
@@ -8838,7 +8851,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
     if (!name) return;
     const all = _wfStore();
     all[name] = {
-      nodes: nodes.map((n) => ({ id: n.id, type: "wf", position: n.position, data: { label: n.data.label, kind: n.data.kind, accent: n.data.accent } })),
+      nodes: nodes.map((n) => ({ id: n.id, type: "wf", position: n.position, data: { label: n.data.label, kind: n.data.kind, accent: n.data.accent, workspaceRoot: n.data.workspaceRoot } })),
       edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "wf", label: e.label })),
     };
     try { localStorage.setItem("wolfspace_workflows", JSON.stringify(all)); setSavedList(Object.keys(all)); } catch (_) {}
