@@ -8578,6 +8578,14 @@ function WFNodeCard({ id, data }) {
           style={{ fontSize: "12.5px", fontWeight: 600, overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", cursor: editable ? "text" : "default" }}
         >{data.label}</div>
       )}
+      {data && data.result && (
+        // #2: cuplikan hasil tahap + klik untuk detail penuh
+        <div
+          onClick={(e) => { e.stopPropagation(); ctx && ctx.openDetail && ctx.openDetail({ label: data.label, kind: data.kind, result: data.result, accent: edge }); }}
+          title="klik: lihat hasil lengkap"
+          style={{ marginTop: "5px", paddingTop: "5px", borderTop: "1px solid #21324a", fontSize: "10.5px", color: "#8fb3ff", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}
+        >📄 {String(data.result).replace(/\s+/g, " ").slice(0, 40) || "hasil"}…</div>
+      )}
       {Handle && <Handle type="source" position={Position.Right} style={{ background: edge, width: 8, height: 8, border: "none" }} />}
     </div>
   );
@@ -8617,6 +8625,11 @@ function WorkflowBuilderInner({ onBack, runStage }) {
   const [running, setRunning] = React.useState(false);
   const [runErr, setRunErr] = React.useState("");
   const runAbort = React.useRef(false);
+  const [detailNode, setDetailNode] = React.useState(null); // #2 panel detail hasil node
+  const [showLoad, setShowLoad] = React.useState(false);     // #1 menu muat
+  const [savedList, setSavedList] = React.useState(() => {
+    try { return Object.keys(JSON.parse(localStorage.getItem("wolfspace_workflows") || "{}")); } catch (_) { return []; }
+  });
   const rf = useReactFlow();
   const isLive = mode === "live";
   const nodeTypes = React.useMemo(() => ({ wf: WFNodeCard }), []);
@@ -8716,7 +8729,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
         } else {
           const r = await runStage(buildStagePrompt(kind, label, ctx), { kind, label });
           ctx += `\n\n[${kind}] ${label}:\n${(r.summary || "").slice(0, 700)}`;
-          setNodeData(n.id, { ok: r.ok });
+          setNodeData(n.id, { ok: r.ok, result: r.summary || "" }); // #2 simpan hasil tahap
         }
       }
     } catch (e) {
@@ -8724,6 +8737,44 @@ function WorkflowBuilderInner({ onBack, runStage }) {
     }
     clearActive();
     setRunning(false);
+  };
+
+  // #1 Simpan/muat workflow ke localStorage (bertahan lintas reload).
+  const _wfStore = () => { try { return JSON.parse(localStorage.getItem("wolfspace_workflows") || "{}"); } catch (_) { return {}; } };
+  const saveWorkflow = () => {
+    const name = (window.prompt("Simpan workflow sebagai:", "wf-" + new Date().toISOString().slice(0, 10)) || "").trim();
+    if (!name) return;
+    const all = _wfStore();
+    all[name] = {
+      nodes: nodes.map((n) => ({ id: n.id, type: "wf", position: n.position, data: { label: n.data.label, kind: n.data.kind, accent: n.data.accent } })),
+      edges: edges.map((e) => ({ id: e.id, source: e.source, target: e.target, type: "wf", label: e.label })),
+    };
+    try { localStorage.setItem("wolfspace_workflows", JSON.stringify(all)); setSavedList(Object.keys(all)); } catch (_) {}
+  };
+  const loadWorkflow = (name) => {
+    const wf = _wfStore()[name];
+    if (!wf) return;
+    setNodes(wf.nodes); setEdges(wf.edges); setShowLoad(false);
+    setTimeout(() => { try { rf.fitView({ duration: 300, padding: 0.2 }); } catch (_) {} }, 60);
+  };
+  const deleteWorkflow = (name) => {
+    const all = _wfStore(); delete all[name];
+    try { localStorage.setItem("wolfspace_workflows", JSON.stringify(all)); setSavedList(Object.keys(all)); } catch (_) {}
+  };
+
+  // #3 Auto-layout dengan dagre (aset sudah di-vendor: window.RFLib.dagre).
+  const autoLayout = () => {
+    const dagre = window.RFLib && window.RFLib.dagre;
+    if (!dagre || !nodes.length) return;
+    const g = new dagre.graphlib.Graph();
+    g.setGraph({ rankdir: "LR", nodesep: 42, ranksep: 96 });
+    g.setDefaultEdgeLabel(() => ({}));
+    const W = 168, H = 62;
+    nodes.forEach((n) => g.setNode(n.id, { width: W, height: H }));
+    edges.forEach((e) => g.setEdge(e.source, e.target));
+    dagre.layout(g);
+    setNodes((nds) => nds.map((n) => { const p = g.node(n.id); return p ? { ...n, position: { x: p.x - W / 2, y: p.y - H / 2 } } : n; }));
+    setTimeout(() => { try { rf.fitView({ duration: 300, padding: 0.2 }); } catch (_) {} }, 60);
   };
 
   const wf = {
@@ -8776,6 +8827,23 @@ function WorkflowBuilderInner({ onBack, runStage }) {
                 {running ? "■ Hentikan" : "▶ Jalankan graph"}
               </button>
               {runErr && <div style={{ fontSize: "10.5px", color: "#f0776b", lineHeight: 1.4 }}>{runErr}</div>}
+              <button style={btn} onClick={autoLayout} title="Rapikan tata letak otomatis (dagre)">⇄ Rapikan</button>
+              <div style={{ display: "flex", gap: "6px" }}>
+                <button style={{ ...btn, flex: 1 }} onClick={saveWorkflow} title="Simpan workflow ini">💾 Simpan</button>
+                <button style={{ ...btn, flex: 1 }} onClick={() => setShowLoad((s) => !s)} title="Muat workflow tersimpan" disabled={!savedList.length}>📂 Muat</button>
+              </div>
+              {showLoad && (
+                <div style={{ background: "#0d1117", border: "1px solid #212a36", borderRadius: "7px", maxHeight: "160px", overflowY: "auto" }}>
+                  {savedList.length === 0 ? (
+                    <div style={{ padding: "8px", fontSize: "11px", color: "#6f7d92" }}>belum ada tersimpan</div>
+                  ) : savedList.map((nm) => (
+                    <div key={nm} style={{ display: "flex", alignItems: "center", gap: "4px", padding: "5px 7px", fontSize: "11.5px" }}>
+                      <span onClick={() => loadWorkflow(nm)} style={{ flex: 1, cursor: "pointer", color: "#dce4f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }} title="klik: muat">{nm}</span>
+                      <button onClick={() => deleteWorkflow(nm)} title="hapus" style={{ border: "none", background: "transparent", color: "#f0776b", cursor: "pointer", fontSize: "11px" }}>✕</button>
+                    </div>
+                  ))}
+                </div>
+              )}
               <button style={btn} onClick={() => setShowJson((s) => !s)}>{showJson ? "Tutup JSON" : "Export JSON"}</button>
             </React.Fragment>
           )}
@@ -8784,7 +8852,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
       </div>
       <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
         <style>{"@keyframes wfflow{to{stroke-dashoffset:-22}}"}</style>
-        <WFNodeCtx.Provider value={{ setNodes, editable: !isLive }}>
+        <WFNodeCtx.Provider value={{ setNodes, editable: !isLive, openDetail: setDetailNode }}>
           <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect} nodeTypes={nodeTypes} edgeTypes={edgeTypes} defaultEdgeOptions={{ type: "wf" }} colorMode="dark" fitView proOptions={{ hideAttribution: true }}>
             <Background variant={BackgroundVariant.Diagonal} gap={26} lineWidth={1} color="#1c2a3a" />
           </ReactFlow>
@@ -8800,6 +8868,17 @@ function WorkflowBuilderInner({ onBack, runStage }) {
         </div>
         {showJson && !isLive && (
           <pre style={{ position: "absolute", right: "14px", top: "14px", maxHeight: "60%", maxWidth: "340px", overflow: "auto", margin: 0, fontFamily: "ui-monospace, monospace", fontSize: "11px", lineHeight: 1.5, color: "#9fb7d9", background: "#0c1219", border: "1px solid #212a36", borderRadius: "8px", padding: "10px 12px" }}>{JSON.stringify(wf, null, 2)}</pre>
+        )}
+        {/* #2: panel detail hasil node (klik cuplikan hasil di kartu) */}
+        {detailNode && (
+          <div style={{ position: "absolute", right: "14px", top: "14px", maxHeight: "72%", width: "320px", display: "flex", flexDirection: "column", background: "#0c1219", border: "1px solid " + (detailNode.accent || "#2f4056"), borderRadius: "9px", boxShadow: "0 12px 36px rgba(0,0,0,.6)", zIndex: 6 }}>
+            <div style={{ display: "flex", alignItems: "center", gap: "6px", padding: "9px 12px", borderBottom: "1px solid #212a36" }}>
+              <span style={{ fontSize: "9px", letterSpacing: ".12em", textTransform: "uppercase", color: detailNode.accent || "#8fb3ff", fontFamily: "ui-monospace, monospace" }}>{detailNode.kind}</span>
+              <span style={{ flex: 1, fontSize: "12.5px", fontWeight: 600, color: "#dce4f0", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{detailNode.label}</span>
+              <button onClick={() => setDetailNode(null)} style={{ border: "none", background: "transparent", color: "#8b949e", cursor: "pointer", fontSize: "14px" }}>✕</button>
+            </div>
+            <div style={{ padding: "10px 12px", overflowY: "auto", fontSize: "12px", lineHeight: 1.55, color: "#c7d4e3", whiteSpace: "pre-wrap", wordBreak: "break-word" }}>{detailNode.result}</div>
+          </div>
         )}
         <div style={{ position: "absolute", left: "14px", bottom: "14px", fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#6f7d92", background: "rgba(19,25,34,.82)", border: "1px solid #212a36", borderRadius: "7px", padding: "5px 11px", pointerEvents: "none" }}>
           {isLive
