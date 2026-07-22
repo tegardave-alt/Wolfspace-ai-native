@@ -3241,15 +3241,52 @@ function useVisualPicker(getFrameDoc) {
 
 /* ----------------------------- Visual Draw ----------------------------- */
 let VD_STOP = null;
-function useVisualDraw() {
+// getFrameDoc (opsional): sama seperti Visual Picker — dokumen iframe preview
+// (Web Dev Live Browser) bila terbuka & same-origin, agar menggambar kotak DI ATAS
+// halaman yang di-render ikut berfungsi (event mouse di atas iframe jatuh ke
+// dokumen iframe, bukan ke document WOLFSPACE).
+function useVisualDraw(getFrameDoc) {
   return useCallback(() => {
     if (VD_STOP) {
       VD_STOP();
       return;
     }
-    
+
+    const docs = [document];
+    try {
+      const frameDoc = getFrameDoc && getFrameDoc();
+      if (frameDoc && frameDoc.defaultView) docs.push(frameDoc);
+    } catch (_) {
+      /* cross-origin: draw tetap jalan di WOLFSPACE saja */
+    }
+    // Konversi koordinat event → koordinat viewport WOLFSPACE (parent). Event dari
+    // dalam iframe ber-clientX/Y relatif ke viewport IFRAME, jadi digeser sebesar
+    // posisi elemen <iframe> di parent.
+    const toParentXY = (ev) => {
+      try {
+        if (ev.view && ev.view !== window && ev.view.frameElement) {
+          const fr = ev.view.frameElement.getBoundingClientRect();
+          return { x: ev.clientX + fr.left, y: ev.clientY + fr.top };
+        }
+      } catch (_) {}
+      return { x: ev.clientX, y: ev.clientY };
+    };
+
     // Ubah kursor global menjadi crosshair untuk indikasi mode aktif
     document.body.classList.add("vp-on");
+    // Iframe punya <head>/<body> sendiri: inject cursor + tandai body-nya juga.
+    const frameStyleEls = [];
+    docs.forEach((d) => {
+      if (d === document) return;
+      try {
+        const st = d.createElement("style");
+        st.setAttribute("data-wf-vd", "1");
+        st.textContent = ".vp-on, .vp-on * { cursor: crosshair !important; }";
+        (d.head || d.documentElement).appendChild(st);
+        frameStyleEls.push(st);
+        if (d.body) d.body.classList.add("vp-on");
+      } catch (_) {}
+    });
     
     const cWrap = document.createElement("div");
     cWrap.id = "vd-cwrap";
@@ -3339,8 +3376,9 @@ function useVisualDraw() {
       e.stopPropagation();
       
       const r = cWrap.getBoundingClientRect();
-      const startX = e.clientX - r.left;
-      const startY = e.clientY - r.top;
+      const p0 = toParentXY(e);
+      const startX = p0.x - r.left;
+      const startY = p0.y - r.top;
       
       const selBox = document.createElement('div');
       Object.assign(selBox.style, {
@@ -3361,9 +3399,10 @@ function useVisualDraw() {
       const mm = ev => {
         ev.preventDefault();
         ev.stopPropagation();
-        
-        const currX = ev.clientX - r.left;
-        const currY = ev.clientY - r.top;
+
+        const pm = toParentXY(ev);
+        const currX = pm.x - r.left;
+        const currY = pm.y - r.top;
         selBox.style.left = Math.min(startX, currX) + 'px';
         selBox.style.top = Math.min(startY, currY) + 'px';
         selBox.style.width = Math.abs(currX - startX) + 'px';
@@ -3373,11 +3412,14 @@ function useVisualDraw() {
       const mu = ev => {
         ev.preventDefault();
         ev.stopPropagation();
-        document.removeEventListener('mousemove', mm, true);
-        document.removeEventListener('mouseup', mu, true);
-        
-        let currX = ev.clientX - r.left;
-        let currY = ev.clientY - r.top;
+        docs.forEach((d) => {
+          d.removeEventListener('mousemove', mm, true);
+          d.removeEventListener('mouseup', mu, true);
+        });
+
+        const pu = toParentXY(ev);
+        let currX = pu.x - r.left;
+        let currY = pu.y - r.top;
         let w = Math.abs(currX - startX);
         let h = Math.abs(currY - startY);
         
@@ -3403,13 +3445,21 @@ function useVisualDraw() {
         });
         
         // --- DOM Context Detection ---
-        cWrap.style.pointerEvents = 'none';
-        selBox.style.pointerEvents = 'none';
-        const globalX = ev.clientX;
-        const globalY = ev.clientY;
-        const targetEl = document.elementFromPoint(globalX, globalY) || document.body;
-        cWrap.style.pointerEvents = 'auto'; // (or back to whatever it was)
-        selBox.style.pointerEvents = 'auto';
+        // Event dari IFRAME: elementFromPoint milik dokumen iframe dengan koordinat
+        // lokal frame (bukan koordinat parent) — mengembalikan elemen halaman yang
+        // di-render. Event dari parent: logika lama (matikan overlay sesaat).
+        let targetEl, targetDoc;
+        if (ev.view && ev.view !== window && ev.view.document) {
+          targetDoc = ev.view.document;
+          targetEl = targetDoc.elementFromPoint(ev.clientX, ev.clientY) || targetDoc.body;
+        } else {
+          targetDoc = document;
+          cWrap.style.pointerEvents = 'none';
+          selBox.style.pointerEvents = 'none';
+          targetEl = document.elementFromPoint(pu.x, pu.y) || document.body;
+          cWrap.style.pointerEvents = 'auto'; // (or back to whatever it was)
+          selBox.style.pointerEvents = 'auto';
+        }
         
         // Generate selector (same logic as Picker)
         const realCls = (el) => typeof el.className === "string" ? el.className.trim().split(/\s+/).filter(c => c && !/^vp-/.test(c)) : [];
@@ -3439,9 +3489,18 @@ function useVisualDraw() {
         
         const targetSelector = sel(targetEl);
         const tr = targetEl.getBoundingClientRect();
+        // Rect elemen di dalam iframe berkoordinat viewport FRAME — geser ke
+        // koordinat parent agar konsisten dengan finalX/finalY (koordinat overlay).
+        let trLeft = tr.left, trTop = tr.top;
+        try {
+          if (targetDoc !== document && targetDoc.defaultView && targetDoc.defaultView.frameElement) {
+            const fr = targetDoc.defaultView.frameElement.getBoundingClientRect();
+            trLeft += fr.left; trTop += fr.top;
+          }
+        } catch (_) {}
         // Calculate relative coordinates
-        const relX = Math.round((finalX + r.left) - tr.left);
-        const relY = Math.round((finalY + r.top) - tr.top);
+        const relX = Math.round((finalX + r.left) - trLeft);
+        const relY = Math.round((finalY + r.top) - trTop);
         
         const domString = `<div data-target="${targetSelector}" style="position: absolute; left: ${relX}px; top: ${relY}px; width: ${finalW}px; height: ${finalH}px;"></div>`;
         const escapedDom = domString.replace(/</g, '&lt;').replace(/>/g, '&gt;');
@@ -3463,34 +3522,42 @@ function useVisualDraw() {
         btn.onclick = () => copyToClipboard(domString, btn);
       };
       
-      document.addEventListener('mousemove', mm, true);
-      document.addEventListener('mouseup', mu, true);
+      docs.forEach((d) => {
+        d.addEventListener('mousemove', mm, true);
+        d.addEventListener('mouseup', mu, true);
+      });
     };
-    
-    document.addEventListener("mousedown", cvsMD, true);
-    document.addEventListener("click", blockClick, true);
-    document.addEventListener("contextmenu", handleRightClick, true);
-    
+
+    docs.forEach((d) => {
+      d.addEventListener("mousedown", cvsMD, true);
+      d.addEventListener("click", blockClick, true);
+      d.addEventListener("contextmenu", handleRightClick, true);
+    });
+
     const key = (e) => {
       if (e.key === "Escape") {
         e.preventDefault();
         stop();
       }
     };
-    
+
     function stop() {
       VD_STOP = null;
       document.body.classList.remove("vp-on");
       cWrap.remove();
-      document.removeEventListener("keydown", key, true);
-      document.removeEventListener("mousedown", cvsMD, true);
-      document.removeEventListener("click", blockClick, true);
-      document.removeEventListener("contextmenu", handleRightClick, true);
+      docs.forEach((d) => {
+        d.removeEventListener("keydown", key, true);
+        d.removeEventListener("mousedown", cvsMD, true);
+        d.removeEventListener("click", blockClick, true);
+        d.removeEventListener("contextmenu", handleRightClick, true);
+        if (d !== document && d.body) { try { d.body.classList.remove("vp-on"); } catch (_) {} }
+      });
+      frameStyleEls.forEach((st) => { try { st.remove(); } catch (_) {} });
     }
-    
+
     VD_STOP = stop;
-    document.addEventListener("keydown", key, true);
-  }, []);
+    docs.forEach((d) => d.addEventListener("keydown", key, true));
+  }, [getFrameDoc]);
 }
 
 /* ----------------------------- Model Hub view (real HF) ----------------------------- */
