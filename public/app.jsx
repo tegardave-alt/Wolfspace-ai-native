@@ -7856,13 +7856,15 @@ function App() {
           } else if (j.t === "adone") {
             try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "done" } })); } catch (_) {}
             adoneSent = true;
-            // Deteksi spec workflow di jawaban → render ke kanvas kiri; bersihkan blok
-            // JSON dari teks yang DITAMPILKAN agar chat tak berisik.
-            const spec = extractWorkflowSpec(j.summary);
-            let disp = j.summary || "";
+            // CHAT WORKFLOW (decoupled): desain DILEMPAR ke kanvas, TAK ditampilkan
+            // di chat. Terima spec JSON atau (fallback) mermaid; lalu BUANG semua blok
+            // desain (mermaid/JSON) dari teks — walau tak ter-parse, agar diagram
+            // rusak pun tak pernah muncul di chat.
+            const spec = extractWorkflowSpec(j.summary) || mermaidToSpec(j.summary);
+            let disp = stripDesignBlocks(j.summary);
             if (spec) {
               try { window.dispatchEvent(new CustomEvent("wolfspace_workflow_spec", { detail: spec })); } catch (_) {}
-              disp = disp.replace(/```(?:wolfspace-workflow|json)\s*[\s\S]*?```/i, "› Workflow dirender di kanvas ←").trim();
+              disp = (disp ? disp + "\n\n" : "") + "› Workflow dikirim ke kanvas ←";
             }
             upd({ busy: false, done: true, summary: disp, editCount: j.edits, backup: j.backup });
             setWfHistory((h) => [...h, { role: "assistant", content: j.summary || "" }]);
@@ -8423,11 +8425,12 @@ function buildStagePrompt(kind, label, ctx) {
 // Instruksi (digabung ke pesan yang DIKIRIM, bukan yang ditampilkan): bila user
 // minta MEMBUAT workflow, agent mengeluarkan satu blok spec yang bisa dirender.
 const WF_GEN_HINT =
-  "(Jika permintaan ini tentang MEMBUAT/merancang sebuah workflow/alur/pipeline, " +
-  "sertakan SATU blok berpagar ```wolfspace-workflow berisi JSON valid: " +
+  "(Jika permintaan ini tentang MEMBUAT/merancang sebuah workflow/alur/pipeline: " +
+  "keluarkan HANYA satu blok berpagar ```wolfspace-workflow berisi JSON valid: " +
   '{"nodes":[{"id":"n1","kind":"prompt","label":"..."}],"edges":[{"from":"n1","to":"n2"}]} ' +
-  "— kind salah satu dari prompt|agent|tool|condition|output, id unik & pendek. " +
-  "Beri penjelasan singkat DI LUAR blok. Jika BUKAN permintaan workflow, abaikan instruksi ini.)";
+  "— kind salah satu dari prompt|agent|tool|condition|output, id unik & pendek, label RINGKAS tanpa \\n. " +
+  "DILARANG memakai mermaid atau format diagram lain. Boleh 1 kalimat penjelasan singkat di luar blok. " +
+  "Jika BUKAN permintaan workflow, abaikan instruksi ini.)";
 
 // Ambil spec workflow dari teks jawaban agent (blok ```wolfspace-workflow / ```json).
 function extractWorkflowSpec(text) {
@@ -8464,6 +8467,41 @@ function specToFlow(spec) {
     if (nn) nn.position = { x: (row % 2 === 0 ? col : COLS - 1 - col) * DX, y: row * DY };
   });
   return { nodes, edges };
+}
+
+// Fallback: bila agent memberi mermaid flowchart (bukan JSON), parse best-effort
+// jadi spec {nodes,edges}. Bentuk node → kind: {} kondisi, ([]) prompt, () tool.
+function mermaidToSpec(text) {
+  const body = (/```mermaid\s*([\s\S]*?)```/i.exec(text || "") || [])[1];
+  if (!body) return null;
+  const nodes = new Map(); // id -> {label, kind}
+  const shapeKind = (open) => (open === "{" ? "condition" : open === "([" ? "prompt" : open === "(" ? "tool" : "agent");
+  const clean = (s) => String(s || "").replace(/["'`]/g, "").replace(/\\n|<br\s*\/?>/gi, " ").replace(/\s+/g, " ").trim();
+  const reNode = /([A-Za-z0-9_]+)\s*(\(\[|\{|\[|\()([^\]}\)]*)(?:\]\)|\}|\]|\))/g;
+  const addNode = (id, open, label) => {
+    if (!id) return;
+    const k = shapeKind(open);
+    const l = clean(label) || id;
+    if (!nodes.has(id) || (open && nodes.get(id).kind === "agent")) nodes.set(id, { label: l, kind: k });
+  };
+  let m;
+  while ((m = reNode.exec(body))) addNode(m[1], m[2], m[3]);
+  const edges = [];
+  const reEdge = /([A-Za-z0-9_]+)[^\n>]*?(?:--+>|-\.->|==+>)(?:\s*\|[^|]*\|)?\s*([A-Za-z0-9_]+)/g;
+  while ((m = reEdge.exec(body))) {
+    if (!nodes.has(m[1])) nodes.set(m[1], { label: m[1], kind: "agent" });
+    if (!nodes.has(m[2])) nodes.set(m[2], { label: m[2], kind: "agent" });
+    edges.push({ from: m[1], to: m[2] });
+  }
+  if (!nodes.size) return null;
+  return { nodes: [...nodes.entries()].map(([id, v]) => ({ id, label: v.label, kind: v.kind })), edges };
+}
+// Buang SEMUA blok desain (mermaid/JSON) dari teks agar tak dirender di chat workflow.
+function stripDesignBlocks(text) {
+  return String(text || "")
+    .replace(/```(?:mermaid|wolfspace-workflow|json)\s*[\s\S]*?```/gi, "")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
 }
 
 function WFNodeCard({ data }) {
