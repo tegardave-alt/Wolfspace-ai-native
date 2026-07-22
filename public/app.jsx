@@ -8535,10 +8535,11 @@ function stripDesignBlocks(text) {
 const WFNodeCtx = React.createContext(null);
 const WF_KINDS = ["prompt", "agent", "tool", "condition", "output"];
 
-function WFNodeCard({ id, data }) {
+function WFNodeCard({ id, data, selected }) {
   const XY = window.RFLib && window.RFLib.XY;
   const Handle = XY && XY.Handle;
   const Position = XY && XY.Position;
+  const NodeToolbar = XY && XY.NodeToolbar;
   const ctx = React.useContext(WFNodeCtx);
   const editable = !!(ctx && ctx.editable);
   const [editing, setEditing] = React.useState(false);
@@ -8581,11 +8582,21 @@ function WFNodeCard({ id, data }) {
       style={{ marginTop: "5px", paddingTop: shape === "diamond" ? 0 : "5px", borderTop: shape === "diamond" ? "none" : "1px solid #21324a", fontSize: "10.5px", color: "#8fb3ff", cursor: "pointer", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
       📄 {shape === "diamond" ? "hasil" : (String(data.result).replace(/\s+/g, " ").slice(0, 40) + "…")}</div>
   ) : null;
+  const _tb = { border: "1px solid #2f4056", background: "#131922", color: "#dce4f0", borderRadius: "5px", width: "24px", height: "22px", cursor: "pointer", fontSize: "11px", display: "inline-flex", alignItems: "center", justifyContent: "center" };
+  const toolbar = (NodeToolbar && editable) ? (
+    <NodeToolbar isVisible={selected} position={Position.Top} offset={8}>
+      <div style={{ display: "flex", gap: "4px" }}>
+        <button title="Duplikat (Ctrl+V dari salinan)" style={_tb} onClick={(e) => { e.stopPropagation(); ctx.duplicateNode && ctx.duplicateNode(id); }}>⧉</button>
+        <button title="Hapus" style={{ ..._tb, color: "#f0776b" }} onClick={(e) => { e.stopPropagation(); ctx.deleteNode && ctx.deleteNode(id); }}>🗑</button>
+      </div>
+    </NodeToolbar>
+  ) : null;
 
   if (shape === "diamond") {
     const diaClip = "polygon(50% 0%, 100% 50%, 50% 100%, 0% 50%)";
     return (
       <div style={{ position: "relative", width: "138px", height: "116px", display: "flex", alignItems: "center", justifyContent: "center" }}>
+        {toolbar}
         {Handle && <Handle type="target" position={Position.Left} style={hStyle} />}
         <div style={{ position: "absolute", inset: 0, background: active ? edge : edge + "88", clipPath: diaClip }} />
         <div style={{ position: "absolute", inset: "1.6px", background: "#131922", clipPath: diaClip }} />
@@ -8606,6 +8617,7 @@ function WFNodeCard({ id, data }) {
       color: "#dce4f0", fontFamily: "ui-monospace, monospace",
       boxShadow: active ? "0 0 0 2px " + edge + "88, 0 4px 14px rgba(0,0,0,.5)" : "0 4px 14px rgba(0,0,0,.4)",
     }}>
+      {toolbar}
       {Handle && <Handle type="target" position={Position.Left} style={hStyle} />}
       {chip}{labelEl}{resultEl}
       {Handle && <Handle type="source" position={Position.Right} style={hStyle} />}
@@ -8832,6 +8844,39 @@ function WorkflowBuilderInner({ onBack, runStage }) {
     setTimeout(() => { try { rf.fitView({ duration: 300, padding: 0.2 }); } catch (_) {} }, 60);
   };
 
+  // ── Quick wins: undo, duplikat/hapus per-node (toolbar), copy-paste ──────────
+  const historyRef = React.useRef([]);
+  const clipboardRef = React.useRef(null);
+  const snapshot = () => { try { historyRef.current.push({ nodes: JSON.parse(JSON.stringify(nodes)), edges: JSON.parse(JSON.stringify(edges)) }); if (historyRef.current.length > 40) historyRef.current.shift(); } catch (_) {} };
+  const undo = () => { const h = historyRef.current.pop(); if (h) { setNodes(h.nodes); setEdges(h.edges); } };
+  const duplicateNode = (nid) => {
+    const n = nodes.find((x) => x.id === nid); if (!n) return;
+    snapshot();
+    const id2 = "n" + idRef.current++;
+    setNodes((nds) => nds.map((x) => ({ ...x, selected: false })).concat({ ...n, id: id2, position: { x: n.position.x + 44, y: n.position.y + 44 }, selected: true, data: { ...n.data, active: false, ok: undefined, result: undefined } }));
+  };
+  const deleteNode = (nid) => { snapshot(); setNodes((nds) => nds.filter((x) => x.id !== nid)); setEdges((eds) => eds.filter((e) => e.source !== nid && e.target !== nid)); };
+  const copySelected = () => { const sel = nodes.filter((n) => n.selected); if (sel.length) { try { clipboardRef.current = JSON.parse(JSON.stringify(sel)); } catch (_) {} } };
+  const pasteClipboard = () => {
+    const cb = clipboardRef.current; if (!cb || !cb.length) return;
+    snapshot();
+    const clones = cb.map((n) => ({ ...n, id: "n" + idRef.current++, position: { x: n.position.x + 50, y: n.position.y + 50 }, selected: true, data: { ...n.data, active: false, ok: undefined, result: undefined } }));
+    setNodes((nds) => nds.map((n) => ({ ...n, selected: false })).concat(clones));
+  };
+  React.useEffect(() => {
+    if (isLive) return;
+    const onKey = (e) => {
+      const tag = (e.target && e.target.tagName) || "";
+      if (/INPUT|TEXTAREA|SELECT/.test(tag) || (e.target && e.target.isContentEditable)) return;
+      const k = e.key.toLowerCase();
+      if ((e.ctrlKey || e.metaKey) && k === "c") copySelected();
+      else if ((e.ctrlKey || e.metaKey) && k === "v") { e.preventDefault(); pasteClipboard(); }
+      else if ((e.ctrlKey || e.metaKey) && k === "z") { e.preventDefault(); undo(); }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [isLive, nodes, edges]);
+
   const wf = {
     nodes: nodes.map((n) => ({ id: n.id, kind: n.data.kind, label: n.data.label, position: { x: Math.round(n.position.x), y: Math.round(n.position.y) } })),
     edges: edges.map((e) => ({ from: e.source, to: e.target })),
@@ -8907,7 +8952,7 @@ function WorkflowBuilderInner({ onBack, runStage }) {
       </div>
       <div style={{ flex: 1, position: "relative" }} onDrop={onDrop} onDragOver={onDragOver}>
         <style>{"@keyframes wfflow{to{stroke-dashoffset:-22}}"}</style>
-        <WFNodeCtx.Provider value={{ setNodes, editable: !isLive, openDetail: setDetailNode }}>
+        <WFNodeCtx.Provider value={{ setNodes, editable: !isLive, openDetail: setDetailNode, duplicateNode, deleteNode }}>
           <ReactFlow nodes={shownNodes} edges={shownEdges} onNodesChange={isLive ? liveOnNodesChange : onNodesChange} onEdgesChange={isLive ? noop : onEdgesChange} onConnect={isLive ? noop : onConnect}
             onEdgeDoubleClick={isLive ? undefined : (ev, edge) => {
               const cur = (edge.data && edge.data.label) || edge.label || "";
