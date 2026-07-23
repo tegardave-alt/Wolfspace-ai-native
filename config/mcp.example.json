@@ -1,0 +1,12 @@
+{
+  "_comment": "Template config MCP. Salin ke config/mcp.json (yang di-gitignore) lalu isi rahasia. JANGAN commit token asli.",
+  "mcpServers": {
+    "github": {
+      "command": "npx",
+      "args": ["-y", "@modelcontextprotocol/server-github"],
+      "env": {
+        "GITHUB_PERSONAL_ACCESS_TOKEN": "ghp_ISI_TOKEN_ANDA_DI_SINI"
+      }
+    }
+  }
+}
