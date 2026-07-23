@@ -1389,6 +1389,12 @@ async function runSelfTool(name, args, emit, context = {}) {
       const dspyTool = require("./dspy_tool.cjs");
       return dspyTool.run(args);
     }
+    if (name === "blender_run") {
+      // Orkestrasi Blender headless (bpy). Konfinemen keluaran ke workspaceRoot
+      // ditangani di dalam modul; Blender jalan di host (bukan sandbox Docker).
+      const bl = require("./blender-tools.cjs");
+      return await bl.runBlender(args, context);
+    }
     if (name === "disk_list")
       return _cachedResult("disk_list|" + (args.path || ""), () => ({
         ok: true,
