@@ -1395,6 +1395,12 @@ async function runSelfTool(name, args, emit, context = {}) {
       const bl = require("./blender-tools.cjs");
       return await bl.runBlender(args, context);
     }
+    if (name === "generate_3d") {
+      // Text/image-to-3D via Replicate (TRELLIS + flux). Konfinemen keluaran ke
+      // workspaceRoot ditangani di dalam modul.
+      const g3 = require("./gen3d-tools.cjs");
+      return await g3.generate3d(args, context);
+    }
     if (name === "disk_list")
       return _cachedResult("disk_list|" + (args.path || ""), () => ({
         ok: true,
