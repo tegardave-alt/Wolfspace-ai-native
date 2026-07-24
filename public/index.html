@@ -219,8 +219,23 @@
 
         // 2. Alur Normal
         try {
+          // Modul yang diekstrak dari app.jsx dipecah ke file terpisah, lalu di-CONCAT
+          // SETELAH app.jsx dan ditransform SEKALI — jadi tetap satu scope global (const
+          // React-destructuring di app.jsx sudah jalan duluan; function declaration di
+          // modul ter-hoist). Tambahkan file di sini untuk terus memecah app.jsx tanpa
+          // mengubah semantik satu-scope maupun Auto-Rollback di bawah.
+          const APP_MODULES = ["/app/Model3DViewer.jsx"];
           const res = await fetch("/app.jsx?v=" + Date.now());
-          const jsxCode = await res.text();
+          let jsxCode = await res.text();
+          for (const m of APP_MODULES) {
+            try {
+              const mr = await fetch(m + "?v=" + Date.now());
+              if (mr.ok) jsxCode += "\n" + (await mr.text());
+              else console.error("Modul gagal dimuat (" + mr.status + "):", m);
+            } catch (me) {
+              console.error("Modul error:", m, me);
+            }
+          }
 
           try {
             const compiled = Babel.transform(jsxCode, {
