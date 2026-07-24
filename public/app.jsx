@@ -594,7 +594,7 @@ function App() {
       const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
       if (stored && stored.length > 0 && stored[0].path) return stored[0].path;
     } catch (_) {}
-    return "c:\\Users\\dave\\quantum";
+    return WOLFSPACE_ROOT_WIN;
   });
   const [hitlRequest, setHitlRequest] = React.useState(null);
 
@@ -608,7 +608,7 @@ function App() {
           const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
           const valid = stored.filter(p => !isDel(p.path));
           if (valid.length > 0 && valid[0].path) setSelectedProject(valid[0].path);
-          else if (!isDel("c:\\Users\\dave\\quantum")) setSelectedProject("c:\\Users\\dave\\quantum");
+          else if (!isDel(WOLFSPACE_ROOT_WIN)) setSelectedProject(WOLFSPACE_ROOT_WIN);
           else setSelectedProject("");
         }
       } catch (_) {}

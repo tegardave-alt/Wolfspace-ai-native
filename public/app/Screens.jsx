@@ -27,7 +27,7 @@ function PickerSendIcon() {
 }
 function getPickerProjectsList() {
   const defaultDefaults = [
-    { name: "WOLFSPACE", path: "c:\\Users\\dave\\quantum" },
+    { name: "WOLFSPACE", path: WOLFSPACE_ROOT_WIN },
     { name: "project", path: "c:\\Users\\dave\\project" },
   ];
   try {

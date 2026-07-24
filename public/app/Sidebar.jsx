@@ -313,7 +313,6 @@ try { sanitizeDeletedWorkspaces(); } catch (_) {}
 // Ubah project terpilih → PATH folder untuk dikirim sebagai workspace_root ke agent
 // (mengurung agent + operasi file/bash ke folder itu). null = biarkan tak-terkurung:
 // yaitu WOLFSPACE root (mode self-edit, seperti sekarang) atau tak bisa diresolusi.
-const WOLFSPACE_ROOT = "c:/users/dave/quantum";
 function resolveWorkspaceRoot(sel) {
   if (!sel) return null;
   let p = /[:\\/]/.test(sel) ? sel : null;
@@ -740,7 +739,7 @@ function Sidebar({
     const isDel = (x) => isPathDeleted(deleted, x); // path-exact, bukan nama/suffix
 
     if (selectedProject && !isDel(selectedProject)) set.add(selectedProject);
-    else if (!isDel("c:\\Users\\dave\\quantum")) set.add("c:\\Users\\dave\\quantum");
+    else if (!isDel(WOLFSPACE_ROOT_WIN)) set.add(WOLFSPACE_ROOT_WIN);
     try {
       const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
       stored.forEach((p) => {
@@ -983,7 +982,7 @@ function Sidebar({
                 .reverse()
                 .filter((c) => {
                   if (c.project) return c.project === ws || (ws.endsWith(`\\${c.project}`) || ws.endsWith(`/${c.project}`));
-                  return ws === selectedProject || ws === "c:\\Users\\dave\\quantum";
+                  return ws === selectedProject || ws === WOLFSPACE_ROOT_WIN;
                 });
 
               return (
@@ -1008,7 +1007,7 @@ function Sidebar({
                       <svg width="15" height="15" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" style={{ flexShrink: 0 }}>
                         <path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"></path>
                       </svg>
-                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws === "c:\\Users\\dave\\quantum" ? "WOLFSPACE" : ws}</span>
+                      <span style={{ overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>{ws === WOLFSPACE_ROOT_WIN ? "WOLFSPACE" : ws}</span>
                     </div>
                     <div style={{ display: "flex", alignItems: "center", gap: "6px", flexShrink: 0 }}>
                     <WorkspaceGitPill path={ws} />

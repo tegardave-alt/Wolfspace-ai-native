@@ -2,12 +2,18 @@
 // the Node backend DIRECTLY via Electron IPC (no HTTP). See docs/A2UI-DESIGN.md.
 // contextIsolation keeps the renderer sandboxed: only window.WOLFSPACE is exposed.
 const { contextBridge, ipcRenderer } = require('electron');
+const path = require('path');
 
 let seq = 0;
 contextBridge.exposeInMainWorld('WOLFSPACE', {
   // True only when running inside Electron with this preload (lets app.jsx fall
   // back to HTTP fetch in a plain browser / during migration).
   ipc: true,
+
+  // Root folder proyek — DINAMIS dari __dirname (preload ada di <root>/electron/).
+  // Frontend memakainya sebagai workspace default & pembanding, jadi kode tak lagi
+  // hardcode "c:\\Users\\dave\\quantum" — folder bisa di-rename tanpa ubah kode.
+  root: path.resolve(__dirname, '..'),
 
   // Request/response (e.g. ping, compile, export, saveFile).
   invoke: (channel, payload) => ipcRenderer.invoke('WOLFSPACE:invoke', { channel, payload }),
