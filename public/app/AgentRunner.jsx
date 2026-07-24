@@ -66,7 +66,7 @@ function AgentRunnerView({
   };
 
   const getAgentIcon = (id) => {
-    if (id === "WOLFSPACE") return SB.quantumAgent;
+    if (id === "WOLFSPACE") return SB.wolfspaceAgent;
     if (id === "opencode") return SB.opencode;
     if (id === "claude") return SB.claude;
 

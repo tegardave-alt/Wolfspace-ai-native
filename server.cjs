@@ -71,7 +71,7 @@ const CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
 const HOST = (CONFIG.server && CONFIG.server.host) || "0.0.0.0";
 const PORT = process.env.PORT || (CONFIG.server && CONFIG.server.port) || 8090;
 const HTML = path.join(__dirname, "public", "index.html");
-const TMP_PY = path.join(os.tmpdir(), "_quantum_run.py");
+const TMP_PY = path.join(os.tmpdir(), "_wolfspace_run.py");
 // Shared execution timeout for full-access runtimes (ms). Generous so that
 // browser automation / network calls (e.g. Playwright) have time to finish.
 const EXEC_TIMEOUT = CONFIG.execTimeout || 120000;
@@ -649,7 +649,7 @@ async function runJS(code) {
 // Ã¢â€â‚¬Ã¢â€â‚¬ Resolve real Python executable (skips Windows Store alias that errors) Ã¢â€â‚¬Ã¢â€â‚¬
 function findPython() {
   const candidates = [
-    process.env.QUANTUM_PYTHON, // user override via config/env
+    process.env.WOLFSPACE_PYTHON || process.env.QUANTUM_PYTHON, // user override (WOLFSPACE_PYTHON; QUANTUM_PYTHON nama lama)
     // Bundled Python distributed with WOLFSPACE (uv-managed)
     process.env.APPDATA &&
       path.join(
@@ -869,7 +869,7 @@ async function runPy(code) {
 
   const tmpPy = path.join(
     os.tmpdir(),
-    `_quantum_run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`,
+    `_wolfspace_run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`,
   );
   fs.writeFileSync(tmpPy, code, "utf8");
   try {
@@ -3809,17 +3809,17 @@ const server = http.createServer(async (req, res) => {
       .toLowerCase()
       .trim();
     try {
-      // Always pull the full library (their search page has different markup);
-      // filter by query server-side over name + description.
-      const html = await new Promise((resolve, reject) => {
+      // ollama.com/library is now a JS SPA — scraping HTML no longer works.
+      // Use the community JSON mirror which returns a stable JSON array.
+      const raw = await new Promise((resolve, reject) => {
         https
           .get(
-            "https://ollama.com/library?sort=popular",
-            { headers: { "user-agent": "Mozilla/5.0 WOLFSPACE" } },
+            "https://ollama-models.zwz.workers.dev/",
+            { headers: { "user-agent": "Mozilla/5.0 WOLFSPACE", "accept": "application/json" } },
             (s) => {
               if (s.statusCode >= 400) {
                 s.resume();
-                return reject(new Error("ollama " + s.statusCode));
+                return reject(new Error("ollama-models api " + s.statusCode));
               }
               let d = "";
               s.on("data", (c) => (d += c));
@@ -3828,28 +3828,25 @@ const server = http.createServer(async (req, res) => {
           )
           .on("error", reject);
       });
-      const cards = html.match(/<li x-test-model[\s\S]*?<\/li>/g) || [];
-      let out = cards
-        .map((b) => {
-          const grab = (re) => {
-            const m = b.match(re);
-            return m ? m[1].trim() : "";
-          };
-          const all = (re) => [...b.matchAll(re)].map((m) => m[1].trim());
-          return {
-            name: grab(/x-test-model-title title="([^"]+)"/),
-            description: grab(/text-md">([^<]+)</)
-              .replace(/&amp;/g, "&")
-              .replace(/&#39;/g, "'")
-              .replace(/&quot;/g, '"'),
-            capabilities: all(/x-test-capability[^>]*>([^<]+)</g),
-            sizes: all(/x-test-size[^>]*>([^<]+)</g),
-            pulls: grab(/x-test-pull-count[^>]*>([^<]+)</),
-            tags: grab(/x-test-tag-count[^>]*>([^<]+)</),
-            updated: grab(/x-test-updated[^>]*>([^<]+)</),
-          };
-        })
-        .filter((m) => m.name);
+      let models = JSON.parse(raw);
+      if (!Array.isArray(models)) models = [];
+      // Normalise to the shape the frontend expects.
+      // "tags" from API = all variants (e.g. "1b", "4b", "1b-it-qat", "4b-it-q4_K_M").
+      // "sizes" in frontend = short clean size labels shown as selector buttons.
+      let out = models.map((m) => {
+        const allTags = Array.isArray(m.tags) ? m.tags : [];
+        const sizeTags = allTags.filter((t) => /^\d+\.?\d*[bm]$/i.test(t));
+        return {
+          name:         m.name        || "",
+          description:  m.description || "",
+          sizes:        sizeTags.length ? sizeTags : (allTags.length ? [allTags[0]] : []),
+          capabilities: Array.isArray(m.capabilities) ? m.capabilities : [],
+          pulls:        m.pulls   || m.pull_count || "",
+          tags:         String(allTags.length || m.tag_count || ""),
+          updated:      m.updated || m.last_updated || "",
+        };
+      }).filter((m) => m.name);
+
       if (q)
         out = out.filter((m) =>
           (m.name + " " + m.description).toLowerCase().includes(q),
@@ -3864,6 +3861,7 @@ const server = http.createServer(async (req, res) => {
     }
     return;
   }
+
 
   // HuggingFace: list .gguf files of a repo (with sizes)
   if (req.method === "GET" && (req.url || "").startsWith("/hf/files")) {
@@ -4940,7 +4938,86 @@ const server = http.createServer(async (req, res) => {
   )
     return;
 
-  // Static files from public/ (e.g. /vendor/codemirror/*) Ã¢â‚¬â€ path-traversal safe
+  // ── Preview file: serve any file from disk for the built-in browser panel ──
+  // GET /preview-file?path=C:/Users/dave/Documents/oi/index.html
+  // Supports HTML + linked assets (CSS/JS/images) via relative path resolution.
+  if (req.method === "GET" && urlPath === "/preview-file") {
+    const qs = new URL("http://x" + (req.url || "")).searchParams;
+    const filePath = qs.get("path");
+    if (!filePath) {
+      res.writeHead(400, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: "Missing ?path= parameter" }));
+    }
+    const resolved = path.resolve(filePath);
+    try {
+      if (!fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
+        res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
+        return res.end(`<html><body style="background:#0b0d11;color:#aaa;font-family:system-ui;padding:40px"><h3>404 — File not found</h3><p>${resolved}</p></body></html>`);
+      }
+      const ext = path.extname(resolved).toLowerCase();
+      const mimeTypes = {
+        ".html": "text/html", ".htm": "text/html",
+        ".css": "text/css", ".js": "application/javascript", ".mjs": "application/javascript",
+        ".json": "application/json", ".xml": "application/xml",
+        ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".webp": "image/webp", ".ico": "image/x-icon",
+        ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf",
+        ".mp4": "video/mp4", ".webm": "video/webm", ".mp3": "audio/mpeg",
+        ".pdf": "application/pdf", ".txt": "text/plain",
+      };
+      const ct = mimeTypes[ext] || "application/octet-stream";
+      res.writeHead(200, {
+        "Content-Type": ct + (ct.startsWith("text/") ? "; charset=utf-8" : ""),
+        "Cache-Control": "no-cache",
+      });
+      // HTML: inject <base> agar link relatif (css/js/img) resolve ke
+      // /preview-file-assets/<dir-absolut>/ — tanpa ini endpoint assets tak pernah kena.
+      if (ext === ".html" || ext === ".htm") {
+        const dir = resolved.replace(/\\/g, "/").replace(/\/[^\/]*$/, "/");
+        const baseTag = '<base href="/preview-file-assets/' + encodeURI(dir) + '">';
+        let html = fs.readFileSync(resolved, "utf8");
+        html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + baseTag) : baseTag + html;
+        return res.end(html);
+      }
+      return fs.createReadStream(resolved).pipe(res);
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify({ error: e.message }));
+    }
+  }
+  // GET /preview-file-assets/* — serve relative assets for an HTML preview.
+  // E.g. if HTML at C:/foo/index.html links <img src="img/logo.png">,
+  // the iframe base URL resolves to /preview-file-assets/C:/foo/img/logo.png
+  if (req.method === "GET" && urlPath.startsWith("/preview-file-assets/")) {
+    const assetPath = decodeURIComponent(urlPath.slice("/preview-file-assets/".length));
+    const resolved = path.resolve(assetPath);
+    try {
+      if (!fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
+        res.writeHead(404);
+        return res.end("Not found");
+      }
+      const ext = path.extname(resolved).toLowerCase();
+      const mimeTypes = {
+        ".html": "text/html", ".htm": "text/html",
+        ".css": "text/css", ".js": "application/javascript", ".mjs": "application/javascript",
+        ".json": "application/json", ".svg": "image/svg+xml",
+        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
+        ".gif": "image/gif", ".webp": "image/webp", ".ico": "image/x-icon",
+        ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf",
+      };
+      const ct = mimeTypes[ext] || "application/octet-stream";
+      res.writeHead(200, {
+        "Content-Type": ct + (ct.startsWith("text/") ? "; charset=utf-8" : ""),
+        "Cache-Control": "no-cache",
+      });
+      return fs.createReadStream(resolved).pipe(res);
+    } catch (e) {
+      res.writeHead(500);
+      return res.end(e.message);
+    }
+  }
+
+  // Static files from public/ (e.g. /vendor/codemirror/*) — path-traversal safe
   if (req.method === "GET" && urlPath !== "/") {
     const pubDir = path.join(__dirname, "public");
     const filePath = path.join(
