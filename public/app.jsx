@@ -81,14 +81,14 @@ function keyish(s) {
 }
 function getCloud() {
   try {
-    return JSON.parse(localStorage.getItem("quantum_cloud") || "null");
+    return JSON.parse(localStorage.getItem("wolfspace_cloud") || "null");
   } catch (e) {
     return null;
   }
 }
 function setCloudLS(c) {
-  if (c) localStorage.setItem("quantum_cloud", JSON.stringify(c));
-  else localStorage.removeItem("quantum_cloud");
+  if (c) localStorage.setItem("wolfspace_cloud", JSON.stringify(c));
+  else localStorage.removeItem("wolfspace_cloud");
 }
 function escHtml(s) {
   return s.replace(
@@ -210,7 +210,7 @@ function parseBlocks(text) {
   return out;
 }
 function reqFor(modelVal, cloud, history) {
-  const effortVal = cloud && typeof cloud.effort !== 'undefined' ? Number(cloud.effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
+  const effortVal = cloud && typeof cloud.effort !== 'undefined' ? Number(cloud.effort) : (parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1);
   return modelVal === "cloud" && cloud
     ? { history, cloud, effort: effortVal }
     : { history, port: modelVal, effort: effortVal };
@@ -395,7 +395,7 @@ if (
   typeof window !== "undefined" &&
   IPC &&
   IPC.invoke &&
-  !localStorage.getItem("quantum_migrated")
+  !localStorage.getItem("wolfspace_migrated")
 ) {
   IPC.invoke("api", { method: "GET", path: "/ww/ls-load" })
     .then((r) => {
@@ -406,10 +406,10 @@ if (
       } catch (_) {
         return;
       }
-      const keys = Object.keys(data).filter((k) => k !== "quantum_migrated");
+      const keys = Object.keys(data).filter((k) => k !== "wolfspace_migrated");
       if (!keys.length) return; // belum ada dump dari browser → cek lagi lain kali
       for (const k of keys) localStorage.setItem(k, data[k]);
-      localStorage.setItem("quantum_migrated", "1");
+      localStorage.setItem("wolfspace_migrated", "1");
       console.log("[ww] auto-migrasi localStorage: " + keys.length + " kunci diimpor — reload…");
       location.reload();
     })
@@ -591,7 +591,7 @@ function App() {
   }, [commandPaletteOpen, selectedCommandIndex, filteredCommands]);
   const [selectedProject, setSelectedProject] = useState(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
       if (stored && stored.length > 0 && stored[0].path) return stored[0].path;
     } catch (_) {}
     return "c:\\Users\\dave\\quantum";
@@ -601,11 +601,11 @@ function App() {
   React.useEffect(() => {
     const checkSelectedProject = () => {
       try {
-        const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+        const deleted = JSON.parse(localStorage.getItem("wolfspace_deleted_workspaces") || "[]");
         // Path-exact saja (lihat isPathDeleted) — tak lagi cocok nama/suffix.
         const isDel = (pStr) => isPathDeleted(deleted, pStr);
         if (isDel(selectedProject)) {
-          const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+          const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
           const valid = stored.filter(p => !isDel(p.path));
           if (valid.length > 0 && valid[0].path) setSelectedProject(valid[0].path);
           else if (!isDel("c:\\Users\\dave\\quantum")) setSelectedProject("c:\\Users\\dave\\quantum");
@@ -613,8 +613,8 @@ function App() {
         }
       } catch (_) {}
     };
-    window.addEventListener("quantum_workspaces_changed", checkSelectedProject);
-    return () => window.removeEventListener("quantum_workspaces_changed", checkSelectedProject);
+    window.addEventListener("wolfspace_workspaces_changed", checkSelectedProject);
+    return () => window.removeEventListener("wolfspace_workspaces_changed", checkSelectedProject);
   }, [selectedProject]);
   window.testHitl = function() {
     setHitlRequest({
@@ -740,7 +740,7 @@ function App() {
   const [wfBusy, setWfBusy] = useState(false);
   const [wfAgentWidth, setWfAgentWidth] = useState(() => {
     try {
-      const w = parseInt(localStorage.getItem("quantum_wf_agent_width") || "400", 10);
+      const w = parseInt(localStorage.getItem("wolfspace_wf_agent_width") || "400", 10);
       return isNaN(w) ? 400 : Math.max(260, Math.min(800, w));
     } catch (_) {
       return 400;
@@ -767,7 +767,7 @@ function App() {
       const finalWidth = Math.max(260, Math.min(800, startWidth - deltaX));
       setIsWfResizing(false);
       try {
-        localStorage.setItem("quantum_wf_agent_width", String(finalWidth));
+        localStorage.setItem("wolfspace_wf_agent_width", String(finalWidth));
       } catch (_) {}
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
@@ -781,19 +781,19 @@ function App() {
   const [view, setView] = useState("chat");
   const [sbCollapsed, setSbCollapsed] = useState(() => {
     try {
-      return localStorage.getItem("quantum_sb") === "1";
+      return localStorage.getItem("wolfspace_sb") === "1";
     } catch (e) {
       return false;
     }
   });
   useEffect(() => {
     try {
-      localStorage.setItem("quantum_sb", sbCollapsed ? "1" : "0");
+      localStorage.setItem("wolfspace_sb", sbCollapsed ? "1" : "0");
     } catch (e) {}
   }, [sbCollapsed]);
   const [theme, setTheme] = useState(() => {
     try {
-      return localStorage.getItem("quantum_theme") || "dark";
+      return localStorage.getItem("wolfspace_theme") || "dark";
     } catch (e) {
       return "dark";
     }
@@ -807,7 +807,7 @@ function App() {
   const [terminalLoading, setTerminalLoading] = useState(false);
   const [savedChats, setSavedChats] = useState(() => {
     try {
-      return JSON.parse(localStorage.getItem("quantum_chats") || "[]");
+      return JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
     } catch (e) {
       return [];
     }
@@ -914,7 +914,7 @@ function App() {
   };
   const loadSavedChats = () => {
     try {
-      setSavedChats(JSON.parse(localStorage.getItem("quantum_chats") || "[]"));
+      setSavedChats(JSON.parse(localStorage.getItem("wolfspace_chats") || "[]"));
     } catch (e) {}
   };
   const restoreChat = (chat) => {
@@ -925,18 +925,18 @@ function App() {
   };
   const deleteChat = (id) => {
     try {
-      const list = JSON.parse(localStorage.getItem("quantum_chats") || "[]");
+      const list = JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
       const updated = list.filter((c) => c.id !== id);
-      localStorage.setItem("quantum_chats", JSON.stringify(updated));
+      localStorage.setItem("wolfspace_chats", JSON.stringify(updated));
       setSavedChats(updated);
     } catch (e) {}
   };
   const renameChat = (id, newTitle) => {
     try {
       if (!newTitle || !newTitle.trim()) return;
-      const list = JSON.parse(localStorage.getItem("quantum_chats") || "[]");
+      const list = JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
       const updated = list.map((c) => (c.id === id ? { ...c, title: newTitle.trim() } : c));
-      localStorage.setItem("quantum_chats", JSON.stringify(updated));
+      localStorage.setItem("wolfspace_chats", JSON.stringify(updated));
       setSavedChats(updated);
     } catch (e) {}
   };
@@ -1061,7 +1061,7 @@ function App() {
   useEffect(() => {
     document.documentElement.dataset.theme = theme;
     try {
-      localStorage.setItem("quantum_theme", theme);
+      localStorage.setItem("wolfspace_theme", theme);
     } catch (e) {}
   }, [theme]);
 
@@ -1308,7 +1308,7 @@ function App() {
       let waitingForInput = false;
       let hadError = false;
       try {
-        const curEffort = (getCloud() && typeof getCloud().effort !== 'undefined') ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
+        const curEffort = (getCloud() && typeof getCloud().effort !== 'undefined') ? Number(getCloud().effort) : (parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1);
         await streamSelfAgent(
           { history: newHist, cloud: getCloud(), port: modelVal, effort: curEffort, workspace_root: resolveWorkspaceRoot(selectedProject) || undefined, ...hitlData },
           (j) => {
@@ -1492,7 +1492,7 @@ function App() {
     const ctrl = new AbortController();
     wfCtrlRef.current = ctrl;
     try {
-      const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
+      const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1);
       // Kirim pesan terakhir DENGAN hint pembuat-workflow (tampilan chat tetap bersih,
       // pakai `content` biasa). Riwayat tersimpan tetap versi bersih (newHist).
       const sendHist = [...wfHistory, { role: "user", content: content + "\n\n" + WF_GEN_HINT }];
@@ -1560,7 +1560,7 @@ function App() {
       let think = "", evlist = [], summary = "", done = false;
       const finish = (ok, s) => { if (done) return; done = true; resolve({ ok, summary: s }); };
       const ctrl = new AbortController();
-      const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 1);
+      const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1);
       streamSelfAgent(
         { history: [{ role: "user", content: prompt }], cloud: getCloud(), port: modelVal, effort: curEffort, workspace_root: meta.workspaceRoot || resolveWorkspaceRoot(selectedProject) || undefined },
         (j) => {
@@ -1584,7 +1584,7 @@ function App() {
   const saveChat = () => {
     if (messages.length === 0) return;
     try {
-      const saved = JSON.parse(localStorage.getItem("quantum_chats") || "[]");
+      const saved = JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
       saved.push({
         id: Date.now(),
         title: messages[0]?.text?.slice(0, 60) || "Chat",
@@ -1593,7 +1593,7 @@ function App() {
         savedAt: new Date().toISOString(),
         project: selectedProject,
       });
-      localStorage.setItem("quantum_chats", JSON.stringify(saved));
+      localStorage.setItem("wolfspace_chats", JSON.stringify(saved));
       loadSavedChats();
     } catch (e) {
       /* ignore storage errors */

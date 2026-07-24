@@ -31,10 +31,10 @@ function getPickerProjectsList() {
     { name: "project", path: "c:\\Users\\dave\\project" },
   ];
   try {
-    const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+    const deleted = JSON.parse(localStorage.getItem("wolfspace_deleted_workspaces") || "[]");
     // Cocok HANYA berdasar path persis — bukan nama/suffix (lihat isPathDeleted).
     const isDel = (p) => isPathDeleted(deleted, p && p.path);
-    const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+    const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
     if (stored && stored.length > 0) {
       const filtered = stored.filter((p) => !isDel(p));
       if (filtered.length > 0) return filtered;
@@ -101,10 +101,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         return list.length > 0 ? list[0].name : "";
       });
     };
-    window.addEventListener("quantum_workspaces_changed", reloadProjects);
-    return () => window.removeEventListener("quantum_workspaces_changed", reloadProjects);
+    window.addEventListener("wolfspace_workspaces_changed", reloadProjects);
+    return () => window.removeEventListener("wolfspace_workspaces_changed", reloadProjects);
   }, []);
-  // Rekonsiliasi disk: buang "hantu" dari quantum_projects_list — project yang
+  // Rekonsiliasi disk: buang "hantu" dari wolfspace_projects_list — project yang
   // FOLDERNYA sudah tak ada di disk, DI MANA PUN lokasinya (bukan cuma di bawah root
   // ww). Verifikasi keberadaan tiap path ke backend (/ww/verify); hanya yang
   // dipastikan TIDAK ADA yang dibuang (konservatif). Membersihkan localStorage
@@ -113,7 +113,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     (async () => {
       let stored;
       try {
-        stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+        stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
       } catch {
         return;
       }
@@ -130,8 +130,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       if (!gone.size) return;
       const kept = stored.filter((p) => !(p && p.path && gone.has(p.path)));
       if (kept.length !== stored.length) {
-        localStorage.setItem("quantum_projects_list", JSON.stringify(kept));
-        window.dispatchEvent(new Event("quantum_workspaces_changed"));
+        localStorage.setItem("wolfspace_projects_list", JSON.stringify(kept));
+        window.dispatchEvent(new Event("wolfspace_workspaces_changed"));
       }
     })();
   }, []);
@@ -145,7 +145,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     try {
       const cl = getCloud();
       if (cl && typeof cl.effort !== "undefined") return Number(cl.effort);
-      return parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 0;
+      return parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 0;
     } catch { return 1; }
   });
   const [pickerMcp, setPickerMcp] = useState([
@@ -186,7 +186,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   };
   useEffect(() => {
     try {
-      localStorage.setItem("quantum_effort", String(pickerEffort));
+      localStorage.setItem("wolfspace_effort", String(pickerEffort));
       const cl = getCloud();
       if (cl) { cl.effort = pickerEffort; setCloudLS(cl); }
     } catch (_) {}
@@ -315,18 +315,18 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     // eksekusi JS itu sendiri, bukan oleh timing commit/paint React yang rentan.
     const rest = getPickerProjectsList().filter((p) => (p.path || "") !== finalPath);
     const updated = [{ name: finalName, path: finalPath, branch: att && att.branch }, ...rest];
-    localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
+    localStorage.setItem("wolfspace_projects_list", JSON.stringify(updated));
     // Memasang ulang sebuah folder = MENCORETNYA dari daftar-hapus. Tanpa ini,
     // folder yang pernah dihapus lalu ditambах lagi akan tetap tersaring isDel.
     try {
-      const del = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+      const del = JSON.parse(localStorage.getItem("wolfspace_deleted_workspaces") || "[]");
       const pruned = del.filter((d) => normDelPath(d) !== normDelPath(finalPath));
       if (pruned.length !== del.length) {
-        localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(pruned));
+        localStorage.setItem("wolfspace_deleted_workspaces", JSON.stringify(pruned));
       }
     } catch (_) {}
     setProject(finalName);
-    window.dispatchEvent(new Event("quantum_workspaces_changed"));
+    window.dispatchEvent(new Event("wolfspace_workspaces_changed"));
     // Dropdown tertutup sejak dialog native dibuka (handleOpenFolderPicker). Set
     // true di sini MEMBANGUN ProjectDropdownMenu dari NOL (mount baru, bukan
     // patch instance lama) — ia membaca localStorage yang BARU SAJA ditulis di

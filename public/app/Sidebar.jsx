@@ -295,14 +295,14 @@ function isPathDeleted(deletedArr, p) {
 // namanya kebetulan sama. Setelah ini blacklist hanya berisi path (invarian baru).
 function sanitizeDeletedWorkspaces() {
   try {
-    const raw = localStorage.getItem("quantum_deleted_workspaces");
+    const raw = localStorage.getItem("wolfspace_deleted_workspaces");
     if (!raw) return;
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return;
     const isAbsPath = (s) => /^[a-zA-Z]:[\\/]/.test(String(s || "")) || String(s || "").startsWith("/");
     const cleaned = arr.filter(isAbsPath);
     if (cleaned.length !== arr.length) {
-      localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(cleaned));
+      localStorage.setItem("wolfspace_deleted_workspaces", JSON.stringify(cleaned));
     }
   } catch (_) {}
 }
@@ -319,7 +319,7 @@ function resolveWorkspaceRoot(sel) {
   let p = /[:\\/]/.test(sel) ? sel : null;
   if (!p) {
     try {
-      const list = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      const list = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
       const hit = list.find((x) => x && (x.name === sel || (x.path && (x.path.endsWith("\\" + sel) || x.path.endsWith("/" + sel)))));
       if (hit && hit.path) p = hit.path;
     } catch (_) {}
@@ -333,7 +333,7 @@ function resolveWorkspaceRoot(sel) {
 function deleteWorkspaceGlobal(wsToDelete) {
   try {
     if (!wsToDelete) return;
-    const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+    const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
     // Cari path FISIK folder ini SEBELUM localStorage diubah — dipakai untuk hapus
     // nyata di disk. wsToDelete kadang berupa nama, kadang path; cari entri yang
     // cocok (persis logika filter di bawah) untuk mendapat p.path yang benar.
@@ -355,18 +355,18 @@ function deleteWorkspaceGlobal(wsToDelete) {
       if (p.path && (p.path.endsWith(`\\${wsToDelete}`) || p.path.endsWith(`/${wsToDelete}`))) return false;
       return true;
     });
-    localStorage.setItem("quantum_projects_list", JSON.stringify(updated));
+    localStorage.setItem("wolfspace_projects_list", JSON.stringify(updated));
 
     // Blacklist HANYA menyimpan path penuh (identitas). Menyimpan nama telanjang
     // dulu (p.name / wsToDelete-nama) meracuni daftar: folder baru bernama sama
     // ikut tersaring selamanya. Bila path tak bisa diresolusi, entri sudah dibuang
     // dari projects_list di atas — cukup, tak perlu diblacklist by-name.
-    const deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+    const deleted = JSON.parse(localStorage.getItem("wolfspace_deleted_workspaces") || "[]");
     if (realPath && !isPathDeleted(deleted, realPath)) {
       deleted.push(realPath);
-      localStorage.setItem("quantum_deleted_workspaces", JSON.stringify(deleted));
+      localStorage.setItem("wolfspace_deleted_workspaces", JSON.stringify(deleted));
     }
-    window.dispatchEvent(new Event("quantum_workspaces_changed"));
+    window.dispatchEvent(new Event("wolfspace_workspaces_changed"));
 
     // Hapus FISIK folder+repo dari disk (backend menolak kalau bukan workspace ww
     // yang sah — lihat POST /ww/delete). UI sudah bersih di atas terlepas hasil ini.
@@ -404,14 +404,14 @@ function useWwGit(path, refreshKey) {
 function applyFolderRenameLS(oldPath, newPath, newName) {
   try {
     const norm = (s) => String(s || "").replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
-    const list = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+    const list = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
     let changed = false;
     const upd = list.map((p) => {
       if (p && norm(p.path) === norm(oldPath)) { changed = true; return { ...p, path: newPath, name: newName }; }
       return p;
     });
-    if (changed) localStorage.setItem("quantum_projects_list", JSON.stringify(upd));
-    window.dispatchEvent(new Event("quantum_workspaces_changed"));
+    if (changed) localStorage.setItem("wolfspace_projects_list", JSON.stringify(upd));
+    window.dispatchEvent(new Event("wolfspace_workspaces_changed"));
   } catch (_) {}
 }
 
@@ -665,16 +665,16 @@ function Sidebar({
         .catch(() => {});
     load();
     const iv = setInterval(load, 6000);
-    window.addEventListener("quantum_workspaces_changed", load);
+    window.addEventListener("wolfspace_workspaces_changed", load);
     return () => {
       alive = false;
       clearInterval(iv);
-      window.removeEventListener("quantum_workspaces_changed", load);
+      window.removeEventListener("wolfspace_workspaces_changed", load);
     };
   }, []);
   const [sidebarWidth, setSidebarWidth] = useState(() => {
     try {
-      const w = parseInt(localStorage.getItem("quantum_sidebar_width") || "232", 10);
+      const w = parseInt(localStorage.getItem("wolfspace_sidebar_width") || "232", 10);
       return isNaN(w) ? 232 : Math.max(160, Math.min(600, w));
     } catch (_) {
       return 232;
@@ -700,7 +700,7 @@ function Sidebar({
       const finalWidth = Math.max(160, Math.min(600, startWidth + deltaX));
       setIsResizing(false);
       try {
-        localStorage.setItem("quantum_sidebar_width", String(finalWidth));
+        localStorage.setItem("wolfspace_sidebar_width", String(finalWidth));
       } catch (_) {}
       window.removeEventListener("mousemove", handleMouseMove);
       window.removeEventListener("mouseup", handleMouseUp);
@@ -720,10 +720,10 @@ function Sidebar({
       setWsRefreshKey((prev) => prev + 1);
     };
     window.addEventListener("click", handleWindowClick);
-    window.addEventListener("quantum_workspaces_changed", handleWsChanged);
+    window.addEventListener("wolfspace_workspaces_changed", handleWsChanged);
     return () => {
       window.removeEventListener("click", handleWindowClick);
-      window.removeEventListener("quantum_workspaces_changed", handleWsChanged);
+      window.removeEventListener("wolfspace_workspaces_changed", handleWsChanged);
     };
   }, []);
 
@@ -735,14 +735,14 @@ function Sidebar({
     const set = new Set();
     let deleted = [];
     try {
-      deleted = JSON.parse(localStorage.getItem("quantum_deleted_workspaces") || "[]");
+      deleted = JSON.parse(localStorage.getItem("wolfspace_deleted_workspaces") || "[]");
     } catch (_) {}
     const isDel = (x) => isPathDeleted(deleted, x); // path-exact, bukan nama/suffix
 
     if (selectedProject && !isDel(selectedProject)) set.add(selectedProject);
     else if (!isDel("c:\\Users\\dave\\quantum")) set.add("c:\\Users\\dave\\quantum");
     try {
-      const stored = JSON.parse(localStorage.getItem("quantum_projects_list") || "[]");
+      const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
       stored.forEach((p) => {
         if (p.path && !isDel(p.path)) set.add(p.path);
         else if (p.name && !isDel(p.name)) set.add(p.name);

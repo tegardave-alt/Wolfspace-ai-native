@@ -577,12 +577,12 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
     try {
       const cl = getCloud();
       if (cl && typeof cl.effort !== "undefined") return Number(cl.effort);
-      return parseInt(localStorage.getItem("quantum_effort") || "1", 10) || 0;
+      return parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 0;
     } catch { return 1; }
   });
   useEffect(() => {
     try {
-      localStorage.setItem("quantum_effort", String(effort));
+      localStorage.setItem("wolfspace_effort", String(effort));
       const cl = getCloud();
       if (cl) {
         cl.effort = effort;

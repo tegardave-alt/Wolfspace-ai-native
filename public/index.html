@@ -38,6 +38,25 @@
           localStorage.setItem("wolfspace_config", JSON.stringify(cfg));
         };
       })();
+
+      // Rebrand: rename kunci localStorage quantum_* -> wolfspace_* SEKALI, sambil
+      // MEMBAWA datanya (chat, config, daftar project tak hilang). Jalan sebelum app
+      // dimuat, jadi kode yang sudah pakai wolfspace_* langsung menemukan datanya.
+      (function () {
+        try {
+          if (localStorage.getItem("wolfspace_key_migrated")) return;
+          for (var i = localStorage.length - 1; i >= 0; i--) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf("quantum_") === 0) {
+              var nk = "wolfspace_" + k.slice("quantum_".length);
+              if (localStorage.getItem(nk) === null)
+                localStorage.setItem(nk, localStorage.getItem(k));
+              localStorage.removeItem(k);
+            }
+          }
+          localStorage.setItem("wolfspace_key_migrated", "1");
+        } catch (e) {}
+      })();
     </script>
     <link rel="icon" href="/icon.png" />
     <link rel="stylesheet" href="/vendor/fonts.css" />
