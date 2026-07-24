@@ -220,22 +220,33 @@
         // 2. Alur Normal
         try {
           // Modul yang diekstrak dari app.jsx dipecah ke file terpisah, lalu di-CONCAT
-          // SETELAH app.jsx dan ditransform SEKALI — jadi tetap satu scope global (const
-          // React-destructuring di app.jsx sudah jalan duluan; function declaration di
-          // modul ter-hoist). Tambahkan file di sini untuk terus memecah app.jsx tanpa
-          // mengubah semantik satu-scope maupun Auto-Rollback di bawah.
-          const APP_MODULES = ["/app/Model3DViewer.jsx", "/app/VisualTools.jsx", "/app/ModelHub.jsx"];
-          const res = await fetch("/app.jsx?v=" + Date.now());
-          let jsxCode = await res.text();
+          // SEBELUM app.jsx dan ditransform SEKALI — jadi tetap satu scope global. Urutan
+          // PREPEND ini penting: sebagian komponen (Sidebar/Composer/Icons) dirender saat
+          // awal, jadi definisinya harus ada sebelum App di-render di akhir app.jsx.
+          // Body fungsi (memakai hooks/React dari app.jsx) baru jalan saat render — setelah
+          // seluruh skrip termuat. Auto-Rollback di bawah tetap utuh. Tambah file = +1 entri.
+          const APP_MODULES = [
+            "/app/Icons.jsx",
+            "/app/Model3DViewer.jsx",
+            "/app/VisualTools.jsx",
+            "/app/ModelHub.jsx",
+            "/app/Components.jsx",
+            "/app/Screens.jsx",
+            "/app/Sidebar.jsx",
+            "/app/AgentRunner.jsx",
+            "/app/Workflow.jsx",
+          ];
+          let jsxCode = "";
           for (const m of APP_MODULES) {
             try {
               const mr = await fetch(m + "?v=" + Date.now());
-              if (mr.ok) jsxCode += "\n" + (await mr.text());
+              if (mr.ok) jsxCode += (await mr.text()) + "\n";
               else console.error("Modul gagal dimuat (" + mr.status + "):", m);
             } catch (me) {
               console.error("Modul error:", m, me);
             }
           }
+          jsxCode += await (await fetch("/app.jsx?v=" + Date.now())).text();
 
           try {
             const compiled = Babel.transform(jsxCode, {
