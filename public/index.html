@@ -224,7 +224,7 @@
           // React-destructuring di app.jsx sudah jalan duluan; function declaration di
           // modul ter-hoist). Tambahkan file di sini untuk terus memecah app.jsx tanpa
           // mengubah semantik satu-scope maupun Auto-Rollback di bawah.
-          const APP_MODULES = ["/app/Model3DViewer.jsx"];
+          const APP_MODULES = ["/app/Model3DViewer.jsx", "/app/VisualTools.jsx"];
           const res = await fetch("/app.jsx?v=" + Date.now());
           let jsxCode = await res.text();
           for (const m of APP_MODULES) {
