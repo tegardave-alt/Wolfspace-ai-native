@@ -7917,6 +7917,8 @@ function App() {
   }, []);
   const [pickerDone, setPickerDone] = useState(false);
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
+  // Panel Logic (kanvas React Flow) — overlay yang menutupi UI chat saat dibuka.
+  const [logicOpen, setLogicOpen] = useState(false);
   useEffect(() => {
     const closePanelMenu = () => setPanelMenuOpen(false);
     window.addEventListener("click", closePanelMenu);
@@ -9045,7 +9047,7 @@ function App() {
             terminalOpen={terminalOpen}
             setTerminalOpen={setTerminalOpen}
           />
-          <div className="chat-split">
+          <div className="chat-split" style={{ position: "relative" }}>
             <div
               className="chat-col"
               style={{
@@ -9166,9 +9168,9 @@ function App() {
                           onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
                           onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
                           onClick={() => {
-                            // Placeholder: kustom kontrol berbasis React Flow — logika/isinya
-                            // sengaja belum diimplementasikan (menyusul).
+                            // Buka overlay kanvas Logic (React Flow) di atas UI chat.
                             setPanelMenuOpen(false);
+                            setLogicOpen(true);
                           }}
                         >
                           <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="6" height="5" rx="1"></rect><rect x="15" y="9" width="6" height="5" rx="1"></rect><rect x="9" y="15" width="6" height="5" rx="1"></rect><path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path></svg>
@@ -9316,6 +9318,35 @@ function App() {
                   </div>
                 </div>
               </>
+            )}
+            {logicOpen && (
+              <div style={{ position: "absolute", inset: 0, zIndex: 60, background: "var(--surface-1, #0f1318)", display: "flex", flexDirection: "column", animation: "fadeIn 0.15s ease" }}>
+                {/* Header panel Logic */}
+                <div style={{ height: "46px", flexShrink: 0, borderBottom: "1px solid var(--line, #282e36)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px", gap: "10px" }}>
+                  <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#e2e8f0", fontSize: "13px", fontWeight: 600 }}>
+                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="6" height="5" rx="1"></rect><rect x="15" y="9" width="6" height="5" rx="1"></rect><rect x="9" y="15" width="6" height="5" rx="1"></rect><path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path></svg>
+                    <span>Logic</span>
+                    <span style={{ fontSize: "11px", fontWeight: 400, color: "#6b7280" }}>· kanvas React Flow untuk mengendalikan website</span>
+                  </div>
+                  <button
+                    title="Tutup Logic"
+                    onClick={() => setLogicOpen(false)}
+                    style={{ background: "transparent", border: "none", color: "#8b98a9", cursor: "pointer", padding: "4px 6px", borderRadius: "4px", display: "flex", alignItems: "center" }}
+                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(248,81,73,0.15)"; e.currentTarget.style.color = "#f85149"; }}
+                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#8b98a9"; }}
+                  >
+                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
+                  </button>
+                </div>
+                {/* Kanvas kosong (React Flow menyusul) — latar grid titik seperti kanvas node-editor */}
+                <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#0d1117", backgroundImage: "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)", backgroundSize: "22px 22px" }}>
+                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#5b6673", fontSize: "13px", textAlign: "center", pointerEvents: "none", gap: "10px" }}>
+                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, color: "#3a444f" }}><rect x="3" y="4" width="6" height="5" rx="1"></rect><rect x="15" y="9" width="6" height="5" rx="1"></rect><rect x="9" y="15" width="6" height="5" rx="1"></rect><path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path></svg>
+                    <div style={{ fontWeight: 600, color: "#8b98a9" }}>Kanvas Logic</div>
+                    <div style={{ maxWidth: "340px", lineHeight: 1.6 }}>Di sini nanti React Flow difungsikan — node & edge untuk mengendalikan website. Untuk sekarang, tampilan kosong.</div>
+                  </div>
+                </div>
+              </div>
             )}
           </div>
         </div>
