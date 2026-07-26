@@ -219,6 +219,8 @@ function CodeBlock({ lang, code }) {
     return () => {
       disposed = true;
       if (edRef.current) {
+        const model = edRef.current.getModel();
+        if (model) model.dispose();
         edRef.current.dispose();
         edRef.current = null;
       }
@@ -290,7 +292,6 @@ function CodeBlock({ lang, code }) {
       )}
       <div className="code-toolbar">
         <button
-
           className={"ctb-btn" + (copied ? " copied" : "")}
           onClick={copyCode}
         >
@@ -496,73 +497,189 @@ function mermaidToCytoElements(code) {
   // Subgraph -> compound node. parseMermaidFlowchart tak paham `subgraph`/`end` dan
   // malah membuat node sampah, jadi kita pisahkan baris itu dulu sambil merekam node
   // mana milik grup mana. Node bergrup dapat data.parent; grup jadi compound node.
-  const subs = {};        // subId -> title
-  const parentOf = {};    // nodeId -> subId (grup terdalam yang pertama merujuknya)
+  const subs = {}; // subId -> title
+  const parentOf = {}; // nodeId -> subId (grup terdalam yang pertama merujuknya)
   const stack = [];
   const clean = [];
   for (const rawLine of raw.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (/^subgraph\b/i.test(line)) {
       const rest = line.replace(/^subgraph\s+/i, "");
-      const mB = rest.match(/^([A-Za-z0-9_:-]+)\s*\[([^\]]*)\]/) || rest.match(/^([A-Za-z0-9_:-]+)\s*"([^"]*)"/);
+      const mB =
+        rest.match(/^([A-Za-z0-9_:-]+)\s*\[([^\]]*)\]/) ||
+        rest.match(/^([A-Za-z0-9_:-]+)\s*"([^"]*)"/);
       let id, title;
-      if (mB) { id = mB[1]; title = mB[2]; }
-      else if (/^[A-Za-z0-9_:-]+$/.test(rest.trim())) { id = rest.trim(); title = id; }
-      else { id = "sg" + Object.keys(subs).length; title = rest.replace(/["']/g, "").trim(); }
+      if (mB) {
+        id = mB[1];
+        title = mB[2];
+      } else if (/^[A-Za-z0-9_:-]+$/.test(rest.trim())) {
+        id = rest.trim();
+        title = id;
+      } else {
+        id = "sg" + Object.keys(subs).length;
+        title = rest.replace(/["']/g, "").trim();
+      }
       subs[id] = String(title).replace(/^["']|["']$/g, "");
       stack.push(id);
       continue;
     }
-    if (/^end$/i.test(line)) { stack.pop(); continue; }
+    if (/^end$/i.test(line)) {
+      stack.pop();
+      continue;
+    }
     if (stack.length) {
       const cur = stack[stack.length - 1];
-      for (const t of (line.match(/[A-Za-z0-9_:-]+/g) || [])) if (!parentOf[t]) parentOf[t] = cur;
+      for (const t of line.match(/[A-Za-z0-9_:-]+/g) || [])
+        if (!parentOf[t]) parentOf[t] = cur;
     }
     clean.push(rawLine);
   }
   const parsed = parseMermaidFlowchart(clean.join("\n"));
   if (!parsed || !parsed.nodes || !parsed.nodes.size) return null;
 
-  const cleanLabel = (l) => String(l || "").replace(/<br\s*\/?>/gi, "\n").replace(/^\s*["']|["']\s*$/g, "");
+  const cleanLabel = (l) =>
+    String(l || "")
+      .replace(/<br\s*\/?>/gi, "\n")
+      .replace(/^\s*["']|["']\s*$/g, "");
   const usedSubs = new Set();
-  for (const id of parsed.nodes.keys()) if (parentOf[id] && subs[parentOf[id]]) usedSubs.add(parentOf[id]);
-  const parents = [...usedSubs].map((id) => ({ data: { id, label: subs[id], isParent: 1 } }));
+  for (const id of parsed.nodes.keys())
+    if (parentOf[id] && subs[parentOf[id]]) usedSubs.add(parentOf[id]);
+  const parents = [...usedSubs].map((id) => ({
+    data: { id, label: subs[id], isParent: 1 },
+  }));
 
   const nodes = [...parsed.nodes.values()].map((n) => ({
     data: {
-      id: n.id, label: cleanLabel(n.label || n.id), shape: n.shape || "rect", deg: 0,
-      parent: (parentOf[n.id] && usedSubs.has(parentOf[n.id])) ? parentOf[n.id] : undefined,
+      id: n.id,
+      label: cleanLabel(n.label || n.id),
+      shape: n.shape || "rect",
+      deg: 0,
+      parent:
+        parentOf[n.id] && usedSubs.has(parentOf[n.id])
+          ? parentOf[n.id]
+          : undefined,
     },
   }));
   const byId = new Map(nodes.map((n) => [n.data.id, n]));
   const edges = (parsed.edges || []).map((e, i) => {
     if (byId.get(e.from)) byId.get(e.from).data.deg++;
     if (byId.get(e.to)) byId.get(e.to).data.deg++;
-    return { data: { id: "ce" + i, source: e.from, target: e.to, label: e.label || "" } };
+    return {
+      data: {
+        id: "ce" + i,
+        source: e.from,
+        target: e.to,
+        label: e.label || "",
+      },
+    };
   });
   return [...parents, ...nodes, ...edges];
 }
 
 function cyLayoutOpts(name) {
   const o = { name, padding: 22, animate: true, animationDuration: 350 };
-  if (name === "breadthfirst") { o.directed = true; o.spacingFactor = 1.1; }
-  else if (name === "cose") { o.idealEdgeLength = 80; o.nodeRepulsion = 8000; o.gravity = 0.3; }
-  else if (name === "concentric") { o.concentric = (n) => n.degree(); o.levelWidth = () => 3; }
+  if (name === "breadthfirst") {
+    o.directed = true;
+    o.spacingFactor = 1.1;
+  } else if (name === "cose") {
+    o.idealEdgeLength = 80;
+    o.nodeRepulsion = 8000;
+    o.gravity = 0.3;
+  } else if (name === "concentric") {
+    o.concentric = (n) => n.degree();
+    o.levelWidth = () => 3;
+  }
   return o;
 }
 
 const CY_STYLE = [
-  { selector: "node", style: { "background-color": "#141d2b", "border-color": "#8fb3ff", "border-width": 1.5, "label": "data(label)", "color": "#dce4f0", "font-family": "ui-monospace, monospace", "font-size": 11, "text-valign": "center", "text-halign": "center", "text-wrap": "wrap", "text-max-width": 150, "shape": "round-rectangle", "width": "label", "height": "label", "padding": "9px" } },
-  { selector: 'node[shape="diamond"]', style: { "shape": "diamond", "width": 76, "height": 54 } },
-  { selector: 'node[shape="circle"]', style: { "shape": "ellipse" } },
-  { selector: 'node[shape="round"]', style: { "shape": "round-rectangle" } },
-  { selector: 'node[shape="subroutine"]', style: { "shape": "cut-rectangle" } },
+  {
+    selector: "node",
+    style: {
+      "background-color": "#141d2b",
+      "border-color": "#8fb3ff",
+      "border-width": 1.5,
+      label: "data(label)",
+      color: "#dce4f0",
+      "font-family": "ui-monospace, monospace",
+      "font-size": 11,
+      "text-valign": "center",
+      "text-halign": "center",
+      "text-wrap": "wrap",
+      "text-max-width": 150,
+      shape: "round-rectangle",
+      width: "label",
+      height: "label",
+      padding: "9px",
+    },
+  },
+  {
+    selector: 'node[shape="diamond"]',
+    style: { shape: "diamond", width: 76, height: 54 },
+  },
+  { selector: 'node[shape="circle"]', style: { shape: "ellipse" } },
+  { selector: 'node[shape="round"]', style: { shape: "round-rectangle" } },
+  { selector: 'node[shape="subroutine"]', style: { shape: "cut-rectangle" } },
   // compound node = grup subgraph: kotak transparan berlabel di atas, anak-anak di dalam
-  { selector: "node[?isParent]", style: { "background-color": "#8fb3ff", "background-opacity": 0.05, "border-color": "#3a4a63", "border-width": 1, "shape": "round-rectangle", "label": "data(label)", "text-valign": "top", "text-halign": "center", "font-size": 10, "color": "#8fb3ff", "padding": "16px", "text-margin-y": 3, "width": "label", "height": "label" } },
-  { selector: "node[deg >= 4]", style: { "border-width": 2.5, "border-color": "#a9c6ff", "background-color": "#182741" } },
-  { selector: "edge", style: { "width": 1.4, "line-color": "#3f5578", "target-arrow-color": "#5f7bb0", "target-arrow-shape": "triangle", "curve-style": "bezier", "arrow-scale": 0.9, "opacity": 0.9, "label": "data(label)", "font-family": "ui-monospace, monospace", "font-size": 9, "color": "#9fb7d9", "text-background-color": "#0d1117", "text-background-opacity": 0.85, "text-background-padding": 2 } },
-  { selector: "node.hl", style: { "border-color": "#ffd479", "border-width": 2.5 } },
-  { selector: "edge.hl", style: { "line-color": "#8fb3ff", "target-arrow-color": "#8fb3ff", "opacity": 1, "width": 2 } },
+  {
+    selector: "node[?isParent]",
+    style: {
+      "background-color": "#8fb3ff",
+      "background-opacity": 0.05,
+      "border-color": "#3a4a63",
+      "border-width": 1,
+      shape: "round-rectangle",
+      label: "data(label)",
+      "text-valign": "top",
+      "text-halign": "center",
+      "font-size": 10,
+      color: "#8fb3ff",
+      padding: "16px",
+      "text-margin-y": 3,
+      width: "label",
+      height: "label",
+    },
+  },
+  {
+    selector: "node[deg >= 4]",
+    style: {
+      "border-width": 2.5,
+      "border-color": "#a9c6ff",
+      "background-color": "#182741",
+    },
+  },
+  {
+    selector: "edge",
+    style: {
+      width: 1.4,
+      "line-color": "#3f5578",
+      "target-arrow-color": "#5f7bb0",
+      "target-arrow-shape": "triangle",
+      "curve-style": "bezier",
+      "arrow-scale": 0.9,
+      opacity: 0.9,
+      label: "data(label)",
+      "font-family": "ui-monospace, monospace",
+      "font-size": 9,
+      color: "#9fb7d9",
+      "text-background-color": "#0d1117",
+      "text-background-opacity": 0.85,
+      "text-background-padding": 2,
+    },
+  },
+  {
+    selector: "node.hl",
+    style: { "border-color": "#ffd479", "border-width": 2.5 },
+  },
+  {
+    selector: "edge.hl",
+    style: {
+      "line-color": "#8fb3ff",
+      "target-arrow-color": "#8fb3ff",
+      opacity: 1,
+      width: 2,
+    },
+  },
 ];
 
 // Renderer INTERAKTIF: mermaid (teks) -> Cytoscape (kanvas). Dipakai lewat DiagramBlock
@@ -572,24 +689,69 @@ function CytoscapeBlock({ code, onStatic }) {
   const cyRef = useRef(null);
   const [failed, setFailed] = useState(false);
   const [layout, setLayout] = useState("breadthfirst");
-  const elements = useMemo(() => { try { return mermaidToCytoElements(code); } catch (e) { return null; } }, [code]);
+  const elements = useMemo(() => {
+    try {
+      return mermaidToCytoElements(code);
+    } catch (e) {
+      return null;
+    }
+  }, [code]);
 
   useEffect(() => {
-    if (!elements || typeof window === "undefined" || typeof window.cytoscape !== "function" || !ref.current) { setFailed(true); return; }
+    if (
+      !elements ||
+      typeof window === "undefined" ||
+      typeof window.cytoscape !== "function" ||
+      !ref.current
+    ) {
+      setFailed(true);
+      return;
+    }
     let cy;
     try {
-      cy = window.cytoscape({ container: ref.current, elements, style: CY_STYLE, layout: cyLayoutOpts("breadthfirst"), wheelSensitivity: 0.2, minZoom: 0.2, maxZoom: 3 });
-    } catch (e) { setFailed(true); return; }
+      cy = window.cytoscape({
+        container: ref.current,
+        elements,
+        style: CY_STYLE,
+        layout: cyLayoutOpts("breadthfirst"),
+        wheelSensitivity: 0.2,
+        minZoom: 0.2,
+        maxZoom: 3,
+      });
+    } catch (e) {
+      setFailed(true);
+      return;
+    }
     cyRef.current = cy;
-    cy.on("mouseover", "node", (e) => { const n = e.target; n.addClass("hl"); n.connectedEdges().addClass("hl").connectedNodes().addClass("hl"); });
+    cy.on("mouseover", "node", (e) => {
+      const n = e.target;
+      n.addClass("hl");
+      n.connectedEdges().addClass("hl").connectedNodes().addClass("hl");
+    });
     cy.on("mouseout", "node", () => cy.elements().removeClass("hl"));
-    return () => { try { cy.destroy(); } catch (_) {} cyRef.current = null; };
+    return () => {
+      try {
+        cy.destroy();
+      } catch (_) {}
+      cyRef.current = null;
+    };
   }, [elements]);
 
-  useEffect(() => { if (cyRef.current) cyRef.current.layout(cyLayoutOpts(layout)).run(); }, [layout]);
+  useEffect(() => {
+    if (cyRef.current) cyRef.current.layout(cyLayoutOpts(layout)).run();
+  }, [layout]);
 
   if (failed || !elements) return <MermaidBlock code={code} />;
-  const btn = (l) => ({ fontFamily: "ui-monospace,monospace", fontSize: 11, color: layout === l ? "#dce4f0" : "#8b98ac", background: layout === l ? "rgba(143,179,255,0.16)" : "transparent", border: "1px solid " + (layout === l ? "#8fb3ff" : "#2a3542"), borderRadius: 6, padding: "3px 9px", cursor: "pointer" });
+  const btn = (l) => ({
+    fontFamily: "ui-monospace,monospace",
+    fontSize: 11,
+    color: layout === l ? "#dce4f0" : "#8b98ac",
+    background: layout === l ? "rgba(143,179,255,0.16)" : "transparent",
+    border: "1px solid " + (layout === l ? "#8fb3ff" : "#2a3542"),
+    borderRadius: 6,
+    padding: "3px 9px",
+    cursor: "pointer",
+  });
   return (
     <div className="mermaid-block">
       <div className="code-head">
@@ -602,13 +764,39 @@ function CytoscapeBlock({ code, onStatic }) {
         <span className="lang-spacer" />
         <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
           {["breadthfirst", "cose", "concentric"].map((l) => (
-            <button key={l} style={btn(l)} onClick={() => setLayout(l)}>{l}</button>
+            <button key={l} style={btn(l)} onClick={() => setLayout(l)}>
+              {l}
+            </button>
           ))}
-          <button style={btn("_fit")} onClick={() => cyRef.current && cyRef.current.animate({ fit: { padding: 22 } }, { duration: 250 })}>fit</button>
-          {onStatic ? <button style={btn("_st")} onClick={onStatic} title="Kembali ke diagram statis (fidelitas penuh)">← statis</button> : null}
+          <button
+            style={btn("_fit")}
+            onClick={() =>
+              cyRef.current &&
+              cyRef.current.animate({ fit: { padding: 22 } }, { duration: 250 })
+            }
+          >
+            fit
+          </button>
+          {onStatic ? (
+            <button
+              style={btn("_st")}
+              onClick={onStatic}
+              title="Kembali ke diagram statis (fidelitas penuh)"
+            >
+              ← statis
+            </button>
+          ) : null}
         </div>
       </div>
-      <div ref={ref} style={{ height: 360, width: "100%", background: "radial-gradient(circle at 50% 40%, #0f1620, #0d1117)", borderRadius: "0 0 8px 8px" }} />
+      <div
+        ref={ref}
+        style={{
+          height: 360,
+          width: "100%",
+          background: "radial-gradient(circle at 50% 40%, #0f1620, #0d1117)",
+          borderRadius: "0 0 8px 8px",
+        }}
+      />
     </div>
   );
 }
@@ -620,12 +808,25 @@ function CytoscapeBlock({ code, onStatic }) {
 function DiagramBlock({ code }) {
   const [interactive, setInteractive] = useState(false);
   const canInteractive = useMemo(() => {
-    if (typeof window === "undefined" || typeof window.cytoscape !== "function") return false;
-    try { const els = mermaidToCytoElements(code); return !!(els && els.some((e) => !e.data.source && !e.data.isParent)); }
-    catch (e) { return false; }
+    if (typeof window === "undefined" || typeof window.cytoscape !== "function")
+      return false;
+    try {
+      const els = mermaidToCytoElements(code);
+      return !!(els && els.some((e) => !e.data.source && !e.data.isParent));
+    } catch (e) {
+      return false;
+    }
   }, [code]);
-  if (interactive && canInteractive) return <CytoscapeBlock code={code} onStatic={() => setInteractive(false)} />;
-  return <MermaidBlock code={code} onInteractive={canInteractive ? () => setInteractive(true) : null} />;
+  if (interactive && canInteractive)
+    return (
+      <CytoscapeBlock code={code} onStatic={() => setInteractive(false)} />
+    );
+  return (
+    <MermaidBlock
+      code={code}
+      onInteractive={canInteractive ? () => setInteractive(true) : null}
+    />
+  );
 }
 
 // Renderer utama: mermaid.js ASLI (window.mermaid, di-vendor di index.html). Paham
@@ -637,28 +838,56 @@ function MermaidBlock({ code, onInteractive }) {
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     const m = typeof window !== "undefined" ? window.mermaid : null;
-    if (!m || !m.render) { setFailed(true); return; }
+    if (!m || !m.render) {
+      setFailed(true);
+      return;
+    }
     let cancelled = false;
     try {
       if (!window.__mermaidInit) {
         m.initialize({
-          startOnLoad: false, securityLevel: "loose", theme: "base",
+          startOnLoad: false,
+          securityLevel: "loose",
+          theme: "base",
           themeVariables: {
-            background: "#0d1117", primaryColor: "#1c2634", primaryBorderColor: "#c8d3e0",
-            primaryTextColor: "#eaf0f7", lineColor: "#8fb3ff", secondaryColor: "#161b22",
-            tertiaryColor: "#0d1117", clusterBkg: "#12161d", clusterBorder: "#2b3546",
-            edgeLabelBackground: "#0d1117", fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif", fontSize: "15px",
+            background: "#0d1117",
+            primaryColor: "#1c2634",
+            primaryBorderColor: "#c8d3e0",
+            primaryTextColor: "#eaf0f7",
+            lineColor: "#8fb3ff",
+            secondaryColor: "#161b22",
+            tertiaryColor: "#0d1117",
+            clusterBkg: "#12161d",
+            clusterBorder: "#2b3546",
+            edgeLabelBackground: "#0d1117",
+            fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+            fontSize: "15px",
           },
-          flowchart: { curve: "basis", htmlLabels: true, nodeSpacing: 46, rankSpacing: 54, padding: 10, useMaxWidth: true },
+          flowchart: {
+            curve: "basis",
+            htmlLabels: true,
+            nodeSpacing: 46,
+            rankSpacing: 54,
+            padding: 10,
+            useMaxWidth: true,
+          },
         });
         window.__mermaidInit = true;
       }
       const id = "mmd-" + Math.random().toString(36).slice(2, 9);
-      Promise.resolve(m.render(id, code)).then(({ svg }) => {
-        if (!cancelled && ref.current) ref.current.innerHTML = svg;
-      }).catch(() => { if (!cancelled) setFailed(true); });
-    } catch (e) { setFailed(true); }
-    return () => { cancelled = true; };
+      Promise.resolve(m.render(id, code))
+        .then(({ svg }) => {
+          if (!cancelled && ref.current) ref.current.innerHTML = svg;
+        })
+        .catch(() => {
+          if (!cancelled) setFailed(true);
+        });
+    } catch (e) {
+      setFailed(true);
+    }
+    return () => {
+      cancelled = true;
+    };
   }, [code]);
 
   if (failed) return <MermaidBlockFallback code={code} />;
@@ -676,13 +905,32 @@ function MermaidBlock({ code, onInteractive }) {
           <button
             onClick={onInteractive}
             title="Buka sebagai graph interaktif (drag / zoom / layout)"
-            style={{ marginLeft: "auto", fontFamily: "ui-monospace,monospace", fontSize: 11, color: "#8fb3ff", background: "rgba(143,179,255,0.12)", border: "1px solid #8fb3ff", borderRadius: 6, padding: "3px 10px", cursor: "pointer" }}
+            style={{
+              marginLeft: "auto",
+              fontFamily: "ui-monospace,monospace",
+              fontSize: 11,
+              color: "#8fb3ff",
+              background: "rgba(143,179,255,0.12)",
+              border: "1px solid #8fb3ff",
+              borderRadius: 6,
+              padding: "3px 10px",
+              cursor: "pointer",
+            }}
           >
             ⇱ interaktif
           </button>
         ) : null}
       </div>
-      <div className="mermaid-canvas" ref={ref} style={{ overflowX: "auto", padding: "12px 14px 16px", display: "flex", justifyContent: "center" }} />
+      <div
+        className="mermaid-canvas"
+        ref={ref}
+        style={{
+          overflowX: "auto",
+          padding: "12px 14px 16px",
+          display: "flex",
+          justifyContent: "center",
+        }}
+      />
     </div>
   );
 }
