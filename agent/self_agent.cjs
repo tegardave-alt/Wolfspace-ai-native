@@ -634,7 +634,11 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   }
   const sess = _sessionState.get(thread_id);
   sess.ts = Date.now();
-  if (!sess.lastOutBySig) { sess.lastOutBySig = {}; sess.noProgressBySig = {}; sess.failsByName = {}; }
+  if (!sess.lastOutBySig) {
+    sess.lastOutBySig = {};
+    sess.noProgressBySig = {};
+    sess.failsByName = {};
+  }
   const callCounts = sess.callCounts;
   const callCountsByName = sess.callCountsByName;
   let editFailCount = sess.editFailCount || 0;
@@ -651,14 +655,22 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     const mcpTools = await mcpClient.getTools();
     if (mcpTools.length > 0) {
       currentTools = currentTools.concat(mcpTools);
-      // HARDCODE RULE: Filter web_search/web_fetch HANYA jika pertanyaan jelas tentang Github/MCP
+      // HARDCODE RULE: Filter web_search/web_fetch dinamis jika query berkaitan dengan MCP / Tools yang aktif
       const lastMsg =
         history && history.length > 0
           ? history[history.length - 1].content
           : "";
-      const isMcpQuery = /github|repo|issue|commit|pull request|mcp/i.test(
-        lastMsg,
-      );
+      const mcpToolKeywords = mcpTools
+        .map((t) =>
+          t.function.name.replace(/^mcp_[^_]+_/, "").replace(/_/g, "|"),
+        )
+        .join("|");
+      const baseKeywords =
+        "mcp|database|sql|query|api|data|server|github|repo|issue|commit|pull request";
+      const isMcpQuery = new RegExp(
+        `${baseKeywords}${mcpToolKeywords ? "|" + mcpToolKeywords : ""}`,
+        "i",
+      ).test(lastMsg);
       const isGeneralQuery =
         /apa itu|siapa|cara|bagaimana|contoh|cari|google|web/i.test(lastMsg);
 
@@ -950,13 +962,19 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           // di sini hanya backstop mutlak untuk loop tak berhingga yang outputnya
           // selalu berubah (mis. timestamp) sehingga lolos deteksi kemandekan.
           if (callCounts[sig] > 8) {
-            dlog("hard-stop repeated_call_backstop", { sig: sig.slice(0, 140) });
+            dlog("hard-stop repeated_call_backstop", {
+              sig: sig.slice(0, 140),
+            });
             return {
               stop: true,
               stopNote:
-                "tool «" + tc.function.name + "» dipanggil dengan argumen identik " +
-                callCounts[sig] + "x (arg: " +
-                (tc.function.arguments || "").slice(0, 80) + "…)",
+                "tool «" +
+                tc.function.name +
+                "» dipanggil dengan argumen identik " +
+                callCounts[sig] +
+                "x (arg: " +
+                (tc.function.arguments || "").slice(0, 80) +
+                "…)",
             };
           }
           const isReadOnlyTool =
@@ -1115,9 +1133,13 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               out,
               stop: true,
               stopNote:
-                "tool «" + tc.function.name + "» dipanggil identik " +
-                (sess.noProgressBySig[sig] + 1) + "x dengan HASIL SAMA persis (arg: " +
-                (tc.function.arguments || "").slice(0, 80) + "…)",
+                "tool «" +
+                tc.function.name +
+                "» dipanggil identik " +
+                (sess.noProgressBySig[sig] + 1) +
+                "x dengan HASIL SAMA persis (arg: " +
+                (tc.function.arguments || "").slice(0, 80) +
+                "…)",
             };
           }
           if (!isReadOnlyTool && sess.failsByName[tc.function.name] >= 6) {
@@ -1130,10 +1152,13 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               stop: true,
               reason: "tool_name_loop",
               stopNote:
-                "tool «" + tc.function.name + "» GAGAL " +
+                "tool «" +
+                tc.function.name +
+                "» GAGAL " +
                 sess.failsByName[tc.function.name] +
                 "x beruntun (kegagalan terakhir: " +
-                String(out).replace(/\s+/g, " ").slice(0, 100) + "…)",
+                String(out).replace(/\s+/g, " ").slice(0, 100) +
+                "…)",
             };
           }
           if (_sameResult && sess.noProgressBySig[sig] >= 1)
@@ -1363,7 +1388,8 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
                 msg.content ||
                 "Berhenti: panggilan tool berulang tanpa kemajuan" +
                   (results[i].stopNote
-                    ? " — " + results[i].stopNote +
+                    ? " — " +
+                      results[i].stopNote +
                       ". Coba: instruksi lebih spesifik, atau pecah tugasnya."
                     : ".");
             }

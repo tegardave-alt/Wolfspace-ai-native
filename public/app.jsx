@@ -2,12 +2,39 @@ const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
 // Command Palette (forked from VS Code) - daftar command yang tersedia
 const COMMANDS = [
-  { id: 'open.agents', label: 'Agent Runner: Buka Agent Runner', icon: 'runner', action: () => document.querySelector('[data-view="agents"]')?.click() },
-  { id: 'open.settings', label: 'Settings: Buka Pengaturan', icon: 'settings', action: () => document.querySelector('[data-view="settings"]')?.click() },
-  { id: 'terminal.new', label: 'Terminal: Buat Terminal Baru', icon: 'terminal', action: () => window.createNewTerminal?.() },
-  { id: 'openclaw.chat', label: 'OpenClaw: Jalankan dari Chat', icon: 'runner', action: () => window.dispatchEvent(new CustomEvent('WOLFSPACE:set-composer', { detail: '/openclaw ' })) },
-  { id: 'agent.run', label: 'Agent: Mulai agent baru', icon: 'play', action: () => window.startNewAgent?.() },
-  { id: 'theme.toggle', label: 'Appearance: Toggle Tema Gelap/Terang', icon: 'theme', action: () => document.body.classList.toggle('light-theme') },
+  {
+    id: "open.settings",
+    label: "Settings: Buka Pengaturan",
+    icon: "settings",
+    action: () => document.querySelector('[data-view="settings"]')?.click(),
+  },
+  {
+    id: "terminal.new",
+    label: "Terminal: Buat Terminal Baru",
+    icon: "terminal",
+    action: () => window.createNewTerminal?.(),
+  },
+  {
+    id: "openclaw.chat",
+    label: "OpenClaw: Jalankan dari Chat",
+    icon: "runner",
+    action: () =>
+      window.dispatchEvent(
+        new CustomEvent("WOLFSPACE:set-composer", { detail: "/openclaw " }),
+      ),
+  },
+  {
+    id: "agent.run",
+    label: "Agent: Mulai agent baru",
+    icon: "play",
+    action: () => window.startNewAgent?.(),
+  },
+  {
+    id: "theme.toggle",
+    label: "Appearance: Toggle Tema Gelap/Terang",
+    icon: "theme",
+    action: () => document.body.classList.toggle("light-theme"),
+  },
 ];
 
 /* Icons dipindah ke public/app/Icons.jsx (APP_MODULES). */
@@ -133,24 +160,29 @@ function mdToHtml(s) {
       const headers = parseRow(line);
       i += 2;
       const rows = [];
-      while (i < lines.length && lines[i].trim().includes("|") && lines[i].trim() !== "") {
+      while (
+        i < lines.length &&
+        lines[i].trim().includes("|") &&
+        lines[i].trim() !== ""
+      ) {
         rows.push(parseRow(lines[i]));
         i++;
       }
-      let html = '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
+      let html =
+        '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
       headers.forEach((h) => {
         html += `<th>${mdInline(h)}</th>`;
       });
-      html += '</tr></thead><tbody>';
+      html += "</tr></thead><tbody>";
       rows.forEach((row) => {
-        html += '<tr>';
+        html += "<tr>";
         for (let c = 0; c < headers.length; c++) {
           const cell = row[c] || "";
           html += `<td>${mdInline(cell)}</td>`;
         }
-        html += '</tr>';
+        html += "</tr>";
       });
-      html += '</tbody></table></div>';
+      html += "</tbody></table></div>";
       outBlocks.push(html);
     } else {
       normalLines.push(line);
@@ -162,13 +194,17 @@ function mdToHtml(s) {
 }
 function parseBlocks(text) {
   // Pre-processing: Jika model hanya memberikan tag penutup tapi lupa tag pembuka
-  if ((text.includes("</think>") || text.includes("</thought>")) && 
-      !text.includes("<think>") && !text.includes("<thought>")) {
+  if (
+    (text.includes("</think>") || text.includes("</thought>")) &&
+    !text.includes("<think>") &&
+    !text.includes("<thought>")
+  ) {
     text = "<think>\n" + text;
   }
 
   const out = [];
-  const re = /(?:```(\w*)\n?([\s\S]*?)```)|(?:<(?:think|thought)>([\s\S]*?)(?:<\/(?:think|thought)>|$))/gi;
+  const re =
+    /(?:```(\w*)\n?([\s\S]*?)```)|(?:<(?:think|thought)>([\s\S]*?)(?:<\/(?:think|thought)>|$))/gi;
   let last = 0,
     m;
   while ((m = re.exec(text))) {
@@ -177,7 +213,7 @@ function parseBlocks(text) {
     if (m[3] !== undefined) {
       out.push({
         type: "think",
-        html: mdToHtml(m[3].trim())
+        html: mdToHtml(m[3].trim()),
       });
     } else {
       out.push({
@@ -196,7 +232,12 @@ function parseBlocks(text) {
     if (pre.trim()) out.push({ type: "text", html: mdToHtml(pre.trim()) });
     out.push({
       type: "think",
-      html: mdToHtml(tail.slice(openThink).replace(/^<(?:think|thought)>\n?/i, "").trim())
+      html: mdToHtml(
+        tail
+          .slice(openThink)
+          .replace(/^<(?:think|thought)>\n?/i, "")
+          .trim(),
+      ),
     });
   } else if (openCode >= 0) {
     const pre = tail.slice(0, openCode);
@@ -206,11 +247,15 @@ function parseBlocks(text) {
       lang: "",
       code: tail.slice(openCode).replace(/^```\w*\n?/, ""),
     });
-  } else if (tail.trim()) out.push({ type: "text", html: mdToHtml(tail.trim()) });
+  } else if (tail.trim())
+    out.push({ type: "text", html: mdToHtml(tail.trim()) });
   return out;
 }
 function reqFor(modelVal, cloud, history) {
-  const effortVal = cloud && typeof cloud.effort !== 'undefined' ? Number(cloud.effort) : (parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1);
+  const effortVal =
+    cloud && typeof cloud.effort !== "undefined"
+      ? Number(cloud.effort)
+      : parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1;
   return modelVal === "cloud" && cloud
     ? { history, cloud, effort: effortVal }
     : { history, port: modelVal, effort: effortVal };
@@ -264,7 +309,11 @@ async function wwApi(path, { method = "GET", body = null } = {}) {
     }
     const opts =
       body != null
-        ? { method, headers: { "Content-Type": "application/json" }, body: JSON.stringify(body) }
+        ? {
+            method,
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify(body),
+          }
         : { method };
     return await (await fetch(path, opts)).json();
   } catch (_) {
@@ -292,13 +341,20 @@ if (
     init = init || {};
     const url = typeof input === "string" ? input : (input && input.url) || "";
     // Hanya API path-relatif same-origin. URL absolut/eksternal/blob → fetch asli.
-    if (typeof url !== "string" || !url.startsWith("/")) return _realFetch(input, init);
+    if (typeof url !== "string" || !url.startsWith("/"))
+      return _realFetch(input, init);
     const method = String(
       init.method || (typeof input === "object" && input.method) || "GET",
     ).toUpperCase();
-    let body = init.body != null ? init.body : typeof input === "object" ? input.body : null;
+    let body =
+      init.body != null
+        ? init.body
+        : typeof input === "object"
+          ? input.body
+          : null;
     // FormData/stream tak didukung shim → serahkan ke fetch asli (jarang di path relatif).
-    if (body != null && typeof body !== "string") return _realFetch(input, init);
+    if (body != null && typeof body !== "string")
+      return _realFetch(input, init);
     let payload = null;
     if (body != null) {
       try {
@@ -345,9 +401,17 @@ if (
   const _RealES = window.EventSource;
   window.EventSource = function (url) {
     if (typeof url !== "string" || !url.startsWith("/")) {
-      return _RealES ? new _RealES(url) : { close() {}, onmessage: null, onerror: null };
+      return _RealES
+        ? new _RealES(url)
+        : { close() {}, onmessage: null, onerror: null };
     }
-    const es = { onmessage: null, onerror: null, onopen: null, readyState: 1, close() {} };
+    const es = {
+      onmessage: null,
+      onerror: null,
+      onopen: null,
+      readyState: 1,
+      close() {},
+    };
     let buf = "";
     let cancel = null;
     try {
@@ -410,7 +474,11 @@ if (
       if (!keys.length) return; // belum ada dump dari browser → cek lagi lain kali
       for (const k of keys) localStorage.setItem(k, data[k]);
       localStorage.setItem("wolfspace_migrated", "1");
-      console.log("[ww] auto-migrasi localStorage: " + keys.length + " kunci diimpor — reload…");
+      console.log(
+        "[ww] auto-migrasi localStorage: " +
+          keys.length +
+          " kunci diimpor — reload…",
+      );
       location.reload();
     })
     .catch(() => {});
@@ -528,6 +596,414 @@ const PICKER_WORKSPACES = [
 ];
 /* Screens dipindah ke public/app/Screens.jsx (APP_MODULES). */
 
+/* ── Logic: sidebar file (tab Changes/Files) — desain mengikuti prototipe/screenshot.
+   Terhubung ke daftar file workspace NYATA lewat GET /ww/tree, tapi hanya AKTIF
+   saat konteks web-dev (`active`) — mis. ketika agent sedang membuat/mengubah web.
+   Props: root=path workspace, active=boolean (sinyal web-dev). ── */
+// Root sidebar Logic = FOLDER dari web yang sedang dibuat, bukan seluruh workspace.
+// previewUrl berbentuk "/preview-file?path=<abs .html>" (di-set saat agent menulis
+// HTML) → ambil direktori file itu. Bila previewUrl berupa URL http (server dev),
+// tak ada folder lokal → pakai fallback (workspace aktif).
+function webProjectRoot(previewUrl, fallback) {
+  if (!previewUrl) return fallback;
+  const m = String(previewUrl).match(/[?&]path=([^&]+)/);
+  if (m) {
+    try {
+      const abs = decodeURIComponent(m[1]);
+      const dir = abs.replace(/[\\/][^\\/]*$/, ""); // buang nama file → dirname
+      if (dir && dir !== abs) return dir;
+    } catch (_) {}
+  }
+  return fallback;
+}
+function tsjFileType(name, dir) {
+  if (dir) return "folder";
+  const n = (name || "").toLowerCase();
+  if (/\.pdf$/.test(n)) return "pdf";
+  if (
+    /\.(md|markdown|txt)$/.test(n) ||
+    /^(readme|changelog|news|authors|history)/.test(n)
+  )
+    return "info";
+  if (
+    /^(copying|license|licence)/.test(n) ||
+    /\.(pem|key|crt|cert|env)$/.test(n)
+  )
+    return "key";
+  return "file";
+}
+// Bangun pohon HANYA dari file yang SEDANG DIKEMBANGKAN (ditulis/diedit agent),
+// bukan seluruh isi folder. `paths` = daftar path file yang disentuh; `root` =
+// folder proyek web (untuk memangkas prefix agar path tampil relatif & ringkas).
+// Hasilnya [{ name, depth, type }] — folder perantara ikut ditampilkan supaya
+// struktur terlihat, tapi hanya cabang menuju file yang dikembangkan.
+function buildDevTree(paths, root) {
+  const rootN = String(root || "")
+    .replace(/\\/g, "/")
+    .replace(/\/+$/, "")
+    .toLowerCase();
+  const rootNode = { children: {} };
+  for (const raw of paths || []) {
+    let s = String(raw || "").replace(/\\/g, "/");
+    const sl = s.toLowerCase();
+    if (rootN && sl.startsWith(rootN + "/")) s = s.slice(rootN.length + 1);
+    s = s.replace(/^\/+/, "").replace(/^[a-zA-Z]:\//, ""); // buang drive bila tak ter-strip root
+    const parts = s.split("/").filter(Boolean);
+    if (!parts.length) continue;
+    let cur = rootNode;
+    parts.forEach((part, i) => {
+      const isFile = i === parts.length - 1;
+      cur.children[part] = cur.children[part] || {
+        name: part,
+        isFile,
+        children: {},
+      };
+      if (!isFile) cur.children[part].isFile = false; // punya anak → pasti folder
+      cur = cur.children[part];
+    });
+  }
+  const out = [];
+  const walk = (node, depth) => {
+    const kids = Object.values(node.children);
+    const cmp = (a, b) =>
+      a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+    kids
+      .filter((k) => !k.isFile)
+      .sort(cmp)
+      .forEach((d) => {
+        out.push({ name: d.name, depth, type: "folder" });
+        walk(d, depth + 1);
+      });
+    kids
+      .filter((k) => k.isFile)
+      .sort(cmp)
+      .forEach((f) =>
+        out.push({ name: f.name, depth, type: tsjFileType(f.name, false) }),
+      );
+  };
+  walk(rootNode, 0);
+  return out;
+}
+function LogicFileTree({ files, root, active }) {
+  const [tab, setTab] = React.useState("files");
+  const tree = buildDevTree(files, root);
+  const icon = (t) => {
+    if (t === "folder")
+      return (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#54aeff"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M3 7a2 2 0 0 1 2-2h4l2 2h6a2 2 0 0 1 2 2v1H3z" />
+          <path d="M3 10h18l-1.5 8a2 2 0 0 1-2 1.6H6.5a2 2 0 0 1-2-1.6z" />
+        </svg>
+      );
+    if (t === "pdf")
+      return (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#f85149"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+          <polyline points="14 2 14 8 20 8" />
+        </svg>
+      );
+    if (t === "key")
+      return (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#e3b341"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="7.5" cy="15.5" r="4.5" />
+          <path d="M10.7 12.3 20 3" />
+          <path d="m17 6 3 3" />
+          <path d="m15 8 2 2" />
+        </svg>
+      );
+    if (t === "info")
+      return (
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#54aeff"
+          strokeWidth="1.6"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <circle cx="12" cy="12" r="9" />
+          <line x1="12" y1="11" x2="12" y2="16" />
+          <circle cx="12" cy="8" r="0.6" fill="#54aeff" />
+        </svg>
+      );
+    return (
+      <svg
+        width="16"
+        height="16"
+        viewBox="0 0 24 24"
+        fill="none"
+        stroke="#768390"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      >
+        <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+        <polyline points="14 2 14 8 20 8" />
+        <line x1="8" y1="13" x2="16" y2="13" />
+        <line x1="8" y1="17" x2="16" y2="17" />
+      </svg>
+    );
+  };
+  return (
+    <div
+      style={{
+        width: "244px",
+        flexShrink: 0,
+        background: "#0c1219",
+        borderRight: "1px solid #212a36",
+        display: "flex",
+        flexDirection: "column",
+        userSelect: "none",
+      }}
+    >
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          height: "38px",
+          padding: "0 8px 0 12px",
+          borderBottom: "1px solid #212a36",
+          gap: "4px",
+        }}
+      >
+        <div style={{ display: "flex", gap: "16px", flex: 1 }}>
+          {["changes", "files"].map((t) => (
+            <span
+              key={t}
+              onClick={() => setTab(t)}
+              style={{
+                fontSize: "13px",
+                cursor: "pointer",
+                padding: "9px 0",
+                color: tab === t ? "#e6edf3" : "#6f7d92",
+                borderBottom:
+                  tab === t ? "2px solid #4c8bf5" : "2px solid transparent",
+                transition: "color .1s",
+              }}
+            >
+              {t === "changes" ? "Changes" : "Files"}
+            </span>
+          ))}
+        </div>
+        <div
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "2px",
+            color: "#6f7d92",
+          }}
+        >
+          <button
+            title="Cari"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "inherit",
+              cursor: "pointer",
+              width: "24px",
+              height: "24px",
+              borderRadius: "5px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+            >
+              <circle cx="11" cy="11" r="7" />
+              <line x1="21" y1="21" x2="16.65" y2="16.65" />
+            </svg>
+          </button>
+          <button
+            title="Ciutkan semua"
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "inherit",
+              cursor: "pointer",
+              width: "24px",
+              height: "24px",
+              borderRadius: "5px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <polyline points="4 14 10 14 10 20" />
+              <polyline points="20 10 14 10 14 4" />
+              <line x1="14" y1="10" x2="21" y2="3" />
+              <line x1="3" y1="21" x2="10" y2="14" />
+            </svg>
+          </button>
+        </div>
+      </div>
+      {tab === "changes" ? (
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#4b5563",
+            fontSize: "12px",
+            padding: "24px",
+            textAlign: "center",
+          }}
+        >
+          Tak ada perubahan.
+        </div>
+      ) : !active ? (
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            gap: "10px",
+            color: "#5b6673",
+            fontSize: "12px",
+            padding: "24px",
+            textAlign: "center",
+            lineHeight: 1.6,
+          }}
+        >
+          <svg
+            width="30"
+            height="30"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#3a444f"
+            strokeWidth="1.3"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+            <polyline points="14 2 14 8 20 8" />
+          </svg>
+          <div>
+            Daftar file muncul saat kamu meminta agent
+            <br />
+            membuat web (mis. generate HTML).
+          </div>
+        </div>
+      ) : tree.length === 0 ? (
+        <div
+          style={{
+            flex: 1,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#4b5563",
+            fontSize: "12px",
+            padding: "24px",
+            textAlign: "center",
+          }}
+        >
+          Belum ada file yang dikembangkan.
+        </div>
+      ) : (
+        <div style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}>
+          {tree.map((n, i) => (
+            <div
+              key={i}
+              title={n.name}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                height: "24px",
+                paddingRight: "10px",
+                paddingLeft: 10 + n.depth * 14 + "px",
+                cursor: "pointer",
+                color: n.type === "folder" ? "#cdd9e5" : "#adbac7",
+                fontSize: "13px",
+                whiteSpace: "nowrap",
+              }}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "#141c26")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
+            >
+              {n.type === "folder" ? (
+                <svg
+                  width="12"
+                  height="12"
+                  viewBox="0 0 16 16"
+                  fill="none"
+                  stroke="#768390"
+                  strokeWidth="1.6"
+                  strokeLinecap="round"
+                  strokeLinejoin="round"
+                  style={{ flexShrink: 0, transform: "rotate(90deg)" }}
+                >
+                  <path d="M6 4l4 4-4 4" />
+                </svg>
+              ) : (
+                <span style={{ width: "12px", flexShrink: 0 }} />
+              )}
+              <span style={{ flexShrink: 0, display: "inline-flex" }}>
+                {icon(n.type)}
+              </span>
+              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
+                {n.name}
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function App() {
   // Melaporkan ke index.html bahwa App berhasil dirender tanpa Runtime Error
   useEffect(() => {
@@ -552,8 +1028,8 @@ function App() {
   const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
   const filteredCommands = useMemo(() => {
     if (!commandSearch.trim()) return COMMANDS;
-    return COMMANDS.filter(cmd =>
-      cmd.label.toLowerCase().includes(commandSearch.toLowerCase())
+    return COMMANDS.filter((cmd) =>
+      cmd.label.toLowerCase().includes(commandSearch.toLowerCase()),
     );
   }, [commandSearch]);
   const runSelectedCommand = () => {
@@ -566,32 +1042,40 @@ function App() {
   };
   useEffect(() => {
     const handleKeyDown = (e) => {
-      if ((e.ctrlKey || e.metaKey) && e.shiftKey && (e.key === 'P' || e.key === 'p')) {
+      if (
+        (e.ctrlKey || e.metaKey) &&
+        e.shiftKey &&
+        (e.key === "P" || e.key === "p")
+      ) {
         e.preventDefault();
         setCommandPaletteOpen(true);
         setCommandSearch("");
         setSelectedCommandIndex(0);
       }
       if (commandPaletteOpen) {
-        if (e.key === 'Escape') {
+        if (e.key === "Escape") {
           setCommandPaletteOpen(false);
-        } else if (e.key === 'ArrowDown') {
+        } else if (e.key === "ArrowDown") {
           e.preventDefault();
-          setSelectedCommandIndex(prev => Math.min(prev + 1, filteredCommands.length - 1));
-        } else if (e.key === 'ArrowUp') {
+          setSelectedCommandIndex((prev) =>
+            Math.min(prev + 1, filteredCommands.length - 1),
+          );
+        } else if (e.key === "ArrowUp") {
           e.preventDefault();
-          setSelectedCommandIndex(prev => Math.max(prev - 1, 0));
-        } else if (e.key === 'Enter') {
+          setSelectedCommandIndex((prev) => Math.max(prev - 1, 0));
+        } else if (e.key === "Enter") {
           runSelectedCommand();
         }
       }
     };
-    window.addEventListener('keydown', handleKeyDown);
-    return () => window.removeEventListener('keydown', handleKeyDown);
+    window.addEventListener("keydown", handleKeyDown);
+    return () => window.removeEventListener("keydown", handleKeyDown);
   }, [commandPaletteOpen, selectedCommandIndex, filteredCommands]);
   const [selectedProject, setSelectedProject] = useState(() => {
     try {
-      const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
+      const stored = JSON.parse(
+        localStorage.getItem("wolfspace_projects_list") || "[]",
+      );
       if (stored && stored.length > 0 && stored[0].path) return stored[0].path;
     } catch (_) {}
     return WOLFSPACE_ROOT_WIN;
@@ -601,32 +1085,48 @@ function App() {
   React.useEffect(() => {
     const checkSelectedProject = () => {
       try {
-        const deleted = JSON.parse(localStorage.getItem("wolfspace_deleted_workspaces") || "[]");
+        const deleted = JSON.parse(
+          localStorage.getItem("wolfspace_deleted_workspaces") || "[]",
+        );
         // Path-exact saja (lihat isPathDeleted) — tak lagi cocok nama/suffix.
         const isDel = (pStr) => isPathDeleted(deleted, pStr);
         if (isDel(selectedProject)) {
-          const stored = JSON.parse(localStorage.getItem("wolfspace_projects_list") || "[]");
-          const valid = stored.filter(p => !isDel(p.path));
-          if (valid.length > 0 && valid[0].path) setSelectedProject(valid[0].path);
-          else if (!isDel(WOLFSPACE_ROOT_WIN)) setSelectedProject(WOLFSPACE_ROOT_WIN);
+          const stored = JSON.parse(
+            localStorage.getItem("wolfspace_projects_list") || "[]",
+          );
+          const valid = stored.filter((p) => !isDel(p.path));
+          if (valid.length > 0 && valid[0].path)
+            setSelectedProject(valid[0].path);
+          else if (!isDel(WOLFSPACE_ROOT_WIN))
+            setSelectedProject(WOLFSPACE_ROOT_WIN);
           else setSelectedProject("");
         }
       } catch (_) {}
     };
-    window.addEventListener("wolfspace_workspaces_changed", checkSelectedProject);
-    return () => window.removeEventListener("wolfspace_workspaces_changed", checkSelectedProject);
+    window.addEventListener(
+      "wolfspace_workspaces_changed",
+      checkSelectedProject,
+    );
+    return () =>
+      window.removeEventListener(
+        "wolfspace_workspaces_changed",
+        checkSelectedProject,
+      );
   }, [selectedProject]);
-  window.testHitl = function() {
+  window.testHitl = function () {
     setHitlRequest({
-      kind: 'hitl',
+      kind: "hitl",
       title: "Allow check if node-pty is installed?",
       code: "cmd /c npm ls node-pty",
       options: [
         { value: "allow_once", text: "Yes, allow this time" },
-        { value: "allow_project", text: "Yes, and always allow in this project" },
+        {
+          value: "allow_project",
+          text: "Yes, and always allow in this project",
+        },
         { value: "allow_always", text: "Yes, and always allow" },
-        { value: "deny", text: "No (tell the agent what to do instead)" }
-      ]
+        { value: "deny", text: "No (tell the agent what to do instead)" },
+      ],
     });
   };
   const handleHitlResolve = (val) => {
@@ -634,7 +1134,7 @@ function App() {
     const req = hitlRequest;
     setHitlRequest(null);
     if (!req) return;
-    if (req.kind === 'continue') {
+    if (req.kind === "continue") {
       // Jeda batas-langkah (checkpoint) — bukan HITL persetujuan. "Lanjutkan"
       // meneruskan run dari checkpoint dengan plafon langkah diperpanjang.
       if (val === "continue") {
@@ -644,11 +1144,18 @@ function App() {
       }
       return;
     }
-    if (req.kind === 'ask') {
+    if (req.kind === "ask") {
       // Question tool: send the selected answer as a normal user message so the agent can continue.
       if (val === "deny" || val === null || val === undefined) {
         setBusy(false);
-        setTimeout(() => doSend("User memilih untuk tidak menjawab. Silakan lanjutkan dengan asumsi terbaik.", null), 50);
+        setTimeout(
+          () =>
+            doSend(
+              "User memilih untuk tidak menjawab. Silakan lanjutkan dengan asumsi terbaik.",
+              null,
+            ),
+          50,
+        );
       } else {
         setTimeout(() => doSend(String(val), null), 50);
       }
@@ -658,13 +1165,19 @@ function App() {
     if (val === "deny" || val === null || val === undefined) {
       // Cancel: reset busy and send denial message as new user message
       setBusy(false);
-      setTimeout(() => doSend("Tindakan dibatalkan oleh user. Silakan evaluasi kembali dan gunakan cara lain.", null), 50);
+      setTimeout(
+        () =>
+          doSend(
+            "Tindakan dibatalkan oleh user. Silakan evaluasi kembali dan gunakan cara lain.",
+            null,
+          ),
+        50,
+      );
     } else {
       // Allow: resume the agent with HITL approval (content empty is OK now that doSend checks hitlData)
       doSend("", null, { thread_id: req.thread_id, hitl_response: true });
     }
   };
-
 
   const [models, setModels] = useState([
     { value: "", label: "Memuat model...", disabled: true },
@@ -677,6 +1190,32 @@ function App() {
   const [previewUrl, setPreviewUrl] = useState("");
   const [previewInputUrl, setPreviewInputUrl] = useState("");
   const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
+  // File yang SEDANG DIKEMBANGKAN (ditulis/diedit agent) — sumber untuk sidebar
+  // Logic. Berbeda dari "semua isi folder": hanya file yang benar-benar disentuh
+  // agent di sesi ini. Direset saat ganti workspace.
+  const [devFiles, setDevFiles] = useState([]);
+  useEffect(() => {
+    setDevFiles([]);
+  }, [selectedProject]);
+  useEffect(() => {
+    const onAct = (e) => {
+      const d = (e && e.detail) || {};
+      if (!/write|edit|create|apply|save/i.test(String(d.kind || ""))) return;
+      if (d.ok === false) return; // tulisan gagal — jangan catat
+      let p = String(d.path || "");
+      if (!p) {
+        const m = String(d.arg || "").match(
+          /([^\s"'`]+\.[a-zA-Z0-9]{1,8})(?=[\s"'`]|$)/,
+        );
+        if (m) p = m[1];
+      }
+      if (!p) return;
+      p = p.replace(/\\/g, "/");
+      setDevFiles((prev) => (prev.indexOf(p) >= 0 ? prev : prev.concat(p)));
+    };
+    window.addEventListener("wolfspace_agent_act", onAct);
+    return () => window.removeEventListener("wolfspace_agent_act", onAct);
+  }, []);
   // Ref ke iframe Web Dev Live Browser, agar Visual Picker bisa menjangkau
   // dokumen DI DALAM render-nya (bukan cuma elemen <iframe> itu sendiri).
   const previewIframeRef = useRef(null);
@@ -688,8 +1227,13 @@ function App() {
   const handlePreviewNavigate = useCallback((urlOrPath) => {
     if (!urlOrPath || !urlOrPath.trim()) return;
     const val = urlOrPath.trim();
-    const isHttp = val.startsWith("http://") || val.startsWith("https://") || val.startsWith("app://");
-    const targetUrl = isHttp ? val : `/preview-file?path=${encodeURIComponent(val)}`;
+    const isHttp =
+      val.startsWith("http://") ||
+      val.startsWith("https://") ||
+      val.startsWith("app://");
+    const targetUrl = isHttp
+      ? val
+      : `/preview-file?path=${encodeURIComponent(val)}`;
     setPreviewUrl(targetUrl);
     setPreviewInputUrl(val);
   }, []);
@@ -716,19 +1260,26 @@ function App() {
         p = m[1];
         if (!/^[a-zA-Z]:[\\\/]|^\\\\|^\//.test(p)) {
           const root = resolveWorkspaceRoot(selectedProject) || WOLFSPACE_ROOT;
-          p = String(root).replace(/[\\\/]+$/, "") + "/" + p.replace(/^[.\/\\]+/, "");
+          p =
+            String(root).replace(/[\\\/]+$/, "") +
+            "/" +
+            p.replace(/^[.\/\\]+/, "");
         }
       }
       const target = "/preview-file?path=" + encodeURIComponent(p);
       setPreviewUrl((cur) => {
-        if (cur === target) { setPreviewRefreshKey((k) => k + 1); return cur; }
+        if (cur === target) {
+          setPreviewRefreshKey((k) => k + 1);
+          return cur;
+        }
         setPreviewInputUrl(p);
         return target;
       });
       setPanelOpen(true);
     };
     window.addEventListener("wolfspace_agent_act", onActPreview);
-    return () => window.removeEventListener("wolfspace_agent_act", onActPreview);
+    return () =>
+      window.removeEventListener("wolfspace_agent_act", onActPreview);
   }, [selectedProject]);
 
   const [history, setHistory] = useState([]);
@@ -740,7 +1291,10 @@ function App() {
   const [wfBusy, setWfBusy] = useState(false);
   const [wfAgentWidth, setWfAgentWidth] = useState(() => {
     try {
-      const w = parseInt(localStorage.getItem("wolfspace_wf_agent_width") || "400", 10);
+      const w = parseInt(
+        localStorage.getItem("wolfspace_wf_agent_width") || "400",
+        10,
+      );
       return isNaN(w) ? 400 : Math.max(260, Math.min(800, w));
     } catch (_) {
       return 400;
@@ -914,7 +1468,9 @@ function App() {
   };
   const loadSavedChats = () => {
     try {
-      setSavedChats(JSON.parse(localStorage.getItem("wolfspace_chats") || "[]"));
+      setSavedChats(
+        JSON.parse(localStorage.getItem("wolfspace_chats") || "[]"),
+      );
     } catch (e) {}
   };
   const restoreChat = (chat) => {
@@ -935,7 +1491,9 @@ function App() {
     try {
       if (!newTitle || !newTitle.trim()) return;
       const list = JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
-      const updated = list.map((c) => (c.id === id ? { ...c, title: newTitle.trim() } : c));
+      const updated = list.map((c) =>
+        c.id === id ? { ...c, title: newTitle.trim() } : c,
+      );
       localStorage.setItem("wolfspace_chats", JSON.stringify(updated));
       setSavedChats(updated);
     } catch (e) {}
@@ -970,7 +1528,9 @@ function App() {
       const sub = args[0]?.toLowerCase();
       if (!sub || sub === "help") {
         setTerminalOpen(true);
-        setStatus("Gunakan /terminal run <perintah>, /terminal open, /terminal close");
+        setStatus(
+          "Gunakan /terminal run <perintah>, /terminal open, /terminal close",
+        );
         return true;
       }
       if (sub === "open") {
@@ -1111,8 +1671,10 @@ function App() {
       opts.push({
         value: "cloud",
         label:
-          (cloud.model || cloud.name || cloud.provider || "").replace(/-/g, " ") +
-          (cloud.key ? " •" + cloud.key.slice(-4) : ""),
+          (cloud.model || cloud.name || cloud.provider || "").replace(
+            /-/g,
+            " ",
+          ) + (cloud.key ? " •" + cloud.key.slice(-4) : ""),
       });
     if (!opts.length)
       opts.push({ value: "", label: "Belum ada model", disabled: true });
@@ -1154,14 +1716,22 @@ function App() {
   const doSend = async (content, display, hitlData = null) => {
     if (!content && !hitlData) return;
     const trimmedContent = content.trim();
-    if (trimmedContent.toLowerCase() === "/openclaw" || trimmedContent.toLowerCase().startsWith("/openclaw ")) {
+    if (
+      trimmedContent.toLowerCase() === "/openclaw" ||
+      trimmedContent.toLowerCase().startsWith("/openclaw ")
+    ) {
       if (busy) return;
-      const openclawMessage = trimmedContent.replace(/^\/openclaw\b/i, "").trim();
+      const openclawMessage = trimmedContent
+        .replace(/^\/openclaw\b/i, "")
+        .trim();
       if (!openclawMessage) {
         setMessages((m) => [
           ...m,
           { role: "user", text: display || content },
-          { role: "model", text: "Pesan /openclaw tidak boleh kosong. Contoh: /openclaw ringkas project ini" },
+          {
+            role: "model",
+            text: "Pesan /openclaw tidak boleh kosong. Contoh: /openclaw ringkas project ini",
+          },
         ]);
         setStatus("OpenClaw butuh pesan");
         return;
@@ -1216,10 +1786,14 @@ function App() {
       if (/^\/ask(\s|$)/i.test(t)) {
         askMode = true;
         content = t.replace(/^\/ask\b\s*/i, "");
-        if (!content) { setStatus("Ketik pertanyaan setelah /ask, mis. /ask apa fungsi X"); return; }
+        if (!content) {
+          setStatus("Ketik pertanyaan setelah /ask, mis. /ask apa fungsi X");
+          return;
+        }
       }
     }
-    if (content.trim().startsWith("/") && (await handleSlashCommand(content))) return;
+    if (content.trim().startsWith("/") && (await handleSlashCommand(content)))
+      return;
     if (busy && !hitlData) return;
     let newHist = history;
     if (!hitlData) {
@@ -1237,7 +1811,7 @@ function App() {
     const _cl = getCloud();
     const _localCloud =
       _cl && _cl.baseUrl && /(127\.0\.0\.1|localhost)/.test(_cl.baseUrl);
-    
+
     // Default: model cloud tool-capable selalu lewat agent, dan MODEL sendiri yang
     // memutuskan (tool_choice auto) apakah cukup menjawab atau memakai tool. Tak ada
     // lagi gerbang regex tebak-menebak yang bisa salah-rute (dulu typo "jalaankan"
@@ -1245,7 +1819,8 @@ function App() {
     //   - /ask  -> paksa jalur tanpa-tool (jaminan tak menyentuh file)
     //   - HITL/continue resume -> selalu agent
     //   - model lokal/bridge  -> memang tak bisa tool, plain chat
-    const useAgent = !!hitlData || (modelVal === "cloud" && !_localCloud && !askMode);
+    const useAgent =
+      !!hitlData || (modelVal === "cloud" && !_localCloud && !askMode);
     if (!useAgent) {
       // Bridge / local model: plain conversational chat (text streaming, no function-calling).
       setMessages((m) => [
@@ -1308,9 +1883,20 @@ function App() {
       let waitingForInput = false;
       let hadError = false;
       try {
-        const curEffort = (getCloud() && typeof getCloud().effort !== 'undefined') ? Number(getCloud().effort) : (parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1);
+        const curEffort =
+          getCloud() && typeof getCloud().effort !== "undefined"
+            ? Number(getCloud().effort)
+            : parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) ||
+              1;
         await streamSelfAgent(
-          { history: newHist, cloud: getCloud(), port: modelVal, effort: curEffort, workspace_root: resolveWorkspaceRoot(selectedProject) || undefined, ...hitlData },
+          {
+            history: newHist,
+            cloud: getCloud(),
+            port: modelVal,
+            effort: curEffort,
+            workspace_root: resolveWorkspaceRoot(selectedProject) || undefined,
+            ...hitlData,
+          },
           (j) => {
             if (j.t === "backup") upd({ backup: j.dir });
             else if (j.t === "step") {
@@ -1321,7 +1907,13 @@ function App() {
               upd({ thinking: think });
             } else if (j.t === "thought") {
               think = "";
-              evlist.push({ type: "thought", kind: j.tool, arg: j.c, ok: j.ok, output: j.c });
+              evlist.push({
+                type: "thought",
+                kind: j.tool,
+                arg: j.c,
+                ok: j.ok,
+                output: j.c,
+              });
               upd({ events: [...evlist], thinking: "" });
             } else if (j.t === "act") {
               think = "";
@@ -1336,7 +1928,19 @@ function App() {
               // Pancarkan juga dari chat UTAMA (bukan cuma chat workflow): dipakai
               // live-mirror & auto-preview Web Dev Live Browser. j.path = path final
               // hasil resolve tool (akurat walau kurungan workspace me-remap path).
-              try { window.dispatchEvent(new CustomEvent("wolfspace_agent_act", { detail: { kind: j.kind, arg: j.arg, ok: j.ok, output: j.output, path: j.path } })); } catch (_) {}
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("wolfspace_agent_act", {
+                    detail: {
+                      kind: j.kind,
+                      arg: j.arg,
+                      ok: j.ok,
+                      output: j.output,
+                      path: j.path,
+                    },
+                  }),
+                );
+              } catch (_) {}
             } else if (j.t === "phase") {
               phaseNodes.push({
                 phase: j.phase,
@@ -1353,24 +1957,27 @@ function App() {
               adoneSent = true;
               waitingForInput = true;
               setHitlRequest({
-                kind: 'hitl',
+                kind: "hitl",
                 title: j.request.title,
                 code: j.request.code,
                 thread_id: j.thread_id,
                 options: [
                   { value: "allow_once", text: "Izinkan sekali ini" },
-                  { value: "deny", text: "Tolak (Minta agen mencari cara lain)" }
-                ]
+                  {
+                    value: "deny",
+                    text: "Tolak (Minta agen mencari cara lain)",
+                  },
+                ],
               });
             } else if (j.t === "ask") {
               adoneSent = true;
               waitingForInput = true;
               setHitlRequest({
-                kind: 'ask',
+                kind: "ask",
                 title: "Pertanyaan dari Agent",
                 code: j.question || "",
                 thread_id: j.thread_id || null,
-                options: (j.choices || []).map(c => ({ value: c, text: c }))
+                options: (j.choices || []).map((c) => ({ value: c, text: c })),
               });
               upd({ thinking: "Menunggu jawaban Anda...", busy: true });
             } else if (j.t === "adone") {
@@ -1378,16 +1985,20 @@ function App() {
                 // Agent paused for HITL — keep busy=true, just ensure thread_id is updated
                 adoneSent = true;
                 waitingForInput = true;
-                setHitlRequest(prev => prev ? { ...prev, thread_id: j.thread_id } : {
-                  kind: 'hitl',
-                  title: "Menunggu Persetujuan",
-                  code: "",
-                  thread_id: j.thread_id,
-                  options: [
-                    { value: "allow_once", text: "Izinkan sekali ini" },
-                    { value: "deny", text: "Tolak" }
-                  ]
-                });
+                setHitlRequest((prev) =>
+                  prev
+                    ? { ...prev, thread_id: j.thread_id }
+                    : {
+                        kind: "hitl",
+                        title: "Menunggu Persetujuan",
+                        code: "",
+                        thread_id: j.thread_id,
+                        options: [
+                          { value: "allow_once", text: "Izinkan sekali ini" },
+                          { value: "deny", text: "Tolak" },
+                        ],
+                      },
+                );
                 upd({ thinking: "Menunggu persetujuan Anda...", busy: true });
                 return; // Don't set done/busy=false
               }
@@ -1396,16 +2007,22 @@ function App() {
                 // bukan gagal. Tutup timeline dengan rapi lalu tawarkan "Lanjutkan".
                 adoneSent = true;
                 waitingForInput = true;
-                upd({ busy: false, done: true, summary: j.summary, editCount: j.edits, backup: j.backup });
+                upd({
+                  busy: false,
+                  done: true,
+                  summary: j.summary,
+                  editCount: j.edits,
+                  backup: j.backup,
+                });
                 setHitlRequest({
-                  kind: 'continue',
+                  kind: "continue",
                   title: "Agent dijeda (batas langkah)",
                   code: j.summary || "",
                   thread_id: j.thread_id,
                   options: [
                     { value: "continue", text: "Lanjutkan" },
-                    { value: "deny", text: "Selesai (berhenti di sini)" }
-                  ]
+                    { value: "deny", text: "Selesai (berhenti di sini)" },
+                  ],
                 });
                 return;
               }
@@ -1463,7 +2080,7 @@ function App() {
     setBusy(false);
   };
   doSendRef.current = doSend;
-    const cancel = () => {
+  const cancel = () => {
     console.log("[cancel] Aborting and setting busy=false");
     if (ctrlRef.current) ctrlRef.current.abort();
     setBusy(false);
@@ -1477,56 +2094,144 @@ function App() {
     if (!content || !content.trim() || wfBusy) return;
     const newHist = [...wfHistory, { role: "user", content }];
     setWfHistory(newHist);
-    setWfMessages((m) => [...m, { role: "user", text: content }, { role: "agent", agent: { events: [], busy: true } }]);
+    setWfMessages((m) => [
+      ...m,
+      { role: "user", text: content },
+      { role: "agent", agent: { events: [], busy: true } },
+    ]);
     setWfBusy(true);
-    const upd = (patch) => setWfMessages((m) => {
-      const c = m.slice();
-      const last = { ...c[c.length - 1] };
-      last.agent = { ...last.agent, ...patch };
-      c[c.length - 1] = last;
-      return c;
-    });
+    const upd = (patch) =>
+      setWfMessages((m) => {
+        const c = m.slice();
+        const last = { ...c[c.length - 1] };
+        last.agent = { ...last.agent, ...patch };
+        c[c.length - 1] = last;
+        return c;
+      });
     const evlist = [];
-    let think = "", adoneSent = false, hadError = false;
-    try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "start" } })); } catch (_) {}
+    let think = "",
+      adoneSent = false,
+      hadError = false;
+    try {
+      window.dispatchEvent(
+        new CustomEvent("wolfspace_agent_run", { detail: { phase: "start" } }),
+      );
+    } catch (_) {}
     const ctrl = new AbortController();
     wfCtrlRef.current = ctrl;
     try {
-      const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1);
+      const curEffort =
+        getCloud() && typeof getCloud().effort !== "undefined"
+          ? Number(getCloud().effort)
+          : parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1;
       // Kirim pesan terakhir DENGAN hint pembuat-workflow (tampilan chat tetap bersih,
       // pakai `content` biasa). Riwayat tersimpan tetap versi bersih (newHist).
-      const sendHist = [...wfHistory, { role: "user", content: content + "\n\n" + WF_GEN_HINT }];
+      const sendHist = [
+        ...wfHistory,
+        { role: "user", content: content + "\n\n" + WF_GEN_HINT },
+      ];
       await streamSelfAgent(
-        { history: sendHist, cloud: getCloud(), port: modelVal, effort: curEffort, workspace_root: resolveWorkspaceRoot(selectedProject) || undefined },
+        {
+          history: sendHist,
+          cloud: getCloud(),
+          port: modelVal,
+          effort: curEffort,
+          workspace_root: resolveWorkspaceRoot(selectedProject) || undefined,
+        },
         (j) => {
-          if (j.t === "step") { think = ""; upd({ thinking: "" }); }
-          else if (j.t === "tok") { think += j.c; upd({ thinking: think }); }
-          else if (j.t === "thought") { think = ""; evlist.push({ type: "thought", kind: j.tool, arg: j.c, ok: j.ok, output: j.c }); upd({ events: [...evlist], thinking: "" }); }
-          else if (j.t === "act") {
+          if (j.t === "step") {
             think = "";
-            evlist.push({ type: "act", kind: j.kind, arg: j.arg, ok: j.ok, output: j.output });
+            upd({ thinking: "" });
+          } else if (j.t === "tok") {
+            think += j.c;
+            upd({ thinking: think });
+          } else if (j.t === "thought") {
+            think = "";
+            evlist.push({
+              type: "thought",
+              kind: j.tool,
+              arg: j.c,
+              ok: j.ok,
+              output: j.c,
+            });
             upd({ events: [...evlist], thinking: "" });
-            try { window.dispatchEvent(new CustomEvent("wolfspace_agent_act", { detail: { kind: j.kind, arg: j.arg, ok: j.ok, output: j.output, path: j.path } })); } catch (_) {}
+          } else if (j.t === "act") {
+            think = "";
+            evlist.push({
+              type: "act",
+              kind: j.kind,
+              arg: j.arg,
+              ok: j.ok,
+              output: j.output,
+            });
+            upd({ events: [...evlist], thinking: "" });
+            try {
+              window.dispatchEvent(
+                new CustomEvent("wolfspace_agent_act", {
+                  detail: {
+                    kind: j.kind,
+                    arg: j.arg,
+                    ok: j.ok,
+                    output: j.output,
+                    path: j.path,
+                  },
+                }),
+              );
+            } catch (_) {}
           } else if (j.t === "adone") {
-            try { window.dispatchEvent(new CustomEvent("wolfspace_agent_run", { detail: { phase: "done" } })); } catch (_) {}
+            try {
+              window.dispatchEvent(
+                new CustomEvent("wolfspace_agent_run", {
+                  detail: { phase: "done" },
+                }),
+              );
+            } catch (_) {}
             adoneSent = true;
             // CHAT WORKFLOW (decoupled): desain DILEMPAR ke kanvas, TAK ditampilkan
             // di chat. Terima spec JSON atau (fallback) mermaid; lalu BUANG semua blok
             // desain (mermaid/JSON) dari teks — walau tak ter-parse, agar diagram
             // rusak pun tak pernah muncul di chat.
-            const spec = extractWorkflowSpec(j.summary) || mermaidToSpec(j.summary);
+            const spec =
+              extractWorkflowSpec(j.summary) || mermaidToSpec(j.summary);
             let disp = stripDesignBlocks(j.summary);
             if (spec) {
-              try { window.dispatchEvent(new CustomEvent("wolfspace_workflow_spec", { detail: spec })); } catch (_) {}
-              disp = (disp ? disp + "\n\n" : "") + "› Workflow dikirim ke kanvas ←";
+              try {
+                window.dispatchEvent(
+                  new CustomEvent("wolfspace_workflow_spec", { detail: spec }),
+                );
+              } catch (_) {}
+              disp =
+                (disp ? disp + "\n\n" : "") + "› Workflow dikirim ke kanvas ←";
             }
-            upd({ busy: false, done: true, summary: disp, editCount: j.edits, backup: j.backup });
-            setWfHistory((h) => [...h, { role: "assistant", content: j.summary || "" }]);
+            upd({
+              busy: false,
+              done: true,
+              summary: disp,
+              editCount: j.edits,
+              backup: j.backup,
+            });
+            setWfHistory((h) => [
+              ...h,
+              { role: "assistant", content: j.summary || "" },
+            ]);
             // RAG ingest: simpan memori run (permintaan → hasil) agar bisa diingat
             // di sesi mendatang lewat tool `retrieve`. Fire-and-forget, store global.
             if (j.summary && j.summary.trim().length > 8) {
-              const mem = ("Permintaan: " + content + "\nHasil: " + j.summary).slice(0, 1200);
-              wwApi("/rag/ingest", { method: "POST", body: { project: "global", text: mem, kind: "memory", meta: { source: "wf-run" } } }).catch(() => {});
+              const mem = (
+                "Permintaan: " +
+                content +
+                "\nHasil: " +
+                j.summary
+              ).slice(0, 1200);
+              wwApi("/rag/ingest", {
+                method: "POST",
+                body: {
+                  project: "global",
+                  text: mem,
+                  kind: "memory",
+                  meta: { source: "wf-run" },
+                },
+              }).catch(() => {});
             }
           } else if (j.t === "err") {
             hadError = true;
@@ -1537,44 +2242,124 @@ function App() {
         ctrl.signal,
       );
     } catch (e) {
-      if (e.name !== "AbortError") upd({ busy: false, error: true, events: [...evlist, { type: "err", m: e.message }] });
+      if (e.name !== "AbortError")
+        upd({
+          busy: false,
+          error: true,
+          events: [...evlist, { type: "err", m: e.message }],
+        });
     }
     if (!adoneSent && !hadError) {
-      const summary = evlist.length > 0 ? `Selesai. ${evlist.length} operasi dieksekusi.` : "Selesai. Tidak ada operasi.";
+      const summary =
+        evlist.length > 0
+          ? `Selesai. ${evlist.length} operasi dieksekusi.`
+          : "Selesai. Tidak ada operasi.";
       upd({ busy: false, done: true, summary });
       setWfHistory((h) => [...h, { role: "assistant", content: summary }]);
     }
     setWfBusy(false);
     wfCtrlRef.current = null;
   };
-  const wfCancel = () => { if (wfCtrlRef.current) wfCtrlRef.current.abort(); setWfBusy(false); };
+  const wfCancel = () => {
+    if (wfCtrlRef.current) wfCtrlRef.current.abort();
+    setWfBusy(false);
+  };
   // Fase 2: jalankan SATU tahap graph Workflow (satu giliran agent), log ke panel
   // chat Workflow, kembalikan { ok, summary }. Sengaja TIDAK memancarkan event live-
   // graph (biar kanvas Builder yang menyala per-node, bukan pindah ke mode Live).
-  const runWorkflowStage = React.useCallback((prompt, meta = {}) => {
-    return new Promise((resolve) => {
-      setWfMessages((m) => [...m, { role: "user", text: "▶ " + (meta.label || meta.kind || "tahap") }, { role: "agent", agent: { events: [], busy: true } }]);
-      const upd = (patch) => setWfMessages((m) => {
-        const c = m.slice(); const last = { ...c[c.length - 1] }; last.agent = { ...last.agent, ...patch }; c[c.length - 1] = last; return c;
+  const runWorkflowStage = React.useCallback(
+    (prompt, meta = {}) => {
+      return new Promise((resolve) => {
+        setWfMessages((m) => [
+          ...m,
+          { role: "user", text: "▶ " + (meta.label || meta.kind || "tahap") },
+          { role: "agent", agent: { events: [], busy: true } },
+        ]);
+        const upd = (patch) =>
+          setWfMessages((m) => {
+            const c = m.slice();
+            const last = { ...c[c.length - 1] };
+            last.agent = { ...last.agent, ...patch };
+            c[c.length - 1] = last;
+            return c;
+          });
+        let think = "",
+          evlist = [],
+          summary = "",
+          done = false;
+        const finish = (ok, s) => {
+          if (done) return;
+          done = true;
+          resolve({ ok, summary: s });
+        };
+        const ctrl = new AbortController();
+        const curEffort =
+          getCloud() && typeof getCloud().effort !== "undefined"
+            ? Number(getCloud().effort)
+            : parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) ||
+              1;
+        streamSelfAgent(
+          {
+            history: [{ role: "user", content: prompt }],
+            cloud: getCloud(),
+            port: modelVal,
+            effort: curEffort,
+            workspace_root:
+              meta.workspaceRoot ||
+              resolveWorkspaceRoot(selectedProject) ||
+              undefined,
+          },
+          (j) => {
+            if (j.t === "tok") {
+              think += j.c;
+              upd({ thinking: think });
+            } else if (j.t === "thought") {
+              think = "";
+              evlist.push({
+                type: "thought",
+                kind: j.tool,
+                arg: j.c,
+                ok: j.ok,
+                output: j.c,
+              });
+              upd({ events: [...evlist], thinking: "" });
+            } else if (j.t === "act") {
+              think = "";
+              evlist.push({
+                type: "act",
+                kind: j.kind,
+                arg: j.arg,
+                ok: j.ok,
+                output: j.output,
+              });
+              upd({ events: [...evlist], thinking: "" });
+            } else if (j.t === "adone") {
+              summary = j.summary || summary;
+              upd({ busy: false, done: true, summary });
+              finish(true, summary);
+            } else if (j.t === "err") {
+              upd({
+                busy: false,
+                error: true,
+                events: [...evlist, { type: "err", m: j.m }],
+              });
+              finish(false, j.m || "error");
+            }
+          },
+          ctrl.signal,
+        )
+          .then(() => {
+            upd({ busy: false, done: true, summary });
+            finish(true, summary);
+          })
+          .catch((e) => {
+            if (e.name !== "AbortError") upd({ busy: false, error: true });
+            finish(false, e.message);
+          });
       });
-      let think = "", evlist = [], summary = "", done = false;
-      const finish = (ok, s) => { if (done) return; done = true; resolve({ ok, summary: s }); };
-      const ctrl = new AbortController();
-      const curEffort = (getCloud() && typeof getCloud().effort !== "undefined") ? Number(getCloud().effort) : (parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1);
-      streamSelfAgent(
-        { history: [{ role: "user", content: prompt }], cloud: getCloud(), port: modelVal, effort: curEffort, workspace_root: meta.workspaceRoot || resolveWorkspaceRoot(selectedProject) || undefined },
-        (j) => {
-          if (j.t === "tok") { think += j.c; upd({ thinking: think }); }
-          else if (j.t === "thought") { think = ""; evlist.push({ type: "thought", kind: j.tool, arg: j.c, ok: j.ok, output: j.c }); upd({ events: [...evlist], thinking: "" }); }
-          else if (j.t === "act") { think = ""; evlist.push({ type: "act", kind: j.kind, arg: j.arg, ok: j.ok, output: j.output }); upd({ events: [...evlist], thinking: "" }); }
-          else if (j.t === "adone") { summary = j.summary || summary; upd({ busy: false, done: true, summary }); finish(true, summary); }
-          else if (j.t === "err") { upd({ busy: false, error: true, events: [...evlist, { type: "err", m: j.m }] }); finish(false, j.m || "error"); }
-        },
-        ctrl.signal,
-      ).then(() => { upd({ busy: false, done: true, summary }); finish(true, summary); })
-       .catch((e) => { if (e.name !== "AbortError") upd({ busy: false, error: true }); finish(false, e.message); });
-    });
-  }, [modelVal, selectedProject]);
+    },
+    [modelVal, selectedProject],
+  );
   const reset = () => {
     setMessages([]);
     setHistory([]);
@@ -1603,587 +2388,1117 @@ function App() {
   return (
     <>
       <div className={"app has-sidebar" + (sbCollapsed ? " sb-collapsed" : "")}>
-      {!pickerDone && (
-        <ProjectPickerScreen
-          models={models}
-          modelVal={modelVal}
-          setModelVal={setModelVal}
-          onStart={(msg, project) => {
-            setSelectedProject(project);
-            setPickerDone(true);
-            setTimeout(() => doSend(msg), 0);
-          }}
-        />
-      )}
-      <Sidebar
-        collapsed={sbCollapsed}
-        setCollapsed={setSbCollapsed}
-        view={view}
-        setView={setView}
-        onNewChat={() => {
-          saveChat();
-          reset();
-          setView("chat");
-          loadSavedChats();
-        }}
-        theme={theme}
-        setTheme={setTheme}
-        terminalOpen={terminalOpen}
-        setTerminalOpen={setTerminalOpen}
-        terminal={terminal}
-        savedChats={savedChats}
-        showHistory={showHistory}
-        setShowHistory={setShowHistory}
-        restoreChat={restoreChat}
-        deleteChat={deleteChat}
-        renameChat={renameChat}
-        loadSavedChats={loadSavedChats}
-        onAgentRunner={() => {
-          setAgentRunnerOpen(true);
-          loadAgents();
-        }}
-        selectedProject={selectedProject}
-        onOpenPicker={() => {
-          setPickerDone(false);
-        }}
-      />
-      <div className="page-container">
-
-        <div
-          className={"page chat-page " + (view === "chat" ? "active" : "exit")}
-        >
-          <TopBar
+        {!pickerDone && (
+          <ProjectPickerScreen
             models={models}
             modelVal={modelVal}
             setModelVal={setModelVal}
-            panelOpen={panelOpen}
-            setPanelOpen={setPanelOpen}
-            onReset={reset}
-            status={status}
-            theme={theme}
-            setTheme={setTheme}
-            terminalOpen={terminalOpen}
-            setTerminalOpen={setTerminalOpen}
+            onStart={(msg, project) => {
+              setSelectedProject(project);
+              setPickerDone(true);
+              setTimeout(() => doSend(msg), 0);
+            }}
           />
-          <div className="chat-split" style={{ position: "relative" }}>
-            <div
-              className="chat-col"
-              style={{
-                flex: "1 1 " + Math.max(20, 100 - (terminalOpen ? terminalPct : 0) - (panelOpen ? panelPct : 0)) + "%",
-              }}
-            >
-              <div
-                className="chat-scroll"
-                ref={scrollRef}
-                onClick={(e) => {
-                  if (e.target.tagName === "IMG" && (e.target.src || e.target.getAttribute("src"))) {
-                    setGlobalPreviewItem({ url: e.target.src || e.target.getAttribute("src"), name: e.target.alt || "Preview Gambar / Screenshot" });
-                  }
-                }}
-              >
-                {messages.length === 0 ? (
-                  <div className="chat-inner">
-                  </div>
-                ) : (
-                  <div className="chat-inner">
-                    {messages.map((m, i) => (
-                      <Message
-                        key={i}
-                        msg={m}
-                      />
-                    ))}
-                  </div>
-                )}
-              </div>
-            <HitlModal request={hitlRequest} onResolve={handleHitlResolve} />
-            <LightboxModal item={globalPreviewItem} onClose={() => setGlobalPreviewItem(null)} />
-                            <Composer
-                models={models}
-                modelVal={modelVal}
-                setModelVal={setModelVal}
-                onSend={(t) => doSend(t)}
-                onCancel={cancel}
-                busy={busy || agentRunning}
-                onAgentCli={() => setAgentRunnerOpen(true)}
-              />
-            </div>
-            {terminalOpen && (
-              <>
-                <div className="split-divider" onMouseDown={onTerminalDividerDown} />
-                <div className="terminal-col" style={{ flex: "0 0 " + terminalPct + "%", display: "flex", flexDirection: "column", minWidth: 0, minHeight: 0, overflow: "hidden" }}>
-                  <VSCodeTerminal selectedProject={selectedProject} onClose={() => setTerminalOpen(false)} agentOutput={agentOutput} terminalOutput={terminalOutput} messages={messages} />
-                </div>
-              </>
-            )}
-            {panelOpen && (
-              <>
-                <div className="split-divider" onMouseDown={onPanelDividerDown} />
-                <div
-                  className="canvas-col"
-                  style={{ flex: "0 0 " + panelPct + "%", background: "var(--surface-1)", display: "flex", flexDirection: "column" }}
-                >
-                  <div style={{ height: "46px", borderBottom: "1px solid var(--line)", padding: "0 14px 0 36px", display: "flex", alignItems: "center", justifyContent: "space-between", gap: "10px", flexShrink: 0, position: "relative" }}>
-                    <div
-                      style={{
-                        position: "absolute",
-                        left: "10px",
-                        top: "50%",
-                        transform: "translateY(-50%)",
-                        width: "18px",
-                        height: "28px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "center",
-                        cursor: "pointer",
-                        color: "#ffffff",
-                        zIndex: 10,
-                      }}
-                      title="Menu panel"
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        setPanelMenuOpen(!panelMenuOpen);
-                      }}
-                    >
-                      <svg width="10" height="20" viewBox="0 0 10 20" fill="none" xmlns="http://www.w3.org/2000/svg">
-                        <circle cx="5" cy="4" r="1.6" fill="#ffffff"></circle>
-                        <circle cx="5" cy="10" r="1.6" fill="#ffffff"></circle>
-                        <circle cx="5" cy="16" r="1.6" fill="#ffffff"></circle>
-                      </svg>
-                    </div>
-                    {panelMenuOpen && (
-                      <div
-                        onClick={(e) => e.stopPropagation()}
-                        style={{
-                          position: "absolute",
-                          top: "38px",
-                          left: "8px",
-                          background: "#181c20",
-                          border: "1px solid #282e36",
-                          borderRadius: "6px",
-                          boxShadow: "0 12px 36px rgba(0,0,0,0.65)",
-                          padding: "6px 0",
-                          zIndex: 2000,
-                          minWidth: "235px",
-                        }}
-                      >
-                        {/* Visual Picker & Visual Draw dipindah kemari dari sidebar (bagian "Alat")
-                            — akses langsung dari tombol menu panel ini, bukan lagi di sidebar. */}
-                        <button
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "10px",
-                            width: "100%",
-                            padding: "8px 16px",
-                            color: "#e2e8f0",
-                            fontSize: "13px",
-                            border: "none",
-                            background: "transparent",
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                            textAlign: "left",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                          onClick={() => {
-                            // Buka overlay kanvas Logic (React Flow) di atas UI chat.
-                            setPanelMenuOpen(false);
-                            setLogicOpen(true);
-                          }}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="6" height="5" rx="1"></rect><rect x="15" y="9" width="6" height="5" rx="1"></rect><rect x="9" y="15" width="6" height="5" rx="1"></rect><path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path></svg>
-                          <span>Logic</span>
-                        </button>
-                        <button
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "10px",
-                            width: "100%",
-                            padding: "8px 16px",
-                            color: "#e2e8f0",
-                            fontSize: "13px",
-                            border: "none",
-                            background: "transparent",
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                            textAlign: "left",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                          onClick={() => {
-                            setPanelMenuOpen(false);
-                            startPicker();
-                          }}
-                        >
-                          {SB.target({ width: 16, height: 16 })}
-                          <span>Visual Picker</span>
-                        </button>
-                        <button
-                          style={{
-                            display: "flex",
-                            alignItems: "center",
-                            gap: "10px",
-                            width: "100%",
-                            padding: "8px 16px",
-                            color: "#e2e8f0",
-                            fontSize: "13px",
-                            border: "none",
-                            background: "transparent",
-                            cursor: "pointer",
-                            fontFamily: "inherit",
-                            textAlign: "left",
-                          }}
-                          onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.08)")}
-                          onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                          onClick={() => {
-                            setPanelMenuOpen(false);
-                            startVisualDraw();
-                          }}
-                        >
-                          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path><path d="M13.5 6.5l4 4"></path></svg>
-                          <span>Visual Draw</span>
-                        </button>
-                      </div>
-                    )}
-                    <div style={{ flex: 1, display: "flex", alignItems: "center", background: "rgba(255,255,255,0.06)", border: "1px solid rgba(255,255,255,0.12)", borderRadius: "6px", padding: "3px 10px", gap: "6px", minWidth: 0 }}>
-                      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="#8b98a9" strokeWidth="2" style={{ flexShrink: 0 }}><circle cx="12" cy="12" r="10"/><circle cx="12" cy="12" r="4"/><line x1="21.17" y1="8" x2="12" y2="8"/><line x1="3.95" y1="6.06" x2="8.54" y2="14"/><line x1="10.88" y1="21.94" x2="15.46" y2="14"/></svg>
-                      <input
-                        type="text"
-                        value={previewInputUrl}
-                        onChange={(e) => setPreviewInputUrl(e.target.value)}
-                        onKeyDown={(e) => {
-                          if (e.key === "Enter") handlePreviewNavigate(previewInputUrl);
-                        }}
-                        placeholder="Path HTML / URL (misal: C:\...\index.html atau http://localhost:3000)"
-                        style={{ flex: 1, background: "transparent", border: "none", color: "#e2e8f0", fontSize: "12px", outline: "none", fontFamily: "inherit", minWidth: 0 }}
-                      />
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "2px", flexShrink: 0 }}>
-                      <button
-                        title="Reload / Refresh preview"
-                        onClick={() => setPreviewRefreshKey((k) => k + 1)}
-                        style={{ background: "transparent", border: "none", color: "#8b98a9", cursor: "pointer", padding: "4px 6px", borderRadius: "4px", display: "flex", alignItems: "center" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><polyline points="23 4 23 10 17 10"/><polyline points="1 20 1 14 7 14"/><path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15"/></svg>
-                      </button>
-                      <button
-                        title="Buka di tab/browser eksternal"
-                        onClick={() => {
-                          if (!previewUrl && !previewInputUrl) return;
-                          const isHttp = previewInputUrl.startsWith("http://") || previewInputUrl.startsWith("https://");
-                          if (isHttp) {
-                            window.open(previewInputUrl, "_blank");
-                          } else if (window.WOLFSPACE && window.WOLFSPACE.ipc) {
-                            // Electron: tak ada server HTTP di 8090 (app:// protocol-only),
-                            // jadi browser eksternal manapun tak bisa menjangkau
-                            // /preview-file. Buka file ASLI dari disk via file:// —
-                            // setWindowOpenHandler meneruskannya ke shell.openExternal,
-                            // yang meluncurkan browser default OS langsung ke file itu.
-                            let p = String(previewInputUrl).replace(/\\/g, "/");
-                            if (!p.startsWith("/")) p = "/" + p;
-                            window.open("file://" + encodeURI(p), "_blank");
-                          } else {
-                            // Mode server/browser biasa: /preview-file memang dilayani
-                            // di origin yang sama — tab baru pada origin itu cukup.
-                            window.open(previewUrl || previewInputUrl, "_blank");
-                          }
-                        }}
-                        style={{ background: "transparent", border: "none", color: "#8b98a9", cursor: "pointer", padding: "4px 6px", borderRadius: "4px", display: "flex", alignItems: "center" }}
-                        onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.08)")}
-                        onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
-                      >
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6"/><polyline points="15 3 21 3 21 9"/><line x1="10" y1="14" x2="21" y2="3"/></svg>
-                      </button>
-                      <button
-                        title="Tutup panel"
-                        onClick={() => setPanelOpen(false)}
-                        style={{ background: "transparent", border: "none", color: "#8b98a9", cursor: "pointer", padding: "4px 6px", borderRadius: "4px", display: "flex", alignItems: "center" }}
-                        onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(248,81,73,0.15)"; e.currentTarget.style.color = "#f85149"; }}
-                        onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#8b98a9"; }}
-                      >
-                        {/* Ikon-X SVG (bukan glyph teks '×') agar boks & alignment-nya
-                            identik dengan tombol Reload/Buka-eksternal di sebelahnya. */}
-                        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                      </button>
-                    </div>
-                  </div>
-                  <div style={{ flex: 1, display: "flex", flexDirection: "column", position: "relative", overflow: "hidden", background: "#ffffff" }}>
-                    {previewUrl ? (
-                      <iframe
-                        ref={previewIframeRef}
-                        key={previewRefreshKey}
-                        src={previewUrl}
-                        style={{ flex: 1, width: "100%", height: "100%", border: "none" }}
-                        title="Live Web Dev Preview"
-                        sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-                      />
-                    ) : (
-                      <div style={{ flex: 1, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", padding: "32px", textAlign: "center", color: "#8b98a9", background: "#0f1318" }}>
-                        <svg width="48" height="48" viewBox="0 0 24 24" fill="none" stroke="#b594f5" strokeWidth="1.5" style={{ marginBottom: "16px", opacity: 0.8 }}>
-                          <rect x="2" y="3" width="20" height="14" rx="2" ry="2"></rect>
-                          <line x1="8" y1="21" x2="16" y2="21"></line>
-                          <line x1="12" y1="17" x2="12" y2="21"></line>
-                        </svg>
-                        <div style={{ fontSize: "15px", fontWeight: 600, color: "#e2e8f0", marginBottom: "8px" }}>Web Dev Live Browser</div>
-                        <div style={{ fontSize: "12px", maxWidth: "320px", lineHeight: "1.6" }}>
-                          LiveBrowser
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                </div>
-              </>
-            )}
-            {logicOpen && (
-              <div style={{ position: "absolute", inset: 0, zIndex: 60, background: "var(--surface-1, #0f1318)", display: "flex", flexDirection: "column", animation: "fadeIn 0.15s ease" }}>
-                {/* Header panel Logic */}
-                <div style={{ height: "46px", flexShrink: 0, borderBottom: "1px solid var(--line, #282e36)", display: "flex", alignItems: "center", justifyContent: "space-between", padding: "0 14px", gap: "10px" }}>
-                  <div style={{ display: "flex", alignItems: "center", gap: "8px", color: "#e2e8f0", fontSize: "13px", fontWeight: 600 }}>
-                    <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round"><rect x="3" y="4" width="6" height="5" rx="1"></rect><rect x="15" y="9" width="6" height="5" rx="1"></rect><rect x="9" y="15" width="6" height="5" rx="1"></rect><path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path></svg>
-                    <span>Logic</span>
-                    <span style={{ fontSize: "11px", fontWeight: 400, color: "#6b7280" }}>· kanvas React Flow untuk mengendalikan website</span>
-                  </div>
-                  <button
-                    title="Tutup Logic"
-                    onClick={() => setLogicOpen(false)}
-                    style={{ background: "transparent", border: "none", color: "#8b98a9", cursor: "pointer", padding: "4px 6px", borderRadius: "4px", display: "flex", alignItems: "center" }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(248,81,73,0.15)"; e.currentTarget.style.color = "#f85149"; }}
-                    onMouseLeave={(e) => { e.currentTarget.style.background = "transparent"; e.currentTarget.style.color = "#8b98a9"; }}
-                  >
-                    <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round"><line x1="18" y1="6" x2="6" y2="18"/><line x1="6" y1="6" x2="18" y2="18"/></svg>
-                  </button>
-                </div>
-                {/* Kanvas kosong (React Flow menyusul) — latar grid titik seperti kanvas node-editor */}
-                <div style={{ flex: 1, position: "relative", overflow: "hidden", background: "#0d1117", backgroundImage: "radial-gradient(rgba(255,255,255,0.06) 1px, transparent 1px)", backgroundSize: "22px 22px" }}>
-                  <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#5b6673", fontSize: "13px", textAlign: "center", pointerEvents: "none", gap: "10px" }}>
-                    <svg width="40" height="40" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" strokeLinejoin="round" style={{ opacity: 0.5, color: "#3a444f" }}><rect x="3" y="4" width="6" height="5" rx="1"></rect><rect x="15" y="9" width="6" height="5" rx="1"></rect><rect x="9" y="15" width="6" height="5" rx="1"></rect><path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path></svg>
-                    <div style={{ fontWeight: 600, color: "#8b98a9" }}>Kanvas Logic</div>
-                    <div style={{ maxWidth: "340px", lineHeight: 1.6 }}>Di sini nanti React Flow difungsikan — node & edge untuk mengendalikan website. Untuk sekarang, tampilan kosong.</div>
-                  </div>
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-        <div
-          className={"page hub-page " + (view === "dev" ? "active" : "enter")}
-        >
-          {view === "dev" && (
-            <DevView
-              onBack={() => setView("chat")}
+        )}
+        <Sidebar
+          collapsed={sbCollapsed}
+          setCollapsed={setSbCollapsed}
+          view={view}
+          setView={setView}
+          onNewChat={() => {
+            saveChat();
+            reset();
+            setView("chat");
+            loadSavedChats();
+          }}
+          theme={theme}
+          setTheme={setTheme}
+          terminalOpen={terminalOpen}
+          setTerminalOpen={setTerminalOpen}
+          terminal={terminal}
+          savedChats={savedChats}
+          showHistory={showHistory}
+          setShowHistory={setShowHistory}
+          restoreChat={restoreChat}
+          deleteChat={deleteChat}
+          renameChat={renameChat}
+          loadSavedChats={loadSavedChats}
+          onAgentRunner={() => {
+            setAgentRunnerOpen(true);
+            loadAgents();
+          }}
+          selectedProject={selectedProject}
+          onOpenPicker={() => {
+            setPickerDone(false);
+          }}
+        />
+        <div className="page-container">
+          <div
+            className={
+              "page chat-page " + (view === "chat" ? "active" : "exit")
+            }
+          >
+            <TopBar
               models={models}
               modelVal={modelVal}
               setModelVal={setModelVal}
-            />
-          )}
-        </div>
-
-        <div
-          className={
-            "page hub-page " + (view === "settings" ? "active" : "enter")
-          }
-        >
-          {view === "settings" && (
-            <SettingsView
-              onBack={() => setView("chat")}
-              onSaved={loadModels}
-              onCloudChanged={() => setCloudVersion((v) => v + 1)}
-            />
-          )}
-        </div>
-        <div
-          className={
-            "page hub-page " + (view === "agents" ? "active" : "enter")
-          }
-        >
-          {view === "agents" && (
-            <AgentRunnerView
-              onBack={() => setView("chat")}
-              agents={availableAgents}
-              activeAgent={activeAgent}
-              agentRunning={agentRunning}
-              agentOutput={agentOutput}
-              onLoadAgents={loadAgents}
-              onStart={startAgent}
-              onStop={stopAgent}
-              onSend={sendToAgent}
-              currentModel={modelVal}
               panelOpen={panelOpen}
               setPanelOpen={setPanelOpen}
+              onReset={reset}
+              status={status}
+              theme={theme}
+              setTheme={setTheme}
+              terminalOpen={terminalOpen}
+              setTerminalOpen={setTerminalOpen}
             />
-          )}
-        </div>
-        <div
-          className={
-            "page hub-page " + (view === "history" ? "active" : "enter")
-          }
-        >
-          {view === "history" && (
-            <HistoryView
-              savedChats={savedChats}
-              onSelect={(chat) => {
-                restoreChat(chat);
-                setView("chat");
-              }}
-              onDelete={(id) => deleteChat(id)}
-            />
-          )}
-        </div>
-        <div
-          className={
-            "page hub-page " + (view === "workflow" ? "active" : "enter")
-          }
-        >
-          {view === "workflow" && (
-            <div style={{ display: "flex", height: "100%", width: "100%", minHeight: 0 }}>
-              {/* KIRI: React Flow (Workflow / live agent graph) */}
-              <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
-                <WorkflowBuilder onBack={() => setView("chat")} runStage={runWorkflowStage} />
-              </div>
-              {/* KANAN: chat agent — pakai UI chat yang sama (Message + Composer) */}
-              {wfAgentCollapsed ? (
+            <div className="chat-split" style={{ position: "relative" }}>
+              <div
+                className="chat-col"
+                style={{
+                  flex:
+                    "1 1 " +
+                    Math.max(
+                      20,
+                      100 -
+                        (terminalOpen ? terminalPct : 0) -
+                        (panelOpen ? panelPct : 0),
+                    ) +
+                    "%",
+                }}
+              >
                 <div
-                  onClick={() => setWfAgentCollapsed(false)}
-                  title="Klik untuk membuka kembali panel Agent"
-                  style={{
-                    width: "36px",
-                    flexShrink: 0,
-                    borderLeft: "1px solid #212a36",
-                    background: "#0d1117",
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    paddingTop: "14px",
-                    cursor: "pointer",
-                    userSelect: "none",
+                  className="chat-scroll"
+                  ref={scrollRef}
+                  onClick={(e) => {
+                    if (
+                      e.target.tagName === "IMG" &&
+                      (e.target.src || e.target.getAttribute("src"))
+                    ) {
+                      setGlobalPreviewItem({
+                        url: e.target.src || e.target.getAttribute("src"),
+                        name: e.target.alt || "Preview Gambar / Screenshot",
+                      });
+                    }
                   }}
                 >
-                  <span style={{ width: 7, height: 7, borderRadius: "50%", background: wfBusy ? "#3fb950" : "#6f7d92", marginBottom: "14px", boxShadow: wfBusy ? "0 0 6px #3fb950" : "none" }} />
-                  <div style={{ writingMode: "vertical-rl", textOrientation: "mixed", fontFamily: "ui-monospace, monospace", fontSize: "11px", letterSpacing: ".1em", textTransform: "uppercase", color: "#8b949e", display: "flex", alignItems: "center", gap: "6px" }}>
-                    <span>◀ Agent Panel</span>
-                  </div>
-                </div>
-              ) : (
-                <div
-                  style={{
-                    width: `${wfAgentWidth}px`,
-                    flexShrink: 0,
-                    borderLeft: "1px solid #212a36",
-                    display: "flex",
-                    flexDirection: "column",
-                    minWidth: 0,
-                    minHeight: 0,
-                    background: "#0d1117",
-                    position: "relative",
-                    transition: isWfResizing ? "none" : "width 0.15s ease",
-                  }}
-                >
-                  {/* Resizer Handle */}
-                  <div
-                    onMouseDown={handleWfResizerMouseDown}
-                    title="Geser untuk mengubah ukuran panel Agent"
-                    style={{
-                      position: "absolute",
-                      left: "-3px",
-                      top: 0,
-                      bottom: 0,
-                      width: "7px",
-                      cursor: "col-resize",
-                      zIndex: 99,
-                      background: isWfResizing ? "rgba(96, 165, 250, 0.5)" : "transparent",
-                      transition: "background 0.15s ease",
-                    }}
-                    onMouseEnter={(e) => { e.currentTarget.style.background = "rgba(96, 165, 250, 0.4)"; }}
-                    onMouseLeave={(e) => { if (!isWfResizing) e.currentTarget.style.background = "transparent"; }}
-                  />
-                  {/* Header dengan kontrol ukuran & collapse */}
-                  <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #212a36", flexShrink: 0, userSelect: "none" }}>
-                    <div style={{ display: "flex", alignItems: "center", gap: "8px" }}>
-                      <span style={{ width: 7, height: 7, borderRadius: "50%", background: wfBusy ? "#3fb950" : "#6f7d92", boxShadow: wfBusy ? "0 0 6px #3fb950" : "none" }} />
-                      <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px", letterSpacing: ".1em", textTransform: "uppercase", color: "#8b949e", fontWeight: 600 }}>Agent</span>
-                    </div>
-                    <div style={{ display: "flex", alignItems: "center", gap: "5px" }}>
-                      {/* Tombol sembunyikan / collapse */}
-                      <button
-                        onClick={() => setWfAgentCollapsed(true)}
-                        title="Sembunyikan panel Agent (luaskan kanvas)"
-                        style={{ background: "transparent", border: "1px solid #2f363d", color: "#8b949e", borderRadius: "5px", width: "24px", height: "24px", display: "flex", alignItems: "center", justifyContent: "center", cursor: "pointer", fontSize: "12px" }}
-                      >
-                        ▶
-                      </button>
-                    </div>
-                  </div>
-                  <div
-                    className="chat-scroll"
-                    ref={wfChatScrollRef}
-                    style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
-                    onClick={(e) => {
-                      if (e.target.tagName === "IMG" && (e.target.src || e.target.getAttribute("src"))) {
-                        setGlobalPreviewItem({ url: e.target.src || e.target.getAttribute("src"), name: e.target.alt || "Preview Gambar / Screenshot" });
-                      }
-                    }}
-                  >
+                  {messages.length === 0 ? (
+                    <div className="chat-inner"></div>
+                  ) : (
                     <div className="chat-inner">
-                      {wfMessages.length === 0 && (
-                        <div style={{ padding: "18px 16px", color: "#6f7d92", fontFamily: "ui-monospace, monospace", fontSize: "12px", lineHeight: 1.6 }}>
-                          Sesi agent terpisah. Kirim perintah di sini — langkahnya muncul sebagai graph di kiri.
-                        </div>
-                      )}
-                      {wfMessages.map((m, i) => (
+                      {messages.map((m, i) => (
                         <Message key={i} msg={m} />
                       ))}
                     </div>
-                  </div>
-                  <Composer
-                    models={models}
-                    modelVal={modelVal}
-                    setModelVal={setModelVal}
-                    onSend={(t) => wfSend(t)}
-                    onCancel={wfCancel}
-                    busy={wfBusy}
-                    onAgentCli={() => setAgentRunnerOpen(true)}
+                  )}
+                </div>
+                <HitlModal
+                  request={hitlRequest}
+                  onResolve={handleHitlResolve}
+                />
+                <LightboxModal
+                  item={globalPreviewItem}
+                  onClose={() => setGlobalPreviewItem(null)}
+                />
+                <Composer
+                  models={models}
+                  modelVal={modelVal}
+                  setModelVal={setModelVal}
+                  onSend={(t) => doSend(t)}
+                  onCancel={cancel}
+                  busy={busy || agentRunning}
+                  onAgentCli={() => setAgentRunnerOpen(true)}
+                />
+              </div>
+              {terminalOpen && (
+                <>
+                  <div
+                    className="split-divider"
+                    onMouseDown={onTerminalDividerDown}
                   />
+                  <div
+                    className="terminal-col"
+                    style={{
+                      flex: "0 0 " + terminalPct + "%",
+                      display: "flex",
+                      flexDirection: "column",
+                      minWidth: 0,
+                      minHeight: 0,
+                      overflow: "hidden",
+                    }}
+                  >
+                    <VSCodeTerminal
+                      selectedProject={selectedProject}
+                      onClose={() => setTerminalOpen(false)}
+                      agentOutput={agentOutput}
+                      terminalOutput={terminalOutput}
+                      messages={messages}
+                    />
+                  </div>
+                </>
+              )}
+              {panelOpen && (
+                <>
+                  <div
+                    className="split-divider"
+                    onMouseDown={onPanelDividerDown}
+                  />
+                  <div
+                    className="canvas-col"
+                    style={{
+                      flex: "0 0 " + panelPct + "%",
+                      background: "var(--surface-1)",
+                      display: "flex",
+                      flexDirection: "column",
+                    }}
+                  >
+                    <div
+                      style={{
+                        height: "46px",
+                        borderBottom: "1px solid var(--line)",
+                        padding: "0 14px 0 36px",
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        gap: "10px",
+                        flexShrink: 0,
+                        position: "relative",
+                      }}
+                    >
+                      <div
+                        style={{
+                          position: "absolute",
+                          left: "10px",
+                          top: "50%",
+                          transform: "translateY(-50%)",
+                          width: "18px",
+                          height: "28px",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          cursor: "pointer",
+                          color: "#ffffff",
+                          zIndex: 10,
+                        }}
+                        title="Menu panel"
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setPanelMenuOpen(!panelMenuOpen);
+                        }}
+                      >
+                        <svg
+                          width="10"
+                          height="20"
+                          viewBox="0 0 10 20"
+                          fill="none"
+                          xmlns="http://www.w3.org/2000/svg"
+                        >
+                          <circle cx="5" cy="4" r="1.6" fill="#ffffff"></circle>
+                          <circle
+                            cx="5"
+                            cy="10"
+                            r="1.6"
+                            fill="#ffffff"
+                          ></circle>
+                          <circle
+                            cx="5"
+                            cy="16"
+                            r="1.6"
+                            fill="#ffffff"
+                          ></circle>
+                        </svg>
+                      </div>
+                      {panelMenuOpen && (
+                        <div
+                          onClick={(e) => e.stopPropagation()}
+                          style={{
+                            position: "absolute",
+                            top: "38px",
+                            left: "8px",
+                            background: "#181c20",
+                            border: "1px solid #282e36",
+                            borderRadius: "6px",
+                            boxShadow: "0 12px 36px rgba(0,0,0,0.65)",
+                            padding: "6px 0",
+                            zIndex: 2000,
+                            minWidth: "235px",
+                          }}
+                        >
+                          {/* Visual Picker & Visual Draw dipindah kemari dari sidebar (bagian "Alat")
+                            — akses langsung dari tombol menu panel ini, bukan lagi di sidebar. */}
+                          <button
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              width: "100%",
+                              padding: "8px 16px",
+                              color: "#e2e8f0",
+                              fontSize: "13px",
+                              border: "none",
+                              background: "transparent",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                              textAlign: "left",
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.background =
+                                "rgba(255, 255, 255, 0.08)")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.background = "transparent")
+                            }
+                            onClick={() => {
+                              // Buka overlay kanvas Logic (React Flow) di atas UI chat.
+                              setPanelMenuOpen(false);
+                              setLogicOpen(true);
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <rect
+                                x="3"
+                                y="4"
+                                width="6"
+                                height="5"
+                                rx="1"
+                              ></rect>
+                              <rect
+                                x="15"
+                                y="9"
+                                width="6"
+                                height="5"
+                                rx="1"
+                              ></rect>
+                              <rect
+                                x="9"
+                                y="15"
+                                width="6"
+                                height="5"
+                                rx="1"
+                              ></rect>
+                              <path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path>
+                            </svg>
+                            <span>Logic</span>
+                          </button>
+                          <button
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              width: "100%",
+                              padding: "8px 16px",
+                              color: "#e2e8f0",
+                              fontSize: "13px",
+                              border: "none",
+                              background: "transparent",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                              textAlign: "left",
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.background =
+                                "rgba(255, 255, 255, 0.08)")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.background = "transparent")
+                            }
+                            onClick={() => {
+                              setPanelMenuOpen(false);
+                              startPicker();
+                            }}
+                          >
+                            {SB.target({ width: 16, height: 16 })}
+                            <span>Visual Picker</span>
+                          </button>
+                          <button
+                            style={{
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "10px",
+                              width: "100%",
+                              padding: "8px 16px",
+                              color: "#e2e8f0",
+                              fontSize: "13px",
+                              border: "none",
+                              background: "transparent",
+                              cursor: "pointer",
+                              fontFamily: "inherit",
+                              textAlign: "left",
+                            }}
+                            onMouseEnter={(e) =>
+                              (e.currentTarget.style.background =
+                                "rgba(255, 255, 255, 0.08)")
+                            }
+                            onMouseLeave={(e) =>
+                              (e.currentTarget.style.background = "transparent")
+                            }
+                            onClick={() => {
+                              setPanelMenuOpen(false);
+                              startVisualDraw();
+                            }}
+                          >
+                            <svg
+                              width="16"
+                              height="16"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="currentColor"
+                              strokeWidth="1.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
+                              <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path>
+                              <path d="M13.5 6.5l4 4"></path>
+                            </svg>
+                            <span>Visual Draw</span>
+                          </button>
+                        </div>
+                      )}
+                      <div
+                        style={{
+                          flex: 1,
+                          display: "flex",
+                          alignItems: "center",
+                          background: "rgba(255,255,255,0.06)",
+                          border: "1px solid rgba(255,255,255,0.12)",
+                          borderRadius: "6px",
+                          padding: "3px 10px",
+                          gap: "6px",
+                          minWidth: 0,
+                        }}
+                      >
+                        <svg
+                          width="13"
+                          height="13"
+                          viewBox="0 0 24 24"
+                          fill="none"
+                          stroke="#8b98a9"
+                          strokeWidth="2"
+                          style={{ flexShrink: 0 }}
+                        >
+                          <circle cx="12" cy="12" r="10" />
+                          <circle cx="12" cy="12" r="4" />
+                          <line x1="21.17" y1="8" x2="12" y2="8" />
+                          <line x1="3.95" y1="6.06" x2="8.54" y2="14" />
+                          <line x1="10.88" y1="21.94" x2="15.46" y2="14" />
+                        </svg>
+                        <input
+                          type="text"
+                          value={previewInputUrl}
+                          onChange={(e) => setPreviewInputUrl(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === "Enter")
+                              handlePreviewNavigate(previewInputUrl);
+                          }}
+                          placeholder="Path HTML / URL (misal: C:\...\index.html atau http://localhost:3000)"
+                          style={{
+                            flex: 1,
+                            background: "transparent",
+                            border: "none",
+                            color: "#e2e8f0",
+                            fontSize: "12px",
+                            outline: "none",
+                            fontFamily: "inherit",
+                            minWidth: 0,
+                          }}
+                        />
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "2px",
+                          flexShrink: 0,
+                        }}
+                      >
+                        <button
+                          title="Reload / Refresh preview"
+                          onClick={() => setPreviewRefreshKey((k) => k + 1)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#8b98a9",
+                            cursor: "pointer",
+                            padding: "4px 6px",
+                            borderRadius: "4px",
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background =
+                              "rgba(255,255,255,0.08)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = "transparent")
+                          }
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <polyline points="23 4 23 10 17 10" />
+                            <polyline points="1 20 1 14 7 14" />
+                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                          </svg>
+                        </button>
+                        <button
+                          title="Buka di tab/browser eksternal"
+                          onClick={() => {
+                            if (!previewUrl && !previewInputUrl) return;
+                            const isHttp =
+                              previewInputUrl.startsWith("http://") ||
+                              previewInputUrl.startsWith("https://");
+                            if (isHttp) {
+                              window.open(previewInputUrl, "_blank");
+                            } else if (
+                              window.WOLFSPACE &&
+                              window.WOLFSPACE.ipc
+                            ) {
+                              // Electron: tak ada server HTTP di 8090 (app:// protocol-only),
+                              // jadi browser eksternal manapun tak bisa menjangkau
+                              // /preview-file. Buka file ASLI dari disk via file:// —
+                              // setWindowOpenHandler meneruskannya ke shell.openExternal,
+                              // yang meluncurkan browser default OS langsung ke file itu.
+                              let p = String(previewInputUrl).replace(
+                                /\\/g,
+                                "/",
+                              );
+                              if (!p.startsWith("/")) p = "/" + p;
+                              window.open("file://" + encodeURI(p), "_blank");
+                            } else {
+                              // Mode server/browser biasa: /preview-file memang dilayani
+                              // di origin yang sama — tab baru pada origin itu cukup.
+                              window.open(
+                                previewUrl || previewInputUrl,
+                                "_blank",
+                              );
+                            }
+                          }}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#8b98a9",
+                            cursor: "pointer",
+                            padding: "4px 6px",
+                            borderRadius: "4px",
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                          onMouseEnter={(e) =>
+                            (e.currentTarget.style.background =
+                              "rgba(255,255,255,0.08)")
+                          }
+                          onMouseLeave={(e) =>
+                            (e.currentTarget.style.background = "transparent")
+                          }
+                        >
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
+                            <polyline points="15 3 21 3 21 9" />
+                            <line x1="10" y1="14" x2="21" y2="3" />
+                          </svg>
+                        </button>
+                        <button
+                          title="Tutup panel"
+                          onClick={() => setPanelOpen(false)}
+                          style={{
+                            background: "transparent",
+                            border: "none",
+                            color: "#8b98a9",
+                            cursor: "pointer",
+                            padding: "4px 6px",
+                            borderRadius: "4px",
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                          onMouseEnter={(e) => {
+                            e.currentTarget.style.background =
+                              "rgba(248,81,73,0.15)";
+                            e.currentTarget.style.color = "#f85149";
+                          }}
+                          onMouseLeave={(e) => {
+                            e.currentTarget.style.background = "transparent";
+                            e.currentTarget.style.color = "#8b98a9";
+                          }}
+                        >
+                          {/* Ikon-X SVG (bukan glyph teks '×') agar boks & alignment-nya
+                            identik dengan tombol Reload/Buka-eksternal di sebelahnya. */}
+                          <svg
+                            width="14"
+                            height="14"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="currentColor"
+                            strokeWidth="2"
+                            strokeLinecap="round"
+                            strokeLinejoin="round"
+                          >
+                            <line x1="18" y1="6" x2="6" y2="18" />
+                            <line x1="6" y1="6" x2="18" y2="18" />
+                          </svg>
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      style={{
+                        flex: 1,
+                        display: "flex",
+                        flexDirection: "column",
+                        position: "relative",
+                        overflow: "hidden",
+                        background: "#ffffff",
+                      }}
+                    >
+                      {previewUrl ? (
+                        <iframe
+                          ref={previewIframeRef}
+                          key={previewRefreshKey}
+                          src={previewUrl}
+                          style={{
+                            flex: 1,
+                            width: "100%",
+                            height: "100%",
+                            border: "none",
+                          }}
+                          title="Live Web Dev Preview"
+                          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                        />
+                      ) : (
+                        <div
+                          style={{
+                            flex: 1,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            padding: "32px",
+                            textAlign: "center",
+                            color: "#8b98a9",
+                            background: "#0f1318",
+                          }}
+                        >
+                          <svg
+                            width="48"
+                            height="48"
+                            viewBox="0 0 24 24"
+                            fill="none"
+                            stroke="#b594f5"
+                            strokeWidth="1.5"
+                            style={{ marginBottom: "16px", opacity: 0.8 }}
+                          >
+                            <rect
+                              x="2"
+                              y="3"
+                              width="20"
+                              height="14"
+                              rx="2"
+                              ry="2"
+                            ></rect>
+                            <line x1="8" y1="21" x2="16" y2="21"></line>
+                            <line x1="12" y1="17" x2="12" y2="21"></line>
+                          </svg>
+                          <div
+                            style={{
+                              fontSize: "15px",
+                              fontWeight: 600,
+                              color: "#e2e8f0",
+                              marginBottom: "8px",
+                            }}
+                          >
+                            Web Dev Live Browser
+                          </div>
+                          <div
+                            style={{
+                              fontSize: "12px",
+                              maxWidth: "320px",
+                              lineHeight: "1.6",
+                            }}
+                          >
+                            LiveBrowser
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  </div>
+                </>
+              )}
+              {logicOpen && (
+                <div
+                  style={{
+                    position: "absolute",
+                    inset: 0,
+                    zIndex: 60,
+                    background: "var(--surface-1, #0f1318)",
+                    display: "flex",
+                    flexDirection: "column",
+                    animation: "fadeIn 0.15s ease",
+                  }}
+                >
+                  {/* Header panel Logic */}
+                  <div
+                    style={{
+                      height: "46px",
+                      flexShrink: 0,
+                      borderBottom: "1px solid var(--line, #282e36)",
+                      display: "flex",
+                      alignItems: "center",
+                      justifyContent: "space-between",
+                      padding: "0 14px",
+                      gap: "10px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "8px",
+                        color: "#e2e8f0",
+                        fontSize: "13px",
+                        fontWeight: 600,
+                      }}
+                    >
+                      <svg
+                        width="16"
+                        height="16"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="1.5"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <rect x="3" y="4" width="6" height="5" rx="1"></rect>
+                        <rect x="15" y="9" width="6" height="5" rx="1"></rect>
+                        <rect x="9" y="15" width="6" height="5" rx="1"></rect>
+                        <path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path>
+                      </svg>
+                      <span>Logic</span>
+                      <span
+                        style={{
+                          fontSize: "11px",
+                          fontWeight: 400,
+                          color: "#6b7280",
+                        }}
+                      >
+                        · kanvas React Flow untuk mengendalikan website
+                      </span>
+                    </div>
+                    <button
+                      title="Tutup Logic"
+                      onClick={() => setLogicOpen(false)}
+                      style={{
+                        background: "transparent",
+                        border: "none",
+                        color: "#8b98a9",
+                        cursor: "pointer",
+                        padding: "4px 6px",
+                        borderRadius: "4px",
+                        display: "flex",
+                        alignItems: "center",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background =
+                          "rgba(248,81,73,0.15)";
+                        e.currentTarget.style.color = "#f85149";
+                      }}
+                      onMouseLeave={(e) => {
+                        e.currentTarget.style.background = "transparent";
+                        e.currentTarget.style.color = "#8b98a9";
+                      }}
+                    >
+                      <svg
+                        width="14"
+                        height="14"
+                        viewBox="0 0 24 24"
+                        fill="none"
+                        stroke="currentColor"
+                        strokeWidth="2"
+                        strokeLinecap="round"
+                        strokeLinejoin="round"
+                      >
+                        <line x1="18" y1="6" x2="6" y2="18" />
+                        <line x1="6" y1="6" x2="18" y2="18" />
+                      </svg>
+                    </button>
+                  </div>
+                  {/* Isi Logic: sidebar file (kiri) + React Flow builder (kanan) */}
+                  <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+                    <LogicFileTree
+                      files={devFiles}
+                      root={webProjectRoot(previewUrl, selectedProject)}
+                      active={!!previewUrl}
+                    />
+                    <div
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        display: "flex",
+                        position: "relative",
+                      }}
+                    >
+                      <WorkflowBuilder
+                        workspaceRoot={webProjectRoot(
+                          previewUrl,
+                          resolveWorkspaceRoot(selectedProject) ||
+                            WOLFSPACE_ROOT,
+                        )}
+                        integration
+                        onBack={() => setLogicOpen(false)}
+                        runStage={runWorkflowStage}
+                      />
+                    </div>
+                  </div>
                 </div>
               )}
             </div>
-          )}
-        </div>
-      </div>
-    </div>
+          </div>
+          <div
+            className={"page hub-page " + (view === "dev" ? "active" : "enter")}
+          >
+            {view === "dev" && (
+              <DevView
+                onBack={() => setView("chat")}
+                models={models}
+                modelVal={modelVal}
+                setModelVal={setModelVal}
+              />
+            )}
+          </div>
 
-    {/* Command Palette UI (VS Code fork) */}
-    {commandPaletteOpen && (
-      <div className="command-palette-overlay" onClick={() => setCommandPaletteOpen(false)}>
-        <div className="command-palette" onClick={e => e.stopPropagation()}>
-          <input
-            type="text"
-            placeholder="Cari perintah... (Ctrl+Shift+P untuk membuka)"
-            value={commandSearch}
-            onChange={e => { setCommandSearch(e.target.value); setSelectedCommandIndex(0); }}
-            autoFocus
-            className="command-palette-input"
-          />
-          <div className="command-palette-list">
-            {filteredCommands.map((cmd, idx) => (
+          <div
+            className={
+              "page hub-page " + (view === "settings" ? "active" : "enter")
+            }
+          >
+            {view === "settings" && (
+              <SettingsView
+                onBack={() => setView("chat")}
+                onSaved={loadModels}
+                onCloudChanged={() => setCloudVersion((v) => v + 1)}
+              />
+            )}
+          </div>
+          <div
+            className={
+              "page hub-page " + (view === "agents" ? "active" : "enter")
+            }
+          >
+            {/* Agent Runner dihapus */}
+          </div>
+          <div
+            className={
+              "page hub-page " + (view === "history" ? "active" : "enter")
+            }
+          >
+            {view === "history" && (
+              <HistoryView
+                savedChats={savedChats}
+                onSelect={(chat) => {
+                  restoreChat(chat);
+                  setView("chat");
+                }}
+                onDelete={(id) => deleteChat(id)}
+              />
+            )}
+          </div>
+          <div
+            className={
+              "page hub-page " + (view === "workflow" ? "active" : "enter")
+            }
+          >
+            {view === "workflow" && (
               <div
-                key={cmd.id}
-                className={`command-palette-item ${idx === selectedCommandIndex ? 'selected' : ''}`}
-                onClick={() => { setSelectedCommandIndex(idx); runSelectedCommand(); }}
+                style={{
+                  display: "flex",
+                  height: "100%",
+                  width: "100%",
+                  minHeight: 0,
+                }}
               >
-                <span className="command-icon">{cmd.icon}</span>
-                <span className="command-label">{cmd.label}</span>
+                {/* KIRI: React Flow (Workflow / live agent graph) */}
+                <div style={{ flex: 1, minWidth: 0, position: "relative" }}>
+                  <WorkflowBuilder
+                    workspaceRoot={webProjectRoot(
+                      previewUrl,
+                      resolveWorkspaceRoot(selectedProject) || WOLFSPACE_ROOT,
+                    )}
+                    onBack={() => setView("chat")}
+                    runStage={runWorkflowStage}
+                  />
+                </div>
+                {/* KANAN: chat agent — pakai UI chat yang sama (Message + Composer) */}
+                {wfAgentCollapsed ? (
+                  <div
+                    onClick={() => setWfAgentCollapsed(false)}
+                    title="Klik untuk membuka kembali panel Agent"
+                    style={{
+                      width: "36px",
+                      flexShrink: 0,
+                      borderLeft: "1px solid #212a36",
+                      background: "#0d1117",
+                      display: "flex",
+                      flexDirection: "column",
+                      alignItems: "center",
+                      paddingTop: "14px",
+                      cursor: "pointer",
+                      userSelect: "none",
+                    }}
+                  >
+                    <span
+                      style={{
+                        width: 7,
+                        height: 7,
+                        borderRadius: "50%",
+                        background: wfBusy ? "#3fb950" : "#6f7d92",
+                        marginBottom: "14px",
+                        boxShadow: wfBusy ? "0 0 6px #3fb950" : "none",
+                      }}
+                    />
+                    <div
+                      style={{
+                        writingMode: "vertical-rl",
+                        textOrientation: "mixed",
+                        fontFamily: "ui-monospace, monospace",
+                        fontSize: "11px",
+                        letterSpacing: ".1em",
+                        textTransform: "uppercase",
+                        color: "#8b949e",
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
+                      <span>◀ Agent Panel</span>
+                    </div>
+                  </div>
+                ) : (
+                  <div
+                    style={{
+                      width: `${wfAgentWidth}px`,
+                      flexShrink: 0,
+                      borderLeft: "1px solid #212a36",
+                      display: "flex",
+                      flexDirection: "column",
+                      minWidth: 0,
+                      minHeight: 0,
+                      background: "#0d1117",
+                      position: "relative",
+                      transition: isWfResizing ? "none" : "width 0.15s ease",
+                    }}
+                  >
+                    {/* Resizer Handle */}
+                    <div
+                      onMouseDown={handleWfResizerMouseDown}
+                      title="Geser untuk mengubah ukuran panel Agent"
+                      style={{
+                        position: "absolute",
+                        left: "-3px",
+                        top: 0,
+                        bottom: 0,
+                        width: "7px",
+                        cursor: "col-resize",
+                        zIndex: 99,
+                        background: isWfResizing
+                          ? "rgba(96, 165, 250, 0.5)"
+                          : "transparent",
+                        transition: "background 0.15s ease",
+                      }}
+                      onMouseEnter={(e) => {
+                        e.currentTarget.style.background =
+                          "rgba(96, 165, 250, 0.4)";
+                      }}
+                      onMouseLeave={(e) => {
+                        if (!isWfResizing)
+                          e.currentTarget.style.background = "transparent";
+                      }}
+                    />
+                    {/* Header dengan kontrol ukuran & collapse */}
+                    <div
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        justifyContent: "space-between",
+                        padding: "10px 14px",
+                        borderBottom: "1px solid #212a36",
+                        flexShrink: 0,
+                        userSelect: "none",
+                      }}
+                    >
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "8px",
+                        }}
+                      >
+                        <span
+                          style={{
+                            width: 7,
+                            height: 7,
+                            borderRadius: "50%",
+                            background: wfBusy ? "#3fb950" : "#6f7d92",
+                            boxShadow: wfBusy ? "0 0 6px #3fb950" : "none",
+                          }}
+                        />
+                        <span
+                          style={{
+                            fontFamily: "ui-monospace, monospace",
+                            fontSize: "11px",
+                            letterSpacing: ".1em",
+                            textTransform: "uppercase",
+                            color: "#8b949e",
+                            fontWeight: 600,
+                          }}
+                        >
+                          Agent
+                        </span>
+                      </div>
+                      <div
+                        style={{
+                          display: "flex",
+                          alignItems: "center",
+                          gap: "5px",
+                        }}
+                      >
+                        {/* Tombol sembunyikan / collapse */}
+                        <button
+                          onClick={() => setWfAgentCollapsed(true)}
+                          title="Sembunyikan panel Agent (luaskan kanvas)"
+                          style={{
+                            background: "transparent",
+                            border: "1px solid #2f363d",
+                            color: "#8b949e",
+                            borderRadius: "5px",
+                            width: "24px",
+                            height: "24px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            cursor: "pointer",
+                            fontSize: "12px",
+                          }}
+                        >
+                          ▶
+                        </button>
+                      </div>
+                    </div>
+                    <div
+                      className="chat-scroll"
+                      ref={wfChatScrollRef}
+                      style={{ flex: 1, minHeight: 0, overflowY: "auto" }}
+                      onClick={(e) => {
+                        if (
+                          e.target.tagName === "IMG" &&
+                          (e.target.src || e.target.getAttribute("src"))
+                        ) {
+                          setGlobalPreviewItem({
+                            url: e.target.src || e.target.getAttribute("src"),
+                            name: e.target.alt || "Preview Gambar / Screenshot",
+                          });
+                        }
+                      }}
+                    >
+                      <div className="chat-inner">
+                        {wfMessages.length === 0 && (
+                          <div
+                            style={{
+                              padding: "18px 16px",
+                              color: "#6f7d92",
+                              fontFamily: "ui-monospace, monospace",
+                              fontSize: "12px",
+                              lineHeight: 1.6,
+                            }}
+                          >
+                            Sesi agent terpisah. Kirim perintah di sini —
+                            langkahnya muncul sebagai graph di kiri.
+                          </div>
+                        )}
+                        {wfMessages.map((m, i) => (
+                          <Message key={i} msg={m} />
+                        ))}
+                      </div>
+                    </div>
+                    <Composer
+                      models={models}
+                      modelVal={modelVal}
+                      setModelVal={setModelVal}
+                      onSend={(t) => wfSend(t)}
+                      onCancel={wfCancel}
+                      busy={wfBusy}
+                      onAgentCli={() => setAgentRunnerOpen(true)}
+                    />
+                  </div>
+                )}
               </div>
-            ))}
-            {filteredCommands.length === 0 && (
-              <div className="command-palette-empty">Tidak ada perintah yang cocok</div>
             )}
           </div>
         </div>
       </div>
-    )}
+
+      {/* Command Palette UI (VS Code fork) */}
+      {commandPaletteOpen && (
+        <div
+          className="command-palette-overlay"
+          onClick={() => setCommandPaletteOpen(false)}
+        >
+          <div className="command-palette" onClick={(e) => e.stopPropagation()}>
+            <input
+              type="text"
+              placeholder="Cari perintah... (Ctrl+Shift+P untuk membuka)"
+              value={commandSearch}
+              onChange={(e) => {
+                setCommandSearch(e.target.value);
+                setSelectedCommandIndex(0);
+              }}
+              autoFocus
+              className="command-palette-input"
+            />
+            <div className="command-palette-list">
+              {filteredCommands.map((cmd, idx) => (
+                <div
+                  key={cmd.id}
+                  className={`command-palette-item ${idx === selectedCommandIndex ? "selected" : ""}`}
+                  onClick={() => {
+                    setSelectedCommandIndex(idx);
+                    runSelectedCommand();
+                  }}
+                >
+                  <span className="command-icon">{cmd.icon}</span>
+                  <span className="command-label">{cmd.label}</span>
+                </div>
+              ))}
+              {filteredCommands.length === 0 && (
+                <div className="command-palette-empty">
+                  Tidak ada perintah yang cocok
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
     </>
   );
 }
@@ -2193,25 +3508,55 @@ function App() {
    (window.RFLib.XY) — tanpa bundler runtime, sama pola Monaco/mermaid/cytoscape.
    ============================================================ */
 const WF_PALETTE = [
-  { type: "prompt", label: "Prompt", accent: "#3fb950", desc: "input / instruksi awal" },
-  { type: "agent", label: "Agent", accent: "#2f81f7", desc: "loop LLM + pemanggilan tool" },
-  { type: "tool", label: "Tool", accent: "#d29922", desc: "bash / edit / grep / dst" },
-  { type: "condition", label: "Condition", accent: "#bc8cff", desc: "cabang if / else" },
+  {
+    type: "prompt",
+    label: "Prompt",
+    accent: "#3fb950",
+    desc: "input / instruksi awal",
+  },
+  {
+    type: "agent",
+    label: "Agent",
+    accent: "#2f81f7",
+    desc: "loop LLM + pemanggilan tool",
+  },
+  {
+    type: "tool",
+    label: "Tool",
+    accent: "#d29922",
+    desc: "bash / edit / grep / dst",
+  },
+  {
+    type: "condition",
+    label: "Condition",
+    accent: "#bc8cff",
+    desc: "cabang if / else",
+  },
   { type: "output", label: "Output", accent: "#f85149", desc: "hasil akhir" },
 ];
 
 // Warna node live per-`kind` langkah agent (dari event t:"act" self_agent.cjs).
 const WF_KIND_ACCENT = {
-  workspace: "#8b949e", planner: "#bc8cff", bash: "#d29922", task: "#2f81f7",
-  read: "#3fb950", edit: "#f0883e", write: "#f0883e", grep: "#56d4dd",
-  glob: "#56d4dd", list: "#8fb3ff", hitl_approved: "#3fb950", thought: "#6f7d92",
+  workspace: "#8b949e",
+  planner: "#bc8cff",
+  bash: "#d29922",
+  task: "#2f81f7",
+  read: "#3fb950",
+  edit: "#f0883e",
+  write: "#f0883e",
+  grep: "#56d4dd",
+  glob: "#56d4dd",
+  list: "#8fb3ff",
+  hitl_approved: "#3fb950",
+  thought: "#6f7d92",
 };
 const wfKindAccent = (k) => WF_KIND_ACCENT[k] || "#8fb3ff";
 
 // ── Fase 2: kompilasi graph tergambar → urutan eksekusi (topological) ──────────
 // Kahn's algorithm. Kembalikan { ok, order:[node...] } atau { ok:false, error }.
 function compileWorkflow(nodes, edges) {
-  if (!nodes || nodes.length === 0) return { ok: false, error: "Kanvas kosong — tambah node dulu." };
+  if (!nodes || nodes.length === 0)
+    return { ok: false, error: "Kanvas kosong — tambah node dulu." };
   const indeg = new Map(nodes.map((n) => [n.id, 0]));
   const adj = new Map(nodes.map((n) => [n.id, []]));
   for (const e of edges || []) {
@@ -2231,7 +3576,8 @@ function compileWorkflow(nodes, edges) {
       if (ind.get(t) === 0) q.push(t);
     }
   }
-  if (order.length !== nodes.length) return { ok: false, error: "Ada siklus di graph — alur harus searah." };
+  if (order.length !== nodes.length)
+    return { ok: false, error: "Ada siklus di graph — alur harus searah." };
   const byId = new Map(nodes.map((n) => [n.id, n]));
   return { ok: true, order: order.map((id) => byId.get(id)) };
 }
@@ -2240,9 +3586,12 @@ function buildStagePrompt(kind, label, ctx) {
   const c = ctx ? "\n\nKonteks dari tahap sebelumnya:\n" + ctx : "";
   const L = label || kind;
   if (kind === "agent") return `Kerjakan langkah ini sebagai agent: ${L}.${c}`;
-  if (kind === "tool") return `Gunakan tool yang sesuai untuk: ${L}. Laporkan hasil nyatanya.${c}`;
-  if (kind === "condition") return `Evaluasi kondisi/cabang: ${L}. Jelaskan keputusan berdasarkan konteks.${c}`;
-  if (kind === "output") return `Susun hasil akhir/ringkasan untuk: ${L}, berdasarkan seluruh konteks.${c}`;
+  if (kind === "tool")
+    return `Gunakan tool yang sesuai untuk: ${L}. Laporkan hasil nyatanya.${c}`;
+  if (kind === "condition")
+    return `Evaluasi kondisi/cabang: ${L}. Jelaskan keputusan berdasarkan konteks.${c}`;
+  if (kind === "output")
+    return `Susun hasil akhir/ringkasan untuk: ${L}, berdasarkan seluruh konteks.${c}`;
   return `${L}.${c}`;
 }
 
@@ -2253,7 +3602,7 @@ const WF_GEN_HINT =
   "keluarkan HANYA satu blok berpagar ```wolfspace-workflow berisi JSON valid: " +
   '{"nodes":[{"id":"n1","kind":"prompt","label":"..."}],"edges":[{"from":"n1","to":"n2","label":"opsional"}]} ' +
   "— kind salah satu dari prompt|agent|tool|condition|output, id unik & pendek, label RINGKAS tanpa \\n. " +
-  "Untuk node kind:condition, beri >1 edge keluar dan isi \"label\" tiap edge dengan nama cabang (mis. ya/tidak). " +
+  'Untuk node kind:condition, beri >1 edge keluar dan isi "label" tiap edge dengan nama cabang (mis. ya/tidak). ' +
   "DILARANG memakai mermaid atau format diagram lain. Boleh 1 kalimat penjelasan singkat di luar blok. " +
   "Jika BUKAN permintaan workflow, abaikan instruksi ini.)";
 
@@ -2273,15 +3622,25 @@ function specToFlow(spec) {
     id: String(n.id || "n" + (i + 1)),
     type: "wf",
     position: { x: 0, y: 0 },
-    data: { label: n.label || n.kind || "node", kind: n.kind || "agent", accent: wfKindAccent(n.kind) },
+    data: {
+      label: n.label || n.kind || "node",
+      kind: n.kind || "agent",
+      accent: wfKindAccent(n.kind),
+    },
   }));
-  const edges = (spec.edges || []).map((e, i) => ({
-    id: "e" + i,
-    source: String(e.from != null ? e.from : e.source),
-    target: String(e.to != null ? e.to : e.target),
-    type: "wf",
-    data: e.label ? { label: String(e.label) } : undefined, // cabang kondisi ("ya"/"tidak")
-  })).filter((e) => nodes.some((n) => n.id === e.source) && nodes.some((n) => n.id === e.target));
+  const edges = (spec.edges || [])
+    .map((e, i) => ({
+      id: "e" + i,
+      source: String(e.from != null ? e.from : e.source),
+      target: String(e.to != null ? e.to : e.target),
+      type: "wf",
+      data: e.label ? { label: String(e.label) } : undefined, // cabang kondisi ("ya"/"tidak")
+    }))
+    .filter(
+      (e) =>
+        nodes.some((n) => n.id === e.source) &&
+        nodes.some((n) => n.id === e.target),
+    );
   // Tata-letak: pakai dagre (arah aliran kiri→kanan, per-rank) supaya hasil generate
   // langsung terstruktur & rapih — sama seperti tombol "⇄ Rapikan". Fallback ke grid
   // serpentine berbasis urutan topological bila dagre tak tersedia.
@@ -2291,19 +3650,30 @@ function specToFlow(spec) {
     const g = new dagre.graphlib.Graph();
     g.setGraph({ rankdir: "LR", nodesep: 42, ranksep: 96 });
     g.setDefaultEdgeLabel(() => ({}));
-    const W = 168, H = 62;
+    const W = 168,
+      H = 62;
     nodes.forEach((n) => g.setNode(n.id, { width: W, height: H }));
     edges.forEach((e) => g.setEdge(e.source, e.target));
     dagre.layout(g);
-    nodes.forEach((n) => { const p = g.node(n.id); if (p) n.position = { x: p.x - W / 2, y: p.y - H / 2 }; });
+    nodes.forEach((n) => {
+      const p = g.node(n.id);
+      if (p) n.position = { x: p.x - W / 2, y: p.y - H / 2 };
+    });
   } else {
     const comp = compileWorkflow(nodes, edges);
     const order = comp.ok ? comp.order : nodes;
-    const COLS = 4, DX = 210, DY = 120;
+    const COLS = 4,
+      DX = 210,
+      DY = 120;
     order.forEach((n, i) => {
-      const col = i % COLS, row = Math.floor(i / COLS);
+      const col = i % COLS,
+        row = Math.floor(i / COLS);
       const nn = byId.get(n.id);
-      if (nn) nn.position = { x: (row % 2 === 0 ? col : COLS - 1 - col) * DX, y: row * DY };
+      if (nn)
+        nn.position = {
+          x: (row % 2 === 0 ? col : COLS - 1 - col) * DX,
+          y: row * DY,
+        };
     });
   }
   return { nodes, edges };
@@ -2315,27 +3685,51 @@ function mermaidToSpec(text) {
   const body = (/```mermaid\s*([\s\S]*?)```/i.exec(text || "") || [])[1];
   if (!body) return null;
   const nodes = new Map(); // id -> {label, kind}
-  const shapeKind = (open) => (open === "{" ? "condition" : open === "([" ? "prompt" : open === "(" ? "tool" : "agent");
-  const clean = (s) => String(s || "").replace(/["'`]/g, "").replace(/\\n|<br\s*\/?>/gi, " ").replace(/\s+/g, " ").trim();
-  const reNode = /([A-Za-z0-9_]+)\s*(\(\[|\{|\[|\()([^\]}\)]*)(?:\]\)|\}|\]|\))/g;
+  const shapeKind = (open) =>
+    open === "{"
+      ? "condition"
+      : open === "(["
+        ? "prompt"
+        : open === "("
+          ? "tool"
+          : "agent";
+  const clean = (s) =>
+    String(s || "")
+      .replace(/["'`]/g, "")
+      .replace(/\\n|<br\s*\/?>/gi, " ")
+      .replace(/\s+/g, " ")
+      .trim();
+  const reNode =
+    /([A-Za-z0-9_]+)\s*(\(\[|\{|\[|\()([^\]}\)]*)(?:\]\)|\}|\]|\))/g;
   const addNode = (id, open, label) => {
     if (!id) return;
     const k = shapeKind(open);
     const l = clean(label) || id;
-    if (!nodes.has(id) || (open && nodes.get(id).kind === "agent")) nodes.set(id, { label: l, kind: k });
+    if (!nodes.has(id) || (open && nodes.get(id).kind === "agent"))
+      nodes.set(id, { label: l, kind: k });
   };
   let m;
   while ((m = reNode.exec(body))) addNode(m[1], m[2], m[3]);
   const edges = [];
-  const reEdge = /([A-Za-z0-9_]+)[^\n>]*?(?:--+>|-\.->|==+>)(?:\s*\|([^|]*)\|)?\s*([A-Za-z0-9_]+)/g;
+  const reEdge =
+    /([A-Za-z0-9_]+)[^\n>]*?(?:--+>|-\.->|==+>)(?:\s*\|([^|]*)\|)?\s*([A-Za-z0-9_]+)/g;
   while ((m = reEdge.exec(body))) {
-    const src = m[1], lbl = m[2], dst = m[3];
+    const src = m[1],
+      lbl = m[2],
+      dst = m[3];
     if (!nodes.has(src)) nodes.set(src, { label: src, kind: "agent" });
     if (!nodes.has(dst)) nodes.set(dst, { label: dst, kind: "agent" });
     edges.push({ from: src, to: dst, label: lbl ? lbl.trim() : undefined });
   }
   if (!nodes.size) return null;
-  return { nodes: [...nodes.entries()].map(([id, v]) => ({ id, label: v.label, kind: v.kind })), edges };
+  return {
+    nodes: [...nodes.entries()].map(([id, v]) => ({
+      id,
+      label: v.label,
+      kind: v.kind,
+    })),
+    edges,
+  };
 }
 // Buang SEMUA blok desain (mermaid/JSON) dari teks agar tak dirender di chat workflow.
 function stripDesignBlocks(text) {
@@ -2667,13 +4061,16 @@ class ErrorBoundary extends React.Component {
     this.setState({ error, errorInfo });
     // Rekam error + picu Auto-Rollback lewat guard terpusat di index.html
     // (triggerAppRollback punya anti-loop: tidak reload berulang jika versi aman pun error)
-    const errText = (error ? error.toString() : 'Unknown Error') + "\n" + (errorInfo && errorInfo.componentStack ? errorInfo.componentStack : '');
+    const errText =
+      (error ? error.toString() : "Unknown Error") +
+      "\n" +
+      (errorInfo && errorInfo.componentStack ? errorInfo.componentStack : "");
     if (window.triggerAppRollback) {
-      window.triggerAppRollback('[ErrorBoundary] ' + errText);
+      window.triggerAppRollback("[ErrorBoundary] " + errText);
     } else {
-      sessionStorage.setItem('wolfspace_rollback_error', errText);
-      if (window.location.search.indexOf('rollback=true') === -1) {
-        window.location.replace('/?rollback=true');
+      sessionStorage.setItem("wolfspace_rollback_error", errText);
+      if (window.location.search.indexOf("rollback=true") === -1) {
+        window.location.replace("/?rollback=true");
       }
     }
   }
@@ -2689,5 +4086,5 @@ class ErrorBoundary extends React.Component {
 ReactDOM.createRoot(document.getElementById("root")).render(
   <ErrorBoundary>
     <App />
-  </ErrorBoundary>
+  </ErrorBoundary>,
 );

@@ -1,4 +1,4 @@
-﻿// WOLFSPACE desktop app (Electron): launches the backend + local models, then
+// WOLFSPACE desktop app (Electron): launches the backend + local models, then
 // opens a native window. Spawns the server as a SEPARATE process so the
 // executor's process.execPath stays a real JS runtime (bun/node), not electron.
 const { app, BrowserWindow, shell, ipcMain, protocol } = require("electron");
@@ -47,20 +47,46 @@ function unpackedRoot() {
 
 const _MIME = {
   ".html": "text/html",
+  ".htm": "text/html",
   ".js": "text/javascript",
   ".mjs": "text/javascript",
   ".jsx": "text/javascript",
+  ".ts": "text/javascript",
   ".css": "text/css",
   ".json": "application/json",
   ".wasm": "application/wasm",
   ".png": "image/png",
   ".jpg": "image/jpeg",
+  ".jpeg": "image/jpeg",
+  ".gif": "image/gif",
+  ".webp": "image/webp",
   ".svg": "image/svg+xml",
   ".ico": "image/x-icon",
+  ".woff": "font/woff",
   ".woff2": "font/woff2",
   ".ttf": "font/ttf",
   ".otf": "font/otf",
   ".map": "application/json",
+  // 3D / game assets
+  ".gltf": "model/gltf+json",
+  ".glb": "model/gltf-binary",
+  ".bin": "application/octet-stream",
+  ".obj": "text/plain",
+  ".mtl": "text/plain",
+  ".fbx": "application/octet-stream",
+  ".dae": "model/vnd.collada+xml",
+  ".hdr": "image/vnd.radiance",
+  ".exr": "image/x-exr",
+  // audio / video
+  ".mp3": "audio/mpeg",
+  ".ogg": "audio/ogg",
+  ".wav": "audio/wav",
+  ".mp4": "video/mp4",
+  ".webm": "video/webm",
+  // misc
+  ".txt": "text/plain",
+  ".xml": "application/xml",
+  ".pdf": "application/pdf",
 };
 
 // Web Dev Live Browser: layani file dari disk untuk iframe preview (paritas
@@ -75,16 +101,32 @@ async function servePreviewFile(reqPath, injectBase) {
     const st = await fs.promises.stat(resolved).catch(() => null);
     if (!st || st.isDirectory())
       return new Response(
-        '<html><body style="background:#0b0d11;color:#aaa;font-family:system-ui;padding:40px"><h3>404 — File not found</h3><p>' +
-          resolved + "</p></body></html>",
-        { status: 404, headers: { "content-type": "text/html; charset=utf-8" } },
+        '<html><body style="background:#0c1219;color:#8fb3ff;font-family:system-ui;padding:40px;text-align:center;display:flex;flex-direction:column;justify-content:center;height:100vh;margin:0;box-sizing:border-box;">' +
+          '<div style="font-size:48px;margin-bottom:16px;">⏳</div>' +
+          '<h3 style="margin:0 0 8px 0;color:#dce4f0;">File Belum Tersedia</h3>' +
+          '<p style="margin:0;color:#8b949e;font-size:14px;line-height:1.5;">' +
+          "File ini mungkin sedang dibuat oleh agent atau path-nya tidak ditemukan.<br/><br/>" +
+          '<span style="font-family:monospace;font-size:11px;background:#131922;padding:4px 8px;border-radius:4px;border:1px solid #212a36;word-break:break-all;">' +
+          resolved +
+          "</span></p>" +
+          "</body></html>",
+        {
+          status: 404,
+          headers: { "content-type": "text/html; charset=utf-8" },
+        },
       );
     const ext = path.extname(resolved).toLowerCase();
     const ct = _MIME[ext] || "application/octet-stream";
     let data = await fs.promises.readFile(resolved);
     if (injectBase && (ext === ".html" || ext === ".htm")) {
+      // Gunakan URL absolut app://WOLFSPACE/preview-file-assets/<path> agar
+      // fetch() dari three.js / library lain tidak jatuh ke origin yang salah.
+      // Path Windows: C:\Users\... → C:/Users/.../ (forward slash, trailing slash)
       const dir = resolved.replace(/\\/g, "/").replace(/\/[^\/]*$/, "/");
-      const baseTag = '<base href="/preview-file-assets/' + encodeURI(dir) + '">';
+      // encodeURI mempertahankan ':' (penting untuk drive letter Windows C:)
+      // tapi mengkode spasi dan karakter khusus lain dalam nama folder.
+      const baseHref = "app://WOLFSPACE/preview-file-assets/" + encodeURI(dir);
+      const baseTag = '<base href="' + baseHref + '">';
       let html = data.toString("utf8");
       html = /<head[^>]*>/i.test(html)
         ? html.replace(/<head[^>]*>/i, (m) => m + baseTag)
@@ -109,11 +151,32 @@ function registerAppProtocol() {
   protocol.handle("app", async (request) => {
     try {
       const url = new URL(request.url); // app://WOLFSPACE/<path>
-      let p = decodeURIComponent(url.pathname || "/");
-      if (p === "/preview-file")
+      if (
+        url.pathname.startsWith("/preview-file") &&
+        !url.pathname.startsWith("/preview-file-assets")
+      ) {
+        // /preview-file?path=... — path dari query param sudah URL-decoded oleh url.searchParams
         return servePreviewFile(url.searchParams.get("path") || "", true);
-      if (p.startsWith("/preview-file-assets/"))
-        return servePreviewFile(p.slice("/preview-file-assets/".length), false);
+      }
+      if (url.pathname.startsWith("/preview-file-assets/")) {
+        // Gunakan url.pathname langsung (bukan p yang sudah di-decodeURIComponent di atas)
+        // agar kita lakukan SATU decode yang benar, konsisten dengan encodeURI di base href.
+        // encodeURI mempertahankan ':' jadi 'C:' tetap 'C:' di url.pathname,
+        // namun spasi menjadi '%20' dan perlu di-decode di sini.
+        let assetPath;
+        try {
+          assetPath = decodeURIComponent(
+            url.pathname.slice("/preview-file-assets/".length),
+          );
+        } catch (_) {
+          assetPath = url.pathname.slice("/preview-file-assets/".length);
+        }
+        // Hapus leading slash ganda (//C:/...) yang muncul dari trailing slash di base href
+        assetPath = assetPath.replace(/^\/+/, "");
+        return servePreviewFile(assetPath, false);
+      }
+      // Routing untuk file statis UI (public/ dan studio/)
+      let p = decodeURIComponent(url.pathname || "/");
       let base = pubDir,
         rel = p;
       if (p === "/" || p === "") rel = "/index.html";
@@ -261,6 +324,10 @@ function createWindow() {
       preload: path.join(__dirname, "preload.js"),
       contextIsolation: true,
       nodeIntegration: false,
+      // Matikan sandbox agar preload.js bisa pakai require('path') dll.
+      // Aman karena contextIsolation: true tetap aktif — renderer TIDAK
+      // punya akses Node. Hanya jembatan preload yang ter-expose ke window.
+      sandbox: false,
       // Default Electron/Chromium MENAHAN render/timer (rAF, dst) saat window
       // kehilangan fokus/dianggap "background" — persis yang terjadi saat dialog
       // folder native dibuka (window utama sementara tak fokus). Dugaan kuat untuk
@@ -565,7 +632,9 @@ function migrateOldUserDataOnce() {
     const roaming = path.dirname(newDir); // %APPDATA%
     const candidates = ["quantum", "Electron"]
       .map((n) => path.join(roaming, n))
-      .filter((p) => p !== newDir && fs.existsSync(path.join(p, "Local Storage")));
+      .filter(
+        (p) => p !== newDir && fs.existsSync(path.join(p, "Local Storage")),
+      );
     if (!candidates.length) return;
     // Pilih yang paling BARU diubah (LOG file) sebagai sumber paling relevan.
     const withMtime = candidates.map((p) => {
@@ -579,7 +648,12 @@ function migrateOldUserDataOnce() {
     const src = path.join(withMtime[0].p, "Local Storage");
     fs.mkdirSync(newDir, { recursive: true });
     fs.cpSync(src, newLS, { recursive: true });
-    console.log("[userData] migrasi localStorage dari", withMtime[0].p, "→", newDir);
+    console.log(
+      "[userData] migrasi localStorage dari",
+      withMtime[0].p,
+      "→",
+      newDir,
+    );
   } catch (e) {
     console.log("[userData] migrasi gagal (non-fatal):", e.message);
   }
@@ -640,77 +714,104 @@ app.whenReady().then(() => {
         return null;
       }
     };
-    const _seedHashes = (dir, depth, maxDepth, extFilter) => {
+    // ASINKRON: baca+hash file lewat fs.promises supaya SETIAP file mengembalikan
+    // kontrol ke event loop. Versi sinkron lama (fs.readFileSync) menge-hash SEMUA
+    // ~29MB isi public/ dalam satu tarikan napas di MAIN process, tepat setelah
+    // createWindow(); karena UI dilayani via protocol app:// (juga di main process),
+    // main thread yang terblokir itu menahan pengiriman index.html + seluruh aset →
+    // jendela muncul tapi "Not Responding" sampai hashing selesai. readFile async +
+    // yield antar file membuat main tetap melayani aset selama seeding berjalan.
+    const _hashFileAsync = async (fp) => {
+      try {
+        const buf = await fs.promises.readFile(fp);
+        return crypto.createHash("md5").update(buf).digest("hex");
+      } catch (_) {
+        return null;
+      }
+    };
+    const _seedHashes = async (dir, depth, maxDepth, extFilter) => {
       if (depth > maxDepth) return;
       let ents;
       try {
-        ents = fs.readdirSync(dir, { withFileTypes: true });
+        ents = await fs.promises.readdir(dir, { withFileTypes: true });
       } catch (_) {
         return;
       }
       for (const e of ents) {
         if (e.name === "node_modules" || e.name.startsWith(".")) continue;
         const fp = path.join(dir, e.name);
-        if (e.isDirectory()) _seedHashes(fp, depth + 1, maxDepth, extFilter);
-        else if (!extFilter || extFilter.test(e.name)) _bkHash.set(fp, _hashFile(fp));
+        if (e.isDirectory())
+          await _seedHashes(fp, depth + 1, maxDepth, extFilter);
+        else if (!extFilter || extFilter.test(e.name))
+          _bkHash.set(fp, await _hashFileAsync(fp));
       }
     };
-    for (const d of backendDirs) {
-      const p = path.join(root, d);
-      if (fs.existsSync(p)) _seedHashes(p, 0, 4, /\.(c?js|json)$/);
-    }
-    for (const f of backendFiles) {
-      const p = path.join(root, f);
-      if (fs.existsSync(p)) _bkHash.set(p, _hashFile(p));
-    }
-    // public/ butuh kedalaman jauh lebih besar (mis. monaco bersarang ~10 level)
-    // dan TANPA filter ekstensi — semua tipe file (js, css, html, font, dst) bisa
-    // memicu event palsu yang sama, jadi semua perlu baseline hash.
-    {
+    // Seeding baseline hash dijalankan TERPISAH & tak menahan whenReady. Watcher
+    // sudah punya grace 4 detik (_watchStart) sebelum bereaksi, jadi aman kalau
+    // seeding belum tuntas saat watch mulai — event dini diabaikan.
+    const _seedAll = async () => {
+      for (const d of backendDirs) {
+        const p = path.join(root, d);
+        if (fs.existsSync(p)) await _seedHashes(p, 0, 4, /\.(c?js|json)$/);
+      }
+      for (const f of backendFiles) {
+        const p = path.join(root, f);
+        if (fs.existsSync(p)) _bkHash.set(p, await _hashFileAsync(p));
+      }
+      // public/ butuh kedalaman jauh lebih besar (mis. monaco bersarang ~10 level)
+      // dan TANPA filter ekstensi — semua tipe file (js, css, html, font, dst) bisa
+      // memicu event palsu yang sama, jadi semua perlu baseline hash.
       const pubDir = path.join(root, "public");
-      if (fs.existsSync(pubDir)) _seedHashes(pubDir, 0, 20, null);
-    }
+      if (fs.existsSync(pubDir)) await _seedHashes(pubDir, 0, 20, null);
+    };
+    _seedAll();
     const _watchStart = Date.now();
     if (fs.existsSync(root) && !process.env.ELECTRON_RUN_AS_NODE) {
-      fs.watch(root, { recursive: true }, (eventType, filename) => {
+      const handleWatch = (baseDir, eventType, filename) => {
         if (
           !filename ||
           path.basename(filename).startsWith(".") ||
           filename.includes("node_modules") ||
           filename.includes(".git") ||
-          // Churn buatan (bukan sumber): snapshot backup self-agent, artefak, asar.
-          // Tanpa ini, tiap backup memicu "backend changed" → restart tiba-tiba.
-          filename.includes("_agent_backups") ||
-          filename.includes("_backups") ||
-          filename.includes(".asar") ||
-          filename.startsWith("artifacts" + path.sep) ||
-          filename.startsWith("artifacts/") ||
           filename.endsWith("~") ||
           filename.endsWith(".swp")
         )
           return;
         clearTimeout(debounceTimer);
         debounceTimer = setTimeout(() => {
-          const fullPath = path.join(root, filename);
+          const fullPath = path.join(baseDir, filename);
+          try {
+            if (!fs.existsSync(fullPath) || fs.statSync(fullPath).isDirectory())
+              return;
+          } catch (_) {
+            return;
+          }
+          // PENTING: baseline hash (_bkHash) kini diseed ASINKRON (lihat _seedAll —
+          // fix startup-freeze) sehingga bisa BELUM ada saat event fs.watch tiba,
+          // bahkan setelah grace 4 detik (public/ 29MB diseed paling akhir). Tanpa
+          // baseline, kita TAK BISA tahu file benar-benar berubah; event PALSU Windows
+          // (isi identik) lalu keliru dianggap "berubah" → reload/restart HANTU.
+          // Aturan benar: kalau baseline belum ada (undefined) ATAU sama → seed & DIAM;
+          // bereaksi HANYA bila baseline dikenal DAN isinya beda.
           if (isFrontend(fullPath)) {
-            // Sama seperti backend: abaikan event palsu (isi TIDAK berubah) dan
-            // jendela startup, sebelum benar-benar reload renderer.
             if (Date.now() - _watchStart < 4000) return;
+            const prev = _bkHash.get(fullPath);
             const hf = _hashFile(fullPath);
-            if (hf && _bkHash.get(fullPath) === hf) return; // isi sama → event palsu
-            if (hf) _bkHash.set(fullPath, hf);
+            if (!hf) return;
+            _bkHash.set(fullPath, hf);
+            if (prev === undefined || prev === hf) return;
             try {
               const wins = BrowserWindow.getAllWindows();
               for (const w of wins) w.webContents.reload();
               console.log("[hot-reload] frontend reloaded due to:", filename);
             } catch (_) {}
           } else if (isBackend(fullPath)) {
-            // Abaikan event di ~4 detik pertama (event startup) + hanya restart
-            // kalau ISI file benar-benar berubah (dedupe event palsu fs.watch).
             if (Date.now() - _watchStart < 4000) return;
+            const prev = _bkHash.get(fullPath);
             const h = _hashFile(fullPath);
-            if (h && _bkHash.get(fullPath) === h) return; // isi sama → event palsu
-            if (h) _bkHash.set(fullPath, h);
+            if (!h) return;
+            _bkHash.set(fullPath, h);
+            if (prev === undefined || prev === h) return;
             clearTimeout(backendTimer);
             backendTimer = setTimeout(() => {
               console.log(
@@ -724,7 +825,25 @@ app.whenReady().then(() => {
             }, 500);
           }
         }, 300);
-      });
+      };
+
+      const WATCH_DIRS = ["public", "electron", "agent", "scripts"];
+      for (const d of WATCH_DIRS) {
+        const dp = path.join(root, d);
+        if (fs.existsSync(dp)) {
+          fs.watch(dp, { recursive: true }, (eventType, filename) =>
+            handleWatch(dp, eventType, filename),
+          );
+        }
+      }
+      for (const f of backendFiles) {
+        const fp = path.join(root, f);
+        if (fs.existsSync(fp)) {
+          fs.watch(fp, (eventType, filename) =>
+            handleWatch(root, eventType, filename || f),
+          );
+        }
+      }
     }
   } catch (_) {}
 });

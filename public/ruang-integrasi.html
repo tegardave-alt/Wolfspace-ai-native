@@ -1,0 +1,186 @@
+<!doctype html>
+<html lang="id">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>Ruang Integrasi API</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link
+      rel="stylesheet"
+      href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.5.0/css/all.min.css"
+    />
+  </head>
+  <body class="bg-gray-950 text-gray-100 min-h-screen p-6">
+    <div class="max-w-4xl mx-auto">
+      <header class="mb-10 text-center">
+        <h1
+          class="text-3xl font-bold bg-gradient-to-r from-blue-400 via-purple-400 to-pink-400 bg-clip-text text-transparent"
+        >
+          <i class="fas fa-plug mr-2"></i>Ruang Integrasi
+        </h1>
+        <p class="text-gray-400 mt-2">
+          Kelola koneksi API key untuk layanan Anda
+        </p>
+      </header>
+
+      <div id="app" class="grid gap-6 md:grid-cols-3">
+        <!-- Kartu akan di-render oleh JS -->
+      </div>
+
+      <div id="notification" class="fixed bottom-6 right-6 hidden"></div>
+    </div>
+
+    <script>
+      const services = [
+        {
+          id: "github",
+          name: "GitHub",
+          icon: "fab fa-github",
+          color: "from-gray-700 to-gray-900",
+          border: "border-gray-600",
+          btnColor: "bg-gray-700 hover:bg-gray-600",
+          desc: "Akses repositori, commit, dan issue.",
+        },
+        {
+          id: "gitlab",
+          name: "GitLab",
+          icon: "fab fa-gitlab",
+          color: "from-orange-700 to-orange-900",
+          border: "border-orange-600",
+          btnColor: "bg-orange-700 hover:bg-orange-600",
+          desc: "Akses repositori, CI/CD, dan pipelines.",
+        },
+        {
+          id: "drive",
+          name: "Google Drive",
+          icon: "fab fa-google-drive",
+          color: "from-green-700 to-green-900",
+          border: "border-green-600",
+          btnColor: "bg-green-700 hover:bg-green-600",
+          desc: "Akses file, folder, dan sharing.",
+        },
+      ];
+
+      const STORAGE_KEY = "ruang_integrasi_keys";
+
+      function loadKeys() {
+        try {
+          return JSON.parse(localStorage.getItem(STORAGE_KEY)) || {};
+        } catch {
+          return {};
+        }
+      }
+
+      function saveKeys(keys) {
+        localStorage.setItem(STORAGE_KEY, JSON.stringify(keys));
+      }
+
+      function notify(msg, type = "success") {
+        const el = document.getElementById("notification");
+        el.className = `fixed bottom-6 right-6 px-5 py-3 rounded-lg shadow-lg text-sm font-medium transition-all duration-300 ${
+          type === "success"
+            ? "bg-green-600 text-white"
+            : "bg-red-600 text-white"
+        }`;
+        el.innerHTML = msg;
+        el.classList.remove("hidden");
+        setTimeout(() => el.classList.add("hidden"), 3000);
+      }
+
+      function render() {
+        const container = document.getElementById("app");
+        const keys = loadKeys();
+
+        container.innerHTML = services
+          .map((s) => {
+            const saved = keys[s.id] || "";
+            const masked = saved
+              ? saved.slice(0, 4) + "••••••" + saved.slice(-4)
+              : "";
+            const connected = !!saved;
+
+            return `
+      <div class="rounded-xl border ${s.border} bg-gray-900/60 backdrop-blur overflow-hidden transition hover:scale-[1.02]">
+        <div class="bg-gradient-to-br ${s.color} p-4 flex items-center gap-3">
+          <i class="${s.icon} text-2xl text-white"></i>
+          <div>
+            <h3 class="font-semibold text-lg">${s.name}</h3>
+            <p class="text-xs text-white/70">${s.desc}</p>
+          </div>
+          <span class="ml-auto ${connected ? "text-green-400" : "text-gray-500"}">
+            <i class="fas ${connected ? "fa-link" : "fa-unlink"}"></i>
+          </span>
+        </div>
+        <div class="p-4 space-y-3">
+          <div>
+            <label class="text-xs text-gray-400 block mb-1">API Key</label>
+            <div class="flex gap-2">
+              <input type="password" id="input-${s.id}" value="${saved}"
+                class="flex-1 bg-gray-800 border border-gray-700 rounded-lg px-3 py-2 text-sm text-gray-200 focus:outline-none focus:ring-2 focus:ring-blue-500" 
+                placeholder="Masukkan ${s.name} API key...">
+              <button onclick="toggleKey('${s.id}')" class="px-3 py-2 bg-gray-800 border border-gray-700 rounded-lg text-gray-400 hover:text-white text-sm">
+                <i class="fas fa-eye"></i>
+              </button>
+            </div>
+          </div>
+          ${connected ? `<div class="text-xs text-gray-500">Tersimpan: <span class="font-mono text-gray-400">${masked}</span></div>` : ""}
+          <div class="flex gap-2">
+            <button onclick="saveKey('${s.id}')" class="flex-1 ${s.btnColor} text-white text-sm font-medium py-2 rounded-lg transition">
+              <i class="fas fa-save mr-1"></i> Simpan
+            </button>
+            ${
+              connected
+                ? `<button onclick="removeKey('${s.id}')" class="px-3 py-2 bg-red-900/50 hover:bg-red-800 text-red-300 rounded-lg text-sm transition">
+              <i class="fas fa-trash"></i>
+            </button>`
+                : ""
+            }
+          </div>
+          ${
+            connected
+              ? `<div class="flex items-center gap-2 text-xs text-green-400"><i class="fas fa-check-circle"></i> Terhubung</div>`
+              : `<div class="flex items-center gap-2 text-xs text-gray-500"><i class="fas fa-clock"></i> Belum terhubung</div>`
+          }
+        </div>
+      </div>
+    `;
+          })
+          .join("");
+      }
+
+      window.saveKey = (id) => {
+        const input = document.getElementById(`input-${id}`);
+        const val = input.value.trim();
+        if (!val) return notify("API key tidak boleh kosong!", "error");
+        const keys = loadKeys();
+        keys[id] = val;
+        saveKeys(keys);
+        render();
+        notify(
+          "API key " +
+            services.find((s) => s.id === id).name +
+            " berhasil disimpan!",
+        );
+      };
+
+      window.removeKey = (id) => {
+        const keys = loadKeys();
+        delete keys[id];
+        saveKeys(keys);
+        render();
+        notify(
+          "Koneksi " +
+            services.find((s) => s.id === id).name +
+            " telah diputus.",
+        );
+      };
+
+      window.toggleKey = (id) => {
+        const input = document.getElementById(`input-${id}`);
+        input.type = input.type === "password" ? "text" : "password";
+      };
+
+      render();
+    </script>
+  </body>
+</html>

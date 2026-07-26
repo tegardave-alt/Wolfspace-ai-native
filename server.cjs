@@ -546,17 +546,32 @@ function isBrowserJs(code) {
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Execution sandbox (Docker) Ã¢â‚¬â€ gate #1 for serving untrusted/other-user code Ã¢â€â‚¬Ã¢â€â‚¬
 const SANDBOX_IMAGE = "wolfspace-sandbox"; // Docker requires lowercase repo names
-function hasDocker() {
-  try {
-    execSync("docker version", { stdio: "ignore", timeout: 8000 });
-    return true;
-  } catch (e) {
-    return false;
-  }
+let _hasDockerCache = null;
+async function hasDockerAsync() {
+  if (_hasDockerCache !== null) return _hasDockerCache;
+  return new Promise((resolve) => {
+    const child = spawn("docker", ["version"], {
+      stdio: "ignore",
+      timeout: 5000,
+      windowsHide: true,
+    });
+    child.on("close", (code) => {
+      _hasDockerCache = code === 0;
+      resolve(_hasDockerCache);
+    });
+    child.on("error", () => {
+      _hasDockerCache = false;
+      resolve(false);
+    });
+  });
 }
-const USE_SANDBOX = CONFIG.sandbox === true && hasDocker();
+// evaluated lazily inside runSandboxed
 // Run code in a throwaway, network-less, resource-capped, read-only container.
 async function runSandboxed(lang, code) {
+  const useSandbox = CONFIG.sandbox === true && (await hasDockerAsync());
+  if (!useSandbox) {
+    throw new Error("sandbox disabled or docker not found");
+  }
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qsbx-"));
   const isJs = lang === "javascript";
   fs.writeFileSync(path.join(dir, isJs ? "main.js" : "main.py"), code, "utf8");
@@ -612,13 +627,14 @@ async function runSandboxed(lang, code) {
   return res;
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Execute JavaScript with FULL runtime access (require/import anything) Ã¢â€â‚¬Ã¢â€â‚¬
+// Ã¢â€ â‚¬Ã¢â€ â‚¬ Execute JavaScript with FULL runtime access (require/import anything) Ã¢â€ â‚¬Ã¢â€ â‚¬
 // NOTE: no longer sandboxed. Generated code runs as a real subprocess with the
 // same privileges as this server, can require any installed module (including
 // node_modules in this project), touch the filesystem, network, etc.
 // Keep this server bound to 127.0.0.1 and never expose it to a network.
 async function runJS(code) {
-  if (USE_SANDBOX) return await runSandboxed("javascript", code);
+  if (CONFIG.sandbox === true && (await hasDockerAsync()))
+    return await runSandboxed("javascript", code);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qjs-"));
   const src = path.join(dir, "main.cjs");
   fs.writeFileSync(src, code, "utf8");
@@ -646,11 +662,12 @@ async function runJS(code) {
   return res;
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Resolve real Python executable (skips Windows Store alias that errors) Ã¢â€â‚¬Ã¢â€â‚¬
-function findPython() {
+// Ã¢â€ â‚¬Ã¢â€ â‚¬ Resolve real Python executable (skips Windows Store alias that errors) Ã¢â€ â‚¬Ã¢â€ â‚¬
+let _pyBinCache = null;
+async function findPythonAsync() {
+  if (_pyBinCache) return _pyBinCache;
   const candidates = [
-    process.env.WOLFSPACE_PYTHON || process.env.QUANTUM_PYTHON, // user override (WOLFSPACE_PYTHON; QUANTUM_PYTHON nama lama)
-    // Bundled Python distributed with WOLFSPACE (uv-managed)
+    process.env.WOLFSPACE_PYTHON || process.env.QUANTUM_PYTHON,
     process.env.APPDATA &&
       path.join(
         process.env.APPDATA,
@@ -659,10 +676,10 @@ function findPython() {
         "cpython-3.12.10-windows-x86_64-none",
         "python.exe",
       ),
+    process.platform === "win32" ? "python" : "python3",
     "python3",
     "python",
     "py",
-    // Common Windows install paths
     process.env.LOCALAPPDATA &&
       path.join(
         process.env.LOCALAPPDATA,
@@ -703,20 +720,21 @@ function findPython() {
 
   for (const cmd of candidates) {
     try {
-      const out = execSync(`"${cmd}" --version`, {
+      const out = await execP(`"${cmd}" --version`, {
         timeout: 3000,
-        encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"],
         windowsHide: true,
       });
-      if (/Python 3/i.test(out)) return cmd;
+      if (/Python 3/i.test(out.stdout || out.stderr)) {
+        _pyBinCache = cmd;
+        return cmd;
+      }
     } catch (_) {}
   }
-  return "python"; // fallback
+  _pyBinCache = "python";
+  return "python";
 }
-const PY_BIN = findPython();
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Shared patch machinery for visual edits + compile auto-fix Ã¢â€â‚¬Ã¢â€â‚¬
+// Ã¢â€ â‚¬Ã¢â€ â‚¬ Shared patch machinery for visual edits + compile auto-fix Ã¢â€ â‚¬Ã¢â€ â‚¬
 // Apply <<<<ORIGINAL/====/>>>> hunks by literal string replacement; null on any miss.
 const { fillCloudKey } = require("./agent/cloud.cjs");
 const { resolveKeysPath } = require("./agent/keys-path.cjs");
@@ -737,7 +755,7 @@ function applyHunks(src, reply) {
   }
   return out;
 }
-// String/comment-aware brace+paren balance Ã¢â‚¬â€ catches patches that bisect a class/method.
+// String/comment-aware brace+paren balance Ã¢â‚¬â€  catches patches that bisect a class/method.
 function braceProfile(s) {
   let c = 0,
     p = 0,
@@ -794,7 +812,7 @@ function braceProfile(s) {
 }
 // Resolve cloud key from server-side storage (mutates the passed object).
 // (Removed fillCloudKey from here, imported from ./agent/cloud)
-// Ask the user's selected model (cloud or local) Ã¢â‚¬â€ non-streaming, returns text.
+// Ask the user's selected model (cloud or local) Ã¢â‚¬â€  non-streaming, returns text.
 async function askSelectedModel(cloud, port, sysPrompt, userPrompt) {
   if (cloud && cloud.key) {
     return await askCloudStream(
@@ -834,7 +852,7 @@ async function askSelectedModel(cloud, port, sysPrompt, userPrompt) {
   return aiJson.choices?.[0]?.message?.content || "";
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Execute Python as a script via subprocess (full access, import anything) Ã¢â€â‚¬Ã¢â€â‚¬
+// Ã¢â€ â‚¬Ã¢â€ â‚¬ Execute Python as a script via subprocess (full access, import anything) Ã¢â€ â‚¬Ã¢â€ â‚¬
 // Force UTF-8 I/O so generated Python that prints Ã¢Å“â€œ/Ã¢Å“â€”/emoji doesn't crash with
 // UnicodeEncodeError under Windows' legacy cp1252 stdout codec.
 // Detect if code contains input() calls (outside strings/comments) to reject stdin-dependent scripts.
@@ -865,7 +883,8 @@ async function runPy(code) {
         "Python code memanggil input() tapi stdin tidak tersedia (eksekusi headless). Gunakan nilai hardcoded.",
     };
   }
-  if (USE_SANDBOX) return await runSandboxed("python", code);
+  if (CONFIG.sandbox === true && (await hasDockerAsync()))
+    return await runSandboxed("python", code);
 
   const tmpPy = path.join(
     os.tmpdir(),
@@ -873,7 +892,8 @@ async function runPy(code) {
   );
   fs.writeFileSync(tmpPy, code, "utf8");
   try {
-    const { stdout } = await execP(`"${PY_BIN}" "${tmpPy}"`, {
+    const pyBin = await findPythonAsync();
+    const { stdout } = await execP(`"${pyBin}" "${tmpPy}"`, {
       timeout: EXEC_TIMEOUT,
       encoding: "utf8",
       stdio: ["pipe", "pipe", "pipe"],
@@ -900,9 +920,10 @@ const RUN = CONFIG.runners || {};
 let jediProc = null,
   jediBuf = "",
   jediQueue = [];
-function startJedi() {
+async function startJedi() {
   try {
-    jediProc = spawn(PY_BIN, [path.join(__dirname, "jedi_worker.py")], {
+    const pyBin = await findPythonAsync();
+    jediProc = spawn(pyBin, [path.join(__dirname, "jedi_worker.py")], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
@@ -1269,7 +1290,7 @@ async function runByLang(lang, code) {
     ok: !!r.ok,
     ms: Date.now() - t0,
     bytes: (code || "").length,
-    sandbox: USE_SANDBOX,
+    sandbox: CONFIG.sandbox === true && _hasDockerCache,
     error: r.ok ? undefined : errTail(r.error),
   });
   return r;
@@ -3815,7 +3836,12 @@ const server = http.createServer(async (req, res) => {
         https
           .get(
             "https://ollama-models.zwz.workers.dev/",
-            { headers: { "user-agent": "Mozilla/5.0 WOLFSPACE", "accept": "application/json" } },
+            {
+              headers: {
+                "user-agent": "Mozilla/5.0 WOLFSPACE",
+                accept: "application/json",
+              },
+            },
             (s) => {
               if (s.statusCode >= 400) {
                 s.resume();
@@ -3833,19 +3859,25 @@ const server = http.createServer(async (req, res) => {
       // Normalise to the shape the frontend expects.
       // "tags" from API = all variants (e.g. "1b", "4b", "1b-it-qat", "4b-it-q4_K_M").
       // "sizes" in frontend = short clean size labels shown as selector buttons.
-      let out = models.map((m) => {
-        const allTags = Array.isArray(m.tags) ? m.tags : [];
-        const sizeTags = allTags.filter((t) => /^\d+\.?\d*[bm]$/i.test(t));
-        return {
-          name:         m.name        || "",
-          description:  m.description || "",
-          sizes:        sizeTags.length ? sizeTags : (allTags.length ? [allTags[0]] : []),
-          capabilities: Array.isArray(m.capabilities) ? m.capabilities : [],
-          pulls:        m.pulls   || m.pull_count || "",
-          tags:         String(allTags.length || m.tag_count || ""),
-          updated:      m.updated || m.last_updated || "",
-        };
-      }).filter((m) => m.name);
+      let out = models
+        .map((m) => {
+          const allTags = Array.isArray(m.tags) ? m.tags : [];
+          const sizeTags = allTags.filter((t) => /^\d+\.?\d*[bm]$/i.test(t));
+          return {
+            name: m.name || "",
+            description: m.description || "",
+            sizes: sizeTags.length
+              ? sizeTags
+              : allTags.length
+                ? [allTags[0]]
+                : [],
+            capabilities: Array.isArray(m.capabilities) ? m.capabilities : [],
+            pulls: m.pulls || m.pull_count || "",
+            tags: String(allTags.length || m.tag_count || ""),
+            updated: m.updated || m.last_updated || "",
+          };
+        })
+        .filter((m) => m.name);
 
       if (q)
         out = out.filter((m) =>
@@ -3861,7 +3893,6 @@ const server = http.createServer(async (req, res) => {
     }
     return;
   }
-
 
   // HuggingFace: list .gguf files of a repo (with sizes)
   if (req.method === "GET" && (req.url || "").startsWith("/hf/files")) {
@@ -4233,7 +4264,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(JSON.stringify({ error: "model tidak ditemukan" }));
       }
       const m = CONFIG.models[idx];
-      killPort(m.port);
+      await killPortAsync(m.port);
       CONFIG.models.splice(idx, 1);
       try {
         fs.writeFileSync(CONFIG_PATH, JSON.stringify(CONFIG, null, 2));
@@ -4567,6 +4598,156 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // GET /ww/tree?path=<absolut>&depth=<n> — pohon file workspace (untuk sidebar
+  // Logic saat web-dev). Rata (flattened) jadi [{ name, dir, depth }], folder dulu
+  // lalu file (A→Z), lewati folder berat/tak relevan, dibatasi agar tak membeku
+  // pada repo besar. Tak pernah 500 karena path tak ada → { entries: [] }.
+  if (req.method === "GET" && req.url.startsWith("/ww/tree")) {
+    try {
+      const qp = new URL(req.url, "http://x").searchParams;
+      const rootPath = qp.get("path") || "";
+      const maxDepth = Math.min(parseInt(qp.get("depth") || "3", 10) || 3, 6);
+      const MAX_ENTRIES = 800;
+      const SKIP = new Set([
+        "node_modules",
+        ".git",
+        ".svn",
+        ".hg",
+        "dist",
+        "build",
+        ".next",
+        ".cache",
+        ".turbo",
+        "coverage",
+        ".vscode",
+        ".idea",
+        "__pycache__",
+        ".venv",
+        "venv",
+        "vendor",
+        ".DS_Store",
+      ]);
+      const entries = [];
+      const walk = (dir, depth) => {
+        if (depth > maxDepth || entries.length >= MAX_ENTRIES) return;
+        let ents;
+        try {
+          ents = fs.readdirSync(dir, { withFileTypes: true });
+        } catch (_) {
+          return;
+        }
+        // folder dulu, lalu file — masing-masing terurut A→Z (case-insensitive)
+        const dirs = ents.filter(
+          (e) =>
+            e.isDirectory() && !SKIP.has(e.name) && !e.name.startsWith("."),
+        );
+        const files = ents.filter((e) => e.isFile() && !e.name.startsWith("."));
+        const cmp = (a, b) =>
+          a.name.toLowerCase().localeCompare(b.name.toLowerCase());
+        dirs.sort(cmp);
+        files.sort(cmp);
+        for (const d of dirs) {
+          if (entries.length >= MAX_ENTRIES) break;
+          entries.push({ name: d.name, dir: true, depth });
+          walk(path.join(dir, d.name), depth + 1);
+        }
+        for (const f of files) {
+          if (entries.length >= MAX_ENTRIES) break;
+          entries.push({ name: f.name, dir: false, depth });
+        }
+      };
+      let ok = false;
+      try {
+        ok = !!rootPath && fs.statSync(rootPath).isDirectory();
+      } catch (_) {}
+      if (ok) walk(rootPath, 0);
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({
+          root: rootPath,
+          entries,
+          truncated: entries.length >= MAX_ENTRIES,
+        }),
+      );
+    } catch (e) {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(
+        JSON.stringify({ root: "", entries: [], error: e.message }),
+      );
+    }
+  }
+
+  // POST /flow/http — eksekutor node "HTTP Request" untuk kanvas Logic (integrasi).
+  // Melakukan permintaan HTTP dari SISI SERVER supaya renderer tak kena CORS —
+  // inilah tulang punggung "integrasi platform luar": panggilan keluar terpusat di
+  // backend. Body: { method, url, headers, body, timeoutMs }. Selalu balas 200 +
+  // ringkasan { ok, status, body, ms } agar node graph mudah menampilkan hasil.
+  if (req.method === "POST" && req.url === "/flow/http") {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", async () => {
+      let b = {};
+      try {
+        b = JSON.parse(raw || "{}");
+      } catch (_) {}
+      const url = String(b.url || "").trim();
+      const method = String(b.method || "GET").toUpperCase();
+      const headers =
+        b.headers && typeof b.headers === "object" ? b.headers : {};
+      const timeoutMs = Math.min(Number(b.timeoutMs) || 15000, 30000);
+      if (!/^https?:\/\//i.test(url)) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(
+          JSON.stringify({
+            ok: false,
+            error: "URL harus diawali http:// atau https://",
+          }),
+        );
+      }
+      const ctrl = new AbortController();
+      const timer = setTimeout(() => ctrl.abort(), timeoutMs);
+      const t0 = Date.now();
+      try {
+        const init = { method, headers, signal: ctrl.signal };
+        if (b.body != null && method !== "GET" && method !== "HEAD")
+          init.body =
+            typeof b.body === "string" ? b.body : JSON.stringify(b.body);
+        const r = await fetch(url, init);
+        const text = await r.text();
+        const outHeaders = {};
+        try {
+          r.headers.forEach((v, k) => {
+            outHeaders[k] = v;
+          });
+        } catch (_) {}
+        clearTimeout(timer);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(
+          JSON.stringify({
+            ok: r.ok,
+            status: r.status,
+            statusText: r.statusText,
+            headers: outHeaders,
+            body: text.slice(0, 20000),
+            truncated: text.length > 20000,
+            ms: Date.now() - t0,
+          }),
+        );
+      } catch (e) {
+        clearTimeout(timer);
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(
+          JSON.stringify({
+            ok: false,
+            error: e.name === "AbortError" ? "timeout" : e.message || String(e),
+            ms: Date.now() - t0,
+          }),
+        );
+      }
+    });
+    return;
+  }
+
   // ww ls-save / ls-load: jembatan migrasi localStorage antar-origin (browser
   // 127.0.0.1:8090 ↔ Electron app://). localStorage tak bisa dibaca lintas origin,
   // jadi browser menyimpan dump-nya ke satu file bersama di ~/.wolfspace, Electron
@@ -4677,7 +4858,8 @@ const server = http.createServer(async (req, res) => {
           res.writeHead(400, { "Content-Type": "application/json" });
           return res.end(
             JSON.stringify({
-              error: "ditolak: tak ada .ww.json — bukan workspace ww yang dikelola",
+              error:
+                "ditolak: tak ada .ww.json — bukan workspace ww yang dikelola",
             }),
           );
         }
@@ -4736,19 +4918,31 @@ const server = http.createServer(async (req, res) => {
   // RAG (P1): simpan/ambil PENGETAHUAN (memori proyek + docs). Store per-proyek
   // di ~/.wolfspace/rag/<key>. Ingest dipanggil frontend saat run agent selesai
   // (adone); retrieve juga tersedia sbg tool agent (agent/tools/index.cjs).
-  if (req.method === "POST" && (req.url === "/rag/ingest" || req.url === "/rag/retrieve")) {
+  if (
+    req.method === "POST" &&
+    (req.url === "/rag/ingest" || req.url === "/rag/retrieve")
+  ) {
     let body = "";
     req.on("data", (c) => (body += c));
     req.on("end", () => {
       let b = {};
-      try { b = JSON.parse(body || "{}"); } catch (_) {}
+      try {
+        b = JSON.parse(body || "{}");
+      } catch (_) {}
       let out;
       try {
         const rag = require("./agent/rag.cjs");
         if (req.url === "/rag/ingest") {
-          out = rag.ingest(b.project || "global", { text: b.text, kind: b.kind, meta: b.meta });
+          out = rag.ingest(b.project || "global", {
+            text: b.text,
+            kind: b.kind,
+            meta: b.meta,
+          });
         } else {
-          out = rag.retrieve(b.project || "global", b.query, { k: b.k, kind: b.kind });
+          out = rag.retrieve(b.project || "global", b.query, {
+            k: b.k,
+            kind: b.kind,
+          });
         }
       } catch (e) {
         out = { ok: false, err: e.message };
@@ -4792,11 +4986,16 @@ const server = http.createServer(async (req, res) => {
       const ww = require("./scripts/ww.cjs");
       let out;
       try {
-        if (req.url === "/ww/branch/switch") out = ww.switchBranch(b.path, b.branch);
-        else if (req.url === "/ww/branch/create") out = ww.createBranch(b.path, b.branch, b.from);
-        else if (req.url === "/ww/branch/rename") out = ww.renameBranch(b.path, b.oldName, b.newName);
-        else if (req.url === "/ww/branch/delete") out = ww.deleteBranch(b.path, b.branch);
-        else if (req.url === "/ww/rename") out = ww.renameWorkspaceFolder(b.path, b.newName);
+        if (req.url === "/ww/branch/switch")
+          out = ww.switchBranch(b.path, b.branch);
+        else if (req.url === "/ww/branch/create")
+          out = ww.createBranch(b.path, b.branch, b.from);
+        else if (req.url === "/ww/branch/rename")
+          out = ww.renameBranch(b.path, b.oldName, b.newName);
+        else if (req.url === "/ww/branch/delete")
+          out = ww.deleteBranch(b.path, b.branch);
+        else if (req.url === "/ww/rename")
+          out = ww.renameWorkspaceFolder(b.path, b.newName);
       } catch (e) {
         out = { ok: false, err: e.message };
       }
@@ -4952,18 +5151,34 @@ const server = http.createServer(async (req, res) => {
     try {
       if (!fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
         res.writeHead(404, { "Content-Type": "text/html; charset=utf-8" });
-        return res.end(`<html><body style="background:#0b0d11;color:#aaa;font-family:system-ui;padding:40px"><h3>404 — File not found</h3><p>${resolved}</p></body></html>`);
+        return res.end(
+          `<html><body style="background:#0b0d11;color:#aaa;font-family:system-ui;padding:40px"><h3>404 — File not found</h3><p>${resolved}</p></body></html>`,
+        );
       }
       const ext = path.extname(resolved).toLowerCase();
       const mimeTypes = {
-        ".html": "text/html", ".htm": "text/html",
-        ".css": "text/css", ".js": "application/javascript", ".mjs": "application/javascript",
-        ".json": "application/json", ".xml": "application/xml",
-        ".svg": "image/svg+xml", ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".gif": "image/gif", ".webp": "image/webp", ".ico": "image/x-icon",
-        ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf",
-        ".mp4": "video/mp4", ".webm": "video/webm", ".mp3": "audio/mpeg",
-        ".pdf": "application/pdf", ".txt": "text/plain",
+        ".html": "text/html",
+        ".htm": "text/html",
+        ".css": "text/css",
+        ".js": "application/javascript",
+        ".mjs": "application/javascript",
+        ".json": "application/json",
+        ".xml": "application/xml",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".ico": "image/x-icon",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+        ".ttf": "font/ttf",
+        ".mp4": "video/mp4",
+        ".webm": "video/webm",
+        ".mp3": "audio/mpeg",
+        ".pdf": "application/pdf",
+        ".txt": "text/plain",
       };
       const ct = mimeTypes[ext] || "application/octet-stream";
       res.writeHead(200, {
@@ -4974,9 +5189,12 @@ const server = http.createServer(async (req, res) => {
       // /preview-file-assets/<dir-absolut>/ — tanpa ini endpoint assets tak pernah kena.
       if (ext === ".html" || ext === ".htm") {
         const dir = resolved.replace(/\\/g, "/").replace(/\/[^\/]*$/, "/");
-        const baseTag = '<base href="/preview-file-assets/' + encodeURI(dir) + '">';
+        const baseTag =
+          '<base href="/preview-file-assets/' + encodeURI(dir) + '">';
         let html = fs.readFileSync(resolved, "utf8");
-        html = /<head[^>]*>/i.test(html) ? html.replace(/<head[^>]*>/i, (m) => m + baseTag) : baseTag + html;
+        html = /<head[^>]*>/i.test(html)
+          ? html.replace(/<head[^>]*>/i, (m) => m + baseTag)
+          : baseTag + html;
         return res.end(html);
       }
       return fs.createReadStream(resolved).pipe(res);
@@ -4989,7 +5207,9 @@ const server = http.createServer(async (req, res) => {
   // E.g. if HTML at C:/foo/index.html links <img src="img/logo.png">,
   // the iframe base URL resolves to /preview-file-assets/C:/foo/img/logo.png
   if (req.method === "GET" && urlPath.startsWith("/preview-file-assets/")) {
-    const assetPath = decodeURIComponent(urlPath.slice("/preview-file-assets/".length));
+    const assetPath = decodeURIComponent(
+      urlPath.slice("/preview-file-assets/".length),
+    );
     const resolved = path.resolve(assetPath);
     try {
       if (!fs.existsSync(resolved) || fs.statSync(resolved).isDirectory()) {
@@ -4998,12 +5218,22 @@ const server = http.createServer(async (req, res) => {
       }
       const ext = path.extname(resolved).toLowerCase();
       const mimeTypes = {
-        ".html": "text/html", ".htm": "text/html",
-        ".css": "text/css", ".js": "application/javascript", ".mjs": "application/javascript",
-        ".json": "application/json", ".svg": "image/svg+xml",
-        ".png": "image/png", ".jpg": "image/jpeg", ".jpeg": "image/jpeg",
-        ".gif": "image/gif", ".webp": "image/webp", ".ico": "image/x-icon",
-        ".woff": "font/woff", ".woff2": "font/woff2", ".ttf": "font/ttf",
+        ".html": "text/html",
+        ".htm": "text/html",
+        ".css": "text/css",
+        ".js": "application/javascript",
+        ".mjs": "application/javascript",
+        ".json": "application/json",
+        ".svg": "image/svg+xml",
+        ".png": "image/png",
+        ".jpg": "image/jpeg",
+        ".jpeg": "image/jpeg",
+        ".gif": "image/gif",
+        ".webp": "image/webp",
+        ".ico": "image/x-icon",
+        ".woff": "font/woff",
+        ".woff2": "font/woff2",
+        ".ttf": "font/ttf",
       };
       const ct = mimeTypes[ext] || "application/octet-stream";
       res.writeHead(200, {

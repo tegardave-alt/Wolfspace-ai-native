@@ -2060,15 +2060,6 @@ function Sidebar({
             active={view === "settings"}
             onClick={() => setView("settings")}
           />
-          <Item
-            icon={SB.runner({ width: 19, height: 19 })}
-            label="Agent Runner"
-            active={view === "agents"}
-            onClick={() => {
-              setView("agents");
-              onAgentRunner?.();
-            }}
-          />
         </div>
       )}
       <div

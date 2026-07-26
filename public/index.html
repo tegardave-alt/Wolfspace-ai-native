@@ -4,6 +4,15 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Wolfspace UI" />
+    <!-- Content-Security-Policy: menyenyapkan peringatan keamanan Electron TANPA
+         'unsafe-eval'. 'unsafe-inline' WAJIB (app menyuntik kode terkompilasi Babel
+         sebagai <script> inline + ada inline <style>). blob:/worker-src untuk worker
+         Monaco. connect/frame longgar untuk fetch API & Live Browser preview. Jika
+         suatu lib ternyata butuh eval, hapus meta ini (warning kembali, tak fatal). -->
+    <meta
+      http-equiv="Content-Security-Policy"
+      content="default-src 'self' app: blob: data:; script-src 'self' 'unsafe-inline' app: blob:; style-src 'self' 'unsafe-inline' app:; img-src 'self' data: blob: app: http: https:; font-src 'self' data: app:; media-src 'self' data: blob: app:; connect-src 'self' app: blob: data: http: https: ws: wss:; worker-src 'self' blob: app:; child-src 'self' blob: app:; frame-src 'self' app: blob: data: http: https:;"
+    />
     <title>Wolfspace UI</title>
 
     <script>
@@ -259,22 +268,38 @@
             "/app/AgentRunner.jsx",
             "/app/Workflow.jsx",
           ];
-          let jsxCode = "";
+          // Kumpulkan tiap modul sebagai potongan TERPISAH (bukan satu string raksasa).
+          const parts = [];
           for (const m of APP_MODULES) {
             try {
               const mr = await fetch(m + "?v=" + Date.now());
-              if (mr.ok) jsxCode += (await mr.text()) + "\n";
+              if (mr.ok) parts.push({ name: m, src: await mr.text() });
               else console.error("Modul gagal dimuat (" + mr.status + "):", m);
             } catch (me) {
               console.error("Modul error:", m, me);
             }
           }
-          jsxCode += await (await fetch("/app.jsx?v=" + Date.now())).text();
+          parts.push({
+            name: "/app.jsx",
+            src: await (await fetch("/app.jsx?v=" + Date.now())).text(),
+          });
 
           try {
-            const compiled = Babel.transform(jsxCode, {
-              presets: ["react"],
-            }).code;
+            // Transpile PER-MODUL lalu gabung hasilnya (di-inject sbagai SATU <script>,
+            // jadi tetap satu scope global — hoisting antar-file tak berubah). Dgn tiap
+            // input Babel < 500KB, @babel/generator tak lagi men-"deoptimise" styling →
+            // note "exceeds the max of 500KB" hilang, DAN output tak dipaksa compact
+            // sehingga stack-trace tetap terbaca. `filename` bikin pesan Babel menyebut
+            // modul yang benar (bukan "undefined").
+            const compiled = parts
+              .map(
+                (p) =>
+                  Babel.transform(p.src, {
+                    presets: ["react"],
+                    filename: p.name,
+                  }).code,
+              )
+              .join("\n;\n");
             // TAHAN! Jangan simpan ke localStorage dulu sampai React merendernya tanpa error
             window._pendingGoodApp = compiled;
 
