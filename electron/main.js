@@ -659,6 +659,19 @@ function migrateOldUserDataOnce() {
   }
 }
 
+// Tangkap dan catat semua error global agar tampil di console
+process.on("uncaughtException", (error) => {
+  console.error("[Electron Error] Uncaught Exception:", error);
+});
+process.on("unhandledRejection", (reason, promise) => {
+  console.error(
+    "[Electron Error] Unhandled Rejection at:",
+    promise,
+    "reason:",
+    reason,
+  );
+});
+
 app.whenReady().then(() => {
   migrateOldUserDataOnce();
   registerAppProtocol();
@@ -721,13 +734,18 @@ app.whenReady().then(() => {
     // main thread yang terblokir itu menahan pengiriman index.html + seluruh aset →
     // jendela muncul tapi "Not Responding" sampai hashing selesai. readFile async +
     // yield antar file membuat main tetap melayani aset selama seeding berjalan.
-    const _hashFileAsync = async (fp) => {
-      try {
-        const buf = await fs.promises.readFile(fp);
-        return crypto.createHash("md5").update(buf).digest("hex");
-      } catch (_) {
-        return null;
-      }
+    const _hashFileAsync = (fp) => {
+      return new Promise((resolve) => {
+        try {
+          const hash = crypto.createHash("md5");
+          const stream = fs.createReadStream(fp, { highWaterMark: 64 * 1024 });
+          stream.on("data", (chunk) => hash.update(chunk));
+          stream.on("end", () => resolve(hash.digest("hex")));
+          stream.on("error", () => resolve(null));
+        } catch (_) {
+          resolve(null);
+        }
+      });
     };
     const _seedHashes = async (dir, depth, maxDepth, extFilter) => {
       if (depth > maxDepth) return;
@@ -742,8 +760,11 @@ app.whenReady().then(() => {
         const fp = path.join(dir, e.name);
         if (e.isDirectory())
           await _seedHashes(fp, depth + 1, maxDepth, extFilter);
-        else if (!extFilter || extFilter.test(e.name))
+        else if (!extFilter || extFilter.test(e.name)) {
           _bkHash.set(fp, await _hashFileAsync(fp));
+          // Jeda event loop untuk memastikan IPC / UI renderer tidak hang
+          await new Promise((r) => setImmediate(r));
+        }
       }
     };
     // Seeding baseline hash dijalankan TERPISAH & tak menahan whenReady. Watcher
@@ -766,6 +787,7 @@ app.whenReady().then(() => {
     };
     _seedAll();
     const _watchStart = Date.now();
+    // Mengaktifkan kembali Hot Reload
     if (fs.existsSync(root) && !process.env.ELECTRON_RUN_AS_NODE) {
       const handleWatch = (baseDir, eventType, filename) => {
         if (
@@ -815,13 +837,23 @@ app.whenReady().then(() => {
             clearTimeout(backendTimer);
             backendTimer = setTimeout(() => {
               console.log(
-                "[hot-reload] backend changed, restarting app:",
+                "[hot-reload] backend changed, reloading core in-memory:",
                 filename,
               );
               try {
-                app.relaunch();
-                app.exit(0);
-              } catch (_) {}
+                const rootDir = unpackedRoot();
+                for (const k of Object.keys(require.cache)) {
+                  if (k.startsWith(rootDir)) delete require.cache[k];
+                }
+                _core = null;
+                core();
+                console.log("[hot-reload] backend reloaded successfully!");
+              } catch (err) {
+                console.error(
+                  "[hot-reload] error reloading core:",
+                  err.message,
+                );
+              }
             }, 500);
           }
         }, 300);

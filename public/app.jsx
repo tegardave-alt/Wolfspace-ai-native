@@ -1368,6 +1368,42 @@ function App() {
   });
   const [globalPreviewItem, setGlobalPreviewItem] = useState(null);
   const [showHistory, setShowHistory] = useState(false);
+
+  const [currentChatId, setCurrentChatId] = useState(null);
+  useEffect(() => {
+    if (messages.length === 0) return;
+    try {
+      const saved = JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
+      const cid = currentChatId || Date.now();
+      if (!currentChatId) setCurrentChatId(cid);
+
+      const existingIndex = saved.findIndex((c) => c.id === cid);
+      if (existingIndex >= 0) {
+        saved[existingIndex] = {
+          ...saved[existingIndex],
+          title:
+            saved[existingIndex].title && saved[existingIndex].title !== "Chat"
+              ? saved[existingIndex].title
+              : messages[0]?.text?.slice(0, 60) || "Chat",
+          messages: messages,
+          history: history,
+          savedAt: new Date().toISOString(),
+          project: selectedProject,
+        };
+      } else {
+        saved.push({
+          id: cid,
+          title: messages[0]?.text?.slice(0, 60) || "Chat",
+          messages: messages,
+          history: history,
+          savedAt: new Date().toISOString(),
+          project: selectedProject,
+        });
+      }
+      localStorage.setItem("wolfspace_chats", JSON.stringify(saved));
+      setSavedChats(saved);
+    } catch (e) {}
+  }, [messages, history, selectedProject, currentChatId]);
   // Agent Runner state
   const [agentRunnerOpen, setAgentRunnerOpen] = useState(false);
   const [availableAgents, setAvailableAgents] = useState([]);
@@ -1474,6 +1510,7 @@ function App() {
     } catch (e) {}
   };
   const restoreChat = (chat) => {
+    setCurrentChatId(chat.id);
     setMessages(chat.messages);
     setHistory(chat.history || []);
     setShowHistory(false);
@@ -2361,28 +2398,14 @@ function App() {
     [modelVal, selectedProject],
   );
   const reset = () => {
+    setCurrentChatId(null);
     setMessages([]);
     setHistory([]);
     setBusy(false);
     setStatus("Siap.");
   };
   const saveChat = () => {
-    if (messages.length === 0) return;
-    try {
-      const saved = JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
-      saved.push({
-        id: Date.now(),
-        title: messages[0]?.text?.slice(0, 60) || "Chat",
-        messages: messages,
-        history: history,
-        savedAt: new Date().toISOString(),
-        project: selectedProject,
-      });
-      localStorage.setItem("wolfspace_chats", JSON.stringify(saved));
-      loadSavedChats();
-    } catch (e) {
-      /* ignore storage errors */
-    }
+    // Digantikan oleh useEffect auto-save agar tidak duplikat
   };
 
   return (
