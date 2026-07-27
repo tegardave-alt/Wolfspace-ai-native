@@ -64,13 +64,23 @@
     "productName": "WOLFSPACE",
     "files": [
       "electron/**",
+      "core.js",
       "server.cjs",
+      "agent/**",
+      "server/**",
+      "scripts/ww.cjs",
+      "terminal.cjs",
       "public/**",
       "config.json",
       "package.json"
     ],
     "asarUnpack": [
+      "core.js",
       "server.cjs",
+      "agent/**",
+      "server/**",
+      "scripts/ww.cjs",
+      "terminal.cjs",
       "public/**",
       "config.json"
     ],

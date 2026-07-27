@@ -155,7 +155,14 @@ function hasDocker() {
     return false;
   }
 }
-const USE_SANDBOX = CONFIG.sandbox === true && hasDocker();
+// Kebijakan terpusat (agent/sandbox-policy.cjs); fallback "off" = default lama
+// jalur eksekusi kode, jadi perilaku tanpa konfigurasi tak berubah.
+const sandboxPolicy = require("./sandbox-policy.cjs");
+const USE_SANDBOX = sandboxPolicy.shouldSandbox(
+  CONFIG.sandbox,
+  hasDocker(),
+  "off",
+);
 async function runSandboxed(lang, code) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qsbx-"));
   const isJs = lang === "javascript";
@@ -782,4 +789,3 @@ module.exports = {
   RUNNABLE,
   ALIAS,
 };
-

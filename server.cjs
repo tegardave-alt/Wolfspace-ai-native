@@ -247,6 +247,9 @@ const debugSubs = new Set(); // live SSE writers
 
 // Precision debugging via trace system
 const trace = require("./agent/trace.cjs");
+// Kebijakan sandbox terpusat (lihat agent/sandbox-policy.cjs): menyatukan gerbang
+// yang dulu berbeda antara jalur eksekusi kode dan jalur bash terkurung.
+const sandboxPolicy = require("./agent/sandbox-policy.cjs");
 let _evSeq = 0;
 function dlog(cat, level, msg, data) {
   const e = {
@@ -568,7 +571,14 @@ async function hasDockerAsync() {
 // evaluated lazily inside runSandboxed
 // Run code in a throwaway, network-less, resource-capped, read-only container.
 async function runSandboxed(lang, code) {
-  const useSandbox = CONFIG.sandbox === true && (await hasDockerAsync());
+  // fallback "off": default lama jalur eksekusi kode. Mode "on" (sandbox:true /
+  // WOLFSPACE_SANDBOX=on) mengembalikan true walau Docker tak ada -> throw di
+  // bawah = gagal-tertutup, bukan diam-diam jalan native.
+  const useSandbox = sandboxPolicy.shouldSandbox(
+    CONFIG.sandbox,
+    await hasDockerAsync(),
+    "off",
+  );
   if (!useSandbox) {
     throw new Error("sandbox disabled or docker not found");
   }
@@ -633,7 +643,9 @@ async function runSandboxed(lang, code) {
 // node_modules in this project), touch the filesystem, network, etc.
 // Keep this server bound to 127.0.0.1 and never expose it to a network.
 async function runJS(code) {
-  if (CONFIG.sandbox === true && (await hasDockerAsync()))
+  if (
+    sandboxPolicy.shouldSandbox(CONFIG.sandbox, await hasDockerAsync(), "off")
+  )
     return await runSandboxed("javascript", code);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qjs-"));
   const src = path.join(dir, "main.cjs");
@@ -883,7 +895,9 @@ async function runPy(code) {
         "Python code memanggil input() tapi stdin tidak tersedia (eksekusi headless). Gunakan nilai hardcoded.",
     };
   }
-  if (CONFIG.sandbox === true && (await hasDockerAsync()))
+  if (
+    sandboxPolicy.shouldSandbox(CONFIG.sandbox, await hasDockerAsync(), "off")
+  )
     return await runSandboxed("python", code);
 
   const tmpPy = path.join(
@@ -1290,7 +1304,11 @@ async function runByLang(lang, code) {
     ok: !!r.ok,
     ms: Date.now() - t0,
     bytes: (code || "").length,
-    sandbox: CONFIG.sandbox === true && _hasDockerCache,
+    sandbox: sandboxPolicy.shouldSandbox(
+      CONFIG.sandbox,
+      _hasDockerCache,
+      "off",
+    ),
     error: r.ok ? undefined : errTail(r.error),
   });
   return r;
@@ -3772,6 +3790,39 @@ const server = http.createServer(async (req, res) => {
     })
   )
     return;
+
+  // MCP Configuration Endpoints
+  if (_path === "/mcp") {
+    const mcpClient = require("./agent/mcp-client.cjs");
+    if (req.method === "GET") {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      return res.end(JSON.stringify(mcpClient.getServers()));
+    }
+    if (req.method === "POST" || req.method === "DELETE") {
+      let body = "";
+      req.on("data", (c) => (body += c.toString()));
+      req.on("end", async () => {
+        try {
+          const payload = JSON.parse(body || "{}");
+          let result;
+          if (req.method === "POST") {
+            if (!payload.name || !payload.conf)
+              throw new Error("Missing name or conf");
+            result = await mcpClient.addServer(payload.name, payload.conf);
+          } else if (req.method === "DELETE") {
+            if (!payload.name) throw new Error("Missing name");
+            result = mcpClient.removeServer(payload.name);
+          }
+          res.writeHead(200, { "Content-Type": "application/json" });
+          res.end(JSON.stringify(result));
+        } catch (e) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: e.message }));
+        }
+      });
+      return;
+    }
+  }
 
   // HuggingFace: search GGUF models
   if (req.method === "GET" && (req.url || "").startsWith("/hf/search")) {

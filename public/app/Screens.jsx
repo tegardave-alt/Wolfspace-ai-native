@@ -253,58 +253,143 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       return 1;
     }
   });
-  const [pickerMcp, setPickerMcp] = useState([
-    {
-      id: "github",
-      name: "GitHub & Git Tools",
-      desc: "Access repositories, issues, pull requests, and code diffs",
-      active: true,
-    },
-  ]);
+  const [pickerMcp, setPickerMcp] = useState([]);
+
+  // Pemuat tunggal: dipakai saat mount DAN saat layar lain menyiarkan perubahan MCP.
+  const loadPickerMcp = React.useCallback(() => {
+    if (!window.WOLFSPACE) return;
+    window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }).then(
+      (res) => {
+        if (res && res.body) {
+          try {
+            const data =
+              typeof res.body === "string" ? JSON.parse(res.body) : res.body;
+            const arr = Object.entries(data || {}).map(([name, conf]) => ({
+              id: name,
+              name: name,
+              desc:
+                (conf.command || "") +
+                " " +
+                (conf.args ? conf.args.join(" ") : ""),
+              active: true,
+              conf: conf,
+            }));
+            setPickerMcp(arr);
+          } catch (e) {
+            console.error("Error loading MCP servers", e);
+          }
+        }
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    loadPickerMcp();
+    window.addEventListener("wolfspace_mcp_changed", loadPickerMcp);
+    return () =>
+      window.removeEventListener("wolfspace_mcp_changed", loadPickerMcp);
+  }, [loadPickerMcp]);
+
   const [showPickerMcpInput, setShowPickerMcpInput] = useState(false);
   const [pickerMcpInputUrl, setPickerMcpInputUrl] = useState("");
   const [pickerMcpInputToken, setPickerMcpInputToken] = useState("");
-  const [pickerMcpInputName, setPickerMcpInputName] = useState("");
   const [pickerMcpInputError, setPickerMcpInputError] = useState("");
   const [pickerMcpInputSuccess, setPickerMcpInputSuccess] = useState("");
 
-  const handlePickerMcpCodeConnect = (e) => {
+  const handlePickerMcpCodeConnect = async (e) => {
     if (e && e.stopPropagation) e.stopPropagation();
-    const url = pickerMcpInputUrl.trim();
-    const token = pickerMcpInputToken.trim();
-    const name = pickerMcpInputName.trim();
-    if (!url) {
-      setPickerMcpInputError("URL server MCP wajib diisi.");
+    const type = pickerMcpInputUrl.trim();
+    const envVars = pickerMcpInputToken.trim();
+
+    if (!type) {
+      setPickerMcpInputError("Jenis MCP wajib diisi.");
       return;
     }
-    let urlParsed;
-    try {
-      urlParsed = new URL(url);
-    } catch {
-      setPickerMcpInputError("URL tidak valid.");
-      return;
-    }
+
     setPickerMcpInputError("");
     setPickerMcpInputSuccess("");
-    const serverName = name || urlParsed.hostname;
+
+    let command = "npx";
+    let args = [];
+    let cleanType = type.toLowerCase();
+
+    if (cleanType.startsWith("npx ")) {
+      const parts = type.split(/\s+/);
+      command = parts[0];
+      args = parts.slice(1);
+    } else if (cleanType.includes("/")) {
+      args = ["-y", type];
+    } else if (cleanType === "notion") {
+      args = ["-y", "@notionhq/notion-mcp-server"];
+    } else {
+      args = ["-y", `@modelcontextprotocol/server-${cleanType}`];
+    }
+
+    let name = type
+      .split("/")
+      .pop()
+      .replace("server-", "")
+      .replace(/[^a-zA-Z0-9-]/g, "");
+
+    let env = {};
+    if (envVars) {
+      try {
+        env = JSON.parse(envVars);
+      } catch (err) {
+        if (cleanType.includes("github"))
+          env = { GITHUB_PERSONAL_ACCESS_TOKEN: envVars };
+        else if (cleanType.includes("brave")) env = { BRAVE_API_KEY: envVars };
+        else if (cleanType.includes("postgres"))
+          env = { POSTGRES_URL: envVars };
+        else if (cleanType.includes("slack"))
+          env = { SLACK_BOT_TOKEN: envVars };
+        else if (cleanType.includes("notion")) env = { NOTION_TOKEN: envVars };
+        else env = { TOKEN: envVars };
+      }
+    }
+
+    const conf = { command, args, env };
+
+    if (window.WOLFSPACE) {
+      try {
+        const res = await window.WOLFSPACE.invoke("api", {
+          method: "POST",
+          path: "/mcp",
+          body: { name, conf },
+        });
+        const out = res.body
+          ? typeof res.body === "string"
+            ? JSON.parse(res.body)
+            : res.body
+          : {};
+        if (!out.ok) {
+          setPickerMcpInputError(out.error || "Gagal menambahkan MCP server.");
+          return;
+        }
+      } catch (err) {
+        setPickerMcpInputError(err.message);
+        return;
+      }
+    }
+
     const entry = {
-      id: serverName.replace(/[^a-z0-9]/gi, "_") + "_" + Date.now(),
-      name: serverName,
-      desc: url,
-      url,
-      token: token || undefined,
+      id: name,
+      name: name,
+      desc: (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
       active: true,
+      conf,
     };
-    setPickerMcp((prev) => [...prev, entry]);
+
+    setPickerMcp((prev) => [...prev.filter((p) => p.id !== name), entry]);
     setPickerMcpInputSuccess("✓ Server MCP berhasil ditambahkan!");
     setPickerMcpInputUrl("");
     setPickerMcpInputToken("");
-    setPickerMcpInputName("");
     setTimeout(() => {
       setPickerMcpInputSuccess("");
       setShowPickerMcpInput(false);
     }, 2000);
   };
+
   useEffect(() => {
     try {
       localStorage.setItem("wolfspace_effort", String(pickerEffort));
@@ -806,6 +891,42 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                     e.stopPropagation();
                     setShowModelMenu(false);
                     setShowMcpMenu(!showMcpMenu);
+                    if (!showMcpMenu && window.WOLFSPACE) {
+                      window.WOLFSPACE.invoke("api", {
+                        method: "GET",
+                        path: "/mcp",
+                      })
+                        .then((res) => {
+                          if (res.body) {
+                            const data =
+                              typeof res.body === "string"
+                                ? JSON.parse(res.body)
+                                : res.body;
+                            // GET /mcp -> mcpClient.getServers() = config.mcpServers LANGSUNG
+                            // (peta nama->conf), BUKAN { mcpServers: {...} }. Dulu di sini
+                            // dibaca data.mcpServers yang selalu undefined, sehingga blok ini
+                            // tak pernah jalan -> daftar TAK PERNAH disegarkan, dan server yang
+                            // sudah dihapus di tampilan lain tetap terlihat. Samakan dengan
+                            // pemuatan awal di atas yang memang memakai Object.entries(data).
+                            const arr = Object.entries(data || {}).map(
+                              ([id, conf]) => ({
+                                id,
+                                name: id,
+                                desc:
+                                  (conf.command || "") +
+                                  " " +
+                                  (conf.args ? conf.args.join(" ") : ""),
+                                active: true,
+                                conf,
+                              }),
+                            );
+                            setPickerMcp(arr);
+                          }
+                        })
+                        .catch((err) =>
+                          console.error("Error reloading MCP", err),
+                        );
+                    }
                   }}
                 >
                   <span>MCP</span>
@@ -912,9 +1033,47 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                   }}
                                   onClick={(e) => {
                                     e.stopPropagation();
-                                    setPickerMcp((prev) =>
-                                      prev.filter((item) => item.id !== srv.id),
-                                    );
+                                    // Daftar MCP dipegang DUA komponen dgn state terpisah
+                                    // (pickerMcp di sini, mcpServers di Components.jsx).
+                                    // Tanpa siaran, hapus di satu layar tak terlihat di layar
+                                    // lain sampai ia memuat ulang. Siarkan supaya keduanya sinkron.
+                                    const _bcast = () => {
+                                      try {
+                                        window.dispatchEvent(
+                                          new CustomEvent(
+                                            "wolfspace_mcp_changed",
+                                          ),
+                                        );
+                                      } catch (_) {}
+                                    };
+                                    if (window.WOLFSPACE) {
+                                      window.WOLFSPACE.invoke("api", {
+                                        method: "DELETE",
+                                        path: "/mcp",
+                                        body: { name: srv.id },
+                                      })
+                                        .then(() => {
+                                          setPickerMcp((prev) =>
+                                            prev.filter(
+                                              (item) => item.id !== srv.id,
+                                            ),
+                                          );
+                                          _bcast();
+                                        })
+                                        .catch((err) =>
+                                          alert(
+                                            "Gagal menghapus MCP: " +
+                                              err.message,
+                                          ),
+                                        );
+                                    } else {
+                                      setPickerMcp((prev) =>
+                                        prev.filter(
+                                          (item) => item.id !== srv.id,
+                                        ),
+                                      );
+                                      _bcast();
+                                    }
                                   }}
                                   onMouseEnter={(e) => {
                                     e.currentTarget.style.color = "#f85149";
@@ -1022,11 +1181,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                   setShowPickerMcpInput(false);
                                   setPickerMcpInputUrl("");
                                   setPickerMcpInputToken("");
-                                  setPickerMcpInputName("");
                                   setPickerMcpInputError("");
                                 }
                               }}
-                              placeholder="URL server MCP (contoh: https://mcp.example.com/sse)"
+                              placeholder="Jenis MCP (contoh: github, brave-search, sqlite)"
                               style={{
                                 width: "100%",
                                 background: "rgba(255,255,255,0.04)",
@@ -1053,37 +1211,6 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                 setPickerMcpInputSuccess("");
                               }}
                               onKeyDown={(e) => {
-                                if (e.key === "Escape") {
-                                  setShowPickerMcpInput(false);
-                                  setPickerMcpInputUrl("");
-                                  setPickerMcpInputToken("");
-                                  setPickerMcpInputName("");
-                                  setPickerMcpInputError("");
-                                }
-                              }}
-                              placeholder="Token / API Key (opsional)"
-                              style={{
-                                width: "100%",
-                                background: "rgba(255,255,255,0.04)",
-                                border: "1px solid rgba(255,255,255,0.1)",
-                                borderRadius: "6px",
-                                color: "#e2e8f0",
-                                fontSize: "11px",
-                                fontFamily: "inherit",
-                                padding: "6px 9px",
-                                outline: "none",
-                                boxSizing: "border-box",
-                              }}
-                            />
-                            <input
-                              type="text"
-                              value={pickerMcpInputName}
-                              onChange={(e) => {
-                                setPickerMcpInputName(e.target.value);
-                                setPickerMcpInputError("");
-                                setPickerMcpInputSuccess("");
-                              }}
-                              onKeyDown={(e) => {
                                 if (e.key === "Enter") {
                                   e.preventDefault();
                                   handlePickerMcpCodeConnect(e);
@@ -1092,11 +1219,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                   setShowPickerMcpInput(false);
                                   setPickerMcpInputUrl("");
                                   setPickerMcpInputToken("");
-                                  setPickerMcpInputName("");
                                   setPickerMcpInputError("");
                                 }
                               }}
-                              placeholder="Nama server (opsional)"
+                              placeholder="API Key / Konfigurasi (JSON opsional)"
                               style={{
                                 width: "100%",
                                 background: "rgba(255,255,255,0.04)",
@@ -1172,7 +1298,6 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                 setShowPickerMcpInput(false);
                                 setPickerMcpInputUrl("");
                                 setPickerMcpInputToken("");
-                                setPickerMcpInputName("");
                                 setPickerMcpInputError("");
                                 setPickerMcpInputSuccess("");
                               }}

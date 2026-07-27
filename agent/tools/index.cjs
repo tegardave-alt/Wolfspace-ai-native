@@ -400,6 +400,7 @@ function _hasDocker() {
   return _dockerOk;
 }
 const WW_SANDBOX_IMAGE = process.env.WW_SANDBOX_IMAGE || "wolfspace-sandbox";
+const _sandboxPolicy = require("../sandbox-policy.cjs");
 function _runBashInDocker(cmd, root, args) {
   const hostDir = path.resolve(root).replace(/\\/g, "/");
   let workdir = "/work";
@@ -539,16 +540,22 @@ async function _brokeredFileOp(name, args, wsRoot) {
           // Beri KONTEN NYATA di sekitar area termirip supaya percobaan berikut
           // model membawa informasi baru (bukan mengulang buta).
           const probe = (
-            tLines.find((l) => l.trim().length > 8) || tLines[0] || ""
+            tLines.find((l) => l.trim().length > 8) ||
+            tLines[0] ||
+            ""
           )
             .trim()
             .slice(0, 30);
           let hint = "";
           if (probe) {
-            const hit = oldLines.findIndex((l) => l.includes(probe.slice(0, 15)));
+            const hit = oldLines.findIndex((l) =>
+              l.includes(probe.slice(0, 15)),
+            );
             if (hit >= 0)
               hint =
-                "\nKonten SEBENARNYA di sekitar baris " + (hit + 1) + ":\n" +
+                "\nKonten SEBENARNYA di sekitar baris " +
+                (hit + 1) +
+                ":\n" +
                 oldLines
                   .slice(Math.max(0, hit - 2), hit + tLines.length + 3)
                   .join("\n");
@@ -556,7 +563,8 @@ async function _brokeredFileOp(name, args, wsRoot) {
           return {
             ok: false,
             output:
-              "old_string tidak ditemukan di " + rel +
+              "old_string tidak ditemukan di " +
+              rel +
               " (harus PERSIS, termasuk spasi/indentasi)." +
               (hint || " Gunakan tool read dulu untuk melihat konten file."),
           };
@@ -1038,7 +1046,18 @@ async function runSelfTool(name, args, emit, context = {}) {
         null;
       if (_confineRoot) {
         // Utama: pengurungan OS via Docker (hanya folder ww yang di-mount) — batas nyata.
-        if (_hasDocker() && process.env.WW_BASH_NATIVE !== "1") {
+        // Gerbangnya kini lewat kebijakan terpusat (agent/sandbox-policy.cjs) dengan
+        // fallback "auto" = perilaku lama (pakai Docker bila ada). Bedanya: setelan
+        // eksplisit `"sandbox": false` / WOLFSPACE_SANDBOX=off KINI DIHORMATI —
+        // sebelumnya jalur ini mengabaikannya dan tetap memakai Docker.
+        if (
+          process.env.WW_BASH_NATIVE !== "1" &&
+          _sandboxPolicy.shouldSandbox(
+            _sandboxPolicy.configSandbox(),
+            _hasDocker(),
+            "auto",
+          )
+        ) {
           return await _runBashInDocker(cmd, _confineRoot, args);
         }
         // Cadangan: guard regex (bocor, defense-in-depth) saat Docker tak tersedia.
@@ -1381,7 +1400,10 @@ async function runSelfTool(name, args, emit, context = {}) {
       // agar ingest (frontend) & retrieve (di sini) selalu sekunci. Isolasi per-ww
       // (scope via workspaceRoot) = P3 — saat itu ingest juga dikunci ke ref sama.
       const rag = require("../rag.cjs");
-      const out = rag.retrieveFormatted("global", args.query, { k: args.k, kind: args.kind || undefined });
+      const out = rag.retrieveFormatted("global", args.query, {
+        k: args.k,
+        kind: args.kind || undefined,
+      });
       return { ok: true, output: out };
     }
     if (name === "dspy") {

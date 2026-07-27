@@ -863,27 +863,8 @@ function WorkflowBuilderInner({
     applyNodeChanges,
   } = XY;
   const idRef = React.useRef(3);
-  const [nodes, setNodes, onNodesChange] = useNodesState(
-    integration
-      ? []
-      : [
-          {
-            id: "n1",
-            type: "wf",
-            position: { x: 60, y: 110 },
-            data: { label: "User prompt", kind: "prompt", accent: "#3fb950" },
-          },
-          {
-            id: "n2",
-            type: "wf",
-            position: { x: 320, y: 110 },
-            data: { label: "Coding agent", kind: "agent", accent: "#2f81f7" },
-          },
-        ],
-  );
-  const [edges, setEdges, onEdgesChange] = useEdgesState(
-    integration ? [] : [{ id: "e1", source: "n1", target: "n2", type: "wf" }],
-  );
+  const [nodes, setNodes, onNodesChange] = useNodesState([]);
+  const [edges, setEdges, onEdgesChange] = useEdgesState([]);
   const [showJson, setShowJson] = React.useState(false);
   // mode "builder" = kanvas manual; "live" = cermin eksekusi agent (Fase 1) —
   // tiap langkah t:"act" dari self_agent.cjs jadi node berurut, yang terbaru disorot.

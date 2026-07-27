@@ -1,13 +1,26 @@
-# WOLFSPACE execution sandbox image -- referenced by server.cjs's
-# runSandboxed() (SANDBOX_IMAGE = "WOLFSPACE-sandbox") but never actually
-# built: this file didn't exist until now, so sandbox/build.ps1 would fail
-# immediately on `docker build` (no Dockerfile in context). This completes
-# the feature described in sandbox/README.md.
+# WOLFSPACE execution sandbox image. Tag: "wolfspace-sandbox" (LOWERCASE --
+# Docker repository names may not contain uppercase; an earlier revision used
+# "WOLFSPACE-sandbox" in the code, which could never be built at all. Keep
+# every reference lowercase: server.cjs, agent/runners.cjs, agent/tools/index.cjs,
+# sandbox/build.ps1, sandbox/README.md).
+#
+# TWO CALLERS use this image, and they are gated DIFFERENTLY -- know which one
+# you are exercising before concluding "the sandbox does/doesn't work":
+#
+#   1. server.cjs runSandboxed() + agent/runners.cjs  (Python/JS code execution)
+#      Gate: config.json "sandbox": true  AND  docker available.
+#      NOTE: "sandbox" is currently unset in BOTH config.json and
+#      config.docker.json, so this path is inactive by default.
+#
+#   2. agent/tools/index.cjs _runBashInDocker()  (bash tool, workspace-confined)
+#      Gate: a confined workspace root  AND  docker available  AND
+#      WW_BASH_NATIVE !== "1". No config flag -- this one self-activates
+#      whenever Docker is running, and falls back to a regex guard when not.
 #
 # The image itself does NOT set resource/network limits -- those are applied
 # by the CALLER at `docker run` time (--network none, --memory, --cpus,
-# --read-only, etc., see server.cjs runSandboxed()). This image only needs
-# to provide the `python` and `node` binaries and run as a non-root user.
+# --read-only, etc.). This image only needs to provide the `python` and `node`
+# binaries and run as a non-root user.
 FROM node:20-bookworm-slim
 
 RUN apt-get update && apt-get install -y --no-install-recommends \

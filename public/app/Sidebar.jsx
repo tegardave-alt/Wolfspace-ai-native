@@ -2093,28 +2093,6 @@ function Sidebar({
             active={terminalOpen}
             onClick={() => setTerminalOpen(!terminalOpen)}
           />
-          <Item
-            icon={
-              <svg
-                width="19"
-                height="19"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <rect x="3" y="4" width="6" height="5" rx="1"></rect>
-                <rect x="15" y="9" width="6" height="5" rx="1"></rect>
-                <rect x="9" y="15" width="6" height="5" rx="1"></rect>
-                <path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path>
-              </svg>
-            }
-            label="Workflow"
-            active={view === "workflow"}
-            onClick={() => setView("workflow")}
-          />
         </div>
       )}
     </aside>

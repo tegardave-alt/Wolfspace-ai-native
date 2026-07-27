@@ -93,6 +93,38 @@ function stripThinkBlocks(text) {
     .trim();
 }
 
+// Ambil kesimpulan dari monolog reasoning saat model tak pernah menutup
+// jawabannya di `content`. Bukan menampilkan mentah-mentah: monolog itu panjang
+// dan berisi keraguan/koreksi diri. Strategi: cari penanda kesimpulan; kalau tak
+// ada, ambil paragraf-paragraf TERAKHIR (bagian paling matang dari penalaran).
+function salvageReasoning(reasoning) {
+  let t = String(reasoning || "");
+  if (!t.trim()) return "";
+  t = stripThinkBlocks(t) || t; // buang tag think bila reasoning ikut membawanya
+  t = t.trim();
+  if (!t) return "";
+
+  // 1) Penanda kesimpulan eksplisit — ambil dari kemunculan TERAKHIR.
+  const marker =
+    /(?:^|\n)\s*(?:kesimpulan|jawaban akhir|final answer|jadi,|singkatnya|ringkasnya)\s*[:\-]?\s*/gi;
+  let lastIdx = -1;
+  for (const m of t.matchAll(marker)) lastIdx = m.index + m[0].length;
+  if (lastIdx > -1) {
+    const tail = t.slice(lastIdx).trim();
+    if (tail.length > 40) return tail.slice(0, 4000);
+  }
+
+  // 2) Tanpa penanda: ambil paragraf terakhir sampai ~1200 karakter.
+  const paras = t.split(/\n\s*\n/).filter((p) => p.trim());
+  const out = [];
+  let n = 0;
+  for (let i = paras.length - 1; i >= 0 && n < 1200; i--) {
+    out.unshift(paras[i].trim());
+    n += paras[i].length;
+  }
+  return out.join("\n\n").slice(0, 4000);
+}
+
 // Hapus rekapitulasi tool / daftar bukti / kalimat pengantar yang tidak perlu
 function stripToolRecap(text) {
   if (!text) return text;
@@ -811,9 +843,45 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         }
 
         let msg;
+        // OBSERVABILITAS panggilan model. Dulu tak ada jejak APA PUN saat permintaan
+        // dimulai — padahal cloud.cjs memberi timeout 600000ms (10 MENIT). Akibatnya
+        // agent bisa diam belasan menit dan log hanya berisi noise renderer, membuat
+        // "macet" mustahil dibedakan dari "sedang menunggu model". Ini terjadi nyata:
+        // setelah menarik 4 halaman Notion, konteks membengkak dan run berhenti tanpa
+        // satu pun event. Catat MULAI (dgn ukuran konteks) + SELESAI (dgn durasi),
+        // dan beri tahu UI supaya user tahu ia sedang menunggu, bukan hang.
+        const _askT0 = Date.now();
+        const _ctxChars = activeMessages.reduce(
+          (n, m) => n + String((m && m.content) || "").length,
+          0,
+        );
+        dlog("self", "info", "model_request_start", {
+          step: state.step,
+          provider: cloud && cloud.provider,
+          messages: activeMessages.length,
+          ctxChars: _ctxChars,
+          tools: currentTools.length,
+        });
+        emit({
+          t: "model_wait",
+          m: "Menunggu jawaban model…",
+          ctxChars: _ctxChars,
+        });
         try {
           msg = await askCloudTools(cloud, activeMessages, currentTools);
+          dlog("self", "info", "model_request_done", {
+            step: state.step,
+            ms: Date.now() - _askT0,
+            contentChars: String((msg && msg.content) || "").length,
+            reasoningChars: String((msg && msg.reasoning) || "").length,
+            toolCalls: (msg && msg.tool_calls && msg.tool_calls.length) || 0,
+          });
         } catch (e) {
+          dlog("self", "error", "model_request_failed", {
+            step: state.step,
+            ms: Date.now() - _askT0,
+            error: ((e && e.message) || "").slice(0, 120),
+          });
           if (
             _TRANSIENT_SELF.test(e.message || "") &&
             state.fallbackCount < 3
@@ -882,7 +950,22 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               forceRetryCount: state.forceRetryCount + 1,
             };
           }
-          msg.content = "(model tidak memberikan jawaban final)";
+          // SELAMATKAN isi reasoning. Setelah 3 retry, dulu user cuma menerima
+          // placeholder "(model tidak memberikan jawaban final)" — padahal model
+          // SUDAH bekerja: jawabannya ada di dalam monolog reasoning, hanya tak
+          // pernah dipindahkan ke content. Membuangnya berarti membuang hasil
+          // kerja yang sudah dibayar. Ambil bagian akhir reasoning (bagian yang
+          // paling mungkin berisi kesimpulan) dan tandai asalnya dengan jujur.
+          const salvaged = salvageReasoning(msg.reasoning);
+          msg.content = salvaged
+            ? "_(Model tidak menutup jawabannya; berikut kesimpulan dari proses berpikirnya.)_\n\n" +
+              salvaged
+            : "(model tidak memberikan jawaban final)";
+          dlog("self", "info", "reasoning_salvage", {
+            step: state.step,
+            reasoningChars: String(msg.reasoning || "").length,
+            salvagedChars: salvaged ? salvaged.length : 0,
+          });
         }
 
         let calls =

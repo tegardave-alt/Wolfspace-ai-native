@@ -824,8 +824,9 @@ app.whenReady().then(() => {
             if (prev === undefined || prev === hf) return;
             try {
               const wins = BrowserWindow.getAllWindows();
-              for (const w of wins) w.webContents.reload();
-              console.log("[hot-reload] frontend reloaded due to:", filename);
+              for (const w of wins)
+                w.webContents.send("WOLFSPACE:hmr", filename);
+              console.log("[hmr] frontend update sent to UI for:", filename);
             } catch (_) {}
           } else if (isBackend(fullPath)) {
             if (Date.now() - _watchStart < 4000) return;

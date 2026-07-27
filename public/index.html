@@ -210,7 +210,7 @@
         );
       });
 
-      (async function () {
+      window.loadApp = async function () {
         // 1. Cek apakah kita sedang dalam mode Recovery (Auto-Rollback dari Runtime Error)
         if (window.location.search.includes("rollback=true")) {
           console.warn("Memasuki mode Auto-Rollback untuk Runtime Error...");
@@ -290,7 +290,7 @@
             // note "exceeds the max of 500KB" hilang, DAN output tak dipaksa compact
             // sehingga stack-trace tetap terbaca. `filename` bikin pesan Babel menyebut
             // modul yang benar (bukan "undefined").
-            const compiled = parts
+            let compiled = parts
               .map(
                 (p) =>
                   Babel.transform(p.src, {
@@ -299,6 +299,10 @@
                   }).code,
               )
               .join("\n;\n");
+
+            // Wrap in an IIFE so const/let declarations don't collide on HMR re-renders
+            compiled = `(() => {\n${compiled}\n})();`;
+
             // TAHAN! Jangan simpan ke localStorage dulu sampai React merendernya tanpa error
             window._pendingGoodApp = compiled;
 
@@ -330,7 +334,37 @@
         } catch (fetchError) {
           console.error("Gagal mengambil app.jsx:", fetchError);
         }
-      })();
+      };
+
+      // Jalankan aplikasi pertama kali
+      window.loadApp();
+
+      // Listener untuk True Frontend HMR (Tanpa Reload Jendela)
+      if (window.WOLFSPACE && window.WOLFSPACE.onHmr) {
+        window.WOLFSPACE.onHmr((filename) => {
+          if (filename.endsWith(".css")) {
+            console.log(
+              "[hmr] Menerapkan perubahan CSS secara realtime:",
+              filename,
+            );
+            const links = document.querySelectorAll("link[rel='stylesheet']");
+            links.forEach((link) => {
+              if (link.href.includes(filename.split(/[/\\]/).pop())) {
+                link.href = link.href.split("?")[0] + "?v=" + Date.now();
+              }
+            });
+          } else if (filename.endsWith(".jsx") || filename.endsWith(".js")) {
+            console.log(
+              "[hmr] Menyuntikkan ulang komponen React (Soft Refresh):",
+              filename,
+            );
+            window.loadApp();
+          } else {
+            console.log("[hmr] Perubahan butuh hard-reload:", filename);
+            window.location.reload();
+          }
+        });
+      }
     </script>
   </body>
 </html>

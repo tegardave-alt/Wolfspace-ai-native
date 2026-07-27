@@ -71,25 +71,35 @@ function TopBar({
   return (
     <header className="topbar">
       <div className="tb-spacer" />
-      <button 
-        className={`panel-toggle-btn ${panelOpen ? 'active' : ''}`}
+      <button
+        className={`panel-toggle-btn ${panelOpen ? "active" : ""}`}
         onClick={() => setPanelOpen(!panelOpen)}
         title="Toggle Right Panel"
-        style={{ 
-          opacity: panelOpen ? 1 : 0.7, 
-          background: 'transparent', 
-          border: 'none', 
-          cursor: 'pointer', 
-          color: 'inherit',
-          padding: '6px',
-          borderRadius: '6px',
-          display: 'flex',
-          alignItems: 'center'
+        style={{
+          opacity: panelOpen ? 1 : 0.7,
+          background: "transparent",
+          border: "none",
+          cursor: "pointer",
+          color: "inherit",
+          padding: "6px",
+          borderRadius: "6px",
+          display: "flex",
+          alignItems: "center",
         }}
       >
-        <svg xmlns="http://www.w3.org/2000/svg" width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
-          <rect width="18" height="18" x="3" y="3" rx="2" ry="2"/>
-          <line x1="15" x2="15" y1="3" y2="21"/>
+        <svg
+          xmlns="http://www.w3.org/2000/svg"
+          width="18"
+          height="18"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect width="18" height="18" x="3" y="3" rx="2" ry="2" />
+          <line x1="15" x2="15" y1="3" y2="21" />
         </svg>
       </button>
     </header>
@@ -275,11 +285,7 @@ function Blocks({ text }) {
       b.lang && /^(mermaid|mmd)$/i.test(b.lang) ? (
         <MermaidBlock key={i} code={b.code} />
       ) : (
-        <CodeBlock
-          key={i}
-          lang={b.lang}
-          code={b.code}
-        />
+        <CodeBlock key={i} lang={b.lang} code={b.code} />
       )
     ) : b.type === "think" ? null : (
       <p key={i} dangerouslySetInnerHTML={{ __html: b.html }} />
@@ -423,8 +429,19 @@ const is3DFile = (nameOrPath) => /\.(glb|gltf|stl)$/i.test(nameOrPath || "");
 function LightboxModal({ item, onClose }) {
   if (!item) return null;
   const is3D = is3DFile(item.name || item.path || "");
-  const isImg = !is3D && (/\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(item.name || item.path || "") || (item.type && item.type.startsWith("image/")) || (item.url && /\.(png|jpe?g|webp|gif|svg|bmp|ico)(?:\?.*)?$/i.test(item.url)) || (!item.snippet && !/\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || "")));
-  const isVid = /\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || "") || (item.type && item.type.startsWith("video/"));
+  const isImg =
+    !is3D &&
+    (/\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(
+      item.name || item.path || "",
+    ) ||
+      (item.type && item.type.startsWith("image/")) ||
+      (item.url &&
+        /\.(png|jpe?g|webp|gif|svg|bmp|ico)(?:\?.*)?$/i.test(item.url)) ||
+      (!item.snippet &&
+        !/\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || "")));
+  const isVid =
+    /\.(mp4|webm|mov|mkv)$/i.test(item.name || item.path || "") ||
+    (item.type && item.type.startsWith("video/"));
   const displayUrl = item.previewUrl || item.url;
 
   return (
@@ -441,7 +458,7 @@ function LightboxModal({ item, onClose }) {
         justifyContent: "center",
         padding: "24px",
         backdropFilter: "blur(6px)",
-        animation: "fadeIn 0.2s ease"
+        animation: "fadeIn 0.2s ease",
       }}
     >
       <div
@@ -457,7 +474,7 @@ function LightboxModal({ item, onClose }) {
           boxShadow: "0 24px 64px rgba(0,0,0,0.7)",
           display: "flex",
           flexDirection: "column",
-          overflow: "hidden"
+          overflow: "hidden",
         }}
       >
         <div
@@ -467,10 +484,20 @@ function LightboxModal({ item, onClose }) {
             alignItems: "center",
             padding: "12px 16px",
             borderBottom: "1px solid var(--line-strong, #30363d)",
-            background: "var(--surface-3, #21262d)"
+            background: "var(--surface-3, #21262d)",
           }}
         >
-          <span style={{ fontWeight: 600, color: "var(--text, #e5e5e5)", fontSize: "14px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap", maxWidth: "80%" }}>
+          <span
+            style={{
+              fontWeight: 600,
+              color: "var(--text, #e5e5e5)",
+              fontSize: "14px",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+              maxWidth: "80%",
+            }}
+          >
             {is3D ? "🧊" : "📄"} {item.name || item.path || "Preview"}
           </span>
           <button
@@ -483,41 +510,97 @@ function LightboxModal({ item, onClose }) {
               fontSize: "22px",
               cursor: "pointer",
               padding: "0 6px",
-              lineHeight: 1
+              lineHeight: 1,
             }}
             title="Tutup"
           >
             ×
           </button>
         </div>
-        <div style={{ padding: "16px", overflow: "auto", display: "flex", alignItems: "center", justifyContent: "center", maxHeight: "calc(92vh - 55px)", minWidth: "300px", minHeight: "200px" }}>
+        <div
+          style={{
+            padding: "16px",
+            overflow: "auto",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            maxHeight: "calc(92vh - 55px)",
+            minWidth: "300px",
+            minHeight: "200px",
+          }}
+        >
           {is3D && displayUrl ? (
             <Model3DViewer url={displayUrl} name={item.name || item.path} />
           ) : isImg && displayUrl ? (
             <img
               src={displayUrl}
               alt={item.name || item.path}
-              style={{ maxWidth: "100%", maxHeight: "calc(85vh - 80px)", objectFit: "contain", borderRadius: "6px" }}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "calc(85vh - 80px)",
+                objectFit: "contain",
+                borderRadius: "6px",
+              }}
             />
           ) : isVid && displayUrl ? (
             <video
               src={displayUrl}
               controls
               autoPlay
-              style={{ maxWidth: "100%", maxHeight: "calc(85vh - 80px)", borderRadius: "6px" }}
+              style={{
+                maxWidth: "100%",
+                maxHeight: "calc(85vh - 80px)",
+                borderRadius: "6px",
+              }}
             />
           ) : item.snippet ? (
-            <pre style={{ margin: 0, fontFamily: '"JetBrains Mono", Consolas, Courier New, monospace', fontSize: "13px", color: "#4ec9b0", whiteSpace: "pre-wrap", wordBreak: "break-all", background: "#0d1117", padding: "16px", borderRadius: "8px", width: "100%", maxHeight: "calc(82vh - 80px)", overflow: "auto" }}>
+            <pre
+              style={{
+                margin: 0,
+                fontFamily:
+                  '"JetBrains Mono", Consolas, Courier New, monospace',
+                fontSize: "13px",
+                color: "#4ec9b0",
+                whiteSpace: "pre-wrap",
+                wordBreak: "break-all",
+                background: "#0d1117",
+                padding: "16px",
+                borderRadius: "8px",
+                width: "100%",
+                maxHeight: "calc(82vh - 80px)",
+                overflow: "auto",
+              }}
+            >
               {item.snippet}
             </pre>
           ) : (
-            <div style={{ padding: "40px", textAlign: "center", color: "var(--text-muted, #858585)" }}>
+            <div
+              style={{
+                padding: "40px",
+                textAlign: "center",
+                color: "var(--text-muted, #858585)",
+              }}
+            >
               <div style={{ fontSize: "56px", marginBottom: "16px" }}>📄</div>
-              <div style={{ fontSize: "15px", color: "var(--text, #e5e5e5)" }}>{item.name || item.path}</div>
-              {item.size && <div style={{ fontSize: "12px", marginTop: "8px" }}>({Math.round(item.size / 1024)} KB)</div>}
+              <div style={{ fontSize: "15px", color: "var(--text, #e5e5e5)" }}>
+                {item.name || item.path}
+              </div>
+              {item.size && (
+                <div style={{ fontSize: "12px", marginTop: "8px" }}>
+                  ({Math.round(item.size / 1024)} KB)
+                </div>
+              )}
               {displayUrl && (
                 <div style={{ marginTop: "16px" }}>
-                  <a href={displayUrl} target="_blank" rel="noopener noreferrer" style={{ color: "var(--brand, #61afef)", textDecoration: "underline" }}>
+                  <a
+                    href={displayUrl}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    style={{
+                      color: "var(--brand, #61afef)",
+                      textDecoration: "underline",
+                    }}
+                  >
                     Buka / Unduh File
                   </a>
                 </div>
@@ -530,55 +613,164 @@ function LightboxModal({ item, onClose }) {
   );
 }
 
-function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, setModelVal }) {
+function Composer({
+  onSend,
+  onCancel,
+  busy,
+  onAgentCli,
+  models = [],
+  modelVal,
+  setModelVal,
+}) {
   const [val, setVal] = useState("");
   const [attachments, setAttachments] = useState([]);
   const [previewAttachment, setPreviewAttachment] = useState(null);
   const [menu, setMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMcpMenu, setShowMcpMenu] = useState(false);
-  const [mcpServers, setMcpServers] = useState([
-    { id: 'github', name: 'GitHub & Git Tools', desc: 'Access repositories, issues, pull requests, and code diffs', active: true }
-  ]);
-  const [showMcpInput, setShowMcpInput] = useState(false);
-  const [mcpInputUrl, setMcpInputUrl] = useState('');
-  const [mcpInputToken, setMcpInputToken] = useState('');
-  const [mcpInputName, setMcpInputName] = useState('');
-  const [mcpInputError, setMcpInputError] = useState('');
-  const [mcpInputSuccess, setMcpInputSuccess] = useState('');
+  const [mcpServers, setMcpServers] = useState([]);
 
-  const handleMcpCodeConnect = (e) => {
+  // Satu pemuat dipakai ulang: saat mount DAN saat ada siaran perubahan MCP dari
+  // layar lain, supaya kedua tampilan tak pernah menampilkan server yang sudah dihapus.
+  const loadMcpServers = React.useCallback(() => {
+    if (!window.WOLFSPACE) return;
+    window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }).then(
+      (res) => {
+        if (res && res.body) {
+          try {
+            const data =
+              typeof res.body === "string" ? JSON.parse(res.body) : res.body;
+            const arr = Object.entries(data || {}).map(([name, conf]) => ({
+              id: name,
+              name: name,
+              desc:
+                (conf.command || "") +
+                " " +
+                (conf.args ? conf.args.join(" ") : ""),
+              active: true,
+              conf: conf,
+            }));
+            setMcpServers(arr);
+          } catch (e) {
+            console.error("Error loading MCP servers", e);
+          }
+        }
+      },
+    );
+  }, []);
+
+  useEffect(() => {
+    loadMcpServers();
+    window.addEventListener("wolfspace_mcp_changed", loadMcpServers);
+    return () =>
+      window.removeEventListener("wolfspace_mcp_changed", loadMcpServers);
+  }, [loadMcpServers]);
+
+  const [showMcpInput, setShowMcpInput] = useState(false);
+  const [mcpInputUrl, setMcpInputUrl] = useState("");
+  const [mcpInputToken, setMcpInputToken] = useState("");
+  const [mcpInputError, setMcpInputError] = useState("");
+  const [mcpInputSuccess, setMcpInputSuccess] = useState("");
+
+  const handleMcpCodeConnect = async (e) => {
     if (e && e.stopPropagation) e.stopPropagation();
-    const url = mcpInputUrl.trim();
-    const token = mcpInputToken.trim();
-    const name = mcpInputName.trim();
-    if (!url) { setMcpInputError('URL server MCP wajib diisi.'); return; }
-    let urlParsed;
-    try { urlParsed = new URL(url); } catch { setMcpInputError('URL tidak valid.'); return; }
-    setMcpInputError('');
-    setMcpInputSuccess('');
-    const serverName = name || urlParsed.hostname;
+    const type = mcpInputUrl.trim();
+    const envVars = mcpInputToken.trim();
+
+    if (!type) {
+      setMcpInputError("Jenis MCP wajib diisi.");
+      return;
+    }
+
+    setMcpInputError("");
+    setMcpInputSuccess("");
+
+    let command = "npx";
+    let args = [];
+    let cleanType = type.toLowerCase();
+
+    if (cleanType.startsWith("npx ")) {
+      const parts = type.split(/\s+/);
+      command = parts[0];
+      args = parts.slice(1);
+    } else if (cleanType.includes("/")) {
+      args = ["-y", type];
+    } else {
+      args = ["-y", `@modelcontextprotocol/server-${cleanType}`];
+    }
+
+    let name = type
+      .split("/")
+      .pop()
+      .replace("server-", "")
+      .replace(/[^a-zA-Z0-9-]/g, "");
+
+    let env = {};
+    if (envVars) {
+      try {
+        env = JSON.parse(envVars);
+      } catch (err) {
+        if (cleanType.includes("github"))
+          env = { GITHUB_PERSONAL_ACCESS_TOKEN: envVars };
+        else if (cleanType.includes("brave")) env = { BRAVE_API_KEY: envVars };
+        else if (cleanType.includes("postgres"))
+          env = { POSTGRES_URL: envVars };
+        else if (cleanType.includes("slack"))
+          env = { SLACK_BOT_TOKEN: envVars };
+        else env = { TOKEN: envVars };
+      }
+    }
+
+    const conf = { command, args, env };
+
+    if (window.WOLFSPACE) {
+      try {
+        const res = await window.WOLFSPACE.invoke("api", {
+          method: "POST",
+          path: "/mcp",
+          body: { name, conf },
+        });
+        const out = res.body
+          ? typeof res.body === "string"
+            ? JSON.parse(res.body)
+            : res.body
+          : {};
+        if (!out.ok) {
+          setMcpInputError(out.error || "Gagal menambahkan MCP server.");
+          return;
+        }
+      } catch (err) {
+        setMcpInputError(err.message);
+        return;
+      }
+    }
+
     const entry = {
-      id: serverName.replace(/[^a-z0-9]/gi, '_') + '_' + Date.now(),
-      name: serverName,
-      desc: url,
-      url,
-      token: token || undefined,
+      id: name,
+      name: name,
+      desc: (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
       active: true,
+      conf,
     };
-    setMcpServers(prev => [...prev, entry]);
-    setMcpInputSuccess('✓ Server MCP berhasil ditambahkan!');
-    setMcpInputUrl('');
-    setMcpInputToken('');
-    setMcpInputName('');
-    setTimeout(() => { setMcpInputSuccess(''); setShowMcpInput(false); }, 2000);
+
+    setMcpServers((prev) => [...prev.filter((p) => p.id !== name), entry]);
+    setMcpInputSuccess("✓ Server MCP berhasil dihubungkan & berjalan!");
+    setMcpInputUrl("");
+    setMcpInputToken("");
+    setTimeout(() => {
+      setMcpInputSuccess("");
+      setShowMcpInput(false);
+    }, 2000);
   };
+
   const [effort, setEffort] = useState(() => {
     try {
       const cl = getCloud();
       if (cl && typeof cl.effort !== "undefined") return Number(cl.effort);
       return parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 0;
-    } catch { return 1; }
+    } catch {
+      return 1;
+    }
   });
   useEffect(() => {
     try {
@@ -594,14 +786,14 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
   const [soon, setSoon] = useState("");
   const ref = useRef(null);
   const wrapRef = useRef(null);
-  
+
   useEffect(() => {
     if (!menu) {
       setShowModelMenu(false);
       setShowMcpMenu(false);
     }
   }, [menu]);
-  
+
   const grow = () => {
     const el = ref.current;
     if (!el) return;
@@ -618,35 +810,66 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
     for (const file of files) {
       const relPath = file.webkitRelativePath || file.name;
       const attId = Date.now() + "-" + Math.random().toString(36).slice(2, 7);
-      const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(file.name) || (file.type && file.type.startsWith("image/"));
-      const isVid = /\.(mp4|webm|mov|mkv)$/i.test(file.name) || (file.type && file.type.startsWith("video/"));
+      const isImg =
+        /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(file.name) ||
+        (file.type && file.type.startsWith("image/"));
+      const isVid =
+        /\.(mp4|webm|mov|mkv)$/i.test(file.name) ||
+        (file.type && file.type.startsWith("video/"));
       const is3D = is3DFile(file.name);
       // File 3D butuh blob URL agar Model3DViewer bisa memuatnya (three.js loader
       // menerima URL, bukan File). Sama seperti img/vid — object URL lokal.
-      let previewUrl = (isImg || isVid || is3D) ? URL.createObjectURL(file) : null;
+      let previewUrl =
+        isImg || isVid || is3D ? URL.createObjectURL(file) : null;
       let snippet = null;
-      if (!isImg && !isVid && file.size < 100 * 1024 && /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(file.name)) {
+      if (
+        !isImg &&
+        !isVid &&
+        file.size < 100 * 1024 &&
+        /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(
+          file.name,
+        )
+      ) {
         try {
           snippet = await file.slice(0, 300).text();
         } catch (_) {}
       }
       setAttachments((prev) => [
         ...prev,
-        { id: attId, name: file.name, path: relPath, size: file.size, type: file.type, previewUrl, snippet, status: "uploading" },
+        {
+          id: attId,
+          name: file.name,
+          path: relPath,
+          size: file.size,
+          type: file.type,
+          previewUrl,
+          snippet,
+          status: "uploading",
+        },
       ]);
       try {
         const reader = new FileReader();
         reader.onload = async () => {
           try {
-            const base64 = reader.result.split(',')[1] || reader.result;
+            const base64 = reader.result.split(",")[1] || reader.result;
             const payload = { name: relPath, data: base64 };
             let uploadedUrl = "";
             if (IPC && IPC.invoke) {
-              const res = await IPC.invoke("api", { method: "POST", path: "/upload", body: payload });
+              const res = await IPC.invoke("api", {
+                method: "POST",
+                path: "/upload",
+                body: payload,
+              });
               let parsed;
-              try { parsed = typeof res.body === 'string' ? JSON.parse(res.body) : res; } catch (_) { parsed = res; }
-              if (res.status >= 400 || parsed.error) throw new Error(parsed.error || "Upload failed");
-              uploadedUrl = parsed.url || ("/uploads/" + parsed.name);
+              try {
+                parsed =
+                  typeof res.body === "string" ? JSON.parse(res.body) : res;
+              } catch (_) {
+                parsed = res;
+              }
+              if (res.status >= 400 || parsed.error)
+                throw new Error(parsed.error || "Upload failed");
+              uploadedUrl = parsed.url || "/uploads/" + parsed.name;
             } else {
               const r = await fetch("/upload", {
                 method: "POST",
@@ -655,27 +878,46 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
               });
               const res = await r.json();
               if (res.error) throw new Error(res.error);
-              uploadedUrl = res.url || ("/uploads/" + res.name);
+              uploadedUrl = res.url || "/uploads/" + res.name;
             }
             setAttachments((prev) =>
-              prev.map((a) => (a.id === attId ? { ...a, status: "ready", url: uploadedUrl, previewUrl: a.previewUrl || (isImg ? uploadedUrl : null) } : a))
+              prev.map((a) =>
+                a.id === attId
+                  ? {
+                      ...a,
+                      status: "ready",
+                      url: uploadedUrl,
+                      previewUrl: a.previewUrl || (isImg ? uploadedUrl : null),
+                    }
+                  : a,
+              ),
             );
           } catch (err) {
             console.error("[Attachment upload error]", err);
             setAttachments((prev) =>
-              prev.map((a) => (a.id === attId ? { ...a, status: "error", error: err.message } : a))
+              prev.map((a) =>
+                a.id === attId
+                  ? { ...a, status: "error", error: err.message }
+                  : a,
+              ),
             );
           }
         };
         reader.onerror = () => {
           setAttachments((prev) =>
-            prev.map((a) => (a.id === attId ? { ...a, status: "error", error: "Failed reading file" } : a))
+            prev.map((a) =>
+              a.id === attId
+                ? { ...a, status: "error", error: "Failed reading file" }
+                : a,
+            ),
           );
         };
         reader.readAsDataURL(file);
       } catch (err) {
         setAttachments((prev) =>
-          prev.map((a) => (a.id === attId ? { ...a, status: "error", error: err.message } : a))
+          prev.map((a) =>
+            a.id === attId ? { ...a, status: "error", error: err.message } : a,
+          ),
         );
       }
     }
@@ -684,18 +926,32 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
 
   const submit = () => {
     const v = val.trim();
-    console.log("[Composer submit] busy:", busy, "v:", v, "attachments:", attachments.length);
+    console.log(
+      "[Composer submit] busy:",
+      busy,
+      "v:",
+      v,
+      "attachments:",
+      attachments.length,
+    );
     if ((!v && attachments.length === 0) || busy) return;
     let fullText = v;
     if (attachments.length > 0) {
       const attSummary = attachments
-        .map((a) => `- [Attached]: ${a.path} (${Math.round(a.size / 1024)} KB${a.url ? `, url: ${a.url}` : ""})`)
+        .map(
+          (a) =>
+            `- [Attached]: ${a.path} (${Math.round(a.size / 1024)} KB${a.url ? `, url: ${a.url}` : ""})`,
+        )
         .join("\n");
-      fullText = v ? `${v}\n\nAttachments:\n${attSummary}` : `Attachments:\n${attSummary}`;
+      fullText = v
+        ? `${v}\n\nAttachments:\n${attSummary}`
+        : `Attachments:\n${attSummary}`;
     }
     console.log("[Composer submit] calling onSend with:", fullText);
     onSend(fullText);
-    console.log("[Composer submit] setting val to empty string and resetting attachments");
+    console.log(
+      "[Composer submit] setting val to empty string and resetting attachments",
+    );
     setVal("");
     setAttachments([]);
     requestAnimationFrame(() => {
@@ -725,9 +981,9 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
       // Keep menu open when clicking sidebar controls (e.g. Visual Picker button)
       // or when the visual picker overlay is active, so the user can select
       // elements inside the + menu with the picker.
-      const inSidebar = e.target.closest && e.target.closest('.sidebar');
+      const inSidebar = e.target.closest && e.target.closest(".sidebar");
       if (inSidebar) return;
-      if (document.body.classList.contains('vp-on')) return;
+      if (document.body.classList.contains("vp-on")) return;
       if (wrapRef.current && !wrapRef.current.contains(e.target))
         setMenu(false);
     };
@@ -762,9 +1018,19 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
           {attachments.length > 0 && (
             <div className="composer-attachments">
               {attachments.map((att) => {
-                const isImg = /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(att.name || att.path) || (att.type && att.type.startsWith("image/"));
-                const isVid = /\.(mp4|webm|mov|mkv)$/i.test(att.name || att.path) || (att.type && att.type.startsWith("video/"));
-                const isCode = att.snippet || /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(att.name || att.path);
+                const isImg =
+                  /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(
+                    att.name || att.path,
+                  ) ||
+                  (att.type && att.type.startsWith("image/"));
+                const isVid =
+                  /\.(mp4|webm|mov|mkv)$/i.test(att.name || att.path) ||
+                  (att.type && att.type.startsWith("video/"));
+                const isCode =
+                  att.snippet ||
+                  /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(
+                    att.name || att.path,
+                  );
                 const displayUrl = att.previewUrl || att.url;
 
                 return (
@@ -780,7 +1046,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                     style={{
                       width: "60px",
                       height: "60px",
-                      padding: (isImg && displayUrl) ? "0" : "6px",
+                      padding: isImg && displayUrl ? "0" : "6px",
                       overflow: "hidden",
                       position: "relative",
                       display: "flex",
@@ -790,43 +1056,112 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                       background: "var(--surface-2, #161b22)",
                       border: "1px solid var(--line-strong, #30363d)",
                       borderRadius: "8px",
-                      cursor: (att.previewUrl || att.url || att.snippet) ? "pointer" : "default"
+                      cursor:
+                        att.previewUrl || att.url || att.snippet
+                          ? "pointer"
+                          : "default",
                     }}
                   >
                     {isImg && displayUrl ? (
                       <img
                         src={displayUrl}
                         alt={att.name || att.path}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          borderRadius: "8px",
+                        }}
                       />
                     ) : isVid && displayUrl ? (
                       <video
                         src={displayUrl}
-                        style={{ width: "100%", height: "100%", objectFit: "cover", borderRadius: "8px" }}
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          objectFit: "cover",
+                          borderRadius: "8px",
+                        }}
                         muted
                       />
                     ) : att.snippet ? (
-                      <div style={{ width: "100%", height: "100%", padding: "4px", fontSize: "6.5px", fontFamily: "monospace", color: "#4ec9b0", overflow: "hidden", lineHeight: "1.25", wordBreak: "break-all", background: "#0d1117", borderRadius: "6px", textAlign: "left" }}>
+                      <div
+                        style={{
+                          width: "100%",
+                          height: "100%",
+                          padding: "4px",
+                          fontSize: "6.5px",
+                          fontFamily: "monospace",
+                          color: "#4ec9b0",
+                          overflow: "hidden",
+                          lineHeight: "1.25",
+                          wordBreak: "break-all",
+                          background: "#0d1117",
+                          borderRadius: "6px",
+                          textAlign: "left",
+                        }}
+                      >
                         {att.snippet}
                       </div>
                     ) : (
                       <>
                         <div className="composer-attachment-icon">
-                          {att.status === "uploading" ? "⏳" : att.status === "error" ? "⚠️" : is3DFile(att.name || att.path) ? "🧊" : isCode ? "💻" : "📄"}
+                          {att.status === "uploading"
+                            ? "⏳"
+                            : att.status === "error"
+                              ? "⚠️"
+                              : is3DFile(att.name || att.path)
+                                ? "🧊"
+                                : isCode
+                                  ? "💻"
+                                  : "📄"}
                         </div>
-                        <div className="composer-attachment-name" style={{ fontSize: "9px", width: "100%", textAlign: "center", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>
+                        <div
+                          className="composer-attachment-name"
+                          style={{
+                            fontSize: "9px",
+                            width: "100%",
+                            textAlign: "center",
+                            overflow: "hidden",
+                            textOverflow: "ellipsis",
+                            whiteSpace: "nowrap",
+                          }}
+                        >
                           {att.name || att.path}
                         </div>
                       </>
                     )}
 
                     {att.status === "uploading" && (
-                      <div style={{ position: "absolute", inset: 0, background: "rgba(0,0,0,0.5)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "8px", fontSize: "14px" }}>
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          background: "rgba(0,0,0,0.5)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: "8px",
+                          fontSize: "14px",
+                        }}
+                      >
                         ⏳
                       </div>
                     )}
                     {att.status === "error" && (
-                      <div style={{ position: "absolute", inset: 0, background: "rgba(248,113,113,0.3)", display: "flex", alignItems: "center", justifyContent: "center", borderRadius: "8px", fontSize: "14px" }} title={att.error}>
+                      <div
+                        style={{
+                          position: "absolute",
+                          inset: 0,
+                          background: "rgba(248,113,113,0.3)",
+                          display: "flex",
+                          alignItems: "center",
+                          justifyContent: "center",
+                          borderRadius: "8px",
+                          fontSize: "14px",
+                        }}
+                        title={att.error}
+                      >
                         ⚠️
                       </div>
                     )}
@@ -884,48 +1219,80 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
             onBlur={() => console.log("[Textarea] blurred")}
           />
         </div>
-        <div className="picker-toolbar" style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
+        <div
+          className="picker-toolbar"
+          style={{
+            display: "flex",
+            justifyContent: "space-between",
+            alignItems: "center",
+          }}
+        >
           <div className="composer-add-wrap" ref={wrapRef}>
             <div className="composer-action-btns">
               <button
                 className={"composer-add" + (menu ? " open" : "")}
                 title="Tambah"
-                onClick={() => { setMenu((m) => !m); setShowModelMenu(false); setShowMcpMenu(false); }}
+                onClick={() => {
+                  setMenu((m) => !m);
+                  setShowModelMenu(false);
+                  setShowMcpMenu(false);
+                }}
               >
                 {MI.plus}
               </button>
             </div>
             {menu && (
               <div className="am-menu" onMouseDown={(e) => e.stopPropagation()}>
-                
                 <div className="am-section-label">Context</div>
-                <button className="am-item" onClick={() => { setMenu(false); document.getElementById("file-upload-input")?.click(); }}>
+                <button
+                  className="am-item"
+                  onClick={() => {
+                    setMenu(false);
+                    document.getElementById("file-upload-input")?.click();
+                  }}
+                >
                   <span>Attach file...</span>
                 </button>
 
-                <div className="am-section-label" style={{ marginTop: '8px' }}>Model</div>
-                <div style={{ position: 'relative' }}>
-                  <button 
-                    className={"am-item" + (showModelMenu ? " active" : "")} 
+                <div className="am-section-label" style={{ marginTop: "8px" }}>
+                  Model
+                </div>
+                <div style={{ position: "relative" }}>
+                  <button
+                    className={"am-item" + (showModelMenu ? " active" : "")}
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowMcpMenu(false);
                       setShowModelMenu(!showModelMenu);
                     }}
                   >
-                    <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                    <span
+                      style={{
+                        display: "flex",
+                        alignItems: "center",
+                        gap: "6px",
+                      }}
+                    >
                       Switch model...
                     </span>
-                    <span className="am-item-right">{models.find(m => m.value === modelVal)?.label || "Sonnet"}</span>
+                    <span className="am-item-right">
+                      {models.find((m) => m.value === modelVal)?.label ||
+                        "Sonnet"}
+                    </span>
                   </button>
                   {showModelMenu && (
                     <div className="am-submenu">
-                      <div className="am-section-label" style={{ marginBottom: '4px' }}>Select a model</div>
-                      {models.map(m => (
-                        <button 
+                      <div
+                        className="am-section-label"
+                        style={{ marginBottom: "4px" }}
+                      >
+                        Select a model
+                      </div>
+                      {models.map((m) => (
+                        <button
                           key={m.value}
-                          className="am-item" 
-                          style={{ padding: '8px 12px' }}
+                          className="am-item"
+                          style={{ padding: "8px 12px" }}
                           onClick={(e) => {
                             e.stopPropagation();
                             if (setModelVal) setModelVal(m.value);
@@ -933,77 +1300,267 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                             // Keep main + menu open so user can continue configuring other options
                           }}
                         >
-                          <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-                            <span style={{ display: 'flex', justifyContent: 'space-between' }}>
-                              {m.label} 
+                          <div
+                            style={{
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "4px",
+                              width: "100%",
+                            }}
+                          >
+                            <span
+                              style={{
+                                display: "flex",
+                                justifyContent: "space-between",
+                              }}
+                            >
+                              {m.label}
                               {m.value === modelVal && <span>✓</span>}
                             </span>
-                            <span className="am-item-desc">Efficient for routine tasks</span>
+                            <span className="am-item-desc">
+                              Efficient for routine tasks
+                            </span>
                           </div>
                         </button>
                       ))}
                     </div>
                   )}
                 </div>
-                <button className="am-item" onClick={(e) => { e.stopPropagation(); setEffort((effort + 1) % 3); }}>
-                  <span>Effort ({effort === 0 ? "Low" : effort === 1 ? "Medium" : "High"})</span>
+                <button
+                  className="am-item"
+                  onClick={(e) => {
+                    e.stopPropagation();
+                    setEffort((effort + 1) % 3);
+                  }}
+                >
+                  <span>
+                    Effort (
+                    {effort === 0 ? "Low" : effort === 1 ? "Medium" : "High"})
+                  </span>
                   <span className="am-item-right">
                     <div className="am-slider">
-                      <div className={"am-slider-dot" + (effort >= 0 ? " active" : "")}></div>
-                      <div className={"am-slider-dot" + (effort >= 1 ? " active" : "")}></div>
-                      <div className={"am-slider-dot" + (effort >= 2 ? " active" : "")}></div>
+                      <div
+                        className={
+                          "am-slider-dot" + (effort >= 0 ? " active" : "")
+                        }
+                      ></div>
+                      <div
+                        className={
+                          "am-slider-dot" + (effort >= 1 ? " active" : "")
+                        }
+                      ></div>
+                      <div
+                        className={
+                          "am-slider-dot" + (effort >= 2 ? " active" : "")
+                        }
+                      ></div>
                     </div>
                   </span>
                 </button>
 
-                <div className="am-section-label" style={{ marginTop: '8px' }}>Connection</div>
-                <div style={{ position: 'relative' }}>
-                  <button 
-                    className={"am-item" + (showMcpMenu ? " active" : "")} 
+                <div className="am-section-label" style={{ marginTop: "8px" }}>
+                  Connection
+                </div>
+                <div style={{ position: "relative" }}>
+                  <button
+                    className={"am-item" + (showMcpMenu ? " active" : "")}
                     onClick={(e) => {
                       e.stopPropagation();
                       setShowModelMenu(false);
                       setShowMcpMenu(!showMcpMenu);
+                      if (!showMcpMenu && window.WOLFSPACE) {
+                        window.WOLFSPACE.invoke("api", {
+                          method: "GET",
+                          path: "/mcp",
+                        })
+                          .then((res) => {
+                            if (res.body) {
+                              const data =
+                                typeof res.body === "string"
+                                  ? JSON.parse(res.body)
+                                  : res.body;
+                              // Lihat catatan di Screens.jsx: GET /mcp mengembalikan peta
+                              // server LANGSUNG, bukan { mcpServers: {...} }. Membaca
+                              // data.mcpServers membuat penyegaran ini tak pernah jalan.
+                              const arr = Object.entries(data || {}).map(
+                                ([id, conf]) => ({
+                                  id,
+                                  name: id,
+                                  desc:
+                                    (conf.command || "") +
+                                    " " +
+                                    (conf.args ? conf.args.join(" ") : ""),
+                                  active: true,
+                                  conf,
+                                }),
+                              );
+                              setMcpServers(arr);
+                            }
+                          })
+                          .catch((err) =>
+                            console.error("Error reloading MCP", err),
+                          );
+                      }
                     }}
                   >
                     <span>MCP</span>
                     <span className="am-item-right">
                       <span>Manage servers</span>
-                      <span style={{ fontSize: '10px' }}>▶</span>
+                      <span style={{ fontSize: "10px" }}>▶</span>
                     </span>
                   </button>
                   {showMcpMenu && (
                     <div className="am-submenu">
-                      <div className="am-section-label" style={{ marginBottom: '4px' }}>Select an MCP connection</div>
-                      {mcpServers.map(srv => (
-                        <div key={srv.id} style={{ position: 'relative', display: 'flex', alignItems: 'center' }}>
-                          <button 
-                            className="am-item" 
-                            style={{ padding: '8px 12px', flex: 1 }}
+                      <div
+                        className="am-section-label"
+                        style={{ marginBottom: "4px" }}
+                      >
+                        Select an MCP connection
+                      </div>
+                      {mcpServers.map((srv) => (
+                        <div
+                          key={srv.id}
+                          style={{
+                            position: "relative",
+                            display: "flex",
+                            alignItems: "center",
+                          }}
+                        >
+                          <button
+                            className="am-item"
+                            style={{ padding: "8px 12px", flex: 1 }}
                             onClick={(e) => {
                               e.stopPropagation();
-                              setMcpServers(prev => prev.map(item => item.id === srv.id ? { ...item, active: !item.active } : item));
+                              setMcpServers((prev) =>
+                                prev.map((item) =>
+                                  item.id === srv.id
+                                    ? { ...item, active: !item.active }
+                                    : item,
+                                ),
+                              );
                             }}
                           >
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '4px', width: '100%' }}>
-                              <span style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
-                                <span style={{ fontWeight: 500, color: '#fff' }}>{srv.name}</span>
-                                <span style={{ display: 'flex', alignItems: 'center', gap: '6px' }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "4px",
+                                width: "100%",
+                              }}
+                            >
+                              <span
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                  alignItems: "center",
+                                }}
+                              >
+                                <span
+                                  style={{ fontWeight: 500, color: "#fff" }}
+                                >
+                                  {srv.name}
+                                </span>
+                                <span
+                                  style={{
+                                    display: "flex",
+                                    alignItems: "center",
+                                    gap: "6px",
+                                  }}
+                                >
                                   {srv.active ? (
-                                    <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#4ec9b0', background: 'rgba(78, 201, 176, 0.12)' }}>✓ Connected</span>
+                                    <span
+                                      style={{
+                                        fontSize: "11px",
+                                        fontWeight: 500,
+                                        padding: "2px 6px",
+                                        borderRadius: "10px",
+                                        color: "#4ec9b0",
+                                        background: "rgba(78, 201, 176, 0.12)",
+                                      }}
+                                    >
+                                      ✓ Connected
+                                    </span>
                                   ) : (
-                                    <span style={{ fontSize: '11px', fontWeight: 500, padding: '2px 6px', borderRadius: '10px', color: '#858585', background: 'rgba(133, 133, 133, 0.12)' }}>○ Disabled</span>
+                                    <span
+                                      style={{
+                                        fontSize: "11px",
+                                        fontWeight: 500,
+                                        padding: "2px 6px",
+                                        borderRadius: "10px",
+                                        color: "#858585",
+                                        background: "rgba(133, 133, 133, 0.12)",
+                                      }}
+                                    >
+                                      ○ Disabled
+                                    </span>
                                   )}
                                   <span
                                     title="Hapus server MCP"
-                                    style={{ cursor: 'pointer', padding: '2px 4px', borderRadius: '4px', color: '#858585', fontSize: '12px', fontWeight: 700, display: 'flex', alignItems: 'center', justifyContent: 'center' }}
+                                    style={{
+                                      cursor: "pointer",
+                                      padding: "2px 4px",
+                                      borderRadius: "4px",
+                                      color: "#858585",
+                                      fontSize: "12px",
+                                      fontWeight: 700,
+                                      display: "flex",
+                                      alignItems: "center",
+                                      justifyContent: "center",
+                                    }}
                                     onClick={(e) => {
                                       e.stopPropagation();
-                                      setMcpServers(prev => prev.filter(item => item.id !== srv.id));
+                                      // Siarkan agar layar lain (Screens.jsx/pickerMcp) ikut sinkron.
+                                      const _bcast = () => {
+                                        try {
+                                          window.dispatchEvent(
+                                            new CustomEvent(
+                                              "wolfspace_mcp_changed",
+                                            ),
+                                          );
+                                        } catch (_) {}
+                                      };
+                                      if (window.WOLFSPACE) {
+                                        window.WOLFSPACE.invoke("api", {
+                                          method: "DELETE",
+                                          path: "/mcp",
+                                          body: { name: srv.id },
+                                        })
+                                          .then(() => {
+                                            setMcpServers((prev) =>
+                                              prev.filter(
+                                                (item) => item.id !== srv.id,
+                                              ),
+                                            );
+                                            _bcast();
+                                          })
+                                          .catch((err) =>
+                                            alert(
+                                              "Gagal menghapus MCP: " +
+                                                err.message,
+                                            ),
+                                          );
+                                      } else {
+                                        setMcpServers((prev) =>
+                                          prev.filter(
+                                            (item) => item.id !== srv.id,
+                                          ),
+                                        );
+                                        _bcast();
+                                      }
                                     }}
-                                    onMouseEnter={(e) => { e.currentTarget.style.color = '#f85149'; e.currentTarget.style.background = 'rgba(248,81,73,0.15)'; }}
-                                    onMouseLeave={(e) => { e.currentTarget.style.color = '#858585'; e.currentTarget.style.background = 'transparent'; }}
-                                  >×</span>
+                                    onMouseEnter={(e) => {
+                                      e.currentTarget.style.color = "#f85149";
+                                      e.currentTarget.style.background =
+                                        "rgba(248,81,73,0.15)";
+                                    }}
+                                    onMouseLeave={(e) => {
+                                      e.currentTarget.style.color = "#858585";
+                                      e.currentTarget.style.background =
+                                        "transparent";
+                                    }}
+                                  >
+                                    ×
+                                  </span>
                                 </span>
                               </span>
                               <span className="am-item-desc">{srv.desc}</span>
@@ -1011,69 +1568,241 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                           </button>
                         </div>
                       ))}
-                      <div style={{ borderTop: '1px solid #3e3e42', marginTop: '4px' }}>
+                      <div
+                        style={{
+                          borderTop: "1px solid #3e3e42",
+                          marginTop: "4px",
+                        }}
+                      >
                         {!showMcpInput ? (
                           <div
-                            style={{ padding: '8px 12px', cursor: 'pointer', display: 'flex', alignItems: 'center', gap: '6px' }}
-                            onClick={(e) => { e.stopPropagation(); setShowMcpInput(true); setMcpInputError(''); setMcpInputSuccess(''); }}
+                            style={{
+                              padding: "8px 12px",
+                              cursor: "pointer",
+                              display: "flex",
+                              alignItems: "center",
+                              gap: "6px",
+                            }}
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setShowMcpInput(true);
+                              setMcpInputError("");
+                              setMcpInputSuccess("");
+                            }}
                           >
-                            <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="#b594f5" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round">
+                            <svg
+                              width="12"
+                              height="12"
+                              viewBox="0 0 24 24"
+                              fill="none"
+                              stroke="#b594f5"
+                              strokeWidth="2.5"
+                              strokeLinecap="round"
+                              strokeLinejoin="round"
+                            >
                               <line x1="12" y1="5" x2="12" y2="19"></line>
                               <line x1="5" y1="12" x2="19" y2="12"></line>
                             </svg>
-                            <span style={{ fontSize: '11px', color: '#b594f5', fontWeight: 500 }}>Hubungkan MCP server...</span>
+                            <span
+                              style={{
+                                fontSize: "11px",
+                                color: "#b594f5",
+                                fontWeight: 500,
+                              }}
+                            >
+                              Hubungkan MCP server...
+                            </span>
                           </div>
                         ) : (
-                          <div style={{ padding: '10px 12px', display: 'flex', flexDirection: 'column', gap: '7px' }} onClick={(e) => e.stopPropagation()}>
-                            <div style={{ fontSize: '11px', color: '#8b98a9', fontWeight: 600, marginBottom: '2px' }}>Sambungkan ke MCP Server</div>
-                            <div style={{ display: 'flex', flexDirection: 'column', gap: '5px' }}>
+                          <div
+                            style={{
+                              padding: "10px 12px",
+                              display: "flex",
+                              flexDirection: "column",
+                              gap: "7px",
+                            }}
+                            onClick={(e) => e.stopPropagation()}
+                          >
+                            <div
+                              style={{
+                                fontSize: "11px",
+                                color: "#8b98a9",
+                                fontWeight: 600,
+                                marginBottom: "2px",
+                              }}
+                            >
+                              Sambungkan ke MCP Server
+                            </div>
+                            <div
+                              style={{
+                                display: "flex",
+                                flexDirection: "column",
+                                gap: "5px",
+                              }}
+                            >
                               <input
                                 autoFocus
                                 type="text"
                                 value={mcpInputUrl}
-                                onChange={(e) => { setMcpInputUrl(e.target.value); setMcpInputError(''); setMcpInputSuccess(''); }}
-                                onKeyDown={(e) => { if (e.key === 'Escape') { setShowMcpInput(false); setMcpInputUrl(''); setMcpInputToken(''); setMcpInputName(''); setMcpInputError(''); } }}
-                                placeholder="URL server MCP (contoh: https://mcp.example.com/sse)"
-                                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: mcpInputError && !mcpInputUrl.trim() ? '1px solid rgba(248,81,73,0.5)' : '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
+                                onChange={(e) => {
+                                  setMcpInputUrl(e.target.value);
+                                  setMcpInputError("");
+                                  setMcpInputSuccess("");
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Escape") {
+                                    setShowMcpInput(false);
+                                    setMcpInputUrl("");
+                                    setMcpInputToken("");
+                                    setMcpInputError("");
+                                  }
+                                }}
+                                placeholder="Jenis MCP (contoh: github, brave-search, sqlite)"
+                                style={{
+                                  width: "100%",
+                                  background: "rgba(255,255,255,0.04)",
+                                  border:
+                                    mcpInputError && !mcpInputUrl.trim()
+                                      ? "1px solid rgba(248,81,73,0.5)"
+                                      : "1px solid rgba(255,255,255,0.1)",
+                                  borderRadius: "6px",
+                                  color: "#e2e8f0",
+                                  fontSize: "11px",
+                                  fontFamily: "inherit",
+                                  padding: "6px 9px",
+                                  outline: "none",
+                                  boxSizing: "border-box",
+                                }}
                               />
                               <input
                                 type="password"
                                 value={mcpInputToken}
-                                onChange={(e) => { setMcpInputToken(e.target.value); setMcpInputError(''); setMcpInputSuccess(''); }}
-                                onKeyDown={(e) => { if (e.key === 'Escape') { setShowMcpInput(false); setMcpInputUrl(''); setMcpInputToken(''); setMcpInputName(''); setMcpInputError(''); } }}
-                                placeholder="Token / API Key (opsional)"
-                                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
-                              />
-                              <input
-                                type="text"
-                                value={mcpInputName}
-                                onChange={(e) => { setMcpInputName(e.target.value); setMcpInputError(''); setMcpInputSuccess(''); }}
-                                onKeyDown={(e) => { if (e.key === 'Enter') { e.preventDefault(); handleMcpCodeConnect(e); } if (e.key === 'Escape') { setShowMcpInput(false); setMcpInputUrl(''); setMcpInputToken(''); setMcpInputName(''); setMcpInputError(''); } }}
-                                placeholder="Nama server (opsional)"
-                                style={{ width: '100%', background: 'rgba(255,255,255,0.04)', border: '1px solid rgba(255,255,255,0.1)', borderRadius: '6px', color: '#e2e8f0', fontSize: '11px', fontFamily: 'inherit', padding: '6px 9px', outline: 'none', boxSizing: 'border-box' }}
+                                onChange={(e) => {
+                                  setMcpInputToken(e.target.value);
+                                  setMcpInputError("");
+                                  setMcpInputSuccess("");
+                                }}
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter") {
+                                    e.preventDefault();
+                                    handleMcpCodeConnect(e);
+                                  }
+                                  if (e.key === "Escape") {
+                                    setShowMcpInput(false);
+                                    setMcpInputUrl("");
+                                    setMcpInputToken("");
+                                    setMcpInputError("");
+                                  }
+                                }}
+                                placeholder="API Key / Konfigurasi (JSON opsional)"
+                                style={{
+                                  width: "100%",
+                                  background: "rgba(255,255,255,0.04)",
+                                  border: "1px solid rgba(255,255,255,0.1)",
+                                  borderRadius: "6px",
+                                  color: "#e2e8f0",
+                                  fontSize: "11px",
+                                  fontFamily: "inherit",
+                                  padding: "6px 9px",
+                                  outline: "none",
+                                  boxSizing: "border-box",
+                                }}
                               />
                             </div>
                             {mcpInputError && (
-                              <div style={{ fontSize: '10.5px', color: '#f85149', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><circle cx="12" cy="12" r="10"/><line x1="12" y1="8" x2="12" y2="12"/><line x1="12" y1="16" x2="12.01" y2="16"/></svg>
+                              <div
+                                style={{
+                                  fontSize: "10.5px",
+                                  color: "#f85149",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <svg
+                                  width="11"
+                                  height="11"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                >
+                                  <circle cx="12" cy="12" r="10" />
+                                  <line x1="12" y1="8" x2="12" y2="12" />
+                                  <line x1="12" y1="16" x2="12.01" y2="16" />
+                                </svg>
                                 {mcpInputError}
                               </div>
                             )}
                             {mcpInputSuccess && (
-                              <div style={{ fontSize: '10.5px', color: '#4ec9b0', display: 'flex', alignItems: 'center', gap: '4px' }}>
-                                <svg width="11" height="11" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5"><polyline points="20 6 9 17 4 12"/></svg>
+                              <div
+                                style={{
+                                  fontSize: "10.5px",
+                                  color: "#4ec9b0",
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "4px",
+                                }}
+                              >
+                                <svg
+                                  width="11"
+                                  height="11"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="2.5"
+                                >
+                                  <polyline points="20 6 9 17 4 12" />
+                                </svg>
                                 {mcpInputSuccess}
                               </div>
                             )}
-                            <div style={{ display: 'flex', gap: '6px', justifyContent: 'flex-end' }}>
+                            <div
+                              style={{
+                                display: "flex",
+                                gap: "6px",
+                                justifyContent: "flex-end",
+                              }}
+                            >
                               <button
-                                onClick={(e) => { e.stopPropagation(); setShowMcpInput(false); setMcpInputUrl(''); setMcpInputToken(''); setMcpInputName(''); setMcpInputError(''); setMcpInputSuccess(''); }}
-                                style={{ padding: '4px 10px', fontSize: '11px', borderRadius: '5px', border: '1px solid rgba(255,255,255,0.1)', background: 'transparent', color: '#8b98a9', cursor: 'pointer', fontFamily: 'inherit' }}
-                              >Batal</button>
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setShowMcpInput(false);
+                                  setMcpInputUrl("");
+                                  setMcpInputToken("");
+                                  setMcpInputError("");
+                                  setMcpInputSuccess("");
+                                }}
+                                style={{
+                                  padding: "4px 10px",
+                                  fontSize: "11px",
+                                  borderRadius: "5px",
+                                  border: "1px solid rgba(255,255,255,0.1)",
+                                  background: "transparent",
+                                  color: "#8b98a9",
+                                  cursor: "pointer",
+                                  fontFamily: "inherit",
+                                }}
+                              >
+                                Batal
+                              </button>
                               <button
                                 onClick={handleMcpCodeConnect}
-                                style={{ padding: '4px 12px', fontSize: '11px', borderRadius: '5px', border: 'none', background: 'linear-gradient(135deg, #7c3aed, #6d28d9)', color: '#fff', cursor: 'pointer', fontFamily: 'inherit', fontWeight: 600 }}
-                              >Hubungkan</button>
+                                style={{
+                                  padding: "4px 12px",
+                                  fontSize: "11px",
+                                  borderRadius: "5px",
+                                  border: "none",
+                                  background:
+                                    "linear-gradient(135deg, #7c3aed, #6d28d9)",
+                                  color: "#fff",
+                                  cursor: "pointer",
+                                  fontFamily: "inherit",
+                                  fontWeight: 600,
+                                }}
+                              >
+                                Hubungkan
+                              </button>
                             </div>
                           </div>
                         )}
@@ -1081,7 +1810,6 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
                     </div>
                   )}
                 </div>
-
               </div>
             )}
           </div>
@@ -1098,11 +1826,7 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
               );
             }}
           >
-            {busy ? (
-              <Icon.square />
-            ) : (
-              <Icon.send />
-            )}
+            {busy ? <Icon.square /> : <Icon.send />}
           </button>
         </div>
       </div>
@@ -1111,15 +1835,24 @@ function Composer({ onSend, onCancel, busy, onAgentCli, models = [], modelVal, s
           <b style={{ color: "var(--brand)" }}>{soon}</b>
         ) : (
           <>
-            <span>Tekan <kbd>Shift+Enter</kbd> untuk baris baru</span>
+            <span>
+              Tekan <kbd>Shift+Enter</kbd> untuk baris baru
+            </span>
             <span>•</span>
-            <span>Tekan <kbd>Ctrl+K</kbd> untuk bersihkan</span>
+            <span>
+              Tekan <kbd>Ctrl+K</kbd> untuk bersihkan
+            </span>
             <span>•</span>
-            <span>Ketik <kbd>/</kbd> untuk perintah</span>
+            <span>
+              Ketik <kbd>/</kbd> untuk perintah
+            </span>
           </>
         )}
       </div>
-      <LightboxModal item={previewAttachment} onClose={() => setPreviewAttachment(null)} />
+      <LightboxModal
+        item={previewAttachment}
+        onClose={() => setPreviewAttachment(null)}
+      />
     </div>
   );
 }

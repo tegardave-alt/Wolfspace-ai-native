@@ -1,6 +1,7 @@
 {
-    "Codegeex.RepoIndex": true,
-    "Codegeex.SidebarUI.LanguagePreference": "English",
-    "Codegeex.CommitMessage.LanguagePreference": "English",
-    "chat.mcp.assisted.nuget.enabled": false
+  "Codegeex.RepoIndex": true,
+  "Codegeex.SidebarUI.LanguagePreference": "English",
+  "Codegeex.CommitMessage.LanguagePreference": "English",
+  "chat.mcp.assisted.nuget.enabled": false,
+  "python.REPL.enableREPLSmartSend": false
 }

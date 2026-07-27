@@ -16,3 +16,14 @@ _archive/_temp/
 
 # Secrets: MCP config berisi token — jangan dilacak (pakai mcp.example.json sbg template)
 config/mcp.json
+# File tempel kredensial sementara (mis. codeRabbit.py, "worker api .py"). Pernah
+# ada di root repo berisi API key mentah — sekali ter-commit, kunci masuk riwayat
+# git permanen. Simpan kunci di ~/.wolfspace/cloud-keys.json, bukan di file repo.
+codeRabbit.py
+*api*.py
+
+# Artefak uji beban (dihasilkan ulang oleh scripts/*-probe.js)
+load-report.md
+electron-load-report.md
+agent-load-report.md
+agent-leak-report.md
