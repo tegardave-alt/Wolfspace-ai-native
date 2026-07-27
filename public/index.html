@@ -306,8 +306,20 @@
             // TAHAN! Jangan simpan ke localStorage dulu sampai React merendernya tanpa error
             window._pendingGoodApp = compiled;
 
+            // Buang blok HMR SEBELUMNYA sebelum menyuntik yang baru. Tiap
+            // loadApp() menambah satu <script> berisi ~500KB kode terkompilasi;
+            // tanpa pembersihan, sesi dev panjang menumpuk puluhan blok (terukur:
+            // 16 <script> hanya dari beberapa siklus uji) yang tak bisa di-GC
+            // karena masih tersangkut di DOM. Kode yang SUDAH dieksekusi tetap
+            // hidup lewat closure-nya — yang dibebaskan di sini adalah teks
+            // sumbernya, bukan aplikasi yang sedang berjalan.
+            document
+              .querySelectorAll("script[data-wolfspace-hmr]")
+              .forEach((s) => s.remove());
+
             const script = document.createElement("script");
             script.type = "text/javascript";
+            script.setAttribute("data-wolfspace-hmr", "1");
             script.innerHTML = compiled;
             document.body.appendChild(script);
           } catch (compileError) {
