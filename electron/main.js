@@ -24,7 +24,7 @@ const procs = [];
 app.setName("WOLFSPACE");
 
 // Custom app:// scheme serves the UI + studio from disk (no HTTP needed to LOAD
-// the app). Must be declared privileged BEFORE app is ready. See docs/A2UI-DESIGN.md.
+// the app). Must be declared privileged BEFORE app is ready.
 protocol.registerSchemesAsPrivileged([
   {
     scheme: "app",
@@ -353,7 +353,7 @@ function createWindow() {
   });
 }
 
-// â”€â”€ IPC: renderer â†” Node core, no HTTP (see docs/A2UI-DESIGN.md step 2) â”€â”€
+// â”€â”€ IPC: renderer â†” Node core, no HTTP â”€â”€
 let _core = null;
 function core() {
   if (_core) return _core;

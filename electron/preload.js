@@ -1,5 +1,5 @@
 // WOLFSPACE preload — exposes a tiny, safe bridge so the React renderer can call
-// the Node backend DIRECTLY via Electron IPC (no HTTP). See docs/A2UI-DESIGN.md.
+// the Node backend DIRECTLY via Electron IPC (no HTTP).
 // contextIsolation keeps the renderer sandboxed: only window.WOLFSPACE is exposed.
 const { contextBridge, ipcRenderer } = require("electron");
 const path = require("path");

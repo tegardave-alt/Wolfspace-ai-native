@@ -5356,7 +5356,7 @@ const server = http.createServer(async (req, res) => {
 
 // Start the HTTP server ONLY when run directly (Electron spawns this as the entry).
 // When required as a module (by core.js / the IPC layer), expose the logic instead
-// of opening a port Ã¢â‚¬â€ see docs/A2UI-DESIGN.md step 1.
+// of opening a port.
 if (require.main === module) {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
