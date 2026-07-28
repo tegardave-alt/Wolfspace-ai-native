@@ -652,7 +652,7 @@ function _askCloudToolsOnce(cloud, messages, tools) {
         path: p,
         method: "POST",
         headers,
-        timeout: 300000,
+        timeout: 90000,
       },
       (s) => {
         const bad = s.statusCode >= 400;

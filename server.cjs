@@ -79,6 +79,12 @@ const EXEC_TIMEOUT = CONFIG.execTimeout || 120000;
 // We reuse it to execute generated JS so there is no hard dependency on `node`.
 const JS_RUNTIME = process.execPath;
 
+// Preload MCP Server to avoid RAM spikes on first request
+const mcpClient = require("./agent/mcp-client.cjs");
+mcpClient
+  .init()
+  .catch((e) => console.error("Failed to preload MCP:", e.message));
+
 function writeJson(res, statusCode, payload) {
   res.writeHead(statusCode, { "Content-Type": "application/json" });
   res.end(JSON.stringify(payload));
@@ -3532,7 +3538,6 @@ const _snapshotRoutes = require("./server/routes/snapshots.cjs");
 const _openclawRoutes = require("./server/routes/openclaw.cjs");
 const _hunkRoutes = require("./server/routes/hunks.cjs");
 const _cloudRoutes = require("./server/routes/cloud.cjs");
-const _agentRunnerRoutes = require("./server/routes/agent-runner.cjs");
 
 // Pure self-edit agent loop (function-calling tools over WOLFSPACE's own source).
 // emit(event)/ctl.isCancelled()/ctl.setCurReq() â€” shared by HTTP + IPC.
@@ -3698,32 +3703,6 @@ function closeTerminalSession(id) {
     terminalSessions.delete(id);
   }, 200);
 }
-
-// ── Agent Runner Registry (module-level, persists across requests) ──
-const AGENT_REGISTRY = [
-  {
-    id: "WOLFSPACE",
-    name: "WOLFSPACE Native",
-    icon: "⚡",
-    description: "WOLFSPACE built-in agent",
-    available: true,
-  },
-  {
-    id: "opencode",
-    name: "OpenCode CLI",
-    icon: "opencode-logo.png",
-    description: "SST OpenCode — multi-model TUI agent",
-    available: false,
-  },
-  {
-    id: "claude",
-    name: "Claude Code",
-    icon: "🤖",
-    description: "Anthropic Claude Code CLI",
-    available: false,
-  },
-];
-const agentSessions = new Map();
 
 const server = http.createServer(async (req, res) => {
   // Dynamic CORS: in bypass mode, allow only the frontend origin
@@ -5185,17 +5164,6 @@ const server = http.createServer(async (req, res) => {
   // Path tanpa query-string untuk route di bawah (deklarasi lama ikut terhapus
   // bersama blok Flutter; nilainya identik dengan _path di atas)
   const urlPath = _path;
-
-  if (
-    _agentRunnerRoutes.handle(req, res, {
-      AGENT_REGISTRY,
-      agentSessions,
-      pty,
-      CORS_ORIGIN,
-      runSelfTool,
-    })
-  )
-    return;
 
   // ── Preview file: serve any file from disk for the built-in browser panel ──
   // GET /preview-file?path=C:/Users/dave/Documents/oi/index.html

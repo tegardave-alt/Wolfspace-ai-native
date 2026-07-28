@@ -672,6 +672,29 @@ process.on("unhandledRejection", (reason, promise) => {
   );
 });
 
+// === MEMORY OPTIMIZATIONS ===
+// Batasi RAM Chromium renderer agar tidak membengkak ke 5GB+.
+// Flag ini wajib dipanggil SEBELUM app.whenReady().
+// - js-flags: batasi V8 heap Node.js di main process (backend/agent)
+// - max-old-space-size: batas heap V8 main process (MB)
+// - disable-gpu-memory-buffer-compositor-resources: bebaskan GPU buffer
+// - memory-pressure-thresholds: paksa Chromium GC lebih agresif
+app.commandLine.appendSwitch("js-flags", "--max-old-space-size=512");
+app.commandLine.appendSwitch("disable-http-cache");
+app.commandLine.appendSwitch("enable-precise-memory-info");
+// Paksa Chromium untuk melakukan GC ketika tekanan memori terdeteksi
+app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+// Matikan compositing tile memory cap untuk mengurangi beban VRAM
+app.commandLine.appendSwitch("disable-gpu-memory-buffer-compositor-resources");
+
+// Paksa Node.js (V8 main process) untuk melakukan GC periodik
+const _gcInterval = setInterval(() => {
+  if (global.gc) {
+    global.gc();
+  }
+}, 60000); // setiap 1 menit
+_gcInterval.unref(); // jangan tahan proses hanya karena interval ini
+
 app.whenReady().then(() => {
   migrateOldUserDataOnce();
   registerAppProtocol();

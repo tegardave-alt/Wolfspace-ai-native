@@ -646,7 +646,26 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     try {
       const _now = Date.now();
       for (const [k, v] of _sessionState) {
-        if (_now - (v.ts || 0) > 2 * 3600e3) _sessionState.delete(k);
+        if (_now - (v.ts || 0) > 2 * 3600e3) {
+          _sessionState.delete(k);
+          // Bersihkan juga checkpoint LangGraph di memory
+          try {
+            if (
+              agentMemory.checkpoints &&
+              typeof agentMemory.checkpoints.delete === "function"
+            ) {
+              for (const [key] of agentMemory.checkpoints)
+                if (key.includes(k)) agentMemory.checkpoints.delete(key);
+            }
+            if (
+              agentMemory.storage &&
+              typeof agentMemory.storage.delete === "function"
+            ) {
+              for (const [key] of agentMemory.storage)
+                if (key.includes(k)) agentMemory.storage.delete(key);
+            }
+          } catch (e) {}
+        }
       }
     } catch (_) {}
     _sessionState.set(thread_id, {
@@ -867,8 +886,19 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           m: "Menunggu jawaban model…",
           ctxChars: _ctxChars,
         });
+        const _hbInterval = setInterval(() => {
+          emit({
+            t: "model_wait",
+            m:
+              "Masih menunggu jawaban model (" +
+              Math.round((Date.now() - _askT0) / 1000) +
+              "s)…",
+            ctxChars: _ctxChars,
+          });
+        }, 10000);
         try {
           msg = await askCloudTools(cloud, activeMessages, currentTools);
+          clearInterval(_hbInterval);
           dlog("self", "info", "model_request_done", {
             step: state.step,
             ms: Date.now() - _askT0,
@@ -877,6 +907,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             toolCalls: (msg && msg.tool_calls && msg.tool_calls.length) || 0,
           });
         } catch (e) {
+          clearInterval(_hbInterval);
           dlog("self", "error", "model_request_failed", {
             step: state.step,
             ms: Date.now() - _askT0,
@@ -1112,6 +1143,15 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               ok: !!r.ok,
               bytes: written.trim().length,
             });
+          }
+          if (
+            r.output &&
+            typeof r.output === "string" &&
+            r.output.length > 1500
+          ) {
+            r.output =
+              r.output.slice(0, 1500) +
+              "\n... [TRUNCATED] (Output too long, please use specific filters if needed)";
           }
           // Hanya output tool yang SUBSTANTIF dihitung sebagai evidence. Hasil kosong /
           // "(tidak ada file cocok)" / "(ok)" bukan bukti apa pun; kalau dimasukkan,

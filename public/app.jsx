@@ -1405,21 +1405,10 @@ function App() {
     } catch (e) {}
   }, [messages, history, selectedProject, currentChatId]);
   // Agent Runner state
-  const [agentRunnerOpen, setAgentRunnerOpen] = useState(false);
-  const [availableAgents, setAvailableAgents] = useState([]);
   const [activeAgent, setActiveAgent] = useState("");
   const [agentOutput, setAgentOutput] = useState("");
   const [agentRunning, setAgentRunning] = useState(false);
   const agentEsRef = useRef(null);
-  const loadAgents = async () => {
-    try {
-      const res = await fetch("/api/agents");
-      const data = await res.json();
-      setAvailableAgents(Array.isArray(data) ? data : data.agents || []);
-    } catch (e) {
-      console.error("loadAgents error:", e);
-    }
-  };
   const startAgent = async (id, model, cwd) => {
     if (!id) return;
     try {
@@ -2447,10 +2436,6 @@ function App() {
           deleteChat={deleteChat}
           renameChat={renameChat}
           loadSavedChats={loadSavedChats}
-          onAgentRunner={() => {
-            setAgentRunnerOpen(true);
-            loadAgents();
-          }}
           selectedProject={selectedProject}
           onOpenPicker={() => {
             setPickerDone(false);
@@ -2530,7 +2515,6 @@ function App() {
                   onSend={(t) => doSend(t)}
                   onCancel={cancel}
                   busy={busy || agentRunning}
-                  onAgentCli={() => setAgentRunnerOpen(true)}
                 />
               </div>
               {terminalOpen && (

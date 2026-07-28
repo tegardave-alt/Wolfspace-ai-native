@@ -1144,7 +1144,6 @@ function Sidebar({
   deleteChat,
   renameChat,
   loadSavedChats,
-  onAgentRunner,
   selectedProject,
   onOpenPicker,
 }) {

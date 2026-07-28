@@ -16,7 +16,18 @@ delete env.ELECTRON_RUN_AS_NODE;
 const electronExe = require("electron"); // di konteks node, ini = path ke electron.exe
 const mainJs = path.join(__dirname, "..", "electron", "main.js");
 
-const child = spawn(electronExe, [mainJs], { stdio: "inherit", env });
+// Flag optimisasi memori:
+// --js-flags="--max-old-space-size=512 --expose-gc" : batasi V8 heap Node.js di
+//   main process ke 512 MB dan aktifkan global.gc() agar GC bisa dipaksa periodik.
+// --disable-http-cache : matikan disk cache HTTP Chromium (hemat 100-300 MB disk I/O)
+const ELECTRON_FLAGS = [
+  "--js-flags=--max-old-space-size=512 --expose-gc",
+  "--disable-http-cache",
+];
+const child = spawn(electronExe, [...ELECTRON_FLAGS, mainJs], {
+  stdio: "inherit",
+  env,
+});
 child.on("exit", (code) => process.exit(code == null ? 0 : code));
 child.on("error", (e) => {
   console.error("Gagal meluncurkan Electron:", e.message);

@@ -11,6 +11,7 @@
     "start": "node server.cjs",
     "dev": "nodemon server.cjs",
     "app": "node scripts/app.cjs",
+    "app:opt": "electron --js-flags=\"--max-old-space-size=512 --expose-gc\" --disable-http-cache . ",
     "dist": "electron-builder --win",
     "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles --passWithNoTests",
@@ -128,13 +129,11 @@
   },
   "jest": {
     "modulePathIgnorePatterns": [
-      "<rootDir>/_archive/",
       "<rootDir>/_agent_backups/",
       "<rootDir>/artifacts/"
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "<rootDir>/_archive/",
       "<rootDir>/_agent_backups/",
       "<rootDir>/vscode-extension-fork/"
     ]

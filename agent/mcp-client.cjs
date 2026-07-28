@@ -1,7 +1,47 @@
 const fs = require("fs");
 const path = require("path");
-const { spawn } = require("child_process");
+const { spawn, execSync } = require("child_process");
 const { dlog } = require("./debug.cjs");
+
+// File PID tracker: simpan PID semua proses MCP yang pernah di-spawn
+// agar bisa dibunuh saat restart berikutnya.
+const PID_FILE = path.join(__dirname, "..", "config", ".mcp-pids.json");
+
+function _savePids(pids) {
+  try {
+    const dir = path.dirname(PID_FILE);
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(PID_FILE, JSON.stringify(pids), "utf8");
+  } catch (_) {}
+}
+
+function _loadPids() {
+  try {
+    if (!fs.existsSync(PID_FILE)) return [];
+    return JSON.parse(fs.readFileSync(PID_FILE, "utf8")) || [];
+  } catch (_) {
+    return [];
+  }
+}
+
+function _killOrphans() {
+  const pids = _loadPids();
+  if (!pids.length) return;
+  dlog("mcp", "info", `Membersihkan ${pids.length} proses MCP lama...`, {
+    pids,
+  });
+  for (const pid of pids) {
+    try {
+      process.kill(pid, 0); // cek apakah masih hidup
+      process.kill(pid); // bunuh jika masih ada
+      dlog("mcp", "info", `MCP orphan PID ${pid} dihentikan.`);
+    } catch (_) {}
+  }
+  // Hapus file PID setelah dibersihkan
+  try {
+    fs.unlinkSync(PID_FILE);
+  } catch (_) {}
+}
 
 const CONFIG_PATH = path.join(__dirname, "..", "config", "mcp.json");
 
@@ -26,6 +66,11 @@ class MCPClient {
 
   async init() {
     if (this.initialized) return;
+
+    // Bunuh semua proses MCP dari sesi sebelumnya sebelum spawn baru.
+    // Ini memastikan setiap restart adalah proses yang bersih tanpa duplikat.
+    _killOrphans();
+
     const config = this._loadConfig();
     const srvs = config.mcpServers || {};
 
@@ -87,6 +132,13 @@ class MCPClient {
       });
 
       this.servers[name] = { proc, ready: false };
+
+      // Catat PID ke file agar bisa dibunuh saat restart berikutnya
+      const currentPids = _loadPids();
+      if (proc.pid && !currentPids.includes(proc.pid)) {
+        currentPids.push(proc.pid);
+        _savePids(currentPids);
+      }
 
       // Lakukan Initialize handshake
       this._request(name, "initialize", {

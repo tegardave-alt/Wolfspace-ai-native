@@ -1,4 +1,4 @@
-﻿# WOLFSPACE launcher (Windows): starts local model servers (if any) + the web server.
+# WOLFSPACE launcher (Windows): starts local model servers (if any) + the web server.
 # Portable: picks bun or node from PATH; only adds toolchain dirs that actually exist.
 $ErrorActionPreference = 'Stop'
 $root = $PSScriptRoot
@@ -46,6 +46,18 @@ if (-not $runtime) {
 if (-not $runtime) { Write-Host "ERROR: install Node.js (https://nodejs.org) or Bun first." -ForegroundColor Red; exit 1 }
 
 Start-Sleep -Seconds 2
+# 3b) Bersihkan proses server.cjs lama sebelum spawn baru.
+#     Tanpa ini, setiap restart menambah proses baru tanpa mematikan yang lama.
+$oldServers = Get-WmiObject Win32_Process -Filter "name='node.exe'" -ErrorAction SilentlyContinue |
+  Where-Object { $_.CommandLine -match [regex]::Escape($root) -and $_.CommandLine -match 'server\.cjs' }
+if ($oldServers) {
+  Write-Host "[cleanup] Menghentikan $($oldServers.Count) proses server.cjs lama..." -ForegroundColor Yellow
+  $oldServers | ForEach-Object {
+    try { Stop-Process -Id $_.ProcessId -Force -ErrorAction SilentlyContinue } catch {}
+  }
+  Start-Sleep -Milliseconds 500
+}
+
 Start-Process -FilePath $runtime -ArgumentList 'server.cjs' -WorkingDirectory $root -WindowStyle Hidden
 $port = 8090
 if ($cfg.server.port) { $port = $cfg.server.port }

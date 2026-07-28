@@ -16,6 +16,8 @@ _archive/_temp/
 
 # Secrets: MCP config berisi token — jangan dilacak (pakai mcp.example.json sbg template)
 config/mcp.json
+# File runtime PID tracker MCP — dibuat otomatis saat server start, bukan untuk di-commit
+config/.mcp-pids.json
 # File tempel kredensial sementara (mis. codeRabbit.py, "worker api .py"). Pernah
 # ada di root repo berisi API key mentah — sekali ter-commit, kunci masuk riwayat
 # git permanen. Simpan kunci di ~/.wolfspace/cloud-keys.json, bukan di file repo.

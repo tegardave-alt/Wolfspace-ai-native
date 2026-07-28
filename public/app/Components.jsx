@@ -617,7 +617,6 @@ function Composer({
   onSend,
   onCancel,
   busy,
-  onAgentCli,
   models = [],
   modelVal,
   setModelVal,
