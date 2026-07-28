@@ -17,6 +17,7 @@ function atomicWrite(dest, content) {
   }
 }
 const { spawn } = require("child_process");
+const { dlog } = require("../debug.cjs");
 const { createSnapshot } = require("../snapshot.cjs");
 
 // ── Hybrid module loading (eager core + lazy peripheral) ──
@@ -401,7 +402,55 @@ function _hasDocker() {
 }
 const WW_SANDBOX_IMAGE = process.env.WW_SANDBOX_IMAGE || "wolfspace-sandbox";
 const _sandboxPolicy = require("../sandbox-policy.cjs");
+
+// PENEGAKAN DI KODE (bukan anjuran prompt): tolak perintah bash yang menyebut
+// path HOST di luar workspace, SEBELUM dikirim ke container.
+//
+// Kenapa hardcode: bash jalur Docker hanya me-mount folder workspace, jadi path
+// seperti C:\Users\... atau /c/Users/... TIDAK PERNAH ada di dalam container.
+// Tanpa penjaga ini, `sh` cuma membalas "can't cd to /c/Users/..." — pesan yang
+// tak menjelaskan APA PUN tentang sebabnya, sehingga agent mengulang perintah
+// yang sama berkali-kali (terpantau 6x beruntun sampai penjaga kemandekan
+// menghentikannya). Instruksi di prompt tak cukup: model bisa mengabaikannya.
+// Di sini kegagalan diubah jadi ARAHAN — sebutkan batasnya dan tool penggantinya.
+const _HOST_PATH_RE = [
+  /\b[A-Za-z]:[\\/]/, //  C:\... atau D:/...
+  /(^|\s|['"=(])\/[a-z]\/(Users|Program|Windows)/i, // /c/Users/... (gaya MSYS)
+  /(^|\s|['"=(])\/mnt\/[a-z]\//i, //  /mnt/c/... (gaya WSL)
+];
+function _hostPathEscape(cmd) {
+  const s = String(cmd || "");
+  for (const re of _HOST_PATH_RE) {
+    const m = s.match(re);
+    if (m) return m[0].trim();
+  }
+  return null;
+}
+
 function _runBashInDocker(cmd, root, args) {
+  const bocor = _hostPathEscape(cmd);
+  if (bocor) {
+    return Promise.resolve({
+      ok: false,
+      sandbox: "docker",
+      confinedTo: root,
+      output:
+        "DITOLAK: perintah menyebut path host di luar workspace (" +
+        bocor +
+        "...).\n" +
+        "bash berjalan di container yang HANYA me-mount folder workspace, jadi path " +
+        "host tidak ada di dalamnya dan mengulang perintah ini tidak akan pernah berhasil.\n" +
+        "Workspace: " +
+        root +
+        "\n" +
+        "GUNAKAN TOOL LAIN:\n" +
+        "  • isi halaman web        -> web_fetch (browser di host, bukan sandbox)\n" +
+        "  • cari di internet       -> web_search\n" +
+        "  • baca file di luar ws   -> disk_read / disk_list / disk_glob\n" +
+        "  • akses berpolicy+audit  -> capability_exec\n" +
+        "Untuk bekerja di dalam workspace, pakai path RELATIF (mis. ./src), bukan absolut.",
+    });
+  }
   const hostDir = path.resolve(root).replace(/\\/g, "/");
   let workdir = "/work";
   if (args.cwd) {
@@ -438,6 +487,17 @@ function _runBashInDocker(cmd, root, args) {
     "-c",
     cmd,
   ];
+  // Jejak eksekusi bash. Sebelumnya exec-tools/bash TIDAK pernah memanggil dlog,
+  // sehingga 6 kegagalan beruntun ("can't cd to /c/Users/...") tak meninggalkan
+  // SATU BARIS PUN di WOLFSPACE-debug.log — kegagalan hanya terlihat sekilas di UI
+  // dan mustahil ditelusuri setelahnya. Sama seperti celah observabilitas pada
+  // panggilan model yang sudah ditutup: catat MULAI dan SELESAI beserta durasinya.
+  const _t0 = Date.now();
+  dlog("tool", "info", "bash_start", {
+    mode: "docker",
+    root,
+    cmd: String(cmd).replace(/\s+/g, " ").slice(0, 160),
+  });
   return new Promise((resolve) => {
     const child = spawn("docker", dargs, { windowsHide: true });
     let out = "",
@@ -452,6 +512,12 @@ function _runBashInDocker(cmd, root, args) {
     child.on("close", (code) => {
       clearTimeout(to);
       const body = (out + (err ? "\n" + err : "")).trim();
+      dlog("tool", code === 0 ? "info" : "warn", "bash_done", {
+        mode: "docker",
+        exit: code,
+        ms: Date.now() - _t0,
+        out: body.replace(/\s+/g, " ").slice(0, 200),
+      });
       resolve({
         ok: code === 0,
         output: body || `(exit ${code})`,
@@ -461,6 +527,11 @@ function _runBashInDocker(cmd, root, args) {
     });
     child.on("error", (e) => {
       clearTimeout(to);
+      dlog("tool", "error", "bash_failed", {
+        mode: "docker",
+        ms: Date.now() - _t0,
+        error: String(e.message).slice(0, 140),
+      });
       resolve({ ok: false, output: "docker error: " + e.message });
     });
   });
