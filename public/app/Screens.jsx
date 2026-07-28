@@ -256,31 +256,42 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   const [pickerMcp, setPickerMcp] = useState([]);
 
   // Pemuat tunggal: dipakai saat mount DAN saat layar lain menyiarkan perubahan MCP.
-  const loadPickerMcp = React.useCallback(() => {
+  const loadPickerMcp = React.useCallback(async () => {
     if (!window.WOLFSPACE) return;
-    window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }).then(
-      (res) => {
-        if (res && res.body) {
-          try {
-            const data =
-              typeof res.body === "string" ? JSON.parse(res.body) : res.body;
-            const arr = Object.entries(data || {}).map(([name, conf]) => ({
-              id: name,
-              name: name,
-              desc:
-                (conf.command || "") +
-                " " +
-                (conf.args ? conf.args.join(" ") : ""),
-              active: true,
-              conf: conf,
-            }));
-            setPickerMcp(arr);
-          } catch (e) {
-            console.error("Error loading MCP servers", e);
-          }
+    try {
+      // Sama dgn Components.jsx: `active` dulu di-hardcode true sehingga badge
+      // selalu "Connected" walau prosesnya belum jalan atau tiap panggilannya
+      // gagal (mis. token dicabut). Status runtime diambil dari /mcp/status.
+      const [resCfg, resSt] = await Promise.all([
+        window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }),
+        window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp/status" }),
+      ]);
+      const parse = (r) => {
+        if (!r || !r.body) return {};
+        try {
+          return typeof r.body === "string" ? JSON.parse(r.body) : r.body;
+        } catch (_) {
+          return {};
         }
-      },
-    );
+      };
+      const data = parse(resCfg);
+      const st = parse(resSt);
+      const arr = Object.entries(data || {}).map(([name, conf]) => {
+        const s = st[name] || {};
+        return {
+          id: name,
+          name: name,
+          desc:
+            (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
+          active: !!s.ready && s.lastCallOk !== false,
+          status: s,
+          conf: conf,
+        };
+      });
+      setPickerMcp(arr);
+    } catch (e) {
+      console.error("Error loading MCP servers", e);
+    }
   }, []);
 
   useEffect(() => {
@@ -381,6 +392,9 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     };
 
     setPickerMcp((prev) => [...prev.filter((p) => p.id !== name), entry]);
+    // Entri optimistis (lihat catatan di Components.jsx): segarkan dgn status
+    // runtime supaya server yang gagal tak terus tampil "Connected".
+    setTimeout(() => loadPickerMcp(), 2500);
     setPickerMcpInputSuccess("✓ Server MCP berhasil ditambahkan!");
     setPickerMcpInputUrl("");
     setPickerMcpInputToken("");
@@ -891,42 +905,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                     e.stopPropagation();
                     setShowModelMenu(false);
                     setShowMcpMenu(!showMcpMenu);
-                    if (!showMcpMenu && window.WOLFSPACE) {
-                      window.WOLFSPACE.invoke("api", {
-                        method: "GET",
-                        path: "/mcp",
-                      })
-                        .then((res) => {
-                          if (res.body) {
-                            const data =
-                              typeof res.body === "string"
-                                ? JSON.parse(res.body)
-                                : res.body;
-                            // GET /mcp -> mcpClient.getServers() = config.mcpServers LANGSUNG
-                            // (peta nama->conf), BUKAN { mcpServers: {...} }. Dulu di sini
-                            // dibaca data.mcpServers yang selalu undefined, sehingga blok ini
-                            // tak pernah jalan -> daftar TAK PERNAH disegarkan, dan server yang
-                            // sudah dihapus di tampilan lain tetap terlihat. Samakan dengan
-                            // pemuatan awal di atas yang memang memakai Object.entries(data).
-                            const arr = Object.entries(data || {}).map(
-                              ([id, conf]) => ({
-                                id,
-                                name: id,
-                                desc:
-                                  (conf.command || "") +
-                                  " " +
-                                  (conf.args ? conf.args.join(" ") : ""),
-                                active: true,
-                                conf,
-                              }),
-                            );
-                            setPickerMcp(arr);
-                          }
-                        })
-                        .catch((err) =>
-                          console.error("Error reloading MCP", err),
-                        );
-                    }
+                    // Pakai pemuat TUNGGAL (lihat catatan di Components.jsx):
+                    // salinan inline dulu memetakan `active: true` dan menimpa
+                    // status runtime yang benar tiap kali menu dibuka.
+                    if (!showMcpMenu) loadPickerMcp();
                   }}
                 >
                   <span>MCP</span>
@@ -1005,17 +987,38 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                     ✓ Connected
                                   </span>
                                 ) : (
+                                  // Bedakan sebabnya (lihat catatan di
+                                  // Components.jsx): "gagal" != "belum jalan".
                                   <span
+                                    title={
+                                      (srv.status && srv.status.lastError) ||
+                                      (srv.status && !srv.status.running
+                                        ? "Proses MCP belum berjalan"
+                                        : "Belum siap")
+                                    }
                                     style={{
                                       fontSize: "11px",
                                       fontWeight: 500,
                                       padding: "2px 6px",
                                       borderRadius: "10px",
-                                      color: "#858585",
-                                      background: "rgba(133, 133, 133, 0.12)",
+                                      color:
+                                        srv.status &&
+                                        srv.status.lastCallOk === false
+                                          ? "#f85149"
+                                          : "#858585",
+                                      background:
+                                        srv.status &&
+                                        srv.status.lastCallOk === false
+                                          ? "rgba(248, 81, 73, 0.12)"
+                                          : "rgba(133, 133, 133, 0.12)",
                                     }}
                                   >
-                                    ○ Disabled
+                                    {srv.status &&
+                                    srv.status.lastCallOk === false
+                                      ? "✕ Gagal"
+                                      : srv.status && !srv.status.running
+                                        ? "○ Berhenti"
+                                        : "○ Belum siap"}
                                   </span>
                                 )}
                                 <span

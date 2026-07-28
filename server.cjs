@@ -3792,6 +3792,16 @@ const server = http.createServer(async (req, res) => {
     return;
 
   // MCP Configuration Endpoints
+  // Status RUNTIME per server MCP. Endpoint TERPISAH dari /mcp secara sengaja:
+  // /mcp mengembalikan peta konfigurasi LANGSUNG, dan frontend sudah membacanya
+  // dgn Object.entries(data) — mengubah bentuknya akan mengulang bug lama di mana
+  // daftar MCP tak pernah tersegarkan.
+  if (_path === "/mcp/status" && req.method === "GET") {
+    const mcpClient = require("./agent/mcp-client.cjs");
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(JSON.stringify(mcpClient.status()));
+  }
+
   if (_path === "/mcp") {
     const mcpClient = require("./agent/mcp-client.cjs");
     if (req.method === "GET") {

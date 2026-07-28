@@ -632,31 +632,44 @@ function Composer({
 
   // Satu pemuat dipakai ulang: saat mount DAN saat ada siaran perubahan MCP dari
   // layar lain, supaya kedua tampilan tak pernah menampilkan server yang sudah dihapus.
-  const loadMcpServers = React.useCallback(() => {
+  const loadMcpServers = React.useCallback(async () => {
     if (!window.WOLFSPACE) return;
-    window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }).then(
-      (res) => {
-        if (res && res.body) {
-          try {
-            const data =
-              typeof res.body === "string" ? JSON.parse(res.body) : res.body;
-            const arr = Object.entries(data || {}).map(([name, conf]) => ({
-              id: name,
-              name: name,
-              desc:
-                (conf.command || "") +
-                " " +
-                (conf.args ? conf.args.join(" ") : ""),
-              active: true,
-              conf: conf,
-            }));
-            setMcpServers(arr);
-          } catch (e) {
-            console.error("Error loading MCP servers", e);
-          }
+    try {
+      // Daftar server (config) + status RUNTIME. Dulu `active` di-hardcode true,
+      // sehingga badge selalu "Connected" — bahkan untuk server yang prosesnya
+      // belum jalan ATAU yang panggilannya selalu gagal (mis. token dicabut:
+      // proses start & handshake mulus, tapi tiap panggilan API ditolak 401).
+      const [resCfg, resSt] = await Promise.all([
+        window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }),
+        window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp/status" }),
+      ]);
+      const parse = (r) => {
+        if (!r || !r.body) return {};
+        try {
+          return typeof r.body === "string" ? JSON.parse(r.body) : r.body;
+        } catch (_) {
+          return {};
         }
-      },
-    );
+      };
+      const data = parse(resCfg);
+      const st = parse(resSt);
+      const arr = Object.entries(data || {}).map(([name, conf]) => {
+        const s = st[name] || {};
+        return {
+          id: name,
+          name: name,
+          desc:
+            (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
+          // Hijau HANYA bila benar-benar siap DAN panggilan terakhir tidak gagal.
+          active: !!s.ready && s.lastCallOk !== false,
+          status: s,
+          conf: conf,
+        };
+      });
+      setMcpServers(arr);
+    } catch (e) {
+      console.error("Error loading MCP servers", e);
+    }
   }, []);
 
   useEffect(() => {
@@ -754,6 +767,10 @@ function Composer({
     };
 
     setMcpServers((prev) => [...prev.filter((p) => p.id !== name), entry]);
+    // Entri di atas OPTIMISTIS (langsung hijau). Segarkan dari status runtime
+    // sesaat kemudian supaya server yang ternyata gagal tidak terus tampil
+    // "Connected" — beri jeda agar proses MCP sempat handshake.
+    setTimeout(() => loadMcpServers(), 2500);
     setMcpInputSuccess("✓ Server MCP berhasil dihubungkan & berjalan!");
     setMcpInputUrl("");
     setMcpInputToken("");
@@ -1368,39 +1385,11 @@ function Composer({
                       e.stopPropagation();
                       setShowModelMenu(false);
                       setShowMcpMenu(!showMcpMenu);
-                      if (!showMcpMenu && window.WOLFSPACE) {
-                        window.WOLFSPACE.invoke("api", {
-                          method: "GET",
-                          path: "/mcp",
-                        })
-                          .then((res) => {
-                            if (res.body) {
-                              const data =
-                                typeof res.body === "string"
-                                  ? JSON.parse(res.body)
-                                  : res.body;
-                              // Lihat catatan di Screens.jsx: GET /mcp mengembalikan peta
-                              // server LANGSUNG, bukan { mcpServers: {...} }. Membaca
-                              // data.mcpServers membuat penyegaran ini tak pernah jalan.
-                              const arr = Object.entries(data || {}).map(
-                                ([id, conf]) => ({
-                                  id,
-                                  name: id,
-                                  desc:
-                                    (conf.command || "") +
-                                    " " +
-                                    (conf.args ? conf.args.join(" ") : ""),
-                                  active: true,
-                                  conf,
-                                }),
-                              );
-                              setMcpServers(arr);
-                            }
-                          })
-                          .catch((err) =>
-                            console.error("Error reloading MCP", err),
-                          );
-                      }
+                      // Pakai pemuat TUNGGAL, jangan menyalin ulang logikanya.
+                      // Salinan inline di sini dulu memetakan `active: true` dan
+                      // MENIMPA status runtime yang benar setiap kali menu dibuka —
+                      // duplikasi itulah yang membuat bug tampilan MCP terus kembali.
+                      if (!showMcpMenu) loadMcpServers();
                     }}
                   >
                     <span>MCP</span>
@@ -1481,17 +1470,40 @@ function Composer({
                                       ✓ Connected
                                     </span>
                                   ) : (
+                                    // Bedakan SEBABNYA, jangan samaratakan jadi
+                                    // "Disabled": server yang panggilannya gagal
+                                    // (mis. token dicabut) beda dari yang belum
+                                    // dijalankan. Dulu keduanya tampil hijau.
                                     <span
+                                      title={
+                                        (srv.status && srv.status.lastError) ||
+                                        (srv.status && !srv.status.running
+                                          ? "Proses MCP belum berjalan"
+                                          : "Belum siap")
+                                      }
                                       style={{
                                         fontSize: "11px",
                                         fontWeight: 500,
                                         padding: "2px 6px",
                                         borderRadius: "10px",
-                                        color: "#858585",
-                                        background: "rgba(133, 133, 133, 0.12)",
+                                        color:
+                                          srv.status &&
+                                          srv.status.lastCallOk === false
+                                            ? "#f85149"
+                                            : "#858585",
+                                        background:
+                                          srv.status &&
+                                          srv.status.lastCallOk === false
+                                            ? "rgba(248, 81, 73, 0.12)"
+                                            : "rgba(133, 133, 133, 0.12)",
                                       }}
                                     >
-                                      ○ Disabled
+                                      {srv.status &&
+                                      srv.status.lastCallOk === false
+                                        ? "✕ Gagal"
+                                        : srv.status && !srv.status.running
+                                          ? "○ Berhenti"
+                                          : "○ Belum siap"}
                                     </span>
                                   )}
                                   <span

@@ -302,13 +302,13 @@ class MCPClient {
 
       // Format balasan MCP
       if (res.isError) {
-        return {
-          ok: false,
-          output: `[MCP Error] ${(res.content || []).map((c) => c.text).join("\\n")}`,
-        };
+        const pesan = (res.content || []).map((c) => c.text).join("\\n");
+        this._catat(serverName, false, pesan);
+        return { ok: false, output: `[MCP Error] ${pesan}` };
       }
 
       const textOutput = (res.content || []).map((c) => c.text).join("\\n");
+      this._catat(serverName, true);
       return { ok: true, output: textOutput };
     } catch (e) {
       dlog(
@@ -317,8 +317,52 @@ class MCPClient {
         `Gagal memanggil tool ${toolName} di ${serverName}`,
         { error: e.message },
       );
+      this._catat(serverName, false, e.message);
       return { ok: false, output: `Error eksekusi MCP tool: ${e.message}` };
     }
+  }
+
+  // Rekam hasil panggilan TERAKHIR per server. `ready` saja tidak cukup untuk
+  // menyatakan sebuah server "berfungsi": proses bisa start & berjabat tangan
+  // dengan mulus, lalu SETIAP panggilan API gagal — persis yang terjadi ketika
+  // token GitHub dicabut tapi UI tetap menampilkan "Connected". Status jujur
+  // butuh bukti dari panggilan nyata, bukan dari keberhasilan start saja.
+  _catat(name, ok, pesan) {
+    const s = this.servers[name];
+    if (!s) return;
+    s.lastCallAt = Date.now();
+    s.lastCallOk = ok;
+    s.lastError = ok
+      ? null
+      : String(pesan || "")
+          .replace(/\s+/g, " ")
+          .slice(0, 200);
+  }
+
+  // Status RUNTIME per server (bukan sekadar isi config). Dipakai UI supaya badge
+  // koneksi mencerminkan keadaan sebenarnya alih-alih nilai `active: true` yang
+  // dulu di-hardcode di frontend.
+  //   configured : ada di config/mcp.json
+  //   running    : prosesnya hidup
+  //   ready      : handshake initialize selesai
+  //   lastCallOk : hasil panggilan tool terakhir (null bila belum pernah dipanggil)
+  status() {
+    const cfg = this._loadConfig().mcpServers || {};
+    const out = {};
+    for (const name of Object.keys(cfg)) {
+      const s = this.servers[name];
+      out[name] = {
+        configured: true,
+        running: !!(s && s.proc),
+        ready: !!(s && s.ready),
+        lastCallOk:
+          s && typeof s.lastCallOk === "boolean" ? s.lastCallOk : null,
+        lastCallAt: (s && s.lastCallAt) || null,
+        lastError: (s && s.lastError) || null,
+        toolCount: (this.toolsCache[name] || []).length,
+      };
+    }
+    return out;
   }
 }
 

@@ -102,18 +102,32 @@ test("async seeding keeps the event loop responsive; sync seeding freezes it", a
   // not cold-disk variance.
   seedSync(PUB, 0, 20, new Map());
 
-  const syncLateness = await measureLateness(() => {
-    seedSync(PUB, 0, 20, new Map());
-  });
-  const asyncLateness = await measureLateness(async () => {
-    await seedAsync(PUB, 0, 20, new Map());
-  });
+  // Take the MINIMUM of several runs, per strategy. Timer lateness measures how
+  // long the event loop was unavailable — which also inflates when *other*
+  // processes compete for CPU. An earlier version asserted an absolute cap
+  // (asyncLateness < 80) and went red at 227ms during a build-heavy moment,
+  // even though nothing had regressed: measured clean, async is 0-4ms against
+  // sync's 130-190ms. The minimum is the least contaminated sample, so it keeps
+  // the signal while shrugging off transient load spikes.
+  const best = async (fn) => {
+    let lo = Infinity;
+    for (let i = 0; i < 3; i++) lo = Math.min(lo, await measureLateness(fn));
+    return lo;
+  };
+  const syncLateness = await best(() => seedSync(PUB, 0, 20, new Map()));
+  const asyncLateness = await best(async () =>
+    seedAsync(PUB, 0, 20, new Map()),
+  );
 
-  // The async walk must never hand the main thread a long uninterruptible block:
-  // the probe timer should fire close to on time. The sync walk holds the thread
-  // for the whole hash, delaying the probe far more — proving the fix's mechanism.
-  expect(asyncLateness).toBeLessThan(80);
-  expect(syncLateness).toBeGreaterThan(asyncLateness);
+  // The real claim is RELATIVE and enormous (observed 47x-130x): the sync walk
+  // holds the thread for the whole hash, the async walk yields between files.
+  // Assert the mechanism as a ratio rather than a wall-clock number, so the test
+  // fails when the fix breaks — not when the machine is busy.
+  expect(syncLateness).toBeGreaterThan(asyncLateness * 3 + 20);
+
+  // Loose sanity ceiling: catches a genuine regression (async blocking for a
+  // meaningful stretch) without re-introducing load sensitivity.
+  expect(asyncLateness).toBeLessThan(500);
 });
 
 test("both strategies compute identical baseline hashes (fix changes timing, not results)", async () => {
