@@ -62,6 +62,7 @@
   "build": {
     "appId": "com.WOLFSPACE.app",
     "productName": "WOLFSPACE",
+    "npmRebuild": false,
     "files": [
       "electron/**",
       "core.js",
