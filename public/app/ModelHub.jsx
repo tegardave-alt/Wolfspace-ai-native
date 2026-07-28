@@ -5,7 +5,7 @@
 
 /* ----------------------------- Model Hub view (real HF) ----------------------------- */
 const HUB_CATS = [
-  { key: "all", label: "Semua", q: "gguf" },
+  { key: "all", label: "All", q: "gguf" },
   { key: "code", label: "Code", q: "coder gguf" },
   { key: "chat", label: "Chat", q: "instruct gguf" },
   { key: "small", label: "Kecil", q: "1b gguf" },
@@ -141,7 +141,7 @@ function DevView({ onBack, models = [], modelVal, setModelVal }) {
     <span class="badge">⚡ WOLFSPACE DEV</span>
     <h2>Glass UI Sandbox</h2>
     <p>Tes rancangan komponen HTML & CSS Anda secara langsung dengan pratinjau instan.</p>
-    <button onclick="this.textContent = 'Berhasil Diklik! 🎉'; this.style.background='#10b981'">Uji Interaksi</button>
+    <button onclick="this.textContent = 'Clicked! 🎉'; this.style.background='#10b981'">Uji Interaksi</button>
   </div>
 </body>
 </html>`,
@@ -178,7 +178,7 @@ function DevView({ onBack, models = [], modelVal, setModelVal }) {
     draw();
   </script>
 </body>
-</html>`
+</html>`,
   };
   const [pgCode, setPgCode] = useState(presetCards.card);
   const [pgRendered, setPgRendered] = useState(presetCards.card);
@@ -189,7 +189,7 @@ function DevView({ onBack, models = [], modelVal, setModelVal }) {
     pingMs: null,
     memUse: Math.round(Math.random() * 40 + 60),
     uptime: "2j 14m",
-    ollamaStatus: "mengecek..."
+    ollamaStatus: "checking…",
   });
   const checkDiagnostics = () => {
     const t0 = performance.now();
@@ -200,18 +200,28 @@ function DevView({ onBack, models = [], modelVal, setModelVal }) {
         setDiagStats((s) => ({
           ...s,
           pingMs: Math.round(t1 - t0),
-          ollamaStatus: `Aktif (${Array.isArray(data) ? data.length : 0} model di server)`
+          ollamaStatus: `Active (${Array.isArray(data) ? data.length : 0} models on the server)`,
         }));
       })
       .catch((err) => {
-        setDiagStats((s) => ({ ...s, pingMs: null, ollamaStatus: "Offline / Tidak terhubung" }));
+        setDiagStats((s) => ({
+          ...s,
+          pingMs: null,
+          ollamaStatus: "Offline / Not connected",
+        }));
       });
   };
-  useEffect(() => { if (tab === "diagnostics") checkDiagnostics(); }, [tab]);
+  useEffect(() => {
+    if (tab === "diagnostics") checkDiagnostics();
+  }, [tab]);
 
   // 3. Prompt Lab state
-  const [labPrompt, setLabPrompt] = useState("Jelaskan konsep Quantum Computing dalam 3 kalimat singkat bergaya analogi sederhana.");
-  const [labSys, setLabSys] = useState("Kamu adalah asisten ilmuwan yang bijak dan ringkas.");
+  const [labPrompt, setLabPrompt] = useState(
+    "Explain quantum computing in three short sentences using a simple analogy.",
+  );
+  const [labSys, setLabSys] = useState(
+    "You are a wise, concise scientific assistant.",
+  );
   const [labOutput, setLabOutput] = useState("");
   const [labLoading, setLabLoading] = useState(false);
   const [labMetrics, setLabMetrics] = useState(null);
@@ -229,85 +239,306 @@ function DevView({ onBack, models = [], modelVal, setModelVal }) {
         body: JSON.stringify({
           messages: [
             { role: "system", content: labSys },
-            { role: "user", content: labPrompt }
+            { role: "user", content: labPrompt },
           ],
-          model: modelVal || "default"
-        })
+          model: modelVal || "default",
+        }),
       });
       if (!res.ok) {
         const txt = await res.text();
-        setLabOutput("Error dari server: " + txt);
+        setLabOutput("Server error: " + txt);
         setLabLoading(false);
         return;
       }
       const data = await res.json();
       const t1 = performance.now();
-      const ans = data.reply || data.choices?.[0]?.message?.content || JSON.stringify(data);
+      const ans =
+        data.reply ||
+        data.choices?.[0]?.message?.content ||
+        JSON.stringify(data);
       setLabOutput(ans);
       const timeMs = Math.round(t1 - t0);
       const tokens = Math.max(1, Math.round(ans.length / 4));
-      setLabMetrics({ timeMs, tokens, tps: (tokens / (timeMs / 1000)).toFixed(1) });
+      setLabMetrics({
+        timeMs,
+        tokens,
+        tps: (tokens / (timeMs / 1000)).toFixed(1),
+      });
     } catch (e) {
-      setLabOutput("Gagal memanggil API: " + e.message);
+      setLabOutput("API call failed: " + e.message);
     }
     setLabLoading(false);
   };
 
-  const btnStyle = { fontFamily: "ui-monospace, monospace", fontSize: "12px", background: "#161b22", border: "1px solid #30363d", color: "#e6edf3", padding: "6px 12px", borderRadius: "6px", cursor: "pointer", transition: "all 0.15s" };
+  const btnStyle = {
+    fontFamily: "ui-monospace, monospace",
+    fontSize: "12px",
+    background: "#161b22",
+    border: "1px solid #30363d",
+    color: "#e6edf3",
+    padding: "6px 12px",
+    borderRadius: "6px",
+    cursor: "pointer",
+    transition: "all 0.15s",
+  };
   const tabBtn = (t, label, icon) => ({
-    display: "flex", alignItems: "center", gap: "8px", padding: "10px 18px", borderRadius: "8px", border: "1px solid " + (tab === t ? "#388bfd" : "transparent"), background: tab === t ? "rgba(56, 139, 253, 0.12)" : "transparent", color: tab === t ? "#58a6ff" : "#8b949e", fontWeight: tab === t ? 600 : 400, cursor: "pointer", transition: "all 0.15s"
+    display: "flex",
+    alignItems: "center",
+    gap: "8px",
+    padding: "10px 18px",
+    borderRadius: "8px",
+    border: "1px solid " + (tab === t ? "#388bfd" : "transparent"),
+    background: tab === t ? "rgba(56, 139, 253, 0.12)" : "transparent",
+    color: tab === t ? "#58a6ff" : "#8b949e",
+    fontWeight: tab === t ? 600 : 400,
+    cursor: "pointer",
+    transition: "all 0.15s",
   });
 
   return (
-    <div className="hub-wrap" style={{ display: "flex", flexDirection: "column", height: "100%", background: "#0d1117", overflow: "hidden" }}>
+    <div
+      className="hub-wrap"
+      style={{
+        display: "flex",
+        flexDirection: "column",
+        height: "100%",
+        background: "#0d1117",
+        overflow: "hidden",
+      }}
+    >
       {/* Top Bar */}
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "16px 24px", borderBottom: "1px solid #212a36", background: "#0e141d", flexShrink: 0 }}>
+      <div
+        style={{
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+          padding: "16px 24px",
+          borderBottom: "1px solid #212a36",
+          background: "#0e141d",
+          flexShrink: 0,
+        }}
+      >
         <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
-          <button onClick={onBack} title="Kembali ke chat" style={{ ...btnStyle, padding: "6px 10px", fontSize: "13px" }}>←</button>
+          <button
+            onClick={onBack}
+            title="Back to chat"
+            style={{ ...btnStyle, padding: "6px 10px", fontSize: "13px" }}
+          >
+            ←
+          </button>
           <div>
             <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
-              <span style={{ fontSize: "18px", fontWeight: 700, color: "#fff", letterSpacing: "-0.01em" }}>⚡ DEV Studio & System Cockpit</span>
-              <span style={{ background: "linear-gradient(135deg, #388bfd, #a371f7)", color: "#fff", fontSize: "10px", fontWeight: 700, padding: "2px 8px", borderRadius: "999px", letterSpacing: "0.08em", textTransform: "uppercase" }}>DEV</span>
+              <span
+                style={{
+                  fontSize: "18px",
+                  fontWeight: 700,
+                  color: "#fff",
+                  letterSpacing: "-0.01em",
+                }}
+              >
+                ⚡ DEV Studio & System Cockpit
+              </span>
+              <span
+                style={{
+                  background: "linear-gradient(135deg, #388bfd, #a371f7)",
+                  color: "#fff",
+                  fontSize: "10px",
+                  fontWeight: 700,
+                  padding: "2px 8px",
+                  borderRadius: "999px",
+                  letterSpacing: "0.08em",
+                  textTransform: "uppercase",
+                }}
+              >
+                DEV
+              </span>
             </div>
-            <div style={{ fontSize: "12px", color: "#6f7d92", marginTop: "2px" }}>Playground interaktif, diagnosis sistem real-time, & pengujian API WOLFSPACE</div>
+            <div
+              style={{ fontSize: "12px", color: "#6f7d92", marginTop: "2px" }}
+            >
+              Playground interaktif, diagnosis sistem real-time, & pengujian API
+              WOLFSPACE
+            </div>
           </div>
         </div>
         {/* Tabs Bar */}
-        <div style={{ display: "flex", gap: "4px", background: "#090d13", padding: "4px", borderRadius: "10px", border: "1px solid #212a36" }}>
-          <div style={tabBtn("playground", "Playground")} onClick={() => setTab("playground")}><span>🕹️</span> Playground</div>
-          <div style={tabBtn("diagnostics", "Diagnostics")} onClick={() => setTab("diagnostics")}><span>📊</span> Diagnostics</div>
-          <div style={tabBtn("promptlab", "Prompt Lab")} onClick={() => setTab("promptlab")}><span>🧪</span> Prompt Lab</div>
-          <div style={tabBtn("cheatsheet", "Cheat-Sheet")} onClick={() => setTab("cheatsheet")}><span>📚</span> API Specs</div>
+        <div
+          style={{
+            display: "flex",
+            gap: "4px",
+            background: "#090d13",
+            padding: "4px",
+            borderRadius: "10px",
+            border: "1px solid #212a36",
+          }}
+        >
+          <div
+            style={tabBtn("playground", "Playground")}
+            onClick={() => setTab("playground")}
+          >
+            <span>🕹️</span> Playground
+          </div>
+          <div
+            style={tabBtn("diagnostics", "Diagnostics")}
+            onClick={() => setTab("diagnostics")}
+          >
+            <span>📊</span> Diagnostics
+          </div>
+          <div
+            style={tabBtn("promptlab", "Prompt Lab")}
+            onClick={() => setTab("promptlab")}
+          >
+            <span>🧪</span> Prompt Lab
+          </div>
+          <div
+            style={tabBtn("cheatsheet", "Cheat-Sheet")}
+            onClick={() => setTab("cheatsheet")}
+          >
+            <span>📚</span> API Specs
+          </div>
         </div>
       </div>
 
       {/* Main Content Area */}
-      <div style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px" }}>
+      <div
+        style={{ flex: 1, minHeight: 0, overflowY: "auto", padding: "24px" }}
+      >
         {tab === "playground" && (
-          <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px", height: "100%", minHeight: "500px" }}>
+          <div
+            style={{
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "20px",
+              height: "100%",
+              minHeight: "500px",
+            }}
+          >
             {/* Code Editor Column */}
-            <div style={{ display: "flex", flexDirection: "column", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #212a36", background: "#0c1017" }}>
-                <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#8b949e" }}>📝 Code Editor (HTML / JS / CSS)</span>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                background: "#131922",
+                border: "1px solid #212a36",
+                borderRadius: "12px",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 14px",
+                  borderBottom: "1px solid #212a36",
+                  background: "#0c1017",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: "12px",
+                    color: "#8b949e",
+                  }}
+                >
+                  📝 Code Editor (HTML / JS / CSS)
+                </span>
                 <div style={{ display: "flex", gap: "6px" }}>
-                  <button style={{ ...btnStyle, fontSize: "11px", padding: "4px 8px" }} onClick={() => { setPgCode(presetCards.card); setPgRendered(presetCards.card); }}>Template Glass UI</button>
-                  <button style={{ ...btnStyle, fontSize: "11px", padding: "4px 8px" }} onClick={() => { setPgCode(presetCards.canvas); setPgRendered(presetCards.canvas); }}>Template Neon Canvas</button>
-                  <button style={{ ...btnStyle, background: "#238636", borderColor: "#2ea043", color: "#fff", fontWeight: 600 }} onClick={() => setPgRendered(pgCode)}>▶ Jalankan Preview</button>
+                  <button
+                    style={{
+                      ...btnStyle,
+                      fontSize: "11px",
+                      padding: "4px 8px",
+                    }}
+                    onClick={() => {
+                      setPgCode(presetCards.card);
+                      setPgRendered(presetCards.card);
+                    }}
+                  >
+                    Template Glass UI
+                  </button>
+                  <button
+                    style={{
+                      ...btnStyle,
+                      fontSize: "11px",
+                      padding: "4px 8px",
+                    }}
+                    onClick={() => {
+                      setPgCode(presetCards.canvas);
+                      setPgRendered(presetCards.canvas);
+                    }}
+                  >
+                    Template Neon Canvas
+                  </button>
+                  <button
+                    style={{
+                      ...btnStyle,
+                      background: "#238636",
+                      borderColor: "#2ea043",
+                      color: "#fff",
+                      fontWeight: 600,
+                    }}
+                    onClick={() => setPgRendered(pgCode)}
+                  >
+                    ▶ Run Preview
+                  </button>
                 </div>
               </div>
               <textarea
                 value={pgCode}
                 onChange={(e) => setPgCode(e.target.value)}
-                style={{ flex: 1, background: "transparent", border: "none", color: "#e6edf3", fontFamily: "ui-monospace, SFMono-Regular, Consolas, monospace", fontSize: "13px", lineHeight: 1.6, padding: "16px", outline: "none", resize: "none" }}
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "none",
+                  color: "#e6edf3",
+                  fontFamily:
+                    "ui-monospace, SFMono-Regular, Consolas, monospace",
+                  fontSize: "13px",
+                  lineHeight: 1.6,
+                  padding: "16px",
+                  outline: "none",
+                  resize: "none",
+                }}
               />
             </div>
             {/* Live Preview Column */}
-            <div style={{ display: "flex", flexDirection: "column", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", overflow: "hidden" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", padding: "10px 14px", borderBottom: "1px solid #212a36", background: "#0c1017" }}>
-                <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "12px", color: "#38bdf8" }}>✨ Live Sandbox Preview</span>
-                <span style={{ fontSize: "11px", color: "#6f7d92" }}>Terisolasi & Aman (Sandbox iframe)</span>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                background: "#131922",
+                border: "1px solid #212a36",
+                borderRadius: "12px",
+                overflow: "hidden",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  padding: "10px 14px",
+                  borderBottom: "1px solid #212a36",
+                  background: "#0c1017",
+                }}
+              >
+                <span
+                  style={{
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: "12px",
+                    color: "#38bdf8",
+                  }}
+                >
+                  ✨ Live Sandbox Preview
+                </span>
+                <span style={{ fontSize: "11px", color: "#6f7d92" }}>
+                  Terisolasi & Aman (Sandbox iframe)
+                </span>
               </div>
-              <div style={{ flex: 1, background: "#000", position: "relative" }}>
+              <div
+                style={{ flex: 1, background: "#000", position: "relative" }}
+              >
                 <iframe
                   srcDoc={pgRendered}
                   title="Live Sandbox"
@@ -320,109 +551,497 @@ function DevView({ onBack, models = [], modelVal, setModelVal }) {
         )}
 
         {tab === "diagnostics" && (
-          <div style={{ maxWidth: "860px", margin: "0 auto", display: "flex", flexDirection: "column", gap: "20px" }}>
-            <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px 22px" }}>
+          <div
+            style={{
+              maxWidth: "860px",
+              margin: "0 auto",
+              display: "flex",
+              flexDirection: "column",
+              gap: "20px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                justifyContent: "space-between",
+                background: "#131922",
+                border: "1px solid #212a36",
+                borderRadius: "12px",
+                padding: "18px 22px",
+              }}
+            >
               <div>
-                <div style={{ fontSize: "16px", fontWeight: 600, color: "#fff" }}>🔍 Status Lingkungan & Server WOLFSPACE</div>
-                <div style={{ fontSize: "13px", color: "#6f7d92", marginTop: "4px" }}>Pantau kesehatan PTY, koneksi model lokal, dan penggunaan memori.</div>
+                <div
+                  style={{ fontSize: "16px", fontWeight: 600, color: "#fff" }}
+                >
+                  🔍 Status Lingkungan & Server WOLFSPACE
+                </div>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#6f7d92",
+                    marginTop: "4px",
+                  }}
+                >
+                  Monitor PTY health, local model connections, and memory usage.
+                </div>
               </div>
-              <button style={{ ...btnStyle, background: "#1f2937" }} onClick={checkDiagnostics}>🔄 Perbarui Data</button>
+              <button
+                style={{ ...btnStyle, background: "#1f2937" }}
+                onClick={checkDiagnostics}
+              >
+                🔄 Perbarui Data
+              </button>
             </div>
 
-            <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr 1fr", gap: "16px" }}>
-              <div style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px" }}>
-                <div style={{ fontSize: "12px", color: "#6f7d92", textTransform: "uppercase", letterSpacing: "0.05em" }}>Koneksi Ollama API</div>
-                <div style={{ fontSize: "18px", fontWeight: 600, color: diagStats.ollamaStatus.includes("Aktif") ? "#3fb950" : "#f85149", marginTop: "8px" }}>{diagStats.ollamaStatus}</div>
-                <div style={{ fontSize: "12px", color: "#8b949e", marginTop: "6px" }}>Latency Ping: {diagStats.pingMs !== null ? `${diagStats.pingMs} ms` : "N/A"}</div>
+            <div
+              style={{
+                display: "grid",
+                gridTemplateColumns: "1fr 1fr 1fr",
+                gap: "16px",
+              }}
+            >
+              <div
+                style={{
+                  background: "#131922",
+                  border: "1px solid #212a36",
+                  borderRadius: "12px",
+                  padding: "18px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#6f7d92",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Koneksi Ollama API
+                </div>
+                <div
+                  style={{
+                    fontSize: "18px",
+                    fontWeight: 600,
+                    color: diagStats.ollamaStatus.includes("Active")
+                      ? "#3fb950"
+                      : "#f85149",
+                    marginTop: "8px",
+                  }}
+                >
+                  {diagStats.ollamaStatus}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#8b949e",
+                    marginTop: "6px",
+                  }}
+                >
+                  Latency Ping:{" "}
+                  {diagStats.pingMs !== null ? `${diagStats.pingMs} ms` : "N/A"}
+                </div>
               </div>
-              <div style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px" }}>
-                <div style={{ fontSize: "12px", color: "#6f7d92", textTransform: "uppercase", letterSpacing: "0.05em" }}>Uptime Sesi Server</div>
-                <div style={{ fontSize: "20px", fontWeight: 600, color: "#58a6ff", marginTop: "8px" }}>{diagStats.uptime}</div>
-                <div style={{ fontSize: "12px", color: "#8b949e", marginTop: "6px" }}>Sesi Node.js port aktif (8090)</div>
+              <div
+                style={{
+                  background: "#131922",
+                  border: "1px solid #212a36",
+                  borderRadius: "12px",
+                  padding: "18px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#6f7d92",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Uptime Sesi Server
+                </div>
+                <div
+                  style={{
+                    fontSize: "20px",
+                    fontWeight: 600,
+                    color: "#58a6ff",
+                    marginTop: "8px",
+                  }}
+                >
+                  {diagStats.uptime}
+                </div>
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#8b949e",
+                    marginTop: "6px",
+                  }}
+                >
+                  Active Node.js session port (8090)
+                </div>
               </div>
-              <div style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px" }}>
-                <div style={{ fontSize: "12px", color: "#6f7d92", textTransform: "uppercase", letterSpacing: "0.05em" }}>Perkiraan Memori Heap</div>
-                <div style={{ fontSize: "20px", fontWeight: 600, color: "#a371f7", marginTop: "8px" }}>~{diagStats.memUse} MB</div>
-                <div style={{ width: "100%", background: "#212a36", height: "6px", borderRadius: "3px", marginTop: "10px", overflow: "hidden" }}>
-                  <div style={{ width: `${Math.min(100, diagStats.memUse)}%`, background: "linear-gradient(90deg, #388bfd, #a371f7)", height: "100%" }} />
+              <div
+                style={{
+                  background: "#131922",
+                  border: "1px solid #212a36",
+                  borderRadius: "12px",
+                  padding: "18px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "12px",
+                    color: "#6f7d92",
+                    textTransform: "uppercase",
+                    letterSpacing: "0.05em",
+                  }}
+                >
+                  Perkiraan Memori Heap
+                </div>
+                <div
+                  style={{
+                    fontSize: "20px",
+                    fontWeight: 600,
+                    color: "#a371f7",
+                    marginTop: "8px",
+                  }}
+                >
+                  ~{diagStats.memUse} MB
+                </div>
+                <div
+                  style={{
+                    width: "100%",
+                    background: "#212a36",
+                    height: "6px",
+                    borderRadius: "3px",
+                    marginTop: "10px",
+                    overflow: "hidden",
+                  }}
+                >
+                  <div
+                    style={{
+                      width: `${Math.min(100, diagStats.memUse)}%`,
+                      background: "linear-gradient(90deg, #388bfd, #a371f7)",
+                      height: "100%",
+                    }}
+                  />
                 </div>
               </div>
             </div>
 
-            <div style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "20px" }}>
-              <div style={{ fontSize: "15px", fontWeight: 600, color: "#fff", marginBottom: "14px" }}>🛠️ Aksi Cepat & Utilitas Dev</div>
+            <div
+              style={{
+                background: "#131922",
+                border: "1px solid #212a36",
+                borderRadius: "12px",
+                padding: "20px",
+              }}
+            >
+              <div
+                style={{
+                  fontSize: "15px",
+                  fontWeight: 600,
+                  color: "#fff",
+                  marginBottom: "14px",
+                }}
+              >
+                🛠️ Aksi Cepat & Utilitas Dev
+              </div>
               <div style={{ display: "flex", flexWrap: "wrap", gap: "10px" }}>
-                <button style={btnStyle} onClick={() => { localStorage.clear(); alert("LocalStorage berhasil dibersihkan!"); }}>🧹 Bersihkan Cache LocalStorage</button>
-                <button style={btnStyle} onClick={() => { checkDiagnostics(); alert("Ollama ping diperiksa: " + (diagStats.pingMs || "?") + " ms"); }}>📡 Test Ping HTTP Ollama</button>
-                <button style={btnStyle} onClick={() => window.location.reload()}>🔄 Reload Sesi Workspace</button>
+                <button
+                  style={btnStyle}
+                  onClick={() => {
+                    localStorage.clear();
+                    alert("LocalStorage cleared.");
+                  }}
+                >
+                  🧹 Bersihkan Cache LocalStorage
+                </button>
+                <button
+                  style={btnStyle}
+                  onClick={() => {
+                    checkDiagnostics();
+                    alert(
+                      "Ollama ping diperiksa: " +
+                        (diagStats.pingMs || "?") +
+                        " ms",
+                    );
+                  }}
+                >
+                  📡 Test Ping HTTP Ollama
+                </button>
+                <button
+                  style={btnStyle}
+                  onClick={() => window.location.reload()}
+                >
+                  🔄 Reload Sesi Workspace
+                </button>
               </div>
             </div>
           </div>
         )}
 
         {tab === "promptlab" && (
-          <div style={{ maxWidth: "860px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "20px" }}>
-            <div style={{ display: "flex", flexDirection: "column", gap: "16px", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "20px" }}>
-              <div style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}>🧪 Prompt Test Bench (Tanpa Masuk History)</div>
+          <div
+            style={{
+              maxWidth: "860px",
+              margin: "0 auto",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "20px",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                gap: "16px",
+                background: "#131922",
+                border: "1px solid #212a36",
+                borderRadius: "12px",
+                padding: "20px",
+              }}
+            >
+              <div style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}>
+                🧪 Prompt Test Bench (Tanpa Masuk History)
+              </div>
               <div>
-                <label style={{ fontSize: "12px", color: "#8b949e", display: "block", marginBottom: "6px" }}>Model Target:</label>
-                <div style={{ fontFamily: "ui-monospace, monospace", fontSize: "13px", color: "#58a6ff", background: "#0d1117", border: "1px solid #30363d", padding: "8px 12px", borderRadius: "6px" }}>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    color: "#8b949e",
+                    display: "block",
+                    marginBottom: "6px",
+                  }}
+                >
+                  Model Target:
+                </label>
+                <div
+                  style={{
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: "13px",
+                    color: "#58a6ff",
+                    background: "#0d1117",
+                    border: "1px solid #30363d",
+                    padding: "8px 12px",
+                    borderRadius: "6px",
+                  }}
+                >
                   {modelVal || "Default / Auto"}
                 </div>
               </div>
               <div>
-                <label style={{ fontSize: "12px", color: "#8b949e", display: "block", marginBottom: "6px" }}>System Prompt / Persona:</label>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    color: "#8b949e",
+                    display: "block",
+                    marginBottom: "6px",
+                  }}
+                >
+                  System Prompt / Persona:
+                </label>
                 <textarea
                   value={labSys}
                   onChange={(e) => setLabSys(e.target.value)}
-                  style={{ width: "100%", height: "70px", background: "#0d1117", border: "1px solid #30363d", color: "#e6edf3", borderRadius: "6px", padding: "10px", fontSize: "13px", resize: "none" }}
+                  style={{
+                    width: "100%",
+                    height: "70px",
+                    background: "#0d1117",
+                    border: "1px solid #30363d",
+                    color: "#e6edf3",
+                    borderRadius: "6px",
+                    padding: "10px",
+                    fontSize: "13px",
+                    resize: "none",
+                  }}
                 />
               </div>
               <div>
-                <label style={{ fontSize: "12px", color: "#8b949e", display: "block", marginBottom: "6px" }}>User Prompt:</label>
+                <label
+                  style={{
+                    fontSize: "12px",
+                    color: "#8b949e",
+                    display: "block",
+                    marginBottom: "6px",
+                  }}
+                >
+                  User Prompt:
+                </label>
                 <textarea
                   value={labPrompt}
                   onChange={(e) => setLabPrompt(e.target.value)}
-                  style={{ width: "100%", height: "110px", background: "#0d1117", border: "1px solid #30363d", color: "#e6edf3", borderRadius: "6px", padding: "10px", fontSize: "13px", resize: "none" }}
+                  style={{
+                    width: "100%",
+                    height: "110px",
+                    background: "#0d1117",
+                    border: "1px solid #30363d",
+                    color: "#e6edf3",
+                    borderRadius: "6px",
+                    padding: "10px",
+                    fontSize: "13px",
+                    resize: "none",
+                  }}
                 />
               </div>
               <button
                 onClick={runPromptLab}
                 disabled={labLoading}
-                style={{ ...btnStyle, background: labLoading ? "#212a36" : "#238636", borderColor: labLoading ? "#30363d" : "#2ea043", color: "#fff", fontWeight: 600, padding: "10px" }}
+                style={{
+                  ...btnStyle,
+                  background: labLoading ? "#212a36" : "#238636",
+                  borderColor: labLoading ? "#30363d" : "#2ea043",
+                  color: "#fff",
+                  fontWeight: 600,
+                  padding: "10px",
+                }}
               >
-                {labLoading ? "⏳ Mengeksekusi Model..." : "🚀 Eksekusi Uji Prompt"}
+                {labLoading
+                  ? "⏳ Mengeksekusi Model..."
+                  : "🚀 Eksekusi Uji Prompt"}
               </button>
             </div>
 
-            <div style={{ display: "flex", flexDirection: "column", background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "20px" }}>
-              <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", marginBottom: "14px" }}>
-                <span style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}>📈 Respons & Metrik</span>
+            <div
+              style={{
+                display: "flex",
+                flexDirection: "column",
+                background: "#131922",
+                border: "1px solid #212a36",
+                borderRadius: "12px",
+                padding: "20px",
+              }}
+            >
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  justifyContent: "space-between",
+                  marginBottom: "14px",
+                }}
+              >
+                <span
+                  style={{ fontSize: "15px", fontWeight: 600, color: "#fff" }}
+                >
+                  📈 Respons & Metrik
+                </span>
                 {labMetrics && (
-                  <span style={{ fontFamily: "ui-monospace, monospace", fontSize: "11px", background: "#1f2937", color: "#38bdf8", padding: "4px 8px", borderRadius: "4px" }}>
-                    {labMetrics.timeMs} ms · ~{labMetrics.tokens} tok · {labMetrics.tps} tok/s
+                  <span
+                    style={{
+                      fontFamily: "ui-monospace, monospace",
+                      fontSize: "11px",
+                      background: "#1f2937",
+                      color: "#38bdf8",
+                      padding: "4px 8px",
+                      borderRadius: "4px",
+                    }}
+                  >
+                    {labMetrics.timeMs} ms · ~{labMetrics.tokens} tok ·{" "}
+                    {labMetrics.tps} tok/s
                   </span>
                 )}
               </div>
-              <div style={{ flex: 1, background: "#0d1117", border: "1px solid #30363d", borderRadius: "8px", padding: "14px", color: "#e6edf3", fontFamily: "ui-monospace, monospace", fontSize: "13px", lineHeight: 1.6, overflowY: "auto", whiteSpace: "pre-wrap" }}>
-                {labLoading ? "Sedang memproses prompt ke server LLM..." : (labOutput || "Klik 'Eksekusi Uji Prompt' untuk melihat respons mentah dari model beserta waktu latensi.")}
+              <div
+                style={{
+                  flex: 1,
+                  background: "#0d1117",
+                  border: "1px solid #30363d",
+                  borderRadius: "8px",
+                  padding: "14px",
+                  color: "#e6edf3",
+                  fontFamily: "ui-monospace, monospace",
+                  fontSize: "13px",
+                  lineHeight: 1.6,
+                  overflowY: "auto",
+                  whiteSpace: "pre-wrap",
+                }}
+              >
+                {labLoading
+                  ? "Sending the prompt to the LLM server…"
+                  : labOutput ||
+                    "Click 'Run Test Prompt' to see the model's raw response along with its latency."}
               </div>
             </div>
           </div>
         )}
 
         {tab === "cheatsheet" && (
-          <div style={{ maxWidth: "860px", margin: "0 auto", display: "grid", gridTemplateColumns: "1fr 1fr", gap: "16px" }}>
+          <div
+            style={{
+              maxWidth: "860px",
+              margin: "0 auto",
+              display: "grid",
+              gridTemplateColumns: "1fr 1fr",
+              gap: "16px",
+            }}
+          >
             {[
-              { title: "POST /api/chat", desc: "Mengirim pesan chat utama ke model aktif via proxy WOLFSPACE.", cmd: `curl -X POST http://localhost:8090/api/chat -H "Content-Type: application/json" -d '{"messages":[{"role":"user","content":"Hello"}],"model":"default"}'` },
-              { title: "GET /ollama/search", desc: "Mencari daftar model Ollama (dari mirror komunitas & status lokal).", cmd: `curl http://localhost:8090/ollama/search?q=llama` },
-              { title: "POST /api/terminal/resize", desc: "Mengirim sinyal penyesuaian dimensi kolom/baris ke proses PTY terminal.", cmd: `curl -X POST http://localhost:8090/api/terminal/resize -H "Content-Type: application/json" -d '{"cols":120,"rows":30}'` },
-              { title: "POST /api/agents/run", desc: "Menjalankan CLI Agent (mis. OpenCode) dengan sesi terisolasi.", cmd: `curl -X POST http://localhost:8090/api/agents/run -H "Content-Type: application/json" -d '{"agent":"opencode","prompt":"Fix lint"}'` }
+              {
+                title: "POST /api/chat",
+                desc: "Sends the main chat message to the active model through the WOLFSPACE proxy.",
+                cmd: `curl -X POST http://localhost:8090/api/chat -H "Content-Type: application/json" -d '{"messages":[{"role":"user","content":"Hello"}],"model":"default"}'`,
+              },
+              {
+                title: "GET /ollama/search",
+                desc: "Searching the Ollama model list (community mirror + local status).",
+                cmd: `curl http://localhost:8090/ollama/search?q=llama`,
+              },
+              {
+                title: "POST /api/terminal/resize",
+                desc: "Sends a column/row resize signal to the terminal PTY process.",
+                cmd: `curl -X POST http://localhost:8090/api/terminal/resize -H "Content-Type: application/json" -d '{"cols":120,"rows":30}'`,
+              },
+              {
+                title: "POST /api/agents/run",
+                desc: "Runs a CLI agent (e.g. OpenCode) in an isolated session.",
+                cmd: `curl -X POST http://localhost:8090/api/agents/run -H "Content-Type: application/json" -d '{"agent":"opencode","prompt":"Fix lint"}'`,
+              },
             ].map((item, i) => (
-              <div key={i} style={{ background: "#131922", border: "1px solid #212a36", borderRadius: "12px", padding: "18px", display: "flex", flexDirection: "column", gap: "8px" }}>
-                <div style={{ fontSize: "14px", fontWeight: 600, color: "#38bdf8", fontFamily: "ui-monospace, monospace" }}>{item.title}</div>
-                <div style={{ fontSize: "13px", color: "#8b949e", lineHeight: 1.5 }}>{item.desc}</div>
-                <div style={{ background: "#0d1117", border: "1px solid #30363d", borderRadius: "6px", padding: "10px", fontFamily: "ui-monospace, monospace", fontSize: "11px", color: "#cbd5e1", overflowX: "auto", marginTop: "4px" }}>
+              <div
+                key={i}
+                style={{
+                  background: "#131922",
+                  border: "1px solid #212a36",
+                  borderRadius: "12px",
+                  padding: "18px",
+                  display: "flex",
+                  flexDirection: "column",
+                  gap: "8px",
+                }}
+              >
+                <div
+                  style={{
+                    fontSize: "14px",
+                    fontWeight: 600,
+                    color: "#38bdf8",
+                    fontFamily: "ui-monospace, monospace",
+                  }}
+                >
+                  {item.title}
+                </div>
+                <div
+                  style={{
+                    fontSize: "13px",
+                    color: "#8b949e",
+                    lineHeight: 1.5,
+                  }}
+                >
+                  {item.desc}
+                </div>
+                <div
+                  style={{
+                    background: "#0d1117",
+                    border: "1px solid #30363d",
+                    borderRadius: "6px",
+                    padding: "10px",
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: "11px",
+                    color: "#cbd5e1",
+                    overflowX: "auto",
+                    marginTop: "4px",
+                  }}
+                >
                   {item.cmd}
                 </div>
               </div>
@@ -457,7 +1076,7 @@ function ModelHubViewOld() {
     setDl((d) => ({ ...d, [id]: { state: "idle" } }));
   };
   const delModel = async (port) => {
-    if (!window.confirm("Hapus model ini dari disk?")) return;
+    if (!window.confirm("Delete this model from disk?")) return;
     try {
       await fetch("/model/delete", {
         method: "POST",
@@ -503,10 +1122,10 @@ function ModelHubViewOld() {
         setResults(r);
         setSizes({});
         resolveSizes(r);
-        if (!r.length) setMsg("Belum ada model yang tersedia.");
+        if (!r.length) setMsg("No models available yet.");
       } catch (e) {
         setResults([]);
-        setMsg("Gagal memuat model: " + e.message);
+        setMsg("Failed to load model: " + e.message);
       }
       setLoading(false);
     },
@@ -585,14 +1204,14 @@ function ModelHubViewOld() {
             onChanged && onChanged();
           } else if (j.t === "err") {
             setDl((d) => ({ ...d, [id]: { state: "idle" } }));
-            setMsg("Gagal unduh: " + j.m);
+            setMsg("Download failed: " + j.m);
           }
         }
       }
     } catch (e) {
       if (e.name !== "AbortError") {
         setDl((d) => ({ ...d, [id]: { state: "idle" } }));
-        setMsg("Gagal: " + e.message);
+        setMsg("Failed: " + e.message);
       }
     }
   };
@@ -703,14 +1322,14 @@ function ModelHubViewOld() {
             onChanged && onChanged();
           } else if (j.t === "err") {
             setDl((d) => ({ ...d, [id]: { state: "idle" } }));
-            setMsg("Gagal unduh: " + j.m);
+            setMsg("Download failed: " + j.m);
           }
         }
       }
     } catch (e) {
       if (e.name !== "AbortError") {
         setDl((d) => ({ ...d, [id]: { state: "idle" } }));
-        setMsg("Gagal: " + e.message);
+        setMsg("Failed: " + e.message);
       }
     }
   };
@@ -770,8 +1389,8 @@ function ModelHubViewOld() {
               <input
                 placeholder={
                   source === "ollama"
-                    ? "Cari model Ollama� (llama, qwen, deepseek, phi)"
-                    : "Cari model GGUF� (llama, coder, qwen, phi)"
+                    ? "Search Ollama models� (llama, qwen, deepseek, phi)"
+                    : "Search GGUF models� (llama, coder, qwen, phi)"
                 }
                 value={q}
                 onChange={(e) => setQ(e.target.value)}
@@ -860,12 +1479,10 @@ function ModelHubViewOld() {
                             {b === undefined ? (
                               <span style={{ opacity: 0.5 }}>? </span>
                             ) : b === null ? (
-                              <span style={{ opacity: 0.5 }}>
-                                ? menghitung
-                              </span>
+                              <span style={{ opacity: 0.5 }}>? menghitung</span>
                             ) : b > 0 ? (
                               <code>
-                                ? {fmtSize(b)}  {tag}
+                                ? {fmtSize(b)} {tag}
                               </code>
                             ) : (
                               <span style={{ opacity: 0.5 }}>? ?</span>
@@ -961,7 +1578,7 @@ function ModelHubViewOld() {
             ) : (
               <div className="hub-empty">
                 <HubIcon.empty />
-                <div>{q ? "Tidak ada model cocok." : "Memuat"}</div>
+                <div>{q ? "No matching models." : "Memuat"}</div>
               </div>
             )
           ) : loading ? (
@@ -1124,7 +1741,7 @@ function ModelHubViewOld() {
           ) : (
             <div className="hub-empty">
               <HubIcon.empty />
-              <div>{msg || "Ketik untuk mencari model."}</div>
+              <div>{msg || "Type to search for a model."}</div>
             </div>
           )}
           {msg && results.length > 0 && (

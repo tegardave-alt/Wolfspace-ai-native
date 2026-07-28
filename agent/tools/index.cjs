@@ -349,7 +349,7 @@ function _confineBash(cmd, argCwd, confineRoot) {
       if (!fs.statSync(resolved).isDirectory())
         return { ok: false, reason: `cwd bukan direktori: ${argCwd}` };
     } catch {
-      return { ok: false, reason: `cwd tidak ada: ${argCwd}` };
+      return { ok: false, reason: `cwd does not exist: ${argCwd}` };
     }
     cwd = resolved;
   }
@@ -435,11 +435,11 @@ function _runBashInDocker(cmd, root, args) {
       sandbox: "docker",
       confinedTo: root,
       output:
-        "DITOLAK: perintah menyebut path host di luar workspace (" +
+        "REJECTED: the command references a host path outside the workspace (" +
         bocor +
         "...).\n" +
-        "bash berjalan di container yang HANYA me-mount folder workspace, jadi path " +
-        "host tidak ada di dalamnya dan mengulang perintah ini tidak akan pernah berhasil.\n" +
+        "bash runs in a container that mounts ONLY the workspace folder, so a host path " +
+        "does not exist inside it, and repeating this command will never succeed.\n" +
         "Workspace: " +
         root +
         "\n" +
@@ -448,7 +448,7 @@ function _runBashInDocker(cmd, root, args) {
         "  • cari di internet       -> web_search\n" +
         "  • baca file di luar ws   -> disk_read / disk_list / disk_glob\n" +
         "  • akses berpolicy+audit  -> capability_exec\n" +
-        "Untuk bekerja di dalam workspace, pakai path RELATIF (mis. ./src), bukan absolut.",
+        "To work inside the workspace, use a RELATIVE path (e.g. ./src), not an absolute one.",
     });
   }
   const hostDir = path.resolve(root).replace(/\\/g, "/");
@@ -546,8 +546,7 @@ async function _brokeredFileOp(name, args, wsRoot) {
   if (!b.Policy)
     return {
       ok: false,
-      output:
-        "broker tidak tersedia: " + (_modLoadErrors["broker"] || "unknown"),
+      output: "broker unavailable: " + (_modLoadErrors["broker"] || "unknown"),
     };
   const { Policy, Broker } = b;
   const root = path.resolve(wsRoot);
@@ -634,10 +633,11 @@ async function _brokeredFileOp(name, args, wsRoot) {
           return {
             ok: false,
             output:
-              "old_string tidak ditemukan di " +
+              "old_string was not found in " +
               rel +
-              " (harus PERSIS, termasuk spasi/indentasi)." +
-              (hint || " Gunakan tool read dulu untuk melihat konten file."),
+              " (must match EXACTLY, including whitespace/indentation)." +
+              (hint ||
+                " Use the read tool first to inspect the file contents."),
           };
         }
       }
@@ -702,9 +702,9 @@ async function runSelfTool(name, args, emit, context = {}) {
       return {
         ok: false,
         output:
-          "Tool tidak tersedia: modul " +
+          "Tool unavailable: module " +
           reqMod +
-          " gagal dimuat — " +
+          " failed to load — " +
           _modLoadErrors[reqMod],
       };
     }
@@ -722,7 +722,7 @@ async function runSelfTool(name, args, emit, context = {}) {
           name +
           " diblokir sementara (" +
           TRIP_THRESHOLD +
-          " kegagalan berurutan). Coba lagi dalam " +
+          " consecutive failures). Try again in " +
           remaining +
           " detik.",
       };
@@ -765,7 +765,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         if (name === "architecture_map") {
           const m = lazyArch();
           if (!m.architectureMap)
-            return { ok: false, output: "arch-tools tidak termuat" };
+            return { ok: false, output: "arch-tools failed to load" };
           try {
             return m.architectureMap({
               scope: args.scope || "all",
@@ -785,7 +785,10 @@ async function runSelfTool(name, args, emit, context = {}) {
     if (name === "edit" || name === "write" || name === "bash") {
       const validation = await validateOperation(name, args);
       if (!validation.safe) {
-        return { ok: false, output: "VALIDASI DITOLAK: " + validation.reason };
+        return {
+          ok: false,
+          output: "VALIDATION REJECTED: " + validation.reason,
+        };
       }
     }
 
@@ -807,7 +810,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         return {
           ok: false,
           output:
-            "File backup/copy — baca dari public/ atau agent/ instead. Misal: public/app.jsx",
+            "Backup/copy file — read from public/ or agent/ instead. For example: public/app.jsx",
         };
       return _cachedResult(
         "read|" + (args.path || "") + "|" + (args.near || ""),
@@ -838,7 +841,7 @@ async function runSelfTool(name, args, emit, context = {}) {
           output =
             "⚠️  PERINGATAN: " +
             sensitiveFiles.length +
-            " file sensitif terdeteksi (kredensial/konfigurasi). Gunakan `semantic:true` atau `intent` untuk pencarian aman.\n\n" +
+            " sensitive files detected (credentials/config). Use `semantic:true` or `intent` for a safe search.\n\n" +
             output;
         }
       }
@@ -875,21 +878,22 @@ async function runSelfTool(name, args, emit, context = {}) {
           return {
             ok: false,
             output:
-              "old_string tidak ditemukan di file. Gunakan tool read terlebih dahulu untuk melihat baris yang tepat, atau gunakan replace_file_content dengan start_line dan end_line.",
+              "old_string was not found in the file. Use the read tool first to see the exact lines, or use replace_file_content with start_line and end_line.",
           };
         }
       }
       if (targetToReplace === args.new_string)
         return {
           ok: false,
-          output: "NOOP: old_string sama dengan new_string — edit dibatalkan.",
+          output:
+            "NOOP: old_string is identical to new_string — edit cancelled.",
         };
       const patched = old.replace(targetToReplace, args.new_string);
       if (old === patched)
         return {
           ok: false,
           output:
-            "NOOP: replace tidak mengubah konten (old_string tidak match atau sudah sama).",
+            "NOOP: replace changed nothing (old_string did not match, or is already identical).",
         };
 
       // Sandbox Verify-Then-Commit
@@ -901,7 +905,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         return {
           ok: false,
           output:
-            "DITOLAK DARI SANDBOX (sintaks rusak, file asli aman):\n" +
+            "REJECTED BY SANDBOX (broken syntax, original file untouched):\n" +
             chk.error,
         };
       }
@@ -959,7 +963,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         } else {
           return {
             ok: false,
-            output: `GAGAL: target_content tidak ditemukan persis di baris ${args.start_line}-${args.end_line}.\n\nTeks asli di baris tersebut:\n${targetBlock}`,
+            output: `GAGAL: target_content not found persis di baris ${args.start_line}-${args.end_line}.\n\nTeks asli di baris tersebut:\n${targetBlock}`,
           };
         }
       }
@@ -978,7 +982,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         return {
           ok: false,
           output:
-            "DITOLAK DARI SANDBOX (sintaks rusak, file asli aman):\n" +
+            "REJECTED BY SANDBOX (broken syntax, original file untouched):\n" +
             chk.error,
         };
       }
@@ -1016,7 +1020,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         return {
           ok: false,
           output:
-            "GAGAL menulis artifact: title/content kosong (kemungkinan argumen tidak lengkap atau JSON terpotong). JANGAN anggap berhasil — panggil ulang write_artifact dengan title DAN content terisi.",
+            "FAILED to write artifact: title/content empty (arguments likely incomplete or the JSON was truncated). DO NOT assume success — call write_artifact again with both title AND content filled in.",
         };
       }
       const artifactDir = path.join(QROOT, "artifacts");
@@ -1055,7 +1059,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         sbx.destroy();
         return {
           ok: false,
-          output: "DITOLAK DARI SANDBOX (sintaks rusak):\n" + chk.error,
+          output: "REJECTED BY SANDBOX (broken syntax):\n" + chk.error,
         };
       }
       // Commit
@@ -1090,7 +1094,7 @@ async function runSelfTool(name, args, emit, context = {}) {
           cmd,
         )
       )
-        return { ok: false, output: "perintah berbahaya ditolak" };
+        return { ok: false, output: "dangerous command rejected" };
       // Reject bash commands that try to edit files — must use 'edit' tool instead
       if (
         /\b(sed|findstr|Set-Content|Out-File|Add-Content|node\s+-e|node\s+--eval|fs\.writeFile)\b/i.test(
@@ -1100,7 +1104,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         return {
           ok: true,
           output:
-            'DILARANG edit file via bash. Gunakan tool "edit" sekarang dengan parameter: path=file, old_string=kode yang dihapus, new_string="" (kosong untuk hapus). JANGAN coba bash lagi.',
+            'DILARANG edit file via bash. Gunakan tool "edit" now with parameters: path=file, old_string=the removed code, new_string="" (kosong untuk hapus). JANGAN coba bash lagi.',
         };
       let cwd = QROOT;
       if (args.cwd) {
@@ -1398,7 +1402,7 @@ async function runSelfTool(name, args, emit, context = {}) {
       if (!term)
         return {
           ok: false,
-          output: "terminal tidak tersedia (node-pty tidak terinstall)",
+          output: "terminal unavailable (node-pty is not installed)",
         };
       const r = term.create(args.cwd || undefined, args.shell || undefined);
       return {
@@ -1407,7 +1411,7 @@ async function runSelfTool(name, args, emit, context = {}) {
       };
     }
     if (name === "terminal_write") {
-      if (!term) return { ok: false, output: "terminal tidak tersedia" };
+      if (!term) return { ok: false, output: "terminal unavailable" };
       if (!args.id) return { ok: false, output: "parameter id wajib" };
       const ok = term.write(args.id, args.data);
       return { ok, output: ok ? "written" : "session not found: " + args.id };
@@ -1416,7 +1420,7 @@ async function runSelfTool(name, args, emit, context = {}) {
     // to poll accumulated PTY output. The polling loop (up to 2s) prevents empty reads
     // right after a terminal_write before the shell has produced output.
     if (name === "terminal_read") {
-      if (!term) return { ok: false, output: "terminal tidak tersedia" };
+      if (!term) return { ok: false, output: "terminal unavailable" };
       if (!args.id) return { ok: false, output: "parameter id wajib" };
       // Wait briefly for output (up to 2s) so agent doesn't read empty buffer immediately after write
       return new Promise((resolve) => {
@@ -1436,7 +1440,7 @@ async function runSelfTool(name, args, emit, context = {}) {
       });
     }
     if (name === "terminal_close") {
-      if (!term) return { ok: false, output: "terminal tidak tersedia" };
+      if (!term) return { ok: false, output: "terminal unavailable" };
       if (!args.id) return { ok: false, output: "parameter id wajib" };
       const ok = term.destroy(args.id);
       return {
@@ -1449,7 +1453,7 @@ async function runSelfTool(name, args, emit, context = {}) {
     if (name === "architecture_map") {
       const m = lazyArch();
       if (!m.architectureMap)
-        return { ok: false, output: "arch-tools tidak termuat" };
+        return { ok: false, output: "arch-tools failed to load" };
       try {
         return m.architectureMap(args);
       } catch (e) {
@@ -1533,7 +1537,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         ? list
             .map((s) => "- " + s.name + " v" + s.version + ": " + s.description)
             .join("\n")
-        : "(belum ada skill terinstall. Gunakan skill_install untuk menambah.)";
+        : "(no skills installed yet. Use skill_install to add one.)";
       return { ok: true, output: text };
     }
     if (name === "skill_run") {
@@ -1549,7 +1553,8 @@ async function runSelfTool(name, args, emit, context = {}) {
       if (!src)
         return {
           ok: false,
-          output: "source diperlukan (npm package name atau path ke .cjs)",
+          output:
+            "source is required (npm package name or path to a .cjs file)",
         };
       if (src.endsWith(".cjs") && fs.existsSync(src)) {
         return { ok: true, output: skills.installFromFile(src).output };

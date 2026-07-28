@@ -16,20 +16,20 @@ execution, not by appearance.
 
 ## Features
 
-- ✅ **Verified, not vibes.** Every code answer is run; you see real stdout/stderr and a
-  `✓ verified` / `⚠ not passing` verdict — not "looks right."
+- ✅ **Verified, not vibes.** Every code answer is run; you see its real stdout/stderr and a
+  pass/fail indicator — not "looks right." The agent cannot even declare itself done
+  without a successful execution to point at.
 - 🔌 **Any model.** Bring your own API key — the provider is auto-detected from the key
   (OpenAI, Claude, Gemini, Groq, OpenRouter, GitHub Models, NVIDIA, DeepSeek, Qwen,
   OpenCode, or any OpenAI-compatible endpoint). Or run **local GGUF models** via llama.cpp.
 - 🤗 **Model Hub.** Search Hugging Face, see real logos + download size, download a GGUF,
   and run it — all from the app.
-- 🧪 **Compare models.** Send one prompt to two models side by side; both get auto-verified.
 - ✏️ **Real editor.** Monaco (VS Code's editor) for every code block — edit in place, re-run,
   or ask the AI to revise.
 - 🔗 **MCP tools.** Connect Model Context Protocol servers (Notion, GitHub, filesystem, …);
   their tools become callable by the agent, with live per-server connection status.
-- 🕸️ **Logic canvas.** A React Flow node graph for composing multi-step workflows —
-  HTTP calls, conditions, and agent steps wired together visually.
+- 🕸️ **Logic canvas.** A React Flow node graph for composing multi-step workflows from
+  Trigger, HTTP Request, Transform, Condition, and Output nodes, wired together visually.
 - 🔒 **Local-first.** Runs on your machine, with your keys. Nothing leaves your computer
   except the model API calls you opt into.
 - 🤖 **Self-editing agent.** WOLFSPACE ships an agent that can read, grep, and edit

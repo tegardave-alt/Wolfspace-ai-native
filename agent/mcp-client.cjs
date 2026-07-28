@@ -264,14 +264,14 @@ class MCPClient {
     if (!match)
       return {
         ok: false,
-        output: `Nama tool MCP tidak valid: ${prefixedToolName}`,
+        output: `Invalid MCP tool name: ${prefixedToolName}`,
       };
 
     const serverName = match[1];
     const toolName = match[2];
 
     if (!this.servers[serverName] || !this.servers[serverName].ready) {
-      return { ok: false, output: `Server MCP ${serverName} tidak aktif.` };
+      return { ok: false, output: `Server MCP ${serverName} is not active.` };
     }
 
     // BUANG argumen INTERNAL WOLFSPACE sebelum menyeberang ke protokol MCP.

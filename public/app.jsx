@@ -4,19 +4,19 @@ const { useState, useRef, useEffect, useCallback, useMemo } = React;
 const COMMANDS = [
   {
     id: "open.settings",
-    label: "Settings: Buka Pengaturan",
+    label: "Settings: Open Settings",
     icon: "settings",
     action: () => document.querySelector('[data-view="settings"]')?.click(),
   },
   {
     id: "terminal.new",
-    label: "Terminal: Buat Terminal Baru",
+    label: "Terminal: New Terminal",
     icon: "terminal",
     action: () => window.createNewTerminal?.(),
   },
   {
     id: "openclaw.chat",
-    label: "OpenClaw: Jalankan dari Chat",
+    label: "OpenClaw: Run from Chat",
     icon: "runner",
     action: () =>
       window.dispatchEvent(
@@ -25,7 +25,7 @@ const COMMANDS = [
   },
   {
     id: "agent.run",
-    label: "Agent: Mulai agent baru",
+    label: "Agent: Start a new agent",
     icon: "play",
     action: () => window.startNewAgent?.(),
   },
@@ -823,7 +823,7 @@ function LogicFileTree({ files, root, active }) {
           }}
         >
           <button
-            title="Cari"
+            title="Search"
             style={{
               background: "transparent",
               border: "none",
@@ -851,7 +851,7 @@ function LogicFileTree({ files, root, active }) {
             </svg>
           </button>
           <button
-            title="Ciutkan semua"
+            title="Collapse all"
             style={{
               background: "transparent",
               border: "none",
@@ -1151,7 +1151,7 @@ function App() {
         setTimeout(
           () =>
             doSend(
-              "User memilih untuk tidak menjawab. Silakan lanjutkan dengan asumsi terbaik.",
+              "The user chose not to answer. Please continue with your best assumption.",
               null,
             ),
           50,
@@ -1168,7 +1168,7 @@ function App() {
       setTimeout(
         () =>
           doSend(
-            "Tindakan dibatalkan oleh user. Silakan evaluasi kembali dan gunakan cara lain.",
+            "Action cancelled by the user. Please reassess and try a different approach.",
             null,
           ),
         50,
@@ -1435,7 +1435,7 @@ function App() {
         subscribeAgentStream();
       } else {
         const data = await res.json().catch(() => ({}));
-        setAgentOutput(data.error || "Gagal start agent");
+        setAgentOutput(data.error || "Failed to start the agent");
         setActiveAgent("");
       }
     } catch (e) {
@@ -1572,7 +1572,7 @@ function App() {
       }
       if (sub === "open") {
         setTerminalOpen(true);
-        setStatus("Terminal sudah terbuka.");
+        setStatus("Terminal is already open.");
         return true;
       }
       if (sub === "close" || sub === "exit" || sub === "quit") {
@@ -1589,7 +1589,7 @@ function App() {
         const command = args.slice(1).join(" ");
         if (!command) {
           setTerminalOpen(true);
-          setStatus("Terminal siap. Ketik perintah untuk mulai.");
+          setStatus("Terminal ready. Type a command to begin.");
           return true;
         }
         setTerminalOpen(true);
@@ -1602,7 +1602,7 @@ function App() {
         await runTerminalCommand(command);
       } else {
         setTerminalOpen(true);
-        setStatus("Terminal sudah terbuka.");
+        setStatus("Terminal is already open.");
       }
       return true;
     }
@@ -1714,7 +1714,7 @@ function App() {
           ) + (cloud.key ? " •" + cloud.key.slice(-4) : ""),
       });
     if (!opts.length)
-      opts.push({ value: "", label: "Belum ada model", disabled: true });
+      opts.push({ value: "", label: "No models yet", disabled: true });
     setModels(opts);
     const def = hasCloud
       ? "cloud"
@@ -1725,7 +1725,7 @@ function App() {
         ? "cloud: " + (cloud.name || cloud.provider)
         : opts.length
           ? "siap"
-          : "Jalankan start-models",
+          : "Run start-models",
     );
   }, [cloudVersion]);
   useEffect(() => {
@@ -1735,7 +1735,7 @@ function App() {
   useEffect(() => {
     if (!IPC) {
       checkServerHealth().then((ok) => {
-        if (!ok) setStatus("Jalankan 'npm start' di terminal.");
+        if (!ok) setStatus("Run 'npm start' in a terminal.");
       });
     }
   }, []);
@@ -1767,7 +1767,7 @@ function App() {
           { role: "user", text: display || content },
           {
             role: "model",
-            text: "Pesan /openclaw tidak boleh kosong. Contoh: /openclaw ringkas project ini",
+            text: "The /openclaw message cannot be empty. Example: /openclaw summarise this project",
           },
         ]);
         setStatus("OpenClaw butuh pesan");
@@ -1784,7 +1784,8 @@ function App() {
       ]);
       try {
         const res = await runOpenClawChat(openclawMessage, ctrl.signal);
-        const reply = res.text || res.raw || "OpenClaw selesai tanpa output.";
+        const reply =
+          res.text || res.raw || "OpenClaw finished with no output.";
         setMessages((m) => {
           const c = m.slice();
           c[c.length - 1] = { role: "model", text: reply };
@@ -1795,7 +1796,7 @@ function App() {
           { role: "user", content },
           { role: "assistant", content: reply },
         ]);
-        setStatus("OpenClaw selesai");
+        setStatus("OpenClaw finished");
       } catch (e) {
         if (e.name === "AbortError") {
           setStatus("dibatalkan");
@@ -1824,7 +1825,7 @@ function App() {
         askMode = true;
         content = t.replace(/^\/ask\b\s*/i, "");
         if (!content) {
-          setStatus("Ketik pertanyaan setelah /ask, mis. /ask apa fungsi X");
+          setStatus("Type a question after /ask, e.g. /ask what does X do");
           return;
         }
       }
@@ -1999,7 +2000,7 @@ function App() {
                 code: j.request.code,
                 thread_id: j.thread_id,
                 options: [
-                  { value: "allow_once", text: "Izinkan sekali ini" },
+                  { value: "allow_once", text: "Allow once" },
                   {
                     value: "deny",
                     text: "Tolak (Minta agen mencari cara lain)",
@@ -2011,7 +2012,7 @@ function App() {
               waitingForInput = true;
               setHitlRequest({
                 kind: "ask",
-                title: "Pertanyaan dari Agent",
+                title: "Question from the Agent",
                 code: j.question || "",
                 thread_id: j.thread_id || null,
                 options: (j.choices || []).map((c) => ({ value: c, text: c })),
@@ -2031,7 +2032,7 @@ function App() {
                         code: "",
                         thread_id: j.thread_id,
                         options: [
-                          { value: "allow_once", text: "Izinkan sekali ini" },
+                          { value: "allow_once", text: "Allow once" },
                           { value: "deny", text: "Tolak" },
                         ],
                       },
@@ -2053,12 +2054,12 @@ function App() {
                 });
                 setHitlRequest({
                   kind: "continue",
-                  title: "Agent dijeda (batas langkah)",
+                  title: "Agent paused (step limit)",
                   code: j.summary || "",
                   thread_id: j.thread_id,
                   options: [
-                    { value: "continue", text: "Lanjutkan" },
-                    { value: "deny", text: "Selesai (berhenti di sini)" },
+                    { value: "continue", text: "Continue" },
+                    { value: "deny", text: "Done (stop here)" },
                   ],
                 });
                 return;
@@ -2101,7 +2102,7 @@ function App() {
           const summary =
             evlist.length > 0
               ? `Selesai. ${evlist.length} operasi dieksekusi.`
-              : "Selesai. Tidak ada operasi yang dilakukan.";
+              : "Done. No operations were performed.";
           upd({ busy: false, done: true, summary });
           setHistory((h) => [...h, { role: "assistant", content: summary }]);
         } else {
@@ -2290,7 +2291,7 @@ function App() {
       const summary =
         evlist.length > 0
           ? `Selesai. ${evlist.length} operasi dieksekusi.`
-          : "Selesai. Tidak ada operasi.";
+          : "Done. No operations.";
       upd({ busy: false, done: true, summary });
       setWfHistory((h) => [...h, { role: "assistant", content: summary }]);
     }
@@ -2821,7 +2822,7 @@ function App() {
                             if (e.key === "Enter")
                               handlePreviewNavigate(previewInputUrl);
                           }}
-                          placeholder="Path HTML / URL (misal: C:\...\index.html atau http://localhost:3000)"
+                          placeholder="HTML path / URL (e.g. C:\...\index.html or http://localhost:3000)"
                           style={{
                             flex: 1,
                             background: "transparent",
@@ -2879,7 +2880,7 @@ function App() {
                           </svg>
                         </button>
                         <button
-                          title="Buka di tab/browser eksternal"
+                          title="Open in an external tab/browser"
                           onClick={() => {
                             if (!previewUrl && !previewInputUrl) return;
                             const isHttp =
@@ -2945,7 +2946,7 @@ function App() {
                           </svg>
                         </button>
                         <button
-                          title="Tutup panel"
+                          title="Close panel"
                           onClick={() => setPanelOpen(false)}
                           style={{
                             background: "transparent",
@@ -3130,7 +3131,7 @@ function App() {
                       </span>
                     </div>
                     <button
-                      title="Tutup Logic"
+                      title="Close Logic"
                       onClick={() => setLogicOpen(false)}
                       style={{
                         background: "transparent",
@@ -3259,7 +3260,7 @@ function App() {
           <div className="command-palette" onClick={(e) => e.stopPropagation()}>
             <input
               type="text"
-              placeholder="Cari perintah... (Ctrl+Shift+P untuk membuka)"
+              placeholder="Search commands… (Ctrl+Shift+P to open)"
               value={commandSearch}
               onChange={(e) => {
                 setCommandSearch(e.target.value);
@@ -3322,7 +3323,7 @@ const WF_PALETTE = [
     type: "condition",
     label: "Condition",
     accent: "#bc8cff",
-    desc: "cabang if / else",
+    desc: "if / else branch",
   },
   { type: "output", label: "Output", accent: "#f85149", desc: "hasil akhir" },
 ];
@@ -3348,7 +3349,7 @@ const wfKindAccent = (k) => WF_KIND_ACCENT[k] || "#8fb3ff";
 // Kahn's algorithm. Kembalikan { ok, order:[node...] } atau { ok:false, error }.
 function compileWorkflow(nodes, edges) {
   if (!nodes || nodes.length === 0)
-    return { ok: false, error: "Kanvas kosong — tambah node dulu." };
+    return { ok: false, error: "Canvas is empty — add a node first." };
   const indeg = new Map(nodes.map((n) => [n.id, 0]));
   const adj = new Map(nodes.map((n) => [n.id, []]));
   for (const e of edges || []) {
@@ -3369,15 +3370,18 @@ function compileWorkflow(nodes, edges) {
     }
   }
   if (order.length !== nodes.length)
-    return { ok: false, error: "Ada siklus di graph — alur harus searah." };
+    return {
+      ok: false,
+      error: "The graph has a cycle — the flow must run one way.",
+    };
   const byId = new Map(nodes.map((n) => [n.id, n]));
   return { ok: true, order: order.map((id) => byId.get(id)) };
 }
 // Bingkai prompt per-tahap sesuai jenis node + konteks dari node hulu.
 function buildStagePrompt(kind, label, ctx) {
-  const c = ctx ? "\n\nKonteks dari tahap sebelumnya:\n" + ctx : "";
+  const c = ctx ? "\n\nContext from the previous stage:\n" + ctx : "";
   const L = label || kind;
-  if (kind === "agent") return `Kerjakan langkah ini sebagai agent: ${L}.${c}`;
+  if (kind === "agent") return `Handle this step as an agent: ${L}.${c}`;
   if (kind === "tool")
     return `Gunakan tool yang sesuai untuk: ${L}. Laporkan hasil nyatanya.${c}`;
   if (kind === "condition")
@@ -3390,13 +3394,13 @@ function buildStagePrompt(kind, label, ctx) {
 // Instruksi (digabung ke pesan yang DIKIRIM, bukan yang ditampilkan): bila user
 // minta MEMBUAT workflow, agent mengeluarkan satu blok spec yang bisa dirender.
 const WF_GEN_HINT =
-  "(Jika permintaan ini tentang MEMBUAT/merancang sebuah workflow/alur/pipeline: " +
-  "keluarkan HANYA satu blok berpagar ```wolfspace-workflow berisi JSON valid: " +
-  '{"nodes":[{"id":"n1","kind":"prompt","label":"..."}],"edges":[{"from":"n1","to":"n2","label":"opsional"}]} ' +
-  "— kind salah satu dari prompt|agent|tool|condition|output, id unik & pendek, label RINGKAS tanpa \\n. " +
-  'Untuk node kind:condition, beri >1 edge keluar dan isi "label" tiap edge dengan nama cabang (mis. ya/tidak). ' +
-  "DILARANG memakai mermaid atau format diagram lain. Boleh 1 kalimat penjelasan singkat di luar blok. " +
-  "Jika BUKAN permintaan workflow, abaikan instruksi ini.)";
+  "(If this request is about CREATING/designing a workflow/flow/pipeline: " +
+  "output ONLY a single fenced ```wolfspace-workflow block containing valid JSON: " +
+  '{"nodes":[{"id":"n1","kind":"prompt","label":"..."}],"edges":[{"from":"n1","to":"n2","label":"optional"}]} ' +
+  "— kind is one of prompt|agent|tool|condition|output, id unique & short, label CONCISE without \\n. " +
+  'For kind:condition nodes, give >1 outgoing edge and set each edge\'s "label" to a branch name (e.g. yes/no). ' +
+  "DO NOT use mermaid or any other diagram format. One short sentence of explanation outside the block is allowed. " +
+  "If this is NOT a workflow request, ignore this instruction.)";
 
 // Ambil spec workflow dari teks jawaban agent (blok ```wolfspace-workflow / ```json).
 function extractWorkflowSpec(text) {
@@ -3426,7 +3430,7 @@ function specToFlow(spec) {
       source: String(e.from != null ? e.from : e.source),
       target: String(e.to != null ? e.to : e.target),
       type: "wf",
-      data: e.label ? { label: String(e.label) } : undefined, // cabang kondisi ("ya"/"tidak")
+      data: e.label ? { label: String(e.label) } : undefined, // cabang kondisi ("yes"/"no")
     }))
     .filter(
       (e) =>

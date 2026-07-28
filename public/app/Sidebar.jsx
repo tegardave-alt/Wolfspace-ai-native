@@ -586,12 +586,12 @@ function WorkspaceGitPanel({ path, onClose }) {
       refresh();
       return true;
     }
-    flash(false, (r && r.err) || "gagal");
+    flash(false, (r && r.err) || "failed");
     return false;
   };
 
   const doSwitch = (b) =>
-    run("/ww/branch/switch", { path, branch: b }, "beralih ke " + b, () =>
+    run("/ww/branch/switch", { path, branch: b }, "switched to " + b, () =>
       setPickerOpen(false),
     );
   const doCreate = (name) => {
@@ -599,7 +599,7 @@ function WorkspaceGitPanel({ path, onClose }) {
     run(
       "/ww/branch/create",
       { path, branch: nm },
-      (r) => "branch dibuat: " + (r.name || nm),
+      (r) => "branch created: " + (r.name || nm),
       () => {
         setPickerOpen(false);
         setQuery("");
@@ -617,7 +617,7 @@ function WorkspaceGitPanel({ path, onClose }) {
     );
   };
   const doDeleteBranch = (b) =>
-    run("/ww/branch/delete", { path, branch: b }, "branch dihapus: " + b);
+    run("/ww/branch/delete", { path, branch: b }, "branch deleted: " + b);
   const doRenameFolder = (newName) => {
     const nm = String(newName || "").trim();
     setEditingFolder(false);
@@ -789,7 +789,7 @@ function WorkspaceGitPanel({ path, onClose }) {
             </span>
             {miniBtn(
               () => setEditingFolder(true),
-              "Ganti nama folder (disk)",
+              "Rename folder (on disk)",
               "#6b7280",
               pencil,
             )}
@@ -797,11 +797,11 @@ function WorkspaceGitPanel({ path, onClose }) {
         )}
       </div>
 
-      {/* branch aktif → picker */}
+      {/* active branch → picker */}
       <div style={{ position: "relative" }}>
         <button
           onClick={() => setPickerOpen((o) => !o)}
-          title="Kelola branch"
+          title="Manage branches"
           style={{
             display: "flex",
             alignItems: "center",
@@ -868,7 +868,7 @@ function WorkspaceGitPanel({ path, onClose }) {
                 if (e.key === "Enter" && typedNew) doCreate(q);
                 else if (e.key === "Escape") setPickerOpen(false);
               }}
-              placeholder="Pilih branch / ketik untuk membuat…"
+              placeholder="Pick a branch / type to create…"
               style={{
                 margin: "7px",
                 width: "calc(100% - 14px)",
@@ -987,7 +987,7 @@ function WorkspaceGitPanel({ path, onClose }) {
                   <div
                     key={b}
                     onClick={() => !isCur && doSwitch(b)}
-                    title={isCur ? "branch aktif" : "beralih ke " + b}
+                    title={isCur ? "active branch" : "switched to " + b}
                     style={{
                       display: "flex",
                       alignItems: "center",
@@ -1048,7 +1048,7 @@ function WorkspaceGitPanel({ path, onClose }) {
                     >
                       {miniBtn(
                         () => setRenamingBranch(b),
-                        "Ganti nama branch",
+                        "Rename branch",
                         "#6b7280",
                         pencil,
                       )}
@@ -1057,8 +1057,8 @@ function WorkspaceGitPanel({ path, onClose }) {
                           if (!isCur) doDeleteBranch(b);
                         },
                         isCur
-                          ? "branch aktif tak bisa dihapus"
-                          : "Hapus branch",
+                          ? "the active branch cannot be deleted"
+                          : "Delete branch",
                         isCur ? "#3a3f46" : "#f85149",
                         trash,
                       )}
@@ -1092,8 +1092,8 @@ function WorkspaceGitPanel({ path, onClose }) {
         ></span>
         <span>
           {g.dirty
-            ? g.dirtyCount + " perubahan belum di-commit"
-            : "bersih — tak ada perubahan"}
+            ? g.dirtyCount + " uncommitted changes"
+            : "clean — no changes"}
         </span>
       </div>
       {g.lastCommit && (
@@ -1345,7 +1345,7 @@ function Sidebar({
         <div
           className="sb-resizer"
           onMouseDown={handleResizerMouseDown}
-          title="Geser untuk menyesuaikan ukuran sidebar"
+          title="Drag to resize the sidebar"
         />
       )}
 
@@ -1356,7 +1356,7 @@ function Sidebar({
         </span>
         <button
           className="sb-toggle"
-          title={collapsed ? "Buka panel" : "Tutup panel"}
+          title={collapsed ? "Open panel" : "Close panel"}
           onClick={() => setCollapsed(!collapsed)}
         >
           {SB.panel({ width: 19, height: 19 })}

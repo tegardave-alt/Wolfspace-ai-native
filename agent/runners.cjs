@@ -512,9 +512,7 @@ function askModelStream(port, messages, onToken, reg) {
     Number(port) < 1 ||
     !Number.isFinite(Number(port))
   )
-    return Promise.reject(
-      new Error("local model tidak aktif — tidak ada port"),
-    );
+    return Promise.reject(new Error("local model is not active — no port"));
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     const VERBOSE = require("./debug.cjs").VERBOSE;

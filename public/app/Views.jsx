@@ -26,12 +26,34 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
     });
 
   return (
-    <div style={{ padding: "40px 60px", maxWidth: "920px", margin: "0 auto", width: "100%", color: "#e2e8f0" }}>
-      <h1 style={{ fontSize: "20px", fontWeight: 600, color: "#f3f4f6", marginBottom: "24px" }}>
+    <div
+      style={{
+        padding: "40px 60px",
+        maxWidth: "920px",
+        margin: "0 auto",
+        width: "100%",
+        color: "#e2e8f0",
+      }}
+    >
+      <h1
+        style={{
+          fontSize: "20px",
+          fontWeight: 600,
+          color: "#f3f4f6",
+          marginBottom: "24px",
+        }}
+      >
         Conversation History
       </h1>
 
-      <div style={{ display: "flex", gap: "12px", alignItems: "center", marginBottom: "32px" }}>
+      <div
+        style={{
+          display: "flex",
+          gap: "12px",
+          alignItems: "center",
+          marginBottom: "32px",
+        }}
+      >
         <div
           style={{
             flex: 1,
@@ -44,7 +66,16 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
             gap: "10px",
           }}
         >
-          <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="#6b7280" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+          <svg
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="#6b7280"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
             <circle cx="11" cy="11" r="8"></circle>
             <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
           </svg>
@@ -81,7 +112,14 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
 
       <div style={{ display: "flex", flexDirection: "column" }}>
         {filteredChats.length === 0 ? (
-          <div style={{ padding: "40px 0", textAlign: "center", color: "#6b7280", fontSize: "14px" }}>
+          <div
+            style={{
+              padding: "40px 0",
+              textAlign: "center",
+              color: "#6b7280",
+              fontSize: "14px",
+            }}
+          >
             Belum ada riwayat percakapan yang tersimpan.
           </div>
         ) : (
@@ -99,23 +137,37 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
                 borderRadius: "8px",
                 transition: "background 0.15s",
               }}
-              onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)")}
-              onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+              onMouseEnter={(e) =>
+                (e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)")
+              }
+              onMouseLeave={(e) =>
+                (e.currentTarget.style.background = "transparent")
+              }
             >
-              <div style={{ display: "flex", flexDirection: "column", gap: "4px" }}>
-                <div style={{ fontSize: "15px", fontWeight: 500, color: "#e2e8f0" }}>
+              <div
+                style={{ display: "flex", flexDirection: "column", gap: "4px" }}
+              >
+                <div
+                  style={{
+                    fontSize: "15px",
+                    fontWeight: 500,
+                    color: "#e2e8f0",
+                  }}
+                >
                   {chat.title || "Chat"}
                 </div>
                 <div style={{ fontSize: "13px", color: "#6b7280" }}>
                   {chat.project || "WOLFSPACE"}
                 </div>
               </div>
-              <div style={{ display: "flex", alignItems: "center", gap: "16px" }}>
+              <div
+                style={{ display: "flex", alignItems: "center", gap: "16px" }}
+              >
                 <span style={{ fontSize: "13px", color: "#6b7280" }}>
                   {formatTimeAgo(chat.savedAt)}
                 </span>
                 <button
-                  title="Hapus"
+                  title="Delete"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(chat.id);
@@ -166,17 +218,17 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
           stored.provider +
           " � " +
           (stored.key ? stored.key.slice(-4) : "server") +
-          " � aktif"
-      : "Tempel API key, lalu deteksi otomatis atau pilih provider.",
+          " � active"
+      : "Paste an API key, then auto-detect or pick a provider.",
   );
 
   const detect = async () => {
     const k = key.trim() || (stored && stored.key);
     if (!k) {
-      setHint("Tempel API key terlebih dahulu.");
+      setHint("Paste an API key first.");
       return;
     }
-    setHint("Sedang mendeteksi provider...");
+    setHint("Detecting provider…");
     try {
       const d = await (
         await fetch("/detect-key", {
@@ -188,17 +240,17 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       if (PROVIDER_LABELS[d.provider]) setProvider(d.provider);
       setHint(
         d.verified
-          ? "Terverifikasi: " + d.name
-          : "Tebakan: " + d.name + " (belum terverifikasi)",
+          ? "Verified: " + d.name
+          : "Guess: " + d.name + " (unverified)",
       );
     } catch (e) {
-      setHint("Deteksi belum berhasil: " + e.message);
+      setHint("Detection failed: " + e.message);
     }
   };
   const save = () => {
     const k = key.trim() || (stored && stored.key);
     if (!k) {
-      setHint("Tempel API key terlebih dahulu.");
+      setHint("Paste an API key first.");
       return;
     }
     let prov, name, bu;
@@ -211,7 +263,13 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       name = PROVIDER_LABELS[provider];
       bu = baseUrl.trim();
       if (!bu) {
-        setHint("Isi Base URL untuk " + (provider === "cloudflare" ? "Cloudflare Worker" : "provider custom") + ".");
+        setHint(
+          "Enter the Base URL for " +
+            (provider === "cloudflare"
+              ? "Cloudflare Worker"
+              : "a custom provider") +
+            ".",
+        );
         return;
       }
     } else {
@@ -231,7 +289,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       .then((r) => r.json())
       .then(() =>
         setHint(
-          "Tersimpan di browser dan server: " +
+          "Saved in the browser and on the server: " +
             prov +
             " � " +
             k.slice(-4) +
@@ -241,7 +299,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       )
       .catch(() =>
         setHint(
-          "Tersimpan di browser: " + prov + " � " + k.slice(-4) + " ? " + mdl,
+          "Saved in the browser: " + prov + " � " + k.slice(-4) + " ? " + mdl,
         ),
       );
     onSaved();
@@ -253,7 +311,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
     setModelName("");
     setBaseUrl("");
     setProvider("auto");
-    setHint("Konfigurasi API key sudah dihapus.");
+    setHint("API key configuration deleted.");
     onSaved();
     onCloudChanged();
   };
@@ -286,10 +344,10 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                 onChange={(e) => setKey(e.target.value)}
                 placeholder={
                   stored
-                    ? "Key tersimpan (... " +
+                    ? "Key saved (… " +
                       (stored.key ? stored.key.slice(-4) : "server") +
-                      ") - kosongkan untuk tetap memakai key lama"
-                    : "Tempel API key di sini"
+                      ") - leave empty to keep the existing key"
+                    : "Paste your API key here"
                 }
               />
             </div>
@@ -303,7 +361,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                   value={provider}
                   onChange={(e) => setProvider(e.target.value)}
                 >
-                  <option value="auto">Deteksi otomatis</option>
+                  <option value="auto">Auto-detect</option>
                   {PROVIDER_OPTS.filter((p) => p !== "auto").map((p) => (
                     <option key={p} value={p}>
                       {p === "custom"
@@ -315,17 +373,21 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                 <Icon.chev className="chev" style={{ width: 15, height: 15 }} />
               </div>
             </div>
-          {(provider === "custom" || provider === "cloudflare") && (
-            <div className="field">
-              <label className="field-label">Base URL</label>
-              <input
-                className="input"
-                value={baseUrl}
-                onChange={(e) => setBaseUrl(e.target.value)}
-                placeholder={provider === "cloudflare" ? "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1" : "https://host/v1"}
-              />
-            </div>
-          )}
+            {(provider === "custom" || provider === "cloudflare") && (
+              <div className="field">
+                <label className="field-label">Base URL</label>
+                <input
+                  className="input"
+                  value={baseUrl}
+                  onChange={(e) => setBaseUrl(e.target.value)}
+                  placeholder={
+                    provider === "cloudflare"
+                      ? "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1"
+                      : "https://host/v1"
+                  }
+                />
+              </div>
+            )}
             <div className="field">
               <label className="field-label">Model</label>
               <input

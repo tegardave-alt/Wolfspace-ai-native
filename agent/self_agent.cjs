@@ -751,8 +751,8 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     newTool.function.parameters.properties.rencana_tindakan = {
       type: "string",
       description: isReadOnly
-        ? "(OPTIONAL) Maks 5 kata menjelaskan intent tool ini."
-        : "(WAJIB) 1 kalimat SINGKAT — apa yang dilakukan tool ini.",
+        ? "(OPTIONAL) Max 5 words describing this tool's intent."
+        : "(REQUIRED) One SHORT sentence — what this tool does.",
     };
     if (!isReadOnly) {
       if (!newTool.function.parameters.required)
@@ -960,7 +960,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           msg.content = salvaged
             ? "_(Model tidak menutup jawabannya; berikut kesimpulan dari proses berpikirnya.)_\n\n" +
               salvaged
-            : "(model tidak memberikan jawaban final)";
+            : "(the model gave no final answer)";
           dlog("self", "info", "reasoning_salvage", {
             step: state.step,
             reasoningChars: String(msg.reasoning || "").length,
@@ -1121,7 +1121,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           const _outStr = (r.output || "").trim();
           const _nonSubstantive =
             !_outStr ||
-            /^\(?\s*(ok|tidak ada|tidak ditemukan|no match|not found|nothing|kosong|empty|0\s+(hasil|match|file|baris))/i.test(
+            /^\(?\s*(ok|tidak ada|not found|no match|not found|nothing|kosong|empty|0\s+(hasil|match|file|baris))/i.test(
               _outStr,
             );
           if (r.ok && !_nonSubstantive) localAccessed.add(r.output);
@@ -1258,7 +1258,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             out +=
               "\n[SYSTEM: Tool " +
               tc.function.name +
-              " sudah dipanggil " +
+              " was already called " +
               callCountsByName[tc.function.name] +
               "x. Ganti pendekatan atau berikan jawaban kepada user sekarang.]";
           if (r.needsAnswer) {
@@ -1277,7 +1277,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           if (tc.function.name === "task") {
             if (depth >= MAX_DEPTH) {
               const outMsg =
-                "(batas kedalaman sub‑agent tercapai — kerjakan sub‑tugas ini langsung dengan tool biasa)";
+                "(sub-agent depth limit reached — handle this sub-task directly with normal tools)";
               emit({
                 t: "act",
                 kind: "task",
@@ -1318,7 +1318,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
                 { isCancelled, setCurReq, depth: depth + 1 },
               );
               return {
-                out: subSum || ret || "(sub‑agent selesai tanpa ringkasan)",
+                out: subSum || ret || "(sub-agent finished without a summary)",
               };
             } catch (e) {
               return { out: "[sub‑agent gagal: " + e.message + "]" };
@@ -1728,7 +1728,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               ok: false,
               output:
                 hGuard.hallucinated.length +
-                " klaim tak cocok dengan bukti tool run ini" +
+                " claim does not match the evidence from this tool run" +
                 (_unv ? " — " + _unv : "") +
                 ". Jawaban tetap ditampilkan; mohon verifikasi mandiri.",
             });
@@ -1746,7 +1746,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               messages: [
                 {
                   role: "user",
-                  content: `PERINGATAN SISTEM: Jawaban Anda mengandung klaim yang TIDAK TERBUKTI dari hasil tool:\n${hallucinatedList}\n\nKamu DILARANG menyebutkan sesuatu yang tidak ada di bukti tool. Baca ulang hasil tool yang ada, lalu berikan jawaban HANYA berdasarkan apa yang BENAR-BENAR ditemukan. Jika tidak ada buktinya, katakan "tidak ditemukan".`,
+                  content: `PERINGATAN SISTEM: Jawaban Anda mengandung klaim yang TIDAK TERBUKTI dari hasil tool:\n${hallucinatedList}\n\nKamu DILARANG menyebutkan sesuatu yang tidak ada di bukti tool. Baca ulang hasil tool yang ada, lalu berikan jawaban HANYA berdasarkan apa yang BENAR-BENAR ditemukan. Jika tidak ada buktinya, katakan "not found".`,
                 },
               ],
               forceRetryCount: state.forceRetryCount + 1,

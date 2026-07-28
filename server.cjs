@@ -91,19 +91,19 @@ function openclawCommand() {
 function friendlyOpenClawError(stderr, stdout, err) {
   const raw = [stderr, stdout, err && err.message].filter(Boolean).join("\n");
   if (err && err.code === "ENOENT") {
-    return "OpenClaw CLI tidak ditemukan. Install dulu dengan: npm.cmd install -g openclaw@latest";
+    return "OpenClaw CLI not found. Install it first with: npm.cmd install -g openclaw@latest";
   }
   if (/timeout|timed out/i.test(raw)) {
-    return "OpenClaw terlalu lama merespons. Coba lagi, atau jalankan: openclaw.cmd status";
+    return "OpenClaw took too long to respond. Try again, or run: openclaw.cmd status";
   }
   if (
     /gateway|onboard|configure|not configured|auth|api key|credential/i.test(
       raw,
     )
   ) {
-    return "OpenClaw belum siap dikonfigurasi. Jalankan: openclaw.cmd onboard";
+    return "OpenClaw is not configured yet. Run: openclaw.cmd onboard";
   }
-  return raw.trim() || "OpenClaw gagal dijalankan.";
+  return raw.trim() || "OpenClaw failed to run.";
 }
 
 function parseOpenClawText(stdout, stderr) {
@@ -137,7 +137,7 @@ function runOpenClawAgent(message) {
         ok: false,
         text: "",
         raw: "",
-        error: "Tidak bisa membuat file pesan sementara: " + err.message,
+        error: "Could not create a temporary message file: " + err.message,
         exitCode: null,
       });
     }
@@ -838,11 +838,11 @@ async function askSelectedModel(cloud, port, sysPrompt, userPrompt) {
     (CONFIG.models || []).find((m) => m.default) || (CONFIG.models || [])[0];
   if (!modelCfg)
     throw new Error(
-      "Tidak ada model aktif (lokal tidak jalan, cloud tidak dipilih)",
+      "No active model (local is not running, and no cloud model is selected)",
     );
   const portNum = Number(port || modelCfg.port);
   if (portNum < 1 || !Number.isFinite(portNum))
-    throw new Error("Port model tidak valid");
+    throw new Error("Invalid model port");
   const aiResp = await fetch(
     `http://127.0.0.1:${portNum}/v1/chat/completions`,
     {
@@ -892,7 +892,7 @@ async function runPy(code) {
       ok: false,
       output: "",
       error:
-        "Python code memanggil input() tapi stdin tidak tersedia (eksekusi headless). Gunakan nilai hardcoded.",
+        "The Python code calls input() but stdin is unavailable (headless execution). Use hardcoded values instead.",
     };
   }
   if (
@@ -1459,7 +1459,7 @@ function askFIM(port, prefix, suffix, reg) {
     Number(port) < 1 ||
     !Number.isFinite(Number(port))
   )
-    return Promise.reject(new Error("FIM: local model tidak aktif"));
+    return Promise.reject(new Error("FIM: local model is not active"));
   return new Promise((resolve, reject) => {
     const prompt = `<|fim_prefix|>${prefix}<|fim_suffix|>${suffix}<|fim_middle|>`;
     const body = JSON.stringify({
@@ -1524,9 +1524,7 @@ function askModelStream(port, messages, onToken, reg) {
     Number(port) < 1 ||
     !Number.isFinite(Number(port))
   )
-    return Promise.reject(
-      new Error("local model tidak aktif â€” tidak ada port"),
-    );
+    return Promise.reject(new Error("local model is not active â€” no port"));
   return new Promise((resolve, reject) => {
     const t0 = Date.now();
     dlog("model", "info", "local model start", {
@@ -2113,7 +2111,7 @@ function wsList(sub) {
       }
     }
   })(root);
-  return out.length ? out.join("\n") : "(workspace kosong)";
+  return out.length ? out.join("\n") : "(workspace is empty)";
 }
 // Read a file with 1-based line numbers (capped).
 function wsRead(p) {
@@ -2141,7 +2139,7 @@ function wsGrep(pattern) {
   const files = wsList("")
     .split("\n")
     .map((l) => l.replace(/ \(\d+b\)$/, ""))
-    .filter((f) => f && f !== "(workspace kosong)");
+    .filter((f) => f && f !== "(workspace is empty)");
   for (const rel of files) {
     if (hits.length > 80) break;
     let txt;
@@ -2155,7 +2153,7 @@ function wsGrep(pattern) {
         hits.push(`${rel}:${i + 1}: ${l.trim().slice(0, 160)}`);
     });
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Self-edit agent: operate on WOLFSPACE'S OWN source (dev copy), with guardrails Ã¢â€â‚¬Ã¢â€â‚¬
@@ -2275,7 +2273,7 @@ function qGlob(pattern) {
   const hits = qWalk(null)
     .filter((f) => re.test(f.rel) || re.test(f.rel.split("/").pop()))
     .map((f) => f.rel);
-  return hits.length ? hits.slice(0, 200).join("\n") : "(tidak ada file cocok)";
+  return hits.length ? hits.slice(0, 200).join("\n") : "(no matching files)";
 }
 function qRead(p, near) {
   const fp = qResolve(p, false);
@@ -2283,12 +2281,12 @@ function qRead(p, near) {
   try {
     st = fs.statSync(fp);
   } catch (e) {
-    throw new Error("file tidak ada: " + unq(p));
+    throw new Error("file does not exist: " + unq(p));
   }
   if (st.isDirectory()) {
     // EISDIR guard â€” show contents instead of failing
     const items = fs.readdirSync(fp).slice(0, 100).join("\n");
-    return "(ini direktori, bukan file) isi:\n" + items;
+    return "(this is a directory, not a file) contents:\n" + items;
   }
   const lines = fs.readFileSync(fp, "utf8").split("\n");
   const N = lines.length;
@@ -2351,7 +2349,7 @@ function qGrep(pattern) {
         hits.push(`${f.rel}:${i + 1}: ${l.trim().slice(0, 160)}`);
     });
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 // Syntax-gate: validate a file after an edit. .cjs/.js via `node --check`,
 // .jsx via the bundled Babel. Returns {ok, error}.
@@ -2500,7 +2498,7 @@ function diskGlob(p, pattern) {
     return "pola tidak valid";
   }
   const hits = diskWalk(dir, re).map((f) => f.fp.replace(/\\/g, "/"));
-  return hits.length ? hits.slice(0, 200).join("\n") : "(tidak ada file cocok)";
+  return hits.length ? hits.slice(0, 200).join("\n") : "(no matching files)";
 }
 function diskRead(p, near) {
   const fp = resolveDiskPath(p);
@@ -2508,11 +2506,12 @@ function diskRead(p, near) {
   try {
     st = fs.statSync(fp);
   } catch {
-    throw new Error("file tidak ada: " + p);
+    throw new Error("file does not exist: " + p);
   }
   if (st.isDirectory())
     return (
-      "(ini direktori) isi:\n" + fs.readdirSync(fp).slice(0, 100).join("\n")
+      "(this is a directory) contents:\n" +
+      fs.readdirSync(fp).slice(0, 100).join("\n")
     );
   const lines = fs.readFileSync(fp, "utf8").split("\n");
   const N = lines.length;
@@ -2570,7 +2569,7 @@ function diskGrep(p, pattern) {
         );
     });
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 
 const SELF_SYS = [
@@ -3035,20 +3034,20 @@ function runSelfTool(name, args, emit) {
         return {
           ok: false,
           output:
-            "old_string tidak ditemukan di file \u2014 read ulang & salin persis.",
+            "old_string was not found in file \u2014 read ulang & salin persis.",
         };
       if (args.old_string === args.new_string)
         return {
           ok: false,
           output:
-            "NOOP: old_string sama dengan new_string \u2014 edit dibatalkan.",
+            "NOOP: old_string is identical to new_string \u2014 edit cancelled.",
         };
       const patched = old.replace(args.old_string, args.new_string);
       if (old === patched)
         return {
           ok: false,
           output:
-            "NOOP: replace tidak mengubah konten (old_string tidak match atau sudah sama).",
+            "NOOP: replace changed nothing (old_string did not match, or is already identical).",
         };
       // Safe-Edit Protocol: snapshot → syntax check → apply / rollback + quarantine
       const editResult = safeWriteFile(dest, patched);
@@ -3056,7 +3055,7 @@ function runSelfTool(name, args, emit) {
         return {
           ok: false,
           output:
-            "DITOLAK & ROLLBACK otomatis (sintaks rusak):\n" +
+            "REJECTED & auto-ROLLED BACK (broken syntax):\n" +
             editResult.error +
             "\n[Snapshot: " +
             editResult.snapshotId +
@@ -3091,7 +3090,7 @@ function runSelfTool(name, args, emit) {
         return {
           ok: false,
           output:
-            "DITOLAK & ROLLBACK otomatis (sintaks rusak):\n" +
+            "REJECTED & auto-ROLLED BACK (broken syntax):\n" +
             writeResult.error +
             "\n[Snapshot: " +
             writeResult.snapshotId +
@@ -3119,7 +3118,7 @@ function runSelfTool(name, args, emit) {
           cmd,
         )
       )
-        return { ok: false, output: "perintah berbahaya ditolak" };
+        return { ok: false, output: "dangerous command rejected" };
       let cwd = QROOT;
       if (args.cwd) {
         try {
@@ -3209,12 +3208,12 @@ function runSelfTool(name, args, emit) {
     if (name === "web_search")
       return {
         ok: true,
-        output: "(web_search tidak tersedia dari workspace agent)",
+        output: "(web_search is unavailable from the agent workspace)",
       };
     if (name === "web_fetch")
       return {
         ok: true,
-        output: "(web_fetch tidak tersedia dari workspace agent)",
+        output: "(web_fetch is unavailable from the agent workspace)",
       };
     if (name === "todowrite") return { ok: true, output: "task list updated" };
     if (name === "question")
@@ -4204,7 +4203,7 @@ const server = http.createServer(async (req, res) => {
         const layer = (man.layers || []).find(
           (l) => l.mediaType === "application/vnd.ollama.image.model",
         );
-        if (!layer) throw new Error("layer GGUF tidak ditemukan di manifest");
+        if (!layer) throw new Error("layer GGUF not found di manifest");
 
         // 2) download the blob Ã¢â€ â€™ models dir
         const modelDir = CONFIG.modelDir || path.dirname(CONFIG_PATH);
@@ -4322,7 +4321,7 @@ const server = http.createServer(async (req, res) => {
       );
       if (idx < 0) {
         res.writeHead(404, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "model tidak ditemukan" }));
+        return res.end(JSON.stringify({ error: "model not found" }));
       }
       const m = CONFIG.models[idx];
       await killPortAsync(m.port);
@@ -4538,12 +4537,12 @@ const server = http.createServer(async (req, res) => {
                 t: "adone",
                 steps: step,
                 summary:
-                  "DONE ditolak: belum ada verifikasi eksekusi yang sukses (ok=false atau tidak ada run). Lanjutkan agent.",
+                  "DONE rejected: no successful execution verification yet (ok=false, or nothing was run). Continue the agent.",
               });
               convo.push({
                 role: "user",
                 content:
-                  "DONE ditolak karena belum terverifikasi. Tolong lanjutkan pekerjaan dan pastikan hasil akhir divalidasi dengan menjalankan perintah eksekusi sehingga CPU memberi ok=true.",
+                  "DONE was rejected because nothing has been verified. Please continue and make sure the final result is validated by running an execution command so the CPU reports ok=true.",
               });
               continue;
             }
@@ -4566,7 +4565,7 @@ const server = http.createServer(async (req, res) => {
             try {
               result = { ok: true, output: wsRead(act.arg) };
             } catch (e) {
-              result = { ok: false, error: "baca gagal: " + e.message };
+              result = { ok: false, error: "read failed: " + e.message };
             }
           } else if (act.kind === "grep") {
             try {
@@ -4601,7 +4600,7 @@ const server = http.createServer(async (req, res) => {
                 output: `edited ${act.arg} (${src.length}Ã¢â€ â€™${patched.length} bytes)`,
               };
             } catch (e) {
-              result = { ok: false, error: "edit gagal: " + e.message };
+              result = { ok: false, error: "edit failed: " + e.message };
             }
           } else {
             // run
@@ -4761,7 +4760,7 @@ const server = http.createServer(async (req, res) => {
         return res.end(
           JSON.stringify({
             ok: false,
-            error: "URL harus diawali http:// atau https://",
+            error: "URL must start with http:// or https://",
           }),
         );
       }
@@ -4920,7 +4919,7 @@ const server = http.createServer(async (req, res) => {
           return res.end(
             JSON.stringify({
               error:
-                "ditolak: tak ada .ww.json — bukan workspace ww yang dikelola",
+                "rejected: no .ww.json — this is not a managed ww workspace",
             }),
           );
         }

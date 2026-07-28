@@ -374,7 +374,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
             : res.body
           : {};
         if (!out.ok) {
-          setPickerMcpInputError(out.error || "Gagal menambahkan MCP server.");
+          setPickerMcpInputError(out.error || "Failed to add the MCP server.");
           return;
         }
       } catch (err) {
@@ -395,7 +395,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     // Entri optimistis (lihat catatan di Components.jsx): segarkan dgn status
     // runtime supaya server yang gagal tak terus tampil "Connected".
     setTimeout(() => loadPickerMcp(), 2500);
-    setPickerMcpInputSuccess("✓ Server MCP berhasil ditambahkan!");
+    setPickerMcpInputSuccess("✓ MCP server added.");
     setPickerMcpInputUrl("");
     setPickerMcpInputToken("");
     setTimeout(() => {
@@ -993,8 +993,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                     title={
                                       (srv.status && srv.status.lastError) ||
                                       (srv.status && !srv.status.running
-                                        ? "Proses MCP belum berjalan"
-                                        : "Belum siap")
+                                        ? "MCP process is not running"
+                                        : "Not ready")
                                     }
                                     style={{
                                       fontSize: "11px",
@@ -1015,14 +1015,14 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                   >
                                     {srv.status &&
                                     srv.status.lastCallOk === false
-                                      ? "✕ Gagal"
+                                      ? "✕ Failed"
                                       : srv.status && !srv.status.running
                                         ? "○ Berhenti"
-                                        : "○ Belum siap"}
+                                        : "○ Not ready"}
                                   </span>
                                 )}
                                 <span
-                                  title="Hapus server MCP"
+                                  title="Remove MCP server"
                                   style={{
                                     cursor: "pointer",
                                     padding: "2px 4px",
@@ -1065,7 +1065,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                         })
                                         .catch((err) =>
                                           alert(
-                                            "Gagal menghapus MCP: " +
+                                            "Failed to remove MCP: " +
                                               err.message,
                                           ),
                                         );
@@ -1389,7 +1389,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               ref={taRef}
               className="picker-textarea"
               rows={1}
-              placeholder="Apa yang ingin kamu buat hari ini?"
+              placeholder="What would you like to build today?"
               value={text}
               onChange={(e) => {
                 setText(e.target.value);

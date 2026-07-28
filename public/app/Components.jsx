@@ -133,24 +133,24 @@ function HFModels({ onSaved }) {
       ).json();
       if (r.error) throw new Error(r.error);
       setResults(r);
-      setMsg(r.length ? "" : "Belum ada hasil yang cocok.");
+      setMsg(r.length ? "" : "No matching results.");
     } catch (e) {
-      setMsg("Pencarian gagal: " + e.message);
+      setMsg("Search failed: " + e.message);
     }
   };
   const pick = async (id) => {
     setSel(id);
     setFiles([]);
-    setMsg("Memuat daftar file...");
+    setMsg("Loading file list…");
     try {
       const r = await (
         await fetch("/hf/files?id=" + encodeURIComponent(id))
       ).json();
       if (r.error) throw new Error(r.error);
       setFiles(r);
-      setMsg(r.length ? "" : "Tidak ada file .gguf di repositori ini.");
+      setMsg(r.length ? "" : "No .gguf files in this repository.");
     } catch (e) {
-      setMsg("Gagal memuat file: " + e.message);
+      setMsg("Failed to load file: " + e.message);
     }
   };
   const download = async (file) => {
@@ -185,18 +185,18 @@ function HFModels({ onSaved }) {
           if (j.t === "progress") setProg(j.pct);
           else if (j.t === "done") {
             setMsg(
-              "Selesai: " +
+              "Done: " +
                 j.model.name +
-                " sudah diunduh dan dijalankan di port " +
+                " has been downloaded and started on port " +
                 j.model.port +
-                ". Tunggu sekitar 30 detik, lalu pilih dari menu Model.",
+                ". Wait about 30 seconds, then pick it from the Model menu.",
             );
             onSaved && onSaved();
-          } else if (j.t === "err") setMsg("Unduhan gagal: " + j.m);
+          } else if (j.t === "err") setMsg("Download failed: " + j.m);
         }
       }
     } catch (e) {
-      setMsg("Unduhan gagal: " + e.message);
+      setMsg("Download failed: " + e.message);
     }
     setBusy(false);
     setProg(null);
@@ -209,7 +209,7 @@ function HFModels({ onSaved }) {
           className="input"
           value={q}
           onChange={(e) => setQ(e.target.value)}
-          placeholder="Cari GGUF, misalnya qwen coder"
+          placeholder="Search GGUF, e.g. qwen coder"
           onKeyDown={(e) => {
             if (e.key === "Enter") search();
           }}
@@ -512,7 +512,7 @@ function LightboxModal({ item, onClose }) {
               padding: "0 6px",
               lineHeight: 1,
             }}
-            title="Tutup"
+            title="Close"
           >
             ×
           </button>
@@ -749,7 +749,7 @@ function Composer({
             : res.body
           : {};
         if (!out.ok) {
-          setMcpInputError(out.error || "Gagal menambahkan MCP server.");
+          setMcpInputError(out.error || "Failed to add the MCP server.");
           return;
         }
       } catch (err) {
@@ -771,7 +771,7 @@ function Composer({
     // sesaat kemudian supaya server yang ternyata gagal tidak terus tampil
     // "Connected" — beri jeda agar proses MCP sempat handshake.
     setTimeout(() => loadMcpServers(), 2500);
-    setMcpInputSuccess("✓ Server MCP berhasil dihubungkan & berjalan!");
+    setMcpInputSuccess("✓ MCP server connected and running.");
     setMcpInputUrl("");
     setMcpInputToken("");
     setTimeout(() => {
@@ -1054,7 +1054,7 @@ function Composer({
                   <div
                     key={att.id}
                     className="composer-attachment-item"
-                    title={att.path + " (Klik untuk melihat)"}
+                    title={att.path + " (Click to view)"}
                     onClick={() => {
                       if (att.previewUrl || att.url || att.snippet) {
                         setPreviewAttachment(att);
@@ -1205,10 +1205,10 @@ function Composer({
             value={val}
             placeholder={
               busy
-                ? "Lanjutkan percakapan..."
+                ? "Continue the conversation…"
                 : val.includes("/")
-                  ? "Terus ketik perintah..."
-                  : "Apa yang ingin kamu buat hari ini?"
+                  ? "Keep typing commands…"
+                  : "What would you like to build today?"
             }
             onChange={(e) => {
               console.log("[Textarea] value changed:", e.target.value);
@@ -1248,7 +1248,7 @@ function Composer({
             <div className="composer-action-btns">
               <button
                 className={"composer-add" + (menu ? " open" : "")}
-                title="Tambah"
+                title="Add"
                 onClick={() => {
                   setMenu((m) => !m);
                   setShowModelMenu(false);
@@ -1478,8 +1478,8 @@ function Composer({
                                       title={
                                         (srv.status && srv.status.lastError) ||
                                         (srv.status && !srv.status.running
-                                          ? "Proses MCP belum berjalan"
-                                          : "Belum siap")
+                                          ? "MCP process is not running"
+                                          : "Not ready")
                                       }
                                       style={{
                                         fontSize: "11px",
@@ -1500,14 +1500,14 @@ function Composer({
                                     >
                                       {srv.status &&
                                       srv.status.lastCallOk === false
-                                        ? "✕ Gagal"
+                                        ? "✕ Failed"
                                         : srv.status && !srv.status.running
                                           ? "○ Berhenti"
-                                          : "○ Belum siap"}
+                                          : "○ Not ready"}
                                     </span>
                                   )}
                                   <span
-                                    title="Hapus server MCP"
+                                    title="Remove MCP server"
                                     style={{
                                       cursor: "pointer",
                                       padding: "2px 4px",
@@ -1547,7 +1547,7 @@ function Composer({
                                           })
                                           .catch((err) =>
                                             alert(
-                                              "Gagal menghapus MCP: " +
+                                              "Failed to remove MCP: " +
                                                 err.message,
                                             ),
                                           );

@@ -27,10 +27,11 @@ function Model3DViewer({ url, name }) {
     if (!mount) return;
     if (!lib || !lib.THREE) {
       setStatus("error");
-      setErrMsg("Pustaka 3D (three.js) belum termuat.");
+      setErrMsg("3D library (three.js) is not loaded.");
       return;
     }
-    const { THREE, GLTFLoader, STLLoader, OrbitControls, RoomEnvironment } = lib;
+    const { THREE, GLTFLoader, STLLoader, OrbitControls, RoomEnvironment } =
+      lib;
     let raf = 0;
     let disposed = false;
     const disposables = [];
@@ -51,7 +52,8 @@ function Model3DViewer({ url, name }) {
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h);
     // three r160: default output sudah sRGB; set eksplisit untuk konsistensi warna GLB.
-    if ("outputColorSpace" in renderer) renderer.outputColorSpace = THREE.SRGBColorSpace;
+    if ("outputColorSpace" in renderer)
+      renderer.outputColorSpace = THREE.SRGBColorSpace;
     // ACES filmic tone mapping — kunci look "filmic" Blender (EEVEE/Cycles default);
     // tanpa ini warna PBR terlihat datar & mudah over-bright.
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
@@ -87,7 +89,12 @@ function Model3DViewer({ url, name }) {
     // frustum shadow camera. Auto-frame agar model pas di layar berapa pun skala
     // aslinya (mm vs meter, dll).
     const frameObject = (obj) => {
-      obj.traverse((o) => { if (o.isMesh) { o.castShadow = true; o.receiveShadow = true; } });
+      obj.traverse((o) => {
+        if (o.isMesh) {
+          o.castShadow = true;
+          o.receiveShadow = true;
+        }
+      });
       const box = new THREE.Box3().setFromObject(obj);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
@@ -97,8 +104,15 @@ function Model3DViewer({ url, name }) {
 
       // Contact shadow: lantai netral halus (sedikit lebih terang dari background)
       // yang menerima bayangan — memberi kesan model "menapak", bukan melayang.
-      const gmat = new THREE.MeshStandardMaterial({ color: 0x1c222b, roughness: 0.95, metalness: 0 });
-      const ground = new THREE.Mesh(new THREE.PlaneGeometry(maxDim * 14, maxDim * 14), gmat);
+      const gmat = new THREE.MeshStandardMaterial({
+        color: 0x1c222b,
+        roughness: 0.95,
+        metalness: 0,
+      });
+      const ground = new THREE.Mesh(
+        new THREE.PlaneGeometry(maxDim * 14, maxDim * 14),
+        gmat,
+      );
       ground.rotation.x = -Math.PI / 2;
       ground.position.y = minY - maxDim * 0.002;
       ground.receiveShadow = true;
@@ -106,9 +120,12 @@ function Model3DViewer({ url, name }) {
 
       // Frustum shadow camera key light harus menutupi model.
       const sh = maxDim * 1.3;
-      key.shadow.camera.left = -sh; key.shadow.camera.right = sh;
-      key.shadow.camera.top = sh; key.shadow.camera.bottom = -sh;
-      key.shadow.camera.near = 0.01; key.shadow.camera.far = maxDim * 20;
+      key.shadow.camera.left = -sh;
+      key.shadow.camera.right = sh;
+      key.shadow.camera.top = sh;
+      key.shadow.camera.bottom = -sh;
+      key.shadow.camera.near = 0.01;
+      key.shadow.camera.far = maxDim * 20;
       key.position.set(maxDim * 0.6, maxDim * 1.5, maxDim * 0.9);
       key.target.position.set(0, 0, 0);
       key.shadow.camera.updateProjectionMatrix();
@@ -132,7 +149,7 @@ function Model3DViewer({ url, name }) {
     const onErr = (e) => {
       if (disposed) return;
       setStatus("error");
-      setErrMsg((e && e.message) || "Gagal memuat model 3D.");
+      setErrMsg((e && e.message) || "Failed to load the 3D model.");
     };
 
     try {
@@ -162,11 +179,15 @@ function Model3DViewer({ url, name }) {
             // GLB bisa membawa beberapa klip, diputar native lewat AnimationMixer.
             if (!disposed && gltf.animations && gltf.animations.length) {
               const mixer = new THREE.AnimationMixer(gltf.scene);
-              const actions = gltf.animations.map((clip) => mixer.clipAction(clip));
+              const actions = gltf.animations.map((clip) =>
+                mixer.clipAction(clip),
+              );
               actions[0].play(); // auto-play klip pertama
               mixerRef.current = mixer;
               actionsRef.current = actions;
-              setClips(gltf.animations.map((c, i) => c.name || "Klip " + (i + 1)));
+              setClips(
+                gltf.animations.map((c, i) => c.name || "Klip " + (i + 1)),
+              );
             }
           },
           undefined,
@@ -199,21 +220,42 @@ function Model3DViewer({ url, name }) {
     return () => {
       disposed = true;
       cancelAnimationFrame(raf);
-      if (mixerRef.current) { try { mixerRef.current.stopAllAction(); } catch (_) {} mixerRef.current = null; }
+      if (mixerRef.current) {
+        try {
+          mixerRef.current.stopAllAction();
+        } catch (_) {}
+        mixerRef.current = null;
+      }
       actionsRef.current = [];
       ro.disconnect();
       controls.dispose();
-      disposables.forEach((d) => { try { d.dispose && d.dispose(); } catch (_) {} });
+      disposables.forEach((d) => {
+        try {
+          d.dispose && d.dispose();
+        } catch (_) {}
+      });
       // Buang geometry/material sisa di scene (mis. GLB multi-mesh) lalu konteks WebGL.
       scene.traverse((o) => {
-        if (o.geometry) { try { o.geometry.dispose(); } catch (_) {} }
+        if (o.geometry) {
+          try {
+            o.geometry.dispose();
+          } catch (_) {}
+        }
         if (o.material) {
           const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m) => { try { m.dispose && m.dispose(); } catch (_) {} });
+          mats.forEach((m) => {
+            try {
+              m.dispose && m.dispose();
+            } catch (_) {}
+          });
         }
       });
-      try { renderer.dispose(); } catch (_) {}
-      try { renderer.forceContextLoss && renderer.forceContextLoss(); } catch (_) {}
+      try {
+        renderer.dispose();
+      } catch (_) {}
+      try {
+        renderer.forceContextLoss && renderer.forceContextLoss();
+      } catch (_) {}
       if (renderer.domElement && renderer.domElement.parentNode) {
         renderer.domElement.parentNode.removeChild(renderer.domElement);
       }
@@ -239,21 +281,83 @@ function Model3DViewer({ url, name }) {
   };
 
   return (
-    <div style={{ position: "relative", width: "70vw", maxWidth: "900px", height: "calc(85vh - 80px)", background: "#0d1117", borderRadius: "8px", overflow: "hidden" }}>
+    <div
+      style={{
+        position: "relative",
+        width: "70vw",
+        maxWidth: "900px",
+        height: "calc(85vh - 80px)",
+        background: "#0d1117",
+        borderRadius: "8px",
+        overflow: "hidden",
+      }}
+    >
       <div ref={mountRef} style={{ width: "100%", height: "100%" }} />
       {status !== "ready" && (
-        <div style={{ position: "absolute", inset: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", color: "#8b98a9", fontSize: "13px", pointerEvents: "none", gap: "8px" }}>
-          {status === "loading" ? <><div style={{ fontSize: "32px" }}>🧊</div><div>Memuat model 3D…</div></> : <><div style={{ fontSize: "32px" }}>⚠️</div><div>{errMsg}</div></>}
+        <div
+          style={{
+            position: "absolute",
+            inset: 0,
+            display: "flex",
+            flexDirection: "column",
+            alignItems: "center",
+            justifyContent: "center",
+            color: "#8b98a9",
+            fontSize: "13px",
+            pointerEvents: "none",
+            gap: "8px",
+          }}
+        >
+          {status === "loading" ? (
+            <>
+              <div style={{ fontSize: "32px" }}>🧊</div>
+              <div>Memuat model 3D…</div>
+            </>
+          ) : (
+            <>
+              <div style={{ fontSize: "32px" }}>⚠️</div>
+              <div>{errMsg}</div>
+            </>
+          )}
         </div>
       )}
       {status === "ready" && clips.length > 0 ? (
-        <div style={{ position: "absolute", bottom: "10px", left: "50%", transform: "translateX(-50%)", display: "flex", alignItems: "center", gap: "8px", background: "rgba(0,0,0,0.62)", padding: "5px 10px 5px 6px", borderRadius: "20px" }}>
+        <div
+          style={{
+            position: "absolute",
+            bottom: "10px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            display: "flex",
+            alignItems: "center",
+            gap: "8px",
+            background: "rgba(0,0,0,0.62)",
+            padding: "5px 10px 5px 6px",
+            borderRadius: "20px",
+          }}
+        >
           <button
             onClick={togglePlay}
             title={playing ? "Jeda animasi" : "Putar animasi"}
-            style={{ background: "transparent", border: "none", color: "#e2e8f0", cursor: "pointer", fontSize: "14px", width: "26px", height: "26px", borderRadius: "50%", display: "flex", alignItems: "center", justifyContent: "center" }}
-            onMouseEnter={(e) => (e.currentTarget.style.background = "rgba(255,255,255,0.12)")}
-            onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+            style={{
+              background: "transparent",
+              border: "none",
+              color: "#e2e8f0",
+              cursor: "pointer",
+              fontSize: "14px",
+              width: "26px",
+              height: "26px",
+              borderRadius: "50%",
+              display: "flex",
+              alignItems: "center",
+              justifyContent: "center",
+            }}
+            onMouseEnter={(e) =>
+              (e.currentTarget.style.background = "rgba(255,255,255,0.12)")
+            }
+            onMouseLeave={(e) =>
+              (e.currentTarget.style.background = "transparent")
+            }
           >
             {playing ? "⏸" : "▶"}
           </button>
@@ -261,16 +365,56 @@ function Model3DViewer({ url, name }) {
             <select
               value={activeClip}
               onChange={(e) => selectClip(Number(e.target.value))}
-              style={{ background: "#1c222b", color: "#c9d1d9", border: "1px solid #30363d", borderRadius: "6px", fontSize: "11px", padding: "3px 6px", fontFamily: "inherit", cursor: "pointer", maxWidth: "180px" }}
+              style={{
+                background: "#1c222b",
+                color: "#c9d1d9",
+                border: "1px solid #30363d",
+                borderRadius: "6px",
+                fontSize: "11px",
+                padding: "3px 6px",
+                fontFamily: "inherit",
+                cursor: "pointer",
+                maxWidth: "180px",
+              }}
             >
-              {clips.map((c, i) => (<option key={i} value={i}>{c}</option>))}
+              {clips.map((c, i) => (
+                <option key={i} value={i}>
+                  {c}
+                </option>
+              ))}
             </select>
           ) : (
-            <span style={{ color: "#c9d1d9", fontSize: "11px", paddingRight: "4px", maxWidth: "180px", overflow: "hidden", textOverflow: "ellipsis", whiteSpace: "nowrap" }}>🎞 {clips[0]}</span>
+            <span
+              style={{
+                color: "#c9d1d9",
+                fontSize: "11px",
+                paddingRight: "4px",
+                maxWidth: "180px",
+                overflow: "hidden",
+                textOverflow: "ellipsis",
+                whiteSpace: "nowrap",
+              }}
+            >
+              🎞 {clips[0]}
+            </span>
           )}
         </div>
       ) : status === "ready" ? (
-        <div style={{ position: "absolute", bottom: "10px", left: "50%", transform: "translateX(-50%)", background: "rgba(0,0,0,0.55)", color: "#c9d1d9", fontSize: "11px", padding: "4px 12px", borderRadius: "12px", pointerEvents: "none", whiteSpace: "nowrap" }}>
+        <div
+          style={{
+            position: "absolute",
+            bottom: "10px",
+            left: "50%",
+            transform: "translateX(-50%)",
+            background: "rgba(0,0,0,0.55)",
+            color: "#c9d1d9",
+            fontSize: "11px",
+            padding: "4px 12px",
+            borderRadius: "12px",
+            pointerEvents: "none",
+            whiteSpace: "nowrap",
+          }}
+        >
           Seret untuk memutar · scroll untuk zoom
         </div>
       ) : null}

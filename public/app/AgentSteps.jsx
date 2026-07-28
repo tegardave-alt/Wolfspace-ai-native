@@ -371,7 +371,7 @@ function GroupedActionRow({ group, expanded, setExpanded }) {
         </span>
         <span>{acts.length} perintah dieksekusi</span>
         <span style={{ marginLeft: "auto", fontSize: "11px", opacity: 0.6 }}>
-          {isError ? "Gagal" : "Sukses"}
+          {isError ? "Failed" : "Success"}
         </span>
       </div>
       {isOpen && (

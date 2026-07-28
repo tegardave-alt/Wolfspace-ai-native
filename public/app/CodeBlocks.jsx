@@ -253,7 +253,7 @@ function CodeBlock({ lang, code }) {
       });
       setOut(await r.json());
     } catch (e) {
-      setOut({ ok: false, error: "Server belum bisa dijangkau: " + e.message });
+      setOut({ ok: false, error: "Server unreachable: " + e.message });
     }
     setRunState("done");
   };
@@ -781,7 +781,7 @@ function CytoscapeBlock({ code, onStatic }) {
             <button
               style={btn("_st")}
               onClick={onStatic}
-              title="Kembali ke diagram statis (fidelitas penuh)"
+              title="Back to the static diagram (full fidelity)"
             >
               ← statis
             </button>
@@ -904,7 +904,7 @@ function MermaidBlock({ code, onInteractive }) {
         {onInteractive ? (
           <button
             onClick={onInteractive}
-            title="Buka sebagai graph interaktif (drag / zoom / layout)"
+            title="Open as interactive graph (drag / zoom / layout)"
             style={{
               marginLeft: "auto",
               fontFamily: "ui-monospace,monospace",

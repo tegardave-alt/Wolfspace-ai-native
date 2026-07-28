@@ -11,13 +11,13 @@ const INTEGRATION_PALETTE = [
     type: "trigger",
     label: "Trigger",
     accent: "#3fb950",
-    desc: "titik mulai flow (payload awal opsional)",
+    desc: "flow entry point (optional initial payload)",
   },
   {
     type: "http",
     label: "HTTP Request",
     accent: "#2f81f7",
-    desc: "panggil URL/API — pilih method & isi URL di node",
+    desc: "call a URL/API — pick the method and fill the URL in the node",
   },
   {
     type: "transform",
@@ -29,7 +29,7 @@ const INTEGRATION_PALETTE = [
     type: "condition",
     label: "Condition",
     accent: "#bc8cff",
-    desc: "cabang: pilih edge yang labelnya ada di data",
+    desc: "branch: pick the edge whose label appears in the data",
   },
   {
     type: "output",
@@ -82,7 +82,7 @@ function WFNodeCard({ id, data, selected }) {
   const setFolder = () => {
     const cur = wsRoot || "";
     const v = window.prompt(
-      "Folder untuk node ini (path absolut). Kosongkan = ikut folder aktif:",
+      "Folder for this node (absolute path). Leave empty to follow the active folder:",
       cur,
     );
     if (v === null) return;
@@ -117,7 +117,7 @@ function WFNodeCard({ id, data, selected }) {
           e.stopPropagation();
           cycleKind();
         }}
-        title={editable ? "klik: ganti jenis node" : undefined}
+        title={editable ? "click: change node type" : undefined}
         style={{ cursor: editable ? "pointer" : "default", userSelect: "none" }}
       >
         {data.kind}
@@ -134,10 +134,10 @@ function WFNodeCard({ id, data, selected }) {
           }}
         />
       )}
-      {err && <span title="gagal">✕</span>}
+      {err && <span title="failed">✕</span>}
       {wsBase && (
         <span
-          title={"terkurung ke folder: " + wsRoot}
+          title={"confined to folder: " + wsRoot}
           onClick={
             editable
               ? (e) => {
@@ -192,7 +192,7 @@ function WFNodeCard({ id, data, selected }) {
         e.stopPropagation();
         if (editable) setEditing(true);
       }}
-      title={editable ? "dobel-klik: ubah label" : undefined}
+      title={editable ? "double-click: edit label" : undefined}
       style={{
         fontSize: "12.5px",
         fontWeight: 600,
@@ -220,7 +220,7 @@ function WFNodeCard({ id, data, selected }) {
               accent: edge,
             });
         }}
-        title="klik: lihat hasil lengkap"
+        title="click: view the full result"
         style={{
           marginTop: "5px",
           paddingTop: shape === "diamond" ? 0 : "5px",
@@ -257,7 +257,7 @@ function WFNodeCard({ id, data, selected }) {
       <NodeToolbar isVisible={selected} position={Position.Top} offset={8}>
         <div style={{ display: "flex", gap: "4px" }}>
           <button
-            title="Duplikat (Ctrl+V dari salinan)"
+            title="Duplicate (Ctrl+V from the copy)"
             style={_tb}
             onClick={(e) => {
               e.stopPropagation();
@@ -270,7 +270,7 @@ function WFNodeCard({ id, data, selected }) {
             title={
               wsRoot
                 ? "Folder node: " + wsRoot
-                : "Ikat node ke folder sendiri (agent terkurung ke sana)"
+                : "Bind the node to its own folder (the agent is confined there)"
             }
             style={{ ..._tb, color: wsRoot ? "#d29922" : "#dce4f0" }}
             onClick={(e) => {
@@ -281,7 +281,7 @@ function WFNodeCard({ id, data, selected }) {
             📁
           </button>
           <button
-            title="Hapus"
+            title="Delete"
             style={{ ..._tb, color: "#f0776b" }}
             onClick={(e) => {
               e.stopPropagation();
@@ -490,7 +490,7 @@ function IntegrationNode({ id, data, selected }) {
           onChange={(e) => update({ trigger: e.target.value })}
           style={sel}
         >
-          <option value="manual">Manual (klik Jalankan)</option>
+          <option value="manual">Manual (click Run)</option>
           <option value="webhook">Webhook (URL dipanggil)</option>
           <option value="schedule">Schedule (interval)</option>
         </select>
@@ -586,7 +586,7 @@ function IntegrationNode({ id, data, selected }) {
       {NodeToolbar && editable && (
         <NodeToolbar isVisible={selected} position={Position.Top} offset={8}>
           <button
-            title="Hapus"
+            title="Delete"
             style={_tb}
             onClick={(e) => {
               stop(e);
@@ -640,7 +640,7 @@ function IntegrationNode({ id, data, selected }) {
           {meta.title}
         </span>
         {err && (
-          <span title="gagal" style={{ color: "#f0776b" }}>
+          <span title="failed" style={{ color: "#f0776b" }}>
             ✕
           </span>
         )}
@@ -668,7 +668,7 @@ function IntegrationNode({ id, data, selected }) {
                   accent: edge,
                 });
             }}
-            title="klik: lihat hasil lengkap"
+            title="click: view the full result"
             style={{
               paddingTop: "6px",
               borderTop: "1px solid #21324a",
@@ -1263,13 +1263,13 @@ function WorkflowBuilderInner({
           }
           setNodeData(id, {
             ok: true,
-            result: String(out).slice(0, 8000) || "(kosong)",
+            result: String(out).slice(0, 8000) || "(empty)",
           });
           outs.forEach((e) => queue.push(e.target));
         }
       }
     } catch (e) {
-      setRunErr(e.message || "gagal menjalankan flow");
+      setRunErr(e.message || "failed to run the flow");
     }
     clearActive();
     setRunning(false);
@@ -1278,7 +1278,7 @@ function WorkflowBuilderInner({
   const runGraph = async () => {
     if (running) return;
     if (!nodes.length) {
-      setRunErr("Kanvas kosong — tambah node dulu.");
+      setRunErr("Canvas is empty — add a node first.");
       setTimeout(() => setRunErr(""), 4000);
       return;
     }
@@ -1340,7 +1340,7 @@ function WorkflowBuilderInner({
               e.target,
           );
           const q =
-            `Evaluasi kondisi: "${label}". Pilih SATU cabang dari daftar berikut dan jawab HANYA dengan nama cabang itu: [${choices.join(", ")}].` +
+            `Evaluate the condition: "${label}". Pick ONE branch from the list below and answer with that branch name ONLY: [${choices.join(", ")}].` +
             (ctx ? "\n\nKonteks:\n" + ctx : "");
           const r = await runStage(q, {
             kind,
@@ -1377,7 +1377,7 @@ function WorkflowBuilderInner({
         }
       }
     } catch (e) {
-      setRunErr(e.message || "gagal menjalankan graph");
+      setRunErr(e.message || "failed to run the graph");
     }
     clearActive();
     setRunning(false);
@@ -1394,7 +1394,7 @@ function WorkflowBuilderInner({
   const saveWorkflow = () => {
     const name = (
       window.prompt(
-        "Simpan workflow sebagai:",
+        "Save workflow as:",
         "wf-" + new Date().toISOString().slice(0, 10),
       ) || ""
     ).trim();
@@ -1610,7 +1610,7 @@ function WorkflowBuilderInner({
         >
           <button
             onClick={onBack}
-            title="Kembali ke chat"
+            title="Back to chat"
             style={{
               ...btn,
               padding: "3px 8px",
@@ -1656,7 +1656,7 @@ function WorkflowBuilderInner({
           >
             <button
               onClick={onBack}
-              title="Kembali ke chat"
+              title="Back to chat"
               style={{ ...btn, padding: "3px 8px" }}
             >
               ←
@@ -1714,7 +1714,7 @@ function WorkflowBuilderInner({
                 cermin eksekusi agent
               </div>
               <div style={{ color: "#6f7d92", marginTop: "5px" }}>
-                {liveNodes.length ? "struktur graph aktif" : "menunggu…"}
+                {liveNodes.length ? "active graph structure" : "waiting…"}
               </div>
               <div style={{ color: "#6f7d92", marginTop: "3px" }}>
                 Jalankan agent di chat — langkahnya muncul di sini.
@@ -1732,7 +1732,7 @@ function WorkflowBuilderInner({
                 onDoubleClick={() =>
                   addNode(it, window.innerWidth / 2, window.innerHeight / 2)
                 }
-                title={it.desc + " — seret ke kanvas atau dobel-klik"}
+                title={it.desc + " — drag onto the canvas or double-click"}
                 style={{
                   fontFamily: "ui-monospace, monospace",
                   fontSize: "12px",
@@ -1767,7 +1767,7 @@ function WorkflowBuilderInner({
                 onClick={() =>
                   setMode((m) => (m === "live" ? "builder" : "live"))
                 }
-                title="Beralih antara kanvas manual dan cermin eksekusi agent"
+                title="Switch between the manual canvas and the agent execution mirror"
               >
                 Mode: {isLive ? "Live" : "Builder"}
               </button>
@@ -1785,9 +1785,9 @@ function WorkflowBuilderInner({
                   onClick={() =>
                     running ? (runAbort.current = true) : runGraph()
                   }
-                  title="Kompilasi graph → jalankan node berurutan sebagai pipeline agent"
+                  title="Compile the graph → run nodes in order as an agent pipeline"
                 >
-                  {running ? "■ Hentikan" : "▶ Jalankan graph"}
+                  {running ? "■ Hentikan" : "▶ Run graph"}
                 </button>
                 {runErr && (
                   <div
@@ -1811,14 +1811,14 @@ function WorkflowBuilderInner({
                   <button
                     style={{ ...btn, flex: 1 }}
                     onClick={saveWorkflow}
-                    title="Simpan workflow ini"
+                    title="Save this workflow"
                   >
                     💾 Simpan
                   </button>
                   <button
                     style={{ ...btn, flex: 1 }}
                     onClick={() => setShowLoad((s) => !s)}
-                    title="Muat workflow tersimpan"
+                    title="Load a saved workflow"
                     disabled={!savedList.length}
                   >
                     📂 Muat
@@ -1866,13 +1866,13 @@ function WorkflowBuilderInner({
                               textOverflow: "ellipsis",
                               whiteSpace: "nowrap",
                             }}
-                            title="klik: muat"
+                            title="click: load"
                           >
                             {nm}
                           </span>
                           <button
                             onClick={() => deleteWorkflow(nm)}
-                            title="hapus"
+                            title="delete"
                             style={{
                               border: "none",
                               background: "transparent",
@@ -1889,7 +1889,7 @@ function WorkflowBuilderInner({
                   </div>
                 )}
                 <button style={btn} onClick={() => setShowJson((s) => !s)}>
-                  {showJson ? "Tutup JSON" : "Export JSON"}
+                  {showJson ? "Close JSON" : "Export JSON"}
                 </button>
               </React.Fragment>
             )}
@@ -1946,7 +1946,7 @@ function WorkflowBuilderInner({
                     const cur =
                       (edge.data && edge.data.label) || edge.label || "";
                     const l = window.prompt(
-                      "Label edge (mis. cabang kondisi 'ya'/'tidak'):",
+                      "Edge label (e.g. condition branch 'yes'/'no'):",
                       cur,
                     );
                     if (l !== null)
@@ -2005,7 +2005,7 @@ function WorkflowBuilderInner({
             [
               "⤢",
               () => rf.fitView({ duration: 300, padding: 0.2 }),
-              "Pas ke layar",
+              "Fit to screen",
             ],
           ].map(([lbl, fn, t]) => (
             <button

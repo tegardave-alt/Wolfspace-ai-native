@@ -31,7 +31,9 @@ function useVisualPicker(getFrameDoc) {
     let hover = null;
     const cleanHovers = () =>
       docs.forEach((d) =>
-        d.querySelectorAll(".vp-hover").forEach((el) => el.classList.remove("vp-hover")),
+        d
+          .querySelectorAll(".vp-hover")
+          .forEach((el) => el.classList.remove("vp-hover")),
       );
     const move = (e) => {
       const el = e.target;
@@ -81,9 +83,9 @@ function useVisualPicker(getFrameDoc) {
       e.stopPropagation();
       const el = e.target,
         selector = sel(el);
-      
+
       let d = "";
-      
+
       // Tambahkan struktur DOM agar agent lebih mudah mencari di source code
       let htmlSnippet = el.outerHTML || "";
       if (htmlSnippet) {
@@ -98,11 +100,15 @@ function useVisualPicker(getFrameDoc) {
         // writeText() mengembalikan Promise — try/catch TAK menangkap penolakan async
         // (mis. "Document is not focused"). .catch mencegahnya jadi unhandledrejection
         // yang dulu memicu auto-rollback (app reload sendiri saat proses jalan).
-        navigator.clipboard && navigator.clipboard.writeText(d).catch(function () {});
+        navigator.clipboard &&
+          navigator.clipboard.writeText(d).catch(function () {});
       } catch (_) {}
       stop();
       // Gunakan alert yang rapi
-      setTimeout(() => alert("Detail elemen berhasil disalin ke clipboard!\n\n" + selector), 0);
+      setTimeout(
+        () => alert("Element details copied to clipboard!\n\n" + selector),
+        0,
+      );
     };
     const key = (e) => {
       if (e.key === "Escape") {
@@ -134,7 +140,11 @@ function useVisualPicker(getFrameDoc) {
         d.removeEventListener("click", click, true);
         d.removeEventListener("keydown", key, true);
       });
-      frameStyleEls.forEach((st) => { try { st.remove(); } catch (_) {} });
+      frameStyleEls.forEach((st) => {
+        try {
+          st.remove();
+        } catch (_) {}
+      });
     }
     VP_STOP = stop;
     docs.forEach((d) => {
@@ -194,7 +204,7 @@ function useVisualDraw(getFrameDoc) {
         if (d.body) d.body.classList.add("vp-on");
       } catch (_) {}
     });
-    
+
     const cWrap = document.createElement("div");
     cWrap.id = "vd-cwrap";
     Object.assign(cWrap.style, {
@@ -203,32 +213,35 @@ function useVisualDraw(getFrameDoc) {
       overflow: "hidden",
       background: "transparent",
       zIndex: "999999",
-      pointerEvents: "none" // Biarkan event jatuh ke document agar bisa dicegat dengan useCapture
+      pointerEvents: "none", // Biarkan event jatuh ke document agar bisa dicegat dengan useCapture
     });
-    
+
     const activeSelections = document.createElement("div");
     Object.assign(activeSelections.style, {
       position: "absolute",
       inset: "0",
-      pointerEvents: "none"
+      pointerEvents: "none",
     });
     cWrap.appendChild(activeSelections);
-    
+
     document.body.appendChild(cWrap);
-    
+
     // Dulu snap ke grid 24px — kotak final "melompat" sampai ±12px dari yang
     // digambar (keluhan: posisi tak sesuai koordinat). Sekarang presisi 1px.
     const snap = (v) => Math.round(v);
-    
+
     const copyToClipboard = (domString, btnElement) => {
       const showSuccess = () => {
         const oldHTML = btnElement.innerHTML;
         const oldBg = btnElement.style.background;
-        btnElement.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style="margin-right:4px; vertical-align:text-bottom"><polyline points="20 6 9 17 4 12"></polyline></svg> Berhasil Disalin!`;
-        btnElement.style.background = 'var(--text-success, #2b8a3e)';
-        setTimeout(() => { btnElement.innerHTML = oldHTML; btnElement.style.background = oldBg; }, 2000);
+        btnElement.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style="margin-right:4px; vertical-align:text-bottom"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied!`;
+        btnElement.style.background = "var(--text-success, #2b8a3e)";
+        setTimeout(() => {
+          btnElement.innerHTML = oldHTML;
+          btnElement.style.background = oldBg;
+        }, 2000);
       };
-      
+
       const fallbackCopy = (text) => {
         const textArea = document.createElement("textarea");
         textArea.value = text;
@@ -237,93 +250,104 @@ function useVisualDraw(getFrameDoc) {
         document.body.appendChild(textArea);
         textArea.focus();
         textArea.select();
-        try { document.execCommand('copy'); showSuccess(); } 
-        catch (err) { alert("Salin manual:\\n\\n" + text); }
+        try {
+          document.execCommand("copy");
+          showSuccess();
+        } catch (err) {
+          alert("Copy manually:\\n\\n" + text);
+        }
         textArea.remove();
       };
-      
+
       if (navigator.clipboard) {
-        navigator.clipboard.writeText(domString).then(showSuccess).catch(() => fallbackCopy(domString));
+        navigator.clipboard
+          .writeText(domString)
+          .then(showSuccess)
+          .catch(() => fallbackCopy(domString));
       } else {
         fallbackCopy(domString);
       }
     };
-    
+
     const checkSidebarClick = (e) => {
-      const btn = e.target.closest('.sb-item');
-      if (btn && (btn.textContent.includes('Visual Picker') || btn.textContent.includes('Visual Draw'))) {
+      const btn = e.target.closest(".sb-item");
+      if (
+        btn &&
+        (btn.textContent.includes("Visual Picker") ||
+          btn.textContent.includes("Visual Draw"))
+      ) {
         return true;
       }
       return false;
     };
-    
+
     // Cegah semua klik di aplikasi (kecuali sidebar & UI draw)
     const blockClick = (e) => {
       if (checkSidebarClick(e)) return;
-      if (e.target.closest('.ui-panel')) return;
+      if (e.target.closest(".ui-panel")) return;
       e.preventDefault();
       e.stopPropagation();
     };
-    
+
     const handleRightClick = (e) => {
       if (checkSidebarClick(e)) return;
-      if (e.target.closest('.ui-panel')) return;
-      
+      if (e.target.closest(".ui-panel")) return;
+
       e.preventDefault();
       e.stopPropagation();
       if (activeSelections.children.length > 0) {
-        activeSelections.innerHTML = '';
+        activeSelections.innerHTML = "";
       }
     };
-    
+
     const cvsMD = (e) => {
       if (checkSidebarClick(e)) return;
-      if (e.target.closest('.ui-panel')) return; 
+      if (e.target.closest(".ui-panel")) return;
       if (e.button !== 0) return;
-      
+
       e.preventDefault();
       e.stopPropagation();
-      
+
       const r = cWrap.getBoundingClientRect();
       const p0 = toParentXY(e);
       const startX = p0.x - r.left;
       const startY = p0.y - r.top;
-      
-      const selBox = document.createElement('div');
+
+      const selBox = document.createElement("div");
       Object.assign(selBox.style, {
-        position: 'absolute',
-        border: '2px dashed var(--fill-accent, #339af0)',
-        background: 'rgba(51, 154, 240, 0.15)',
-        pointerEvents: 'none',
-        zIndex: '9999',
-        left: startX + 'px',
-        top: startY + 'px',
-        width: '0px',
-        height: '0px',
-        display: 'flex',
-        flexDirection: 'column'
+        position: "absolute",
+        border: "2px dashed var(--fill-accent, #339af0)",
+        background: "rgba(51, 154, 240, 0.15)",
+        pointerEvents: "none",
+        zIndex: "9999",
+        left: startX + "px",
+        top: startY + "px",
+        width: "0px",
+        height: "0px",
+        display: "flex",
+        flexDirection: "column",
       });
       activeSelections.appendChild(selBox);
-      
-      const mm = ev => {
+
+      const mm = (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
 
         const pm = toParentXY(ev);
         const currX = pm.x - r.left;
         const currY = pm.y - r.top;
-        selBox.style.left = Math.min(startX, currX) + 'px';
-        selBox.style.top = Math.min(startY, currY) + 'px';
-        selBox.style.width = Math.abs(currX - startX) + 'px';
-        selBox.style.height = Math.abs(currY - startY) + 'px';
+        selBox.style.left = Math.min(startX, currX) + "px";
+        selBox.style.top = Math.min(startY, currY) + "px";
+        selBox.style.width = Math.abs(currX - startX) + "px";
+        selBox.style.height = Math.abs(currY - startY) + "px";
       };
-      
-      const mu = ev => {
+
+      const mu = (ev) => {
         ev.preventDefault();
         ev.stopPropagation();
         docs.forEach((d) => {
-          d.removeEventListener('mousemove', mm, true);
-          d.removeEventListener('mouseup', mu, true);
+          d.removeEventListener("mousemove", mm, true);
+          d.removeEventListener("mouseup", mu, true);
         });
 
         const pu = toParentXY(ev);
@@ -331,28 +355,28 @@ function useVisualDraw(getFrameDoc) {
         let currY = pu.y - r.top;
         let w = Math.abs(currX - startX);
         let h = Math.abs(currY - startY);
-        
+
         if (w < 10 && h < 10) {
           selBox.remove();
           return;
         }
-        
+
         const finalX = snap(Math.min(startX, currX));
         const finalY = snap(Math.min(startY, currY));
         const finalW = Math.max(10, snap(w));
         const finalH = Math.max(10, snap(h));
-        
+
         Object.assign(selBox.style, {
-          left: finalX + 'px',
-          top: finalY + 'px',
-          width: finalW + 'px',
-          height: finalH + 'px',
-          pointerEvents: 'auto',
-          border: '2px solid var(--fill-accent, #339af0)',
-          boxShadow: '0 12px 32px rgba(51, 154, 240, 0.15)',
-          overflow: 'visible'
+          left: finalX + "px",
+          top: finalY + "px",
+          width: finalW + "px",
+          height: finalH + "px",
+          pointerEvents: "auto",
+          border: "2px solid var(--fill-accent, #339af0)",
+          boxShadow: "0 12px 32px rgba(51, 154, 240, 0.15)",
+          overflow: "visible",
         });
-        
+
         // --- DOM Context Detection ---
         // Titik uji = TENGAH KOTAK final (bukan titik lepas mouse): merepresentasikan
         // area yang digambar, dan tak meleset saat mouse dilepas sedikit di luar kotak.
@@ -360,28 +384,42 @@ function useVisualDraw(getFrameDoc) {
         // dokumen IFRAME dengan koordinat lokal frame (elemen halaman yang di-render).
         const cx = finalX + r.left + finalW / 2;
         const cy = finalY + r.top + finalH / 2;
-        let targetEl = null, targetDoc = document, frRect = null;
+        let targetEl = null,
+          targetDoc = document,
+          frRect = null;
         try {
           const fd = docs.find((d) => d !== document);
           if (fd && fd.defaultView && fd.defaultView.frameElement) {
             const fr = fd.defaultView.frameElement.getBoundingClientRect();
-            if (cx >= fr.left && cx <= fr.right && cy >= fr.top && cy <= fr.bottom) {
+            if (
+              cx >= fr.left &&
+              cx <= fr.right &&
+              cy >= fr.top &&
+              cy <= fr.bottom
+            ) {
               targetDoc = fd;
               frRect = fr;
-              targetEl = fd.elementFromPoint(cx - fr.left, cy - fr.top) || fd.body;
+              targetEl =
+                fd.elementFromPoint(cx - fr.left, cy - fr.top) || fd.body;
             }
           }
         } catch (_) {}
         if (!targetEl) {
-          cWrap.style.pointerEvents = 'none';
-          selBox.style.pointerEvents = 'none';
+          cWrap.style.pointerEvents = "none";
+          selBox.style.pointerEvents = "none";
           targetEl = document.elementFromPoint(cx, cy) || document.body;
-          cWrap.style.pointerEvents = 'auto'; // (or back to whatever it was)
-          selBox.style.pointerEvents = 'auto';
+          cWrap.style.pointerEvents = "auto"; // (or back to whatever it was)
+          selBox.style.pointerEvents = "auto";
         }
-        
+
         // Generate selector (same logic as Picker)
-        const realCls = (el) => typeof el.className === "string" ? el.className.trim().split(/\s+/).filter(c => c && !/^vp-/.test(c)) : [];
+        const realCls = (el) =>
+          typeof el.className === "string"
+            ? el.className
+                .trim()
+                .split(/\s+/)
+                .filter((c) => c && !/^vp-/.test(c))
+            : [];
         const seg = (el) => {
           if (el.id) return "#" + el.id;
           let s = el.tagName.toLowerCase();
@@ -389,14 +427,18 @@ function useVisualDraw(getFrameDoc) {
           if (cls.length) s += "." + cls.join(".");
           const p = el.parentElement;
           if (p) {
-            const same = Array.from(p.children).filter(c => c.tagName === el.tagName);
-            if (same.length > 1) s += ":nth-of-type(" + (same.indexOf(el) + 1) + ")";
+            const same = Array.from(p.children).filter(
+              (c) => c.tagName === el.tagName,
+            );
+            if (same.length > 1)
+              s += ":nth-of-type(" + (same.indexOf(el) + 1) + ")";
           }
           return s;
         };
         const sel = (el) => {
           const parts = [];
-          let cur = el, depth = 0;
+          let cur = el,
+            depth = 0;
           while (cur && cur.nodeType === 1 && depth < 6) {
             parts.unshift(seg(cur));
             if (cur.id || realCls(cur).length) break;
@@ -405,20 +447,26 @@ function useVisualDraw(getFrameDoc) {
           }
           return parts.join(" > ");
         };
-        
+
         const targetSelector = sel(targetEl);
         const tr = targetEl.getBoundingClientRect();
         // Rect elemen di dalam iframe berkoordinat viewport FRAME — geser ke
         // koordinat parent agar konsisten dengan finalX/finalY (koordinat overlay).
-        let trLeft = tr.left, trTop = tr.top;
-        if (frRect) { trLeft += frRect.left; trTop += frRect.top; }
+        let trLeft = tr.left,
+          trTop = tr.top;
+        if (frRect) {
+          trLeft += frRect.left;
+          trTop += frRect.top;
+        }
         // Calculate relative coordinates
-        const relX = Math.round((finalX + r.left) - trLeft);
-        const relY = Math.round((finalY + r.top) - trTop);
-        
+        const relX = Math.round(finalX + r.left - trLeft);
+        const relY = Math.round(finalY + r.top - trTop);
+
         const domString = `<div data-target="${targetSelector}" style="position: absolute; left: ${relX}px; top: ${relY}px; width: ${finalW}px; height: ${finalH}px;"></div>`;
-        const escapedDom = domString.replace(/</g, '&lt;').replace(/>/g, '&gt;');
-        
+        const escapedDom = domString
+          .replace(/</g, "&lt;")
+          .replace(/>/g, "&gt;");
+
         selBox.innerHTML = `
           <div style="position: absolute; top: 0; left: 0; background: var(--fill-accent, #339af0); color: white; font-size: 11px; font-weight: 600; padding: 4px 8px; border-bottom-right-radius: 4px; border-top-left-radius: 1px; display: inline-block; letter-spacing: 0.05em; pointer-events: none; white-space: nowrap; z-index: 2;">
             AREA KOSONG [X: ${finalX}, Y: ${finalY}]
@@ -431,14 +479,14 @@ function useVisualDraw(getFrameDoc) {
             </button>
           </div>
         `;
-        
+
         const btn = selBox.querySelector(".vd-copy-btn");
         btn.onclick = () => copyToClipboard(domString, btn);
       };
-      
+
       docs.forEach((d) => {
-        d.addEventListener('mousemove', mm, true);
-        d.addEventListener('mouseup', mu, true);
+        d.addEventListener("mousemove", mm, true);
+        d.addEventListener("mouseup", mu, true);
       });
     };
 
@@ -464,9 +512,17 @@ function useVisualDraw(getFrameDoc) {
         d.removeEventListener("mousedown", cvsMD, true);
         d.removeEventListener("click", blockClick, true);
         d.removeEventListener("contextmenu", handleRightClick, true);
-        if (d !== document && d.body) { try { d.body.classList.remove("vp-on"); } catch (_) {} }
+        if (d !== document && d.body) {
+          try {
+            d.body.classList.remove("vp-on");
+          } catch (_) {}
+        }
       });
-      frameStyleEls.forEach((st) => { try { st.remove(); } catch (_) {} });
+      frameStyleEls.forEach((st) => {
+        try {
+          st.remove();
+        } catch (_) {}
+      });
     }
 
     VD_STOP = stop;
