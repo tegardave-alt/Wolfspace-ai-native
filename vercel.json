@@ -1,5 +1,6 @@
 {
   "version": 2,
+  "node": "20.x",
   "builds": [
     {
       "src": "api/index.cjs",
