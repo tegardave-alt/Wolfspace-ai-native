@@ -1,4 +1,4 @@
-# Capability Broker (prototype)
+# Capability Broker
 
 An object-capability pattern for running untrusted agent code, modelled on
 hardware-wallet delegation (the code never holds the "key" — it asks a
@@ -18,7 +18,7 @@ sandbox-style containment (build a wall around the code).
 
 - **`policy.cjs`** — deny-by-default rules: `{ fetch: {hosts:[...]}, readFile: {roots:[...]}, writeFile: {roots:[...]} }`.
 - **`host.cjs`** (`Broker`) — the only thing with real `fs`/`https` access. Validates every request against `Policy` before executing, logs every decision.
-- **`zone-process.cjs`** / **`zone-worker.cjs`** — spawns the untrusted code in a *separate* Node process launched with `--permission` and zero `--allow-fs-*` grants, bridging capability requests back to the Broker over IPC.
+- **`zone-process.cjs`** / **`zone-worker.cjs`** — spawns the untrusted code in a _separate_ Node process launched with `--permission` and zero `--allow-fs-*` grants, bridging capability requests back to the Broker over IPC.
 
 ## Why it's a separate process, not `vm`
 
@@ -28,14 +28,14 @@ as the only injected global. **It failed a real test**: the classic escape
 `this.constructor.constructor('return process')()` reached the host's real
 `process` object, and from there `require('fs')` had full disk access —
 exactly the `cloud-keys.json` leak this whole broker exists to prevent.
-This matches Node's own docs: *"the vm module is not a security mechanism."*
+This matches Node's own docs: _"the vm module is not a security mechanism."_
 
 The fix wasn't patching that one escape (whack-a-mole) — it was changing
-what the boundary actually *is*. `zone-worker.cjs` runs in a real OS
+what the boundary actually _is_. `zone-worker.cjs` runs in a real OS
 process launched with `--permission`, Node's built-in permission model. That
 enforcement lives at the native `fs` binding layer, not at a JS-realm
 boundary, so it doesn't matter how code gets a `require`/`fs` reference —
-direct call, `constructor` chain, whatever. Re-running the *exact same*
+direct call, `constructor` chain, whatever. Re-running the _exact same_
 escape payload against this version: the code still reaches the real
 `process` object (there's no realm to escape — it's honestly the same
 process), but the `fs.readFileSync` call it then makes is denied by the
@@ -59,13 +59,56 @@ even bind to Node processes reliably).
 
 ## Status
 
-**Prototype, not wired into `agent/tools/index.cjs` or `self_agent.cjs`.**
-Validated standalone with 9 test scenarios (safe requests, policy
-violations, direct bypass attempts, the vm-escape payload, audit trail,
-timeout) — all passing on Windows. Not yet exercised on macOS/Linux; `zone-worker.cjs`
-itself is pure Node so it should be portable, but this hasn't been run there.
+**Wired into production.** Exposed to the model as the `capability_exec` tool
+(`agent/tools/tool-definitions.cjs`) and dispatched at `agent/tools/index.cjs`
+(`name === "capability_exec"`), which builds the `Policy` per call: `readFile`/
+`writeFile` scoped to the active workspace dir, `fetch` scoped to known
+cloud-provider hosts from `agent/cloud.cjs`.
 
-Next step to make this real: replace `sandbox_run`'s use of `agent/sandbox.cjs`
-with this broker for capability-sensitive operations (fetch, file access
-outside the workspace), keeping `sandbox.cjs`'s process-tree-kill/timeout/
-cleanup machinery for the parts that already work well.
+> An earlier revision of this section said "prototype, not wired into
+> `agent/tools/index.cjs` or `self_agent.cjs`". That was stale — the wiring
+> landed but the doc wasn't updated. Kept as a note because stale docs cost
+> real time in this repo before (see the `WOLFSPACE-sandbox` uppercase-tag
+> comment that survived the fix that removed the bug).
+
+### Re-verified against the live tool
+
+Probes run through `runSelfTool("capability_exec", …)`, not standalone:
+
+| Probe                                                                | Result                       |
+| -------------------------------------------------------------------- | ---------------------------- |
+| `require('fs').readFileSync` outside workspace                       | denied — `ERR_ACCESS_DENIED` |
+| vm-escape payload `this.constructor.constructor('return process')()` | denied — `ERR_ACCESS_DENIED` |
+| `request('readFile')` outside policy roots                           | denied by Broker policy      |
+| `fs.writeFileSync` outside workspace                                 | denied — `ERR_ACCESS_DENIED` |
+| direct `https.get()` bypassing `request()`                           | **succeeded (status 200)**   |
+
+Two distinct layers show up in those results and both matter: A/B/D are refused
+by the **Node runtime** (`ERR_ACCESS_DENIED`, i.e. `--permission`), while C is
+refused by the **Broker policy**. The last row is the documented network gap
+below — not a regression.
+
+## How it compares to the Docker sandbox
+
+Both hold the filesystem, but for different reasons, and that difference decides
+which one to reach for:
+
+|                  | Docker sandbox                                 | Capability broker                                |
+| ---------------- | ---------------------------------------------- | ------------------------------------------------ |
+| Filesystem       | file simply **is not there** (nothing mounted) | file is visible but the `fs` call is **refused** |
+| Network          | blocked (`--network none`)                     | **not blocked**                                  |
+| Granularity      | all-or-nothing per container                   | per request, with audit trail                    |
+| Requires install | Docker Desktop                                 | **no** — plain Node                              |
+
+That last row is why the broker matters on Windows, where
+`agent/platform/windows.cjs` reports `fsIsolation: 'advisory'` and
+`networkIsolation: false`: the broker is the only thing that gives _enforced_
+filesystem limits without asking the user to install Docker. It is not a
+replacement for Docker — the network gap is real.
+
+Next step to make this real everywhere: replace `sandbox_run`'s use of
+`agent/sandbox.cjs` with this broker for capability-sensitive operations
+(fetch, file access outside the workspace), keeping `sandbox.cjs`'s
+process-tree-kill/timeout/cleanup machinery for the parts that already work
+well. Still not exercised on macOS/Linux; `zone-worker.cjs` is pure Node so it
+should be portable, but that hasn't been run there.
