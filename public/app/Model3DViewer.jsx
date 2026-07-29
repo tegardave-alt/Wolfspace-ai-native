@@ -311,7 +311,7 @@ function Model3DViewer({ url, name }) {
           {status === "loading" ? (
             <>
               <div style={{ fontSize: "32px" }}>🧊</div>
-              <div>Memuat model 3D…</div>
+              <div>Loading 3D model…</div>
             </>
           ) : (
             <>
@@ -415,7 +415,7 @@ function Model3DViewer({ url, name }) {
             whiteSpace: "nowrap",
           }}
         >
-          Seret untuk memutar · scroll untuk zoom
+          Drag to rotate · scroll to zoom
         </div>
       ) : null}
     </div>

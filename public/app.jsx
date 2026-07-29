@@ -928,9 +928,9 @@ function LogicFileTree({ files, root, active }) {
             <polyline points="14 2 14 8 20 8" />
           </svg>
           <div>
-            Daftar file muncul saat kamu meminta agent
+            Files appear here when you ask the agent
             <br />
-            membuat web (mis. generate HTML).
+            to build a site (e.g. generate HTML).
           </div>
         </div>
       ) : tree.length === 0 ? (
@@ -946,7 +946,7 @@ function LogicFileTree({ files, root, active }) {
             textAlign: "center",
           }}
         >
-          Belum ada file yang dikembangkan.
+          No files being developed yet.
         </div>
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}>
@@ -3111,7 +3111,7 @@ function App() {
                           color: "#6b7280",
                         }}
                       >
-                        · kanvas React Flow untuk mengendalikan website
+                        · React Flow canvas for driving a website
                       </span>
                     </div>
                     <button
@@ -3269,7 +3269,7 @@ function App() {
               ))}
               {filteredCommands.length === 0 && (
                 <div className="command-palette-empty">
-                  Tidak ada perintah yang cocok
+                  No matching commands
                 </div>
               )}
             </div>

@@ -126,7 +126,7 @@ graph TD
     UI["public/app.jsx<br/>(React, Babel-in-browser, no build step)"]
     Static["server/static-server.cjs<br/>(bypass lane — serves UI even if API crashes)"]
     API["server.cjs<br/>(HTTP entry, dispatches to routes)"]
-    Routes["server/routes/*<br/>(cloud, terminal, snapshots, openclaw,<br/>agent-runner, hunks — modular per domain)"]
+    Routes["server/routes/*<br/>(cloud, terminal, snapshots, openclaw,<br/>hunks — modular per domain)"]
     Agent["agent/self_agent.cjs<br/>(ReAct loop, tool-calling, HITL)"]
     Tools["agent/tools/*<br/>(file, exec, disk, web, skills)"]
     MCP["agent/mcp-client.cjs<br/>(MCP servers over stdio JSON-RPC)"]

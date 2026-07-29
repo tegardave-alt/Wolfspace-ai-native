@@ -120,7 +120,7 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
               fontSize: "14px",
             }}
           >
-            Belum ada riwayat percakapan yang tersimpan.
+            No saved conversation history yet.
           </div>
         ) : (
           filteredChats.map((chat) => (
@@ -327,7 +327,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
           >
             {SB.key({ width: 16, height: 16 })}
           </span>
-          <span className="hub-title">Pengaturan API</span>
+          <span className="hub-title">API Settings</span>
         </div>
         <div className="tb-spacer" />
       </header>
@@ -352,7 +352,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
               />
             </div>
             <button className="btn btn-ghost" onClick={detect}>
-              Deteksi provider dari key
+              Detect provider from key
             </button>
             <div className="field">
               <label className="field-label">Provider</label>
@@ -394,7 +394,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                 className="input"
                 value={model}
                 onChange={(e) => setModelName(e.target.value)}
-                placeholder="Opsional, misalnya qwen, coder, gpt-4o"
+                placeholder="Optional, e.g. qwen, coder, gpt-4o"
               />
             </div>
             <div className="provider-status">
@@ -403,10 +403,10 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
             </div>
             <div className="btn-row">
               <button className="btn btn-primary" onClick={save}>
-                <Icon.check style={{ width: 14, height: 14 }} /> Simpan
+                <Icon.check style={{ width: 14, height: 14 }} /> Save
               </button>
               <button className="btn btn-danger" onClick={clear}>
-                Hapus konfigurasi
+                Delete configuration
               </button>
             </div>
           </div>

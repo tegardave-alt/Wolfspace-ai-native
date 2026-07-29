@@ -1947,11 +1947,11 @@ function VSCodeTerminal({
               >
                 [WOLFSPACE AI & System Output Stream]
               </div>
-              Belum ada log aktivitas atau output AI dari UI utama saat ini.
+              No activity log or AI output from the main UI yet.
               <br />
-              Saat Anda mengobrol dengan AI di UI utama atau menjalankan
-              perintah, semua log proses dan hasil respons AI akan otomatis
-              mengalir ke panel ini.
+              When you chat with the AI in the main UI or run a command, all
+              process logs and AI response results will automatically flow into
+              this panel.
             </div>
           )}
         </div>

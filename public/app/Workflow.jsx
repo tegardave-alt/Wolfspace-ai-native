@@ -1717,7 +1717,7 @@ function WorkflowBuilderInner({
                 {liveNodes.length ? "active graph structure" : "waiting…"}
               </div>
               <div style={{ color: "#6f7d92", marginTop: "3px" }}>
-                Jalankan agent di chat — langkahnya muncul di sini.
+                Run the agent in chat — its steps will appear here.
               </div>
             </div>
           ) : (
@@ -1813,7 +1813,7 @@ function WorkflowBuilderInner({
                     onClick={saveWorkflow}
                     title="Save this workflow"
                   >
-                    💾 Simpan
+                    💾 Save
                   </button>
                   <button
                     style={{ ...btn, flex: 1 }}
@@ -1842,7 +1842,7 @@ function WorkflowBuilderInner({
                           color: "#6f7d92",
                         }}
                       >
-                        belum ada tersimpan
+                        nothing saved yet
                       </div>
                     ) : (
                       savedList.map((nm) => (
@@ -2210,7 +2210,7 @@ function WorkflowBuilder({ onBack, runStage, integration, workspaceRoot }) {
           fontFamily: "ui-monospace, monospace",
         }}
       >
-        React Flow tak termuat (window.RFLib.XY tak tersedia).
+        React Flow failed to load (window.RFLib.XY unavailable).
       </div>
     );
   }

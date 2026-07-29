@@ -641,7 +641,7 @@ function WorkspaceGitPanel({ path, onClose }) {
   if (g === null || br === null) {
     return (
       <div style={{ padding: "8px 14px", color: "#6b7280", fontSize: "12px" }}>
-        memuat git…
+        loading git…
       </div>
     );
   }
@@ -1744,7 +1744,7 @@ function Sidebar({
                             <line x1="10" y1="11" x2="10" y2="17"></line>
                             <line x1="14" y1="11" x2="14" y2="17"></line>
                           </svg>
-                          <span>Hapus folder</span>
+                          <span>Delete folder</span>
                         </button>
                       </div>
                     )}
@@ -2066,7 +2066,7 @@ function Sidebar({
         style={{ cursor: "pointer" }}
         onClick={() => setShowTools(!showTools)}
       >
-        Alat
+        Tools
       </div>
       {showTools && (
         <div className="sb-group">

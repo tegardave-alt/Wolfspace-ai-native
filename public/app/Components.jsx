@@ -215,7 +215,7 @@ function HFModels({ onSaved }) {
           }}
         />
         <button className="btn btn-primary" onClick={search}>
-          Cari
+          Search
         </button>
       </div>
       {results.length > 0 && (
@@ -601,7 +601,7 @@ function LightboxModal({ item, onClose }) {
                       textDecoration: "underline",
                     }}
                   >
-                    Buka / Unduh File
+                    Open / Download File
                   </a>
                 </div>
               )}
@@ -1847,15 +1847,15 @@ function Composer({
         ) : (
           <>
             <span>
-              Tekan <kbd>Shift+Enter</kbd> untuk baris baru
+              Press <kbd>Shift+Enter</kbd> for a new line
             </span>
             <span>•</span>
             <span>
-              Tekan <kbd>Ctrl+K</kbd> untuk bersihkan
+              Press <kbd>Ctrl+K</kbd> to clear
             </span>
             <span>•</span>
             <span>
-              Ketik <kbd>/</kbd> untuk perintah
+              Type <kbd>/</kbd> for commands
             </span>
           </>
         )}

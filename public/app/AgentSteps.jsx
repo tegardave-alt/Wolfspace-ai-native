@@ -621,7 +621,7 @@ function AgentSteps({ run }) {
         })()}
         {run.busy && (
           <div className="aal-row aal-thought-header">
-            <span>{run.thinking ? "Thinking..." : "Memproses..."}</span>
+            <span>{run.thinking ? "Thinking..." : "Processing..."}</span>
           </div>
         )}
       </div>
