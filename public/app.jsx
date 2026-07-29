@@ -1,42 +1,5 @@
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
-// Command Palette (forked from VS Code) - daftar command yang tersedia
-const COMMANDS = [
-  {
-    id: "open.settings",
-    label: "Settings: Open Settings",
-    icon: "settings",
-    action: () => document.querySelector('[data-view="settings"]')?.click(),
-  },
-  {
-    id: "terminal.new",
-    label: "Terminal: New Terminal",
-    icon: "terminal",
-    action: () => window.createNewTerminal?.(),
-  },
-  {
-    id: "openclaw.chat",
-    label: "OpenClaw: Run from Chat",
-    icon: "runner",
-    action: () =>
-      window.dispatchEvent(
-        new CustomEvent("WOLFSPACE:set-composer", { detail: "/openclaw " }),
-      ),
-  },
-  {
-    id: "agent.run",
-    label: "Agent: Start a new agent",
-    icon: "play",
-    action: () => window.startNewAgent?.(),
-  },
-  {
-    id: "theme.toggle",
-    label: "Appearance: Toggle Tema Gelap/Terang",
-    icon: "theme",
-    action: () => document.body.classList.toggle("light-theme"),
-  },
-];
-
 /* Icons dipindah ke public/app/Icons.jsx (APP_MODULES). */
 
 /* ----------------------------- Backend glue ----------------------------- */
@@ -1019,58 +982,6 @@ function App() {
     return () => window.removeEventListener("click", closePanelMenu);
   }, []);
 
-  // Command Palette state (VS Code fork). Lives here (App level, not
-  // AgentRunnerView) because the trigger button that opens it is in App's own
-  // panel menu — a sibling/child component's local state isn't reachable from
-  // there, which previously threw "setCommandPaletteOpen is not defined".
-  const [commandPaletteOpen, setCommandPaletteOpen] = useState(false);
-  const [commandSearch, setCommandSearch] = useState("");
-  const [selectedCommandIndex, setSelectedCommandIndex] = useState(0);
-  const filteredCommands = useMemo(() => {
-    if (!commandSearch.trim()) return COMMANDS;
-    return COMMANDS.filter((cmd) =>
-      cmd.label.toLowerCase().includes(commandSearch.toLowerCase()),
-    );
-  }, [commandSearch]);
-  const runSelectedCommand = () => {
-    const cmd = filteredCommands[selectedCommandIndex];
-    if (cmd) {
-      cmd.action();
-      setCommandPaletteOpen(false);
-      setCommandSearch("");
-    }
-  };
-  useEffect(() => {
-    const handleKeyDown = (e) => {
-      if (
-        (e.ctrlKey || e.metaKey) &&
-        e.shiftKey &&
-        (e.key === "P" || e.key === "p")
-      ) {
-        e.preventDefault();
-        setCommandPaletteOpen(true);
-        setCommandSearch("");
-        setSelectedCommandIndex(0);
-      }
-      if (commandPaletteOpen) {
-        if (e.key === "Escape") {
-          setCommandPaletteOpen(false);
-        } else if (e.key === "ArrowDown") {
-          e.preventDefault();
-          setSelectedCommandIndex((prev) =>
-            Math.min(prev + 1, filteredCommands.length - 1),
-          );
-        } else if (e.key === "ArrowUp") {
-          e.preventDefault();
-          setSelectedCommandIndex((prev) => Math.max(prev - 1, 0));
-        } else if (e.key === "Enter") {
-          runSelectedCommand();
-        }
-      }
-    };
-    window.addEventListener("keydown", handleKeyDown);
-    return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [commandPaletteOpen, selectedCommandIndex, filteredCommands]);
   const [selectedProject, setSelectedProject] = useState(() => {
     try {
       const stored = JSON.parse(
@@ -3221,48 +3132,6 @@ function App() {
           </div>
         </div>
       </div>
-
-      {/* Command Palette UI (VS Code fork) */}
-      {commandPaletteOpen && (
-        <div
-          className="command-palette-overlay"
-          onClick={() => setCommandPaletteOpen(false)}
-        >
-          <div className="command-palette" onClick={(e) => e.stopPropagation()}>
-            <input
-              type="text"
-              placeholder="Search commands… (Ctrl+Shift+P to open)"
-              value={commandSearch}
-              onChange={(e) => {
-                setCommandSearch(e.target.value);
-                setSelectedCommandIndex(0);
-              }}
-              autoFocus
-              className="command-palette-input"
-            />
-            <div className="command-palette-list">
-              {filteredCommands.map((cmd, idx) => (
-                <div
-                  key={cmd.id}
-                  className={`command-palette-item ${idx === selectedCommandIndex ? "selected" : ""}`}
-                  onClick={() => {
-                    setSelectedCommandIndex(idx);
-                    runSelectedCommand();
-                  }}
-                >
-                  <span className="command-icon">{cmd.icon}</span>
-                  <span className="command-label">{cmd.label}</span>
-                </div>
-              ))}
-              {filteredCommands.length === 0 && (
-                <div className="command-palette-empty">
-                  No matching commands
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      )}
     </>
   );
 }
