@@ -11,8 +11,9 @@
   "ghostPort": 8083,
   "runners": {},
   "models": [],
-  "verbose": true,
+  "verbose": false,
   "eraser": {
     "apiKey": ""
-  }
+  },
+  "debug": false
 }
