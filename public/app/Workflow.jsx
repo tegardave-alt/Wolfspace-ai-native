@@ -1022,7 +1022,7 @@ function WorkflowBuilderInner({
         };
       if (!st.steps[role]) st.steps[role] = [];
       st.steps[role].push(
-        (String(d.arg || "").trim() || d.kind || "langkah").slice(0, 60),
+        (String(d.arg || "").trim() || d.kind || "step").slice(0, 60),
       );
       const list = st.steps[role];
       setLiveNodes((nds) => {

@@ -553,7 +553,7 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
   } catch (e) {
     if (e instanceof TypeError && e.message.includes("Failed to fetch")) {
       throw new Error(
-        'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder WOLFSPACE\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
+        'Cannot reach the self-agent server.\n\nIf you are running in a browser:\n1. Open a terminal in the WOLFSPACE folder\n2. Run: npm start\n3. Wait until "http://127.0.0.1:8090" appears\n4. Refresh the browser and try again\n\nOr use Electron: npm run app',
       );
     }
     throw e;
@@ -1180,7 +1180,7 @@ function App() {
   };
 
   const [models, setModels] = useState([
-    { value: "", label: "Memuat model...", disabled: true },
+    { value: "", label: "Loading models…", disabled: true },
   ]);
   const [modelVal, setModelVal] = useState("");
   const [cloudVersion, setCloudVersion] = useState(0); // Trigger reload when cloud config changes
@@ -1331,7 +1331,7 @@ function App() {
     window.addEventListener("mouseup", handleMouseUp);
   };
   const wfCtrlRef = useRef(null);
-  const [status, setStatus] = useState("Memuat model...");
+  const [status, setStatus] = useState("Loading models…");
   const [view, setView] = useState("chat");
   const [sbCollapsed, setSbCollapsed] = useState(() => {
     try {
@@ -1713,7 +1713,7 @@ function App() {
       hasCloud
         ? "cloud: " + (cloud.name || cloud.provider)
         : opts.length
-          ? "siap"
+          ? "ready"
           : "Run start-models",
     );
   }, [cloudVersion]);
@@ -1759,7 +1759,7 @@ function App() {
             text: "The /openclaw message cannot be empty. Example: /openclaw summarise this project",
           },
         ]);
-        setStatus("OpenClaw butuh pesan");
+        setStatus("OpenClaw needs a message");
         return;
       }
       const ctrl = new AbortController();
@@ -1868,7 +1868,7 @@ function App() {
           ctrl.signal,
         );
         setHistory((h) => [...h, { role: "assistant", content: res.text }]);
-        setStatus("siap");
+        setStatus("ready");
         console.log("[doSend] Setting busy=false (normal chat complete)");
         setBusy(false); // Reset busy state after stream completes
       } catch (e) {
@@ -2101,7 +2101,7 @@ function App() {
       if (!waitingForInput) {
         setBusy(false); // Reset global busy state only when not waiting for HITL/answer
       }
-      setStatus("siap");
+      setStatus("ready");
     }
     ctrlRef.current = null;
     setBusy(false);
@@ -2392,7 +2392,7 @@ function App() {
     setMessages([]);
     setHistory([]);
     setBusy(false);
-    setStatus("Siap.");
+    setStatus("Ready.");
   };
   const saveChat = () => {
     // Digantikan oleh useEffect auto-save agar tidak duplikat

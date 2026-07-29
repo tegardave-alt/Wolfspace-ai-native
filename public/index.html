@@ -148,7 +148,7 @@
               window._pendingGoodApp,
             );
             console.log(
-              "✅ WOLFSPACE App berhasil dirender. Versi ini dikunci sebagai versi Aman.",
+              "✅ WOLFSPACE app rendered successfully. Pinning this build as the Safe version.",
             );
           } catch (e) {
             // QuotaExceededError dsb: versi aman lama tetap terjaga, jangan meledak di alur render
@@ -213,12 +213,12 @@
       window.loadApp = async function () {
         // 1. Cek apakah kita sedang dalam mode Recovery (Auto-Rollback dari Runtime Error)
         if (window.location.search.includes("rollback=true")) {
-          console.warn("Memasuki mode Auto-Rollback untuk Runtime Error...");
+          console.warn("Entering Auto-Rollback mode for a runtime error…");
 
           const rollErr = sessionStorage.getItem("wolfspace_rollback_error");
           if (rollErr) {
             console.error(
-              "💥 REKAMAN RUNTIME ERROR YANG MENYEBABKAN CRASH:\n",
+              "💥 RUNTIME ERROR RECORD THAT CAUSED THE CRASH:\n",
               rollErr,
             );
             sessionStorage.removeItem("wolfspace_rollback_error");
@@ -235,7 +235,7 @@
           const lastGood = localStorage.getItem("wolfspace_last_good_app");
           if (lastGood) {
             console.log(
-              "✅ Memulihkan UI dari versi Aman terakhir (Runtime Auto-Rollback).",
+              "✅ Restoring the UI from the last Safe version (Runtime Auto-Rollback).",
             );
             const script = document.createElement("script");
             script.type = "text/javascript";
@@ -332,7 +332,7 @@
             const lastGood = localStorage.getItem("wolfspace_last_good_app");
             if (lastGood) {
               console.log(
-                "✅ Syntax Auto-Rollback berhasil. UI WOLFSPACE diselamatkan.",
+                "✅ Syntax Auto-Rollback succeeded. The WOLFSPACE UI was recovered.",
               );
               const script = document.createElement("script");
               script.type = "text/javascript";
@@ -368,12 +368,12 @@
             });
           } else if (filename.endsWith(".jsx") || filename.endsWith(".js")) {
             console.log(
-              "[hmr] Menyuntikkan ulang komponen React (Soft Refresh):",
+              "[hmr] Re-injecting React components (Soft Refresh):",
               filename,
             );
             window.loadApp();
           } else {
-            console.log("[hmr] Perubahan butuh hard-reload:", filename);
+            console.log("[hmr] Change requires a hard reload:", filename);
             window.location.reload();
           }
         });

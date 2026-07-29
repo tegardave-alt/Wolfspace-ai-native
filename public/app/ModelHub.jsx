@@ -1578,7 +1578,7 @@ function ModelHubViewOld() {
             ) : (
               <div className="hub-empty">
                 <HubIcon.empty />
-                <div>{q ? "No matching models." : "Memuat"}</div>
+                <div>{q ? "No matching models." : "Loading…"}</div>
               </div>
             )
           ) : loading ? (
