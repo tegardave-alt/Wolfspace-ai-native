@@ -215,10 +215,7 @@ function parseBlocks(text) {
   return out;
 }
 function reqFor(modelVal, cloud, history) {
-  const effortVal =
-    cloud && typeof cloud.effort !== "undefined"
-      ? Number(cloud.effort)
-      : parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1;
+  const effortVal = readEffort(cloud);
   return modelVal === "cloud" && cloud
     ? { history, cloud, effort: effortVal }
     : { history, port: modelVal, effort: effortVal };
@@ -1669,11 +1666,7 @@ function App() {
       let waitingForInput = false;
       let hadError = false;
       try {
-        const curEffort =
-          getCloud() && typeof getCloud().effort !== "undefined"
-            ? Number(getCloud().effort)
-            : parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) ||
-              1;
+        const curEffort = readEffort(getCloud());
         await streamSelfAgent(
           {
             history: newHist,
@@ -1906,10 +1899,7 @@ function App() {
     const ctrl = new AbortController();
     wfCtrlRef.current = ctrl;
     try {
-      const curEffort =
-        getCloud() && typeof getCloud().effort !== "undefined"
-          ? Number(getCloud().effort)
-          : parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 1;
+      const curEffort = readEffort(getCloud());
       // Kirim pesan terakhir DENGAN hint pembuat-workflow (tampilan chat tetap bersih,
       // pakai `content` biasa). Riwayat tersimpan tetap versi bersih (newHist).
       const sendHist = [
@@ -2079,11 +2069,7 @@ function App() {
           resolve({ ok, summary: s });
         };
         const ctrl = new AbortController();
-        const curEffort =
-          getCloud() && typeof getCloud().effort !== "undefined"
-            ? Number(getCloud().effort)
-            : parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) ||
-              1;
+        const curEffort = readEffort(getCloud());
         streamSelfAgent(
           {
             history: [{ role: "user", content: prompt }],

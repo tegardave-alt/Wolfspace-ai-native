@@ -223,9 +223,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   const [showMcpMenu, setShowMcpMenu] = useState(false);
   const [pickerEffort, setPickerEffort] = useState(() => {
     try {
-      const cl = getCloud();
-      if (cl && typeof cl.effort !== "undefined") return Number(cl.effort);
-      return parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 0;
+      return readEffort(getCloud());
     } catch {
       return 1;
     }

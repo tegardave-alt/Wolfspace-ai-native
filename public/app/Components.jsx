@@ -727,9 +727,7 @@ function Composer({
 
   const [effort, setEffort] = useState(() => {
     try {
-      const cl = getCloud();
-      if (cl && typeof cl.effort !== "undefined") return Number(cl.effort);
-      return parseInt(localStorage.getItem("wolfspace_effort") || "1", 10) || 0;
+      return readEffort(getCloud());
     } catch {
       return 1;
     }
