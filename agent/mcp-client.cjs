@@ -418,6 +418,27 @@ class MCPClient {
   }
 }
 
-// Ekspor instance singleton
-const mcpClient = new MCPClient();
+// Singleton yang BERTAHAN LINTAS HOT-RELOAD.
+//
+// GEJALA YANG DIPERBAIKI: koneksi MCP mati di tengah pemakaian lalu hidup lagi
+// sendiri, tanpa ada yang menyentuhnya.
+//
+// SEBABNYA: watcher backend di electron/main.js membuang SELURUH require.cache
+// di bawah root setiap kali berkas .cjs berubah — kejadian rutin pada aplikasi
+// yang menyunting dirinya sendiri. Modul ini ikut terbuang, sehingga require
+// berikutnya membuat MCPClient BARU dengan initialized=false. init() lalu
+// memanggil _killOrphans(), yang membaca .mcp-pids.json dan MEMBUNUH proses MCP
+// yang masih melayani permintaan — disangka sisa sesi sebelumnya. Sesudah itu ia
+// spawn ulang, sehingga koneksinya "hidup sendiri".
+//
+// Terreproduksi: start MCP -> tiru bust cache watcher -> require ulang -> init()
+// -> 2 dari 2 proses yang hidup terbunuh.
+//
+// Menyimpan instance di globalThis membuat require setelah reload mengembalikan
+// objek yang SAMA: initialized tetap true, init() langsung kembali, _killOrphans
+// tak pernah jalan, dan handle proses di this.servers tetap utuh. Pola ini sudah
+// dipakai agent/self_agent.cjs untuk checkpointer HITL dengan alasan persis sama.
+const mcpClient =
+  globalThis.__wolfspaceMcpClient ||
+  (globalThis.__wolfspaceMcpClient = new MCPClient());
 module.exports = mcpClient;
