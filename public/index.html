@@ -1,5 +1,5 @@
 <!doctype html>
-<html lang="id">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -153,7 +153,7 @@
           } catch (e) {
             // QuotaExceededError dsb: versi aman lama tetap terjaga, jangan meledak di alur render
             console.error(
-              "⚠ Gagal mengunci versi Aman (localStorage penuh?):",
+              "⚠ Failed to pin the Safe version (localStorage full?):",
               e.message,
             );
           }
@@ -273,7 +273,8 @@
             try {
               const mr = await fetch(m + "?v=" + Date.now());
               if (mr.ok) parts.push({ name: m, src: await mr.text() });
-              else console.error("Modul gagal dimuat (" + mr.status + "):", m);
+              else
+                console.error("Module failed to load (" + mr.status + "):", m);
             } catch (me) {
               console.error("Modul error:", m, me);
             }
@@ -325,7 +326,7 @@
           } catch (compileError) {
             console.error("💥 Babel Compilation Error:", compileError);
             console.warn(
-              "Mencoba memuat ulang dari versi terakhir yang berfungsi (Syntax Auto-Rollback)...",
+              "Reloading from the last version that worked (Syntax Auto-Rollback)…",
             );
 
             const lastGood = localStorage.getItem("wolfspace_last_good_app");
@@ -339,12 +340,12 @@
               document.body.appendChild(script);
             } else {
               console.error(
-                "❌ Auto-Rollback gagal: Tidak ada versi sebelumnya.",
+                "❌ Auto-Rollback failed: no previous version available.",
               );
             }
           }
         } catch (fetchError) {
-          console.error("Gagal mengambil app.jsx:", fetchError);
+          console.error("Failed to fetch app.jsx:", fetchError);
         }
       };
 
