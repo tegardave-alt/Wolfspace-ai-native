@@ -1,0 +1,13 @@
+# CodeRabbit AI Review Configuration
+language: en-US
+early_access: false
+reviews:
+  profile: assertive
+  collapse_title_reviews: true
+  auto_review:
+    enabled: true
+    base_branches:
+      - main
+      - develop
+chat:
+  auto_reply: true
