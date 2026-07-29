@@ -76,6 +76,23 @@ docker build -t wolfspace .
 docker run -p 8090:8090 -v wolfspace-data:/data wolfspace
 ```
 
+The container runs as a non-root user, honours an injected `PORT`, exposes
+`/healthz` for probes, and keeps API keys and snapshots on the `/data` volume.
+
+### Hosting it (container platforms only)
+
+Deploy the image above to anything that runs containers — Railway, Render, Fly.io,
+or a plain VPS. Point the platform at the `Dockerfile`, let it inject `PORT`, mount a
+volume at `/data`, and set the health check path to `/healthz`.
+
+**Serverless platforms cannot run WOLFSPACE, and this is not a configuration gap.**
+Vercel, Netlify Functions, and Cloudflare Workers all fail on the same four things:
+`server.cjs` binds a long-lived port instead of exporting a request handler; `node-pty`
+is a native addon loaded at boot and there is no TTY; the agent spawns `bash`/`python`
+subprocesses to run code; and snapshots, uploads, and `cloud-keys.json` need a writable
+persistent filesystem. Removing those leaves the product without the one thing it
+exists to do — proving code by executing it.
+
 ### Optional: run models locally (offline, no API key)
 
 Local models use [llama.cpp](https://github.com/ggml-org/llama.cpp). One-time setup downloads

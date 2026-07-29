@@ -52,7 +52,26 @@ ENV HOST=0.0.0.0
 # mount a volume there if keys should survive a container restart.
 ENV WOLFSPACE_KEYS_DIR=/data/.wolfspace
 
+# Jalankan sebagai NON-ROOT. Image ini dulu berjalan sebagai uid 0 — bisa
+# ditoleransi saat hanya dipakai sendiri di mesin lokal, tapi tidak untuk
+# deployment yang menghadap internet: apa pun yang lolos dari agent langsung
+# mewarisi root di dalam container. Image sandbox (sandbox/Dockerfile) sudah
+# memakai USER node sejak awal; ini menyamakannya.
+#
+# /data HARUS di-chown SEBELUM pindah user: Docker membuat direktori VOLUME
+# sebagai root, jadi tanpa ini penulisan cloud-keys.json akan gagal EACCES
+# saat runtime — dan gagalnya diam-diam, saat user menyimpan kunci pertamanya.
+RUN mkdir -p /data/.wolfspace \
+    && chown -R node:node /data /app
+USER node
+
 EXPOSE 8090
 VOLUME ["/data"]
+
+# Healthcheck memakai PORT dari env, bukan angka tetap — host container
+# menyuntikkan port sendiri, dan probe ke 8090 yang di-hardcode akan selalu
+# gagal di sana lalu memicu restart beruntun.
+HEALTHCHECK --interval=30s --timeout=5s --start-period=40s --retries=3 \
+  CMD node -e "require('http').get({host:'127.0.0.1',port:process.env.PORT||8090,path:'/healthz'},r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))"
 
 CMD ["node", "server.cjs"]

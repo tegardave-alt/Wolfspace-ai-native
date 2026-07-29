@@ -68,7 +68,12 @@ const stripAnsi = (str) =>
 
 const CONFIG_PATH = path.join(__dirname, "config.json");
 const CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
-const HOST = (CONFIG.server && CONFIG.server.host) || "0.0.0.0";
+// HOST dulu hanya dari config, sehingga `ENV HOST=` di Dockerfile tak berpengaruh
+// apa pun — menyesatkan bagi siapa pun yang men-deploy ke host container, karena
+// platform seperti Railway/Render/Fly memang mengendalikan bind lewat env.
+// Urutannya kini sama dengan PORT: env menang atas config.
+const HOST =
+  process.env.HOST || (CONFIG.server && CONFIG.server.host) || "0.0.0.0";
 const PORT = process.env.PORT || (CONFIG.server && CONFIG.server.port) || 8090;
 const HTML = path.join(__dirname, "public", "index.html");
 const TMP_PY = path.join(os.tmpdir(), "_wolfspace_run.py");
@@ -3705,6 +3710,17 @@ function closeTerminalSession(id) {
 }
 
 const server = http.createServer(async (req, res) => {
+  // Healthcheck — SEBELUM segalanya, sengaja.
+  // Host container (Railway/Render/Fly) mem-probe endpoint ini terus-menerus.
+  // Tanpa jalur khusus, probe akan mengenai "/" dan menyajikan index.html ~16KB
+  // setiap beberapa detik selamanya. Balasan ini tak menyentuh disk, config,
+  // maupun state agent — jadi ia tetap menjawab meski bagian lain sedang sibuk,
+  // yang justru penting: healthcheck yang ikut macet akan memicu restart beruntun.
+  if (req.url === "/healthz") {
+    res.writeHead(200, { "Content-Type": "text/plain" });
+    return res.end("ok");
+  }
+
   // Dynamic CORS: in bypass mode, allow only the frontend origin
   const CORS_ORIGIN = process.env.STATIC_PORT
     ? `http://localhost:${process.env.STATIC_PORT}`
