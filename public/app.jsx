@@ -1098,9 +1098,6 @@ function App() {
 
   const [panelOpen, setPanelOpen] = useState(false);
   const [messages, setMessages] = useState([]);
-  const [previewUrl, setPreviewUrl] = useState("");
-  const [previewInputUrl, setPreviewInputUrl] = useState("");
-  const [previewRefreshKey, setPreviewRefreshKey] = useState(0);
   // File yang SEDANG DIKEMBANGKAN (ditulis/diedit agent) — sumber untuk sidebar
   // Logic. Berbeda dari "semua isi folder": hanya file yang benar-benar disentuh
   // agent di sesi ini. Direset saat ganti workspace.
@@ -1127,71 +1124,13 @@ function App() {
     window.addEventListener("wolfspace_agent_act", onAct);
     return () => window.removeEventListener("wolfspace_agent_act", onAct);
   }, []);
-  // Ref ke iframe Web Dev Live Browser, agar Visual Picker bisa menjangkau
-  // dokumen DI DALAM render-nya (bukan cuma elemen <iframe> itu sendiri).
-  const previewIframeRef = useRef(null);
-  const getPreviewDoc = useCallback(() => {
-    const f = previewIframeRef.current;
-    return (f && f.contentDocument) || null;
-  }, []);
-
-  const handlePreviewNavigate = useCallback((urlOrPath) => {
-    if (!urlOrPath || !urlOrPath.trim()) return;
-    const val = urlOrPath.trim();
-    const isHttp =
-      val.startsWith("http://") ||
-      val.startsWith("https://") ||
-      val.startsWith("app://");
-    const targetUrl = isHttp
-      ? val
-      : `/preview-file?path=${encodeURIComponent(val)}`;
-    setPreviewUrl(targetUrl);
-    setPreviewInputUrl(val);
-  }, []);
-
-  // Web Dev Live Browser — auto-lempar: saat agent MENULIS/MENGUBAH file .html
-  // (event act dari stream agent), langsung render di panel preview; bila file
-  // yang sama ditulis ulang, cukup refresh iframe. Sumber kebenaran path adalah
-  // d.path (path FINAL hasil resolve tool — akurat walau kurungan workspace
-  // me-remap tulisan ke folder lain); fallback: parse d.arg, path relatif
-  // diresolve ke folder kerja aktif (workspace_root) atau root WOLFSPACE.
-  // (Deteksi regex lama atas teks jawaban DIHAPUS — sering menebak path yang
-  // disebut model padahal file nyatanya di-remap ke tempat lain → 404.)
-  useEffect(() => {
-    const onActPreview = (e) => {
-      const d = (e && e.detail) || {};
-      if (!/write|edit|create|apply|save/i.test(String(d.kind || ""))) return;
-      if (d.ok === false) return; // tulisan gagal — jangan preview
-      let p = "";
-      if (/\.html?$/i.test(String(d.path || ""))) {
-        p = String(d.path);
-      } else {
-        const m = String(d.arg || "").match(/([^\s"'`]+\.html?)(?=[\s"'`]|$)/i);
-        if (!m) return;
-        p = m[1];
-        if (!/^[a-zA-Z]:[\\\/]|^\\\\|^\//.test(p)) {
-          const root = resolveWorkspaceRoot(selectedProject) || WOLFSPACE_ROOT;
-          p =
-            String(root).replace(/[\\\/]+$/, "") +
-            "/" +
-            p.replace(/^[.\/\\]+/, "");
-        }
-      }
-      const target = "/preview-file?path=" + encodeURIComponent(p);
-      setPreviewUrl((cur) => {
-        if (cur === target) {
-          setPreviewRefreshKey((k) => k + 1);
-          return cur;
-        }
-        setPreviewInputUrl(p);
-        return target;
-      });
-      setPanelOpen(true);
-    };
-    window.addEventListener("wolfspace_agent_act", onActPreview);
-    return () =>
-      window.removeEventListener("wolfspace_agent_act", onActPreview);
-  }, [selectedProject]);
+  // Web Dev Live Browser: state, auto-preview saat agent menulis .html, dan
+  // ref iframe kini satu hook di public/app/usePreviewPanel.jsx.
+  const preview = usePreviewPanel({
+    selectedProject,
+    onAutoOpen: () => setPanelOpen(true),
+  });
+  const getPreviewDoc = preview.getDoc;
 
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
@@ -2623,11 +2562,11 @@ function App() {
                         </svg>
                         <input
                           type="text"
-                          value={previewInputUrl}
-                          onChange={(e) => setPreviewInputUrl(e.target.value)}
+                          value={preview.inputUrl}
+                          onChange={(e) => preview.setInputUrl(e.target.value)}
                           onKeyDown={(e) => {
                             if (e.key === "Enter")
-                              handlePreviewNavigate(previewInputUrl);
+                              preview.navigate(preview.inputUrl);
                           }}
                           placeholder="HTML path / URL (e.g. C:\...\index.html or http://localhost:3000)"
                           style={{
@@ -2652,7 +2591,7 @@ function App() {
                       >
                         <button
                           title="Reload / Refresh preview"
-                          onClick={() => setPreviewRefreshKey((k) => k + 1)}
+                          onClick={() => preview.refresh()}
                           style={{
                             background: "transparent",
                             border: "none",
@@ -2689,12 +2628,12 @@ function App() {
                         <button
                           title="Open in an external tab/browser"
                           onClick={() => {
-                            if (!previewUrl && !previewInputUrl) return;
+                            if (!preview.url && !preview.inputUrl) return;
                             const isHttp =
-                              previewInputUrl.startsWith("http://") ||
-                              previewInputUrl.startsWith("https://");
+                              preview.inputUrl.startsWith("http://") ||
+                              preview.inputUrl.startsWith("https://");
                             if (isHttp) {
-                              window.open(previewInputUrl, "_blank");
+                              window.open(preview.inputUrl, "_blank");
                             } else if (
                               window.WOLFSPACE &&
                               window.WOLFSPACE.ipc
@@ -2704,7 +2643,7 @@ function App() {
                               // /preview-file. Buka file ASLI dari disk via file:// —
                               // setWindowOpenHandler meneruskannya ke shell.openExternal,
                               // yang meluncurkan browser default OS langsung ke file itu.
-                              let p = String(previewInputUrl).replace(
+                              let p = String(preview.inputUrl).replace(
                                 /\\/g,
                                 "/",
                               );
@@ -2714,7 +2653,7 @@ function App() {
                               // Mode server/browser biasa: /preview-file memang dilayani
                               // di origin yang sama — tab baru pada origin itu cukup.
                               window.open(
-                                previewUrl || previewInputUrl,
+                                preview.url || preview.inputUrl,
                                 "_blank",
                               );
                             }
@@ -2803,11 +2742,11 @@ function App() {
                         background: "#ffffff",
                       }}
                     >
-                      {previewUrl ? (
+                      {preview.url ? (
                         <iframe
-                          ref={previewIframeRef}
-                          key={previewRefreshKey}
-                          src={previewUrl}
+                          ref={preview.iframeRef}
+                          key={preview.refreshKey}
+                          src={preview.url}
                           style={{
                             flex: 1,
                             width: "100%",
@@ -2979,8 +2918,8 @@ function App() {
                   <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
                     <LogicFileTree
                       files={devFiles}
-                      root={webProjectRoot(previewUrl, selectedProject)}
-                      active={!!previewUrl}
+                      root={webProjectRoot(preview.url, selectedProject)}
+                      active={!!preview.url}
                     />
                     <div
                       style={{
@@ -2992,7 +2931,7 @@ function App() {
                     >
                       <WorkflowBuilder
                         workspaceRoot={webProjectRoot(
-                          previewUrl,
+                          preview.url,
                           resolveWorkspaceRoot(selectedProject) ||
                             WOLFSPACE_ROOT,
                         )}
