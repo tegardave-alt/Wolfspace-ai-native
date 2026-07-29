@@ -1018,6 +1018,15 @@ async function runSelfTool(name, args, emit, context = {}) {
             chk.error,
         };
       }
+      // Gerbang kualitas struktural. Jalur ini TERLEWAT di penambalan pertama —
+      // ia punya Verify-Then-Commit sendiri yang hanya memeriksa SINTAKS, jadi
+      // edit yang memperdalam sarang 8 -> 40 spasi lolos dan commit sukses.
+      const _qAdv = codeQuality.check(dest, patched, oldStr);
+      if (!_qAdv.ok) {
+        sbx.destroy();
+        return { ok: false, output: _qAdv.error };
+      }
+
       // Commit
       createSnapshot([dest], "agent-edit-adv: " + path.basename(dest));
       sbx.mirrorOut(path.basename(dest), dest);
@@ -1628,6 +1637,19 @@ async function runSelfTool(name, args, emit, context = {}) {
       );
     }
     if (name === "sandbox_run") {
+      // Deskripsi tool ini menyatakan sendiri bahwa proses yang di-spawn punya
+      // "normal OS-level filesystem access" — jadi ia bisa menulis berkas kode di
+      // mana pun, melewati gerbang kualitas DAN syntax check. Terbukti empiris:
+      // `echo "<40 spasi>" > public/x.jsx` mendarat utuh di disk.
+      // Penjaga yang sama dengan bash dipakai di sini; batasnya juga sama sempit
+      // (hanya yang menargetkan ekstensi kode).
+      if (_BASH_CODE_WRITE_RE.test(String(args.command || "")))
+        return {
+          ok: false,
+          output:
+            "DITOLAK: menulis berkas kode lewat sandbox_run melewati gerbang kualitas & " +
+            'syntax check. Gunakan tool "write" (berkas baru) atau "edit" (ubah yang ada).',
+        };
       const opts = { ...sandbox.defaultSandboxOpts() };
       if (args.timeout) opts.timeout = args.timeout;
       if (args.cwd) opts.cwd = args.cwd;

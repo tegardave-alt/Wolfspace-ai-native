@@ -122,3 +122,61 @@ describe("bypass lewat bash", () => {
     expect(r.ok).toBe(true);
   });
 });
+
+// Audit permukaan-serang pertama saya memakai regex yang keliru dan menyimpulkan
+// agent punya 16 tool dengan 3 jalur tulis. Daftar otoritatif berisi 28 tool, dan
+// dua yang terlewat ternyata bypass penuh — keduanya terbukti empiris menulis
+// berkas 40 spasi ke disk sebelum ditambal.
+describe("jalur tulis lain (terlewat di audit pertama)", () => {
+  test("replace_file_content tunduk pada ratchet", async () => {
+    const shallow = jsx(8);
+    await runSelfTool("write", { path: REL, content: shallow }, noop);
+
+    const r = await runSelfTool(
+      "replace_file_content",
+      {
+        path: REL,
+        start_line: 3,
+        end_line: 3,
+        target_content: indent(8, "<div />"),
+        replacement_content: indent(40, "<div />"),
+      },
+      noop,
+    );
+
+    expect(r.ok).toBe(false);
+    expect(String(r.output)).toMatch(/MEMPERDALAM/);
+    // Tool ini punya Verify-Then-Commit SENDIRI yang hanya cek sintaks — tanpa
+    // gerbang, edit ini lolos dan commit sukses. Periksa disk, bukan nilai balik.
+    expect(fs.readFileSync(ABS, "utf8")).not.toContain(indent(40, "<div />"));
+  });
+
+  test("sandbox_run tak bisa menulis berkas kode", async () => {
+    const r = await runSelfTool(
+      "sandbox_run",
+      {
+        command: `echo "x" > "${BYPASS_ABS.replace(/\\/g, "/")}"`,
+        timeout: 15000,
+      },
+      noop,
+    );
+    expect(r.ok).toBe(false);
+    expect(fs.existsSync(BYPASS_ABS)).toBe(false);
+  });
+
+  test("capability_exec ditolak broker untuk tulis di luar cakupan", async () => {
+    // Ini BUKAN gerbang kualitas yang bekerja, melainkan kebijakan deny-by-default
+    // broker. Diuji agar kalau kebijakan itu dilonggarkan suatu hari, celahnya
+    // ketahuan di sini alih-alih diam-diam terbuka.
+    const r = await runSelfTool(
+      "capability_exec",
+      {
+        code: `await request("writeFile", { path: ${JSON.stringify(BYPASS_ABS)}, content: "x" }); return "done";`,
+        timeout: 10000,
+      },
+      noop,
+    );
+    expect(r.ok).toBe(false);
+    expect(fs.existsSync(BYPASS_ABS)).toBe(false);
+  });
+});
