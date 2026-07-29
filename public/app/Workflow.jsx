@@ -1674,13 +1674,11 @@ function WorkflowBuilderInner({
               {isLive ? "Live" : "Nodes"}
             </span>
             <button
+              className="btn-reset"
               onClick={() => setSidebarOpen(false)}
               title="Sembunyikan"
               style={{
-                border: "none",
-                background: "transparent",
                 color: "#6f7d92",
-                cursor: "pointer",
               }}
             >
               ✕
@@ -1871,13 +1869,11 @@ function WorkflowBuilderInner({
                             {nm}
                           </span>
                           <button
+                            className="btn-reset"
                             onClick={() => deleteWorkflow(nm)}
                             title="delete"
                             style={{
-                              border: "none",
-                              background: "transparent",
                               color: "#f0776b",
-                              cursor: "pointer",
                               fontSize: "11px",
                             }}
                           >
@@ -2116,12 +2112,10 @@ function WorkflowBuilderInner({
                 {detailNode.label}
               </span>
               <button
+                className="btn-reset"
                 onClick={() => setDetailNode(null)}
                 style={{
-                  border: "none",
-                  background: "transparent",
                   color: "#8b949e",
-                  cursor: "pointer",
                   fontSize: "14px",
                 }}
               >

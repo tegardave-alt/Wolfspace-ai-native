@@ -1693,6 +1693,7 @@ function VSCodeTerminal({
           }}
         >
           <button
+            className="btn-reset"
             onClick={() => {
               setActiveTab("TERMINAL");
               setTimeout(() => {
@@ -1701,8 +1702,6 @@ function VSCodeTerminal({
               }, 10);
             }}
             style={{
-              background: "transparent",
-              border: "none",
               borderBottom:
                 activeTab === "TERMINAL"
                   ? "2px solid var(--brand, #5eead4)"
@@ -1711,7 +1710,6 @@ function VSCodeTerminal({
               fontSize: "11px",
               fontWeight: 600,
               letterSpacing: "0.5px",
-              cursor: "pointer",
               height: "100%",
               display: "flex",
               alignItems: "center",
@@ -1734,10 +1732,9 @@ function VSCodeTerminal({
             </span>
           </button>
           <button
+            className="btn-reset"
             onClick={() => setActiveTab("OUTPUT")}
             style={{
-              background: "transparent",
-              border: "none",
               borderBottom:
                 activeTab === "OUTPUT"
                   ? "2px solid var(--brand, #5eead4)"
@@ -1746,7 +1743,6 @@ function VSCodeTerminal({
               fontSize: "11px",
               fontWeight: 600,
               letterSpacing: "0.5px",
-              cursor: "pointer",
               height: "100%",
               display: "flex",
               alignItems: "center",
@@ -1764,13 +1760,11 @@ function VSCodeTerminal({
             {statusText}
           </span>
           <button
+            className="btn-reset"
             onClick={restartSession}
             title="New / Restart Terminal Session"
             style={{
-              background: "transparent",
-              border: "none",
               color: "#c9d1d9",
-              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1799,15 +1793,13 @@ function VSCodeTerminal({
             </svg>
           </button>
           <button
+            className="btn-reset"
             onClick={() => {
               if (termRef.current) termRef.current.clear();
             }}
             title="Clear Terminal"
             style={{
-              background: "transparent",
-              border: "none",
               color: "#c9d1d9",
-              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",
@@ -1837,13 +1829,11 @@ function VSCodeTerminal({
             </svg>
           </button>
           <button
+            className="btn-reset"
             onClick={onClose}
             title="Close Terminal Panel"
             style={{
-              background: "transparent",
-              border: "none",
               color: "#c9d1d9",
-              cursor: "pointer",
               display: "flex",
               alignItems: "center",
               justifyContent: "center",

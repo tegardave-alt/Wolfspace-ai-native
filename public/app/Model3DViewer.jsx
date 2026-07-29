@@ -337,13 +337,11 @@ function Model3DViewer({ url, name }) {
           }}
         >
           <button
+            className="btn-reset"
             onClick={togglePlay}
             title={playing ? "Jeda animasi" : "Putar animasi"}
             style={{
-              background: "transparent",
-              border: "none",
               color: "#e2e8f0",
-              cursor: "pointer",
               fontSize: "14px",
               width: "26px",
               height: "26px",

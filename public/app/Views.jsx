@@ -167,16 +167,14 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
                   {formatTimeAgo(chat.savedAt)}
                 </span>
                 <button
+                  className="btn-reset"
                   title="Delete"
                   onClick={(e) => {
                     e.stopPropagation();
                     onDelete(chat.id);
                   }}
                   style={{
-                    background: "transparent",
-                    border: "none",
                     color: "#6b7280",
-                    cursor: "pointer",
                     fontSize: "16px",
                     padding: "4px 8px",
                     borderRadius: "4px",

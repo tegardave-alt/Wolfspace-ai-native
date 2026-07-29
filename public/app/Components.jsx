@@ -449,14 +449,12 @@ function LightboxModal({ item, onClose }) {
             {is3D ? "🧊" : "📄"} {item.name || item.path || "Preview"}
           </span>
           <button
+            className="btn-reset"
             type="button"
             onClick={onClose}
             style={{
-              background: "transparent",
-              border: "none",
               color: "var(--text-muted, #858585)",
               fontSize: "22px",
-              cursor: "pointer",
               padding: "0 6px",
               lineHeight: 1,
             }}

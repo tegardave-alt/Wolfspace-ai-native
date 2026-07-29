@@ -664,6 +664,7 @@ function WorkspaceGitPanel({ path, onClose }) {
 
   const miniBtn = (onClick, title, color, children) => (
     <button
+      className="btn-reset"
       onClick={(e) => {
         e.stopPropagation();
         onClick();
@@ -673,9 +674,6 @@ function WorkspaceGitPanel({ path, onClose }) {
         width: "22px",
         height: "22px",
         borderRadius: "5px",
-        border: "none",
-        cursor: "pointer",
-        background: "transparent",
         color: color || "#6b7280",
         display: "inline-flex",
         alignItems: "center",

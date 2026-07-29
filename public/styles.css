@@ -3512,3 +3512,13 @@ Agent
   background: #21262d;
   margin: 5px 0;
 }
+
+/* Reset tombol — tiga properti yang SELALU muncul bersama pada 22 tombol di
+   seluruh UI. display/alignItems sengaja TIDAK diikutkan: hanya ~50-60% tombol
+   memakainya, jadi membakukannya di sini akan mengubah tata letak selusin
+   tombol lain. Variasi yang disengaja tetap inline supaya terlihat. */
+.btn-reset {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}

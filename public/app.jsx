@@ -786,12 +786,10 @@ function LogicFileTree({ files, root, active }) {
           }}
         >
           <button
+            className="btn-reset"
             title="Search"
             style={{
-              background: "transparent",
-              border: "none",
               color: "inherit",
-              cursor: "pointer",
               width: "24px",
               height: "24px",
               borderRadius: "5px",
@@ -814,12 +812,10 @@ function LogicFileTree({ files, root, active }) {
             </svg>
           </button>
           <button
+            className="btn-reset"
             title="Collapse all"
             style={{
-              background: "transparent",
-              border: "none",
               color: "inherit",
-              cursor: "pointer",
               width: "24px",
               height: "24px",
               borderRadius: "5px",
@@ -2396,6 +2392,7 @@ function App() {
                           {/* Visual Picker & Visual Draw dipindah kemari dari sidebar (bagian "Alat")
                             — akses langsung dari tombol menu panel ini, bukan lagi di sidebar. */}
                           <button
+                            className="btn-reset"
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -2404,9 +2401,6 @@ function App() {
                               padding: "8px 16px",
                               color: "#e2e8f0",
                               fontSize: "13px",
-                              border: "none",
-                              background: "transparent",
-                              cursor: "pointer",
                               fontFamily: "inherit",
                               textAlign: "left",
                             }}
@@ -2459,6 +2453,7 @@ function App() {
                             <span>Logic</span>
                           </button>
                           <button
+                            className="btn-reset"
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -2467,9 +2462,6 @@ function App() {
                               padding: "8px 16px",
                               color: "#e2e8f0",
                               fontSize: "13px",
-                              border: "none",
-                              background: "transparent",
-                              cursor: "pointer",
                               fontFamily: "inherit",
                               textAlign: "left",
                             }}
@@ -2489,6 +2481,7 @@ function App() {
                             <span>Visual Picker</span>
                           </button>
                           <button
+                            className="btn-reset"
                             style={{
                               display: "flex",
                               alignItems: "center",
@@ -2497,9 +2490,6 @@ function App() {
                               padding: "8px 16px",
                               color: "#e2e8f0",
                               fontSize: "13px",
-                              border: "none",
-                              background: "transparent",
-                              cursor: "pointer",
                               fontFamily: "inherit",
                               textAlign: "left",
                             }}
@@ -2590,13 +2580,11 @@ function App() {
                         }}
                       >
                         <button
+                          className="btn-reset"
                           title="Reload / Refresh preview"
                           onClick={() => preview.refresh()}
                           style={{
-                            background: "transparent",
-                            border: "none",
                             color: "#8b98a9",
-                            cursor: "pointer",
                             padding: "4px 6px",
                             borderRadius: "4px",
                             display: "flex",
@@ -2692,13 +2680,11 @@ function App() {
                           </svg>
                         </button>
                         <button
+                          className="btn-reset"
                           title="Close panel"
                           onClick={() => setPanelOpen(false)}
                           style={{
-                            background: "transparent",
-                            border: "none",
                             color: "#8b98a9",
-                            cursor: "pointer",
                             padding: "4px 6px",
                             borderRadius: "4px",
                             display: "flex",
@@ -2877,13 +2863,11 @@ function App() {
                       </span>
                     </div>
                     <button
+                      className="btn-reset"
                       title="Close Logic"
                       onClick={() => setLogicOpen(false)}
                       style={{
-                        background: "transparent",
-                        border: "none",
                         color: "#8b98a9",
-                        cursor: "pointer",
                         padding: "4px 6px",
                         borderRadius: "4px",
                         display: "flex",
