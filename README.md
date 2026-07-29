@@ -2,6 +2,9 @@
 
 **A local, open-source AI coding workspace that _proves_ its code by actually running it.**
 
+[**wolfspace site**](https://tegardave-alt.github.io/Wolfspace-ai-native/) — overview and
+download links. The app itself runs on your machine or in a container, not on the web.
+
 Most AI coding tools hand you code and hope it works. WOLFSPACE treats the model as an
 **untrusted guesser** and your **CPU as the judge**: generated code is executed and tested
 automatically, and if it fails, the error is fed back to the model to fix — looping until it
