@@ -454,6 +454,41 @@ function makePhaseEmitter(rawEmit) {
 //   failedTools       -> NAMA tool yang pernah gagal, BUKAN hitungan
 //   failsByName       -> kegagalan BERUNTUN saat ini (reset saat sukses),
 //                        jadi TIDAK dilaporkan sebagai total
+
+// Ubah todos todowrite jadi baris checklist BERSTATUS.
+//
+// Statusnya ikut dibawa, bukan cuma teksnya: checklist yang diinjeksi ulang tanpa
+// status akan terbaca sama di langkah 1 dan langkah 14, sehingga model bisa
+// mengerjakan ulang item yang sudah selesai. Dibatasi 12 item supaya injeksi
+// per-langkah tetap murah — todowrite tak dibatasi, hanya tampilannya.
+const CHECKLIST_MAX_ITEMS = 12;
+const _TODO_ICON = {
+  completed: "[x]",
+  in_progress: "[→]",
+  cancelled: "[-]",
+  pending: "[ ]",
+};
+
+function formatChecklist(todos) {
+  if (!Array.isArray(todos)) return [];
+  return todos
+    .slice(0, CHECKLIST_MAX_ITEMS)
+    .map((t) => {
+      const text = String((t && t.content) || "").trim();
+      if (!text) return null;
+      return `${_TODO_ICON[t && t.status] || _TODO_ICON.pending} ${text}`;
+    })
+    .filter(Boolean);
+}
+
+// Item yang belum tuntas — dipakai di pesan jeda supaya "Lanjutkan" menyebut
+// pekerjaan yang tersisa, bukan sekadar berapa langkah terpakai.
+function pendingChecklist(checklist) {
+  return (checklist || []).filter(
+    (l) => !l.startsWith("[x]") && !l.startsWith("[-]"),
+  );
+}
+
 function describePauseActivity(finalState, sess) {
   const parts = [];
 
@@ -904,10 +939,20 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         const activeMessages = [...state.messages];
         if (state.task_checklist && state.task_checklist.length > 0) {
           const sysMsg = { ...activeMessages[0] };
+          // Baris dari todowrite sudah berstatus ("[x] ...", "[→] ..."); baris
+          // dari planner masih polos. Beri prefiks "- " HANYA pada yang polos
+          // supaya keduanya terbaca konsisten tanpa merusak penanda status.
+          const hasStatus = state.task_checklist.some((t) =>
+            /^\[[x→\- ]\] /.test(t),
+          );
           sysMsg.content +=
             "\n\n[TASK CHECKLIST AKTIF]:\n" +
-            state.task_checklist.map((t) => "- " + t).join("\n") +
-            "\nFokus selesaikan item di atas secara berurutan dengan menggunakan tools.";
+            state.task_checklist
+              .map((t) => (/^\[[x→\- ]\] /.test(t) ? t : "- " + t))
+              .join("\n") +
+            (hasStatus
+              ? "\nIni status TERKINI, bukan rencana awal. JANGAN kerjakan ulang item [x]. Kerjakan item [→], lalu lanjut ke [ ] berikutnya, dan perbarui lewat todowrite setiap kali status berubah."
+              : "\nFokus selesaikan item di atas secara berurutan dengan menggunakan tools.");
           activeMessages[0] = sysMsg;
         }
 
@@ -1518,6 +1563,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         let stopReason = "";
         let waitForAnswer = false;
         let localSummary = "";
+        // Rencana hidup dari todowrite. null = tak ada panggilan todowrite di
+        // langkah ini, jadi checklist yang sudah ada TIDAK ditimpa.
+        let todoUpdate = null;
 
         for (let i = 0; i < calls.length; i++) {
           const name = calls[i].function.name;
@@ -1536,6 +1584,17 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           const isSearch = SEARCH_TOOLS.includes(name);
           const isGrep = name === "grep" || name === "disk_grep";
           const isRead = name === "read" || name === "disk_read";
+          // todowrite -> task_checklist. Dulu todowrite HANYA emit ke UI dan
+          // mengembalikan string; state agent tak pernah tahu rencana itu ada,
+          // sehingga hasilnya terkubur di bawah puluhan pesan output tool saat
+          // langkah 14. Dengan disalin ke checklist, ia ikut kanal injeksi ulang
+          // per-langkah yang SUDAH ada di node executor.
+          if (name === "todowrite") {
+            try {
+              const a = JSON.parse(calls[i].function.arguments || "{}");
+              if (Array.isArray(a.todos)) todoUpdate = formatChecklist(a.todos);
+            } catch (_) {}
+          }
           if (isSearch) {
             grepReadSteps++;
             if (isRead) {
@@ -1656,6 +1715,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           hitlPending: stopReason === "hitl",
           hitlApproved: state.hitlApproved, // Keep approval through the session (reset only on new user message)
           finalSummary: localSummary,
+          // Hanya kirim bila todowrite benar-benar dipanggil: reducer checklist
+          // ini "ganti total" (x, y) => y, jadi mengirim [] tiap langkah akan
+          // MENGHAPUS rencana dari planner.
+          ...(todoUpdate ? { task_checklist: todoUpdate } : {}),
         };
       })
       .addNode("validate", async (state) => {
@@ -2329,9 +2392,15 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       // menghasilkan kalimat yang sama persis.
       const activity = describePauseActivity(finalState, sess);
       const nextBudget = (finalState.stepCeiling || MAX_STEPS) + MAX_STEPS;
+      // Sisa checklist ikut disebut: yang menentukan apakah "Lanjutkan" layak
+      // ditekan adalah APA yang belum selesai, bukan berapa langkah terpakai.
+      const sisa = pendingChecklist(finalState.task_checklist);
       finalSummary =
         `Dijeda di langkah ${finalState.step} — ${activity}. ` +
-        `Belum selesai; "Lanjutkan" menambah plafon ke ${nextBudget} langkah.`;
+        (sisa.length
+          ? `Belum selesai:\n${sisa.join("\n")}\n`
+          : "Belum selesai; ") +
+        `"Lanjutkan" menambah plafon ke ${nextBudget} langkah.`;
       emit({
         t: "adone",
         steps: finalState.step,
