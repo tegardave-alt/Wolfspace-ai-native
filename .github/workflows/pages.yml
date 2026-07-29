@@ -47,7 +47,15 @@ jobs:
 
       # Halamannya HTML statis murni -- tak ada npm install, tak ada build step.
       # Itu memang inti pemilihan Pages di sini.
+      #
+      # enablement: true MENGAKTIFKAN Pages lewat API bila belum aktif. Tanpa ini
+      # langkah berikutnya gagal dengan "Get Pages site failed ... Not Found" --
+      # bukan karena workflow-nya salah, melainkan karena Pages belum pernah
+      # dinyalakan di Settings. Menyerahkannya ke workflow berarti tak ada langkah
+      # manual yang bisa terlupakan saat repo di-fork atau dibuat ulang.
       - uses: actions/configure-pages@v5
+        with:
+          enablement: true
 
       - uses: actions/upload-pages-artifact@v4
         with:
