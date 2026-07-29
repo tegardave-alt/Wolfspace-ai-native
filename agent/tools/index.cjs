@@ -1705,17 +1705,32 @@ async function runSelfTool(name, args, emit, context = {}) {
         fetch: { hosts: [...new Set(cloudHosts)] },
       });
       const broker = new Broker(policy);
+      // Keluaran cetak zona ikut dilaporkan, tidak dibuang. Untuk sandbox,
+      // console.log adalah cara utama orang melihat apa yang terjadi — dan
+      // sebelumnya stdout tak pernah dibaca sama sekali, sehingga hilang DAN
+      // menggantung prosesnya begitu melewati kapasitas buffer pipa.
+      const _withIo = (teks, z) => {
+        const bagian = [];
+        if (z && z.stdout) bagian.push(z.stdout.trimEnd());
+        if (z && z.stderr) bagian.push("[stderr]\n" + z.stderr.trimEnd());
+        if (teks) bagian.push(teks);
+        if (z && z.truncated) bagian.push("[keluaran dipotong]");
+        return bagian.join("\n");
+      };
       return runInCapabilityZone(args.code, broker, {
         timeout: args.timeout || 10000,
       }).then(
-        (result) => ({
+        (z) => ({
           ok: true,
-          output: typeof result === "string" ? result : JSON.stringify(result),
+          output: _withIo(
+            typeof z.result === "string" ? z.result : JSON.stringify(z.result),
+            z,
+          ),
           auditTrail: broker.auditTrail(),
         }),
         (e) => ({
           ok: false,
-          output: e.message,
+          output: _withIo(e.message, e),
           auditTrail: broker.auditTrail(),
         }),
       );
