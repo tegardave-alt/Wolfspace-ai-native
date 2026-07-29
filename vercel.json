@@ -1,7 +1,8 @@
 {
   "$schema": "https://openapi.vercel.sh/vercel.json",
-  "installCommand": "echo 'landing page has no dependencies — skipping install'",
+
+  "installCommand": "echo 'landing page has no dependencies - skipping install'",
   "buildCommand": "echo 'no build step'",
-  "outputDirectory": "public",
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index.cjs" }]
+
+  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
 }
