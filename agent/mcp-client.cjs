@@ -3,47 +3,92 @@ const path = require("path");
 const { spawn, execSync } = require("child_process");
 const { dlog } = require("./debug.cjs");
 
-// File PID tracker: simpan PID semua proses MCP yang pernah di-spawn
-// agar bisa dibunuh saat restart berikutnya.
+// File PID tracker: simpan PID semua proses MCP yang pernah di-spawn agar bisa
+// dibunuh saat restart berikutnya.
+//
+// TIAP CATATAN MENYIMPAN PEMILIKNYA: { pid, owner, at }. Dulu isinya cuma
+// [pid, pid], dan berkas ini DIPAKAI BERSAMA semua proses Node — sehingga
+// "orphan" tak bisa dibedakan dari server HIDUP milik proses lain yang sedang
+// berjalan. Akibatnya terukur pada 3 proses serentak: satu proses menunggu 127
+// detik lalu jalan dengan 26 dari 50 tool, karena server-nya dibunuh tetangga
+// tepat saat handshake. Kegagalannya SENYAP — tak ada error, agent hanya
+// kehilangan separuh kemampuan MCP tanpa tahu.
+//
+// Dengan owner tercatat, yatim = catatan yang PEMILIKNYA sudah mati. Server
+// milik proses yang masih hidup tak pernah disentuh.
 const PID_FILE = path.join(__dirname, "..", "config", ".mcp-pids.json");
 
-function _savePids(pids) {
+function _alive(pid) {
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+function _savePids(entries) {
   try {
     const dir = path.dirname(PID_FILE);
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(PID_FILE, JSON.stringify(pids), "utf8");
+    fs.writeFileSync(PID_FILE, JSON.stringify(entries), "utf8");
   } catch (_) {}
 }
 
 function _loadPids() {
   try {
     if (!fs.existsSync(PID_FILE)) return [];
-    return JSON.parse(fs.readFileSync(PID_FILE, "utf8")) || [];
+    const raw = JSON.parse(fs.readFileSync(PID_FILE, "utf8")) || [];
+    // Toleran terhadap format lama ([pid, pid]) supaya upgrade tak menabrak
+    // berkas yang sudah ada: tanpa owner, anggap pemiliknya sudah mati.
+    return raw
+      .map((e) => (typeof e === "number" ? { pid: e, owner: 0, at: 0 } : e))
+      .filter((e) => e && typeof e.pid === "number");
   } catch (_) {
     return [];
   }
 }
 
 function _killOrphans() {
-  const pids = _loadPids();
-  if (!pids.length) return;
-  dlog("mcp", "info", `Membersihkan ${pids.length} proses MCP lama...`, {
-    pids,
-  });
-  for (const pid of pids) {
+  const entries = _loadPids();
+  if (!entries.length) return;
+
+  const orphans = entries.filter((e) => !e.owner || !_alive(e.owner));
+  const kept = entries.filter((e) => e.owner && _alive(e.owner));
+
+  if (orphans.length) {
+    dlog("mcp", "info", `Membersihkan ${orphans.length} proses MCP yatim...`, {
+      pids: orphans.map((e) => e.pid),
+      dipertahankan: kept.length,
+    });
+    for (const e of orphans) {
+      try {
+        if (!_alive(e.pid)) continue;
+        process.kill(e.pid);
+        dlog("mcp", "info", `MCP orphan PID ${e.pid} dihentikan.`);
+      } catch (_) {}
+    }
+  }
+
+  // Simpan kembali catatan milik proses yang MASIH HIDUP. Dulu berkasnya
+  // dihapus seluruhnya, sehingga server proses lain kehilangan jejaknya dan
+  // benar-benar menjadi yatim saat proses itu berakhir.
+  if (kept.length) _savePids(kept);
+  else {
     try {
-      process.kill(pid, 0); // cek apakah masih hidup
-      process.kill(pid); // bunuh jika masih ada
-      dlog("mcp", "info", `MCP orphan PID ${pid} dihentikan.`);
+      fs.unlinkSync(PID_FILE);
     } catch (_) {}
   }
-  // Hapus file PID setelah dibersihkan
-  try {
-    fs.unlinkSync(PID_FILE);
-  } catch (_) {}
 }
 
 const CONFIG_PATH = path.join(__dirname, "..", "config", "mcp.json");
+
+// Panggilan tool nyata boleh lama (kueri Notion, dsb).
+const REQUEST_TIMEOUT_MS = 120000;
+// Handshake harus gagal cepat. Dengan 120 detik dan start BERURUTAN, dua server
+// bermasalah membuat getTools() — yang memblokir langkah PERTAMA agent —
+// menggantung 4 menit sebelum agent sempat berbuat apa pun.
+const HANDSHAKE_TIMEOUT_MS = 25000;
 
 class MCPClient {
   constructor() {
@@ -74,15 +119,19 @@ class MCPClient {
     const config = this._loadConfig();
     const srvs = config.mcpServers || {};
 
-    for (const [name, conf] of Object.entries(srvs)) {
-      try {
-        await this._startServer(name, conf);
-      } catch (e) {
-        dlog("mcp", "error", `Gagal memulai MCP server ${name}`, {
-          error: e.message,
-        });
-      }
-    }
+    // PARALEL, bukan berurutan. Server-server ini tidak saling bergantung, dan
+    // getTools() memblokir langkah pertama agent — dengan `await` di dalam loop,
+    // waktu tunggunya adalah JUMLAH semua server, bukan yang terlama. Satu
+    // server lambat/mati menahan seluruh agent.
+    await Promise.all(
+      Object.entries(srvs).map(([name, conf]) =>
+        this._startServer(name, conf).catch((e) => {
+          dlog("mcp", "error", `Gagal memulai MCP server ${name}`, {
+            error: e.message,
+          });
+        }),
+      ),
+    );
     this.initialized = true;
   }
 
@@ -133,22 +182,27 @@ class MCPClient {
 
       this.servers[name] = { proc, ready: false };
 
-      // Catat PID ke file agar bisa dibunuh saat restart berikutnya
+      // Catat PID + PEMILIK agar proses lain tahu server ini masih bertuan.
       const currentPids = _loadPids();
-      if (proc.pid && !currentPids.includes(proc.pid)) {
-        currentPids.push(proc.pid);
+      if (proc.pid && !currentPids.some((e) => e.pid === proc.pid)) {
+        currentPids.push({ pid: proc.pid, owner: process.pid, at: Date.now() });
         _savePids(currentPids);
       }
 
       // Lakukan Initialize handshake
-      this._request(name, "initialize", {
-        protocolVersion: "2024-11-05",
-        capabilities: {
-          roots: { listChanged: true },
-          sampling: {},
+      this._request(
+        name,
+        "initialize",
+        {
+          protocolVersion: "2024-11-05",
+          capabilities: {
+            roots: { listChanged: true },
+            sampling: {},
+          },
+          clientInfo: { name: "WOLFSPACE", version: "1.0.0" },
         },
-        clientInfo: { name: "WOLFSPACE", version: "1.0.0" },
-      })
+        HANDSHAKE_TIMEOUT_MS,
+      )
         .then(() => {
           // Kirim initialized notifikasi
           this._notify(name, "notifications/initialized", {});
@@ -231,19 +285,33 @@ class MCPClient {
     this._send(name, { jsonrpc: "2.0", method, params });
   }
 
-  _request(name, method, params) {
+  // timeoutMs dapat ditimpa: handshake `initialize` harus gagal CEPAT (server
+  // yang sehat menjawabnya dalam hitungan detik), sedangkan panggilan tool nyata
+  // memang bisa lama dan tetap memakai 120 detik.
+  _request(name, method, params, timeoutMs = REQUEST_TIMEOUT_MS) {
     return new Promise((resolve, reject) => {
       const id = this.msgId++;
-      this.pendingReqs[id] = { resolve, reject };
-      this._send(name, { jsonrpc: "2.0", id, method, params });
-
-      // Timeout 120 detik untuk setiap request
-      setTimeout(() => {
+      // Timer di-clear saat request selesai. Dulu tidak: tiap request menahan
+      // timer 120 detik sampai habis, sehingga proses menolak keluar jauh
+      // setelah pekerjaannya rampung.
+      const timer = setTimeout(() => {
         if (this.pendingReqs[id]) {
           delete this.pendingReqs[id];
           reject(new Error(`Timeout MCP request: ${method}`));
         }
-      }, 120000);
+      }, timeoutMs);
+      if (timer.unref) timer.unref();
+      this.pendingReqs[id] = {
+        resolve: (v) => {
+          clearTimeout(timer);
+          resolve(v);
+        },
+        reject: (e) => {
+          clearTimeout(timer);
+          reject(e);
+        },
+      };
+      this._send(name, { jsonrpc: "2.0", id, method, params });
     });
   }
 
@@ -441,4 +509,13 @@ class MCPClient {
 const mcpClient =
   globalThis.__wolfspaceMcpClient ||
   (globalThis.__wolfspaceMcpClient = new MCPClient());
+
+// Kait uji. Diekspor karena satu-satunya cara lain memicu _killOrphans adalah
+// init(), yang men-spawn server MCP sungguhan lewat `npx` — lambat, butuh
+// jaringan, dan justru mengaburkan yang ingin diuji: keputusan bunuh/pertahankan.
+mcpClient._killOrphans = _killOrphans;
+mcpClient._loadPids = _loadPids;
+mcpClient._savePids = _savePids;
+mcpClient.PID_FILE = PID_FILE;
+
 module.exports = mcpClient;
