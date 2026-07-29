@@ -3,20 +3,29 @@ const path = require("path");
 const { spawn, execSync } = require("child_process");
 const { dlog } = require("./debug.cjs");
 
-// File PID tracker: simpan PID semua proses MCP yang pernah di-spawn agar bisa
-// dibunuh saat restart berikutnya.
+// Pelacak PID proses MCP, agar sisa sesi sebelumnya bisa dibersihkan.
 //
-// TIAP CATATAN MENYIMPAN PEMILIKNYA: { pid, owner, at }. Dulu isinya cuma
-// [pid, pid], dan berkas ini DIPAKAI BERSAMA semua proses Node — sehingga
-// "orphan" tak bisa dibedakan dari server HIDUP milik proses lain yang sedang
-// berjalan. Akibatnya terukur pada 3 proses serentak: satu proses menunggu 127
-// detik lalu jalan dengan 26 dari 50 tool, karena server-nya dibunuh tetangga
-// tepat saat handshake. Kegagalannya SENYAP — tak ada error, agent hanya
-// kehilangan separuh kemampuan MCP tanpa tahu.
+// SATU BERKAS PER PEMILIK: config/.mcp-pids/<pid-pemilik>.json, berisi daftar
+// PID server yang di-spawn proses itu. Pemiliknya ada di NAMA berkas, bukan di
+// isinya.
 //
-// Dengan owner tercatat, yatim = catatan yang PEMILIKNYA sudah mati. Server
-// milik proses yang masih hidup tak pernah disentuh.
-const PID_FILE = path.join(__dirname, "..", "config", ".mcp-pids.json");
+// Kenapa begini, bukan satu berkas bersama. Berkas bersama memaksa pola
+// baca-ubah-tulis dari banyak proses sekaligus, dan itu balapan: dua proses
+// yang membaca pada saat yang sama akan saling menimpa, satu catatan hilang,
+// dan server yang tak tercatat itu belakangan dibunuh sebagai "yatim" padahal
+// bertuan. Menguncinya bisa, tapi kunci berkas di Windows membawa masalah baru
+// (kunci basi bila proses mati sambil memegangnya, lalu perlu mekanisme
+// merebut). Dengan satu berkas per pemilik, TAK ADA proses yang pernah menulis
+// berkas milik proses lain — balapannya hilang secara konstruksi, tanpa kunci.
+//
+// Yatim = berkas yang PEMILIKNYA sudah mati. Sebelum ini, berkasnya dipakai
+// bersama dan isinya cuma [pid, pid] tanpa jejak pemilik, sehingga tiap proses
+// baru membunuh server hidup milik tetangganya. Terukur pada 3 proses serentak:
+// satu proses menunggu 127 detik lalu jalan dengan 26 dari 50 tool — tanpa
+// error apa pun. Sesudah: ketiganya 22 detik, 50 tool.
+const PID_DIR = path.join(__dirname, "..", "config", ".mcp-pids");
+// Berkas format lama. Hanya dibaca sekali untuk dibersihkan saat upgrade.
+const LEGACY_PID_FILE = path.join(__dirname, "..", "config", ".mcp-pids.json");
 
 function _alive(pid) {
   try {
@@ -27,57 +36,81 @@ function _alive(pid) {
   }
 }
 
-function _savePids(entries) {
-  try {
-    const dir = path.dirname(PID_FILE);
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-    fs.writeFileSync(PID_FILE, JSON.stringify(entries), "utf8");
-  } catch (_) {}
+function _ownFile(owner = process.pid) {
+  return path.join(PID_DIR, owner + ".json");
 }
 
-function _loadPids() {
+function _readOwn(owner = process.pid) {
   try {
-    if (!fs.existsSync(PID_FILE)) return [];
-    const raw = JSON.parse(fs.readFileSync(PID_FILE, "utf8")) || [];
-    // Toleran terhadap format lama ([pid, pid]) supaya upgrade tak menabrak
-    // berkas yang sudah ada: tanpa owner, anggap pemiliknya sudah mati.
-    return raw
-      .map((e) => (typeof e === "number" ? { pid: e, owner: 0, at: 0 } : e))
-      .filter((e) => e && typeof e.pid === "number");
+    return JSON.parse(fs.readFileSync(_ownFile(owner), "utf8")) || [];
   } catch (_) {
     return [];
   }
 }
 
+// Hanya pemiliknya sendiri yang memanggil ini untuk berkasnya sendiri, jadi
+// baca-ubah-tulis di sini aman: tak ada penulis lain.
+function _recordPid(pid) {
+  try {
+    if (!fs.existsSync(PID_DIR)) fs.mkdirSync(PID_DIR, { recursive: true });
+    const mine = _readOwn();
+    if (mine.includes(pid)) return;
+    mine.push(pid);
+    fs.writeFileSync(_ownFile(), JSON.stringify(mine), "utf8");
+  } catch (_) {}
+}
+
+function _killPids(pids, asal) {
+  for (const pid of pids) {
+    try {
+      if (!_alive(pid)) continue;
+      process.kill(pid);
+      dlog("mcp", "info", `MCP orphan PID ${pid} dihentikan.`, { asal });
+    } catch (_) {}
+  }
+}
+
 function _killOrphans() {
-  const entries = _loadPids();
-  if (!entries.length) return;
-
-  const orphans = entries.filter((e) => !e.owner || !_alive(e.owner));
-  const kept = entries.filter((e) => e.owner && _alive(e.owner));
-
-  if (orphans.length) {
-    dlog("mcp", "info", `Membersihkan ${orphans.length} proses MCP yatim...`, {
-      pids: orphans.map((e) => e.pid),
-      dipertahankan: kept.length,
-    });
-    for (const e of orphans) {
-      try {
-        if (!_alive(e.pid)) continue;
-        process.kill(e.pid);
-        dlog("mcp", "info", `MCP orphan PID ${e.pid} dihentikan.`);
-      } catch (_) {}
+  // Migrasi berkas format lama: tanpa jejak pemilik, isinya tak bisa
+  // diklaim siapa pun, jadi diperlakukan sebagai yatim lalu berkasnya dibuang.
+  try {
+    if (fs.existsSync(LEGACY_PID_FILE)) {
+      const raw = JSON.parse(fs.readFileSync(LEGACY_PID_FILE, "utf8")) || [];
+      const pids = raw
+        .map((e) => (typeof e === "number" ? e : e && e.pid))
+        .filter((p) => typeof p === "number");
+      if (pids.length) _killPids(pids, "berkas-lama");
+      fs.unlinkSync(LEGACY_PID_FILE);
     }
+  } catch (_) {}
+
+  let files = [];
+  try {
+    files = fs.readdirSync(PID_DIR);
+  } catch (_) {
+    return; // direktori belum ada — tak ada apa pun untuk dibersihkan
   }
 
-  // Simpan kembali catatan milik proses yang MASIH HIDUP. Dulu berkasnya
-  // dihapus seluruhnya, sehingga server proses lain kehilangan jejaknya dan
-  // benar-benar menjadi yatim saat proses itu berakhir.
-  if (kept.length) _savePids(kept);
-  else {
+  let dibersihkan = 0;
+  let dipertahankan = 0;
+  for (const f of files) {
+    const owner = parseInt(path.basename(f, ".json"), 10);
+    if (!Number.isFinite(owner)) continue;
+    // Pemilik masih hidup (termasuk proses ini sendiri) -> JANGAN sentuh.
+    if (_alive(owner)) {
+      dipertahankan++;
+      continue;
+    }
+    _killPids(_readOwn(owner), "pemilik-" + owner);
+    dibersihkan++;
     try {
-      fs.unlinkSync(PID_FILE);
+      fs.unlinkSync(path.join(PID_DIR, f));
     } catch (_) {}
+  }
+  if (dibersihkan) {
+    dlog("mcp", "info", `Membersihkan ${dibersihkan} sesi MCP yatim.`, {
+      dipertahankan,
+    });
   }
 }
 
@@ -85,10 +118,17 @@ const CONFIG_PATH = path.join(__dirname, "..", "config", "mcp.json");
 
 // Panggilan tool nyata boleh lama (kueri Notion, dsb).
 const REQUEST_TIMEOUT_MS = 120000;
-// Handshake harus gagal cepat. Dengan 120 detik dan start BERURUTAN, dua server
+// Handshake gagal lebih cepat dari panggilan tool. Yang paling menentukan
+// sebenarnya start PARALEL di atas: dengan `await` berurutan, dua server
 // bermasalah membuat getTools() — yang memblokir langkah PERTAMA agent —
-// menggantung 4 menit sebelum agent sempat berbuat apa pun.
-const HANDSHAKE_TIMEOUT_MS = 25000;
+// menggantung 240 detik. Paralel membuat kasus terburuknya jadi timeout SATU
+// server, bukan jumlahnya.
+//
+// 60 detik, bukan lebih pendek. Percobaan dengan 25 detik REGRESI: pada 4 proses
+// dingin serentak, `npx` saling berebut cache npm dan handshake belum selesai
+// dalam 25 detik — hasilnya 24/0/24/24 tool dari 50. Satu proses sendirian butuh
+// 13 detik, jadi marginnya harus cukup lebar untuk kontensi cold start.
+const HANDSHAKE_TIMEOUT_MS = 60000;
 
 class MCPClient {
   constructor() {
@@ -182,12 +222,9 @@ class MCPClient {
 
       this.servers[name] = { proc, ready: false };
 
-      // Catat PID + PEMILIK agar proses lain tahu server ini masih bertuan.
-      const currentPids = _loadPids();
-      if (proc.pid && !currentPids.some((e) => e.pid === proc.pid)) {
-        currentPids.push({ pid: proc.pid, owner: process.pid, at: Date.now() });
-        _savePids(currentPids);
-      }
+      // Catat ke berkas MILIK PROSES INI. Pemiliknya tersirat dari nama berkas,
+      // jadi proses lain tahu server ini masih bertuan tanpa perlu koordinasi.
+      if (proc.pid) _recordPid(proc.pid);
 
       // Lakukan Initialize handshake
       this._request(
@@ -514,8 +551,10 @@ const mcpClient =
 // init(), yang men-spawn server MCP sungguhan lewat `npx` — lambat, butuh
 // jaringan, dan justru mengaburkan yang ingin diuji: keputusan bunuh/pertahankan.
 mcpClient._killOrphans = _killOrphans;
-mcpClient._loadPids = _loadPids;
-mcpClient._savePids = _savePids;
-mcpClient.PID_FILE = PID_FILE;
+mcpClient._recordPid = _recordPid;
+mcpClient._readOwn = _readOwn;
+mcpClient._ownFile = _ownFile;
+mcpClient.PID_DIR = PID_DIR;
+mcpClient.LEGACY_PID_FILE = LEGACY_PID_FILE;
 
 module.exports = mcpClient;
