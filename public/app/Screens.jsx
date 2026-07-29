@@ -1443,7 +1443,6 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
 function VSCodeTerminal({
   selectedProject,
   onClose,
-  agentOutput,
   terminalOutput,
   messages = [],
 }) {
@@ -1456,7 +1455,6 @@ function VSCodeTerminal({
 
   // Build a clean, formatted AI output log from the main UI messages + any agent/terminal output
   const mainUiAiLog = useMemo(() => {
-    if (agentOutput) return agentOutput;
     if (terminalOutput) return terminalOutput;
 
     // Filter for model / agent / assistant messages from main chat UI
@@ -1496,7 +1494,7 @@ function VSCodeTerminal({
       .join(
         "\n\n------------------------------------------------------------\n\n",
       );
-  }, [agentOutput, terminalOutput, messages]);
+  }, [terminalOutput, messages]);
 
   const restartSession = async () => {
     if (sessionIdRef.current) {

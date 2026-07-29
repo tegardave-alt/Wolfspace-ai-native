@@ -1315,93 +1315,6 @@ function App() {
       setSavedChats(saved);
     } catch (e) {}
   }, [messages, history, selectedProject, currentChatId]);
-  // Agent Runner state
-  const [activeAgent, setActiveAgent] = useState("");
-  const [agentOutput, setAgentOutput] = useState("");
-  const [agentRunning, setAgentRunning] = useState(false);
-  const agentEsRef = useRef(null);
-  const startAgent = async (id, model, cwd) => {
-    if (!id) return;
-    try {
-      setAgentOutput("");
-      setActiveAgent(id);
-      const res = await fetch("/api/agents/start", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id, model, cwd }),
-      });
-      if (res.ok) {
-        setAgentRunning(true);
-        subscribeAgentStream();
-      } else {
-        const data = await res.json().catch(() => ({}));
-        setAgentOutput(data.error || "Failed to start the agent");
-        setActiveAgent("");
-      }
-    } catch (e) {
-      console.error("startAgent error:", e);
-    }
-  };
-  const sendToAgent = async (text) => {
-    if (!text.trim() || !activeAgent) return;
-    try {
-      await fetch("/api/agents/send", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: activeAgent, text: text + "\n" }),
-      });
-    } catch (e) {
-      console.error("sendToAgent error:", e);
-    }
-  };
-  const stopAgent = async () => {
-    try {
-      await fetch("/api/agents/stop", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: activeAgent }),
-      });
-      setAgentRunning(false);
-      if (agentEsRef.current) {
-        agentEsRef.current.close();
-        agentEsRef.current = null;
-      }
-    } catch (e) {
-      console.error("stopAgent error:", e);
-    }
-  };
-  const subscribeAgentStream = () => {
-    if (agentEsRef.current) {
-      agentEsRef.current.close();
-    }
-    const es = new EventSource("/api/agents/stream");
-    agentEsRef.current = es;
-    es.onmessage = (ev) => {
-      try {
-        const d = JSON.parse(ev.data);
-        if (d.type === "output" || d.type === "text") {
-          setAgentOutput((prev) => prev + (d.text || d.content || "") + "\n");
-        } else if (d.type === "done" || d.type === "end") {
-          setAgentRunning(false);
-          es.close();
-          agentEsRef.current = null;
-        } else if (d.type === "error") {
-          setAgentOutput(
-            (prev) => prev + "[error] " + (d.message || "") + "\n",
-          );
-          setAgentRunning(false);
-          es.close();
-          agentEsRef.current = null;
-        }
-      } catch (_) {
-        setAgentOutput((prev) => prev + ev.data + "\n");
-      }
-    };
-    es.onerror = () => {
-      es.close();
-      agentEsRef.current = null;
-    };
-  };
   const loadSavedChats = () => {
     try {
       setSavedChats(
@@ -2425,7 +2338,7 @@ function App() {
                   setModelVal={setModelVal}
                   onSend={(t) => doSend(t)}
                   onCancel={cancel}
-                  busy={busy || agentRunning}
+                  busy={busy}
                 />
               </div>
               {terminalOpen && (
@@ -2448,7 +2361,6 @@ function App() {
                     <VSCodeTerminal
                       selectedProject={selectedProject}
                       onClose={() => setTerminalOpen(false)}
-                      agentOutput={agentOutput}
                       terminalOutput={terminalOutput}
                       messages={messages}
                     />
