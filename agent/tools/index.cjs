@@ -18,6 +18,11 @@ function atomicWrite(dest, content) {
 }
 const { spawn } = require("child_process");
 const { dlog } = require("../debug.cjs");
+// Gerbang kualitas struktural. WAJIB di modul INI, bukan cuma di safe-edit.cjs:
+// self_agent.cjs memakai ./tools.cjs -> tools/index.cjs, sedangkan safeWriteFile
+// hanya dipanggil server.cjs yang jalur agent-nya sudah tak terpakai. Gerbang di
+// sana tak pernah menyentuh agent sama sekali.
+const codeQuality = require("../code-quality.cjs");
 const { createSnapshot } = require("../snapshot.cjs");
 
 // ── Hybrid module loading (eager core + lazy peripheral) ──
@@ -418,6 +423,25 @@ const _HOST_PATH_RE = [
   /(^|\s|['"=(])\/[a-z]\/(Users|Program|Windows)/i, // /c/Users/... (gaya MSYS)
   /(^|\s|['"=(])\/mnt\/[a-z]\//i, //  /mnt/c/... (gaya WSL)
 ];
+
+// Menulis berkas KODE lewat shell melewati gerbang kualitas DAN syntax check.
+// Penjaga nama-perintah (sed/Set-Content/node -e) tak menangkap ini; diuji
+// empiris, `echo ... > x.jsx`, `printf ... > x.jsx`, dan `tee x.jsx` semuanya
+// lolos dan berkasnya mendarat di disk.
+//
+// Sengaja SEMPIT: yang dilarang hanya yang menargetkan ekstensi kode. Redirect
+// ke log/teks (`> build.log`, `> out.txt`) tetap sah — memblokir semua redirect
+// akan melumpuhkan pemakaian bash yang wajar.
+const _CODE_EXT = String.raw`(?:js|jsx|cjs|mjs|ts|tsx|py|json|css|html)`;
+const _BASH_CODE_WRITE_RE = new RegExp(
+  [
+    String.raw`>>?\s*['"]?[^\s'"|;&]+\.${_CODE_EXT}\b`, // > x.jsx / >> x.jsx
+    String.raw`\btee\s+(?:-a\s+)?['"]?[^\s'"|;&]+\.${_CODE_EXT}\b`, // tee x.jsx
+    String.raw`\b(?:cp|mv|copy|move)\b[^|;&]*\.${_CODE_EXT}\b`, // cp/mv ke .jsx
+    String.raw`\bopen\s*\(\s*['"][^'"]+\.${_CODE_EXT}['"]\s*,\s*['"][wa]`, // python open(...,'w')
+  ].join("|"),
+  "i",
+);
 function _hostPathEscape(cmd) {
   const s = String(cmd || "");
   for (const re of _HOST_PATH_RE) {
@@ -909,6 +933,14 @@ async function runSelfTool(name, args, emit, context = {}) {
             chk.error,
         };
       }
+      // Gerbang kualitas struktural (agent/code-quality.cjs) — ratchet: berkas
+      // kotor boleh disunting, tapi tak boleh bertambah dalam.
+      const _qEdit = codeQuality.check(dest, patched, old);
+      if (!_qEdit.ok) {
+        sbx.destroy();
+        return { ok: false, output: _qEdit.error };
+      }
+
       // Commit
       createSnapshot([dest], "agent-edit: " + path.basename(dest));
       sbx.mirrorOut(path.basename(dest), dest);
@@ -1062,6 +1094,20 @@ async function runSelfTool(name, args, emit, context = {}) {
           output: "REJECTED BY SANDBOX (broken syntax):\n" + chk.error,
         };
       }
+      // Gerbang kualitas struktural. Berkas BARU (existed=false) kena batas keras;
+      // yang sudah ada kena ratchet terhadap isi lamanya.
+      let _oldForGate = null;
+      if (existed) {
+        try {
+          _oldForGate = fs.readFileSync(dest, "utf8");
+        } catch (_) {}
+      }
+      const _qWrite = codeQuality.check(dest, args.content || "", _oldForGate);
+      if (!_qWrite.ok) {
+        sbx.destroy();
+        return { ok: false, output: _qWrite.error };
+      }
+
       // Commit
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       createSnapshot([dest], "agent-write: " + path.basename(dest));
@@ -1105,6 +1151,22 @@ async function runSelfTool(name, args, emit, context = {}) {
           ok: true,
           output:
             'DILARANG edit file via bash. Gunakan tool "edit" now with parameters: path=file, old_string=the removed code, new_string="" (kosong untuk hapus). JANGAN coba bash lagi.',
+        };
+
+      // ── Tutup bypass gerbang kualitas lewat shell ──
+      // Penjaga di atas hanya menangkap NAMA PERINTAH (sed/Set-Content/node -e).
+      // Diuji empiris: `echo ... > x.jsx`, `printf ... > x.jsx`, dan `tee x.jsx`
+      // semuanya LOLOS dan berkasnya mendarat di disk — artinya seluruh gerbang
+      // kualitas (dan syntax check) bisa dilewati hanya dengan redirect shell.
+      // Yang dijaga di sini BUKAN redirect apa pun (`> build.log` tetap sah),
+      // melainkan redirect/salin yang MENARGETKAN berkas kode.
+      if (_BASH_CODE_WRITE_RE.test(cmd))
+        return {
+          ok: false,
+          output:
+            "DITOLAK: menulis berkas kode lewat bash melewati gerbang kualitas & syntax check. " +
+            'Gunakan tool "write" (berkas baru) atau "edit" (ubah yang ada) — keduanya memverifikasi ' +
+            "sintaks dan struktur sebelum menyentuh disk.",
         };
       let cwd = QROOT;
       if (args.cwd) {
