@@ -1,8 +1,0 @@
-{
-  "$schema": "https://openapi.vercel.sh/vercel.json",
-
-  "installCommand": "echo 'landing page has no dependencies - skipping install'",
-  "buildCommand": "echo 'no build step'",
-
-  "rewrites": [{ "source": "/(.*)", "destination": "/api/index" }]
-}

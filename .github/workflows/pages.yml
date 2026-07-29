@@ -1,0 +1,57 @@
+# Terbitkan landing page statis (site/) ke GitHub Pages.
+#
+# KENAPA PAGES, BUKAN VERCEL.
+# Deployment Vercel sebelumnya membalas 500 selama tiga commit berturut-turut,
+# dan sebabnya bukan kode: proyeknya berada di tim Vercel "wolfspace" sementara
+# repo ini milik akun lain, jadi dorongan ke sini tak pernah memicu build di
+# sana. Preview-nya pun 302 ke SSO. Untuk satu halaman HTML statis, seluruh
+# lapisan itu -- akun terpisah, proteksi SSO, serverless function, pipeline
+# build -- hanya menambah cara untuk gagal.
+#
+# Pages menerbitkan dari repo yang sama dengan akun yang sama: tak ada fungsi
+# yang bisa crash, tak ada install yang bisa gagal, tak ada akun yang bisa
+# tak cocok.
+#
+# SEKALI SETEL: Settings -> Pages -> Source = "GitHub Actions".
+
+name: Pages
+
+on:
+  push:
+    branches: [main]
+    # Hanya jalan saat halamannya sendiri berubah -- push kode biasa tak perlu
+    # memicu deployment.
+    paths:
+      - "site/**"
+      - ".github/workflows/pages.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+# Biarkan deployment yang sedang jalan selesai; antrean berikutnya cukup satu.
+concurrency:
+  group: pages
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - uses: actions/checkout@v5
+
+      # Halamannya HTML statis murni -- tak ada npm install, tak ada build step.
+      # Itu memang inti pemilihan Pages di sini.
+      - uses: actions/configure-pages@v5
+
+      - uses: actions/upload-pages-artifact@v4
+        with:
+          path: site
+
+      - id: deployment
+        uses: actions/deploy-pages@v4
