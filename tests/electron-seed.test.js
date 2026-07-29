@@ -128,7 +128,16 @@ test("async seeding keeps the event loop responsive; sync seeding freezes it", a
   // Loose sanity ceiling: catches a genuine regression (async blocking for a
   // meaningful stretch) without re-introducing load sensitivity.
   expect(asyncLateness).toBeLessThan(500);
-});
+
+  // Explicit timeout, and it is not a workaround: this test walks and MD5-hashes
+  // the entire ~29MB public/ tree SEVEN times (one warm-up + three runs each of
+  // sync and async). Jest's 5s default was never a sane budget for that. The
+  // reason it went unnoticed is a jest asymmetry — the first test in this file is
+  // synchronous, so jest cannot interrupt it and it passes even at 34s, while
+  // these two are async and do get cut off. Under machine load they landed just
+  // over 5s and failed the pre-commit hook repeatedly, with nothing actually
+  // regressed. The assertions above are what guard the fix; the clock is not.
+}, 120000);
 
 test("both strategies compute identical baseline hashes (fix changes timing, not results)", async () => {
   const a = new Map();
@@ -137,4 +146,4 @@ test("both strategies compute identical baseline hashes (fix changes timing, not
   await seedAsync(PUB, 0, 20, b);
   expect(b.size).toBe(a.size);
   for (const [k, v] of a) expect(b.get(k)).toBe(v);
-});
+}, 120000);
