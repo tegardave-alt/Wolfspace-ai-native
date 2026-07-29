@@ -71,12 +71,6 @@ function isGuarded(filePath) {
  * @returns {{ok: boolean, error?: string, metrics?: object}}
  */
 function check(filePath, newContent, oldContent) {
-  // Saklar untuk PENGUJIAN PERBANDINGAN saja: mematikan penegakan sehingga yang
-  // tersisa hanya instruksi di config/prompts.json. Dipakai untuk mengukur
-  // seberapa jauh prompt sendirian bisa menahan agent. JANGAN disetel di
-  // pemakaian normal — tanpa gerbang, aturan strukturnya kembali jadi imbauan.
-  if (process.env.WOLFSPACE_QUALITY_GATE === "off") return { ok: true };
-
   if (!isGuarded(filePath)) return { ok: true };
 
   const after = measure(newContent);

@@ -1484,6 +1484,20 @@ async function runSelfTool(name, args, emit, context = {}) {
     if (name === "terminal_write") {
       if (!term) return { ok: false, output: "terminal unavailable" };
       if (!args.id) return { ok: false, output: "parameter id wajib" };
+
+      // PTY adalah shell PENUH — apa pun yang diketik ke sini dieksekusi tanpa
+      // melewati penjaga bash maupun gerbang kualitas. Selama tool ini rusak
+      // (term=null) celah itu tak terlihat; begitu diperbaiki, ia langsung
+      // terbukti: `echo "<40 spasi>" > x.jsx` lewat terminal_write mendarat utuh
+      // di disk. Penjaga yang sama dengan bash/sandbox_run dipakai di sini.
+      if (_BASH_CODE_WRITE_RE.test(String(args.data || "")))
+        return {
+          ok: false,
+          output:
+            "DITOLAK: menulis berkas kode lewat terminal melewati gerbang kualitas & " +
+            'syntax check. Gunakan tool "write" (berkas baru) atau "edit" (ubah yang ada).',
+        };
+
       const ok = term.write(args.id, args.data);
       return { ok, output: ok ? "written" : "session not found: " + args.id };
     }

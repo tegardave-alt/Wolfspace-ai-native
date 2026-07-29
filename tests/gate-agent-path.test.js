@@ -164,6 +164,38 @@ describe("jalur tulis lain (terlewat di audit pertama)", () => {
     expect(fs.existsSync(BYPASS_ABS)).toBe(false);
   });
 
+  // terminal_* dulu SELALU gagal karena exec-tools me-require server.cjs (yang
+  // menyalakan HTTP server sebagai efek samping, jadi tak pernah kembali) —
+  // term=null permanen. Jalur ini tampak "aman" hanya karena rusak. Begitu
+  // diperbaiki, ia langsung terbukti sebagai bypass penuh: PTY adalah shell
+  // utuh, dan apa pun yang diketik ke sana lolos dari semua penjaga.
+  test("terminal_write tak bisa mengetik perintah tulis berkas kode", async () => {
+    const open = await runSelfTool("terminal_open", { cwd: ROOT }, noop);
+    expect(open.ok).toBe(true); // regresi bug term=null
+
+    const id = String(open.output).match(/terminal opened:\s*(\S+)/)[1];
+    const w = await runSelfTool(
+      "terminal_write",
+      { id, data: `echo "x" > ${BYPASS_REL}\r` },
+      noop,
+    );
+    expect(w.ok).toBe(false);
+
+    await new Promise((r) => setTimeout(r, 1200));
+    expect(fs.existsSync(BYPASS_ABS)).toBe(false);
+
+    // Perintah wajar HARUS tetap bisa diketik — penjaga ini tak boleh
+    // melumpuhkan terminal, hanya melarang tulis berkas kode.
+    const ok = await runSelfTool(
+      "terminal_write",
+      { id, data: "echo halo\r" },
+      noop,
+    );
+    expect(ok.ok).toBe(true);
+
+    await runSelfTool("terminal_close", { id }, noop);
+  });
+
   test("capability_exec ditolak broker untuk tulis di luar cakupan", async () => {
     // Ini BUKAN gerbang kualitas yang bekerja, melainkan kebijakan deny-by-default
     // broker. Diuji agar kalau kebijakan itu dilonggarkan suatu hari, celahnya
