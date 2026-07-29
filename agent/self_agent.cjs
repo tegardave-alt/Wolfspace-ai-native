@@ -432,6 +432,56 @@ function makePhaseEmitter(rawEmit) {
 // chat.cjs so the plain-chat path gets the same protection).
 
 // --- LANGGRAPH STATE DEFINITION ---
+// Ringkasan aktivitas untuk pesan JEDA (plafon langkah tercapai).
+//
+// MASALAH YANG DIPERBAIKI: pesan jedanya dulu hanya menyebut nomor langkah, dan
+// catatan file hanya muncul bila edits > 0. Akibatnya dua situasi yang sangat
+// berbeda menghasilkan kalimat yang IDENTIK:
+//   - 14 langkah investigasi produktif, siap disimpulkan
+//   - 14 langkah membaca berkas yang sama dengan cara berbeda
+// User membayar keduanya, tak bisa membedakannya, lalu menekan "Lanjutkan"
+// yang menambah 14 langkah lagi secara buta.
+//
+// Ini SENGAJA tidak menghentikan apa pun. Menghentikan lebih awal butuh menebak
+// "kemajuan", dan itu semantik — versi lama pernah mencobanya dengan menghukum
+// VOLUME lalu dicabut karena membunuh tugas sah (lihat catatan di guard). Yang
+// ditambahkan di sini hanya PELAPORAN jujur: nol risiko false-positive, sebab
+// tak ada keputusan yang bergantung padanya.
+//
+// Ketelitian label penting di sini:
+//   callCountsByName  -> total panggilan per tool (akurat)
+//   noProgressBySig   -> berapa kali panggilan identik mengembalikan hasil sama
+//   failedTools       -> NAMA tool yang pernah gagal, BUKAN hitungan
+//   failsByName       -> kegagalan BERUNTUN saat ini (reset saat sukses),
+//                        jadi TIDAK dilaporkan sebagai total
+function describePauseActivity(finalState, sess) {
+  const parts = [];
+
+  const byName = (sess && sess.callCountsByName) || {};
+  const names = Object.keys(byName);
+  const totalCalls = names.reduce((s, k) => s + (byName[k] || 0), 0);
+  if (totalCalls) {
+    const top = names
+      .sort((a, b) => byName[b] - byName[a])
+      .slice(0, 3)
+      .map((k) => `${k}×${byName[k]}`)
+      .join(", ");
+    parts.push(`${totalCalls} panggilan tool (${top})`);
+  }
+
+  parts.push(`${finalState.edits || 0} file diedit`);
+
+  const noProg = (sess && sess.noProgressBySig) || {};
+  const repeats = Object.values(noProg).reduce((s, n) => s + (n || 0), 0);
+  if (repeats) parts.push(`${repeats} pengulangan berhasil-sama`);
+
+  const failed = finalState.failedTools;
+  const failedNames = failed ? Array.from(failed).slice(0, 3).join(", ") : "";
+  if (failedNames) parts.push(`tool bermasalah: ${failedNames}`);
+
+  return parts.join(", ");
+}
+
 const AgentState = Annotation.Root({
   messages: Annotation({
     reducer: (x, y) => x.concat(y),
@@ -2274,11 +2324,14 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         reason: "paused_budget",
         step: finalState.step,
       });
-      const editedNote =
-        (finalState.edits || 0) > 0
-          ? ` (${finalState.edits} file diedit sejauh ini)`
-          : "";
-      finalSummary = `Dijeda di langkah ${finalState.step}${editedNote} — belum selesai. Pilih "Lanjutkan" untuk meneruskan.`;
+      // Laporkan APA yang terjadi selama langkah-langkah itu, bukan cuma
+      // nomornya — tanpa ini, 14 langkah produktif dan 14 langkah berputar
+      // menghasilkan kalimat yang sama persis.
+      const activity = describePauseActivity(finalState, sess);
+      const nextBudget = (finalState.stepCeiling || MAX_STEPS) + MAX_STEPS;
+      finalSummary =
+        `Dijeda di langkah ${finalState.step} — ${activity}. ` +
+        `Belum selesai; "Lanjutkan" menambah plafon ke ${nextBudget} langkah.`;
       emit({
         t: "adone",
         steps: finalState.step,
@@ -2382,4 +2435,8 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   return finalSummary;
 }
 
-module.exports = { selfAgentStream };
+// describePauseActivity diekspor UNTUK DIUJI. Ia murni (state masuk, string
+// keluar) sehingga bisa diverifikasi tanpa menjalankan graph atau memanggil
+// model — kalau tidak, satu-satunya cara mengujinya adalah menunggu agent
+// benar-benar menyentuh plafon langkah.
+module.exports = { selfAgentStream, describePauseActivity };
