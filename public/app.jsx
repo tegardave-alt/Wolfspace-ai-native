@@ -3184,19 +3184,6 @@ function App() {
             </div>
           </div>
           <div
-            className={"page hub-page " + (view === "dev" ? "active" : "enter")}
-          >
-            {view === "dev" && (
-              <DevView
-                onBack={() => setView("chat")}
-                models={models}
-                modelVal={modelVal}
-                setModelVal={setModelVal}
-              />
-            )}
-          </div>
-
-          <div
             className={
               "page hub-page " + (view === "settings" ? "active" : "enter")
             }

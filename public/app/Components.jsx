@@ -2,58 +2,6 @@
 // Dimuat via APP_MODULES di index.html: di-CONCAT SEBELUM app.jsx (prepend) lalu
 // Babel sekali -> satu scope global. Body fungsi (hooks/React/SB) jalan saat render.
 
-/* ----------------------------- Model Interface (collapsible dropdown) ----------------------------- */
-function ModelInterface({ models, modelVal, setModelVal }) {
-  const [open, setOpen] = React.useState(false);
-  const ref = React.useRef(null);
-  React.useEffect(() => {
-    const handle = (e) => {
-      if (ref.current && !ref.current.contains(e.target)) setOpen(false);
-    };
-    document.addEventListener("mousedown", handle);
-    return () => document.removeEventListener("mousedown", handle);
-  }, []);
-  const current = models.find((m) => m.value === modelVal);
-  const label = current ? current.label : modelVal;
-  return (
-    <div className="model-interface" ref={ref}>
-      <button
-        className="mi-trigger"
-        onClick={() => setOpen(!open)}
-        title={label}
-      >
-        <span className="mi-label">{label}</span>
-        <Icon.chev
-          className={"mi-chev" + (open ? " open" : "")}
-          style={{ width: 14, height: 14 }}
-        />
-      </button>
-      {open && (
-        <div className="mi-panel">
-          {models.map((m) => (
-            <div
-              key={m.value}
-              className={
-                "mi-opt" +
-                (m.value === modelVal ? " active" : "") +
-                (m.disabled ? " disabled" : "")
-              }
-              onClick={() => {
-                if (!m.disabled) {
-                  setModelVal(m.value);
-                  setOpen(false);
-                }
-              }}
-            >
-              {m.label}
-            </div>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
-
 /* ----------------------------- Top bar ----------------------------- */
 function TopBar({
   models,
@@ -1869,5 +1817,3 @@ function Composer({
 }
 
 /* Visual Picker & Visual Draw dipindah ke public/app/VisualTools.jsx (APP_MODULES). */
-
-/* Model Hub view dipindah ke public/app/ModelHub.jsx (APP_MODULES). */

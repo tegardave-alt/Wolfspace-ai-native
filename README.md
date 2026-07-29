@@ -21,9 +21,8 @@ execution, not by appearance.
   without a successful execution to point at.
 - 🔌 **Any model.** Bring your own API key — the provider is auto-detected from the key
   (OpenAI, Claude, Gemini, Groq, OpenRouter, GitHub Models, NVIDIA, DeepSeek, Qwen,
-  OpenCode, or any OpenAI-compatible endpoint). Or run **local GGUF models** via llama.cpp.
-- 🤗 **Model Hub.** Search Hugging Face, see real logos + download size, download a GGUF,
-  and run it — all from the app.
+  OpenCode, or any OpenAI-compatible endpoint). Or run **local GGUF models** via llama.cpp —
+  a running local model is auto-detected and used on startup.
 - ✏️ **Real editor.** Monaco (VS Code's editor) for every code block — edit in place, re-run,
   or ask the AI to revise.
 - 🔗 **MCP tools.** Connect Model Context Protocol servers (Notion, GitHub, filesystem, …);
@@ -94,8 +93,9 @@ bash scripts/start-models.sh
 npm start
 ```
 
-Then pick a local model from the dropdown, or open the **Model Hub** to download more from
-Hugging Face.
+The running local model is picked up automatically on startup — there is currently no
+in-app switcher to change between multiple local or cloud models; it's whichever one
+`/models` reports first, or your configured cloud key if you have one set.
 
 ---
 
