@@ -4,11 +4,11 @@
 // a request here, the Broker checks it against Policy, executes it itself if
 // allowed, and returns just the result. The zone never sees credentials, real
 // paths outside its grant, or raw sockets.
-'use strict';
+"use strict";
 
-const fs = require('fs');
-const https = require('https');
-const http = require('http');
+const fs = require("fs");
+const https = require("https");
+const http = require("http");
 
 class Broker {
   constructor(policy) {
@@ -17,7 +17,14 @@ class Broker {
   }
 
   _log(capability, params, decision, reason, extra) {
-    const entry = { ts: Date.now(), capability, params, decision, reason, ...extra };
+    const entry = {
+      ts: Date.now(),
+      capability,
+      params,
+      decision,
+      reason,
+      ...extra,
+    };
     this.audit.push(entry);
     return entry;
   }
@@ -27,30 +34,32 @@ class Broker {
   async request(capability, params) {
     const { allowed, reason } = this.policy.evaluate(capability, params);
     if (!allowed) {
-      this._log(capability, params, 'DENY', reason);
+      this._log(capability, params, "DENY", reason);
       const err = new Error(`Broker denied ${capability}: ${reason}`);
-      err.code = 'BROKER_DENIED';
+      err.code = "BROKER_DENIED";
       throw err;
     }
     try {
       const result = await this._execute(capability, params);
-      this._log(capability, params, 'ALLOW', null, { resultBytes: typeof result === 'string' ? result.length : undefined });
+      this._log(capability, params, "ALLOW", null, {
+        resultBytes: typeof result === "string" ? result.length : undefined,
+      });
       return result;
     } catch (e) {
-      this._log(capability, params, 'ALLOW_BUT_FAILED', e.message);
+      this._log(capability, params, "ALLOW_BUT_FAILED", e.message);
       throw e;
     }
   }
 
   async _execute(capability, params) {
     switch (capability) {
-      case 'readFile':
-        return fs.readFileSync(params.path, 'utf8');
-      case 'writeFile':
-        fs.mkdirSync(require('path').dirname(params.path), { recursive: true });
-        fs.writeFileSync(params.path, params.content, 'utf8');
+      case "readFile":
+        return fs.readFileSync(params.path, "utf8");
+      case "writeFile":
+        fs.mkdirSync(require("path").dirname(params.path), { recursive: true });
+        fs.writeFileSync(params.path, params.content, "utf8");
         return { ok: true };
-      case 'fetch':
+      case "fetch":
         return this._fetch(params.url, { timeout: params.timeout || 8000 });
       default:
         throw new Error(`no executor for capability "${capability}"`);
@@ -58,19 +67,47 @@ class Broker {
   }
 
   _fetch(url, opts) {
-    const lib = url.startsWith('https:') ? https : http;
+    const lib = url.startsWith("https:") ? https : http;
     return new Promise((resolve, reject) => {
       const req = lib.get(url, { timeout: opts.timeout }, (res) => {
-        let body = '';
-        res.on('data', c => body += c);
-        res.on('end', () => resolve({ status: res.statusCode, body: body.slice(0, 5000) }));
+        let body = "";
+        res.on("data", (c) => (body += c));
+        res.on("end", () =>
+          resolve({ status: res.statusCode, body: body.slice(0, 5000) }),
+        );
       });
-      req.on('timeout', () => { req.destroy(); reject(new Error('fetch timeout')); });
-      req.on('error', reject);
+      req.on("timeout", () => {
+        req.destroy();
+        reject(new Error("fetch timeout"));
+      });
+      req.on("error", reject);
     });
   }
 
-  auditTrail() { return this.audit.slice(); }
+  // Catat percobaan yang TIDAK pernah melewati request().
+  //
+  // Kenapa perlu jalan terpisah: broker hanya melihat apa yang diminta padanya.
+  // Kode zona yang langsung memanggil soket tak pernah meminta apa pun — ia
+  // gagal sendiri di network namespace kosong. Terukur: percobaan semacam itu
+  // menghasilkan `EAI_AGAIN` di zona dan **0 entri audit**. Jadi ia dihentikan,
+  // tapi tak ada satu pun sinyal bahwa ia pernah dicoba.
+  //
+  // Ini yang menutup celah itu. Perhatikan: pelapornya ada DI DALAM zona dan
+  // BUKAN penjaga — sudah dibuktikan bisa ditembus `require('node:https')` dan
+  // `process.binding('tcp_wrap')`. Yang menahan tetap kernel. Yang ini hanya
+  // membuat percobaannya terlihat.
+  catatPercobaanLangsung(modul, detail) {
+    return this._log(
+      "network:" + modul,
+      detail || {},
+      "BLOCKED",
+      "jalur langsung, tidak lewat request() — ditahan network namespace",
+    );
+  }
+
+  auditTrail() {
+    return this.audit.slice();
+  }
 }
 
 module.exports = { Broker };

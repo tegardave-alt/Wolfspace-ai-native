@@ -81,8 +81,17 @@ const kalauLinux = punyaNetns ? describe : describe.skip;
 
 kalauLinux("perilaku pengurungan jaringan (butuh Linux + unshare)", () => {
   const policy = new Policy({ fetch: { hosts: ["api.github.com"] } });
+  // pelapor: false WAJIB di berkas ini. Stub pelapor jaringan (lihat
+  // tests/broker-net-report.test.js) melempar SEBELUM soket dibuat, jadi dengan
+  // pelapor aktif uji di bawah akan lulus meski network namespace-nya mati —
+  // buktinya jadi palsu. Dimatikan, percobaannya benar-benar sampai ke kernel,
+  // dan itulah yang berkas ini uji.
   const zona = (code, opts) =>
-    runInCapabilityZone(code, new Broker(policy), { timeout: 15000, ...opts });
+    runInCapabilityZone(code, new Broker(policy), {
+      timeout: 15000,
+      pelapor: false,
+      ...opts,
+    });
 
   test("https.get() LANGSUNG dari zona diblokir", async () => {
     const z = await zona(

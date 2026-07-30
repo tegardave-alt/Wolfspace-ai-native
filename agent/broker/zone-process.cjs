@@ -197,6 +197,18 @@ function runInCapabilityZone(code, broker, opts = {}) {
     }, timeoutMs);
 
     child.on("message", async (msg) => {
+      // Laporan percobaan jaringan langsung dari zona. Bukan permintaan — tak
+      // ada yang perlu dijawab, cukup dicatat supaya percobaannya terlihat di
+      // jejak audit alih-alih gagal dalam diam.
+      if (msg.type === "net-attempt") {
+        try {
+          broker.catatPercobaanLangsung(msg.modul, {
+            metode: msg.metode,
+            tujuan: msg.tujuan,
+          });
+        } catch (_) {}
+        return;
+      }
       if (msg.type === "capability-request") {
         try {
           const result = await broker.request(msg.capability, msg.params);
@@ -231,7 +243,11 @@ function runInCapabilityZone(code, broker, opts = {}) {
         );
     });
 
-    child.send({ type: "run", code });
+    // opts.pelapor === false mematikan stub pelapor jaringan di dalam zona.
+    // Dipakai uji netns: dengan pelapor aktif, stub melempar sebelum soket
+    // dibuat, jadi ujinya akan lulus meski namespace-nya mati. Mematikannya
+    // membuat percobaan benar-benar diuji terhadap kernel.
+    child.send({ type: "run", code, pelapor: opts.pelapor !== false });
   });
 }
 
