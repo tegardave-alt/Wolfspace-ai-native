@@ -4,11 +4,23 @@
 const { contextBridge, ipcRenderer } = require("electron");
 const path = require("path");
 
+// Backend EKSTERNAL (mis. server WOLFSPACE yang berjalan di dalam WSL).
+// Saat WOLFSPACE_BACKEND diisi URL, IPC SENGAJA tidak diumumkan: app.jsx sudah
+// punya jalur HTTP sebagai fallback (streamSelfAgent -> fetch("/self-agent")),
+// jadi mematikan bendera ini saja sudah cukup membuat seluruh frontend bicara ke
+// origin yang sedang dimuat — tanpa mengubah kode frontend sama sekali.
+//
+// Kenapa perlu: dengan `ipc: true`, frontend selalu memakai core in-process di
+// Windows, sehingga UI tak akan pernah menyentuh backend WSL walau jendelanya
+// dimuat dari sana. Pengurungan jaringan zona (unshare -n) hanya hidup di Linux,
+// jadi tanpa saklar ini ia tetap tak terpakai.
+const EXTERNAL_BACKEND = !!process.env.WOLFSPACE_BACKEND;
+
 let seq = 0;
 contextBridge.exposeInMainWorld("WOLFSPACE", {
   // True only when running inside Electron with this preload (lets app.jsx fall
   // back to HTTP fetch in a plain browser / during migration).
-  ipc: true,
+  ipc: !EXTERNAL_BACKEND,
 
   // Root folder proyek — DINAMIS dari __dirname (preload ada di <root>/electron/).
   // Frontend memakainya sebagai workspace default & pembanding, jadi kode tak lagi

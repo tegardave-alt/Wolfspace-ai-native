@@ -337,7 +337,20 @@ function createWindow() {
     },
   });
   win.webContents.setBackgroundThrottling(false); // lapis kedua, beberapa versi Electron butuh ini juga
-  win.loadURL("app://WOLFSPACE/index.html"); // served from disk via the app:// protocol
+  // WOLFSPACE_BACKEND mengarahkan jendela ke backend yang berjalan di tempat lain
+  // — dipakai untuk menjalankan backend di dalam WSL, satu-satunya tempat
+  // pengurungan jaringan zona (unshare -n) benar-benar berlaku. Kosong = perilaku
+  // lama: UI dilayani dari disk lewat protocol app://.
+  //
+  // Preload ikut membaca env yang sama dan mematikan bendera `ipc`, supaya
+  // frontend memakai jalur HTTP ke origin ini alih-alih core in-process.
+  const BACKEND = process.env.WOLFSPACE_BACKEND;
+  if (BACKEND) {
+    console.log("[WOLFSPACE] backend eksternal: " + BACKEND);
+    win.loadURL(BACKEND);
+  } else {
+    win.loadURL("app://WOLFSPACE/index.html"); // served from disk via the app:// protocol
+  }
   // open real external links in the system browser, not inside the app
   win.webContents.setWindowOpenHandler(({ url }) => {
     shell.openExternal(url);
