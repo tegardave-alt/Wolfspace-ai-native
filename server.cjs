@@ -5287,36 +5287,86 @@ const server = http.createServer(async (req, res) => {
 // Start the HTTP server ONLY when run directly (Electron spawns this as the entry).
 // When required as a module (by core.js / the IPC layer), expose the logic instead
 // of opening a port.
+// PID yang MENDENGARKAN di sebuah port — atau null bila tak bisa dipastikan.
+//
+// Mengembalikan null itu jawaban yang sah dan disengaja: pemanggil lebih baik
+// berhenti dengan pesan jelas daripada menebak lalu membunuh proses yang salah.
+// Tiga penjaga yang tak boleh dilepas:
+//   - hasilnya WAJIB bilangan bulat positif
+//   - TIDAK boleh process.pid sendiri (server ini belum listen, jadi tak mungkin
+//     memegang port itu — kalau muncul, berarti parsingnya keliru)
+//   - TIDAK boleh PID 1 (init/pengelola distro; membunuhnya menjatuhkan semuanya)
+function _pidPemegangPort(port) {
+  const { execSync } = require("child_process");
+  const jalankan = (cmd) => {
+    try {
+      return execSync(cmd, { encoding: "utf8", timeout: 5000 });
+    } catch (_) {
+      return "";
+    }
+  };
+  let kandidat = null;
+  if (process.platform === "win32") {
+    const out = jalankan(
+      `netstat -ano | findstr "LISTENING" | findstr ":${port}"`,
+    );
+    const m = out.match(/(\d+)\s*$/m);
+    if (m) kandidat = Number(m[1]);
+  } else {
+    // netstat -tlnp memberi "PID/nama" pada baris LISTEN — jauh lebih tepat
+    // daripada lsof, yang di BusyBox tak mengenal -t/-i sama sekali.
+    const out = jalankan(`netstat -tlnp 2>/dev/null | grep ':${port} '`);
+    const m = out.match(/\s(\d+)\/\S+/);
+    if (m) kandidat = Number(m[1]);
+    if (!kandidat) {
+      // Cadangan: ss, bila tersedia.
+      const out2 = jalankan(`ss -tlnp 2>/dev/null | grep ':${port} '`);
+      const m2 = out2.match(/pid=(\d+)/);
+      if (m2) kandidat = Number(m2[1]);
+    }
+  }
+  if (!Number.isInteger(kandidat) || kandidat <= 0) return null;
+  if (kandidat === process.pid || kandidat === 1) return null;
+  return kandidat;
+}
+
 if (require.main === module) {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
       console.error(
         `\n  Port ${PORT} sudah dipakai. Mencoba matikan proses lama...`,
       );
+      // JANGAN pipe keluaran apa pun langsung ke `kill`.
+      //
+      // Jalur Linux dulu berbunyi: lsof -ti:PORT | xargs kill -9
+      // Itu mengandaikan lsof punya flag -t/-i. BusyBox TIDAK: ia mengabaikan
+      // keduanya dan mencetak SELURUH daftar fd sistem. Terukur di distro WSL
+      // ini: 120 baris, dimulai dari PID 1 (/init). Kolom pertamanya PID, jadi
+      // `xargs kill -9` mencoba membunuh SETIAP proses di distro — termasuk
+      // server baru yang sedang menjalankan kode ini. Gejalanya: peluncur
+      // melaporkan "backend WSL berhenti lebih dulu (kode 9)".
+      //
+      // Sekarang PID diresolusi lalu DIVALIDASI, dan hanya SATU proses yang
+      // disentuh. Kalau PID-nya tak bisa dipastikan, server MENOLAK menebak dan
+      // berhenti dengan pesan yang jelas — jauh lebih baik daripada membunuh
+      // sesuatu yang salah.
       try {
-        const { execSync } = require("child_process");
-        if (process.platform === "win32") {
-          const out = execSync(
-            `netstat -ano | findstr "LISTENING" | findstr ":${PORT}"`,
-            { encoding: "utf8", timeout: 5000 },
+        const pid = _pidPemegangPort(PORT);
+        if (!pid) {
+          console.error(
+            `  Tidak bisa memastikan proses mana yang memegang port ${PORT}, ` +
+              `jadi tidak ada yang dibunuh.\n` +
+              `  Hentikan sendiri, atau jalankan dengan PORT lain: PORT=8091 ...`,
           );
-          const match = out.match(/(\d+)\s*$/m);
-          if (match) {
-            execSync(`taskkill /F /PID ${match[1]}`, {
-              stdio: "ignore",
-              timeout: 3000,
-            });
-          }
-        } else {
-          execSync(`lsof -ti:${PORT} | xargs kill -9 2>/dev/null`, {
-            stdio: "ignore",
-            timeout: 5000,
-          });
+          process.exit(1);
         }
+        console.error(`  Menghentikan PID ${pid} yang memegang port ${PORT}…`);
+        process.kill(pid, "SIGKILL");
         setTimeout(() => server.listen(PORT, HOST), 500);
       } catch (e) {
         console.error(
-          `  Gagal: ${e.message}. Coba start ulang dengan "dev.bat"`,
+          `  Gagal membebaskan port ${PORT}: ${e.message}\n` +
+            `  Jalankan dengan PORT lain, mis. PORT=8091`,
         );
         process.exit(1);
       }
