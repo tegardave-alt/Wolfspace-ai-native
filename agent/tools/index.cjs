@@ -407,25 +407,16 @@ function _workdirDalamJail(root, cwd) {
   }
 }
 
-// ── Pengurungan OS sungguhan untuk bash: jalankan di kontainer Docker throwaway ──
-// HANYA folder ww yang di-mount (/work, rw); folder saudara & host tak terlihat
-// kontainer sama sekali. rootfs read-only + network none + batas CPU/RAM/pids.
+// ── Pengurungan OS sungguhan untuk bash ──
+// HANYA folder ww yang terlihat (/work, rw); folder saudara & host tak terlihat
+// sama sekali. Sistem read-only + jaringan kosong + /tmp tmpfs + batas pids.
 // Ini menutup celah shell yang tak bisa ditutup regex maupun broker.
-let _dockerOk = null;
-function _hasDocker() {
-  if (_dockerOk !== null) return _dockerOk;
-  try {
-    require("child_process").execSync("docker version", {
-      stdio: "ignore",
-      timeout: 8000,
-    });
-    _dockerOk = true;
-  } catch {
-    _dockerOk = false;
-  }
-  return _dockerOk;
-}
-const WW_SANDBOX_IMAGE = process.env.WW_SANDBOX_IMAGE || "wolfspace-sandbox";
+//
+// Dulu dikerjakan kontainer Docker sekali-pakai; kini agent/tools/bash-jail.cjs
+// dengan namespace Linux. Jaminannya sama, tapi tanpa daemon yang harus dipasang
+// dan dinyalakan — dan justru ketergantungan itu yang membuat pengurungan
+// terkuat jadi paling jarang aktif: saat daemon mati, yang benar-benar berjalan
+// adalah penjaga regex di bawah.
 const _sandboxPolicy = require("../sandbox-policy.cjs");
 
 // PENEGAKAN DI KODE (bukan anjuran prompt): tolak perintah bash yang menyebut
@@ -469,116 +460,6 @@ function _hostPathEscape(cmd) {
     if (m) return m[0].trim();
   }
   return null;
-}
-
-function _runBashInDocker(cmd, root, args) {
-  const bocor = _hostPathEscape(cmd);
-  if (bocor) {
-    return Promise.resolve({
-      ok: false,
-      sandbox: "docker",
-      confinedTo: root,
-      output:
-        "REJECTED: the command references a host path outside the workspace (" +
-        bocor +
-        "...).\n" +
-        "bash runs in a container that mounts ONLY the workspace folder, so a host path " +
-        "does not exist inside it, and repeating this command will never succeed.\n" +
-        "Workspace: " +
-        root +
-        "\n" +
-        "GUNAKAN TOOL LAIN:\n" +
-        "  • isi halaman web        -> web_fetch (browser di host, bukan sandbox)\n" +
-        "  • cari di internet       -> web_search\n" +
-        "  • baca file di luar ws   -> disk_read / disk_list / disk_glob\n" +
-        "  • akses berpolicy+audit  -> capability_exec\n" +
-        "To work inside the workspace, use a RELATIVE path (e.g. ./src), not an absolute one.",
-    });
-  }
-  const hostDir = path.resolve(root).replace(/\\/g, "/");
-  let workdir = "/work";
-  if (args.cwd) {
-    const resolved = path.isAbsolute(args.cwd)
-      ? path.resolve(args.cwd)
-      : path.resolve(root, args.cwd);
-    if (_wwInside(root, resolved)) {
-      const rel = path.relative(root, resolved).replace(/\\/g, "/");
-      if (rel) workdir = "/work/" + rel;
-    }
-  }
-  const dargs = [
-    "run",
-    "--rm",
-    "--network",
-    "none",
-    "--memory",
-    "512m",
-    "--memory-swap",
-    "512m",
-    "--cpus",
-    "1",
-    "--pids-limit",
-    "256",
-    "--read-only",
-    "--tmpfs",
-    "/tmp:size=64m",
-    "-v",
-    `${hostDir}:/work`,
-    "-w",
-    workdir,
-    WW_SANDBOX_IMAGE,
-    "sh",
-    "-c",
-    cmd,
-  ];
-  // Jejak eksekusi bash. Sebelumnya exec-tools/bash TIDAK pernah memanggil dlog,
-  // sehingga 6 kegagalan beruntun ("can't cd to /c/Users/...") tak meninggalkan
-  // SATU BARIS PUN di WOLFSPACE-debug.log — kegagalan hanya terlihat sekilas di UI
-  // dan mustahil ditelusuri setelahnya. Sama seperti celah observabilitas pada
-  // panggilan model yang sudah ditutup: catat MULAI dan SELESAI beserta durasinya.
-  const _t0 = Date.now();
-  dlog("tool", "info", "bash_start", {
-    mode: "docker",
-    root,
-    cmd: String(cmd).replace(/\s+/g, " ").slice(0, 160),
-  });
-  return new Promise((resolve) => {
-    const child = spawn("docker", dargs, { windowsHide: true });
-    let out = "",
-      err = "";
-    const to = setTimeout(() => {
-      try {
-        child.kill();
-      } catch {}
-    }, args.timeout || 60000);
-    child.stdout.on("data", (d) => (out += d));
-    child.stderr.on("data", (d) => (err += d));
-    child.on("close", (code) => {
-      clearTimeout(to);
-      const body = (out + (err ? "\n" + err : "")).trim();
-      dlog("tool", code === 0 ? "info" : "warn", "bash_done", {
-        mode: "docker",
-        exit: code,
-        ms: Date.now() - _t0,
-        out: body.replace(/\s+/g, " ").slice(0, 200),
-      });
-      resolve({
-        ok: code === 0,
-        output: body || `(exit ${code})`,
-        sandbox: "docker",
-        confinedTo: root,
-      });
-    });
-    child.on("error", (e) => {
-      clearTimeout(to);
-      dlog("tool", "error", "bash_failed", {
-        mode: "docker",
-        ms: Date.now() - _t0,
-        error: String(e.message).slice(0, 140),
-      });
-      resolve({ ok: false, output: "docker error: " + e.message });
-    });
-  });
 }
 
 // ── Opsi 1: akses file per-workspace lewat BROKER (object-capability) ──
@@ -1211,38 +1092,46 @@ async function runSelfTool(name, args, emit, context = {}) {
         process.env.WW_WORKSPACE_ROOT ||
         null;
       if (_confineRoot) {
-        // Utama: pengurungan OS via Docker (hanya folder ww yang di-mount) — batas nyata.
-        // Gerbangnya kini lewat kebijakan terpusat (agent/sandbox-policy.cjs) dengan
-        // fallback "auto" = perilaku lama (pakai Docker bila ada). Bedanya: setelan
-        // eksplisit `"sandbox": false` / WOLFSPACE_SANDBOX=off KINI DIHORMATI —
-        // sebelumnya jalur ini mengabaikannya dan tetap memakai Docker.
-        // Namespace Linux DIDAHULUKAN atas Docker: jaminannya setara (jaringan
-        // kosong, hanya folder ws terlihat, sistem read-only, /tmp tmpfs) tapi
-        // tak butuh daemon yang harus dipasang dan dinyalakan. Di mesin ini
-        // daemon Docker mati, sehingga yang benar-benar berjalan sehari-hari
-        // adalah penjaga regex — pengurungan terkuat justru yang paling jarang
-        // aktif. Diuji: 12/12, termasuk 7 percobaan lolos (isi berkas host,
-        // /root, /etc/passwd, naik direktori, tulis /bin, jaringan, injeksi
-        // heredoc) semuanya tertahan.
+        // Utama: pengurungan OS lewat namespace Linux — batas nyata, bukan regex.
+        // Gerbangnya lewat kebijakan terpusat (agent/sandbox-policy.cjs) dengan
+        // fallback "auto"; setelan eksplisit sandbox:false / WOLFSPACE_SANDBOX=off
+        // tetap dihormati.
+        //
+        // Diuji 13/13 di WSL, termasuk 7 percobaan lolos: isi berkas host, /root,
+        // /etc/passwd, naik direktori, tulis /bin, jaringan (diuji di level TCP
+        // agar tak lulus hanya karena DNS mati), dan injeksi heredoc.
         if (
           process.env.WW_BASH_NATIVE !== "1" &&
           _sandboxPolicy.shouldSandbox(
             _sandboxPolicy.configSandbox(),
-            _bashJail.tersedia() || _hasDocker(),
+            _bashJail.tersedia(),
             "auto",
           )
         ) {
-          if (_bashJail.tersedia()) {
-            const wd = _workdirDalamJail(_confineRoot, args.cwd);
-            return await _bashJail.jalankan(cmd, _confineRoot, {
-              timeout: args.timeout || 60000,
-              workdir: wd,
-            });
-          }
-          if (_hasDocker())
-            return await _runBashInDocker(cmd, _confineRoot, args);
+          // Penjaga path host tetap dipakai: jail hanya me-mount folder
+          // workspace, jadi perintah yang menyebut path absolut host pasti tak
+          // menemukannya — ditolak lebih awal dengan alasan yang jelas ketimbang
+          // gagal dengan "No such file" yang membingungkan.
+          const bocor = _hostPathEscape(cmd);
+          if (bocor)
+            return {
+              ok: false,
+              output:
+                `TERKURUNG WORKSPACE: perintah menyebut path host "${bocor}", ` +
+                "yang tidak ada di dalam pengurungan (hanya folder workspace yang " +
+                "terlihat, sebagai /work).\n" +
+                "Pakai path RELATIF (mis. ./src), atau tool lain: disk_read / " +
+                "disk_list untuk membaca di luar workspace, capability_exec untuk " +
+                "akses berpolicy + audit.",
+            };
+          const wd = _workdirDalamJail(_confineRoot, args.cwd);
+          return await _bashJail.jalankan(cmd, _confineRoot, {
+            timeout: args.timeout || 60000,
+            workdir: wd,
+          });
         }
-        // Cadangan: guard regex (bocor, defense-in-depth) saat Docker tak tersedia.
+        // Cadangan: guard regex (bocor, defense-in-depth) saat namespace tak
+        // tersedia — mis. di Windows, yang tak punya padanan di kernelnya.
         const guard = _confineBash(cmd, args.cwd, _confineRoot);
         if (!guard.ok)
           return {
