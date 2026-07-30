@@ -136,8 +136,7 @@
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "<rootDir>/_agent_backups/",
-      "<rootDir>/vscode-extension-fork/"
+      "<rootDir>/_agent_backups/"
     ]
   }
 }
