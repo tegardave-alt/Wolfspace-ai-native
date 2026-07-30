@@ -155,12 +155,27 @@ Steps 1–3 are one-time setup. After that just run:
 npm run app:wsl
 ```
 
-`scripts/wsl-app.cjs` starts the backend inside the distro, **holds** that
-`wsl.exe` process (WSL kills the distro — and the server with it — as soon as the
-last session closes, so a detached/`nohup` server does not survive), waits for
-`/healthz`, detects the current distro IP, and launches Electron with
+`scripts/wsl-app.cjs` **syncs the code into the distro first** (tracked files from
+the working tree, so uncommitted work runs too — `node_modules` is left alone,
+since native binaries differ per platform), starts the backend there, **holds**
+that `wsl.exe` process (WSL kills the distro — and the server with it — as soon
+as the last session closes, so a detached/`nohup` server does not survive), waits
+for `/healthz`, detects the current distro IP, and launches Electron with
 `WOLFSPACE_BACKEND` set. Closing the app stops the backend. Override with
-`WOLFSPACE_WSL_DISTRO`, `WOLFSPACE_WSL_DIR`, `WOLFSPACE_WSL_NODE`, `PORT`.
+`WOLFSPACE_WSL_DISTRO`, `WOLFSPACE_WSL_DIR`, `WOLFSPACE_WSL_NODE`, `PORT`, or
+skip the sync with `WOLFSPACE_WSL_NO_SYNC=1`.
+
+The sync exists because without it the WSL copy is a snapshot frozen at the last
+manual deploy — and "which version am I actually running?" becomes unanswerable
+without comparing checksums. That happened: after a few commits the files in WSL
+had different md5s from the ones on Windows.
+
+**Which backend runs is decided by the command, not by anything automatic:**
+
+| command           | backend                             | zone network containment      |
+| ----------------- | ----------------------------------- | ----------------------------- |
+| `npm run app`     | in-process core on Windows          | **no** (Windows has no netns) |
+| `npm run app:wsl` | server.cjs inside WSL, UI over HTTP | **yes**                       |
 
 Verified end to end this way: full suite **59/59 in WSL** (Windows skips the 3
 netns behaviour tests), and a real agent run driven from Windows over HTTP

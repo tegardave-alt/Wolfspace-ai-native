@@ -25,6 +25,8 @@
 const { spawn, execFileSync } = require("child_process");
 const http = require("http");
 const path = require("path");
+const fs = require("fs");
+const os = require("os");
 
 const DISTRO = process.env.WOLFSPACE_WSL_DISTRO || "WolfspaceTest";
 const WSL_DIR = process.env.WOLFSPACE_WSL_DIR || "/root/wolfspace";
@@ -65,6 +67,77 @@ try {
       `  Lihat "Running the backend in WSL" di agent/broker/README.md untuk cara menyiapkannya.`,
   );
 }
+
+// ── 1b. Sinkronkan kode ke WSL SEBELUM menyalakan ──
+//
+// Tanpa ini, salinan di WSL adalah snapshot yang membeku di saat terakhir
+// di-deploy — dan pertanyaan "yang saya jalankan ini versi yang mana?" jadi tak
+// bisa dijawab tanpa membandingkan checksum. Terbukti terjadi: setelah beberapa
+// commit, berkas di WSL berbeda md5 dengan yang di Windows.
+//
+// Yang disalin adalah berkas TERLACAK di working tree, bukan HEAD: saat
+// mengembangkan, yang ingin dijalankan adalah kode yang sedang dikerjakan,
+// termasuk perubahan yang belum di-commit. node_modules TIDAK ikut — biner
+// native berbeda per platform, dan menimpanya akan merusak pemasangan di WSL.
+function winKeWsl(p) {
+  const m = /^([A-Za-z]):[\\/](.*)$/.exec(p);
+  if (!m) return null;
+  return "/mnt/" + m[1].toLowerCase() + "/" + m[2].replace(/\\/g, "/");
+}
+
+function sinkronkan() {
+  if (process.env.WOLFSPACE_WSL_NO_SYNC === "1") {
+    log("sinkronisasi dilewati (WOLFSPACE_WSL_NO_SYNC=1)");
+    return;
+  }
+  const repoWin = path.join(__dirname, "..");
+  const repoWsl = winKeWsl(path.resolve(repoWin));
+  if (!repoWsl) {
+    log("lewati sinkronisasi: path repo tak bisa dipetakan ke /mnt/...");
+    return;
+  }
+  let daftar;
+  try {
+    daftar = execFileSync("git", ["ls-files"], {
+      cwd: repoWin,
+      encoding: "utf8",
+      maxBuffer: 32 * 1024 * 1024,
+    });
+  } catch (e) {
+    log(
+      "lewati sinkronisasi: `git ls-files` gagal — " + e.message.split("\n")[0],
+    );
+    return;
+  }
+  const berkas = daftar.split("\n").filter(Boolean);
+  const listWin = path.join(os.tmpdir(), "wolfspace-sync-list.txt");
+  fs.writeFileSync(listWin, berkas.join("\n") + "\n", "utf8");
+  const listWsl = winKeWsl(listWin);
+  try {
+    // tar dijalankan DI DALAM WSL: menulis langsung ke filesystem Linux jauh
+    // lebih cepat daripada menyalin lewat lapisan /mnt per berkas.
+    execFileSync(
+      "wsl.exe",
+      [
+        "-d",
+        DISTRO,
+        "--",
+        "sh",
+        "-c",
+        `cd ${repoWsl} && tar -cf - -T ${listWsl} | tar -xf - -C ${WSL_DIR}`,
+      ],
+      { stdio: "ignore", timeout: 180000 },
+    );
+    log(`sinkron: ${berkas.length} berkas -> ${DISTRO}:${WSL_DIR}`);
+  } catch (e) {
+    mati(
+      "sinkronisasi ke WSL gagal: " +
+        String(e.message).split("\n")[0] +
+        "\n  Setel WOLFSPACE_WSL_NO_SYNC=1 untuk memakai salinan yang sudah ada.",
+    );
+  }
+}
+sinkronkan();
 
 // ── 2. Nyalakan server, TAHAN prosesnya ──
 // exec agar node menggantikan sh: sinyal dari sini langsung mengenai server,
