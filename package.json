@@ -16,6 +16,7 @@
     "dist": "electron-builder --win",
     "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles --passWithNoTests",
+    "stress": "node scripts/stress.cjs",
     "test:watch": "jest --watch --verbose",
     "prepare": "husky",
     "start:bypass": "node start.cjs",
