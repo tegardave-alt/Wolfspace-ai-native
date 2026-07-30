@@ -71,8 +71,14 @@ describe("struktur transport WSL (semua platform)", () => {
     // Menebak dari platform saja akan gagal di mesin tanpa distro, tanpa node
     // di dalamnya, atau dengan Node < 23 (yang masih memakai
     // --experimental-permission).
-    expect(SRC).toMatch(/--permission -e "0"/);
+    expect(SRC).toMatch(/--permission -e /);
     expect(SRC).toMatch(/unshare -n true/);
+    // Dan tak cukup sekadar "keluar 0": biner yang mengabaikan flag tak dikenal
+    // (mis. /bin/echo) juga keluar 0. Terbukti lolos dengan probe versi lama,
+    // sehingga sistem menyatakan "terkurung" padahal binernya bukan Node.
+    // Karena itu Node diminta MENCETAK versinya. Rincian di
+    // tests/zone-kurungan-terlihat.test.js.
+    expect(SRC).toMatch(/process\.versions\.node/);
   });
 
   test("token framing acak per eksekusi", () => {

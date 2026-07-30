@@ -1653,6 +1653,17 @@ async function runSelfTool(name, args, emit, context = {}) {
         if (z && z.stderr) bagian.push("[stderr]\n" + z.stderr.trimEnd());
         if (teks) bagian.push(teks);
         if (z && z.truncated) bagian.push("[keluaran dipotong]");
+        // Penanda turunnya jaminan, di dalam keluaran yang DIBACA MODEL.
+        // Kalau hanya ada di field terpisah, model tak akan melihatnya dan
+        // tetap menyimpulkan "kode ini berjalan terkurung" — kesimpulan yang
+        // salah, dan justru itu yang mahal.
+        if (z && z.kurungan && !z.kurungan.jaringanTerkurung) {
+          bagian.push(
+            "[TANPA PENGURUNGAN JARINGAN] " +
+              z.kurungan.alasan +
+              " — berkas tetap ditahan --permission, jaringan TIDAK.",
+          );
+        }
         return bagian.join("\n");
       };
       return runInCapabilityZone(args.code, broker, {
@@ -1664,11 +1675,13 @@ async function runSelfTool(name, args, emit, context = {}) {
             typeof z.result === "string" ? z.result : JSON.stringify(z.result),
             z,
           ),
+          kurungan: z.kurungan,
           auditTrail: broker.auditTrail(),
         }),
         (e) => ({
           ok: false,
           output: _withIo(e.message, e),
+          kurungan: e.kurungan,
           auditTrail: broker.auditTrail(),
         }),
       );
