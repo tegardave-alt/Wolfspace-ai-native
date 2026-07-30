@@ -38,7 +38,6 @@ RUN npm install --omit=dev --no-audit --no-fund \
 
 # App source.
 COPY server.cjs ./
-COPY start.cjs ./
 COPY server/ ./server/
 COPY agent/ ./agent/
 COPY public/ ./public/

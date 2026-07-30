@@ -22,10 +22,9 @@ execution, not by appearance.
 - ✅ **Verified, not vibes.** Every code answer is run; you see its real stdout/stderr and a
   pass/fail indicator — not "looks right." The agent cannot even declare itself done
   without a successful execution to point at.
-- 🔌 **Any model.** Bring your own API key — the provider is auto-detected from the key
+- 🔌 **Any cloud model.** Bring your own API key — the provider is auto-detected from the key
   (OpenAI, Claude, Gemini, Groq, OpenRouter, GitHub Models, NVIDIA, DeepSeek, Qwen,
-  OpenCode, or any OpenAI-compatible endpoint). Or run **local GGUF models** via llama.cpp —
-  a running local model is auto-detected and used on startup.
+  OpenCode, or any OpenAI-compatible endpoint).
 - ✏️ **Real editor.** Monaco (VS Code's editor) for every code block — edit in place, re-run,
   or ask the AI to revise.
 - 🔗 **MCP tools.** Connect Model Context Protocol servers (Notion, GitHub, filesystem, …);
@@ -109,7 +108,14 @@ subprocesses to run code; and snapshots, uploads, and `cloud-keys.json` need a w
 persistent filesystem. Removing those leaves the product without the one thing it
 exists to do — proving code by executing it.
 
-### Optional: run models locally (offline, no API key)
+### Local models: not currently wired
+
+> **A cloud API key is required.** The llama.cpp path is **not connected** anymore: the
+> chat/agent code no longer routes any request to a local model, so a running
+> `llama-server` is never used even if `/models` reports it. The setup scripts below are
+> kept because they still fetch and launch llama.cpp correctly — only the wiring into the
+> request path is gone. Reconnecting it means restoring a caller for `askModelStream()`
+> in `agent/chat.cjs`.
 
 Local models use [llama.cpp](https://github.com/ggml-org/llama.cpp). One-time setup downloads
 `llama-server` + a small CPU-friendly model:
@@ -126,9 +132,8 @@ bash scripts/start-models.sh
 npm start
 ```
 
-The running local model is picked up automatically on startup — there is currently no
-in-app switcher to change between multiple local or cloud models; it's whichever one
-`/models` reports first, or your configured cloud key if you have one set.
+`/models` will still report a running local server, but nothing consumes that — see the
+note above. What actually answers requests today is whichever cloud key you configured.
 
 ---
 
@@ -142,7 +147,7 @@ them under `runners` in `config.json`. HTML/CSS preview live in an iframe.
 
 | Layer                                         | Role                                                                         |
 | --------------------------------------------- | ---------------------------------------------------------------------------- |
-| **Generator** (untrusted)                     | guesses code — a local model via `llama-server`, or a cloud API              |
+| **Generator** (untrusted)                     | guesses code — a cloud API (local llama-server is not wired in)              |
 | **Bridge** (`server.cjs` + `server/routes/*`) | streams tokens, extracts the code block, runs it, feeds errors back to retry |
 | **Judge** (ground truth)                      | says what the code actually does — your CPU (subprocess)                     |
 
@@ -157,7 +162,6 @@ tree, never in the browser, never committed. MCP servers live in `config/mcp.jso
 graph TD
     Shell["electron/main.js<br/>(desktop shell, app:// protocol, HMR)"]
     UI["public/app.jsx<br/>(React, Babel-in-browser, no build step)"]
-    Static["server/static-server.cjs<br/>(bypass lane — serves UI even if API crashes)"]
     API["server.cjs<br/>(HTTP entry, dispatches to routes)"]
     Routes["server/routes/*<br/>(cloud, terminal, snapshots, openclaw,<br/>hunks — modular per domain)"]
     Agent["agent/self_agent.cjs<br/>(ReAct loop, tool-calling, HITL)"]
@@ -169,7 +173,6 @@ graph TD
 
     Shell -.->|hosts| UI
     UI -->|fetch /chat, /self-agent| API
-    Static -.->|serves public/ directly if API is down| UI
     API --> Routes
     API --> Agent
     Agent --> Tools
@@ -186,24 +189,26 @@ native window, the container serves it over HTTP.
 ## Security
 
 WOLFSPACE runs generated and agent code **on your machine, with your permissions**, like
-other local AI coding tools. Keep it bound to `127.0.0.1`; **don't expose the server to a
-network** unless you've enabled the Docker sandbox.
+other local AI coding tools. Keep it bound to `127.0.0.1` and **don't expose the server to a
+network**.
 
-Code execution happens at three trust levels — `sandbox_run` (crash isolation, advisory
-filesystem limits on Windows), `capability_exec` (deny-by-default broker enforced by Node's
-`--permission` flag), and the Docker sandbox (the only layer with a real boundary against a
-hostile payload).
+Code execution happens at three trust levels — `sandbox_run` (crash isolation; advisory
+filesystem limits on Windows, real via bubblewrap on Linux), `capability_exec` (deny-by-default
+broker enforced by Node's `--permission` flag, plus a network namespace on Linux), and the
+bash jail (`agent/tools/bash-jail.cjs`, Linux namespaces — no daemon). The daemon-based
+Docker execution sandbox has been removed; on Windows the kernel-level containment applies
+only under `npm run app:wsl`.
 
 Every layer's guarantees, its **limits**, and the escape tests it was measured against are
-documented in **[docs/SECURITY.md](docs/SECURITY.md)** — along with the four-layer
-auto-rollback design that lets the app survive a broken edit to its own source.
+documented in **[docs/SECURITY.md](docs/SECURITY.md)** — along with the rollback design that
+lets the app survive a broken edit to its own source.
 
 ## Development
 
 ```bash
 npm test                       # jest
 npm run dev                    # nodemon
-npm run start:bypass           # with the auto-rollback supervisor
+npm run stress                 # broker/agent leak + concurrency check
 ```
 
 CI runs three jobs on every push: tests, a Windows Electron build (verifying the packaged

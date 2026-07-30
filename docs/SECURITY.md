@@ -13,11 +13,11 @@ does **not** protect against.
 Code execution and file access happen at **three different trust levels**. Know which one
 a given tool gives you.
 
-| Layer                                    | What it's for                                                   | What it actually enforces                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
-| ---------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
-| **`sandbox_run`** (`agent/sandbox.cjs`)  | Isolating crashes/hangs during normal dev use                   | Runs in a throwaway temp dir with a remapped home, a timeout that kills the _whole_ process tree (`taskkill /F /T` / process-group kill), and auto-cleanup. On **Windows** (no `bwrap`), `readRoots`/`writeRoots`/`network` are **advisory only** — the spawned process has normal OS-level access. On **Linux with bubblewrap installed**, the platform adapter transparently wraps the command in `bwrap`, making isolation real — same tool, same options, stronger guarantee depending on what the OS can actually provide. |
-| **`capability_exec`** (`agent/broker/*`) | Running code that must not read/write outside an explicit scope | Task code runs in a separate process launched with Node's `--permission` flag and **zero** filesystem grants. Its only way to affect anything is `await request(capability, params)`, checked by a deny-by-default `Policy` and logged to an audit trail. Does **not** cover network egress (no `--allow-net` exists yet in Node), worker threads, or native addons.                                                                                                                                                            |
-| **Docker sandbox** (`sandbox/`)          | A genuine boundary against a deliberately malicious payload     | Real OS-level isolation — no network, capped CPU/RAM, read-only filesystem, hard timeout, via a throwaway container per execution. This is the only layer of the three with a real security boundary against a hostile payload.                                                                                                                                                                                                                                                                                                 |
+| Layer                                       | What it's for                                                   | What it actually enforces                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                       |
+| ------------------------------------------- | --------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| **`sandbox_run`** (`agent/sandbox.cjs`)     | Isolating crashes/hangs during normal dev use                   | Runs in a throwaway temp dir with a remapped home, a timeout that kills the _whole_ process tree (`taskkill /F /T` / process-group kill), and auto-cleanup. On **Windows** (no `bwrap`), `readRoots`/`writeRoots`/`network` are **advisory only** — the spawned process has normal OS-level access. On **Linux with bubblewrap installed**, the platform adapter transparently wraps the command in `bwrap`, making isolation real — same tool, same options, stronger guarantee depending on what the OS can actually provide. |
+| **`capability_exec`** (`agent/broker/*`)    | Running code that must not read/write outside an explicit scope | Task code runs in a separate process launched with Node's `--permission` flag and **zero** filesystem grants. Its only way to affect anything is `await request(capability, params)`, checked by a deny-by-default `Policy` and logged to an audit trail. Does **not** cover network egress (no `--allow-net` exists yet in Node), worker threads, or native addons.                                                                                                                                                            |
+| **Bash jail** (`agent/tools/bash-jail.cjs`) | Confining the `bash` tool without a daemon                      | **Linux only.** `unshare -m -n -p -f --mount-proc` + a chroot built from read-only bind mounts of `/bin /sbin /usr /lib /lib64`, a `tmpfs` workdir, a minimal `/dev`, and `ulimit` caps (256 procs, 512MB address space, 60s CPU). Empty network namespace, so there is no route out at all. On Windows the tool falls back to a path guard, which is advisory.                                                                                                                                                                 |
 
 ### Verified against a real escape attempt
 
@@ -33,24 +33,30 @@ because `--permission` is enforced at the native binding layer rather than by hi
 globals. Enforcement that depends on hiding references is defeated by this payload;
 enforcement at the binding layer is not.
 
-### Two callers, gated differently
+### The Docker execution sandbox was removed
 
-The Docker sandbox has two entry points, and confusing them leads to wrong conclusions
-about whether "the sandbox works":
+This document used to describe a fourth level: a throwaway container per execution, driven
+by `runSandboxed()` in `server.cjs` and `_runBashInDocker()` in `agent/tools/index.cjs`.
+Both callers are gone. What made it removable rather than a regression:
 
-| Caller                                                                       | Gate                                                                                                     |
-| ---------------------------------------------------------------------------- | -------------------------------------------------------------------------------------------------------- |
-| `runSandboxed()` in `server.cjs` + `agent/runners.cjs` (Python/JS execution) | requires `"sandbox": true` in `config.json` — **unset by default**                                       |
-| `_runBashInDocker()` in `agent/tools/index.cjs` (bash tool)                  | **no config flag** — self-activates whenever Docker is running, falls back to a path guard when it isn't |
+- `_runBashInDocker()` self-activated whenever a Docker daemon happened to be running, with
+  **no config flag** — so the confinement of the bash tool depended on whether an unrelated
+  background service was up. `bash-jail.cjs` replaces it with a namespace jail that needs no
+  daemon and therefore can't silently switch itself off.
+- `runSandboxed()` was gated on `"sandbox": true` in `config.json`, **unset by default**, so
+  in the default posture it never ran. `agent/runners.cjs` still exports the name; nothing
+  calls it.
 
-The image itself sets no resource or network limits; those are applied by the caller at
-`docker run` time (`--network none`, `--memory`, `--cpus`, `--read-only`).
+`sandbox/Dockerfile` is kept — it is still built in CI as a non-root image — but nothing in
+the app shells out to `docker run` anymore.
 
 ### Default posture
 
 WOLFSPACE runs generated and agent code **on your machine, with your permissions**, like
-other local AI coding tools. Keep it bound to `127.0.0.1`; **don't expose the server to a
-network** unless you've enabled the Docker sandbox.
+other local AI coding tools. Keep it bound to `127.0.0.1` and **don't expose the server to a
+network**. On Windows the kernel-level containment (netns, bash jail) does not apply at all
+unless you launch via `npm run app:wsl`; the filesystem layer (`--permission`) applies on
+both.
 
 ---
 
@@ -97,19 +103,23 @@ completion, or by you — might be broken, and are built to survive that:
    (`window.onerror`, `unhandledrejection`, and a React `ErrorBoundary` all feed the
    same path) reloads the last version that rendered successfully, with a 60s
    anti-loop guard.
-3. **Server auto-rollback** (`start.cjs`) — if `server.cjs` crashes, it's restored from
-   the last build that stayed up 10+ seconds, with exponential backoff on repeated
-   crashes so a bad restore can't spin the CPU.
-4. **Bypass lane** (`server/static-server.cjs`) — the frontend is served from a second,
-   independent static process, so a full API crash still leaves the UI reachable while
-   the API auto-restarts.
+3. ~~**Server auto-rollback** (`start.cjs`)~~ — **removed.** The supervisor that restored
+   `server.cjs` from the last build that stayed up 10+ seconds no longer exists.
+4. ~~**Bypass lane** (`server/static-server.cjs`)~~ — **removed.** The second, independent
+   static process that kept the UI reachable during an API crash no longer exists.
+
+   Both went out together, and the loss is real: a crashing `server.cjs` now stays down
+   until restarted by hand, and takes the UI with it. They are listed here rather than
+   deleted from the doc because "we used to have this" is the kind of fact that costs time
+   when it goes missing — see the stale-doc note in `agent/broker/README.md`.
 
 ---
 
 ## Known gaps
 
-- `capability_exec` has no network enforcement — Node has no `--allow-net`. Network
-  isolation requires the Linux (`--unshare-net`) or Docker path.
+- `capability_exec` gets no network enforcement from Node itself — there is no
+  `--allow-net`. The isolation comes from the kernel (`unshare -n`), so it exists only on
+  Linux, and on Windows only under `npm run app:wsl`.
 - `MacAdapter` shares `PosixAdapter`'s advisory-only behavior; Seatbelt
   (`sandbox-exec`) is not wired up, and nothing here has been verified on real macOS
   hardware.
