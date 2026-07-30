@@ -152,8 +152,12 @@ re-derived:
 Steps 1–3 are one-time setup. After that just run:
 
 ```
-npm run app
+node scripts/wsl-app.cjs        # same thing as `npm run app`
 ```
+
+Call `node` directly on Windows PowerShell: it resolves `npm` to `npm.ps1`
+before `npm.cmd`, and the default `Restricted` execution policy blocks `.ps1`,
+so a bare `npm run app` fails there while `npm.cmd run app` works.
 
 `scripts/wsl-app.cjs` **syncs the code into the distro first** (tracked files from
 the working tree, so uncommitted work runs too — `node_modules` is left alone,
