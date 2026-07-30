@@ -170,15 +170,34 @@ function _bungkamPendaftarKonsol(ptyProcess) {
 //
 // Dua manajer sesi tetap dibiarkan (menyatukannya menyentuh jalur UI hidup dan
 // bukan bagian dari perbaikan ini), tapi cara membunuhnya TIDAK boleh ada dua.
+// Pipa conin/conout milik PTY tidak pernah ditutup oleh node-pty di jalur
+// ConPTY non-DLL: kill() hanya menyetel `readable = false` pada _inSocket dan
+// _outSocket (windowsPtyAgent.js:138-139), lalu membuang _conoutSocketWorker —
+// yang itu soket worker, bukan soket PTY-nya. Keduanya tetap terbuka sebagai
+// handle. Terukur: 4 PIPEWRAP tersisa untuk 4 sesi yang SUDAH ditutup, dan
+// jest tak pernah bisa keluar bersih karenanya.
+function _tutupPipa(ptyProcess) {
+  try {
+    const a = ptyProcess && ptyProcess._agent;
+    if (!a) return;
+    for (const s of [a._inSocket, a._outSocket]) {
+      try {
+        if (s && typeof s.destroy === "function") s.destroy();
+      } catch (_) {}
+    }
+  } catch (_) {}
+}
+
 function killPty(ptyProcess) {
   if (!ptyProcess) return;
   // Urutannya penting: pohon dibunuh SELAGI pid-nya masih sah, baru handle
-  // node-pty dilepas.
+  // node-pty dilepas, baru pipanya ditutup.
   _matikanPohon(ptyProcess.pid);
   _bungkamPendaftarKonsol(ptyProcess);
   try {
     ptyProcess.kill(); // TANPA argumen — lihat catatan di atas
   } catch (_) {}
+  _tutupPipa(ptyProcess);
 }
 
 function destroy(id) {
