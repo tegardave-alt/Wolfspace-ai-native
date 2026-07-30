@@ -150,9 +150,8 @@ kalauWsl("perilaku zona di WSL (butuh Windows + WSL siap)", () => {
     expect(String(z.result)).not.toMatch(/TEMBUS/);
   }, 60000);
 
-  test("KERNEL menahan jaringan — pelapor dimatikan supaya buktinya sah", async () => {
-    // Ini yang tak mungkin didapat di Windows sebelum bundling ini. pelapor:false
-    // wajib: dengan stub aktif, uji ini akan lulus meski netns-nya mati.
+  test("zona tak punya jaringan — pelapor dimatikan supaya buktinya sah", async () => {
+    // pelapor:false wajib: dengan stub aktif, uji ini lulus meski netns-nya mati.
     const { z } = await jalan(
       'const h=require("node:https");return await new Promise(r=>{const t=setTimeout(()=>r("timeout"),9000);' +
         'try{h.get("https://api.github.com",x=>{clearTimeout(t);r("TEMBUS "+x.statusCode)})' +
@@ -161,6 +160,51 @@ kalauWsl("perilaku zona di WSL (butuh Windows + WSL siap)", () => {
     );
     expect(String(z.result)).not.toMatch(/TEMBUS/);
   }, 60000);
+
+  test("dan pengurungnya BENAR netns, bukan distro yang memang tak berjaringan", () => {
+    // KENAPA UJI INI ADA. Uji di atas menyatakan "zona tak punya jaringan" —
+    // dan itu saja TIDAK membuktikan network namespace bekerja. Distro yang
+    // sejak awal tak punya antarmuka akan memberi hasil yang sama persis, meski
+    // `unshare -n` dicabut seluruhnya. Terjadi sungguhan di mesin ini: distro
+    // WolfspaceTest hanya punya `lo`, tanpa eth0, tanpa rute — jadi kalimat
+    // "KERNEL menahan jaringan" di versi sebelumnya tak didukung apa pun.
+    //
+    // Kesalahan yang sama pernah dibuat di broker-netns.test.js (memakai
+    // hostname sehingga yang gagal DNS, bukan rute). Pola yang harus dijaga:
+    // sebuah uji pengurungan wajib memeriksa GARIS DASARNYA lebih dulu, kalau
+    // tidak ia cuma mengonfirmasi keadaan yang kebetulan menguntungkan.
+    let dasar;
+    try {
+      execFileSync(
+        "wsl.exe",
+        [
+          "-d",
+          process.env.WOLFSPACE_WSL_DISTRO || "WolfspaceTest",
+          "--",
+          "sh",
+          "-c",
+          "ip -o link show 2>/dev/null | grep -qv ': lo:' && ip route 2>/dev/null | grep -q .",
+        ],
+        { stdio: "ignore", timeout: 20000 },
+      );
+      dasar = true; // distro PUNYA jaringan → netns benar-benar yang mencabutnya
+    } catch (_) {
+      dasar = false; // distro memang tak berjaringan → netns tak bisa dibuktikan di sini
+    }
+
+    if (!dasar) {
+      // Bukan kegagalan: posturnya justru lebih kuat (dua penghalang tak
+      // bergantung satu sama lain). Yang tak boleh adalah MENGAKU membuktikan
+      // netns padahal tidak.
+      console.warn(
+        "[uji] distro tanpa antarmuka jaringan — pengurungan netns TIDAK " +
+          "terbukti di mesin ini, hanya terkonfirmasi tak ada jaringan. " +
+          "Untuk membuktikan netns, jalankan pada distro yang berjaringan.",
+      );
+      return;
+    }
+    expect(dasar).toBe(true);
+  }, 40000);
 
   test("keluaran zona tetap UTUH meski stdout dipakai bersama protokol", async () => {
     // Transport ini menumpangkan protokol di stdout yang sama dengan console.log
