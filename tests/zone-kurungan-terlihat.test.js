@@ -51,7 +51,33 @@ describe("struktur penanda pengurungan", () => {
     // Penjaga terhadap positif-palsu /bin/echo.
     expect(SRC).toMatch(/process\.versions\.node/);
     expect(SRC).toMatch(/NODEV/);
-    expect(SRC).toMatch(/< 23/); // versinya benar-benar dibandingkan
+    // Versinya benar-benar dipakai, bukan sekadar dicetak: pemilihan flag
+    // bergantung padanya.
+    expect(SRC).toMatch(/flagPermission\(Number\(v\[1\]\)/);
+    // Dan flag pilihannya tetap DIUJI nyata sebelum dipercaya.
+    expect(SRC).toMatch(/menolak \$\{flag\[0\]\}/);
+  });
+
+  test("flag permission dipilih menurut versi Node, bukan dipatok", () => {
+    // KENAPA. `--permission` hanya ada sejak v23; v20-v22 memakai
+    // `--experimental-permission`. Kode ini dulu memakainya tanpa syarat,
+    // sehingga di Node 20 SETIAP zona mati dengan `bad option` (exit 9) — dan
+    // CI dipatok Node 20, jadi 7 dari 15 suite merah pada tiap push. Diukur
+    // pada Node 20.15.1 asli, bukan disimpulkan dari dokumentasi.
+    const { flagPermission } = require("../agent/broker/zone-process.cjs");
+    expect(flagPermission(24, "/w.cjs")).toEqual(["--permission"]);
+    expect(flagPermission(23, "/w.cjs")).toEqual(["--permission"]);
+
+    const v20 = flagPermission(20, "/w.cjs");
+    expect(v20).toContain("--experimental-permission");
+    // v20 menuntut izin baca eksplisit untuk skrip masuknya sendiri; tanpa ini
+    // zona mati di pemuat modul sebelum sempat berjalan.
+    expect(v20).toContain("--allow-fs-read=/w.cjs");
+    expect(v20).toContain("--no-warnings"); // ExperimentalWarning mengotori stderr zona
+
+    // Di bawah v20 tak ada model permission sama sekali: harus GAGAL TERTUTUP,
+    // bukan berjalan tanpa pembatasan berkas.
+    expect(flagPermission(18, "/w.cjs")).toBeNull();
   });
 
   test("peringatan TIDAK lewat debug.cjs yang digerbang VERBOSE", () => {

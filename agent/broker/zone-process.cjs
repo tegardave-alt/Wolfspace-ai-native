@@ -16,6 +16,52 @@ const { getPlatformAdapter } = require("../platform/index.cjs");
 
 const WORKER = path.join(__dirname, "zone-worker.cjs");
 
+// ── Nama flag permission berbeda menurut versi Node ──
+//
+// KENAPA ADA. Model permission Node stabil di v23 sebagai `--permission`; di
+// v20-v22 namanya `--experimental-permission`. Kode ini dulu memakai
+// `--permission` tanpa syarat, jadi di Node 20 SETIAP zona mati seketika:
+//     $ node --permission -e 0
+//     node: bad option: --permission        (exit 9)
+// Diukur pada Node 20.15.1 asli. Akibatnya berlapis dan tak terlihat dari mesin
+// pengembangan yang memakai Node 24:
+//   - CI dipatok Node 20, jadi 7 dari 15 suite merah pada tiap push;
+//   - Dockerfile memakai node:20-bookworm-slim, jadi deployment hosted punya
+//     capability_exec yang mati total;
+//   - package.json menjanjikan engines ">=18", janji yang tak pernah benar.
+// Yang muncul ke pemakai hanya "zone process exited with code 9" — tanpa
+// petunjuk bahwa penyebabnya nama flag.
+//
+// GAGAL TERTUTUP di bawah v20. Menjalankan zona tanpa flag apa pun akan tetap
+// "berhasil", tapi tanpa satu pun pembatasan berkas — persis jenis penurunan
+// jaminan diam-diam yang sudah berkali-kali jadi masalah di berkas ini. Lebih
+// baik menolak dengan alasan yang bisa dibaca.
+function flagPermission(major, worker) {
+  if (major >= 23) return ["--permission"];
+  if (major >= 20) {
+    return [
+      "--experimental-permission",
+      // --no-warnings menemani flag eksperimental: tanpa itu tiap zona mencetak
+      // ExperimentalWarning ke stderr, dan stderr zona ikut dilaporkan ke
+      // pemanggil (_withIo di agent/tools/index.cjs), sehingga setiap hasil
+      // capability_exec jadi kotor.
+      "--no-warnings",
+      // v20 menuntut izin baca EKSPLISIT untuk skrip masuknya sendiri; v23+
+      // mengizinkannya implisit. Tanpa baris ini zona mati sebelum sempat
+      // berjalan:
+      //     Error: Access to this API has been restricted
+      //     at internalModuleStat (node:internal/modules/cjs/loader)
+      // Diukur langsung di Node 20.15.1. Grant-nya sesempit mungkin — satu
+      // berkas, yaitu sumber worker itu sendiri, yang bukan rahasia. Semua
+      // akses berkas lain tetap ditolak.
+      "--allow-fs-read=" + worker,
+    ];
+  }
+  return null;
+}
+
+const _MAJOR_LOKAL = Number(String(process.versions.node).split(".")[0]);
+
 // ── Pengurungan jaringan (opsional, hanya Linux) ──
 //
 // `--permission` menutup berkas tapi TIDAK menyentuh jaringan sama sekali —
@@ -157,16 +203,20 @@ function wslZona() {
     12: () =>
       `worker hilang dari dalam WSL di ${workerWsl} setelah sempat disiapkan — distro mungkin di-restart di tengah jalan`,
     13: () =>
-      `Node di ${nodeWsl} tak mendukung --permission (butuh Node >= 23; v20 masih --experimental-permission)`,
+      `Node di ${nodeWsl} ada tapi flag permission-nya ditolak — biner rusak, atau bukan Node sungguhan`,
     14: () =>
       `unshare tak bisa membuat network namespace di distro "${distro}"`,
   };
+  // Tak ada kode 15: pemeriksaan versi pindah ke sisi JS setelah probe, karena
+  // shell tak lagi menghitungnya sendiri. Entri mati di tabel ini akan jadi
+  // keterangan yang tak pernah muncul — persis jenis dokumentasi yang menyesatkan
+  // pembacanya.
   try {
     // Kode keluar 0 SAJA tak cukup untuk tahap Node: sebuah biner yang
     // mengabaikan flag tak dikenal (mis. /bin/echo) juga keluar 0, dan probe
     // akan menyatakan pengurungan aktif padahal tidak. Terbukti saat menguji ini.
-    // Karena itu Node diminta MENCETAK versinya di bawah --permission — hanya
-    // Node yang bisa, dan angkanya sekalian membuktikan >= 23.
+    // Karena itu Node diminta MENCETAK versinya — hanya Node yang bisa — dan
+    // angkanya sekalian menentukan flag mana yang dipakai nanti.
     const keluar = execFileSync(
       "wsl.exe",
       [
@@ -175,9 +225,17 @@ function wslZona() {
         "--",
         "sh",
         "-c",
+        // Versi diambil DULU tanpa flag apa pun; flag yang sesuai baru diuji di
+        // panggilan kedua. Urutan sebaliknya mustahil — memakai --permission
+        // untuk mendeteksi versi akan gagal di Node 20 justru pada distro yang
+        // sebenarnya didukung.
+        //
+        // TANPA `$(...)`: substitusi perintah TIDAK selamat menyeberang wsl.exe
+        // (terukur: `sh: syntax error: unexpected "("`). Karena itu versinya
+        // dicetak langsung oleh Node dan diurai di sisi JS.
         `test -x ${nodeWsl} || exit 11; test -f ${workerWsl} || exit 12; ` +
-          `${nodeWsl} --permission -e 'process.stdout.write("NODEV"+process.versions.node)' || exit 13; ` +
-          `unshare -n true || exit 14`,
+          `unshare -n true || exit 14; ` +
+          `${nodeWsl} -e 'process.stdout.write("NODEV"+process.versions.node)' || exit 13`,
       ],
       { stdio: ["ignore", "pipe", "pipe"], timeout: 20000, encoding: "utf8" },
     );
@@ -186,11 +244,27 @@ function wslZona() {
       _wslAlasan = `${nodeWsl} di distro "${distro}" keluar bersih tapi bukan Node — tak mencetak versi apa pun`;
       return _wslCache;
     }
-    if (Number(v[1]) < 23) {
-      _wslAlasan = `Node ${v[1]}.x di ${nodeWsl} terlalu tua — --permission butuh Node >= 23`;
+    const flag = flagPermission(Number(v[1]), workerWsl);
+    if (!flag) {
+      _wslAlasan =
+        `Node ${v[1]}.x di ${nodeWsl} terlalu tua — model permission butuh Node >= 20 ` +
+        `(v20-v22: --experimental-permission, v23+: --permission)`;
       return _wslCache;
     }
-    _wslCache = { distro, nodeWsl, workerWsl };
+    // Flag TIDAK diasumsikan bekerja hanya karena angka versinya cocok. Ini
+    // pemeriksaan yang dulu menangkap /bin/echo lolos sebagai "Node"; menghapusnya
+    // berarti kembali percaya pada tebakan.
+    try {
+      execFileSync(
+        "wsl.exe",
+        ["-d", distro, "--", nodeWsl, ...flag, "-e", "0"],
+        { stdio: "ignore", timeout: 20000 },
+      );
+    } catch (_) {
+      _wslAlasan = `Node ${v[1]}.x di ${nodeWsl} menolak ${flag[0]} — biner rusak atau bukan Node sungguhan`;
+      return _wslCache;
+    }
+    _wslCache = { distro, nodeWsl, workerWsl, flag };
   } catch (e) {
     // WSL tak siap — jatuh ke fork biasa. Alasannya DISIMPAN, tidak dibuang.
     _wslCache = null;
@@ -362,9 +436,25 @@ function runInCapabilityZone(code, broker, opts = {}) {
     const token = wsl
       ? "WSZ" + require("crypto").randomBytes(8).toString("hex") + ""
       : "";
+    // Node terlalu tua: tolak, jangan jalankan tanpa pembatasan berkas.
+    const flagLokal = flagPermission(_MAJOR_LOKAL, WORKER);
+    if (!wsl && !flagLokal) {
+      return reject(
+        Object.assign(
+          new Error(
+            `Node ${process.versions.node} tak mendukung model permission — ` +
+              "capability_exec butuh Node >= 20 (v20-v22: --experimental-permission, " +
+              "v23+: --permission). Zona TIDAK dijalankan, karena tanpa flag itu " +
+              "kode tugas akan berjalan dengan akses berkas penuh.",
+          ),
+          { kurungan, stdout: "", stderr: "" },
+        ),
+      );
+    }
+
     let child;
     if (ns) {
-      child = spawn(ns, ["-n", process.execPath, "--permission", WORKER], {
+      child = spawn(ns, ["-n", process.execPath, ...flagLokal, WORKER], {
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
     } else if (wsl) {
@@ -379,14 +469,16 @@ function runInCapabilityZone(code, broker, opts = {}) {
           "unshare",
           "-n",
           wsl.nodeWsl,
-          "--permission",
+          // Flag ditentukan dari versi Node DI DALAM distro, bukan versi lokal —
+          // keduanya bisa berbeda jauh.
+          ...wsl.flag,
           wsl.workerWsl,
         ],
         { stdio: ["pipe", "pipe", "pipe"] },
       );
     } else {
       child = fork(WORKER, [], {
-        execArgv: ["--permission"], // no --allow-fs-read/write => fs denied process-wide
+        execArgv: flagLokal, // tanpa --allow-fs-read/write => fs ditolak se-proses
         stdio: ["ignore", "pipe", "pipe", "ipc"],
       });
     }
@@ -569,4 +661,10 @@ function runInCapabilityZone(code, broker, opts = {}) {
   });
 }
 
-module.exports = { runInCapabilityZone, statusKurungan, wslZona, netnsWrapper };
+module.exports = {
+  runInCapabilityZone,
+  statusKurungan,
+  wslZona,
+  netnsWrapper,
+  flagPermission,
+};

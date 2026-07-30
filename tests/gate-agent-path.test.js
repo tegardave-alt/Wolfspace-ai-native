@@ -11,6 +11,20 @@
 // Jadi setiap kasus di sini memanggil runSelfTool dari agent/tools.cjs, persis
 // seperti self_agent.cjs, dan memeriksa DISK sesudahnya — bukan cuma nilai balik.
 
+// Zona kapabilitas di berkas ini dipaksa ke transport fork.
+//
+// KENAPA. Di Windows, capability_exec kini default lewat WSL, dan zona PERTAMA
+// dalam satu proses menanggung probe + penyalaan distro — terukur ~6,8 detik,
+// sementara batas bawaan Jest 5 detik. Akibatnya uji
+// "capability_exec ditolak broker untuk tulis di luar cakupan" merah secara
+// acak (1 dari 8 jalan) dengan pesan timeout yang tak menyebut WSL sama sekali.
+//
+// Semua suite lain yang menyentuh zona sudah memakai konvensi ini; berkas ini
+// yang terlewat karena ditulis sebelum jalur WSL ada. Yang diuji di sini adalah
+// kebijakan broker, bukan transportnya — jadi memakai fork tidak mengurangi
+// apa pun.
+process.env.WOLFSPACE_ZONE_WSL = "0";
+
 const fs = require("fs");
 const path = require("path");
 const { runSelfTool } = require("../agent/tools.cjs");

@@ -31,11 +31,25 @@ function seedSync(dir, depth, maxDepth, out) {
     if (e.name === "node_modules" || e.name.startsWith(".")) continue;
     const fp = path.join(dir, e.name);
     if (e.isDirectory()) seedSync(fp, depth + 1, maxDepth, out);
-    else
-      out.set(
-        fp,
-        crypto.createHash("md5").update(fs.readFileSync(fp)).digest("hex"),
-      );
+    else {
+      // Berkas bisa LENYAP antara readdir dan readFile. Bukan kasus khayalan:
+      // tests/gate-agent-path.test.js menulis lalu menghapus
+      // public/_gate_test_probe.jsx, dan Jest menjalankan berkas uji secara
+      // paralel — terukur, satu dari lima jalannya mati dengan
+      // "ENOENT: open public\_gate_test_probe.jsx".
+      //
+      // Melewatinya juga LEBIH SETIA pada aslinya: penyemai di electron/main.js
+      // menyusuri direktori hidup yang bisa berubah kapan saja, jadi penyemai
+      // yang mati gara-gara satu berkas terhapus adalah cacat, bukan ketelitian.
+      try {
+        out.set(
+          fp,
+          crypto.createHash("md5").update(fs.readFileSync(fp)).digest("hex"),
+        );
+      } catch (err) {
+        if (err.code !== "ENOENT") throw err;
+      }
+    }
   }
 }
 
@@ -51,14 +65,19 @@ async function seedAsync(dir, depth, maxDepth, out) {
     if (e.name === "node_modules" || e.name.startsWith(".")) continue;
     const fp = path.join(dir, e.name);
     if (e.isDirectory()) await seedAsync(fp, depth + 1, maxDepth, out);
-    else
-      out.set(
-        fp,
-        crypto
-          .createHash("md5")
-          .update(await fs.promises.readFile(fp))
-          .digest("hex"),
-      );
+    else {
+      try {
+        out.set(
+          fp,
+          crypto
+            .createHash("md5")
+            .update(await fs.promises.readFile(fp))
+            .digest("hex"),
+        );
+      } catch (err) {
+        if (err.code !== "ENOENT") throw err; // lihat catatan di seedSync
+      }
+    }
   }
 }
 
@@ -144,6 +163,24 @@ test("both strategies compute identical baseline hashes (fix changes timing, not
   seedSync(PUB, 0, 20, a);
   const b = new Map();
   await seedAsync(PUB, 0, 20, b);
-  expect(b.size).toBe(a.size);
-  for (const [k, v] of a) expect(b.get(k)).toBe(v);
+
+  // Berkas yang MUNCUL/HILANG di antara dua penyusuran diabaikan.
+  //
+  // KENAPA. Jest menjalankan berkas uji secara paralel, dan
+  // tests/gate-agent-path.test.js menulis public/_gate_test_probe.jsx sebagai
+  // bagian dari pengujiannya. Kalau berkas itu lahir setelah penyusuran sync
+  // dan sebelum yang async, ukurannya berbeda dan uji ini merah — padahal tak
+  // ada yang rusak. Terukur: lulus 3/3 saat dijalankan sendirian, merah di
+  // suite penuh.
+  //
+  // Yang diuji di sini adalah "strategi sync dan async menghasilkan hash yang
+  // SAMA", bukan "isi public/ tidak berubah selama uji". Membandingkan hanya
+  // berkas yang dilihat KEDUANYA menjaga maksud itu tanpa ikut menguji
+  // kestabilan direktori yang memang bukan urusannya.
+  const bersama = [...a.keys()].filter((k) => b.has(k));
+  const goyah = a.size + b.size - 2 * bersama.length;
+  expect(bersama.length).toBeGreaterThan(0);
+  // Kalau yang goyah banyak, itu bukan lagi balapan — ada yang benar-benar salah.
+  expect(goyah).toBeLessThanOrEqual(4);
+  for (const k of bersama) expect(b.get(k)).toBe(a.get(k));
 }, 120000);
