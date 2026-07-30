@@ -19,6 +19,12 @@
 // ber-prefix `node:` tak pernah melewati require.cache. Terukur: bentuk polos 1
 // entri, bentuk `node:` 0 entri. Module._load dilewati keduanya.
 
+// Suite ini memakai transport fork, BUKAN WSL. Jest menjalankan berkas uji
+// secara paralel, dan tiap zona lewat WSL berarti satu spawn wsl.exe — terbukti
+// membuat suite flaky (sekali merah, sekali hijau, tanpa perubahan kode).
+// Transport WSL diuji terpisah di tests/broker-wsl-zone.test.js.
+process.env.WOLFSPACE_ZONE_WSL = "0";
+
 const fs = require("fs");
 const path = require("path");
 const {

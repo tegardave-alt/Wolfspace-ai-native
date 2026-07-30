@@ -21,6 +21,12 @@
 // MEMBACA. Kalau listenernya dilepas setelah penuh, deadlock-nya kembali
 // persis seperti semula — karena itu ada kasus 5 MB di bawah.
 
+// Suite ini memakai transport fork, BUKAN WSL. Jest menjalankan berkas uji
+// secara paralel, dan tiap zona lewat WSL berarti satu spawn wsl.exe — terbukti
+// membuat suite flaky (sekali merah, sekali hijau, tanpa perubahan kode).
+// Transport WSL diuji terpisah di tests/broker-wsl-zone.test.js.
+process.env.WOLFSPACE_ZONE_WSL = "0";
+
 const fs = require("fs");
 const {
   Policy,

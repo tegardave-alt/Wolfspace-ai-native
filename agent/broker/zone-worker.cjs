@@ -50,7 +50,7 @@ function pasangPelaporJaringan() {
           return (...args) => {
             const tujuan = args.find((a) => typeof a === "string") || "";
             try {
-              process.send({
+              kirim({
                 type: "net-attempt",
                 modul: nama,
                 metode: String(prop),
@@ -69,10 +69,58 @@ function pasangPelaporJaringan() {
   };
 }
 
+// ── Kanal ke broker: IPC fd ATAU stdio ──
+//
+// IPC fd (socketpair) dipakai saat worker di-fork langsung — cepat, dan
+// selamat melewati `unshare -n` karena socketpair sudah terbuka sebelum proses
+// masuk namespace.
+//
+// Tapi fd warisan TIDAK menyeberangi `wsl.exe`. Itu jadi penghalang ketika broker
+// hidup di Windows sementara zona harus berjalan di Linux agar netns berlaku.
+// Jembatan TCP mustahil di situ: zona di bawah `unshare -n` tak punya rute
+// jaringan sama sekali, termasuk ke host — jadi ia tak bisa menelepon balik.
+// Pipa stdio BUKAN jaringan dan diteruskan wsl.exe, jadi itulah satu-satunya
+// kanal yang selamat. Diuji: ping/pong lewat, dan jaringan di dalam zona tetap
+// EAI_AGAIN.
+//
+// TOKEN memisahkan protokol dari keluaran user di stdout yang sama. Acak per
+// eksekusi, jadi kode zona tak bisa memalsukan baris protokol dengan mencetak
+// prefiks yang ditebak — pola yang sama seperti heredoc di bash-jail.
+const TOKEN = process.env.WOLFSPACE_ZONE_TOKEN || "";
+const PAKAI_STDIO = !!TOKEN;
+
+function kirim(msg, sesudah) {
+  if (PAKAI_STDIO) {
+    process.stdout.write(TOKEN + JSON.stringify(msg) + "\n", () => {
+      if (sesudah) sesudah();
+    });
+    return;
+  }
+  process.send(msg, sesudah);
+}
+
+// Lepas kanal supaya proses keluar sendiri — bukan process.exit(), yang memotong
+// tulisan stdout yang masih mengantre (itu justru menghilangkan keluaran zona
+// yang sedang kita usahakan utuh).
+//
+// Di mode stdio, yang menahan event loop adalah stdin yang di-resume; di mode IPC,
+// kanal socketpair-nya. Keduanya harus dilepas dengan cara masing-masing.
+function tutupKanal() {
+  if (PAKAI_STDIO) {
+    try {
+      process.stdin.pause();
+    } catch (_) {}
+    return;
+  }
+  try {
+    process.disconnect();
+  } catch (_) {}
+}
+
 let reqId = 0;
 const pending = new Map();
 
-process.on("message", (msg) => {
+function tanganiPesan(msg) {
   if (msg.type === "capability-response") {
     const p = pending.get(msg.id);
     if (!p) return;
@@ -91,13 +139,32 @@ process.on("message", (msg) => {
     if (msg.pelapor !== false) pasangPelaporJaringan();
     runTask(msg.code);
   }
-});
+}
+
+if (PAKAI_STDIO) {
+  let buf = "";
+  process.stdin.on("data", (c) => {
+    buf += c.toString();
+    let i;
+    while ((i = buf.indexOf("\n")) !== -1) {
+      const line = buf.slice(0, i).trim();
+      buf = buf.slice(i + 1);
+      if (!line) continue;
+      try {
+        tanganiPesan(JSON.parse(line));
+      } catch (_) {}
+    }
+  });
+  process.stdin.resume();
+} else {
+  process.on("message", tanganiPesan);
+}
 
 function request(capability, params) {
   return new Promise((resolve, reject) => {
     const id = ++reqId;
     pending.set(id, { resolve, reject });
-    process.send({ type: "capability-request", id, capability, params });
+    kirim({ type: "capability-request", id, capability, params });
   });
 }
 
@@ -124,16 +191,8 @@ async function runTask(code) {
     // SETIAP eksekusi (terukur: ~3,1 detik per zona). process.exit() bukan
     // gantinya — ia memotong tulisan stdout yang masih mengantre, yang justru
     // kehilangan keluaran yang sedang kita usahakan.
-    process.send({ type: "done", result }, () => {
-      try {
-        process.disconnect();
-      } catch (_) {}
-    });
+    kirim({ type: "done", result }, tutupKanal);
   } catch (e) {
-    process.send({ type: "error", message: e.message, code: e.code }, () => {
-      try {
-        process.disconnect();
-      } catch (_) {}
-    });
+    kirim({ type: "error", message: e.message, code: e.code }, tutupKanal);
   }
 }
