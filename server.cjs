@@ -3654,8 +3654,22 @@ const server = http.createServer(async (req, res) => {
   // maupun state agent — jadi ia tetap menjawab meski bagian lain sedang sibuk,
   // yang justru penting: healthcheck yang ikut macet akan memicu restart beruntun.
   if (req.url === "/healthz") {
-    res.writeHead(200, { "Content-Type": "text/plain" });
-    return res.end("ok");
+    // Menyertakan VERSI, bukan cuma "ok".
+    //
+    // Backend bisa berjalan di tempat lain (WSL) dari salinan kode yang
+    // disinkronkan, dan salinan itu bisa tertinggal. Terjadi nyata: setelah
+    // beberapa commit, md5 berkas di WSL berbeda dari yang di Windows, dan
+    // satu-satunya cara menjawab "versi mana yang saya jalankan?" adalah
+    // membandingkan checksum satu per satu.
+    //
+    // Sekarang peluncur bisa membandingkannya sendiri: kalau versi backend yang
+    // hidup sama dengan yang mau dijalankan, ia DIPAKAI ULANG — tak ada proses
+    // kedua. Kalau beda, dihentikan lalu dinyalakan ulang. Itu yang membuat
+    // "satu server" jadi jaminan, bukan harapan.
+    res.writeHead(200, { "Content-Type": "application/json" });
+    return res.end(
+      JSON.stringify({ ok: true, ...versiBackend(), pid: process.pid }),
+    );
   }
 
   // Dynamic CORS: in bypass mode, allow only the frontend origin
@@ -5287,6 +5301,26 @@ const server = http.createServer(async (req, res) => {
 // Start the HTTP server ONLY when run directly (Electron spawns this as the entry).
 // When required as a module (by core.js / the IPC layer), expose the logic instead
 // of opening a port.
+// Identitas kode yang sedang dijalankan backend ini.
+//
+// Dibaca dari stempel yang DITULIS PELUNCUR sesudah menyinkronkan kode, bukan
+// dari git: salinan di WSL berisi berkas terlacak saja, tanpa .git, jadi backend
+// di sana tak bisa menanyakannya sendiri.
+//
+// Kalau stempelnya tak ada — server dijalankan manual, atau lewat jalur Windows
+// yang tak menyinkronkan apa pun — versinya "unknown". Itu jawaban yang JUJUR,
+// dan peluncur memperlakukannya sebagai "tak bisa dipastikan sama" sehingga
+// memilih menyalakan ulang ketimbang memakai ulang sesuatu yang tak dikenalnya.
+const VERSION_FILE = path.join(__dirname, ".wolfspace-version.json");
+function versiBackend() {
+  try {
+    const v = JSON.parse(fs.readFileSync(VERSION_FILE, "utf8"));
+    if (v && typeof v.version === "string")
+      return { version: v.version, syncedAt: v.syncedAt || null };
+  } catch (_) {}
+  return { version: "unknown", syncedAt: null };
+}
+
 // PID yang MENDENGARKAN di sebuah port — atau null bila tak bisa dipastikan.
 //
 // Mengembalikan null itu jawaban yang sah dan disengaja: pemanggil lebih baik

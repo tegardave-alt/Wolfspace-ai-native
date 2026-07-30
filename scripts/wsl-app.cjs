@@ -85,21 +85,44 @@ function winKeWsl(p) {
   return "/mnt/" + m[1].toLowerCase() + "/" + m[2].replace(/\\/g, "/");
 }
 
-function sinkronkan() {
+// Identitas isi working tree: sha1 dari (path, ukuran, mtime) tiap berkas
+// terlacak.
+//
+// SENGAJA bukan commit hash. Yang disinkronkan adalah working tree — termasuk
+// perubahan yang belum di-commit — jadi commit hash akan melaporkan "sama"
+// padahal isinya berbeda, tepat pada kasus yang paling sering terjadi saat
+// mengembangkan. Membaca isi tiap berkas lebih akurat lagi, tapi mtime+ukuran
+// sudah cukup membedakan suntingan nyata dan jauh lebih murah untuk ~600 berkas.
+function versiKode(repo, berkas) {
+  const h = require("crypto").createHash("sha1");
+  for (const f of berkas) {
+    try {
+      const st = fs.statSync(path.join(repo, f));
+      h.update(f + ":" + st.size + ":" + Math.floor(st.mtimeMs) + "\n");
+    } catch (_) {
+      h.update(f + ":hilang\n");
+    }
+  }
+  return h.digest("hex").slice(0, 12);
+}
+
+// Berkas terlacak + versinya — dihitung SEBELUM apa pun dinyalakan, karena
+// keputusan "pakai ulang atau nyalakan ulang" bergantung padanya.
+const REPO_WIN = path.resolve(path.join(__dirname, ".."));
+function rencanaSinkron() {
   if (process.env.WOLFSPACE_WSL_NO_SYNC === "1") {
     log("sinkronisasi dilewati (WOLFSPACE_WSL_NO_SYNC=1)");
-    return;
+    return null;
   }
-  const repoWin = path.join(__dirname, "..");
-  const repoWsl = winKeWsl(path.resolve(repoWin));
+  const repoWsl = winKeWsl(REPO_WIN);
   if (!repoWsl) {
     log("lewati sinkronisasi: path repo tak bisa dipetakan ke /mnt/...");
-    return;
+    return null;
   }
   let daftar;
   try {
     daftar = execFileSync("git", ["ls-files"], {
-      cwd: repoWin,
+      cwd: REPO_WIN,
       encoding: "utf8",
       maxBuffer: 32 * 1024 * 1024,
     });
@@ -107,15 +130,74 @@ function sinkronkan() {
     log(
       "lewati sinkronisasi: `git ls-files` gagal — " + e.message.split("\n")[0],
     );
-    return;
+    return null;
   }
   const berkas = daftar.split("\n").filter(Boolean);
+  return { repoWsl, berkas, versi: versiKode(REPO_WIN, berkas) };
+}
+
+function sinkronkan(rencana) {
+  if (!rencana) return;
+  const { repoWsl, berkas, versi } = rencana;
   const listWin = path.join(os.tmpdir(), "wolfspace-sync-list.txt");
   fs.writeFileSync(listWin, berkas.join("\n") + "\n", "utf8");
   const listWsl = winKeWsl(listWin);
+  // Skrip DITULIS KE BERKAS, tidak dioper sebagai `sh -c "<perintah panjang>"`.
+  //
+  // Versi inline-nya melapor SUKSES tapi tak menghapus apa pun: perintahnya
+  // melewati penggabungan baris-perintah Windows lalu wsl.exe sebelum sampai ke
+  // sh, dan tanda kutip di dalam loop tak selamat. Dijalankan dari berkas, skrip
+  // yang sama persis bekerja — diverifikasi manual, 3 berkas terhapus.
+  //
+  // Ini pelajaran yang berulang sepanjang pengerjaan ini: begitu sebuah perintah
+  // punya kutip bersarang, oper lewat berkas.
+  const skripWin = path.join(os.tmpdir(), "wolfspace-sync.sh");
+  const skrip = [
+    "#!/bin/sh",
+    "set -e",
+    `cd ${rencana.repoWsl}`,
+    `tar -cf - -T ${listWsl} | tar -xf - -C ${WSL_DIR}`,
+    `cd ${WSL_DIR}`,
+    `sort ${listWsl} > /tmp/ws-keep.txt`,
+    // Pengecualian penghapusan — semuanya WAJIB, dan masing-masing punya alasan:
+    //   node_modules  biner native, berbeda per platform, tak pernah terlacak
+    //   .git          bukan berkas terlacak tapi wajib ada
+    //   .wolfspace    quarantine + snapshots = state rollback agent; menghapusnya
+    //                 tiap sinkron akan membuang riwayat pemulihannya
+    //   stempel versi & kunci cloud & pid MCP = runtime, bukan kode
+    "find . -type f \\",
+    "  -not -path './node_modules/*' -not -path './.git/*' \\",
+    "  -not -path './.wolfspace/*' -not -path './config/.mcp-pids/*' \\",
+    "  -not -name '.wolfspace-version.json' -not -name 'cloud-keys.json' \\",
+    "  | sed 's|^\\./||' | sort > /tmp/ws-ada.txt",
+    "comm -13 /tmp/ws-keep.txt /tmp/ws-ada.txt > /tmp/ws-buang.txt",
+    'while IFS= read -r f; do [ -n "$f" ] && rm -f "$f"; :; done < /tmp/ws-buang.txt',
+    // Direktori kosong ikut dipangkas. Menghapus berkas saja menyisakan cangkang
+    // folder — terukur 98 setelah pembersihan pertama — dan folder kosong bernama
+    // `vscode-extension-fork` tetap memberi kesan sesuatu masih ada di sana.
+    // Pengecualiannya sama; `|| true` karena find kehabisan direktori bukan galat.
+    "find . -type d -empty \\",
+    "  -not -path './node_modules/*' -not -path './.git/*' \\",
+    "  -not -path './.wolfspace/*' -not -path './config/*' \\",
+    "  -delete 2>/dev/null || true",
+  ].join("\n");
+  fs.writeFileSync(skripWin, skrip, "utf8");
+  const skripWsl = winKeWsl(skripWin);
+
   try {
     // tar dijalankan DI DALAM WSL: menulis langsung ke filesystem Linux jauh
     // lebih cepat daripada menyalin lewat lapisan /mnt per berkas.
+    execFileSync("wsl.exe", ["-d", DISTRO, "--", "sh", skripWsl, "--abaikan"], {
+      stdio: "ignore",
+      timeout: 180000,
+    });
+    // Stempel DITULIS SESUDAH tar berhasil, tidak sebelumnya: kalau sinkronisasi
+    // gagal di tengah, stempel yang sudah terlanjur ada akan berbohong bahwa
+    // backend memakai kode terbaru.
+    const stempel = JSON.stringify({
+      version: versi,
+      syncedAt: new Date().toISOString(),
+    });
     execFileSync(
       "wsl.exe",
       [
@@ -124,11 +206,11 @@ function sinkronkan() {
         "--",
         "sh",
         "-c",
-        `cd ${repoWsl} && tar -cf - -T ${listWsl} | tar -xf - -C ${WSL_DIR}`,
+        `cat > ${WSL_DIR}/.wolfspace-version.json <<'__EOF__'\n${stempel}\n__EOF__`,
       ],
-      { stdio: "ignore", timeout: 180000 },
+      { stdio: "ignore", timeout: 20000 },
     );
-    log(`sinkron: ${berkas.length} berkas -> ${DISTRO}:${WSL_DIR}`);
+    log(`sinkron: ${berkas.length} berkas -> ${DISTRO}:${WSL_DIR} (${versi})`);
   } catch (e) {
     mati(
       "sinkronisasi ke WSL gagal: " +
@@ -137,33 +219,38 @@ function sinkronkan() {
     );
   }
 }
-sinkronkan();
-
-// ── 2. Nyalakan server, TAHAN prosesnya ──
+// ── 2. Menyalakan server — TAPI hanya kalau memang perlu (lihat alur utama) ──
 // exec agar node menggantikan sh: sinyal dari sini langsung mengenai server,
 // bukan cangkang perantara yang menyisakan node yatim.
-log(`menyalakan backend di ${DISTRO}:${WSL_DIR} …`);
-const server = spawn(
-  "wsl.exe",
-  [
-    "-d",
-    DISTRO,
-    "--",
-    "sh",
-    "-c",
-    `cd ${WSL_DIR} && HOST=0.0.0.0 PORT=${PORT} exec ${WSL_NODE} server.cjs`,
-  ],
-  { stdio: ["ignore", "pipe", "pipe"] },
-);
-server.stdout.on("data", (d) => process.stdout.write(d));
-server.stderr.on("data", (d) => process.stderr.write(d));
-server.on("exit", (code) => {
-  if (!berhenti) mati(`backend WSL berhenti lebih dulu (kode ${code})`);
-});
-
+let server = null;
 let berhenti = false;
+function nyalakanServer() {
+  log(`menyalakan backend di ${DISTRO}:${WSL_DIR} …`);
+  server = spawn(
+    "wsl.exe",
+    [
+      "-d",
+      DISTRO,
+      "--",
+      "sh",
+      "-c",
+      `cd ${WSL_DIR} && HOST=0.0.0.0 PORT=${PORT} exec ${WSL_NODE} server.cjs`,
+    ],
+    { stdio: ["ignore", "pipe", "pipe"] },
+  );
+  server.stdout.on("data", (d) => process.stdout.write(d));
+  server.stderr.on("data", (d) => process.stderr.write(d));
+  server.on("exit", (code) => {
+    if (!berhenti) mati(`backend WSL berhenti lebih dulu (kode ${code})`);
+  });
+}
+
+// Hanya menghentikan backend yang KITA nyalakan. Kalau kita memakai ulang milik
+// sesi lain, menutup app ini tak boleh menjatuhkannya — itu justru akan
+// mengubah "jangan bertumpuk" jadi "saling membunuh".
 const bunuhServer = () => {
   berhenti = true;
+  if (!server) return;
   try {
     server.kill();
   } catch (_) {}
@@ -171,6 +258,21 @@ const bunuhServer = () => {
 process.on("exit", bunuhServer);
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
+
+// Hentikan backend milik orang lain saat versinya berbeda — lewat PID yang
+// DILAPORKAN /healthz, bukan tebakan dari daftar proses.
+function hentikanBackendLama(pid) {
+  if (!Number.isInteger(pid) || pid <= 1) return false;
+  try {
+    execFileSync("wsl.exe", ["-d", DISTRO, "--", "kill", "-9", String(pid)], {
+      stdio: "ignore",
+      timeout: 10000,
+    });
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
 
 // ── 3. IP distro (bukan 127.0.0.1) ──
 function ipDistro() {
@@ -183,31 +285,76 @@ function ipDistro() {
   }
 }
 
-// ── 4. Tunggu /healthz benar-benar menjawab ──
+// ── 4. /healthz — mengembalikan { version, pid } atau null bila tak menjawab ──
 function cekSehat(ip) {
   return new Promise((resolve) => {
     const req = http.get(
       { host: ip, port: Number(PORT), path: "/healthz", timeout: 3000 },
       (res) => {
-        res.resume();
-        resolve(res.statusCode === 200);
+        let b = "";
+        res.on("data", (c) => (b += c));
+        res.on("end", () => {
+          if (res.statusCode !== 200) return resolve(null);
+          try {
+            resolve(JSON.parse(b));
+          } catch (_) {
+            // Backend versi lama menjawab "ok" polos, bukan JSON. Itu bukan
+            // kegagalan — hanya berarti versinya tak bisa dipastikan.
+            resolve({ ok: true, version: "unknown", pid: null });
+          }
+        });
       },
     );
-    req.on("error", () => resolve(false));
+    req.on("error", () => resolve(null));
     req.on("timeout", () => {
       req.destroy();
-      resolve(false);
+      resolve(null);
     });
   });
 }
 
+const tunggu = (ms) => new Promise((r) => setTimeout(r, ms));
+
 (async () => {
+  const ip0 = ipDistro();
+  const rencana = rencanaSinkron();
+  const versiTarget = rencana ? rencana.versi : null;
+
+  // ── Jaminan SATU server ──
+  // Tanpa ini, tiap peluncuran menambah proses baru dan port bentrok jadi
+  // mekanisme utama — persis yang membuat "matikan proses lama" berubah jadi
+  // bug destruktif kemarin. Keputusannya dibuat SEBELUM apa pun dinyalakan.
+  const sehat = ip0 ? await cekSehat(ip0) : null;
+  let pakaiUlang = false;
+  if (sehat) {
+    if (versiTarget && sehat.version === versiTarget) {
+      log(
+        `backend sudah jalan (pid ${sehat.pid}) dan versinya SAMA (${versiTarget}) — dipakai ulang`,
+      );
+      pakaiUlang = true;
+    } else {
+      log(
+        `backend jalan tapi versinya beda (${sehat.version} vs ${versiTarget || "?"}) — dihentikan`,
+      );
+      if (!hentikanBackendLama(sehat.pid))
+        log(
+          "  gagal menghentikan lewat PID; lanjut — server baru akan mencoba merebut port",
+        );
+      await tunggu(1500);
+    }
+  }
+
+  if (!pakaiUlang) {
+    sinkronkan(rencana);
+    nyalakanServer();
+  }
+
   const batas = Date.now() + SIAP_TIMEOUT_MS;
   let ip = null;
   while (Date.now() < batas) {
     ip = ip || ipDistro();
     if (ip && (await cekSehat(ip))) break;
-    await new Promise((r) => setTimeout(r, 1500));
+    await tunggu(1500);
     if (Date.now() >= batas) ip = null;
   }
   if (!ip) {
@@ -219,7 +366,9 @@ function cekSehat(ip) {
   }
 
   const backend = `http://${ip}:${PORT}/`;
-  log(`backend siap di ${backend} — membuka Electron`);
+  log(
+    `backend siap di ${backend} (versi ${versiTarget || "?"}${pakaiUlang ? ", dipakai ulang" : ""}) — membuka Electron`,
+  );
 
   const env = { ...process.env, WOLFSPACE_BACKEND: backend };
   delete env.ELECTRON_RUN_AS_NODE;

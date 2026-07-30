@@ -30,3 +30,7 @@ load-report.md
 electron-load-report.md
 agent-load-report.md
 agent-leak-report.md
+
+# Stempel versi yang ditulis peluncur sesudah sinkronisasi ke WSL.
+# Lokal per-mesin dan per-deploy, jangan ikut ter-commit.
+.wolfspace-version.json
