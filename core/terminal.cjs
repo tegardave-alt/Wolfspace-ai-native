@@ -5,6 +5,7 @@
  */
 
 const os = require("os");
+const { getPlatformAdapter } = require("../agent/platform/index.cjs");
 
 // Dijaga dengan alasan yang sama seperti di server.cjs: node-pty adalah modul
 // NATIVE dan bisa tak tersedia (mis. Alpine/musl tanpa prebuild linux dan tanpa
@@ -113,12 +114,77 @@ function resize(id, cols, rows) {
   return true;
 }
 
+// ── Menutup PTY tanpa memanggil pendaftar konsol node-pty ──
+//
+// MASALAHNYA. Di jalur ConPTY, node-pty kill() men-fork
+// lib/conpty_console_list_agent.js untuk mendaftar proses di konsol lalu
+// membunuhnya satu per satu. Fork itu MATI di sini dengan "AttachConsole failed"
+// — terukur bukan cuma di jest, tapi juga di proses node biasa, artinya ini
+// jalur produksi. Akibatnya tiga:
+//   1. jejak tumpukan setinggi 10 baris tercetak ke stderr tiap kali terminal
+//      ditutup, yang terbaca seolah WOLFSPACE sendiri yang runtuh;
+//   2. pipa fork yang sudah mati tertinggal sebagai handle (jest melaporkannya
+//      sebagai PIPEWRAP dan tak bisa keluar bersih);
+//   3. timeout 5 detik di dalam node-pty menunggu pesan yang tak akan datang.
+// Daftar prosesnya sendiri TAK PERNAH tiba, jadi jaring pengamannya memang
+// sudah tidak bekerja — bukan sesuatu yang hilang karena perubahan ini.
+//
+// GANTINYA LEBIH KUAT, bukan sekadar lebih sunyi. taskkill /F /T menghabisi
+// seluruh pohon proses, termasuk cucu yang tak terdaftar di konsol — kasus yang
+// justru jadi alasan node-pty menulis jalur itu (microsoft/vscode#26807).
+// Fungsi yang sama sudah dipakai sandbox lewat adapter platform.
+//
+// Diukur sebelum dan sesudah, dengan anak `node` berumur panjang di dalam PTY:
+//   sebelum: anak mati, TAPI stderr penuh jejak tumpukan + handle tertinggal
+//   sesudah: anak mati, stderr bersih, tak ada handle tersisa
+function _matikanPohon(pid) {
+  if (!pid) return;
+  try {
+    getPlatformAdapter().killTree({ pid });
+  } catch (_) {}
+}
+
+// Menonaktifkan pendaftar konsol HANYA pada sesi yang sedang ditutup. Ini API
+// privat node-pty, jadi dijaga: kalau bentuknya berubah di versi mendatang,
+// tak ada yang meledak — kita cuma kembali ke perilaku lama yang berisik.
+function _bungkamPendaftarKonsol(ptyProcess) {
+  try {
+    const agent = ptyProcess && ptyProcess._agent;
+    if (agent && typeof agent._getConsoleProcessList === "function") {
+      agent._getConsoleProcessList = () => Promise.resolve([]);
+    }
+  } catch (_) {}
+}
+
+// Satu-satunya cara membunuh PTY di seluruh basis kode ini.
+//
+// Diekspor karena server.cjs punya manajer sesi terminalnya SENDIRI untuk jalur
+// HTTP/UI, terpisah dari yang di berkas ini (yang dipakai tool agent). Di sana
+// penutupannya memanggil `pty.kill("SIGTERM")` — dan node-pty di Windows
+// MELEMPAR begitu diberi argumen sinyal ("Signals not supported on windows",
+// windowsTerminal.js:150). Lemparannya ditelan `catch {}`, sesinya dihapus dari
+// map, jadi PTY-nya hidup terus DAN tak bisa dijangkau lagi untuk dibersihkan.
+// Terukur pada proses server sungguhan: 3 anak sebelum, 9 sesudah tiga kali
+// buka+tutup — dua proses yatim per siklus, bertahan sampai seluruh aplikasi
+// ditutup, sementara /api/terminal/list sudah melaporkan kosong.
+//
+// Dua manajer sesi tetap dibiarkan (menyatukannya menyentuh jalur UI hidup dan
+// bukan bagian dari perbaikan ini), tapi cara membunuhnya TIDAK boleh ada dua.
+function killPty(ptyProcess) {
+  if (!ptyProcess) return;
+  // Urutannya penting: pohon dibunuh SELAGI pid-nya masih sah, baru handle
+  // node-pty dilepas.
+  _matikanPohon(ptyProcess.pid);
+  _bungkamPendaftarKonsol(ptyProcess);
+  try {
+    ptyProcess.kill(); // TANPA argumen — lihat catatan di atas
+  } catch (_) {}
+}
+
 function destroy(id) {
   const session = sessions.get(id);
   if (!session) return false;
-  try {
-    session.ptyProcess.kill();
-  } catch (_) {}
+  killPty(session.ptyProcess);
   sessions.delete(id);
   return true;
 }
@@ -140,4 +206,13 @@ function readBuffer(id, clear) {
   return text;
 }
 
-module.exports = { create, write, onData, resize, destroy, list, readBuffer };
+module.exports = {
+  create,
+  write,
+  onData,
+  resize,
+  destroy,
+  list,
+  readBuffer,
+  killPty,
+};

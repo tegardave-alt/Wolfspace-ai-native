@@ -1627,7 +1627,23 @@ async function runSelfTool(name, args, emit, context = {}) {
             (_modLoadErrors["broker"] || "unknown error"),
         };
       const { Policy, Broker, runInCapabilityZone } = b;
-      const workDir = WORKSPACE || path.join(QROOT, "workspace");
+      // Cakupan mengikuti workspace YANG SEDANG AKTIF, bukan WORKSPACE global.
+      //
+      // WORKSPACE adalah satu folder tetap di dalam pohon WOLFSPACE sendiri
+      // (QROOT/workspace). Memakainya saat agent dikurung ke folder lain salah
+      // di DUA arah sekaligus:
+      //   1. bocor  — agent yang dikurung ke proyek X tetap diberi izin baca
+      //      /tulis di dalam pohon WOLFSPACE. Itu justru menembus pengurungan
+      //      yang dipasang read/write/edit/bash tepat di atas.
+      //   2. lumpuh — request() ke berkas proyeknya SENDIRI selalu ditolak,
+      //      sehingga capability_exec praktis tak bisa dipakai di mode ww.
+      // Sumber cakupan disamakan dengan tool lain di berkas ini
+      // (context.workspaceRoot -> WW_WORKSPACE_ROOT -> global).
+      const workDir =
+        (context && context.workspaceRoot) ||
+        process.env.WW_WORKSPACE_ROOT ||
+        WORKSPACE ||
+        path.join(QROOT, "workspace");
       try {
         fs.mkdirSync(workDir, { recursive: true });
       } catch (_) {}

@@ -3528,6 +3528,10 @@ const { selfAgentStream } = require("./agent/self_agent.cjs");
 // Designed for AI agents to run interactive commands without losing context.
 const terminalSessions = new Map(); // id â†’ { pty, shell, cwd, createdAt, listeners, outputBuffer }
 const TERM_OUTPUT_MAX = 4096; // max chars kept per session for late joiners
+// Manajer sesinya berbeda dari core/terminal.cjs (yang dipakai tool agent), tapi
+// cara MEMBUNUH PTY diambil dari sana — satu implementasi saja. Alasannya
+// panjang dan ada di closeTerminalSession() di bawah.
+const coreTerminal = require("./core/terminal.cjs");
 
 function generateTerminalId() {
   return (
@@ -3631,19 +3635,26 @@ function resizeTerminal(id, cols, rows) {
 }
 
 // Close (kill) a terminal session.
+//
+// Dulu: pty.kill("SIGTERM"), lalu pty.kill("SIGKILL") 200 ms kemudian. KEDUANYA
+// tak pernah membunuh apa pun di Windows — node-pty MELEMPAR begitu diberi
+// argumen sinyal ("Signals not supported on windows", windowsTerminal.js:150),
+// dan lemparannya ditelan `catch {}`. Sesi tetap dihapus dari map, jadi PTY-nya
+// hidup terus sekaligus tak terjangkau untuk dibersihkan. Terukur pada proses
+// server sungguhan: 3 anak sebelum, 9 sesudah tiga kali buka+tutup — dua proses
+// yatim per siklus, bertahan sampai seluruh aplikasi ditutup, sementara
+// /api/terminal/list sudah melaporkan kosong.
+//
+// Sekarang memakai satu-satunya jalur pembunuh PTY di basis kode ini
+// (core/terminal.cjs killPty): taskkill /F /T untuk seluruh pohon, tanpa
+// argumen sinyal, plus menonaktifkan pendaftar konsol node-pty yang crash.
+// Penghapusan dari map tak perlu ditunda lagi — pembunuhannya sinkron, jadi
+// jendela 200 ms itu hanya menunda tanpa menjamin apa pun.
 function closeTerminalSession(id) {
   const session = terminalSessions.get(id);
   if (!session) return;
-  try {
-    session.pty.kill("SIGTERM");
-  } catch {}
-  // Give the process a moment to exit gracefully, then force-kill.
-  setTimeout(() => {
-    try {
-      session.pty.kill("SIGKILL");
-    } catch {}
-    terminalSessions.delete(id);
-  }, 200);
+  coreTerminal.killPty(session.pty);
+  terminalSessions.delete(id);
 }
 
 const server = http.createServer(async (req, res) => {
