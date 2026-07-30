@@ -152,12 +152,12 @@ re-derived:
 Steps 1–3 are one-time setup. After that just run:
 
 ```
-node scripts/wsl-app.cjs        # same thing as `npm run app`
+node scripts/wsl-app.cjs        # same thing as `npm run app:wsl`
 ```
 
 Call `node` directly on Windows PowerShell: it resolves `npm` to `npm.ps1`
 before `npm.cmd`, and the default `Restricted` execution policy blocks `.ps1`,
-so a bare `npm run app` fails there while `npm.cmd run app` works.
+so a bare `npm run app:wsl` fails there while `npm.cmd run app:wsl` works.
 
 `scripts/wsl-app.cjs` **syncs the code into the distro first** (tracked files from
 the working tree, so uncommitted work runs too — `node_modules` is left alone,
@@ -174,16 +174,16 @@ manual deploy — and "which version am I actually running?" becomes unanswerabl
 without comparing checksums. That happened: after a few commits the files in WSL
 had different md5s from the ones on Windows.
 
-**WSL is the default.** There used to be two commands meaning "run the app",
-which made "which one am I on?" a question you had to ask at all — so the WSL
-path took over `app`, and the duplicate `app:wsl` alias is gone. The Windows
-in-process backend stays reachable under a name that says what it is, because
-without it there is no way to run at all when WSL is unavailable.
+**Windows stays the default.** `npm run app` is unchanged from before this work:
+in-process backend, `app://` UI, no HTTP hop. Running the backend in WSL is
+opt-in as `npm run app:wsl`, because moving the backend was never the goal — only
+the sandbox was. Reach for the WSL variant when you want the zone's network
+containment, which only Linux can provide.
 
-| command           | backend                             | zone network containment      |
-| ----------------- | ----------------------------------- | ----------------------------- |
-| `npm run app`     | server.cjs inside WSL, UI over HTTP | **yes**                       |
-| `npm run app:win` | in-process core on Windows          | **no** (Windows has no netns) |
+| command           | backend                              | zone network containment      |
+| ----------------- | ------------------------------------ | ----------------------------- |
+| `npm run app`     | in-process core on Windows (default) | **no** (Windows has no netns) |
+| `npm run app:wsl` | server.cjs inside WSL, UI over HTTP  | **yes**                       |
 
 Verified end to end this way: full suite **59/59 in WSL** (Windows skips the 3
 netns behaviour tests), and a real agent run driven from Windows over HTTP

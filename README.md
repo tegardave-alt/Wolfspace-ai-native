@@ -61,7 +61,7 @@ Python is optional (only to execute Python snippets). No build step — the UI i
 The same core wrapped in an Electron shell, with hot-reload during development:
 
 ```bash
-node scripts/wsl-app.cjs       # launch the desktop shell (= npm run app)
+node scripts/app.cjs           # launch the desktop shell (= npm run app)
 npm run dist                   # build a Windows NSIS installer
 ```
 
@@ -71,10 +71,12 @@ npm run dist                   # build a Windows NSIS installer
 > with a policy error while `npm.cmd run app` works. Calling `node` directly
 > avoids the shim entirely and behaves the same in every shell.
 
-`npm run app` starts the backend **inside WSL** (where the agent's sandbox
-containment actually works) and points Electron at it. Use `npm run app:win`
-for the Windows-only in-process backend — see `agent/broker/README.md` for what
-that costs you.
+`npm run app` runs the backend **in-process on Windows** — the default, unchanged.
+`npm run app:wsl` is the opt-in variant that runs the backend inside WSL, which is
+the only place the agent sandbox's network containment actually applies (Node's
+permission model has no network dimension, and Windows firewall rules are
+per-executable — the zone is the same `node.exe` as the host). Filesystem
+containment works on both. See `agent/broker/README.md`.
 
 The installer is **not code-signed**, so Windows SmartScreen will warn on first run —
 choose _More info → Run anyway_.
