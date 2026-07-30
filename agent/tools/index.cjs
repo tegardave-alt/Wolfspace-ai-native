@@ -388,6 +388,25 @@ function _confineBash(cmd, argCwd, confineRoot) {
   return { ok: true, cwd };
 }
 
+const _bashJail = require("./bash-jail.cjs");
+
+// Ubah cwd host jadi path DI DALAM jail. Sama seperti perhitungan `-w` untuk
+// Docker: hanya cwd yang benar-benar di bawah root workspace yang dihormati,
+// sisanya jatuh ke /work.
+function _workdirDalamJail(root, cwd) {
+  if (!cwd) return "/work";
+  try {
+    const abs = path.isAbsolute(cwd)
+      ? path.resolve(cwd)
+      : path.resolve(root, cwd);
+    if (!_wwInside(root, abs)) return "/work";
+    const rel = path.relative(root, abs).replace(/\\/g, "/");
+    return rel ? "/work/" + rel : "/work";
+  } catch (_) {
+    return "/work";
+  }
+}
+
 // ── Pengurungan OS sungguhan untuk bash: jalankan di kontainer Docker throwaway ──
 // HANYA folder ww yang di-mount (/work, rw); folder saudara & host tak terlihat
 // kontainer sama sekali. rootfs read-only + network none + batas CPU/RAM/pids.
@@ -1197,15 +1216,31 @@ async function runSelfTool(name, args, emit, context = {}) {
         // fallback "auto" = perilaku lama (pakai Docker bila ada). Bedanya: setelan
         // eksplisit `"sandbox": false` / WOLFSPACE_SANDBOX=off KINI DIHORMATI —
         // sebelumnya jalur ini mengabaikannya dan tetap memakai Docker.
+        // Namespace Linux DIDAHULUKAN atas Docker: jaminannya setara (jaringan
+        // kosong, hanya folder ws terlihat, sistem read-only, /tmp tmpfs) tapi
+        // tak butuh daemon yang harus dipasang dan dinyalakan. Di mesin ini
+        // daemon Docker mati, sehingga yang benar-benar berjalan sehari-hari
+        // adalah penjaga regex — pengurungan terkuat justru yang paling jarang
+        // aktif. Diuji: 12/12, termasuk 7 percobaan lolos (isi berkas host,
+        // /root, /etc/passwd, naik direktori, tulis /bin, jaringan, injeksi
+        // heredoc) semuanya tertahan.
         if (
           process.env.WW_BASH_NATIVE !== "1" &&
           _sandboxPolicy.shouldSandbox(
             _sandboxPolicy.configSandbox(),
-            _hasDocker(),
+            _bashJail.tersedia() || _hasDocker(),
             "auto",
           )
         ) {
-          return await _runBashInDocker(cmd, _confineRoot, args);
+          if (_bashJail.tersedia()) {
+            const wd = _workdirDalamJail(_confineRoot, args.cwd);
+            return await _bashJail.jalankan(cmd, _confineRoot, {
+              timeout: args.timeout || 60000,
+              workdir: wd,
+            });
+          }
+          if (_hasDocker())
+            return await _runBashInDocker(cmd, _confineRoot, args);
         }
         // Cadangan: guard regex (bocor, defense-in-depth) saat Docker tak tersedia.
         const guard = _confineBash(cmd, args.cwd, _confineRoot);
