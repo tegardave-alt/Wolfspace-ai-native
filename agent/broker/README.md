@@ -123,6 +123,36 @@ Windows has no equivalent: firewall rules are per-executable and the zone is the
 _same_ `node.exe` as the host, so no rule can tell them apart. There
 `netnsWrapper()` returns null and behaviour is unchanged.
 
+### Running the backend in WSL (how to actually get this on Windows)
+
+Since containment is Linux-only, the backend has to run inside WSL and Electron
+points at it. Steps that were **not** obvious, recorded so they don't have to be
+re-derived:
+
+1. **Node ≥ 23 inside the distro.** `--permission` was `--experimental-permission`
+   before that, and Alpine's `apk` only ships Node 20. Install a musl build to a
+   separate prefix (`/opt/node24`) so the system Node stays untouched:
+   `unofficial-builds.nodejs.org/download/release/v24.16.0/node-v24.16.0-linux-x64-musl.tar.xz`.
+2. **Copy the repo into the WSL filesystem**, not `/mnt/c`, and `npm install`
+   there. Installing over `/mnt/c` would overwrite the Windows `node_modules`
+   (native binaries differ per platform). `git archive HEAD | tar -x` works.
+3. **`node-pty` needs building from source** — no linux prebuild ships. Requires
+   `apk add python3 make g++ linux-headers`, plus **node-gyp ≥ 10**: the bundled
+   v9 fails with `ModuleNotFoundError: No module named 'distutils'` because
+   Python 3.12 removed it. And pass `--dist-url=https://nodejs.org/dist`, since
+   gyp otherwise looks for headers on unofficial-builds and 404s.
+   Without this the server still runs — terminals just report `PTY_UNAVAILABLE`.
+4. **Point the UI at it**: `WOLFSPACE_BACKEND=http://<wsl-ip>:8090/`. Both
+   `electron/main.js` (loadURL) and `electron/preload.js` (drops the `ipc` flag,
+   so the frontend uses its HTTP path) read that variable.
+5. **Use the WSL IP, not `127.0.0.1`.** WSL2's localhost forwarding proved
+   unreliable here — it worked, then stopped mid-session while the server was
+   still serving fine from inside the distro. The IP changes on restart.
+
+Verified end to end this way: full suite **59/59 in WSL** (Windows skips the 3
+netns behaviour tests), and a real agent run driven from Windows over HTTP
+answered _"Linux x86_64 … WSL2 … kernel 6.18"_ after running `uname -a` itself.
+
 ## How it compares to the Docker sandbox
 
 Both hold the filesystem, but for different reasons, and that difference decides
