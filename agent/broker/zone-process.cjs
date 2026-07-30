@@ -10,11 +10,58 @@
 // forwarded here and validated by the Broker before anything executes.
 "use strict";
 
-const { fork } = require("child_process");
+const { fork, spawn, execFileSync } = require("child_process");
 const path = require("path");
 const { getPlatformAdapter } = require("../platform/index.cjs");
 
 const WORKER = path.join(__dirname, "zone-worker.cjs");
+
+// ── Pengurungan jaringan (opsional, hanya Linux) ──
+//
+// `--permission` menutup berkas tapi TIDAK menyentuh jaringan sama sekali —
+// model permission Node memang tak punya dimensi itu, jadi tak ada flag yang
+// bisa ditambahkan. Karena itu kode zona bisa memanggil https.get() langsung dan
+// berhasil; di README itu satu-satunya baris tabel serangan yang lolos.
+//
+// Menambalnya DARI DALAM zona tidak bisa dijadikan batas. Diuji dengan mengganti
+// http/https/net/tls/dgram di require.cache lalu diserang: `require('node:https')`
+// tembus (kunci cache berbeda) dan `process.binding('tcp_wrap')` tembus (berada
+// di BAWAH lapisan modul) — 2 dari 5 percobaan, tanpa usaha berarti. Itu
+// kesalahan yang sama persis dengan versi vm.createContext dulu: menyembunyikan
+// referensi, bukan mencabut kemampuan.
+//
+// Batas yang benar ada di kernel. `unshare -n` memberi proses network namespace
+// kosong (hanya loopback, tanpa rute). Yang menentukan bagi arsitektur ini:
+// kanal IPC SELAMAT, karena socketpair-nya sudah terbuka sebelum proses masuk
+// namespace. Jadi request() tetap bekerja seperti sebelumnya — broker di host
+// yang punya jaringan, zona tidak.
+//
+// Terukur di WSL2 (kernel 6.18, node v24.16.0):
+//     tanpa netns   -> https.get berhasil, status 403 (sampai ke server)
+//     dengan netns  -> EAI_AGAIN, dan IPC tetap HIDUP
+//     ongkos spawn  -> 78,3 ms vs 95,0 ms median; rentang tumpang tindih
+// Tak ada overhead terukur, tanpa daemon, tanpa pool kontainer.
+//
+// Windows tak punya padanannya: aturan firewall bersifat per-executable dan
+// proses zona adalah node.exe yang SAMA dengan host, jadi tak bisa dibedakan.
+// Di sana nilainya null dan perilakunya tetap seperti semula (fork biasa).
+let _netnsCache;
+function netnsWrapper() {
+  if (_netnsCache !== undefined) return _netnsCache;
+  _netnsCache = null;
+  if (process.platform === "linux") {
+    try {
+      execFileSync("unshare", ["-n", "true"], {
+        stdio: "ignore",
+        timeout: 3000,
+      });
+      _netnsCache = "unshare";
+    } catch (_) {
+      _netnsCache = null; // butuh CAP_SYS_ADMIN / user-ns — jalan tanpa pengurungan
+    }
+  }
+  return _netnsCache;
+}
 
 // Berapa banyak keluaran zona yang DISIMPAN. Ini BUKAN batas berapa yang
 // dibaca: pipa harus terus dikuras apa pun isinya (lihat makeSink).
@@ -63,10 +110,18 @@ function runInCapabilityZone(code, broker, opts = {}) {
   const limit = opts.maxCapture || MAX_CAPTURE;
 
   return new Promise((resolve, reject) => {
-    const child = fork(WORKER, [], {
-      execArgv: ["--permission"], // no --allow-fs-read/write => fs denied process-wide
-      stdio: ["ignore", "pipe", "pipe", "ipc"],
-    });
+    // Dengan netns dipakai spawn, bukan fork: fork tak bisa disisipi pembungkus
+    // perintah. `stdio: [..., 'ipc']` tetap memberi kanal child.send/on('message')
+    // yang sama, karena Node anak membacanya dari NODE_CHANNEL_FD.
+    const ns = opts.netns === false ? null : netnsWrapper();
+    const child = ns
+      ? spawn(ns, ["-n", process.execPath, "--permission", WORKER], {
+          stdio: ["ignore", "pipe", "pipe", "ipc"],
+        })
+      : fork(WORKER, [], {
+          execArgv: ["--permission"], // no --allow-fs-read/write => fs denied process-wide
+          stdio: ["ignore", "pipe", "pipe", "ipc"],
+        });
 
     let settled = false;
     const out = makeSink(limit);
@@ -85,27 +140,60 @@ function runInCapabilityZone(code, broker, opts = {}) {
       errBytes: err.bytes,
     });
 
-    const finish = (fn, val) => {
+    // Selesaikan SETELAH stdio terkuras, bukan seketika.
+    //
+    // Dulu `done` dari IPC langsung diikuti SIGKILL. Pesan IPC bisa tiba
+    // mendahului data yang masih mengantre di pipa stdout, jadi membunuh anak
+    // saat itu juga MEMBUANG keluaran yang belum terbaca. Terukur pada zona yang
+    // mencetak ~5 MB: hanya 530.452 byte yang sampai. Di Windows kebetulan tak
+    // terlihat karena urutannya berbeda — tersingkap begitu jalur netns memakai
+    // spawn. Kehilangan diam-diam seperti ini persis yang harus dihindari.
+    //
+    // Yang ditunggu adalah 'close' — peristiwa yang menyala setelah proses
+    // keluar DAN kedua pipa stdio habis. Terukur pada zona pencetak 5 MB:
+    //     +605 ms  pesan done (baru 327.240 B terbaca)
+    //     +875 ms  stdout END (5.050.000 B — utuh)
+    //     +878 ms  close
+    //
+    // JANGAN memanggil child.disconnect() di sini. Diukur: dengan disconnect
+    // sisi induk, 'exit' tetap menyala (~240 ms) tapi 'close' TIDAK PERNAH
+    // menyala, sehingga jaring pengaman DRAIN_MS selalu habis dan setiap
+    // eksekusi zona menanggung tambahan ~3 detik. Yang melepas event loop anak
+    // adalah process.disconnect() di zone-worker, bukan di sini.
+    const DRAIN_MS = 3000;
+    let selesai = false;
+    const settle = (fn, mkVal, killNow) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
-      try {
-        child.kill("SIGKILL");
-      } catch (_) {}
-      fn(val);
-    };
-    const fail = (e) => finish(reject, Object.assign(e, io()));
-
-    const timer = setTimeout(() => {
-      const adapter = getPlatformAdapter();
-      try {
-        adapter.killTree(child);
-      } catch (_) {
+      if (killNow) {
+        const adapter = getPlatformAdapter();
+        try {
+          adapter.killTree(child);
+        } catch (_) {
+          try {
+            child.kill("SIGKILL");
+          } catch (__) {}
+        }
+      }
+      const tuntas = () => {
+        if (selesai) return;
+        selesai = true;
+        clearTimeout(grace);
         try {
           child.kill("SIGKILL");
-        } catch (__) {}
-      }
-      fail(new Error(`zone timeout (${timeoutMs}ms)`));
+        } catch (_) {}
+        fn(mkVal());
+      };
+      const grace = setTimeout(tuntas, DRAIN_MS);
+      child.once("close", tuntas);
+    };
+
+    const fail = (e, killNow) =>
+      settle(reject, () => Object.assign(e, io()), killNow);
+
+    const timer = setTimeout(() => {
+      fail(new Error(`zone timeout (${timeoutMs}ms)`), true);
     }, timeoutMs);
 
     child.on("message", async (msg) => {
@@ -125,12 +213,15 @@ function runInCapabilityZone(code, broker, opts = {}) {
         }
         return;
       }
-      if (msg.type === "done") finish(resolve, { result: msg.result, ...io() });
+      // io() dipanggil BELAKANGAN (di dalam thunk), setelah stdio terkuras —
+      // kalau dievaluasi di sini, isinya kembali terpotong.
+      if (msg.type === "done")
+        settle(resolve, () => ({ result: msg.result, ...io() }));
       else if (msg.type === "error")
         fail(Object.assign(new Error(msg.message), { code: msg.code }));
     });
 
-    child.on("error", (e) => fail(e));
+    child.on("error", (e) => fail(e, true));
     child.on("exit", (code) => {
       if (!settled && code !== 0)
         fail(

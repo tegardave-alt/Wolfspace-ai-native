@@ -75,30 +75,61 @@ cloud-provider hosts from `agent/cloud.cjs`.
 
 Probes run through `runSelfTool("capability_exec", …)`, not standalone:
 
-| Probe                                                                | Result                       |
-| -------------------------------------------------------------------- | ---------------------------- |
-| `require('fs').readFileSync` outside workspace                       | denied — `ERR_ACCESS_DENIED` |
-| vm-escape payload `this.constructor.constructor('return process')()` | denied — `ERR_ACCESS_DENIED` |
-| `request('readFile')` outside policy roots                           | denied by Broker policy      |
-| `fs.writeFileSync` outside workspace                                 | denied — `ERR_ACCESS_DENIED` |
-| direct `https.get()` bypassing `request()`                           | **succeeded (status 200)**   |
+| Probe                                                                | Result                                            |
+| -------------------------------------------------------------------- | ------------------------------------------------- |
+| `require('fs').readFileSync` outside workspace                       | denied — `ERR_ACCESS_DENIED`                      |
+| vm-escape payload `this.constructor.constructor('return process')()` | denied — `ERR_ACCESS_DENIED`                      |
+| `request('readFile')` outside policy roots                           | denied by Broker policy                           |
+| `fs.writeFileSync` outside workspace                                 | denied — `ERR_ACCESS_DENIED`                      |
+| direct `https.get()` bypassing `request()`                           | **succeeded** on Windows / **denied** under netns |
 
 Two distinct layers show up in those results and both matter: A/B/D are refused
 by the **Node runtime** (`ERR_ACCESS_DENIED`, i.e. `--permission`), while C is
-refused by the **Broker policy**. The last row is the documented network gap
-below — not a regression.
+refused by the **Broker policy**.
+
+### Network containment (Linux only)
+
+The last row used to succeed everywhere, because Node's permission model has no
+network dimension at all — there is no flag to add. Patching it _from inside_ the
+zone is not a boundary either: replacing `http/https/net/tls/dgram` in
+`require.cache` and then attacking it, `require('node:https')` gets through (a
+different cache key) and `process.binding('tcp_wrap')` gets through (it sits
+_below_ the module layer) — 2 of 5 attempts, first try. That is the same mistake
+as the old `vm.createContext` zone: hiding references instead of removing
+capability.
+
+The real boundary is the kernel. On Linux the zone is launched under
+`unshare -n`, giving it an empty network namespace — loopback only, no route.
+The IPC channel **survives**, because its socketpair is already open before the
+process enters the namespace, so `request()` keeps working: the Broker runs in
+the host, which still has network.
+
+Same attack table, same broker code, measured on WSL2 (kernel 6.18, node
+v24.16.0):
+
+| Probe                                      | Windows (fork)         | Linux (`unshare -n`)     |
+| ------------------------------------------ | ---------------------- | ------------------------ |
+| direct `https.get()` bypassing `request()` | succeeded — status 403 | **denied — `EAI_AGAIN`** |
+| `request('fetch')` to an allow-listed host | ok — status 403        | **ok — status 403**      |
+
+Cost is not measurable: spawning under `unshare -n` ran at a 78.3 ms median vs
+95.0 ms for a plain spawn, with overlapping ranges. No daemon, no container pool.
+
+Windows has no equivalent: firewall rules are per-executable and the zone is the
+_same_ `node.exe` as the host, so no rule can tell them apart. There
+`netnsWrapper()` returns null and behaviour is unchanged.
 
 ## How it compares to the Docker sandbox
 
 Both hold the filesystem, but for different reasons, and that difference decides
 which one to reach for:
 
-|                  | Docker sandbox                                 | Capability broker                                |
-| ---------------- | ---------------------------------------------- | ------------------------------------------------ |
-| Filesystem       | file simply **is not there** (nothing mounted) | file is visible but the `fs` call is **refused** |
-| Network          | blocked (`--network none`)                     | **not blocked**                                  |
-| Granularity      | all-or-nothing per container                   | per request, with audit trail                    |
-| Requires install | Docker Desktop                                 | **no** — plain Node                              |
+|                  | Docker sandbox                                 | Capability broker                                   |
+| ---------------- | ---------------------------------------------- | --------------------------------------------------- |
+| Filesystem       | file simply **is not there** (nothing mounted) | file is visible but the `fs` call is **refused**    |
+| Network          | blocked (`--network none`)                     | blocked on Linux (`unshare -n`); **not** on Windows |
+| Granularity      | all-or-nothing per container                   | per request, with audit trail                       |
+| Requires install | Docker Desktop                                 | **no** — plain Node                                 |
 
 That last row is why the broker matters on Windows, where
 `agent/platform/windows.cjs` reports `fsIsolation: 'advisory'` and
