@@ -149,6 +149,19 @@ re-derived:
    unreliable here — it worked, then stopped mid-session while the server was
    still serving fine from inside the distro. The IP changes on restart.
 
+Steps 1–3 are one-time setup. After that just run:
+
+```
+npm run app:wsl
+```
+
+`scripts/wsl-app.cjs` starts the backend inside the distro, **holds** that
+`wsl.exe` process (WSL kills the distro — and the server with it — as soon as the
+last session closes, so a detached/`nohup` server does not survive), waits for
+`/healthz`, detects the current distro IP, and launches Electron with
+`WOLFSPACE_BACKEND` set. Closing the app stops the backend. Override with
+`WOLFSPACE_WSL_DISTRO`, `WOLFSPACE_WSL_DIR`, `WOLFSPACE_WSL_NODE`, `PORT`.
+
 Verified end to end this way: full suite **59/59 in WSL** (Windows skips the 3
 netns behaviour tests), and a real agent run driven from Windows over HTTP
 answered _"Linux x86_64 … WSL2 … kernel 6.18"_ after running `uname -a` itself.
