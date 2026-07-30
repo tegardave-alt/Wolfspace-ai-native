@@ -4,12 +4,7 @@ const http = require("http");
 const https = require("https");
 const { dlog } = require("./debug.cjs");
 const { pickSystem } = require("./prompts.cjs");
-const {
-  runByLang,
-  detectLang,
-  extractCode,
-  askModelStream,
-} = require("./runners.cjs");
+const { runByLang, detectLang, extractCode } = require("./runners.cjs");
 const { runSelfTool, SELF_TOOLS } = require("./tools.cjs");
 const {
   askCloudStream,
@@ -87,17 +82,42 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
       };
   }
 
-  // Decide whether to use cloud or local model.
-  // If cloud is specified but has no key, fall back to local model.
-  if (cloud && !cloud.key) {
-    console.warn(
-      "[chat] Cloud selected but no API key — falling back to local model",
+  // TIDAK ADA lagi cadangan ke model lokal. Jalur llama.cpp/GGUF sudah dihapus
+  // bersama Model Hub, jadi askModelStream() pasti menolak dengan
+  // "local model is not active — no port" — pesan yang menyebut PORT dan FITUR
+  // yang sama-sama tak ada lagi. Pengguna melihatnya sebagai HTTP 400 dan tak
+  // punya petunjuk apa pun tentang apa yang harus dilakukan.
+  //
+  // Penyebab sebenarnya selalu sama: tak ada kunci cloud yang terjangkau. Itu
+  // yang harus dikatakan, beserta cara memperbaikinya. Perhatikan `port` masih
+  // diterima di tanda tangan fungsi tapi sudah tak dipakai untuk memilih model.
+  if (!(cloud && cloud.key)) {
+    dlog("chat", "info", "stop", { reason: "no_cloud_key" });
+    // Pesan menyebut BERKASNYA, bukan cuma "simpan API key": saat backend jalan
+    // di WSL, menyimpan lewat UI hanya mengisi localStorage untuk origin
+    // http://<ip-wsl>:8090 — dan IP distro berubah tiap restart, jadi kuncinya
+    // hilang lagi. Berkas di $HOME backend kebal terhadap itu.
+    const os = require("os");
+    const berkas = require("path").join(
+      os.homedir(),
+      ".wolfspace",
+      "cloud-keys.json",
     );
+    const pesan =
+      "Belum ada API key cloud yang bisa dipakai.\n\n" +
+      `Isi kunci di berkas backend: ${berkas}\n` +
+      '  contoh: { "opencode": { "key": "...", "model": "deepseek-v4-flash-free" } }\n\n' +
+      "Menyimpan lewat menu API Key juga bisa, tapi itu hanya mengisi " +
+      "localStorage untuk origin yang sedang dipakai — dan bila backend berjalan " +
+      "di WSL, IP distro berubah tiap restart sehingga originnya ikut berubah dan " +
+      "kunci itu hilang lagi. Berkas di atas kebal terhadap itu.\n\n" +
+      "Model lokal (llama.cpp/GGUF) sudah dihapus, jadi tidak ada jalur cadangan " +
+      "selain cloud.";
+    emit({ t: "err", m: pesan });
+    emit({ t: "done" });
+    return { ok: false, error: "no_cloud_key" };
   }
-  const streamPromise =
-    cloud && cloud.key
-      ? askCloudStream(cloud, messages, onToken, null)
-      : askModelStream(port, messages, onToken, null);
+  const streamPromise = askCloudStream(cloud, messages, onToken, null);
 
   return streamPromise
     .then((full) => {
