@@ -143,78 +143,16 @@ function isBrowserJs(code) {
   );
 }
 
-// -------------------------------------------------------------------
-// Sandbox execution (Docker) – optional, based on config
-// -------------------------------------------------------------------
-const SANDBOX_IMAGE = "wolfspace-sandbox"; // Docker requires lowercase repo names
-function hasDocker() {
-  try {
-    execSync("docker version", { stdio: "ignore", timeout: 8000 });
-    return true;
-  } catch (e) {
-    return false;
-  }
-}
-// Kebijakan terpusat (agent/sandbox-policy.cjs); fallback "off" = default lama
-// jalur eksekusi kode, jadi perilaku tanpa konfigurasi tak berubah.
-const sandboxPolicy = require("./sandbox-policy.cjs");
-const USE_SANDBOX = sandboxPolicy.shouldSandbox(
-  CONFIG.sandbox,
-  hasDocker(),
-  "off",
-);
-async function runSandboxed(lang, code) {
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qsbx-"));
-  const isJs = lang === "javascript";
-  fs.writeFileSync(path.join(dir, isJs ? "main.js" : "main.py"), code, "utf8");
-  const inner = isJs ? "node /code/main.js" : "python /code/main.py";
-  const hostDir = dir.replace(/\\\\/g, "/");
-  const args = [
-    "run",
-    "--rm",
-    "--network",
-    "none",
-    "--memory",
-    "256m",
-    "--memory-swap",
-    "256m",
-    "--cpus",
-    "0.5",
-    "--pids-limit",
-    "128",
-    "--read-only",
-    "--tmpfs",
-    "/tmp:size=16m",
-    "-v",
-    `${hostDir}:/code:ro`,
-    "-w",
-    "/code",
-    SANDBOX_IMAGE,
-    "sh",
-    "-c",
-    inner,
-  ];
-  try {
-    const { stdout } = await execP(
-      "docker " +
-        args.map((a) => (/[\s\"]/.test(a) ? JSON.stringify(a) : a)).join(" "),
-      {
-        timeout: EXEC_TIMEOUT,
-        encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
-    return { ok: true, output: stdout };
-  } catch (e) {
-    return { ok: false, error: errForModel(e) };
-  } finally {
-    // cleanup temporary directory
-    try {
-      fs.rmSync(dir, { recursive: true, force: true });
-    } catch (_) {}
-  }
-}
-
+// Sandbox eksekusi berbasis Docker DIHAPUS dari berkas ini.
+//
+// runSandboxed() di sini hanya diekspor, TIDAK pernah dipanggil — jalur yang
+// benar-benar dipakai ada di server.cjs. Ditambah gerbangnya default "off"
+// (agent/sandbox-policy.cjs) dan engine Docker-nya sendiri sudah tak ada di
+// mesin ini, jadi yang dihapus adalah kode yang tak pernah dieksekusi.
+//
+// Pengurungan OS yang AKTIF kini ada di agent/tools/bash-jail.cjs (namespace
+// Linux) untuk bash, dan agent/broker/ (--permission + netns) untuk zona
+// kapabilitas. Keduanya tanpa daemon.
 // -------------------------------------------------------------------
 // Language‑specific runners (Python, JS, compiled languages, etc.)
 // -------------------------------------------------------------------
@@ -689,7 +627,6 @@ async function runByLang(lang, code) {
     ok: !!r.ok,
     ms: Date.now() - t0,
     bytes: (code || "").length,
-    sandbox: USE_SANDBOX,
     error: r.ok ? undefined : errTail(r.error),
   });
   return r;
@@ -769,7 +706,6 @@ module.exports = {
   readsStdin,
   opensGuiWindow,
   isBrowserJs,
-  runSandboxed,
   runPy,
   runJS,
   runC,

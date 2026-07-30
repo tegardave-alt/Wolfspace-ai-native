@@ -278,9 +278,10 @@ const debugSubs = new Set(); // live SSE writers
 
 // Precision debugging via trace system
 const trace = require("./agent/trace.cjs");
-// Kebijakan sandbox terpusat (lihat agent/sandbox-policy.cjs): menyatukan gerbang
-// yang dulu berbeda antara jalur eksekusi kode dan jalur bash terkurung.
-const sandboxPolicy = require("./agent/sandbox-policy.cjs");
+// sandbox-policy TIDAK lagi di-require di sini: satu-satunya pemakainya dulu
+// adalah gerbang sandbox Docker untuk eksekusi kode, yang sudah dihapus. Modulnya
+// sendiri masih hidup dan dipakai agent/tools/index.cjs untuk menggerbangi
+// pengurungan bash berbasis namespace.
 let _evSeq = 0;
 function dlog(cat, level, msg, data) {
   const e = {
@@ -578,95 +579,16 @@ function isBrowserJs(code) {
   );
 }
 
-// Ã¢â€â‚¬Ã¢â€â‚¬ Execution sandbox (Docker) Ã¢â‚¬â€ gate #1 for serving untrusted/other-user code Ã¢â€â‚¬Ã¢â€â‚¬
-const SANDBOX_IMAGE = "wolfspace-sandbox"; // Docker requires lowercase repo names
-let _hasDockerCache = null;
-async function hasDockerAsync() {
-  if (_hasDockerCache !== null) return _hasDockerCache;
-  return new Promise((resolve) => {
-    const child = spawn("docker", ["version"], {
-      stdio: "ignore",
-      timeout: 5000,
-      windowsHide: true,
-    });
-    child.on("close", (code) => {
-      _hasDockerCache = code === 0;
-      resolve(_hasDockerCache);
-    });
-    child.on("error", () => {
-      _hasDockerCache = false;
-      resolve(false);
-    });
-  });
-}
-// evaluated lazily inside runSandboxed
-// Run code in a throwaway, network-less, resource-capped, read-only container.
-async function runSandboxed(lang, code) {
-  // fallback "off": default lama jalur eksekusi kode. Mode "on" (sandbox:true /
-  // WOLFSPACE_SANDBOX=on) mengembalikan true walau Docker tak ada -> throw di
-  // bawah = gagal-tertutup, bukan diam-diam jalan native.
-  const useSandbox = sandboxPolicy.shouldSandbox(
-    CONFIG.sandbox,
-    await hasDockerAsync(),
-    "off",
-  );
-  if (!useSandbox) {
-    throw new Error("sandbox disabled or docker not found");
-  }
-  const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qsbx-"));
-  const isJs = lang === "javascript";
-  fs.writeFileSync(path.join(dir, isJs ? "main.js" : "main.py"), code, "utf8");
-  const inner = isJs ? "node /code/main.js" : "python /code/main.py";
-  const hostDir = dir.replace(/\\/g, "/");
-  const args = [
-    "run",
-    "--rm",
-    "--network",
-    "none",
-    "--memory",
-    "256m",
-    "--memory-swap",
-    "256m",
-    "--cpus",
-    "0.5",
-    "--pids-limit",
-    "128",
-    "--read-only",
-    "--tmpfs",
-    "/tmp:size=16m",
-    "-v",
-    hostDir + ":/code:ro",
-    "-w",
-    "/code",
-    SANDBOX_IMAGE,
-    "sh",
-    "-c",
-    inner,
-  ];
-  let res;
-  try {
-    const { stdout } = await execP(
-      "docker " +
-        args.map((a) => (/[\s"]/.test(a) ? JSON.stringify(a) : a)).join(" "),
-      {
-        timeout: EXEC_TIMEOUT,
-        encoding: "utf8",
-        stdio: ["pipe", "pipe", "pipe"],
-      },
-    );
-    res = { ok: true, output: stdout };
-  } catch (e) {
-    res = {
-      ok: false,
-      output: (e.stdout || "").toString(),
-      error: ((e.stderr || "") + "").trim() || e.message,
-    };
-  }
-  try {
-    fs.rmSync(dir, { recursive: true, force: true });
-  } catch {}
-  return res;
-}
+// Sandbox eksekusi berbasis Docker DIHAPUS.
+//
+// Gerbangnya default "off" (agent/sandbox-policy.cjs) sehingga tak pernah
+// menyala sendiri, dan engine Docker-nya sudah tak ada di mesin ini — jadi
+// jalur ini tak pernah dieksekusi. Menyimpannya hanya menyisakan kode mati yang
+// memberi kesan ada pengurungan padahal tidak.
+//
+// Pengurungan OS yang AKTIF, tanpa daemon:
+//   bash terkurung workspace -> agent/tools/bash-jail.cjs (namespace Linux)
+//   zona kapabilitas         -> agent/broker/ (--permission + unshare -n)
 
 // Ã¢â€ â‚¬Ã¢â€ â‚¬ Execute JavaScript with FULL runtime access (require/import anything) Ã¢â€ â‚¬Ã¢â€ â‚¬
 // NOTE: no longer sandboxed. Generated code runs as a real subprocess with the
@@ -674,10 +596,6 @@ async function runSandboxed(lang, code) {
 // node_modules in this project), touch the filesystem, network, etc.
 // Keep this server bound to 127.0.0.1 and never expose it to a network.
 async function runJS(code) {
-  if (
-    sandboxPolicy.shouldSandbox(CONFIG.sandbox, await hasDockerAsync(), "off")
-  )
-    return await runSandboxed("javascript", code);
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), "qjs-"));
   const src = path.join(dir, "main.cjs");
   fs.writeFileSync(src, code, "utf8");
@@ -926,11 +844,6 @@ async function runPy(code) {
         "The Python code calls input() but stdin is unavailable (headless execution). Use hardcoded values instead.",
     };
   }
-  if (
-    sandboxPolicy.shouldSandbox(CONFIG.sandbox, await hasDockerAsync(), "off")
-  )
-    return await runSandboxed("python", code);
-
   const tmpPy = path.join(
     os.tmpdir(),
     `_wolfspace_run_${Date.now()}_${Math.random().toString(36).slice(2)}.py`,
@@ -1335,11 +1248,6 @@ async function runByLang(lang, code) {
     ok: !!r.ok,
     ms: Date.now() - t0,
     bytes: (code || "").length,
-    sandbox: sandboxPolicy.shouldSandbox(
-      CONFIG.sandbox,
-      _hasDockerCache,
-      "off",
-    ),
     error: r.ok ? undefined : errTail(r.error),
   });
   return r;
