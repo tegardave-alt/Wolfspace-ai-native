@@ -47,10 +47,14 @@ runtime. Verified in `test 4a` (see below).
 the zone process — the exact class of bug found in `agent/sandbox.cjs`
 testing (reading `cloud-keys.json` despite `readRoots`).
 
-❌ **Does not protect**: network (Node's permission model has no `--allow-net`
-equivalent yet — `fetch`/`http` must go through the Broker voluntarily;
-nothing stops the zone process from calling `http.get()` directly if the
-task code does so instead of using `request()`). Does not protect against
+⚠️ **Network: platform-dependent.** On **Linux** the zone runs under
+`unshare -n` and has no route out at all — direct `http.get()` fails, only
+`request('fetch')` works (see "Network containment" below). On **Windows** it is
+**not** protected: Node's permission model has no `--allow-net` equivalent, so
+`fetch`/`http` go through the Broker only voluntarily and nothing stops the zone
+from calling `http.get()` directly.
+
+❌ **Does not protect** against
 native addons, worker threads, or child-process spawning unless separately
 gated with `--allow-child-process`/`--allow-worker`/`--allow-addon`. Does
 not limit CPU/memory (that's a different problem — see the Job Object
