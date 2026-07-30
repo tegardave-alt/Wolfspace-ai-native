@@ -17,6 +17,7 @@ function atomicWrite(dest, content) {
   }
 }
 const { spawn } = require("child_process");
+const { getPlatformAdapter } = require("../platform/index.cjs");
 const { dlog } = require("../debug.cjs");
 // Gerbang kualitas struktural. WAJIB di modul INI, bukan cuma di safe-edit.cjs:
 // self_agent.cjs memakai ./tools.cjs -> tools/index.cjs, sedangkan safeWriteFile
@@ -1222,7 +1223,20 @@ async function runSelfTool(name, args, emit, context = {}) {
       return new Promise((resolve) => {
         const controller = new AbortController();
         const signal = controller.signal;
-        const child = spawn("cmd.exe", ["/d", "/c", cmd], {
+        // Shell dipilih lewat adapter platform, BUKAN hardcode "cmd.exe".
+        //
+        // Dulu baris ini memanggil cmd.exe tanpa syarat. Di Windows itu benar,
+        // tapi begitu backend dijalankan di Linux/WSL, interop WSL dengan patuh
+        // meluncurkan cmd.exe Windows yang ASLI — lalu gagal:
+        //     exit 2: '\\wsl.localhost\WolfspaceTest\root\wolfspace'
+        //     CMD.EXE was started with the above path as the current directory.
+        //     UNC paths are not supported.
+        // Yang menyesatkan, perintah sesederhana `echo halo` tetap BERHASIL
+        // (cmd.exe juga punya echo), sehingga kerusakannya hanya muncul pada
+        // perintah khas Unix seperti `ls`. Adapter platform sudah ada dan
+        // memang untuk ini: posix mengembalikan ['/bin/sh', ['-c', cmd]].
+        const [shBin, shArgs] = getPlatformAdapter().shellFor(cmd);
+        const child = spawn(shBin, shArgs, {
           cwd,
           windowsHide: true,
           env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },

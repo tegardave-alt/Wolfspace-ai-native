@@ -36,7 +36,27 @@ const path = require("path");
 const { exec, spawn } = require("child_process");
 const util = require("util");
 const execP = util.promisify(exec);
-const pty = require("node-pty");
+// node-pty adalah modul NATIVE, jadi ia bisa saja tak tersedia di platform tempat
+// biner-nya tak terpasang atau tak bisa dibangun. Dulu require ini telanjang di
+// tingkat atas, sehingga modul yang hilang tidak sekadar mematikan terminal — ia
+// MEMBUNUH SELURUH SERVER sebelum sempat mendengarkan port. Terbukti saat backend
+// dijalankan di WSL/Alpine (musl, tanpa prebuild linux dan tanpa python3/make/g++
+// untuk membangunnya): server gagal start total, padahal terminal cuma satu dari
+// sekian fitur.
+//
+// Terminal kini fitur OPSIONAL: kalau modulnya tak ada, sisa server tetap hidup
+// dan hanya endpoint terminal yang menolak dengan pesan jelas.
+let pty = null;
+let ptyLoadError = null;
+try {
+  pty = require("node-pty");
+} catch (e) {
+  ptyLoadError = e.message;
+  console.warn(
+    "[WOLFSPACE] node-pty tak tersedia — fitur terminal dimatikan. " +
+      String(e.message).split("\n")[0],
+  );
+}
 
 // Strip ANSI escape sequences from CLI output (cursor movements, colors, etc.)
 const stripAnsi = (str) =>
@@ -3634,6 +3654,15 @@ function openTerminalSession(customCwd, customShell) {
   try {
     fs.mkdirSync(cwd, { recursive: true });
   } catch {}
+
+  if (!pty) {
+    const e = new Error(
+      "Terminal tidak tersedia: node-pty gagal dimuat di platform ini" +
+        (ptyLoadError ? " — " + String(ptyLoadError).split("\n")[0] : ""),
+    );
+    e.code = "PTY_UNAVAILABLE";
+    throw e;
+  }
 
   const useConpty = process.platform === "win32";
   const ptyProcess = pty.spawn(shell, [], {
