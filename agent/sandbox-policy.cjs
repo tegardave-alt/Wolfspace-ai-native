@@ -1,4 +1,12 @@
-// Satu sumber kebenaran untuk "apakah eksekusi ini harus dikurung di Docker?".
+// Satu sumber kebenaran untuk "apakah eksekusi ini harus dikurung?".
+//
+// CATATAN SEJARAH: dulu pengurungannya SELALU Docker, dan latar di bawah ditulis
+// dengan asumsi itu. Docker kini sudah dihapus seluruhnya dari jalur produksi —
+// pengurungan bash memakai namespace Linux (agent/tools/bash-jail.cjs) dan zona
+// kapabilitas memakai --permission + unshare -n (agent/broker/). Modul ini tetap
+// hidup karena yang dijaganya adalah KEPUTUSANNYA, bukan mekanismenya; parameter
+// keduanya karena itu bernama `pengurunganTersedia`, bukan lagi `hasDocker`.
+// Latar di bawah dipertahankan karena ia menjelaskan MENGAPA tri-state ini ada.
 //
 // LATAR: dulu ada DUA gerbang yang saling tak sepakat --
 //   - server.cjs/runners.cjs : CONFIG.sandbox === true && hasDocker()
@@ -48,11 +56,11 @@ function resolveMode(cfgSandbox, fallback) {
   return fallback;
 }
 
-function shouldSandbox(cfgSandbox, hasDocker, fallback) {
+function shouldSandbox(cfgSandbox, pengurunganTersedia, fallback) {
   const m = resolveMode(cfgSandbox, fallback);
   if (m === "off") return false;
   if (m === "on") return true; // pemanggil yang memutuskan cara gagal-tertutup
-  return !!hasDocker;
+  return !!pengurunganTersedia;
 }
 
 // Untuk pemanggil yang tak memuat CONFIG sendiri (mis. agent/tools/index.cjs).
