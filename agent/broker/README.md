@@ -152,7 +152,7 @@ re-derived:
 Steps 1–3 are one-time setup. After that just run:
 
 ```
-npm run app:wsl
+npm run app
 ```
 
 `scripts/wsl-app.cjs` **syncs the code into the distro first** (tracked files from
@@ -170,12 +170,16 @@ manual deploy — and "which version am I actually running?" becomes unanswerabl
 without comparing checksums. That happened: after a few commits the files in WSL
 had different md5s from the ones on Windows.
 
-**Which backend runs is decided by the command, not by anything automatic:**
+**WSL is the default.** There used to be two commands meaning "run the app",
+which made "which one am I on?" a question you had to ask at all — so the WSL
+path took over `app`, and the duplicate `app:wsl` alias is gone. The Windows
+in-process backend stays reachable under a name that says what it is, because
+without it there is no way to run at all when WSL is unavailable.
 
 | command           | backend                             | zone network containment      |
 | ----------------- | ----------------------------------- | ----------------------------- |
-| `npm run app`     | in-process core on Windows          | **no** (Windows has no netns) |
-| `npm run app:wsl` | server.cjs inside WSL, UI over HTTP | **yes**                       |
+| `npm run app`     | server.cjs inside WSL, UI over HTTP | **yes**                       |
+| `npm run app:win` | in-process core on Windows          | **no** (Windows has no netns) |
 
 Verified end to end this way: full suite **59/59 in WSL** (Windows skips the 3
 netns behaviour tests), and a real agent run driven from Windows over HTTP
