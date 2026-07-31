@@ -373,7 +373,51 @@ function core() {
   _core = require(path.join(unpackedRoot(), "core.js")); // single source; requiring does NOT open a port
   return _core;
 }
-const _streams = new Map(); // id -> { cancelled, req }
+const _streams = new Map(); // id -> { cancelled, req, channel }
+
+// ── Hot-reload DITUNDA selama agent bekerja ──
+//
+// KENAPA ADA. Agent WOLFSPACE menyunting sumbernya sendiri, dan direktori yang
+// dipantau (public, electron, agent, scripts) persis yang disuntingnya. Jadi
+// agent memicu reload-nya SENDIRI, di tengah run, tanpa satu pun penjaga.
+// Akibatnya berantai:
+//   - suntingan di public/** non-js  -> UI menjalankan window.location.reload()
+//     (public/index.html), dan thread_id yang hidup di state React ikut hilang;
+//   - permintaan berikutnya dikirim TANPA thread_id, sehingga self_agent.cjs
+//     mencetak thread baru, MemorySaver tak punya checkpoint untuknya, dan agent
+//     mulai dari nol — persis gejala "agent mengulang pekerjaan";
+//   - suntingan di agent/** membuang require.cache lalu membangun ulang core di
+//     tengah run yang sedang memakainya.
+//
+// Reload tidak DIBATALKAN, hanya ditunda sampai run terakhir selesai — supaya
+// tujuan aslinya (agent melihat perubahan sumbernya sendiri) tetap tercapai.
+let _reloadTertunda = null;
+function _agentSibuk() {
+  for (const s of _streams.values())
+    if (s.channel === "self-agent") return true;
+  return false;
+}
+function _tundaSelagiSibuk(label, fn) {
+  if (_agentSibuk()) {
+    // Hanya yang TERAKHIR yang disimpan: menumpuk reload tak ada gunanya, yang
+    // dibutuhkan cuma satu kali muat ulang setelah semuanya reda.
+    _reloadTertunda = { label, fn };
+    console.log("[hot-reload] ditunda, agent sedang berjalan:", label);
+    return;
+  }
+  fn();
+}
+function _lepasReloadTertunda() {
+  if (!_reloadTertunda || _agentSibuk()) return;
+  const { label, fn } = _reloadTertunda;
+  _reloadTertunda = null;
+  console.log("[hot-reload] agent selesai, menjalankan yang ditunda:", label);
+  try {
+    fn();
+  } catch (err) {
+    console.error("[hot-reload] gagal menjalankan yang ditunda:", err.message);
+  }
+}
 
 // Run a non-streaming HTTP endpoint IN-PROCESS via mock req/res against core's
 // request handler â€” reuses every existing JSON handler without extracting them,
@@ -573,7 +617,8 @@ function registerIpc() {
     throw new Error("unknown invoke channel: " + channel);
   });
   ipcMain.on("WOLFSPACE:stream", (e, { id, channel, payload }) => {
-    const st = { cancelled: false, req: null };
+    // channel disimpan supaya penjaga hot-reload tahu run agent sedang hidup.
+    const st = { cancelled: false, req: null, channel };
     _streams.set(id, st);
     const emit = (msg) => {
       if (!st.cancelled) {
@@ -587,6 +632,9 @@ function registerIpc() {
       try {
         e.sender.send("WOLFSPACE:chunk", { id, done: true });
       } catch (_) {}
+      // Dihapus DULU dari _streams, baru dilepas — supaya _agentSibuk() melihat
+      // keadaan sesudah run ini berakhir, bukan sebelumnya.
+      _lepasReloadTertunda();
     };
     const ctl = {
       isCancelled: () => st.cancelled,
@@ -858,12 +906,14 @@ app.whenReady().then(() => {
             if (!hf) return;
             _bkHash.set(fullPath, hf);
             if (prev === undefined || prev === hf) return;
-            try {
-              const wins = BrowserWindow.getAllWindows();
-              for (const w of wins)
-                w.webContents.send("WOLFSPACE:hmr", filename);
-              console.log("[hmr] frontend update sent to UI for:", filename);
-            } catch (_) {}
+            _tundaSelagiSibuk("hmr " + filename, () => {
+              try {
+                const wins = BrowserWindow.getAllWindows();
+                for (const w of wins)
+                  w.webContents.send("WOLFSPACE:hmr", filename);
+                console.log("[hmr] frontend update sent to UI for:", filename);
+              } catch (_) {}
+            });
           } else if (isBackend(fullPath)) {
             if (Date.now() - _watchStart < 4000) return;
             const prev = _bkHash.get(fullPath);
@@ -873,24 +923,26 @@ app.whenReady().then(() => {
             if (prev === undefined || prev === h) return;
             clearTimeout(backendTimer);
             backendTimer = setTimeout(() => {
-              console.log(
-                "[hot-reload] backend changed, reloading core in-memory:",
-                filename,
-              );
-              try {
-                const rootDir = unpackedRoot();
-                for (const k of Object.keys(require.cache)) {
-                  if (k.startsWith(rootDir)) delete require.cache[k];
-                }
-                _core = null;
-                core();
-                console.log("[hot-reload] backend reloaded successfully!");
-              } catch (err) {
-                console.error(
-                  "[hot-reload] error reloading core:",
-                  err.message,
+              _tundaSelagiSibuk("backend " + filename, () => {
+                console.log(
+                  "[hot-reload] backend changed, reloading core in-memory:",
+                  filename,
                 );
-              }
+                try {
+                  const rootDir = unpackedRoot();
+                  for (const k of Object.keys(require.cache)) {
+                    if (k.startsWith(rootDir)) delete require.cache[k];
+                  }
+                  _core = null;
+                  core();
+                  console.log("[hot-reload] backend reloaded successfully!");
+                } catch (err) {
+                  console.error(
+                    "[hot-reload] error reloading core:",
+                    err.message,
+                  );
+                }
+              });
             }, 500);
           }
         }, 300);

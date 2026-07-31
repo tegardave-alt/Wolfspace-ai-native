@@ -1,5 +1,41 @@
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
+// ── thread_id agent bertahan melewati reload halaman ──
+//
+// KENAPA ADA. thread_id hidup di state React saja. Begitu halaman dimuat ulang
+// di tengah run — dan public/index.html memang memanggil window.location.reload()
+// untuk perubahan frontend yang bukan .css/.jsx/.js — thread_id lenyap.
+// Permintaan berikutnya dikirim tanpa itu, self_agent.cjs mencetak thread BARU,
+// MemorySaver tak punya checkpoint untuknya, dan agent mengulang dari nol.
+//
+// Penjaga di electron/main.js sudah menunda hot-reload selama agent bekerja,
+// jadi sumber reload yang paling sering sudah tertutup. Ini lapis kedua: reload
+// dari mana pun (F5, rollback Babel di index.html, crash renderer) tak lagi
+// membuat agent lupa.
+//
+// Kedaluwarsa 30 menit, dan DIHAPUS begitu run benar-benar tuntas. Tanpa itu,
+// thread basi akan diam-diam menyambung pesan berikutnya yang sama sekali tak
+// berhubungan ke percakapan lama — kesalahan yang lebih membingungkan daripada
+// mengulang pekerjaan.
+const THREAD_KEY = "wolfspace:thread-terputus";
+const THREAD_TTL_MS = 30 * 60 * 1000;
+function simpanThreadTerputus(id) {
+  try {
+    if (id)
+      localStorage.setItem(THREAD_KEY, JSON.stringify({ id, ts: Date.now() }));
+    else localStorage.removeItem(THREAD_KEY);
+  } catch (_) {}
+}
+function ambilThreadTerputus() {
+  try {
+    const r = JSON.parse(localStorage.getItem(THREAD_KEY) || "null");
+    if (!r || !r.id || Date.now() - r.ts > THREAD_TTL_MS) return null;
+    return r.id;
+  } catch (_) {
+    return null;
+  }
+}
+
 /* Icons dipindah ke public/app/Icons.jsx (APP_MODULES). */
 
 /* ----------------------------- Backend glue ----------------------------- */
@@ -1674,9 +1710,13 @@ function App() {
             port: modelVal,
             effort: curEffort,
             workspace_root: resolveWorkspaceRoot(selectedProject) || undefined,
+            // Run yang terputus reload disambung, bukan diulang. hitlData tetap
+            // menang karena di-spread SESUDAH ini.
+            thread_id: ambilThreadTerputus() || undefined,
             ...hitlData,
           },
           (j) => {
+            if (j.thread_id) simpanThreadTerputus(j.thread_id);
             if (j.t === "backup") upd({ backup: j.dir });
             else if (j.t === "step") {
               think = "";
@@ -1837,6 +1877,9 @@ function App() {
           });
       }
       console.log("[doSend] Setting busy=false (agent stream complete)");
+      // Run tuntas (bukan sekadar menunggu jawaban) -> thread tak boleh tersisa,
+      // supaya pesan berikutnya yang tak berhubungan tidak ikut tersambung.
+      if (!waitingForInput) simpanThreadTerputus(null);
       // If no "adone" event was sent, provide a default summary based on events
       if (!adoneSent) {
         if (!hadError) {
