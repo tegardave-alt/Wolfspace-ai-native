@@ -24,6 +24,31 @@ function _auditLog() {
   return _al;
 }
 
+// CommandChain (Fase 1): genesis + admission. Dimuat malas dengan alasan yang
+// sama seperti audit — gagal memuatnya menurunkan ke no-op, tak mematikan broker.
+let _cc;
+let _ccRuleset = null;
+function _commandChain() {
+  if (_cc) return _cc;
+  try {
+    _cc = require("./commandchain.cjs");
+  } catch (_) {
+    _cc = { mulaiSesi: () => null, periksa: () => ({ allow: true }) };
+  }
+  return _cc;
+}
+// Genesis ditulis SEKALI per proses, sebelum catatan pertama. mulaiSesi() sendiri
+// no-op bila ledger sudah berisi, jadi ini aman dipanggil berkali-kali.
+function _pastikanSesi() {
+  if (_ccRuleset) return _ccRuleset;
+  try {
+    _ccRuleset = _commandChain().mulaiSesi();
+  } catch (_) {
+    _ccRuleset = null;
+  }
+  return _ccRuleset;
+}
+
 class Broker {
   constructor(policy) {
     this.policy = policy;
@@ -40,9 +65,9 @@ class Broker {
       ...extra,
     };
     this.audit.push(entry);
-    // Selain di memori, catatan ini juga DIPERTAHANKAN ke disk. Array di atas
-    // mati bersama panggilan (Broker dibuat baru tiap capability_exec), jadi
-    // tanpa ini tak ada yang bisa dibaca setelah run selesai.
+    // Genesis ditambatkan sebelum catatan pertama, lalu tiap catatan dirantai
+    // ke ledger yang tamper-evident (lihat audit-log.cjs / docs/COMMANDCHAIN.md).
+    _pastikanSesi();
     _auditLog().catat(entry);
     return entry;
   }
@@ -50,6 +75,23 @@ class Broker {
   // The single entry point the capability zone calls. Deny-by-default:
   // Policy.evaluate must explicitly allow, otherwise this throws.
   async request(capability, params) {
+    // CommandChain admission DULU: apakah kapabilitas ini ada dalam kosakata
+    // genesis yang dibekukan saat sesi mulai? Deny-by-default, dan — inilah
+    // intinya — genesis tak bisa dilonggarkan di tengah sesi, jadi prompt-
+    // injection tak bisa membujuk broker menerima kapabilitas yang tak
+    // dideklarasikan. Policy per-panggilan (di bawah) tetap berlaku setelahnya.
+    const rs = _pastikanSesi();
+    if (rs) {
+      const adm = _commandChain().periksa(rs, capability);
+      if (!adm.allow) {
+        this._log(capability, params, "DENY", "commandchain: " + adm.alasan);
+        const err = new Error(
+          `CommandChain denied ${capability}: ${adm.alasan}`,
+        );
+        err.code = "COMMANDCHAIN_DENIED";
+        throw err;
+      }
+    }
     const { allowed, reason } = this.policy.evaluate(capability, params);
     if (!allowed) {
       this._log(capability, params, "DENY", reason);
