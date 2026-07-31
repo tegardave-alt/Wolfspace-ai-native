@@ -158,8 +158,15 @@ seperti tertulis di `package.json`.
 - `unshare -n` tak bisa dibuktikan di mesin yang distronya memang tak berjaringan
   (`networkingMode=none` di `.wslconfig` berlaku **se-mesin**, bukan per-distro).
   Hasilnya sama-sama "tak ada jaringan", tapi bukan hal yang sama.
-- Jejak audit broker **hanya di memori**, per panggilan. Tak ada yang menumpuk ke
-  disk, jadi tak bisa dilacak lintas run.
+- ~~Jejak audit broker hanya di memori~~ — sekarang juga di-append ke
+  `.wolfspace/audit/broker.jsonl`, satu baris JSON per catatan, dirotasi di 2 MB.
+  **Muatannya sengaja tak ikut**: isi berkas dipotong 200 karakter (panjang
+  aslinya tetap dicatat) dan field bernama `key`/`token`/`auth`/dsb disunting —
+  audit mencatat APA yang diakses, bukan datanya. Gagal menulis tak melumpuhkan
+  agent tapi berteriak sekali ke stderr. `append-only` di sini berarti berkasnya
+  hanya pernah di-append, **bukan** kekal: proses ber-izin tulis tetap bisa
+  memotongnya. Kekekalan sungguhan menuntut dukungan OS yang tak bisa diandalkan
+  lintas platform.
 
 ---
 
@@ -259,9 +266,9 @@ Direktori: `public/` 183 berkas · `agent/` 47 · `scripts/` 25 · `tests/` 24.
 
 Daftar ini sengaja ada supaya tak ada yang mengira sudah beres.
 
-1. **Jejak audit broker tidak bertahan.** `this.audit = []` di memori, Broker baru
-   tiap panggilan. Untuk tujuan "data reliabilitas", jejak yang tak bertahan
-   bukan jejak. Perbaikannya kecil: penulis JSONL append-only + rotasi.
+1. ~~**Jejak audit broker tidak bertahan.**~~ **Ditutup** — lihat bagian 5.
+   Catatan kini di-append ke `.wolfspace/audit/broker.jsonl`. Yang belum:
+   kekekalan sungguhan (proses ber-izin tulis masih bisa memotong berkasnya).
 2. **`engines` berbohong.** `package.json` menjanjikan `>=18`; batas sebenarnya 20.
 3. **`bash` tak terkurung di Windows.** `bash-jail` hanya Linux; di Windows
    penjaga regex yang kodenya sendiri melabeli "bocor".

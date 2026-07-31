@@ -10,6 +10,20 @@ const fs = require("fs");
 const https = require("https");
 const http = require("http");
 
+// Dimuat MALAS supaya berkas ini tetap bisa di-require di lingkungan tanpa izin
+// tulis disk (mis. uji yang hanya memeriksa Policy). Kegagalan memuatnya tak
+// boleh melumpuhkan broker — audit yang mati merugikan, broker yang mati fatal.
+let _al;
+function _auditLog() {
+  if (_al) return _al;
+  try {
+    _al = require("./audit-log.cjs");
+  } catch (_) {
+    _al = { catat() {} };
+  }
+  return _al;
+}
+
 class Broker {
   constructor(policy) {
     this.policy = policy;
@@ -26,6 +40,10 @@ class Broker {
       ...extra,
     };
     this.audit.push(entry);
+    // Selain di memori, catatan ini juga DIPERTAHANKAN ke disk. Array di atas
+    // mati bersama panggilan (Broker dibuat baru tiap capability_exec), jadi
+    // tanpa ini tak ada yang bisa dibaca setelah run selesai.
+    _auditLog().catat(entry);
     return entry;
   }
 
