@@ -50,11 +50,11 @@ describe("genesis: ruleset immutable per-sesi", () => {
     const rs = cc.buatRuleset({ sesi: "x" });
     expect(Object.isFrozen(rs)).toBe(true);
     expect(Object.isFrozen(rs.kapabilitas)).toBe(true);
-    // Upaya melonggarkan diam-diam tak berpengaruh (freeze dalam).
+    // Upaya menambah kapabilitas baru diam-diam tak berpengaruh (freeze dalam).
     try {
-      rs.kapabilitas.push("proc.raw");
+      rs.kapabilitas.push("kapabilitas.palsu");
     } catch (_) {}
-    expect(rs.kapabilitas).not.toContain("proc.raw");
+    expect(rs.kapabilitas).not.toContain("kapabilitas.palsu");
   });
 
   test("genesis adalah entri-0, dengan hash ruleset", () => {
@@ -84,12 +84,12 @@ describe("admission: deny-by-default terhadap kosakata genesis", () => {
     expect(cc.periksa(rs, "readFile").allow).toBe(true);
   });
 
-  test("di luar kosakata DITOLAK (mis. proc.raw)", () => {
+  test("di luar kosakata DITOLAK (kapabilitas tak dikenal)", () => {
     const { cc } = muatSegar(dir);
     const rs = cc.buatRuleset();
-    const r = cc.periksa(rs, "proc.raw");
+    const r = cc.periksa(rs, "kapabilitas.tak.ada");
     expect(r.allow).toBe(false);
-    expect(r.alasan).toMatch(/proc\.raw/);
+    expect(r.alasan).toMatch(/kapabilitas\.tak\.ada/);
   });
 
   test("tanpa ruleset = deny (fail-closed, bukan fail-open)", () => {
@@ -171,17 +171,66 @@ describe("rantai: tautan + integritas", () => {
   });
 });
 
+describe("Fase 2: bash = proc.raw, on-by-default tapi bisa dikunci", () => {
+  test("proc.raw ADA di kosakata default — bash jalan tanpa konfigurasi", () => {
+    const { cc } = muatSegar(dir);
+    expect(cc.KOSAKATA_DEFAULT).toContain("proc.raw");
+    expect(cc.periksa(cc.buatRuleset(), "proc.raw").allow).toBe(true);
+  });
+
+  test("buatRuleset({ tanpa:['proc.raw'] }) mengunci — bash mati untuk sesi itu", () => {
+    // Inti properti smart-contract: escape dapat dicabut secara deklaratif, dan
+    // begitu ruleset dibekukan tanpa proc.raw, tak ada yang bisa mengembalikannya
+    // di tengah sesi.
+    const { cc } = muatSegar(dir);
+    const rs = cc.buatRuleset({ tanpa: ["proc.raw"] });
+    expect(rs.kapabilitas).not.toContain("proc.raw");
+    expect(cc.periksa(rs, "proc.raw").allow).toBe(false);
+    // Yang lain tetap ada — lockdown selektif, bukan mematikan semua.
+    expect(cc.periksa(rs, "readFile").allow).toBe(true);
+  });
+
+  test("genesis MEREKAM kosakata terkunci — audit bisa membuktikan sesi dikunci", () => {
+    const { cc } = muatSegar(dir);
+    process.env.WOLFSPACE_CC_TANPA = "proc.raw";
+    try {
+      const rs = cc.sesiRuleset();
+      expect(rs.kapabilitas).not.toContain("proc.raw");
+      const g = baris()[0];
+      expect(g.ruleset.kapabilitas).not.toContain("proc.raw");
+    } finally {
+      delete process.env.WOLFSPACE_CC_TANPA;
+    }
+  });
+
+  test("tool bash terpasang ke CommandChain (admission + catat + kurungan)", () => {
+    // Struktural: agent/tools/index.cjs (5000+ baris) tak dimuat utuh di Jest.
+    // Menjaga bahwa jalur proc.raw benar-benar ada dan lengkap.
+    const T = fs.readFileSync(
+      require.resolve("../agent/tools/index.cjs"),
+      "utf8",
+    );
+    expect(T).toMatch(/periksa\(rs, "proc\.raw"\)/);
+    expect(T).toMatch(/capability: "proc\.raw"/);
+    expect(T).toMatch(/CommandChain menolak proc\.raw/);
+    // Penanda cakupan jujur: advisory di Windows.
+    expect(T).toMatch(/advisory — Windows tanpa namespace/);
+  });
+});
+
 describe("terpasang di broker", () => {
   test("request() menolak kapabilitas di luar kosakata SEBELUM policy", async () => {
     const { audit } = muatSegar(dir);
     const { Policy, Broker } = require("../agent/broker/index.cjs");
     const b = new Broker(new Policy({ readFile: { roots: ["/x"] } }));
-    await expect(b.request("proc.raw", { command: "whoami" })).rejects.toThrow(
+    // Kapabilitas yang tak ada di kosakata genesis mana pun.
+    await expect(b.request("kapabilitas.tak.ada", {})).rejects.toThrow(
       /CommandChain denied/,
     );
-    // Dan penolakannya tercatat di rantai.
     expect(
-      baris().some((x) => x.capability === "proc.raw" && x.decision === "DENY"),
+      baris().some(
+        (x) => x.capability === "kapabilitas.tak.ada" && x.decision === "DENY",
+      ),
     ).toBe(true);
   });
 });

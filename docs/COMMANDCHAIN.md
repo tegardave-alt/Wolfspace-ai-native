@@ -207,11 +207,25 @@ disebut.
   tamper terdeteksi — memalsukan satu catatan memutus rantai sesudahnya. Uji:
   `tests/commandchain.test.js` (11), audit lama tetap hijau.
 
-- **Fase 2 — kosakata + `proc.raw`.**
-  Perkenalkan operasi bertipe untuk pemakaian bash yang umum (didahului
-  pengukuran: agent sebenarnya memakai bash untuk apa). `bash` bebas → `proc.raw`,
-  off-by-default, ditandai UNCONFINED. Uji: operasi umum lewat sebagai transaksi;
-  raw ditolak kecuali genesis mengizinkan.
+- **Fase 2 — `bash` = `proc.raw`.** ✅ **SELESAI (inti).**
+  Pengukuran: deskripsi tool sendiri menyempitkan bash ke "install package, run
+  script, cek status" + aturan "jangan pernah edit file via bash". Jadi bash kini
+  jadi kapabilitas **proc.raw** di CommandChain: tiap eksekusi dirantai ke ledger
+  dengan penanda cakupan jujur (advisory di Windows), dan admission-nya dicek
+  terhadap genesis.
+
+  KOREKSI JUJUR atas desain: proc.raw **tak bisa off-by-default** tanpa mematahkan
+  agent (semua bash-nya gagal). Yang benar dan sudah dibangun: **on-by-default
+  untuk kompatibilitas, tapi dapat DIKUNCI OFF secara deklaratif** —
+  `WOLFSPACE_CC_TANPA=proc.raw` (atau `buatRuleset({ tanpa:["proc.raw"] })`)
+  membekukan genesis tanpa proc.raw, dan begitu beku, bash MATI untuk sesi itu,
+  tak terbypass di tengah jalan. Terukur ujung-ke-ujung: genesis merekam kosakata
+  terkunci, tool bash menolak, DENY tercatat di rantai.
+
+  BELUM (Fase 2b, opsional): operasi bertipe `proc.run { argv }` (executable dari
+  allowlist, TANPA shell → bebas dari kebocoran metakarakter) untuk menggantikan
+  pemakaian bash umum. Inti Fase 2 tak menuntutnya — bash sudah jadi transaksi
+  bergovernance.
 
 - **Fase 3 — gas.**
   Anggaran per sesi, dibekukan di genesis, dihabiskan per transaksi.

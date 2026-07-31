@@ -98,6 +98,19 @@ function lazyBroker() {
   );
 }
 
+// CommandChain (Fase 2): bash = kapabilitas proc.raw. Dimuat malas + gagal-aman —
+// kalau modulnya tak bisa dimuat, bash tetap jalan (perilaku lama), tak lumpuh.
+let _cc;
+function lazyCC() {
+  if (_cc !== undefined) return _cc;
+  try {
+    _cc = require("../broker/commandchain.cjs");
+  } catch (_) {
+    _cc = null;
+  }
+  return _cc;
+}
+
 // Static definitions (pure JSON, never fails)
 const { SELF_TOOLS } = require("./tool-definitions.cjs");
 
@@ -1078,6 +1091,58 @@ async function runSelfTool(name, args, emit, context = {}) {
             'Gunakan tool "write" (berkas baru) atau "edit" (ubah yang ada) — keduanya memverifikasi ' +
             "sintaks dan struktur sebelum menyentuh disk.",
         };
+
+      // ── CommandChain: bash adalah kapabilitas proc.raw ──
+      //
+      // Sampai Fase 2, bash melompati broker sepenuhnya: tak masuk audit, bisu
+      // soal cakupan, tak bisa dikunci. Di sini ia menjadi transaksi CommandChain:
+      //   - ADMISSION: proc.raw harus ada di kosakata genesis sesi. Bila sebuah
+      //     sesi dibekukan TANPA proc.raw, bash mati — tak terbypass di tengah
+      //     jalan (itulah properti smart contract-nya).
+      //   - CATAT: tiap eksekusi bash dirantai ke ledger, dengan penanda cakupan
+      //     yang JUJUR (advisory di Windows — tak ada namespace).
+      // Gagal-aman: bila CommandChain tak bisa dimuat, bash tetap jalan.
+      {
+        const cc = lazyCC();
+        if (cc) {
+          const rs = cc.sesiRuleset();
+          const adm = cc.periksa(rs, "proc.raw");
+          // Cakupan jujur: hanya di Linux dengan bash-jail siap ia benar-benar
+          // ditegakkan; selain itu (termasuk SEMUA Windows) advisory.
+          const enforced = process.platform === "linux" && _bashJail.tersedia();
+          const kurungan = {
+            enforced,
+            mekanisme: enforced
+              ? "linux-namespace (bash-jail)"
+              : process.platform === "win32"
+                ? "advisory — Windows tanpa namespace"
+                : "tanpa jail",
+          };
+          if (!adm.allow) {
+            cc.catat({
+              capability: "proc.raw",
+              decision: "DENY",
+              reason: adm.alasan,
+              params: { command: cmd },
+              kurungan,
+            });
+            return {
+              ok: false,
+              output:
+                "CommandChain menolak proc.raw (bash): " +
+                adm.alasan +
+                ". Sesi ini dikunci tanpa eksekusi shell mentah.",
+            };
+          }
+          cc.catat({
+            capability: "proc.raw",
+            decision: "ALLOW",
+            params: { command: cmd },
+            kurungan,
+          });
+        }
+      }
+
       let cwd = QROOT;
       if (args.cwd) {
         try {

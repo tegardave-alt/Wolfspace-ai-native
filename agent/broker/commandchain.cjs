@@ -21,10 +21,16 @@
 
 const audit = require("./audit-log.cjs");
 
-// Kosakata bawaan Fase 1 — kapabilitas yang MEMANG sudah ditegakkan broker.
-// proc.raw (bash mentah) SENGAJA tak ada di sini: ia escape yang diperkenalkan
-// Fase 2, off-by-default. Menambahkannya sekarang berarti mengizinkan sesuatu
-// yang belum punya penanda/pengurungannya.
+// Kosakata bawaan — kapabilitas yang dideklarasikan genesis.
+//
+// proc.raw (bash mentah) ADA di sini sejak Fase 2, ON-BY-DEFAULT. Idealnya
+// off-by-default (prinsip smart contract: escape harus diminta), TAPI mematikannya
+// secara default akan mematahkan agent — seluruh pemakaian bash-nya gagal. Jadi
+// kompromi yang jujur: on secara default UNTUK KOMPATIBILITAS, tapi bisa DICABUT
+// dari ruleset sesi (buatRuleset({ tanpa: ["proc.raw"] })) dan begitu genesis
+// dibekukan tanpa proc.raw, bash BENAR-BENAR mati — tak terbypass di tengah sesi.
+// Itulah properti smart contract yang sesungguhnya: bukan "off", tapi "dapat
+// dikunci off secara deklaratif dan permanen untuk sesi itu".
 const KOSAKATA_DEFAULT = [
   "readFile",
   "writeFile",
@@ -34,6 +40,7 @@ const KOSAKATA_DEFAULT = [
   "network:net",
   "network:tls",
   "network:dgram",
+  "proc.raw",
 ];
 
 // Bekukan objek SAMPAI KE DALAM. Object.freeze dangkal masih membiarkan nested
@@ -48,8 +55,14 @@ function bekukanDalam(obj) {
 
 // Bangun ruleset dari daftar kapabilitas (+ opsi). Dikembalikan dalam keadaan
 // BEKU — pemanggil tak bisa melonggarkannya setelah ini.
+//   opts.kapabilitas : daftar eksplisit (mengganti default)
+//   opts.tanpa       : cabut kapabilitas tertentu dari default (mis. lockdown
+//                      dengan tanpa:["proc.raw"] → bash mati untuk sesi itu)
 function buatRuleset(opts = {}) {
-  const kapabilitas = opts.kapabilitas || KOSAKATA_DEFAULT.slice();
+  let kapabilitas = opts.kapabilitas || KOSAKATA_DEFAULT.slice();
+  if (Array.isArray(opts.tanpa) && opts.tanpa.length) {
+    kapabilitas = kapabilitas.filter((k) => !opts.tanpa.includes(k));
+  }
   return bekukanDalam({
     versi: 1,
     sesi: opts.sesi || "sesi_" + Date.now().toString(36),
@@ -83,11 +96,38 @@ function mulaiSesi(opts = {}) {
   return ruleset;
 }
 
+// Ruleset sesi yang berlaku, dengan genesis dipastikan ada. Dipakai pemanggil
+// di luar broker (mis. tool bash) yang perlu memeriksa admission terhadap ruleset
+// yang SAMA. Disimpan di memori modul supaya seluruh proses berbagi satu ruleset
+// sesi — bukan membuat yang baru tiap panggilan.
+let _ruleset = null;
+function sesiRuleset() {
+  if (!_ruleset) {
+    // Lockdown deklaratif tanpa ubah kode: WOLFSPACE_CC_TANPA=proc.raw mengunci
+    // eksekusi shell mentah untuk sesi ini. Dibaca SEKALI saat genesis dibekukan
+    // — setelah itu tak bisa dilonggarkan, persis prinsipnya.
+    const tanpa = (process.env.WOLFSPACE_CC_TANPA || "")
+      .split(",")
+      .map((s) => s.trim())
+      .filter(Boolean);
+    _ruleset = mulaiSesi({ tanpa });
+  }
+  return _ruleset;
+}
+
+// Catat satu transaksi ke rantai. Passthrough tipis ke audit-log (yang merantai),
+// supaya pemanggil punya SATU dependensi CommandChain, bukan dua.
+function catat(entry) {
+  return audit.catat(entry);
+}
+
 module.exports = {
   KOSAKATA_DEFAULT,
   bekukanDalam,
   buatRuleset,
   periksa,
   mulaiSesi,
+  sesiRuleset,
+  catat,
   verifikasiRantai: audit.verifikasiRantai,
 };

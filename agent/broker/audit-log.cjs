@@ -203,6 +203,8 @@ function catat(entry) {
       reason: entry.reason || undefined,
       params: ringkasParams(entry.params),
       resultBytes: entry.resultBytes,
+      // Status cakupan eksekusi (CommandChain Fase 2: bash/proc.raw membawanya).
+      kurungan: entry.kurungan || undefined,
     });
   } catch (e) {
     laporGagalSekali(e);
