@@ -36,9 +36,7 @@ describe("penjaga: reload ditunda selama agent berjalan", () => {
   test("channel stream dicatat, sehingga run agent bisa dikenali", () => {
     // Tanpa ini _agentSibuk() tak punya cara membedakan run agent dari stream
     // chat biasa, dan penjaga jadi menunda segalanya atau tak menunda apa pun.
-    expect(MAIN).toMatch(
-      /const st = \{ cancelled: false, req: null, channel \}/,
-    );
+    expect(MAIN).toMatch(/const st = \{ cancelled: false, req: null, channel,/);
   });
 
   test("KEDUA jalur reload lewat penjaga, bukan cuma satu", () => {
@@ -65,6 +63,28 @@ describe("penjaga: reload ditunda selama agent berjalan", () => {
     const j = MAIN.indexOf("_lepasReloadTertunda()", i);
     expect(i).toBeGreaterThan(-1);
     expect(j).toBeGreaterThan(i);
+  });
+
+  test("finish() TERJAMIN walau fn melempar SINKRON", () => {
+    // Promise.resolve(fn(...)) saja tidak cukup: lemparan sinkron terjadi SEBELUM
+    // Promise.resolve membungkusnya, keluar dari handler, dan finish() tak pernah
+    // jalan. Entri stream lalu tertinggal selamanya — dan sejak ada penjaga ini,
+    // akibatnya berlipat: _agentSibuk() terus true, SETIAP reload ditunda tanpa
+    // batas, dan aplikasi berhenti memperbarui diri tanpa satu pun pesan.
+    const i = MAIN.indexOf("Promise.resolve(fn(payload, emit, ctl))");
+    expect(i).toBeGreaterThan(-1);
+    const sebelum = MAIN.slice(Math.max(0, i - 200), i);
+    expect(sebelum).toMatch(/try {/);
+  });
+
+  test("run agent yang menggantung TIDAK menahan reload selamanya", () => {
+    // Jaring pengaman kedua: penjaga ini bergantung pada finish(), dan
+    // kebergantungan itu harus dibatasi waktu. Hot-reload yang mati diam-diam
+    // jauh lebih mahal daripada reload yang menembak di tengah run panjang.
+    expect(MAIN).toMatch(/AGENT_SIBUK_MAKS_MS/);
+    expect(MAIN).toMatch(/mulai: Date\.now\(\)/);
+    // Umur run BENAR-BENAR dibandingkan, bukan cuma konstantanya ada.
+    expect(MAIN).toMatch(/s\.mulai[^)]*\)\s*<\s*AGENT_SIBUK_MAKS_MS/);
   });
 });
 

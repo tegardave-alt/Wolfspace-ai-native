@@ -392,9 +392,25 @@ const _streams = new Map(); // id -> { cancelled, req, channel }
 // Reload tidak DIBATALKAN, hanya ditunda sampai run terakhir selesai — supaya
 // tujuan aslinya (agent melihat perubahan sumbernya sendiri) tetap tercapai.
 let _reloadTertunda = null;
+// Run agent yang lebih tua dari ini dianggap TIDAK lagi menahan reload.
+//
+// KENAPA ADA BATAS SAMA SEKALI. Penjaga ini bergantung pada finish() yang selalu
+// dipanggil. Sekali saja terlewat — dan sudah pernah: lemparan SINKRON dari fn()
+// melewati Promise.resolve lalu keluar dari handler — entri stream tertinggal
+// selamanya, _agentSibuk() terus true, dan aplikasi berhenti memperbarui diri
+// TANPA pesan apa pun. Gejalanya cuma "perubahan tidak muncul", yang tak
+// menunjuk ke sini sedikit pun.
+//
+// Jadi kebergantungan itu dibatasi waktu. Reload yang menembak di menit ke-15
+// sebuah run jauh lebih ringan akibatnya daripada hot-reload yang mati diam-diam
+// dan baru ketahuan setelah lama bertanya-tanya kenapa kode tak berubah.
+const AGENT_SIBUK_MAKS_MS = 15 * 60 * 1000;
 function _agentSibuk() {
-  for (const s of _streams.values())
-    if (s.channel === "self-agent") return true;
+  const kini = Date.now();
+  for (const s of _streams.values()) {
+    if (s.channel !== "self-agent") continue;
+    if (kini - (s.mulai || 0) < AGENT_SIBUK_MAKS_MS) return true;
+  }
   return false;
 }
 function _tundaSelagiSibuk(label, fn) {
@@ -618,7 +634,7 @@ function registerIpc() {
   });
   ipcMain.on("WOLFSPACE:stream", (e, { id, channel, payload }) => {
     // channel disimpan supaya penjaga hot-reload tahu run agent sedang hidup.
-    const st = { cancelled: false, req: null, channel };
+    const st = { cancelled: false, req: null, channel, mulai: Date.now() };
     _streams.set(id, st);
     const emit = (msg) => {
       if (!st.cancelled) {
@@ -661,10 +677,22 @@ function registerIpc() {
       emit({ t: "err", m: "unknown stream channel: " + channel });
       return finish();
     }
-    Promise.resolve(fn(payload, emit, ctl)).then(finish, (err) => {
+    // fn DIPANGGIL DI DALAM try: `Promise.resolve(fn(...))` saja tidak cukup,
+    // karena lemparan SINKRON terjadi sebelum Promise.resolve sempat
+    // membungkusnya — lemparannya keluar dari handler ini dan finish() tak
+    // pernah jalan. Stream lalu tertinggal selamanya di _streams, dan sejak ada
+    // penjaga hot-reload akibatnya berlipat: _agentSibuk() terus true, jadi
+    // SETIAP reload ditunda tanpa batas dan aplikasi berhenti memperbarui diri
+    // tanpa satu pun pesan kesalahan.
+    try {
+      Promise.resolve(fn(payload, emit, ctl)).then(finish, (err) => {
+        emit({ t: "err", m: (err && err.message) || String(err) });
+        finish();
+      });
+    } catch (err) {
       emit({ t: "err", m: (err && err.message) || String(err) });
       finish();
-    });
+    }
   });
   ipcMain.on("WOLFSPACE:cancel", (_e, { id }) => {
     const st = _streams.get(id);
