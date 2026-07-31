@@ -545,6 +545,33 @@ const gitBranchIcon = (sz) => (
 
 // Panel git INTERAKTIF di popover "Folder options": rename folder (disk), ganti/
 // buat/ganti-nama/hapus branch — semua lewat endpoint /ww/* nyata (git asli).
+// Gaya tombol/kolom commit ditaruh di level modul, bukan inline di JSX: gerbang
+// kualitas (agent/code-quality.cjs) menjaga kedalaman indentasi berkas ini, dan
+// objek gaya bersarang di dalam render akan menambahnya tanpa memberi apa pun.
+const commitInputStyle = {
+  width: "100%",
+  boxSizing: "border-box",
+  background: "#1c2128",
+  border: "1px solid #2f81f7",
+  borderRadius: "5px",
+  color: "#e6edf3",
+  fontSize: "11.5px",
+  padding: "3px 7px",
+  outline: "none",
+};
+function commitBtnStyle(busy) {
+  return {
+    marginLeft: "auto",
+    padding: "1px 8px",
+    borderRadius: "5px",
+    fontSize: "11px",
+    color: busy ? "#6b7280" : "#e6edf3",
+    background: "rgba(255,255,255,0.09)",
+    cursor: busy ? "default" : "pointer",
+    flexShrink: 0,
+  };
+}
+
 function WorkspaceGitPanel({ path, onClose }) {
   const [refreshKey, setRefreshKey] = React.useState(0);
   const g = useWwGit(path, refreshKey);
@@ -553,6 +580,7 @@ function WorkspaceGitPanel({ path, onClose }) {
   const [query, setQuery] = React.useState("");
   const [renamingBranch, setRenamingBranch] = React.useState(null);
   const [editingFolder, setEditingFolder] = React.useState(false);
+  const [committing, setCommitting] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState(null); // { ok, text }
 
@@ -618,6 +646,19 @@ function WorkspaceGitPanel({ path, onClose }) {
   };
   const doDeleteBranch = (b) =>
     run("/ww/branch/delete", { path, branch: b }, "branch deleted: " + b);
+  // Commit SELURUH working tree. Sengaja sepadan dengan angka "N uncommitted
+  // changes" yang ditampilkan tepat di sebelahnya — tombol yang meng-commit lebih
+  // sedikit daripada yang diperlihatkan angkanya akan menyesatkan.
+  const doCommit = (message) => {
+    const m = String(message || "").trim();
+    setCommitting(false);
+    if (!m) return; // batal: kosong berarti tak jadi, bukan commit tanpa pesan
+    run(
+      "/ww/commit",
+      { path, message: m },
+      (r) => "commit " + (r.hash || "") + " · " + (r.subject || m),
+    );
+  };
   const doRenameFolder = (newName) => {
     const nm = String(newName || "").trim();
     setEditingFolder(false);
@@ -1093,7 +1134,34 @@ function WorkspaceGitPanel({ path, onClose }) {
             ? g.dirtyCount + " uncommitted changes"
             : "clean — no changes"}
         </span>
+        {g.dirty && !committing && (
+          <button
+            className="btn-reset vp-hover"
+            title="Commit semua perubahan"
+            disabled={busy}
+            onClick={() => setCommitting(true)}
+            style={commitBtnStyle(busy)}
+          >
+            Commit
+          </button>
+        )}
       </div>
+      {/* Kolom pesan muncul HANYA setelah tombol ditekan, mengikuti pola rename
+          branch di panel yang sama: Enter mengirim, Escape/kosong membatalkan.
+          Commit tanpa pesan sengaja tak disediakan — riwayat git yang penuh
+          pesan seragam tak bisa dibaca lagi saat dibutuhkan. */}
+      {committing && (
+        <input
+          autoFocus
+          placeholder="pesan commit — Enter untuk simpan, Esc batal"
+          onKeyDown={(e) => {
+            if (e.key === "Enter") doCommit(e.currentTarget.value);
+            else if (e.key === "Escape") setCommitting(false);
+          }}
+          onBlur={(e) => doCommit(e.currentTarget.value)}
+          style={commitInputStyle}
+        />
+      )}
       {g.lastCommit && (
         <div
           style={{

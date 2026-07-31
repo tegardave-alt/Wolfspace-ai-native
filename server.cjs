@@ -4991,6 +4991,7 @@ const server = http.createServer(async (req, res) => {
       req.url === "/ww/branch/create" ||
       req.url === "/ww/branch/rename" ||
       req.url === "/ww/branch/delete" ||
+      req.url === "/ww/commit" ||
       req.url === "/ww/rename")
   ) {
     let body = "";
@@ -5011,6 +5012,8 @@ const server = http.createServer(async (req, res) => {
           out = ww.renameBranch(b.path, b.oldName, b.newName);
         else if (req.url === "/ww/branch/delete")
           out = ww.deleteBranch(b.path, b.branch);
+        else if (req.url === "/ww/commit")
+          out = ww.commitAll(b.path, b.message);
         else if (req.url === "/ww/rename")
           out = ww.renameWorkspaceFolder(b.path, b.newName);
       } catch (e) {

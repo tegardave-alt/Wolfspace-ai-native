@@ -370,7 +370,9 @@ function gitInfo(dir) {
   // baris tak kosong = jumlah perubahan yang belum tercermin di commit.
   const porcelain = gitTry(["status", "--porcelain"], dir);
   const dirtyCount =
-    porcelain == null ? 0 : porcelain.split("\n").filter((l) => l.trim()).length;
+    porcelain == null
+      ? 0
+      : porcelain.split("\n").filter((l) => l.trim()).length;
   // Commit terakhir: hash pendek + subject + waktu relatif. null bila belum ada commit.
   const last = gitTry(["log", "-1", "--format=%h%s%cr"], dir);
   let lastCommit = null;
@@ -391,7 +393,9 @@ function gitRun(args, cwd) {
     }).trim();
     return { ok: true, out };
   } catch (e) {
-    const err = ((e.stderr || "") + (e.stdout || "") || e.message || "").toString().trim();
+    const err = ((e.stderr || "") + (e.stdout || "") || e.message || "")
+      .toString()
+      .trim();
     return { ok: false, err: err || "git gagal" };
   }
 }
@@ -400,8 +404,16 @@ function gitRun(args, cwd) {
 function listBranches(dir) {
   if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
   const current = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
-  const r = gitRun(["for-each-ref", "--format=%(refname:short)", "refs/heads"], dir);
-  const branches = r.ok ? r.out.split("\n").map((s) => s.trim()).filter(Boolean) : [];
+  const r = gitRun(
+    ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+    dir,
+  );
+  const branches = r.ok
+    ? r.out
+        .split("\n")
+        .map((s) => s.trim())
+        .filter(Boolean)
+    : [];
   return { repo: true, current: current || null, branches };
 }
 
@@ -435,8 +447,37 @@ function renameBranch(dir, oldName, newName) {
 function deleteBranch(dir, branch) {
   if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
   const cur = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
-  if (cur === branch) return { ok: false, err: "tak bisa menghapus branch yang sedang aktif" };
+  if (cur === branch)
+    return { ok: false, err: "tak bisa menghapus branch yang sedang aktif" };
   return gitRun(["branch", "-D", branch], dir);
+}
+
+// Commit SEMUA perubahan di working tree workspace, dengan pesan dari pemakai.
+//
+// Sengaja `add -A`: panel ini menampilkan satu angka ("N uncommitted changes")
+// yang memang dihitung dari seluruh working tree, jadi commit-nya harus mencakup
+// hal yang sama. Staging sebagian butuh UI daftar berkas yang belum ada — dan
+// tombol yang meng-commit LEBIH SEDIKIT daripada yang ditampilkan angkanya akan
+// menyesatkan.
+//
+// Kalau tak ada yang berubah, `git commit` keluar dengan kode bukan-nol dan
+// pesan "nothing to commit". Itu bukan kegagalan yang perlu ditakuti pemakai,
+// jadi dipisahkan lebih dulu supaya balasannya jelas.
+function commitAll(dir, message) {
+  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  const pesan = String(message || "").trim();
+  if (!pesan) return { ok: false, err: "pesan commit kosong" };
+  // Baris pertama saja yang jadi subject; sisanya diabaikan supaya `git log
+  // --oneline` tetap terbaca. Batas 200 mengikuti kebiasaan git, bukan aturan.
+  const subject = pesan.split(/\r?\n/)[0].slice(0, 200);
+  const kotor = gitTry(["status", "--porcelain"], dir);
+  if (!kotor) return { ok: false, err: "tidak ada perubahan untuk di-commit" };
+  const staged = gitRun(["add", "-A"], dir);
+  if (!staged.ok) return staged;
+  const r = gitRun(["commit", "-m", subject], dir);
+  if (!r.ok) return r;
+  const hash = gitTry(["rev-parse", "--short", "HEAD"], dir) || "";
+  return { ok: true, hash, subject };
 }
 
 // Ganti nama FOLDER workspace di disk (fs.rename) + perbarui .ww.json. Aman:
@@ -454,7 +495,8 @@ function renameWorkspaceFolder(dir, newName) {
       return { ok: false, err: "bukan workspace WOLFSPACE (.ww.json tak ada)" };
     const parent = path.dirname(dir);
     const newPath = path.join(parent, nm);
-    if (path.resolve(newPath) === path.resolve(dir)) return { ok: true, path: dir, unchanged: true };
+    if (path.resolve(newPath) === path.resolve(dir))
+      return { ok: true, path: dir, unchanged: true };
     if (fs.existsSync(newPath))
       return { ok: false, err: "sudah ada folder/berkas bernama itu" };
     fs.renameSync(dir, newPath);
@@ -484,6 +526,7 @@ module.exports = {
   renameBranch,
   deleteBranch,
   renameWorkspaceFolder,
+  commitAll,
   DEFAULT_ROOT,
 };
 if (require.main === module) main();
