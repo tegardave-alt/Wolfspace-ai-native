@@ -166,10 +166,20 @@ function CodeBlock({ lang, code }) {
   const hostRef = useRef(null);
   const edRef = useRef(null);
   const focusedRef = useRef(false);
-  const getCode = () => (edRef.current ? edRef.current.getValue() : code);
+  const wrapRef = useRef(null);
+  // Alasan lengkap ada di useDekatLayar (public/app/AgentSteps.jsx).
+  const dekat = useDekatLayar(wrapRef);
+  // Suntingan pemakai yang belum tersimpan. Editor di sini BISA DITULIS, jadi
+  // membuangnya saat blok keluar layar akan menghapus ketikan orang tanpa jejak.
+  // Naskahnya disalin sebelum dibuang dan dipakai lagi saat dipasang kembali —
+  // juga ditampilkan di <pre> supaya yang terlihat tetap versi si pemakai.
+  const draftRef = useRef(null);
+  const teks = draftRef.current != null ? draftRef.current : code;
+  const getCode = () => (edRef.current ? edRef.current.getValue() : teks);
 
   useEffect(() => {
     let disposed = false;
+    if (!dekat) return; // jauh dari layar -> cukup <pre>
     if (!window.monacoReady) return;
     window.monacoReady.then((monaco) => {
       if (disposed || !hostRef.current) return;
@@ -182,7 +192,7 @@ function CodeBlock({ lang, code }) {
         document.head.appendChild(s);
       }
       const ed = monaco.editor.create(hostRef.current, {
-        value: code,
+        value: teks, // naskah pemakai bila ada, kalau tidak teks aslinya
         language: mLang(language),
         theme: "vs-dark",
         automaticLayout: true,
@@ -219,16 +229,25 @@ function CodeBlock({ lang, code }) {
     return () => {
       disposed = true;
       if (edRef.current) {
+        // Naskah disalin DULU, sebelum apa pun dibuang.
+        try {
+          const isi = edRef.current.getValue();
+          draftRef.current = isi === code ? null : isi;
+        } catch (_) {}
         const model = edRef.current.getModel();
         if (model) model.dispose();
         edRef.current.dispose();
         edRef.current = null;
+        setEdReady(false);
       }
     };
-  }, []);
+  }, [dekat]);
   // follow streaming text until the user starts editing
   useEffect(() => {
     const ed = edRef.current;
+    // Blok yang sedang disunting tak boleh ditimpa stream — begitu juga blok
+    // yang naskahnya tersimpan karena sempat keluar layar.
+    if (draftRef.current != null) return;
     if (ed && !focusedRef.current && ed.getValue() !== code) ed.setValue(code);
   }, [code]);
   useEffect(() => {
@@ -259,7 +278,7 @@ function CodeBlock({ lang, code }) {
   };
 
   return (
-    <div className="code-block">
+    <div className="code-block" ref={wrapRef}>
       <div className="code-head">
         <span className="code-dots">
           <span style={{ background: "#ff5f57" }} />
@@ -287,7 +306,7 @@ function CodeBlock({ lang, code }) {
             whiteSpace: "pre",
           }}
         >
-          {code}
+          {teks}
         </pre>
       )}
       <div className="code-toolbar">

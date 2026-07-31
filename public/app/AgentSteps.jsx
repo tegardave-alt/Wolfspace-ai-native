@@ -1,10 +1,16 @@
 // AgentSteps — diekstrak dari Sidebar.jsx (app.jsx split): ToolOutput, *ActionRow,
 // ConsolidatedThoughtCard, AgentSteps, HitlModal. Prepend via APP_MODULES.
 
+// useDekatLayar dipindah ke Config.jsx (dimuat PERTAMA) karena CodeBlocks.jsx
+// juga memakainya dan dimuat LEBIH DULU dari berkas ini. Saat ini semua modul
+// digabung jadi satu <script> sehingga hoisting menyelamatkannya, tapi itu
+// jaminan yang bisa hilang diam-diam kalau pemuatannya dipecah nanti.
 function ToolOutput({ text, ok, kind, arg }) {
   const [edReady, setEdReady] = useState(false);
   const hostRef = useRef(null);
   const edRef = useRef(null);
+  const wrapRef = useRef(null);
+  const dekat = useDekatLayar(wrapRef);
   // detect language from tool kind + file extension + content
   const language = useMemo(() => {
     if (kind === "read" && arg) {
@@ -63,6 +69,7 @@ function ToolOutput({ text, ok, kind, arg }) {
   useEffect(() => {
     let disposed = false;
     let retries = 0;
+    if (!dekat) return; // jauh dari layar -> cukup <pre>, jangan buat editor
     if (!window.monacoReady) return;
     window.monacoReady.then((monaco) => {
       if (disposed || !hostRef.current) return;
@@ -120,16 +127,17 @@ function ToolOutput({ text, ok, kind, arg }) {
         if (model) model.dispose();
         edRef.current.dispose();
         edRef.current = null;
+        setEdReady(false); // turun lagi ke <pre>, kalau tidak host kosong tersisa
       }
     };
-  }, [language]);
+  }, [language, dekat]);
   // follow text changes
   useEffect(() => {
     const ed = edRef.current;
     if (ed && ed.getValue() !== text) ed.setValue(text || "");
   }, [text]);
   return (
-    <div className={"ar-out" + (ok ? "" : " err")}>
+    <div className={"ar-out" + (ok ? "" : " err")} ref={wrapRef}>
       <div
         className="ar-out-mona-host"
         ref={hostRef}
