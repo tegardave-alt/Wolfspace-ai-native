@@ -203,6 +203,9 @@ Every layer's guarantees, its **limits**, and the escape tests it was measured a
 documented in **[docs/SECURITY.md](docs/SECURITY.md)** — along with the rollback design that
 lets the app survive a broken edit to its own source.
 
+For the system as a whole — what runs where, what calls what, and the known gaps that are
+still open — see **[docs/PETA.md](docs/PETA.md)**.
+
 ## Development
 
 ```bash
