@@ -71,7 +71,7 @@
       "agent/**",
       "server/**",
       "scripts/ww.cjs",
-      "terminal.cjs",
+      "core/**",
       "public/**",
       "config.json",
       "package.json"
@@ -82,7 +82,7 @@
       "agent/**",
       "server/**",
       "scripts/ww.cjs",
-      "terminal.cjs",
+      "core/**",
       "public/**",
       "config.json"
     ],

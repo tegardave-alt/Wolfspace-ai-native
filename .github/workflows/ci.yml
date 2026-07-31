@@ -80,7 +80,14 @@ jobs:
           UNPACKED="dist-app/win-unpacked/resources/app.asar.unpacked"
           test -d "$UNPACKED" || { echo "::error::$UNPACKED tidak ada"; exit 1; }
           gagal=0
-          for f in core.js server.cjs scripts/ww.cjs agent/self_agent.cjs \
+          # core/terminal.cjs ada di daftar ini karena PERNAH hilang: build.files
+          # menyebut "terminal.cjs" di akar — berkas yang tak pernah ada — sisa dari
+          # masa berkas itu belum dipindah ke core/. Selama satu-satunya pemakainya
+          # (agent/tools/exec-tools.cjs) membungkus require dalam try/catch, tool
+          # terminal cuma mati diam-diam di aplikasi terpaket dan tak ada yang tahu.
+          # Begitu server.cjs me-require-nya di tingkat atas, seluruh backend gagal
+          # dimuat dan job ini merah.
+          for f in core.js server.cjs core/terminal.cjs scripts/ww.cjs agent/self_agent.cjs \
                    agent/mcp-client.cjs agent/sandbox-policy.cjs server/routes/terminal.cjs; do
             if [ -f "$UNPACKED/$f" ]; then
               echo "  ok      $f"
