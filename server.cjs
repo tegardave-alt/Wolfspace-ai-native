@@ -3275,8 +3275,68 @@ function parseBareAction(text) {
 }
 
 // Run code in the workspace dir so files the agent WROTE are importable.
+// Cakupan tempat verifikasi eksekusi berjalan — DIBAWA di setiap verdict.
+//
+// KENAPA. Loop anti-halu menolak DONE tanpa satu eksekusi ok=true. Tapi "ok=true"
+// selama ini hanya berarti "proses keluar 0" — tak sepatah pun tentang DI MANA ia
+// jalan. `cwd: WORKSPACE` BUKAN batas: kode bisa membuka path absolut mana pun,
+// dan `env: process.env` mewariskan seluruh lingkungan host ke dalam kode yang
+// diverifikasi. Jadi verdict hijau bisa jadi eksekusi yang menyentuh hal di luar
+// cakupan, dan tetap dilaporkan berhasil.
+//
+// v2: verdict membawa status cakupannya sendiri. "ok=true" tak lagi tampil
+// telanjang — ia selalu diikuti "terkurung ke X" atau "cakupan advisory". Ini
+// pola yang sama dengan penanda [TANPA PENGURUNGAN JARINGAN] pada zona: batas
+// yang tak bisa ditegakkan di Windows minimal dinyatakan, bukan diam-diam dikira
+// ada. JUJUR: di Windows ini attestation, bukan penegakan — tak ada namespace,
+// jadi enforced:false apa adanya.
+function _cakupanVerifikasi() {
+  return {
+    root: WORKSPACE,
+    enforced: false, // Windows: cwd bukan batas; Linux jail belum dipasang di jalur ini
+    mekanisme: "cwd + env terbatas (advisory)",
+  };
+}
+
+// Lingkungan MINIMAL untuk eksekusi verifikasi — bukan process.env utuh.
+//
+// Mewariskan seluruh env host berarti kode yang diverifikasi bisa membaca apa pun
+// di dalamnya (mis. variabel yang memuat rahasia) DAN meng-expand path lewat
+// %VAR% — vektor yang sama yang membuat penjaga bash bocor. Yang disisakan hanya
+// yang benar-benar dibutuhkan interpreter untuk hidup di Windows/Unix.
+function _envVerifikasi() {
+  const e = process.env;
+  const sisa = {};
+  for (const k of [
+    "PATH",
+    "Path",
+    "PATHEXT",
+    "SystemRoot",
+    "SystemDrive",
+    "windir",
+    "ComSpec",
+    "NUMBER_OF_PROCESSORS",
+    "PROCESSOR_ARCHITECTURE",
+    "LANG",
+    "LC_ALL",
+    "PYTHONIOENCODING",
+    "PYTHONDONTWRITEBYTECODE",
+  ]) {
+    if (e[k] != null) sisa[k] = e[k];
+  }
+  // TEMP/TMP diarahkan ke DALAM workspace, bukan Temp host — supaya berkas
+  // sementara kode uji tak berserakan di luar cakupan, dan %TEMP% tak lagi
+  // menunjuk ke pohon host.
+  sisa.TEMP = WORKSPACE;
+  sisa.TMP = WORKSPACE;
+  sisa.PYTHONIOENCODING = sisa.PYTHONIOENCODING || "utf-8";
+  return sisa;
+}
+
 async function runInWorkspace(lang, code) {
   const l = (lang || "").toLowerCase();
+  const kurungan = _cakupanVerifikasi();
+  const env = _envVerifikasi();
   try {
     if (l === "javascript" || l === "js" || l === "node") {
       fs.writeFileSync(path.join(WORKSPACE, "_run.cjs"), code, "utf8");
@@ -3288,7 +3348,7 @@ async function runInWorkspace(lang, code) {
             timeout: EXEC_TIMEOUT,
             encoding: "utf8",
             maxBuffer: 200 * 1024,
-            env: process.env,
+            env,
           },
           (error, stdout, stderr) => {
             if (error) reject(error);
@@ -3296,7 +3356,7 @@ async function runInWorkspace(lang, code) {
           },
         );
       });
-      return { ok: true, output: (out || "").slice(0, 4000) };
+      return { ok: true, output: (out || "").slice(0, 4000), kurungan };
     }
     if (l === "python" || l === "py") {
       fs.writeFileSync(path.join(WORKSPACE, "_run.py"), code, "utf8");
@@ -3308,7 +3368,11 @@ async function runInWorkspace(lang, code) {
             timeout: EXEC_TIMEOUT,
             encoding: "utf8",
             maxBuffer: 200 * 1024,
-            env: PY_ENV,
+            // Dulu memakai PY_ENV — variabel yang TAK PERNAH dideklarasikan,
+            // sehingga cabang ini selalu melempar ReferenceError dan setiap
+            // verifikasi Python diam-diam gagal (ok=false). Kini pakai env
+            // terbatas yang sama dengan cabang JS.
+            env,
           },
           (error, stdout, stderr) => {
             if (error) reject(error);
@@ -3316,15 +3380,17 @@ async function runInWorkspace(lang, code) {
           },
         );
       });
-      return { ok: true, output: (out || "").slice(0, 4000) };
+      return { ok: true, output: (out || "").slice(0, 4000), kurungan };
     }
     return {
       ok: false,
       error: `RUN supports python or javascript (got "${lang}")`,
+      kurungan,
     };
   } catch (e) {
     return {
       ok: false,
+      kurungan,
       output: (e.stdout || "").toString(),
       error: ((e.stderr || "") + "").trim() || e.message,
     };
@@ -4440,6 +4506,7 @@ const server = http.createServer(async (req, res) => {
       const convo = (history || []).slice();
       const MAX = 50;
       let hasRunOk = false; // Track verified executions across steps
+      let verifiedKurungan = null; // cakupan eksekusi yang menggerbang DONE
       try {
         for (let step = 1; step <= MAX; step++) {
           if (cancelled) break;
@@ -4503,10 +4570,21 @@ const server = http.createServer(async (req, res) => {
               });
               continue;
             }
+            // "ok=true" tak pernah tampil telanjang: verdict akhir menyatakan
+            // CAKUPAN eksekusi yang memvalidasinya. Kalau terkurung sungguhan,
+            // itu jaminan; kalau advisory (Windows), itu peringatan agar tak
+            // dikira lebih. Sejalan dengan penanda pengurungan pada zona.
+            const _k = verifiedKurungan;
+            const _catatan = _k
+              ? _k.enforced
+                ? ` [terverifikasi, terkurung ke ${_k.root}]`
+                : ` [terverifikasi ok=true, TAPI cakupan advisory (${_k.mekanisme}) — bukan batas yang ditegakkan]`
+              : "";
             ev({
               t: "adone",
               steps: step,
-              summary: act ? act.body || "Selesai." : reply,
+              summary: (act ? act.body || "Selesai." : reply) + _catatan,
+              ...(_k ? { kurungan: _k } : {}),
             });
             break;
           }
@@ -4562,7 +4640,12 @@ const server = http.createServer(async (req, res) => {
           } else {
             // run
             result = await runInWorkspace(act.arg, act.body);
-            if (result.ok) hasRunOk = true; // Mark as verified!
+            if (result.ok) {
+              hasRunOk = true; // Mark as verified!
+              // Cakupan eksekusi yang MENGGERBANG DONE disimpan, supaya verdict
+              // akhir bisa menyatakannya. Tanpa ini "ok=true" tampil telanjang.
+              verifiedKurungan = result.kurungan || null;
+            }
           }
           ev({
             t: "act",
@@ -4570,6 +4653,7 @@ const server = http.createServer(async (req, res) => {
             arg: act.arg,
             ok: !!result.ok,
             output: result.output || result.error || "",
+            ...(result.kurungan ? { kurungan: result.kurungan } : {}),
           });
           // A bare code block that ran clean = verified by the CPU Ã¢â€ â€™ finish.
           if (implicitRun && result.ok) {

@@ -103,6 +103,16 @@ dan per-permintaan), yang membuat ulang semua state tingkat-modul. Kalau
 checkpointer ikut dibuat ulang, run yang dijeda HITL kehilangan checkpoint-nya
 dan resume tak menemukan apa pun. `globalThis` membuatnya bertahan.
 
+**Verdict eksekusi membawa CAKUPAN-nya.** Loop anti-halu menolak DONE tanpa satu
+eksekusi `ok=true`. Tapi `ok=true` sendiri hanya berarti "proses keluar 0" — maka
+setiap verdict kini membawa `kurungan` (root + `enforced` + mekanisme), dan
+gerbang DONE menyatakannya: _"terkurung ke X"_ bila ditegakkan, atau _"cakupan
+advisory"_ bila tidak. Di Windows ini **attestation, bukan penegakan** — tak ada
+namespace. Eksekusi verifikasi juga tak lagi mewarisi `process.env` utuh (env
+terbatas + `TEMP` diarahkan ke workspace). **Belum tercakup:** `runByLang`
+(auto-run `/chat` untuk C/Go/Java/dll) — jalur runner terpisah, bukan penggerbang
+DONE.
+
 **`thread_id` adalah kunci ingatan.** Bila permintaan datang tanpa `thread_id`,
 `self_agent.cjs` mencetak yang baru — dan agent mulai dari nol. Karena itu UI
 menyimpannya di `localStorage` (kedaluwarsa 30 menit, dihapus saat run tuntas),
