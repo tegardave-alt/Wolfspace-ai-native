@@ -9,7 +9,12 @@ const {
   loadCloudKeys,
   askCloudTools,
 } = require("./cloud.cjs");
-const { runSelfTool, SELF_TOOLS, qBackup } = require("./tools.cjs");
+const {
+  runSelfTool,
+  SELF_TOOLS,
+  qBackup,
+  qBackupAsync,
+} = require("./tools.cjs");
 const { runReply } = require("./chat.cjs");
 const { getOptimized, optimizeInBackground } = require("./sysprompt_opt.cjs");
 const {
@@ -743,9 +748,19 @@ async function selfAgentStream(payload, emit, ctl = {}) {
 
   let sessionSnapshotId = null;
   const { rollback } = require("./snapshot.cjs");
-  const ensureBackup = () => {
+  // ASINKRON, dan itu disengaja. Di mode Electron seluruh run agent berjalan di
+  // dalam proses MAIN — pemilik BrowserWindow dan pemompa antrean pesan Windows.
+  // qBackup() sinkron menyalin ~112 berkas dengan copyFileSync (terukur 285-365ms
+  // memblokir penuh, ~1,8 detik saat cache dingin); selama itu jendela tak
+  // memompa pesan. Versi async menyalin dengan paralel terbatas dan melepas
+  // event loop di antaranya.
+  //
+  // Kedua pemanggilnya ada di fungsi async, tepat sebelum `await runSelfTool`,
+  // jadi menunggu di sini tidak mengubah urutan apa pun: backup tetap selesai
+  // SEBELUM tool penyunting pertama berjalan — yang memang jaminannya.
+  const ensureBackup = async () => {
     if (!sessionSnapshotId) {
-      sessionSnapshotId = qBackup();
+      sessionSnapshotId = qBackupAsync ? await qBackupAsync() : qBackup();
       if (sessionSnapshotId) {
         emit({ t: "backup", dir: sessionSnapshotId });
         dlog("self", "info", "self-agent edit start", {
@@ -1359,7 +1374,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               tc.function.name,
             )
           )
-            ensureBackup();
+            await ensureBackup();
           if (tc.function.name === "bash") {
             emit({
               t: "act",
@@ -2307,7 +2322,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               pendingTc.function.name,
             )
           )
-            ensureBackup();
+            await ensureBackup();
 
           const r = await runSelfTool(
             pendingTc.function.name,

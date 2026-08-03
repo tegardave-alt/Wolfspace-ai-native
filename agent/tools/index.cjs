@@ -143,6 +143,13 @@ const qRead =
   fileTools.qRead || ((p) => "(file-tools not loaded: read unavailable)");
 const qGrep =
   fileTools.qGrep || ((p) => "(file-tools not loaded: grep unavailable)");
+// Jalur tool agent memakai varian ASINKRON. Di mode Electron kode ini berjalan
+// di proses main — pemilik jendela — jadi pemindaian sinkron di sini membekukan
+// UI. Fallback ke versi sinkron kalau modulnya versi lama (mis. salinan di
+// _agent_backups yang di-require jalur lain), supaya tak ada yang mati total.
+const qListA = fileTools.qListAsync || (async () => qList());
+const qGlobA = fileTools.qGlobAsync || (async (p, o) => qGlob(p, o));
+const qGrepA = fileTools.qGrepAsync || (async (p, o) => qGrep(p, o));
 const qBackup =
   fileTools.qBackup ||
   (() => {
@@ -183,6 +190,22 @@ const diskGlob = (...a) => {
 const diskGrep = (...a) => {
   const m = lazyDisk();
   return m.diskGrep ? m.diskGrep(...a) : "(disk-tools not loaded)";
+};
+// Varian ASINKRON untuk jalur tool agent. Di mode Electron kode ini berjalan di
+// proses main (pemilik jendela), dan profil CPU menunjukkan diskWalk sinkron
+// menahannya 8-13 detik sekali hentak. Fallback ke sinkron kalau modulnya versi
+// lama, supaya tak ada tool yang mati total.
+const diskListA = async (...a) => {
+  const m = lazyDisk();
+  return m.diskListAsync ? m.diskListAsync(...a) : diskList(...a);
+};
+const diskGlobA = async (...a) => {
+  const m = lazyDisk();
+  return m.diskGlobAsync ? m.diskGlobAsync(...a) : diskGlob(...a);
+};
+const diskGrepA = async (...a) => {
+  const m = lazyDisk();
+  return m.diskGrepAsync ? m.diskGrepAsync(...a) : diskGrep(...a);
 };
 const webSearch = async (...a) => {
   const m = lazyWeb();
@@ -686,16 +709,19 @@ async function runSelfTool(name, args, emit, context = {}) {
           return await _brokeredFileOp(name, args, _wsRoot);
         }
         // Eksplorasi read-only → scope ke folder ww (bukan QROOT).
-        if (name === "list") return { ok: true, output: diskList(_wsRoot) };
+        if (name === "list")
+          return { ok: true, output: await diskListA(_wsRoot) };
         if (name === "glob")
           return {
             ok: true,
-            output: diskGlob(_wsRoot, args.pattern, { intent: args.intent }),
+            output: await diskGlobA(_wsRoot, args.pattern, {
+              intent: args.intent,
+            }),
           };
         if (name === "grep")
           return {
             ok: true,
-            output: diskGrep(_wsRoot, args.pattern, {
+            output: await diskGrepA(_wsRoot, args.pattern, {
               intent: args.intent,
               semantic: args.semantic,
             }),
@@ -730,14 +756,20 @@ async function runSelfTool(name, args, emit, context = {}) {
       }
     }
 
+    // _cachedResult sudah menangani nilai balik berupa Promise (ia menyimpan
+    // hasilnya setelah resolve), jadi ketiga tool ini bisa asinkron tanpa
+    // mengubah pemanggilnya.
     if (name === "list")
-      return _cachedResult("list", () => ({ ok: true, output: qList() }));
+      return _cachedResult("list", async () => ({
+        ok: true,
+        output: await qListA(),
+      }));
     if (name === "glob")
       return _cachedResult(
         "glob|" + (args.pattern || "") + "|" + (args.intent || ""),
-        () => ({
+        async () => ({
           ok: true,
-          output: qGlob(args.pattern, { intent: args.intent }),
+          output: await qGlobA(args.pattern, { intent: args.intent }),
         }),
       );
     if (name === "read") {
@@ -773,8 +805,8 @@ async function runSelfTool(name, args, emit, context = {}) {
         (args.intent || "") +
         "|" +
         !!args.semantic;
-      return _cachedResult(_grepKey, () => {
-        let output = qGrep(args.pattern, {
+      return _cachedResult(_grepKey, async () => {
+        let output = await qGrepA(args.pattern, {
           intent: args.intent,
           semantic: args.semantic,
         });
@@ -1629,9 +1661,9 @@ async function runSelfTool(name, args, emit, context = {}) {
       return await g3.generate3d(args, context);
     }
     if (name === "disk_list")
-      return _cachedResult("disk_list|" + (args.path || ""), () => ({
+      return _cachedResult("disk_list|" + (args.path || ""), async () => ({
         ok: true,
-        output: diskList(args.path),
+        output: await diskListA(args.path),
       }));
     if (name === "disk_read")
       return _cachedResult(
@@ -1646,9 +1678,11 @@ async function runSelfTool(name, args, emit, context = {}) {
           (args.pattern || "") +
           "|" +
           (args.intent || ""),
-        () => ({
+        async () => ({
           ok: true,
-          output: diskGlob(args.path, args.pattern, { intent: args.intent }),
+          output: await diskGlobA(args.path, args.pattern, {
+            intent: args.intent,
+          }),
         }),
       );
     if (name === "disk_grep")
@@ -1659,9 +1693,9 @@ async function runSelfTool(name, args, emit, context = {}) {
           (args.pattern || "") +
           "|" +
           (args.include_extensions || ""),
-        () => ({
+        async () => ({
           ok: true,
-          output: diskGrep(args.path, args.pattern, {
+          output: await diskGrepA(args.path, args.pattern, {
             include_extensions: args.include_extensions,
           }),
         }),
@@ -1834,6 +1868,7 @@ module.exports = {
   qRead,
   qGrep,
   qBackup,
+  qBackupAsync: fileTools.qBackupAsync,
   qSyntaxOk,
   qResolve,
   diskList,

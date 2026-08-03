@@ -131,10 +131,11 @@ function ToolOutput({ text, ok, kind, arg }) {
       }
     };
   }, [language, dekat]);
-  // follow text changes
+  // follow text changes — menyusul di ujung, bukan menulis ulang seluruh model.
+  // Alasan + angka ukurannya ada di terapkanTeksStream (Viewport.jsx).
   useEffect(() => {
     const ed = edRef.current;
-    if (ed && ed.getValue() !== text) ed.setValue(text || "");
+    if (ed) terapkanTeksStream(ed, text);
   }, [text]);
   return (
     <div className={"ar-out" + (ok ? "" : " err")} ref={wrapRef}>

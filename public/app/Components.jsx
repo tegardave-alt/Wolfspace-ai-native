@@ -23,17 +23,6 @@ function TopBar({
         className={`panel-toggle-btn ${panelOpen ? "active" : ""}`}
         onClick={() => setPanelOpen(!panelOpen)}
         title="Toggle Right Panel"
-        style={{
-          opacity: panelOpen ? 1 : 0.7,
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          color: "inherit",
-          padding: "6px",
-          borderRadius: "6px",
-          display: "flex",
-          alignItems: "center",
-        }}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -270,7 +259,25 @@ function Verdict({ run }) {
     </div>
   );
 }
-function Message({ msg }) {
+// DIBUNGKUS React.memo di bawah — jangan pakai MessageDasar langsung.
+//
+// KENAPA. app.jsx merender riwayat utuh: {messages.map((m,i) => <Message .../>)}.
+// Selama agent bekerja, handler stream memanggil upd() pada SETIAP token, dan
+// upd() melakukan setMessages(m => ...) yang menyalin array. Tanpa memo, tiap
+// token merekonsiliasi ULANG seluruh daftar — termasuk setiap ToolOutput dan
+// CodeBlock yang punya editor Monaco hidup di dalamnya.
+//
+// Biayanya berbanding lurus dengan (jumlah editor hidup x jumlah token), dan
+// itulah kenapa gejalanya muncul "saat Monaco muncul" dan makin parah makin
+// panjang riwayatnya. Diukur di aplikasi nyata lewat CDP: tugas pemblokir
+// sampai 358ms dan total ~2,4 detik beku dalam satu run 123 detik — padahal
+// baru 3 editor hidup.
+//
+// upd() hanya mengganti objek pesan TERAKHIR, jadi dengan memo hanya satu
+// Message yang benar-benar dirender ulang per token. Message murni fungsi dari
+// prop `msg` (tak menyentuh context maupun closure yang berubah), sehingga
+// pembandingan referensi bawaan React.memo sudah tepat — tak perlu komparator.
+function MessageDasar({ msg }) {
   if (msg.role === "user")
     return (
       <div className="msg user">
@@ -303,6 +310,7 @@ function Message({ msg }) {
     </div>
   );
 }
+const Message = React.memo(MessageDasar);
 
 /* ----------------------------- Composer ----------------------------- */
 // Line icons for the composer "+" menu (match the reference design).
@@ -605,8 +613,10 @@ function Composer({
           name: name,
           desc:
             (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
-          // Hijau HANYA bila benar-benar siap DAN panggilan terakhir tidak gagal.
-          active: !!s.ready && s.lastCallOk !== false,
+          // Jika server di-disabled di backend, paksa active = false.
+          // Tanpa ini polling status akan menimpa hasil toggle dan server
+          // terkesan "hidup kembali" sendiri walaupun sudah dinonaktifkan.
+          active: !s.disabled && !!s.ready && s.lastCallOk !== false,
           status: s,
           conf: conf,
         };
@@ -651,8 +661,18 @@ function Composer({
       const parts = type.split(/\s+/);
       command = parts[0];
       args = parts.slice(1);
+    } else if (cleanType.startsWith("http")) {
+      command = "node";
+      args = ["scripts/sse-bridge.cjs", type];
     } else if (cleanType.includes("/")) {
       args = ["-y", type];
+    } else if (cleanType === "notion") {
+      args = ["-y", "@notionhq/notion-mcp-server"];
+    } else if (cleanType === "penpot") {
+      command = "node";
+      args = [
+        "C:\\langs\\node\\node_modules\\@penpot\\mcp\\packages\\server\\dist\\index.js",
+      ];
     } else {
       args = ["-y", `@modelcontextprotocol/server-${cleanType}`];
     }
@@ -675,7 +695,17 @@ function Composer({
           env = { POSTGRES_URL: envVars };
         else if (cleanType.includes("slack"))
           env = { SLACK_BOT_TOKEN: envVars };
-        else env = { TOKEN: envVars };
+        else if (cleanType.includes("penpot"))
+          env = { PENPOT_ACCESS_TOKEN: envVars };
+        else if (cleanType === "figma") {
+          // figma-developer-mcp butuh token via --figma-api-key dan stdout pipe via --stdio
+          args = [
+            "-y",
+            "figma-developer-mcp",
+            "--stdio",
+            `--figma-api-key=${envVars}`,
+          ];
+        } else env = { TOKEN: envVars };
       }
     }
 
@@ -761,7 +791,12 @@ function Composer({
     el.style.height = Math.min(el.scrollHeight, 180) + "px";
   };
 
-  console.log("[Composer] render, busy:", busy, "val:", val);
+  // Log jalur render DIBUANG. Tiap console.* di renderer Electron diserialisasi
+  // dan dikirim lewat IPC ke proses main (main.js meneruskannya ke stdout), jadi
+  // ongkosnya bukan cuma "nulis teks". Composer ikut dirender ulang setiap kali
+  // induknya render — yaitu setiap token selama agent bekerja. Terpantau di app
+  // nyata: 7 baris ini keluar hanya dari startup diam, sebelum satu tugas pun
+  // dijalankan. Debug seperti ini tak boleh tinggal di jalur yang panas.
 
   const handleAttachmentSelect = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -1361,15 +1396,44 @@ function Composer({
                           <button
                             className="am-item"
                             style={{ padding: "8px 12px", flex: 1 }}
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
+                              const nextActive = !srv.active;
                               setMcpServers((prev) =>
                                 prev.map((item) =>
                                   item.id === srv.id
-                                    ? { ...item, active: !item.active }
+                                    ? { ...item, active: nextActive }
                                     : item,
                                 ),
                               );
+                              try {
+                                if (
+                                  window.WOLFSPACE &&
+                                  window.WOLFSPACE.invoke
+                                ) {
+                                  await window.WOLFSPACE.invoke("api", {
+                                    method: "POST",
+                                    path: "/mcp/toggle",
+                                    body: { name: srv.id, enabled: nextActive },
+                                  });
+                                } else {
+                                  await fetch("/mcp/toggle", {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify({
+                                      name: srv.id,
+                                      enabled: nextActive,
+                                    }),
+                                  });
+                                }
+                                window.dispatchEvent(
+                                  new CustomEvent("wolfspace_mcp_changed"),
+                                );
+                              } catch (err) {
+                                console.error("Error toggling MCP server", err);
+                              }
                             }}
                           >
                             <div

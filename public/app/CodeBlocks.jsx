@@ -248,7 +248,11 @@ function CodeBlock({ lang, code }) {
     // Blok yang sedang disunting tak boleh ditimpa stream — begitu juga blok
     // yang naskahnya tersimpan karena sempat keluar layar.
     if (draftRef.current != null) return;
-    if (ed && !focusedRef.current && ed.getValue() !== code) ed.setValue(code);
+    // Menyusul di ujung, bukan menulis ulang seluruh model — lihat
+    // terapkanTeksStream (Viewport.jsx) untuk alasan dan angka ukurannya.
+    // Penjaga di atas memastikan ini hanya jalan saat pemakai TIDAK sedang
+    // menyunting, jadi kursor dan tumpukan undo-nya tak pernah tersenggol.
+    if (ed && !focusedRef.current) terapkanTeksStream(ed, code);
   }, [code]);
   useEffect(() => {
     const ed = edRef.current;

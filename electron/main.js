@@ -360,8 +360,19 @@ function createWindow() {
   // console.log di app.jsx (browser DevTools) tak pernah terlihat lewat terminal/log
   // dev, hanya lewat DevTools yang tak selalu dibuka. Beda dari dlog/[WOLFSPACE:xxx]
   // yang berasal dari proses BACKEND (Node), bukan renderer.
+  // Electron >= 33 mengirim SATU objek event ({level, message, lineNumber,
+  // sourceId, frame}) — bukan lagi (event, level, message, line, sourceId).
+  // Dengan tanda tangan lama, `message` menerima argumen posisi yang salah dan
+  // yang tercetak justru objek `console` global secara utuh, satu kali PER BARIS
+  // log renderer. Terpantau di app nyata: satu baris "[Composer] render" ikut
+  // menyeret dump 25 properti console. Kedua bentuk didukung di sini supaya
+  // tak terikat satu versi Electron.
   const LEVELS = ["log", "warning", "error"];
-  win.webContents.on("console-message", (_e, level, message) => {
+  win.webContents.on("console-message", (...a) => {
+    const ev =
+      a[0] && typeof a[0] === "object" && "message" in a[0] ? a[0] : null;
+    const level = ev ? ev.level : a[1];
+    const message = ev ? ev.message : a[2];
     console.log("[renderer:" + (LEVELS[level] || level) + "]", message);
   });
 }
