@@ -18,7 +18,14 @@ const fs = require("fs");
 const path = require("path");
 const vm = require("vm");
 
-const SRC = fs.readFileSync(require.resolve("../server.cjs"), "utf8");
+// Dinormalkan ke LF: repo ini dipakai dengan core.autocrlf=true, jadi server.cjs
+// di working tree bisa CRLF atau LF tergantung apakah ia baru lewat checkout
+// (termasuk stash/restore lint-staged). Tanpa normalisasi, regex '\n}\n' di bawah
+// diam-diam tak cocok dan SEMUA tes struktur di sini gagal karena alasan yang tak
+// ada hubungannya dengan yang diuji.
+const SRC = fs
+  .readFileSync(require.resolve("../server.cjs"), "utf8")
+  .replace(/\r\n/g, "\n");
 
 // Ambil satu fungsi top-level dari sumber (sampai '}' di kolom 0).
 function ambilFungsi(nama) {

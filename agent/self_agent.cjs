@@ -46,6 +46,20 @@ const SYSTEM_RULES = {
   REQUIRED_TOOL_SEQUENCE: ["grep", "glob", "web_search"],
   // Minimal tools yang gagal sebelum bisa menyerah
   MIN_FAILED_TOOLS: 3,
+  // Berapa kali satu ITEM checklist boleh gagal sebelum run BERHENTI dan bertanya.
+  //
+  // KENAPA ADA. Checklist adalah ground truth yang disuntik ulang tiap langkah —
+  // tapi ia dulu tak punya status "gagal" sama sekali (_TODO_ICON hanya mengenal
+  // completed/in_progress/cancelled/pending), dan kegagalan tak pernah menyentuh
+  // task_checklist. Akibatnya item yang sudah dicoba dan gagal tetap tampil
+  // "[→] sedang dikerjakan" selamanya. Untuk tahu ia pernah gagal, model HARUS
+  // menggali riwayat percakapan — persis hal yang paling cepat memburuk saat
+  // konteks memanjang. Jadi jangkarnya bocor tepat di tempat yang paling perlu.
+  //
+  // MAX_STEPS memang sudah membatasi, tapi ia plafon BUTA: ia membunuh run tanpa
+  // memberitahu apa yang macet. Batas ini beda — ia berhenti pada item yang
+  // SPESIFIK, membawa sebabnya, dan bertanya ke user alih-alih menyerah diam-diam.
+  MAX_ITEM_ATTEMPTS: 3,
 };
 
 // Simpan bukti dari tool yang sudah diakses untuk validasi
@@ -483,6 +497,55 @@ function formatChecklist(todos) {
 
 // Item yang belum tuntas — dipakai di pesan jeda supaya "Lanjutkan" menyebut
 // pekerjaan yang tersisa, bukan sekadar berapa langkah terpakai.
+// Item yang sedang dikerjakan — penanda "[→]" dari todowrite. Kegagalan tool
+// dihitung terhadap item INI, karena itulah pekerjaan yang sedang berlangsung.
+// Tanpa item aktif, kegagalan tak bisa ditautkan ke apa pun dan diabaikan (agent
+// mungkin sedang menjelajah, bukan mengerjakan rencana).
+function itemAktif(checklist) {
+  const l = (checklist || []).find((t) => String(t).startsWith("[→]"));
+  return l ? String(l).slice(3).trim() : null;
+}
+
+// Tandai kegagalan pada item aktif, kembalikan peta baru (tak memutasi yang lama —
+// reducer state ini "ganti total", jadi mutasi di tempat tak akan terlihat).
+function catatGagalItem(fails, item, sebab) {
+  if (!item) return fails || {};
+  const lama = (fails || {})[item] || { n: 0, sebab: [] };
+  return {
+    ...(fails || {}),
+    [item]: {
+      n: lama.n + 1,
+      // Hanya 3 sebab terakhir yang disimpan: yang dibutuhkan model adalah POLA
+      // kegagalan, bukan arsip lengkap — dan checklist ini disuntik ulang tiap
+      // langkah, jadi panjangnya berbanding lurus dengan ongkos token.
+      sebab: [...lama.sebab, String(sebab || "").slice(0, 120)].slice(-3),
+    },
+  };
+}
+
+// Baris checklist + penanda kegagalan, siap disuntik ke system message.
+// Item yang pernah gagal ditampilkan "[!] teks (gagal N×: sebab)" menggantikan
+// "[→]", supaya model MELIHAT kemacetan alih-alih harus mengingatnya.
+function checklistDenganKegagalan(checklist, fails) {
+  const f = fails || {};
+  return (checklist || []).map((baris) => {
+    const teks = String(baris)
+      .replace(/^\[[x→\- ]\]\s*/, "")
+      .trim();
+    const g = f[teks];
+    if (!g || !g.n) return baris;
+    return (
+      "[!] " +
+      teks +
+      " (gagal " +
+      g.n +
+      "×" +
+      (g.sebab.length ? ": " + g.sebab[g.sebab.length - 1] : "") +
+      ")"
+    );
+  });
+}
+
 function pendingChecklist(checklist) {
   return (checklist || []).filter(
     (l) => !l.startsWith("[x]") && !l.startsWith("[-]"),
@@ -554,6 +617,10 @@ const AgentState = Annotation.Root({
   pendingToolCall: Annotation({ reducer: (x, y) => y, default: () => null }),
   pendingToolCalls: Annotation({ reducer: (x, y) => y, default: () => [] }),
   task_checklist: Annotation({ reducer: (x, y) => y, default: () => [] }),
+  // Kegagalan PER-ITEM checklist: { "<teks item>": { n, sebab: [...] } }.
+  // Terpisah dari failedTools (yang mencatat NAMA TOOL, bukan pekerjaan mana yang
+  // macet). Ini yang membuat kegagalan ikut terbawa di jangkar ground truth.
+  checklistFails: Annotation({ reducer: (x, y) => y, default: () => ({}) }),
   // Plafon langkah untuk giliran ini. 0 = pakai MAX_STEPS default. Saat user memilih
   // "lanjutkan" setelah jeda budget, plafon diperpanjang (bukan direset), sehingga
   // langkah menjadi checkpoint "masih lanjut?" alih-alih tebing yang menggagalkan.
@@ -608,21 +675,33 @@ async function selfAgentStream(payload, emit, ctl = {}) {
   const MAX_DEPTH = 3;
   let finalSummary = "";
   const emitPhase = makePhaseEmitter(emit);
+  const failedProviders = []; // Lacak provider yang sudah gagal agar fallback tidak ping-pong
   loadCloudKeys(); // ensure keys are loaded
   fillCloudKey(cloud);
 
-  // Resolve a cloud model if none provided (pick first available key)
+  // Resolve a cloud model if none provided (pick first available key from clientKeys or CLOUD_KEYS)
   if (!(cloud && cloud.key)) {
-    const prov = Object.keys(CLOUD_KEYS).find(
-      (p) => CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
+    const availableKeys =
+      cloud && cloud.clientKeys
+        ? { ...CLOUD_KEYS, ...cloud.clientKeys }
+        : CLOUD_KEYS;
+    const prov = Object.keys(availableKeys).find(
+      (p) =>
+        availableKeys[p] &&
+        (typeof availableKeys[p] === "string"
+          ? availableKeys[p]
+          : availableKeys[p].key),
     );
-    if (prov)
+    if (prov) {
+      const kObj = availableKeys[prov];
       cloud = {
         provider: prov,
-        key: CLOUD_KEYS[prov].key,
-        model: CLOUD_KEYS[prov].model,
-        baseUrl: CLOUD_KEYS[prov].baseUrl,
+        key: typeof kObj === "string" ? kObj : kObj.key,
+        model: typeof kObj === "object" ? kObj.model : undefined,
+        baseUrl: typeof kObj === "object" ? kObj.baseUrl : undefined,
+        clientKeys: cloud ? cloud.clientKeys : undefined,
       };
+    }
   }
   if (!(cloud && cloud.key)) {
     dlog("self", "info", "stop", { reason: "no_cloud_key", depth });
@@ -782,7 +861,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   let lastReadFile = sess.lastReadFile;
   let readFileCount = sess.readFileCount;
   const _TRANSIENT_SELF =
-    /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
+    /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|403|401|RegionError|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
 
   // Load MCP tools dynamically
   const mcpClient = require("./mcp-client.cjs");
@@ -945,11 +1024,22 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           const hasStatus = state.task_checklist.some((t) =>
             /^\[[x→\- ]\] /.test(t),
           );
+          // Kegagalan ikut tersuntik di sini, bukan cuma di riwayat percakapan:
+          // inilah yang membuat "sudah pernah dicoba dan gagal" jadi bagian dari
+          // ground truth, bukan sesuatu yang harus diingat model.
+          const barisChecklist = checklistDenganKegagalan(
+            state.task_checklist,
+            state.checklistFails,
+          );
+          const adaGagal = barisChecklist.some((t) => t.startsWith("[!]"));
           sysMsg.content +=
             "\n\n[TASK CHECKLIST AKTIF]:\n" +
-            state.task_checklist
-              .map((t) => (/^\[[x→\- ]\] /.test(t) ? t : "- " + t))
+            barisChecklist
+              .map((t) => (/^\[[x→\-! ]\] /.test(t) ? t : "- " + t))
               .join("\n") +
+            (adaGagal
+              ? "\nItem [!] SUDAH DICOBA dan gagal. JANGAN ulangi pendekatan yang sama — ganti cara, atau jelaskan ke user kenapa item itu tak bisa diselesaikan."
+              : "") +
             (hasStatus
               ? "\nIni status TERKINI, bukan rencana awal. JANGAN kerjakan ulang item [x]. Kerjakan item [→], lalu lanjut ke [ ] berikutnya, dan perbarui lewat todowrite setiap kali status berubah."
               : "\nFokus selesaikan item di atas secara berurutan dengan menggunakan tools.");
@@ -1012,8 +1102,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             _TRANSIENT_SELF.test(e.message || "") &&
             state.fallbackCount < 3
           ) {
+            failedProviders.push(cloud.provider);
             const fb = Object.keys(CLOUD_KEYS).find(
-              (p) => p !== cloud.provider && CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
+              (p) =>
+                !failedProviders.includes(p) &&
+                CLOUD_KEYS[p] &&
+                CLOUD_KEYS[p].key,
             );
             if (fb) {
               dlog("self", "warn", "provider fallback", {
@@ -1123,6 +1217,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         const localAccessed = new Set();
         const localFailed = new Set();
         const localEditLog = [];
+        // Kegagalan ditautkan ke ITEM checklist yang sedang dikerjakan, bukan ke
+        // nama tool. Dikumpulkan di sini lalu dihitung sekali di akhir langkah.
+        const itemSedangDikerjakan = itemAktif(state.task_checklist);
+        const sebabGagalLangkahIni = [];
 
         const runOne = async (tc) => {
           let args = {};
@@ -1265,6 +1363,20 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)
           )
             localFailed.add(tc.function.name);
+
+          // Kegagalan APA PUN dicatat terhadap item checklist yang aktif —
+          // bukan hanya tool pencarian di REQUIRED_TOOL_SEQUENCE di atas. Yang
+          // membuat pekerjaan macet biasanya justru edit/bash/write yang gagal
+          // berulang, dan itu yang perlu terlihat di jangkar.
+          if (!r.ok && itemSedangDikerjakan) {
+            sebabGagalLangkahIni.push(
+              tc.function.name +
+                ": " +
+                String(r.output || "gagal")
+                  .trim()
+                  .split("\n")[0],
+            );
+          }
 
           // Track consecutive edit failures
           if (tc.function.name === "edit" && !r.ok) {
@@ -1563,6 +1675,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         let stopReason = "";
         let waitForAnswer = false;
         let localSummary = "";
+        // Peta kegagalan per-item sesudah langkah ini. Dihitung setelah semua
+        // tool selesai (lihat gerbang MAX_ITEM_ATTEMPTS di bawah).
+        let failsBaru = state.checklistFails || {};
         // Rencana hidup dari todowrite. null = tak ada panggilan todowrite di
         // langkah ini, jadi checklist yang sudah ada TIDAK ditimpa.
         let todoUpdate = null;
@@ -1696,6 +1811,55 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           });
         }
 
+        // ── Gerbang kemacetan per-item: berhenti dan TANYA, bukan menyerah ──
+        //
+        // Kegagalan langkah ini dihitung terhadap item checklist yang aktif. Saat
+        // satu item gagal MAX_ITEM_ATTEMPTS kali, run DIHENTIKAN dan user ditanya.
+        //
+        // Kenapa bertanya, bukan otomatis melewati item itu: melewatinya membuat
+        // agent tetap produktif tapi bisa menyerah diam-diam pada hal yang justru
+        // paling penting — dan kegagalan yang disembunyikan persis yang harus
+        // dihindari sistem ini. Berhenti-dan-tanya membuat kemacetan terlihat pada
+        // orang yang bisa memutuskan.
+        //
+        // Jalur jeda memakai mekanisme yang SUDAH ada (t:"ask" + waitForAnswer),
+        // bukan jalur baru — sehingga resume, checkpoint HITL, dan UI-nya
+        // otomatis ikut bekerja.
+        if (sebabGagalLangkahIni.length && itemSedangDikerjakan) {
+          failsBaru = catatGagalItem(
+            state.checklistFails,
+            itemSedangDikerjakan,
+            sebabGagalLangkahIni[0],
+          );
+          const n = failsBaru[itemSedangDikerjakan].n;
+          if (n >= SYSTEM_RULES.MAX_ITEM_ATTEMPTS && !waitForAnswer) {
+            const sebab = failsBaru[itemSedangDikerjakan].sebab;
+            const pertanyaan =
+              'Item "' +
+              itemSedangDikerjakan +
+              '" sudah gagal ' +
+              n +
+              "× berturut-turut.\nSebab terakhir: " +
+              (sebab[sebab.length - 1] || "tidak tercatat") +
+              "\n\nSaya berhenti di sini alih-alih mencoba lagi dengan cara yang sama. Bagaimana lanjutnya?";
+            emit({
+              t: "ask",
+              question: pertanyaan,
+              choices: [
+                "Coba pendekatan lain",
+                "Lewati item ini, lanjut ke berikutnya",
+                "Hentikan run",
+              ],
+            });
+            waitForAnswer = true;
+            stopReason = "item_macet";
+            localSummary =
+              "Berhenti: item checklist gagal " +
+              n +
+              "× — menunggu keputusan user.";
+          }
+        }
+
         // Persist session state for HITL resume
         sess.grepReadSteps = grepReadSteps;
         sess.lastReadFile = lastReadFile;
@@ -1710,6 +1874,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           editLog: localEditLog,
           accessedEvidence: Array.from(localAccessed),
           failedTools: Array.from(localFailed),
+          ...(sebabGagalLangkahIni.length ? { checklistFails: failsBaru } : {}),
           stopReason,
           waitForAnswer,
           hitlPending: stopReason === "hitl",
@@ -2508,4 +2673,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 // keluar) sehingga bisa diverifikasi tanpa menjalankan graph atau memanggil
 // model — kalau tidak, satu-satunya cara mengujinya adalah menunggu agent
 // benar-benar menyentuh plafon langkah.
-module.exports = { selfAgentStream, describePauseActivity };
+module.exports = {
+  selfAgentStream,
+  describePauseActivity,
+  // Diekspor untuk diuji: helper murni, tak menyentuh graph/IO.
+  itemAktif,
+  catatGagalItem,
+  checklistDenganKegagalan,
+  SYSTEM_RULES,
+};
