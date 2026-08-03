@@ -756,6 +756,16 @@ async function runSelfTool(name, args, emit, context = {}) {
       );
     }
     if (name === "grep") {
+      // qGrep() memindai SELURUH pohon source (readFileSync tiap berkas cocok,
+      // sampai 600 berkas) — diukur 5,26s dingin, 252ms panas, dan LOOP
+      // TERBLOKIR hampir sepanjang itu (event loop sampler: ~93% dari durasi).
+      //
+      // Cache-nya dulu tak berguna: qGrep() dipanggil DI LUAR _cachedResult,
+      // jadi kerja mahalnya selalu dijalankan ulang — _cachedResult hanya
+      // menyimpan hasil yang SUDAH dihitung, bukan mencegah penghitungannya.
+      // Pola paling umum di run agent adalah grep pola yang sama/mirip
+      // berkali-kali dalam satu sesi; itu yang tak terselamatkan sama sekali.
+      // Sekarang qGrep() pindah ke DALAM callback, menyamai pola list/read/glob.
       const _grepKey =
         "grep|" +
         (args.pattern || "") +
@@ -763,27 +773,34 @@ async function runSelfTool(name, args, emit, context = {}) {
         (args.intent || "") +
         "|" +
         !!args.semantic;
-      let output = qGrep(args.pattern, {
-        intent: args.intent,
-        semantic: args.semantic,
-      });
-      // Warn if results contain sensitive files (credential/config_sensitive)
-      if (output && !output.startsWith("(") && !args.intent && !args.semantic) {
-        const sensitiveFiles = output.split("\n").filter((line) => {
-          const filePath = line.split(":")[0];
-          if (!filePath) return false;
-          const { blocking } = qSemanticCheck(filePath, "");
-          return blocking.length > 0;
+      return _cachedResult(_grepKey, () => {
+        let output = qGrep(args.pattern, {
+          intent: args.intent,
+          semantic: args.semantic,
         });
-        if (sensitiveFiles.length > 0) {
-          output =
-            "⚠️  PERINGATAN: " +
-            sensitiveFiles.length +
-            " sensitive files detected (credentials/config). Use `semantic:true` or `intent` for a safe search.\n\n" +
-            output;
+        // Warn if results contain sensitive files (credential/config_sensitive)
+        if (
+          output &&
+          !output.startsWith("(") &&
+          !args.intent &&
+          !args.semantic
+        ) {
+          const sensitiveFiles = output.split("\n").filter((line) => {
+            const filePath = line.split(":")[0];
+            if (!filePath) return false;
+            const { blocking } = qSemanticCheck(filePath, "");
+            return blocking.length > 0;
+          });
+          if (sensitiveFiles.length > 0) {
+            output =
+              "⚠️  PERINGATAN: " +
+              sensitiveFiles.length +
+              " sensitive files detected (credentials/config). Use `semantic:true` or `intent` for a safe search.\n\n" +
+              output;
+          }
         }
-      }
-      return _cachedResult(_grepKey, () => ({ ok: true, output }));
+        return { ok: true, output };
+      });
     }
     if (name === "edit") {
       const dest = qResolve(args.path, true);
@@ -1064,14 +1081,27 @@ async function runSelfTool(name, args, emit, context = {}) {
         )
       )
         return { ok: false, output: "dangerous command rejected" };
-      // Reject bash commands that try to edit files — must use 'edit' tool instead
+      // Reject bash commands that try to edit files — must use 'edit' tool instead.
+      //
+      // SEMPIT, tak sekadar cocok nama perintah. Regex lama menandai `findstr`
+      // (grep Windows, tak pernah menulis), `sed` tanpa -i (juga tak menulis),
+      // dan `node -e`/`node --eval` APA PUN isinya — termasuk perintah
+      // verifikasi paling wajar sekalipun, `node -e "console.log(1)"`. Diuji
+      // langsung: perintah itu ditolak dengan pesan "gunakan tool edit" yang
+      // tak nyambung (tak ada satu berkas pun yang mau diedit).
+      //
+      // ok DULU true untuk penolakan ini — bug tersendiri. `ok:true` membuat
+      // pesan penolakan lolos sebagai "bukti" ke hallucination guard
+      // (localAccessed, self_agent.cjs) dan tak pernah terhitung gagal oleh
+      // gerbang item-macet (yang hanya melihat `!r.ok`). Sekarang `ok:false`,
+      // supaya penolakan terlihat sebagai penolakan.
       if (
-        /\b(sed|findstr|Set-Content|Out-File|Add-Content|node\s+-e|node\s+--eval|fs\.writeFile)\b/i.test(
+        /\b(sed\s+(?:-[a-z]*i\S*|--in-place)|Set-Content|Out-File|Add-Content|fs\.writeFile)\b/i.test(
           cmd,
         )
       )
         return {
-          ok: true,
+          ok: false,
           output:
             'DILARANG edit file via bash. Gunakan tool "edit" now with parameters: path=file, old_string=the removed code, new_string="" (kosong untuk hapus). JANGAN coba bash lagi.',
         };
@@ -1320,12 +1350,30 @@ async function runSelfTool(name, args, emit, context = {}) {
           clearTimeout(timer);
           clearInterval(cancelCheck);
           _unregisterBashProcess(sessId, entry);
-          // AbortError (from isCancelled or external abort) is expected — don't surface as error
-          if (err.name === "AbortError")
+          // AbortError bisa datang dari DUA sumber (timer timeout ATAU cancelCheck
+          // user), dan `error` selalu menyala lebih dulu daripada `close` — spawn
+          // dengan `signal` melempar error segera setelah abort(), sementara close
+          // menunggu OS benar-benar mereap proses. Jadi cabang "TIMEOUT" di close
+          // di bawah TAK PERNAH tercapai untuk kasus timeout: error menang duluan.
+          // Diukur langsung: timeout 3s dilaporkan sebagai "DIBATALKAN: perintah
+          // dihentikan oleh user" — model membaca ini sebagai "user menghentikan
+          // saya", bukan "perintah saya terlalu lama", dan tak pernah belajar
+          // memperpendek pekerjaannya. `aborted` hanya diset true oleh cancelCheck
+          // (pembatalan user sungguhan), jadi itu yang membedakan keduanya.
+          if (err.name === "AbortError") {
+            if (aborted)
+              return resolve({
+                ok: false,
+                output:
+                  "DIBATALKAN: perintah dihentikan oleh user.\n" +
+                  cmd.slice(0, 200),
+              });
             return resolve({
               ok: false,
-              output: "DIBATALKAN: " + cmd.slice(0, 200),
+              output:
+                "TIMEOUT (" + timeoutMs / 1000 + "s): " + cmd.slice(0, 100),
             });
+          }
           resolve({ ok: false, output: "spawn error: " + err.message });
         });
       });

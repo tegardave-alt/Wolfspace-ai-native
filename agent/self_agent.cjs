@@ -864,10 +864,34 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|403|401|RegionError|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
 
   // Load MCP tools dynamically
+  //
+  // getTools() menahan LANGKAH PERTAMA run, sebelum satu pun event lain
+  // terkirim. Handshake tiap server MCP boleh sampai HANDSHAKE_TIMEOUT_MS
+  // (60s di mcp-client.cjs) sebelum menyerah, dan diukur langsung: satu run
+  // diam 60,3 detik penuh di sini saat dua server (figma, github) timeout
+  // bersamaan — tanpa satu pun tanda ke user bahwa agent masih hidup. Detak
+  // di bawah ini menyamai pola model_wait yang sudah ada, supaya frontend
+  // tak perlu jenis event baru untuk menampilkannya.
   const mcpClient = require("./mcp-client.cjs");
   let currentTools = [...SELF_TOOLS];
   try {
-    const mcpTools = await mcpClient.getTools();
+    const _mcpT0 = Date.now();
+    emit({ t: "model_wait", m: "Menyiapkan koneksi MCP…" });
+    const _mcpHb = setInterval(() => {
+      emit({
+        t: "model_wait",
+        m:
+          "Masih menyiapkan MCP (" +
+          Math.round((Date.now() - _mcpT0) / 1000) +
+          "s)…",
+      });
+    }, 10000);
+    let mcpTools;
+    try {
+      mcpTools = await mcpClient.getTools();
+    } finally {
+      clearInterval(_mcpHb);
+    }
     if (mcpTools.length > 0) {
       currentTools = currentTools.concat(mcpTools);
       // HARDCODE RULE: Filter web_search/web_fetch dinamis jika query berkaitan dengan MCP / Tools yang aktif
@@ -960,15 +984,56 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         });
         const lastMsg = state.messages[state.messages.length - 1];
         const prompt = `Anda adalah AI Planner. Berdasarkan permintaan user, buat checklist SANGAT SINGKAT (maksimal 3 langkah). Tiap langkah di baris baru diawali "- ". JANGAN detail — langsung ke inti tugas. Jangan tambahkan teks lain.\n\nPermintaan: ${lastMsg.content}`;
-        const reply = await askCloudTools(
-          cloud,
-          [{ role: "user", content: prompt }],
-          [],
-        );
-        const lines = (reply.content || "")
-          .split("\n")
-          .filter((l) => l.trim().startsWith("-"))
-          .map((l) => l.trim().replace(/^- /, ""));
+        // Planner bukan langkah yang boleh membunuh run: checklist-nya cuma hiasan
+        // (executor jalan sama saja tanpanya, lihat fallback "Jalankan tugas user."
+        // di bawah). Sebelum ada fallback provider di sini, satu kunci mati di urutan
+        // pertama (mis. github 401) mematikan SELURUH run 1-2 detik masuk — sebelum
+        // executor bahkan sempat mencoba providernya sendiri. Diverifikasi lewat run
+        // nyata: 8 dari 10 kunci di CLOUD_KEYS mati saat diukur.
+        const _planTried = [];
+        let _planCloud = cloud;
+        let reply = null;
+        for (let _t = 0; _t < 4; _t++) {
+          try {
+            reply = await askCloudTools(
+              _planCloud,
+              [{ role: "user", content: prompt }],
+              [],
+            );
+            if (_planCloud !== cloud) {
+              cloud = _planCloud; // provider yang hidup dipakai juga oleh executor
+              dlog("self", "info", "planner fallback established", {
+                provider: cloud.provider,
+              });
+            }
+            break;
+          } catch (e) {
+            dlog("self", "warn", "planner_request_failed", {
+              provider: _planCloud.provider,
+              error: ((e && e.message) || "").slice(0, 120),
+            });
+            if (!_TRANSIENT_SELF.test((e && e.message) || "")) break;
+            _planTried.push(_planCloud.provider);
+            const fb = Object.keys(CLOUD_KEYS).find(
+              (p) =>
+                !_planTried.includes(p) && CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
+            );
+            if (!fb) break;
+            _planCloud = {
+              provider: fb,
+              key: CLOUD_KEYS[fb].key,
+              model: CLOUD_KEYS[fb].model,
+              baseUrl: CLOUD_KEYS[fb].baseUrl,
+            };
+            fillCloudKey(_planCloud);
+          }
+        }
+        const lines = reply
+          ? (reply.content || "")
+              .split("\n")
+              .filter((l) => l.trim().startsWith("-"))
+              .map((l) => l.trim().replace(/^- /, ""))
+          : [];
         if (lines.length === 0) lines.push("Jalankan tugas user.");
         emit({
           t: "act",
