@@ -662,8 +662,12 @@ function Composer({
       command = parts[0];
       args = parts.slice(1);
     } else if (cleanType.startsWith("http")) {
+      // Jembatan baru: coba Streamable HTTP dulu (spesifikasi MCP sekarang),
+      // jatuh ke SSE lama bila server menolaknya. sse-bridge.cjs yang lama
+      // HANYA bicara SSE, sehingga server yang cuma menyediakan /mcp tak
+      // pernah bisa tersambung — dan gagalnya senyap.
       command = "node";
-      args = ["scripts/sse-bridge.cjs", type];
+      args = ["scripts/mcp-http-bridge.cjs", type];
     } else if (cleanType.includes("/")) {
       args = ["-y", type];
     } else if (cleanType === "notion") {
@@ -677,11 +681,35 @@ function Composer({
       args = ["-y", `@modelcontextprotocol/server-${cleanType}`];
     }
 
-    let name = type
-      .split("/")
-      .pop()
-      .replace("server-", "")
-      .replace(/[^a-zA-Z0-9-]/g, "");
+    // Nama server TIDAK BOLEH diturunkan dari URL mentah.
+    //
+    // Rumus lama: type.split("/").pop().replace(/[^a-zA-Z0-9-]/g,"").
+    // Untuk URL remote yang membawa kredensial di query string, potongan
+    // terakhirnya adalah "stream?user=...&token=eyJhbGci...", dan pembuangan
+    // karakter non-alfanumerik justru MERAPATKAN token itu menjadi satu kata
+    // yang lolos sebagai nama. Terbukti di log nyata: beberapa entri bernama
+    // "streamuserTokeneyJhbGciOiJBMjU2S1ciLCJlbmMi..." — JWT utuh, tersimpan
+    // ke config/mcp.json DAN tercetak berulang kali ke berkas debug.
+    //
+    // Untuk URL, yang dipakai sekarang hanya HOST-nya (tak pernah membawa
+    // rahasia). Untuk selain URL, perilaku lama dipertahankan.
+    let name;
+    if (/^https?:/i.test(type)) {
+      let host = "";
+      try {
+        host = new URL(type).hostname;
+      } catch (_) {
+        host = "";
+      }
+      name = (host || "remote").replace(/[^a-zA-Z0-9.-]/g, "").slice(0, 40);
+    } else {
+      name = type
+        .split("/")
+        .pop()
+        .replace("server-", "")
+        .replace(/[^a-zA-Z0-9-]/g, "");
+    }
+    if (!name) name = "mcp-" + Date.now().toString(36);
 
     let env = {};
     if (envVars) {
@@ -705,6 +733,17 @@ function Composer({
             "--stdio",
             `--figma-api-key=${envVars}`,
           ];
+        } else if (cleanType.startsWith("http")) {
+          // Server remote: kredensial dikirim sebagai HEADER lewat env, BUKAN
+          // ditempel ke URL di argv. argv terlihat di daftar proses mana pun
+          // dan ikut tercatat; env tidak pernah dicatat oleh mcp-client.
+          // Ini jalur untuk token TELANJANG (gagal di-JSON.parse di atas), yang
+          // diperlakukan sebagai bearer. Kalau user memasukkan JSON, cabang
+          // JSON.parse di atas sudah memakainya sebagai env apa adanya — di
+          // situ ia bisa menulis MCP_HEADERS sendiri untuk header non-standar.
+          env = {
+            MCP_HEADERS: JSON.stringify({ Authorization: "Bearer " + envVars }),
+          };
         } else env = { TOKEN: envVars };
       }
     }
@@ -1398,11 +1437,32 @@ function Composer({
                             style={{ padding: "8px 12px", flex: 1 }}
                             onClick={async (e) => {
                               e.stopPropagation();
-                              const nextActive = !srv.active;
+                              // Server MCP tidak lagi dinyalakan saat WOLFSPACE
+                              // start — penyalaannya tindakan eksplisit di sini.
+                              //
+                              // Dua maksud yang BERBEDA dibedakan, karena dulu
+                              // keduanya jatuh ke /mcp/toggle:
+                              //   - belum jalan & tidak di-disable -> CONNECT
+                              //     (nyalakan saja; jangan sentuh konfigurasi)
+                              //   - selain itu -> TOGGLE enable/disable, yang
+                              //     memang menulis `disabled` ke mcp.json
+                              // Tanpa pemisahan ini, sekadar menyambungkan
+                              // server ikut mengubah berkas konfigurasi.
+                              const perluConnect =
+                                !srv.active &&
+                                !(srv.status && srv.status.disabled);
+                              const jalur = perluConnect
+                                ? "/mcp/connect"
+                                : "/mcp/toggle";
+                              const muatan = perluConnect
+                                ? { name: srv.id }
+                                : { name: srv.id, enabled: !srv.active };
+                              // Optimistis HANYA saat menyambung; hasil
+                              // sebenarnya disegarkan dari status runtime.
                               setMcpServers((prev) =>
                                 prev.map((item) =>
                                   item.id === srv.id
-                                    ? { ...item, active: nextActive }
+                                    ? { ...item, active: !srv.active }
                                     : item,
                                 ),
                               );
@@ -1413,19 +1473,16 @@ function Composer({
                                 ) {
                                   await window.WOLFSPACE.invoke("api", {
                                     method: "POST",
-                                    path: "/mcp/toggle",
-                                    body: { name: srv.id, enabled: nextActive },
+                                    path: jalur,
+                                    body: muatan,
                                   });
                                 } else {
-                                  await fetch("/mcp/toggle", {
+                                  await fetch(jalur, {
                                     method: "POST",
                                     headers: {
                                       "Content-Type": "application/json",
                                     },
-                                    body: JSON.stringify({
-                                      name: srv.id,
-                                      enabled: nextActive,
-                                    }),
+                                    body: JSON.stringify(muatan),
                                   });
                                 }
                                 window.dispatchEvent(

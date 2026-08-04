@@ -168,17 +168,42 @@ describe("pelacakan PID MCP per pemilik", () => {
   test("server dinyalakan PARALEL, bukan berurutan", () => {
     // `await` di dalam loop membuat waktu tunggu = JUMLAH semua server, bukan
     // yang terlama; satu server mati menahan seluruh agent.
+    //
+    // Sifat ini PINDAH, bukan hilang. init() dulu men-spawn semua server dan
+    // dipanggil getTools() di langkah pertama run agent — terukur 60,3 detik
+    // diam tanpa satu pun event. Sekarang penyalaan adalah tindakan eksplisit
+    // user (Connect), dan yang menyalakan banyak server sekaligus adalah
+    // connectAll(). Di situlah paralelisme sekarang harus dijaga.
+    const src = fs.readFileSync(
+      require.resolve("../agent/mcp-client.cjs"),
+      "utf8",
+    );
+    const body = src.slice(
+      src.indexOf("async connectAll()"),
+      src.indexOf(
+        "_startServer(name, conf)",
+        src.indexOf("async connectAll()"),
+      ),
+    );
+    expect(body).toMatch(/Promise\.all/);
+    expect(body).not.toMatch(
+      /for\s*\([^)]*\)\s*\{[\s\S]*await this\.connectServer/,
+    );
+  });
+
+  test("init() tak lagi menyalakan server — itu tugas Connect", () => {
+    // Penjaga arah: kalau suatu saat ada yang menambahkan connectAll() ke
+    // dalam init() demi kenyamanan, cold start 60 detik itu kembali dan
+    // gejalanya (run agent diam di awal) sangat sulit ditelusuri balik ke sini.
     const src = fs.readFileSync(
       require.resolve("../agent/mcp-client.cjs"),
       "utf8",
     );
     const initBody = src.slice(
-      src.indexOf("_killOrphans();"),
-      src.indexOf("this.initialized = true;"),
+      src.indexOf("async init()"),
+      src.indexOf("async connectServer"),
     );
-    expect(initBody).toMatch(/Promise\.all/);
-    expect(initBody).not.toMatch(
-      /for\s*\([^)]*\)\s*\{[\s\S]*await this\._startServer/,
-    );
+    expect(initBody).not.toMatch(/_startServer|connectAll/);
+    expect(initBody).toMatch(/_killOrphans\(\)/);
   });
 });

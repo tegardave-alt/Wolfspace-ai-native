@@ -3824,6 +3824,55 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(mcpClient.status()));
   }
 
+  // Menyalakan server MCP atas permintaan user (tombol Connect), bukan saat
+  // aplikasi start. Tanpa `name`, semua server yang tak di-disable dinyalakan.
+  //
+  // Ini pasangan backend dari perubahan di mcp-client: init() tak lagi
+  // men-spawn apa pun, sehingga langkah pertama run agent tidak menanggung
+  // cold start `npx` seluruh server (terukur 60,3 detik diam tanpa satu pun
+  // event sebelum perubahan ini).
+  if (_path === "/mcp/connect" && req.method === "POST") {
+    const mcpClient = require("./agent/mcp-client.cjs");
+    let body = "";
+    req.on("data", (c) => (body += c.toString()));
+    req.on("end", async () => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        const hasil = payload.name
+          ? await mcpClient.connectServer(payload.name)
+          : { all: await mcpClient.connectAll() };
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ...hasil }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (_path === "/mcp/toggle" && req.method === "POST") {
+    const mcpClient = require("./agent/mcp-client.cjs");
+    let body = "";
+    req.on("data", (c) => (body += c.toString()));
+    req.on("end", async () => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        if (!payload.name) throw new Error("Missing name");
+        const result = await mcpClient.toggleServer(
+          payload.name,
+          !!payload.enabled,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (_path === "/mcp") {
     const mcpClient = require("./agent/mcp-client.cjs");
     if (req.method === "GET") {

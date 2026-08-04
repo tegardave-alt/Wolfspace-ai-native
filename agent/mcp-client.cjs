@@ -116,6 +116,43 @@ function _killOrphans() {
 
 const CONFIG_PATH = path.join(__dirname, "..", "config", "mcp.json");
 
+// Argumen server MCP membawa kredensial, dan argumen itu DICATAT.
+//
+// Terbukti di berkas debug nyata (%TEMP%/WOLFSPACE-debug.log), tercetak utuh:
+//   Memulai server MCP: figma {"cmd":"npx","args":[...,"--figma-api-key=figd_kQW…"]}
+// dan URL server remote lengkap dengan token di query string. Berkas itu tidak
+// gitignored, tidak dibersihkan, dan dirotasi hanya berdasarkan ukuran — jadi
+// rahasianya tinggal di disk sampai tergeser.
+//
+// env sengaja TIDAK ikut dicatat sejak awal; ini menutup celah yang setara pada
+// argv. Yang disunting hanya NILAInya — nama flag tetap terlihat supaya log
+// masih berguna untuk mendiagnosis perintah yang salah.
+const _RAHASIA_ARG =
+  /(key|token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+function _argsAman(args) {
+  if (!Array.isArray(args)) return args;
+  return args.map((a) => {
+    const s = String(a);
+    // --flag=nilai
+    const m = s.match(
+      /^(--?[\w-]*(?:key|token|secret|password|auth)[\w-]*)=(.+)$/i,
+    );
+    if (m) return m[1] + "=***";
+    // URL: buang query string dan userinfo, sisakan origin + path
+    if (/^https?:\/\//i.test(s)) {
+      try {
+        const u = new URL(s);
+        return u.origin + u.pathname + (u.search ? "?***" : "");
+      } catch (_) {
+        return "***";
+      }
+    }
+    // Nilai telanjang yang tampak seperti token panjang
+    if (s.length > 24 && !s.includes(" ") && _RAHASIA_ARG.test(s)) return "***";
+    return s;
+  });
+}
+
 // Panggilan tool nyata boleh lama (kueri Notion, dsb).
 const REQUEST_TIMEOUT_MS = 120000;
 // Handshake gagal lebih cepat dari panggilan tool. Yang paling menentukan
@@ -149,37 +186,72 @@ class MCPClient {
     }
   }
 
+  // Menyalakan server MCP TIDAK lagi terjadi otomatis.
+  //
+  // KENAPA BERUBAH. Dulu init() men-spawn SETIAP server yang tak di-disable,
+  // dan ia dipanggil oleh getTools() — yaitu di langkah PERTAMA run agent.
+  // Akibatnya diukur langsung: run diam 60,3 detik tanpa satu pun event, karena
+  // tiap server harus `npx` dulu dan handshake-nya boleh sampai
+  // HANDSHAKE_TIMEOUT_MS. Ongkos itu dibayar SETIAP sesi, untuk server yang
+  // mungkin tak dipakai sama sekali dalam sesi tersebut.
+  //
+  // Sekarang: init() hanya membereskan proses yatim dari sesi lalu. Server
+  // dinyalakan saat user menekan Connect (addServer / connectServer), dan
+  // TETAP hidup untuk sesi-sesi berikutnya karena instansnya singleton di
+  // globalThis. Jadi agent memakai apa yang sudah tersambung, bukan menunggu
+  // semuanya dinyalakan.
+  //
+  // Server yang sedang berjalan saat backend hot-reload tidak ikut mati —
+  // this.servers bertahan (lihat mcp-hot-reload.test.js).
   async init() {
     if (this.initialized) return;
-
-    // Bunuh semua proses MCP dari sesi sebelumnya sebelum spawn baru.
-    // Ini memastikan setiap restart adalah proses yang bersih tanpa duplikat.
+    // Proses MCP yatim dari sesi sebelumnya tetap dibersihkan: kalau tidak,
+    // Connect berikutnya menambah duplikat alih-alih menggantikan.
     _killOrphans();
-
-    const config = this._loadConfig();
-    const srvs = config.mcpServers || {};
-
-    // PARALEL, bukan berurutan. Server-server ini tidak saling bergantung, dan
-    // getTools() memblokir langkah pertama agent — dengan `await` di dalam loop,
-    // waktu tunggunya adalah JUMLAH semua server, bukan yang terlama. Satu
-    // server lambat/mati menahan seluruh agent.
-    await Promise.all(
-      Object.entries(srvs).map(([name, conf]) =>
-        this._startServer(name, conf).catch((e) => {
-          dlog("mcp", "error", `Gagal memulai MCP server ${name}`, {
-            error: e.message,
-          });
-        }),
-      ),
-    );
     this.initialized = true;
+  }
+
+  // Menyalakan SATU server atas permintaan (tombol Connect di UI).
+  // Idempoten: server yang sudah siap tidak di-spawn ulang.
+  async connectServer(name) {
+    const cfg = this._loadConfig().mcpServers || {};
+    const conf = cfg[name];
+    if (!conf) return { ok: false, error: "MCP server tak ada di konfigurasi" };
+    if (conf.disabled) return { ok: false, error: "MCP server dinonaktifkan" };
+    const ada = this.servers[name];
+    if (ada && ada.ready) return { ok: true, already: true };
+    if (ada && ada.proc) this.stopServer(name); // setengah jalan -> mulai bersih
+    try {
+      await this._startServer(name, conf);
+      return { ok: true };
+    } catch (e) {
+      return { ok: false, error: e.message };
+    }
+  }
+
+  // Menyalakan SEMUA server yang tak di-disable — dipakai tombol "Connect All"
+  // dan jalur lama yang memang ingin semuanya hidup. Paralel, bukan berurutan:
+  // dengan `await` di dalam loop waktu tunggunya adalah JUMLAH semua server,
+  // bukan yang terlama.
+  async connectAll() {
+    await this.init();
+    const srvs = this._loadConfig().mcpServers || {};
+    const hasil = {};
+    await Promise.all(
+      Object.entries(srvs)
+        .filter(([, conf]) => !conf.disabled)
+        .map(async ([name]) => {
+          hasil[name] = await this.connectServer(name);
+        }),
+    );
+    return hasil;
   }
 
   _startServer(name, conf) {
     return new Promise((resolve, reject) => {
       dlog("mcp", "info", `Memulai server MCP: ${name}`, {
         cmd: conf.command,
-        args: conf.args,
+        args: _argsAman(conf.args),
       });
 
       const env = { ...process.env, ...conf.env };
@@ -307,6 +379,29 @@ class MCPClient {
     return { ok: true, removed: existed };
   }
 
+  async toggleServer(name, enabled) {
+    const config = this._loadConfig();
+    if (!config.mcpServers || !config.mcpServers[name]) {
+      return { ok: false, error: "MCP server not found in configuration" };
+    }
+    const conf = config.mcpServers[name];
+    if (!enabled) {
+      this.stopServer(name);
+      conf.disabled = true;
+      this._saveConfig(config);
+      return { ok: true, enabled: false };
+    } else {
+      delete conf.disabled;
+      this._saveConfig(config);
+      // Lewat connectServer, bukan _startServer langsung: ia idempoten
+      // (server yang sudah siap tak di-spawn ulang) dan membersihkan proses
+      // yang setengah jalan. Tanpa itu, menyalakan dua kali meninggalkan
+      // proses yatim yang tak tercatat di this.servers.
+      const r = await this.connectServer(name);
+      return r.ok ? { ok: true, enabled: true } : { ok: false, error: r.error };
+    }
+  }
+
   getServers() {
     return this._loadConfig().mcpServers || {};
   }
@@ -380,6 +475,10 @@ class MCPClient {
     }
   }
 
+  // Mengembalikan tool dari server yang SUDAH tersambung. Ia tidak lagi
+  // menyalakan apa pun: init() kini hanya membersihkan proses yatim, dan
+  // penyalaan adalah tindakan eksplisit user lewat Connect. Ini yang membuat
+  // langkah pertama agent tak lagi menanggung cold start `npx` semua server.
   async getTools() {
     await this.init();
     const allTools = [];
@@ -508,15 +607,17 @@ class MCPClient {
     const out = {};
     for (const name of Object.keys(cfg)) {
       const s = this.servers[name];
+      const isDisabled = !!cfg[name].disabled;
       out[name] = {
         configured: true,
+        disabled: isDisabled,
         running: !!(s && s.proc),
-        ready: !!(s && s.ready),
+        ready: !isDisabled && !!(s && s.ready),
         lastCallOk:
           s && typeof s.lastCallOk === "boolean" ? s.lastCallOk : null,
         lastCallAt: (s && s.lastCallAt) || null,
         lastError: (s && s.lastError) || null,
-        toolCount: (this.toolsCache[name] || []).length,
+        toolCount: isDisabled ? 0 : (this.toolsCache[name] || []).length,
       };
     }
     return out;
@@ -547,6 +648,19 @@ const mcpClient =
   globalThis.__wolfspaceMcpClient ||
   (globalThis.__wolfspaceMcpClient = new MCPClient());
 
+// ── HOT-RELOAD PATCH ──────────────────────────────────────────────────────────
+// Setelah watcher mem-bust require.cache, file ini di-require ulang dengan class
+// MCPClient yang sudah diperbarui. Tapi karena singleton dikembalikan dari
+// globalThis, prototype-nya masih menunjuk ke class LAMA sehingga method baru
+// (seperti toggleServer) tidak tersedia sampai Electron di-restart penuh.
+//
+// Solusi: setiap kali file ini dimuat ulang, perbarui prototype singleton lama
+// agar menunjuk ke class MCPClient baru. Instance-nya tetap sama (koneksi MCP
+// tidak terganggu), tapi method barunya langsung tersedia.
+if (Object.getPrototypeOf(mcpClient) !== MCPClient.prototype) {
+  Object.setPrototypeOf(mcpClient, MCPClient.prototype);
+}
+
 // Kait uji. Diekspor karena satu-satunya cara lain memicu _killOrphans adalah
 // init(), yang men-spawn server MCP sungguhan lewat `npx` — lambat, butuh
 // jaringan, dan justru mengaburkan yang ingin diuji: keputusan bunuh/pertahankan.
@@ -556,5 +670,6 @@ mcpClient._readOwn = _readOwn;
 mcpClient._ownFile = _ownFile;
 mcpClient.PID_DIR = PID_DIR;
 mcpClient.LEGACY_PID_FILE = LEGACY_PID_FILE;
+mcpClient._argsAman = _argsAman;
 
 module.exports = mcpClient;
