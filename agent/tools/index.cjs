@@ -1294,11 +1294,28 @@ async function runSelfTool(name, args, emit, context = {}) {
           if (st.isDirectory()) cwd = resolved;
         } catch {}
       }
-      // ── Confinement per-workspace (opt-in): kurung bash ke folder aktif ──
+      // ── Confinement bash: SELALU ada akarnya, tak pernah null ──
+      //
+      // Dulu opt-in: tanpa proyek aktif, _confineRoot null dan seluruh blok di
+      // bawah — termasuk _confineBash — TIDAK PERNAH jalan. Bash lalu bebas
+      // sepenuhnya. Terukur, dan inilah yang membuat perbaikan %VAR% tampak
+      // "belum terjadi" saat diuji tanpa memilih proyek:
+      //
+      //   tanpa workspaceRoot : `type C:\...\rahasia.txt` -> BOCOR
+      //   dengan workspaceRoot: `type C:\...\rahasia.txt` -> TERKURUNG
+      //
+      // Ke-13 kasus pelarian yang saya uji sebelumnya semuanya memakai
+      // workspaceRoot, jadi kondisi "belum pilih proyek" tak pernah tersentuh —
+      // padahal itu keadaan default saat aplikasi baru dibuka.
+      //
+      // Sekarang QROOT jadi akar cadangan: agent tetap bisa menyunting sumbernya
+      // sendiri (itu memang fungsi self-agent), tapi tak bisa keluar dari pohon
+      // WOLFSPACE. Pengurungan jadi sifat yang selalu ada, bukan yang menyala
+      // hanya bila kebetulan ada proyek dipilih.
       const _confineRoot =
         (context && context.workspaceRoot) ||
         process.env.WW_WORKSPACE_ROOT ||
-        null;
+        QROOT;
       if (_confineRoot) {
         // Utama: pengurungan OS lewat namespace Linux — batas nyata, bukan regex.
         // Gerbangnya lewat kebijakan terpusat (agent/sandbox-policy.cjs) dengan

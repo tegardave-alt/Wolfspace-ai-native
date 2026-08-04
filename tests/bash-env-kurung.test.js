@@ -254,3 +254,70 @@ describe("perintah yang KELUAR worktree diblokir: temp, shell, powershell", () =
     40000,
   );
 });
+
+describe("TANPA proyek dipilih, bash tetap terkurung — ke QROOT", () => {
+  // KENAPA ADA. Pengurungan bash dulu OPT-IN: tanpa proyek aktif, _confineRoot
+  // bernilai null dan seluruh blok pengurungan — termasuk _confineBash — tak
+  // pernah jalan. Bash lalu bebas sepenuhnya.
+  //
+  // Ke-13 kasus pelarian di describe sebelumnya SEMUANYA memakai workspaceRoot,
+  // jadi kondisi "belum pilih proyek" tak pernah tersentuh — padahal itu keadaan
+  // DEFAULT saat aplikasi baru dibuka. Terukur:
+  //     tanpa workspaceRoot  : path absolut ke luar -> BOCOR
+  //     dengan workspaceRoot : path absolut ke luar -> TERKURUNG
+  //
+  // Pelajaran yang dikunci di sini: cakupan uji yang seragam menyembunyikan
+  // lubang justru di jalur yang paling sering dipakai.
+  const os = require("os");
+  const NAMA = "rahasia-uji-noproj.txt";
+  const ISI = "RAHASIA-TANPA-PROYEK";
+  const RAHASIA = path.join(os.tmpdir(), NAMA);
+
+  beforeAll(() => fs.writeFileSync(RAHASIA, ISI));
+  afterAll(() => fs.rmSync(RAHASIA, { force: true }));
+
+  // ctx KOSONG: persis keadaan aplikasi sebelum user memilih proyek.
+  const tanpaProyek = (cmd) =>
+    runSelfTool("bash", { command: cmd, timeout: 20000 }, noop, {});
+
+  const ps = (inner) => 'powershell -NoProfile -Command "' + inner + '"';
+
+  test.each([
+    ["path absolut ke luar", "type " + RAHASIA],
+    ["%TEMP%", "type %TEMP%\\" + NAMA],
+    ["naik dari QROOT", "type ..\\" + NAMA],
+    ["powershell path absolut", ps("Get-Content '" + RAHASIA + "'")],
+  ])(
+    "%s tetap ditahan",
+    async (_l, cmd) => {
+      const r = await tanpaProyek(cmd);
+      expect(String(r.output || "")).not.toContain(ISI);
+    },
+    30000,
+  );
+
+  test("menyunting sumber SENDIRI tetap bisa — itu fungsi self-agent", async () => {
+    // Opsi yang dipilih: akar cadangan QROOT, bukan menolak bash sama sekali.
+    // Kalau tes ini merah, pengurungannya terlalu ketat dan agent kehilangan
+    // kemampuan utamanya.
+    const r = await tanpaProyek("type package.json");
+    expect(r.ok).toBe(true);
+    expect(r.output).toContain("WOLFSPACE");
+  }, 30000);
+
+  test("akar cadangan BASH adalah QROOT, bukan null", () => {
+    // Dipersempit ke deklarasi _confineRoot saja. Ada `|| null` LAIN di berkas
+    // yang sama untuk _wsRoot (tool berkas), dan di sana null memang benar:
+    // saat null, read/write/edit jatuh ke jalur QROOT lama yang punya penjaga
+    // Q_ALLOWED sendiri. Melarangnya di seluruh berkas akan menuntut perubahan
+    // yang justru salah.
+    const SRC = fs
+      .readFileSync(require.resolve("../agent/tools/index.cjs"), "utf8")
+      .replace(/\s+/g, " ");
+    const i = SRC.indexOf("const _confineRoot =");
+    expect(i).toBeGreaterThan(-1);
+    const decl = SRC.slice(i, SRC.indexOf(";", i) + 1);
+    expect(decl).toContain("QROOT");
+    expect(decl).not.toContain("null");
+  });
+});
