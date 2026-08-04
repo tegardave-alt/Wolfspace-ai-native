@@ -179,10 +179,6 @@ const diskList = (...a) => {
   const m = lazyDisk();
   return m.diskList ? m.diskList(...a) : "(disk-tools not loaded)";
 };
-const diskRead = (...a) => {
-  const m = lazyDisk();
-  return m.diskRead ? m.diskRead(...a) : "(disk-tools not loaded)";
-};
 const diskGlob = (...a) => {
   const m = lazyDisk();
   return m.diskGlob ? m.diskGlob(...a) : "(disk-tools not loaded)";
@@ -1752,46 +1748,21 @@ async function runSelfTool(name, args, emit, context = {}) {
       const g3 = require("./gen3d-tools.cjs");
       return await g3.generate3d(args, context);
     }
-    if (name === "disk_list")
-      return _cachedResult("disk_list|" + (args.path || ""), async () => ({
-        ok: true,
-        output: await diskListA(args.path),
-      }));
-    if (name === "disk_read")
-      return _cachedResult(
-        "disk_read|" + (args.path || "") + "|" + (args.near || ""),
-        () => ({ ok: true, output: diskRead(args.path, args.near) }),
-      );
-    if (name === "disk_glob")
-      return _cachedResult(
-        "disk_glob|" +
-          (args.path || "") +
-          "|" +
-          (args.pattern || "") +
-          "|" +
-          (args.intent || ""),
-        async () => ({
-          ok: true,
-          output: await diskGlobA(args.path, args.pattern, {
-            intent: args.intent,
-          }),
-        }),
-      );
-    if (name === "disk_grep")
-      return _cachedResult(
-        "disk_grep|" +
-          (args.path || "") +
-          "|" +
-          (args.pattern || "") +
-          "|" +
-          (args.include_extensions || ""),
-        async () => ({
-          ok: true,
-          output: await diskGrepA(args.path, args.pattern, {
-            include_extensions: args.include_extensions,
-          }),
-        }),
-      );
+    // Tool disk_* DIHAPUS — dulu di sini ada disk_list/disk_read/disk_glob/
+    // disk_grep yang menerima path SEMBARANG dan tak pernah melewati blok
+    // `if (_wsRoot)` di atas, sehingga mereka mengabaikan pengurungan worktree
+    // sepenuhnya.
+    //
+    // Mereka sudah lama dicabut dari SELF_TOOLS (lihat catatan di
+    // tool-definitions.cjs), jadi model TIDAK BISA memanggilnya — implementasi
+    // ini kode mati. Tapi kode mati yang menembus pengurungan adalah ranjau:
+    // satu baris yang mengembalikannya ke daftar tool sudah cukup untuk
+    // membatalkan seluruh pengurungan, tanpa satu pun tes menjadi merah.
+    //
+    // Fungsi disk-tools.cjs sendiri TETAP dipakai: diskListA/diskGlobA/
+    // diskGrepA melayani list/glob/grep yang DIKURUNG ke _wsRoot, dan
+    // resolveDiskPath dipakai bash untuk cwd. Yang dihapus jalur tool-nya,
+    // bukan modulnya.
 
     if (name === "skill_list") {
       const list = skills.listSkills();
@@ -1964,7 +1935,6 @@ module.exports = {
   qSyntaxOk,
   qResolve,
   diskList,
-  diskRead,
   diskGlob,
   diskGrep,
   resolveDiskPath,

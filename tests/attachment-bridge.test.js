@@ -295,3 +295,57 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
     }
   });
 });
+
+describe("tool disk_* benar-benar tak ada — bukan sekadar disembunyikan", () => {
+  // KENAPA ADA. disk_list/disk_read/disk_glob/disk_grep dulu menerima path
+  // SEMBARANG dan ditangani DI LUAR blok `if (_wsRoot)`, sehingga mengabaikan
+  // pengurungan worktree sepenuhnya.
+  //
+  // Mereka sudah lama dicabut dari SELF_TOOLS, jadi model tak bisa memanggilnya
+  // dan lubangnya tak pernah aktif — koreksi atas laporan saya sebelumnya, yang
+  // menyebutnya "BOCOR" berdasarkan probe yang memanggil runSelfTool LANGSUNG,
+  // melewati daftar tool. Agent tak punya jalan itu.
+  //
+  // Yang tersisa adalah kode mati yang menembus pengurungan, dan itu ranjau:
+  // satu baris yang mengembalikannya ke SELF_TOOLS membatalkan seluruh
+  // pengurungan tanpa satu pun tes menjadi merah. Karena itu dua lapis dijaga
+  // di sini — tak terekspos DAN tak terimplementasi.
+  const path = require("path");
+  const os = require("os");
+  const fsn = require("fs");
+  const { runSelfTool, SELF_TOOLS } = require("../agent/tools.cjs");
+  const MATI = ["disk_read", "disk_list", "disk_glob", "disk_grep"];
+
+  test("tidak terekspos ke model", () => {
+    const nama = SELF_TOOLS.map((t) => t.function.name);
+    for (const t of MATI) expect(nama).not.toContain(t);
+  });
+
+  test("tidak terimplementasi — dispatcher menolaknya sebagai tool tak dikenal", async () => {
+    const ctx = { workspaceRoot: path.join(os.tmpdir(), "wolf-uji-kurung") };
+    for (const t of MATI) {
+      const r = await runSelfTool(
+        t,
+        { path: "C:\\", pattern: "*" },
+        () => {},
+        ctx,
+      );
+      expect(r.ok).toBe(false);
+      expect(r.output).toContain("unknown tool");
+    }
+  }, 20000);
+
+  test("jalur SAH tidak ikut mati: list/glob/grep tetap terkurung ke worktree", async () => {
+    // disk-tools.cjs sendiri TETAP dipakai — diskListA/diskGlobA/diskGrepA
+    // melayani list/glob/grep yang dikurung. Yang dihapus jalur tool-nya, bukan
+    // modulnya; kalau ikut terhapus, agent kehilangan kemampuan menjelajah
+    // worktree-nya sendiri.
+    const WS = path.join(os.tmpdir(), "wolf-uji-kurung-sah");
+    fsn.rmSync(WS, { recursive: true, force: true });
+    fsn.mkdirSync(WS, { recursive: true });
+    fsn.writeFileSync(path.join(WS, "didalam.txt"), "isi");
+    const r = await runSelfTool("list", {}, () => {}, { workspaceRoot: WS });
+    expect(r.ok).toBe(true);
+    expect(r.output).toContain("didalam.txt");
+  }, 20000);
+});
