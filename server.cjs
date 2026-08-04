@@ -330,9 +330,22 @@ function dlog(cat, level, msg, data) {
 const _origLog = console.log;
 const _origError = console.error;
 const _origWarn = console.warn;
-const _writeSafe = (fn, ...args) => {
+// Argumen kedua adalah KONTEKS (`this`), bukan data yang dicetak.
+//
+// Ketiga pemanggil di bawah menulis `_writeSafe(_origLog, console, ...args)` —
+// maksudnya jelas `_origLog.call(console, ...args)`. Tapi versi lama menyapu
+// semuanya ke dalam `...args` lalu `fn(...args)`, sehingga `console` ikut
+// TERCETAK sebagai argumen pertama. Akibatnya SETIAP baris log backend
+// menyeret dump 25 properti objek console:
+//
+//   Object [console] { log: [Function], warn: [Function], ... } [renderer:warning] …
+//
+// Terlihat di stdout `npm run app` pada setiap pesan, dan di mode Electron
+// backend berjalan di proses MAIN — jadi ongkos serialisasi itu ditanggung
+// pemilik jendela, berulang untuk tiap baris log.
+const _writeSafe = (fn, ctx, ...args) => {
   try {
-    fn(...args);
+    fn.apply(ctx, args);
   } catch (_) {}
 };
 let _qLogReentrant = false;

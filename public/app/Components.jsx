@@ -1462,7 +1462,24 @@ function Composer({
                               setMcpServers((prev) =>
                                 prev.map((item) =>
                                   item.id === srv.id
-                                    ? { ...item, active: !srv.active }
+                                    ? {
+                                        ...item,
+                                        active: !srv.active,
+                                        // Menyambung BUKAN "sudah tersambung".
+                                        //
+                                        // Diukur di jalur nyata: connect makan
+                                        // 4302ms (npx + handshake), dan bisa
+                                        // sampai HANDSHAKE_TIMEOUT_MS 60 detik
+                                        // untuk server bermasalah. Selama itu
+                                        // event loop TIDAK terblokir sama
+                                        // sekali (lag-puncak 55ms, 276 tick) —
+                                        // jadi ini bukan hang, tapi dulu badge
+                                        // langsung hijau "✓ Connected" padahal
+                                        // handshake belum selesai. User melihat
+                                        // "tersambung" lalu diam lama, dan itu
+                                        // yang terbaca sebagai macet.
+                                        connecting: perluConnect,
+                                      }
                                     : item,
                                 ),
                               );
@@ -1485,11 +1502,18 @@ function Composer({
                                     body: JSON.stringify(muatan),
                                   });
                                 }
+                              } catch (err) {
+                                console.error("Error toggling MCP server", err);
+                              } finally {
+                                // Di finally, BUKAN di jalur sukses saja.
+                                // Kalau permintaannya gagal, badge "⟳
+                                // Connecting…" akan menempel selamanya karena
+                                // tak ada yang menyegarkannya dari status
+                                // runtime — dan server yang gagal justru
+                                // paling perlu terlihat gagal.
                                 window.dispatchEvent(
                                   new CustomEvent("wolfspace_mcp_changed"),
                                 );
-                              } catch (err) {
-                                console.error("Error toggling MCP server", err);
                               }
                             }}
                           >
@@ -1520,7 +1544,20 @@ function Composer({
                                     gap: "6px",
                                   }}
                                 >
-                                  {srv.active ? (
+                                  {srv.connecting ? (
+                                    <span
+                                      style={{
+                                        fontSize: "11px",
+                                        fontWeight: 500,
+                                        padding: "2px 6px",
+                                        borderRadius: "10px",
+                                        color: "#d7ba7d",
+                                        background: "rgba(215, 186, 125, 0.12)",
+                                      }}
+                                    >
+                                      ⟳ Connecting…
+                                    </span>
+                                  ) : srv.active ? (
                                     <span
                                       style={{
                                         fontSize: "11px",
