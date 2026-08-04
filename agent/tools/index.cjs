@@ -461,6 +461,91 @@ const _sandboxPolicy = require("../sandbox-policy.cjs");
 // yang sama berkali-kali (terpantau 6x beruntun sampai penjaga kemandekan
 // menghentikannya). Instruksi di prompt tak cukup: model bisa mengabaikannya.
 // Di sini kegagalan diubah jadi ARAHAN — sebutkan batasnya dan tool penggantinya.
+// Environment bash TIDAK lagi diwariskan utuh.
+//
+// KENAPA. Penjaga path (_HOST_PATH_RE di bawah) memeriksa STRING perintah
+// sebelum dijalankan. Tapi %VAR% baru diperluas DI DALAM cmd.exe — sesudah
+// pemeriksaan itu selesai. Penjaga melihat "%TEMP%", shell melihat
+// "C:\Users\dave\AppData\Local\Temp". Dua string berbeda, dan yang benar-benar
+// menyentuh disk adalah yang kedua.
+//
+// Diukur pada worktree DI LUAR TEMP (supaya tak bisa dibantah sebagai "cuma
+// naik satu tingkat"):
+//     type C:\...\rahasia.txt   -> DITAHAN
+//     type %TEMP%\rahasia.txt   -> BOCOR
+//     type %TMP%\rahasia.txt    -> BOCOR
+//     type %USERPROFILE%\...    -> BOCOR
+//
+// Menambal regex tak menyelesaikannya: jumlah variabel tak terbatas, dan
+// cmd.exe punya %CD%, substring expansion (%TEMP:~0,3% menghasilkan "C:\"
+// tanpa pernah menuliskannya), serta penyambungan lewat `set`. Lomba yang tak
+// bisa dimenangkan pemeriksa string.
+//
+// Yang ditutup di sini SUMBERNYA: kalau %TEMP% tak ada di environment, ia tak
+// bisa diperluas jadi apa pun — pemeriksa dan shell kembali melihat string yang
+// sama. Pola dan daftarnya mengikuti _envVerifikasi() di server.cjs, yang sudah
+// melakukan hal ini untuk jalur verifikasi.
+//
+// BUKAN pengurungan sungguhan. Ini menutup satu keluarga pelarian, bukan
+// membuat shell tak bisa menjangkau luar — path absolut yang ditulis terang
+// masih diandalkan pada penjaga regex. Pengurungan sungguhan butuh level OS
+// (bash-jail.cjs di Linux; di Windows padanannya WSL).
+const _ENV_BASH_IZIN = [
+  "PATH",
+  "Path",
+  "PATHEXT",
+  "SystemRoot",
+  "SystemDrive",
+  "windir",
+  "ComSpec",
+  "NUMBER_OF_PROCESSORS",
+  "PROCESSOR_ARCHITECTURE",
+  "PROCESSOR_IDENTIFIER",
+  "OS",
+  "LANG",
+  "LC_ALL",
+  "PYTHONIOENCODING",
+];
+function _envBash(cwd) {
+  // Jalan keluar darurat, dan sengaja hanya bisa disetel oleh yang MELUNCURKAN
+  // aplikasi — bukan oleh agent, yang tak bisa menyentuh env proses backend.
+  if (process.env.WOLFSPACE_BASH_ENV === "full")
+    return { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+
+  const e = process.env;
+  const out = {};
+  for (const k of _ENV_BASH_IZIN) if (e[k] != null) out[k] = e[k];
+  // TEMP/TMP diarahkan ke DALAM direktori kerja, bukan dihapus: banyak alat
+  // (npm, python, kompilator) menulis berkas sementara dan GAGAL bila keduanya
+  // hilang. Mengarahkannya membuat berkas itu mendarat di dalam cakupan, dan
+  // %TEMP% tak lagi menunjuk ke pohon host.
+  out.TEMP = cwd;
+  out.TMP = cwd;
+  out.PYTHONIOENCODING = out.PYTHONIOENCODING || "utf-8";
+  out.ELECTRON_RUN_AS_NODE = "1";
+
+  // MENYARING SAJA TIDAK CUKUP DI WINDOWS.
+  //
+  // cmd.exe memasok sendiri variabel identitas pengguna dari token proses,
+  // terlepas dari blok environment yang diberikan. Terukur: sesudah allowlist
+  // dipasang, `set` di dalam shell tetap memperlihatkan HOMEDRIVE, HOMEPATH,
+  // LOGONSERVER, USERDOMAIN, USERNAME, dan USERPROFILE — dan %USERPROFILE%
+  // tetap menembus penjaga path, satu-satunya yang masih bocor dari empat
+  // kasus uji.
+  //
+  // Karena itu keenamnya DITIMPA, bukan dihapus: nilai eksplisit mengalahkan
+  // suntikan cmd.exe. Yang menunjuk lokasi diarahkan ke direktori kerja;
+  // yang sekadar identitas dinetralkan supaya tak membocorkan nama akun.
+  out.USERPROFILE = cwd;
+  out.HOMEDRIVE = String(cwd).slice(0, 2); // "C:"
+  out.HOMEPATH = String(cwd).slice(2) || "\\";
+  out.HOME = cwd; // dipakai git/ssh di jalur POSIX
+  out.USERNAME = "wolfspace";
+  out.USERDOMAIN = "wolfspace";
+  out.LOGONSERVER = "";
+  return out;
+}
+
 const _HOST_PATH_RE = [
   /\b[A-Za-z]:[\\/]/, //  C:\... atau D:/...
   /(^|\s|['"=(])\/[a-z]\/(Users|Program|Windows)/i, // /c/Users/... (gaya MSYS)
@@ -1286,7 +1371,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         const child = spawn(shBin, shArgs, {
           cwd,
           windowsHide: true,
-          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+          env: _envBash(cwd),
           signal,
         });
         trackProcess(sessId, child);
