@@ -65,6 +65,27 @@ const SYSTEM_RULES = {
   // memberitahu apa yang macet. Batas ini beda — ia berhenti pada item yang
   // SPESIFIK, membawa sebabnya, dan bertanya ke user alih-alih menyerah diam-diam.
   MAX_ITEM_ATTEMPTS: 3,
+
+  // Berapa kali run boleh DIDORONG melanjutkan saat model menutup giliran dengan
+  // TEKS padahal checklist masih terbuka.
+  //
+  // KENAPA ADA. Cabang penutup di executor memperlakukan "ada content, tak ada
+  // tool_calls" sebagai jawaban akhir dan MENGAKHIRI run — tanpa sekali pun
+  // melihat apakah pekerjaannya sudah tuntas. Untuk model yang gemar
+  // mengumumkan rencananya dalam prosa sebelum bertindak, satu kalimat niat
+  // sudah cukup untuk membunuh run di tengah jalan.
+  //
+  // Terekam di log run nyata (GLM-5.2, tugas landing page):
+  //   step 5  toolCalls=3            <- sedang bekerja
+  //   step 6  content=176 toolCalls=0 -> stop "text_response_no_tools"
+  // Checklist masih 0/4, tapi run sudah ditutup dan kalimat niat itu yang
+  // ditampilkan sebagai hasil akhir. Dari layar, gejalanya persis "agent
+  // berhenti sendiri dan tidak mengikuti todo".
+  //
+  // Dibatasi supaya tak jadi loop: kalau sesudah beberapa dorongan model tetap
+  // menarasikan, run ditutup seperti sebelumnya — sekarang dengan catatan jujur
+  // bahwa checklist belum tuntas.
+  MAX_CONTINUE_NUDGE: 3,
 };
 
 // Simpan bukti dari tool yang sudah diakses untuk validasi
@@ -626,6 +647,13 @@ const AgentState = Annotation.Root({
   // Terpisah dari failedTools (yang mencatat NAMA TOOL, bukan pekerjaan mana yang
   // macet). Ini yang membuat kegagalan ikut terbawa di jangkar ground truth.
   checklistFails: Annotation({ reducer: (x, y) => y, default: () => ({}) }),
+  // Berapa kali run sudah didorong melanjutkan karena model menutup giliran
+  // dengan teks padahal checklist masih terbuka. Dihitung TERPISAH dari
+  // forceRetryCount: penghitung itu sudah dipakai bersama oleh tiga gerbang lain
+  // (bukti tool, reasoning-tanpa-jawaban, hallucination guard), jadi menumpang
+  // di sana membuat dorongan ini kehabisan jatah karena kejadian yang sama
+  // sekali tak berhubungan.
+  continueNudge: Annotation({ reducer: (x, y) => y, default: () => 0 }),
   // Plafon langkah untuk giliran ini. 0 = pakai MAX_STEPS default. Saat user memilih
   // "lanjutkan" setelah jeda budget, plafon diperpanjang (bukan direset), sehingga
   // langkah menjadi checkpoint "masih lanjut?" alih-alih tebing yang menggagalkan.
@@ -1223,6 +1251,58 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           return { stopReason: "error" };
         }
         if (isCancelled()) return { stopReason: "cancelled_after_tools" };
+
+        // ── Respons HAMPA = provider bermasalah, bukan model yang "selesai" ──
+        //
+        // Sebagian provider membalas HTTP 200 dengan badan yang sah tapi NIHIL:
+        // tanpa content, tanpa reasoning, tanpa tool_calls. Karena bukan error,
+        // ia tak pernah cocok dengan _TRANSIENT_SELF, jadi fallback provider yang
+        // sudah ada di blok catch di atas tak pernah terpicu — padahal akibatnya
+        // sama saja dengan 502: giliran itu hilang begitu saja.
+        //
+        // Terukur pada run nyata GLM-5.2 lewat provider opencode: 5 dari 6
+        // panggilan mengembalikan 0/0/0, dan run mati di langkah 2 dengan
+        // "(tidak ada respons dari model)" — pesan yang menyalahkan model,
+        // padahal yang gagal adalah salurannya.
+        //
+        // Diperlakukan sama persis dengan kegagalan transient: pindah provider,
+        // dibatasi fallbackCount yang sama, dan diberitahukan ke user.
+        if (
+          !msg.content &&
+          !msg.reasoning &&
+          !(msg.tool_calls && msg.tool_calls.length) &&
+          state.fallbackCount < 3
+        ) {
+          failedProviders.push(cloud.provider);
+          const fbHampa = Object.keys(CLOUD_KEYS).find(
+            (p) =>
+              !failedProviders.includes(p) &&
+              CLOUD_KEYS[p] &&
+              CLOUD_KEYS[p].key,
+          );
+          if (fbHampa) {
+            dlog("self", "warn", "provider fallback (respons hampa)", {
+              from: cloud.provider,
+              to: fbHampa,
+              step: state.step,
+            });
+            emit({
+              t: "err",
+              m:
+                cloud.provider +
+                " membalas kosong (tanpa teks/tool) — beralih ke " +
+                fbHampa,
+            });
+            cloud = {
+              provider: fbHampa,
+              key: CLOUD_KEYS[fbHampa].key,
+              model: CLOUD_KEYS[fbHampa].model,
+              baseUrl: CLOUD_KEYS[fbHampa].baseUrl,
+            };
+            fillCloudKey(cloud);
+            return { fallbackCount: state.fallbackCount + 1 };
+          }
+        }
 
         // Reasoning bisa bocor lewat dua jalur: terselip di content (tag <think> dari
         // cloud.cjs/model) atau model menghabiskan giliran HANYA berpikir (content
@@ -2159,6 +2239,71 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         }
         // verdict === 'clean': jawaban bersih, lanjut
         // ── END HALLUCINATION GUARD ─────────────────────────────────────────────────
+
+        // ── Teks bukan tanda selesai bila checklist MASIH terbuka ──
+        //
+        // Di bawah ini run DITUTUP dan teks model dipakai sebagai jawaban akhir.
+        // Itu benar kalau pekerjaannya memang tuntas — tapi tak ada satu pun
+        // pemeriksaan bahwa ia tuntas. Model yang mengumumkan rencananya lebih
+        // dulu ("Saya buat folder baru freelance-landing/ ...") menutup run-nya
+        // sendiri dengan satu kalimat niat, di tengah checklist yang masih 0/4.
+        //
+        // Sengaja MENDORONG, bukan memaksa: dorongan dibatasi
+        // MAX_CONTINUE_NUDGE, dan sesudah itu run tetap ditutup — dengan catatan
+        // jujur bahwa checklist belum tuntas, bukan diam-diam seolah selesai.
+        const _sisa = (state.task_checklist || []).filter((b) =>
+          /^\[(?: |→|!)\]/.test(String(b)),
+        );
+        if (
+          hasContent &&
+          _sisa.length &&
+          (state.continueNudge || 0) < SYSTEM_RULES.MAX_CONTINUE_NUDGE
+        ) {
+          dlog("self", "info", "continue_nudge", {
+            step: state.step,
+            sisa: _sisa.length,
+            ke: (state.continueNudge || 0) + 1,
+          });
+          emit({
+            t: "force_retry",
+            m:
+              "Checklist belum tuntas (" +
+              _sisa.length +
+              " item) — melanjutkan, bukan menutup.",
+          });
+          return {
+            messages: [
+              {
+                role: "user",
+                content:
+                  "JANGAN menutup pekerjaan. Checklist Anda masih punya " +
+                  _sisa.length +
+                  " item yang belum tuntas:\n" +
+                  _sisa.join("\n") +
+                  "\n\nDILARANG menarasikan rencana. PANGGIL tool untuk MENGERJAKAN " +
+                  "item yang bertanda [→] sekarang juga. Kalau item itu sebenarnya " +
+                  "sudah selesai, panggil todowrite untuk menandainya [x] lalu " +
+                  "langsung kerjakan item berikutnya.",
+              },
+            ],
+            continueNudge: (state.continueNudge || 0) + 1,
+          };
+        }
+        // Sudah didorong sampai batas dan model tetap menarasikan: tutup, tapi
+        // JANGAN mengaku selesai. Sisa pekerjaan disebutkan supaya user tahu
+        // persis apa yang tak dikerjakan.
+        if (hasContent && _sisa.length) {
+          dlog("self", "warn", "continue_nudge limit reached", {
+            step: state.step,
+            sisa: _sisa.length,
+          });
+          fallback =
+            fallback +
+            "\n\n⚠ Run berhenti dengan " +
+            _sisa.length +
+            " item checklist BELUM tuntas:\n" +
+            _sisa.join("\n");
+        }
 
         dlog("self", "info", "stop", {
           reason: hasContent ? "text_response_no_tools" : "no_response",

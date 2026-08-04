@@ -356,3 +356,114 @@ describe("UI membeku karena PROSES MAIN, bukan renderer", () => {
       expect(SRC_FILE).toContain("async function " + f);
   });
 });
+
+describe("run tak lagi ditutup oleh KALIMAT NIAT saat checklist masih terbuka", () => {
+  // KENAPA ADA. Cabang penutup executor memperlakukan "ada content, tak ada
+  // tool_calls" sebagai jawaban final dan MENGAKHIRI run — tanpa memeriksa
+  // apakah pekerjaannya tuntas. Untuk model yang mengumumkan rencananya dalam
+  // prosa sebelum bertindak, satu kalimat niat membunuh run di tengah jalan.
+  //
+  // Terekam di log run NYATA user (GLM-5.2 via opencode, tugas landing page):
+  //   step 5  toolCalls=3                       <- sedang bekerja
+  //   step 6  content=176 toolCalls=0  -> stop "text_response_no_tools"
+  //   finalSummary: "Saya akan membuat landing page freelance dengan Tailwind…"
+  // Checklist masih 0/4. Dua run berbeda berhenti dengan pola yang sama, dan
+  // dari layar gejalanya persis "agent berhenti sendiri, todo tak diikuti".
+  const fs = require("fs");
+  const SRC = fs
+    .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+    .replace(/\r\n/g, "\n");
+  const a = require("../agent/self_agent.cjs");
+
+  test("batas dorongan ada, terpisah, dan masuk akal", () => {
+    expect(a.SYSTEM_RULES.MAX_CONTINUE_NUDGE).toBeGreaterThanOrEqual(2);
+    expect(a.SYSTEM_RULES.MAX_CONTINUE_NUDGE).toBeLessThanOrEqual(5);
+    // Penghitungnya HARUS terpisah dari forceRetryCount: penghitung itu sudah
+    // dipakai bersama tiga gerbang lain, jadi menumpang di sana membuat dorongan
+    // ini kehabisan jatah karena sebab yang tak berhubungan.
+    expect(SRC).toMatch(/continueNudge: Annotation\(/);
+    expect(SRC).toMatch(/continueNudge: \(state\.continueNudge \|\| 0\) \+ 1/);
+  });
+
+  test("gerbang berada SEBELUM cabang yang menutup run", () => {
+    const iGate = SRC.indexOf("MAX_CONTINUE_NUDGE\n");
+    const iGateUse = SRC.indexOf("SYSTEM_RULES.MAX_CONTINUE_NUDGE");
+    const iStop = SRC.indexOf('reason: hasContent ? "text_response_no_tools"');
+    expect(iGateUse).toBeGreaterThan(-1);
+    expect(iStop).toBeGreaterThan(iGateUse);
+  });
+
+  test("hanya untuk jawaban BERISI TEKS — respons hampa punya jalurnya sendiri", () => {
+    const i = SRC.indexOf("SYSTEM_RULES.MAX_CONTINUE_NUDGE");
+    const blok = SRC.slice(Math.max(0, i - 400), i + 200);
+    expect(blok).toMatch(/hasContent &&/);
+  });
+
+  test("item TERBUKA dikenali, item selesai/batal tidak", () => {
+    // Pola yang dipakai gerbang. [x] tuntas dan [-] dibatalkan bukan pekerjaan
+    // tersisa; [!] (gagal berulang) TETAP terbuka — kalau tidak, item yang macet
+    // justru jadi alasan menutup run.
+    const re = /^\[(?: |→|!)\]/;
+    expect(SRC).toMatch(/(state.task_checklist || []).filter/);
+    for (const [teks, terbuka] of [
+      ["[x] selesai", false],
+      ["[-] dibatalkan", false],
+      ["[→] sedang dikerjakan", true],
+      ["[ ] belum", true],
+      ["[!] gagal 3×", true],
+    ])
+      expect(re.test(teks)).toBe(terbuka);
+  });
+
+  test("sesudah batas dorongan, run ditutup TAPI tidak mengaku selesai", () => {
+    const i = SRC.indexOf("continue_nudge limit reached");
+    expect(i).toBeGreaterThan(-1);
+    const blok = SRC.slice(i, i + 500);
+    expect(blok).toMatch(/item checklist BELUM tuntas/);
+  });
+});
+
+describe("respons HAMPA diperlakukan sebagai provider gagal, bukan 'model selesai'", () => {
+  // Sebagian provider membalas HTTP 200 dengan badan sah tapi nihil: tanpa
+  // content, reasoning, maupun tool_calls. Karena bukan error, ia tak pernah
+  // cocok dengan _TRANSIENT_SELF, jadi fallback provider yang sudah ada tak
+  // pernah terpicu — padahal akibatnya sama dengan 502.
+  //
+  // Terukur: GLM-5.2 via opencode mengembalikan 0/0/0 pada 5 dari 6 panggilan
+  // dalam satu run, dan run mati dengan "(tidak ada respons dari model)" —
+  // menyalahkan model, padahal salurannya yang gagal.
+  const fs = require("fs");
+  const SRC = fs
+    .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+    .replace(/\r\n/g, "\n");
+
+  test("ketiganya kosong -> pindah provider", () => {
+    const i = SRC.indexOf("Respons HAMPA");
+    expect(i).toBeGreaterThan(-1);
+    const blok = SRC.slice(i, i + 2800);
+    expect(blok).toMatch(/!msg\.content &&\s*\n\s*!msg\.reasoning &&/);
+    expect(blok).toMatch(/!\(msg\.tool_calls && msg\.tool_calls\.length\)/);
+    expect(blok).toMatch(/fillCloudKey\(cloud\)/);
+    expect(blok).toMatch(/fallbackCount: state\.fallbackCount \+ 1/);
+  });
+
+  test("memakai batas fallback yang SAMA, tak menambah jatah sendiri", () => {
+    const i = SRC.indexOf("Respons HAMPA");
+    const blok = SRC.slice(i, i + 2800);
+    expect(blok).toMatch(/state\.fallbackCount < 3/);
+  });
+
+  test("provider yang sudah gagal tidak dicoba ulang", () => {
+    const i = SRC.indexOf("Respons HAMPA");
+    const blok = SRC.slice(i, i + 2800);
+    expect(blok).toMatch(/failedProviders\.push\(cloud\.provider\)/);
+    expect(blok).toMatch(/!failedProviders\.includes\(p\)/);
+  });
+
+  test("user DIBERI TAHU, bukan diam-diam berpindah", () => {
+    const i = SRC.indexOf("Respons HAMPA");
+    const blok = SRC.slice(i, i + 2800);
+    expect(blok).toMatch(/emit\(\{\s*\n?\s*t: "err"/);
+    expect(blok).toMatch(/membalas kosong/);
+  });
+});
