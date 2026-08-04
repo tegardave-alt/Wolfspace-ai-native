@@ -274,9 +274,17 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
     expect(S).toMatch(/await mcpClient\.connectAll\(\)/);
   });
 
-  test("UI memisahkan CONNECT dari toggle enable/disable", () => {
+  // DUA daftar MCP, bukan satu: panel di Composer (Components.jsx) dan layar
+  // pemilih (Screens.jsx). Perubahan pertama hanya menyentuh yang pertama, dan
+  // log run nyata membuktikannya — klik di layar kedua menghasilkan
+  // `POST /mcp/toggle`, bukan `POST /mcp/connect`. Keduanya diuji di sini
+  // supaya perilaku aplikasi tak bergantung pada layar mana yang dipakai.
+  test.each([
+    ["Components.jsx", "../public/app/Components.jsx"],
+    ["Screens.jsx", "../public/app/Screens.jsx"],
+  ])("%s memisahkan CONNECT dari toggle enable/disable", (_nama, modul) => {
     const UI = fs
-      .readFileSync(require.resolve("../public/app/Components.jsx"), "utf8")
+      .readFileSync(require.resolve(modul), "utf8")
       .replace(/\r\n/g, "\n");
     // Sekadar menyambungkan server TIDAK BOLEH ikut menulis `disabled` ke
     // mcp.json — itu dua maksud yang berbeda.
