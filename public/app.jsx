@@ -1531,6 +1531,27 @@ function App() {
 
   const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
 
+  // Memisahkan APA YANG DIKIRIM ke model dari APA YANG DILIHAT user.
+  //
+  // Lampiran dulu ikut mendarat di gelembung chat sebagai baris teks mentah
+  // ("- [Terlampir] a.pdf … — id: att_57a5…"). Handle itu memang harus sampai
+  // ke model — ia satu-satunya cara agent membaca lampiran — tapi tak ada
+  // gunanya dibaca manusia, dan sesudah jembatan handle dipasang ia jadi makin
+  // panjang serta makin tak terbaca.
+  //
+  // Parameter `display` sudah lama ada untuk keperluan ini, hanya tak pernah
+  // dipakai Composer. Sekarang ia boleh berupa objek {text, attachments}:
+  // `text` yang tampil di gelembung, `attachments` dirender sebagai kartu.
+  // Bentuk string lama tetap didukung — beberapa pemanggil lain memakainya.
+  const _pesanUser = (content, display) => {
+    if (display && typeof display === "object")
+      return {
+        text: display.text || "",
+        attachments: display.attachments || [],
+      };
+    return { text: display || content };
+  };
+
   const doSend = async (content, display, hitlData = null) => {
     if (!content && !hitlData) return;
     const trimmedContent = content.trim();
@@ -1545,7 +1566,10 @@ function App() {
       if (!openclawMessage) {
         setMessages((m) => [
           ...m,
-          { role: "user", text: display || content },
+          {
+            role: "user",
+            ..._pesanUser(content, display),
+          },
           {
             role: "model",
             text: "The /openclaw message cannot be empty. Example: /openclaw summarise this project",
@@ -1560,7 +1584,10 @@ function App() {
       setStatus("Running OpenClaw...");
       setMessages((m) => [
         ...m,
-        { role: "user", text: display || content },
+        {
+          role: "user",
+          ..._pesanUser(content, display),
+        },
         { role: "model", text: "Running OpenClaw..." },
       ]);
       try {
@@ -1644,7 +1671,10 @@ function App() {
       // Bridge / local model: plain conversational chat (text streaming, no function-calling).
       setMessages((m) => [
         ...m,
-        { role: "user", text: display || content },
+        {
+          role: "user",
+          ..._pesanUser(content, display),
+        },
         { role: "model", text: "", run: null },
       ]);
       try {
@@ -1675,7 +1705,10 @@ function App() {
       if (!hitlData) {
         setMessages((m) => [
           ...m,
-          { role: "user", text: display || content },
+          {
+            role: "user",
+            ..._pesanUser(content, display),
+          },
           { role: "agent", agent: { events: [], busy: true } },
         ]);
       } else {
@@ -2194,10 +2227,10 @@ function App() {
             models={models}
             modelVal={modelVal}
             setModelVal={setModelVal}
-            onStart={(msg, project) => {
+            onStart={(msg, project, tampil) => {
               setSelectedProject(project);
               setPickerDone(true);
-              setTimeout(() => doSend(msg), 0);
+              setTimeout(() => doSend(msg, tampil), 0);
             }}
           />
         )}
@@ -2300,7 +2333,7 @@ function App() {
                   models={models}
                   modelVal={modelVal}
                   setModelVal={setModelVal}
-                  onSend={(t) => doSend(t)}
+                  onSend={(t, tampil) => doSend(t, tampil)}
                   onCancel={cancel}
                   busy={busy}
                 />

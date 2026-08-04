@@ -282,7 +282,34 @@ function MessageDasar({ msg }) {
     return (
       <div className="msg user">
         <span className="msg-role">You</span>
-        <div className="bubble-user">{msg.text}</div>
+        {/* Lampiran dirender sebagai KARTU, bukan baris teks di dalam
+            gelembung. Handle att_… tetap dikirim ke model lewat argumen
+            pertama onSend — ia perlu itu untuk membaca lampiran — tapi tak
+            ada gunanya dibaca manusia. */}
+        {msg.attachments && msg.attachments.length > 0 && (
+          <div className="msg-attachments">
+            {msg.attachments.map((a, i) => (
+              <div
+                className={"msg-att" + (a.ok ? "" : " err")}
+                key={i}
+                title={a.ok ? a.name : a.name + " — gagal diserahkan"}
+              >
+                {a.previewUrl && /^image\//.test(a.type || "") ? (
+                  <img className="msg-att-thumb" src={a.previewUrl} alt="" />
+                ) : (
+                  <span className="msg-att-ico">{a.ok ? "📎" : "⚠"}</span>
+                )}
+                <span className="msg-att-name">{a.name}</span>
+                <span className="msg-att-size">
+                  {a.size < 1024
+                    ? a.size + " B"
+                    : Math.round(a.size / 1024) + " KB"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {msg.text ? <div className="bubble-user">{msg.text}</div> : null}
       </div>
     );
   if (msg.role === "agent")
@@ -1005,8 +1032,20 @@ function Composer({
         ? `${v}\n\nAttachments:\n${attSummary}`
         : `Attachments:\n${attSummary}`;
     }
-    console.log("[Composer submit] calling onSend with:", fullText);
-    onSend(fullText);
+    // Dua argumen: yang PERTAMA untuk model (memuat handle lampiran), yang
+    // KEDUA untuk mata user. Dulu hanya satu yang dikirim, sehingga baris
+    // lampiran — termasuk handle att_… yang tak ada gunanya dibaca manusia —
+    // mendarat mentah di gelembung chat.
+    onSend(fullText, {
+      text: v,
+      attachments: attachments.map((a) => ({
+        name: a.name,
+        size: a.size,
+        type: a.type,
+        previewUrl: a.previewUrl,
+        ok: !!a.attId,
+      })),
+    });
     console.log(
       "[Composer submit] setting val to empty string and resetting attachments",
     );

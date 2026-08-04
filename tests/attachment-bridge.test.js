@@ -349,3 +349,74 @@ describe("tool disk_* benar-benar tak ada — bukan sekadar disembunyikan", () =
     expect(r.output).toContain("didalam.txt");
   }, 20000);
 });
+
+describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
+  // KENAPA ADA. Ringkasan lampiran disatukan ke dalam teks pesan, dan pesan
+  // user dirender apa adanya (<div className="bubble-user">{msg.text}</div>).
+  // Akibatnya lampiran mendarat sebagai baris teks mentah di gelembung chat —
+  // dan sesudah jembatan handle dipasang, barisnya ikut membawa "att_57a5…"
+  // yang tak ada gunanya dibaca manusia.
+  //
+  // Handle TETAP harus sampai ke model (satu-satunya cara agent membaca
+  // lampiran). Jadi yang dipisah bukan datanya, melainkan JALURNYA: argumen
+  // pertama onSend untuk model, argumen kedua untuk mata user.
+  const fs = require("fs");
+  const baca = (m) =>
+    fs.readFileSync(require.resolve(m), "utf8").replace(/\s+/g, " ");
+
+  test("doSend menerima display berupa objek {text, attachments}", () => {
+    const app = baca("../public/app.jsx");
+    expect(app).toContain("const _pesanUser = (content, display)");
+    // Bentuk string lama HARUS tetap didukung: beberapa pemanggil lain
+    // (retry, resume HITL) masih mengirimkannya.
+    expect(app).toContain("return { text: display || content };");
+    // Tanda kurungnya sengaja TIDAK dicocokkan: prettier membuang kurung
+    // berlebih, dan tes yang mengunci bentuknya jadi merah karena pemformatan,
+    // bukan karena perilaku berubah. (Sudah terjadi dua kali di sesi ini.)
+    expect(app).toContain("_pesanUser(content, display)");
+    // Keempat tempat pembentuk pesan user harus lewat helper yang sama —
+    // kalau satu terlewat, lampiran tampil sebagai teks mentah hanya pada
+    // jalur itu, dan bug seperti itu sangat sulit ditelusuri.
+    expect(app.match(/\.\.\._pesanUser\(content, display\)/g)).toHaveLength(4);
+  });
+
+  test("KEDUA permukaan mengirim tampilan terpisah dari teks model", () => {
+    // Dua permukaan lagi. Yang pertama Composer, yang kedua layar pemilih
+    // proyek — dan pesan PERTAMA sebuah sesi justru lewat yang kedua.
+    expect(baca("../public/app/Components.jsx")).toContain(
+      "onSend(fullText, { text: v, attachments:",
+    );
+    expect(baca("../public/app/Screens.jsx")).toContain(
+      "onStart(fullText, chosenPath, { text: v, attachments:",
+    );
+  });
+
+  test("gelembung hanya memuat teks user; lampiran dirender terpisah", () => {
+    const c = baca("../public/app/Components.jsx");
+    expect(c).toContain('className="msg-attachments"');
+    expect(c).toContain("msg.attachments && msg.attachments.length > 0");
+    // Gelembung tak dirender sama sekali bila user hanya melampirkan tanpa
+    // mengetik — kalau tidak, muncul gelembung kosong.
+    expect(c).toContain(
+      'msg.text ? <div className="bubble-user">{msg.text}</div> : null',
+    );
+  });
+
+  test("lampiran yang GAGAL diserahkan terlihat gagal, bukan diam-diam hilang", () => {
+    const c = baca("../public/app/Components.jsx");
+    expect(c).toContain("ok: !!a.attId");
+    expect(c).toContain('"msg-att" + (a.ok ? "" : " err")');
+    // Dan teks yang dikirim ke model pun menyebutnya, supaya model tak
+    // menunggu lampiran yang tak pernah sampai.
+    expect(c).toContain("GAGAL diserahkan");
+  });
+
+  test("gaya kartunya benar-benar ada — kalau tidak, kartunya tampil polos", () => {
+    const css = fs.readFileSync(
+      require.resolve("../public/styles.css"),
+      "utf8",
+    );
+    for (const kelas of [".msg-attachments", ".msg-att", ".msg-att-name"])
+      expect(css).toContain(kelas);
+  });
+});

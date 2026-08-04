@@ -596,7 +596,19 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       : project.includes(":") || project.includes("/") || project.includes("\\")
         ? project
         : `c:\\Users\\dave\\${project}`;
-    onStart(fullText, chosenPath);
+    // Argumen KETIGA memisahkan yang dilihat user dari yang dikirim ke model —
+    // sama seperti Composer. Tanpa ini, baris lampiran beserta handle att_…
+    // mendarat mentah di gelembung chat pertama.
+    onStart(fullText, chosenPath, {
+      text: v,
+      attachments: attachments.map((a) => ({
+        name: a.name,
+        size: a.size,
+        type: a.type,
+        previewUrl: a.previewUrl,
+        ok: !!a.attId,
+      })),
+    });
   };
   // Pasang folder ke WOLFSPACE = beri worktree+branch terikat ke alamat aslinya
   // (lewat /ww/attach). Idempoten & non-destruktif. Simpan dgn path yang benar.
