@@ -176,3 +176,81 @@ describe("struktur: allowlist ada, dan jujur soal batasnya", () => {
     expect(SRC.slice(i, i + 2000)).toMatch(/BUKAN pengurungan sungguhan/);
   });
 });
+
+describe("perintah yang KELUAR worktree diblokir: temp, shell, powershell", () => {
+  // Tiga permukaan yang diminta ditutup, diuji sebagai satu kesatuan.
+  //
+  // Dua mekanisme bekerja bersama, dan keduanya perlu:
+  //   - penjaga path menangkap yang menulis lokasi TERANG-TERANGAN, termasuk
+  //     `set A=...` lalu %A%, substring expansion, pushd, dan ....  //   - env yang dipangkas mematikan yang MENYEMBUNYIKANNYA di balik variabel:
+  //     %TEMP%, %USERPROFILE%, $env:TEMP, $HOME, dan
+  //     [Environment]::GetFolderPath — PowerShell membaca variabel proses yang
+  //     sama, jadi memangkas env menutup jalur PowerShell sekaligus.
+  //
+  // Kalau salah satu mekanisme dilepas, separuh daftar ini akan bocor.
+  const os = require("os");
+  const NAMA = "rahasia-uji-keluar.txt";
+  const ISI = "RAHASIA-DI-LUAR-WORKTREE";
+  const RAHASIA = path.join(os.tmpdir(), NAMA);
+  const TMPDIR = os.tmpdir();
+  const ps = (inner) => 'powershell -NoProfile -Command "' + inner + '"';
+  let WS;
+
+  beforeAll(() => {
+    fs.writeFileSync(RAHASIA, ISI);
+    WS = siapkanWorktree("wolf-test-keluar");
+  });
+  afterAll(() => {
+    fs.rmSync(RAHASIA, { force: true });
+    fs.rmSync(WS, { recursive: true, force: true });
+  });
+
+  test.each([
+    ["temp: %TEMP%", "type %TEMP%\\" + NAMA],
+    ["temp: %TMP%", "type %TMP%\\" + NAMA],
+    ["temp: $env:TEMP lewat powershell", ps("Get-Content $env:TEMP\\" + NAMA)],
+    ["shell: path absolut", "type " + RAHASIA],
+    ["shell: %USERPROFILE%", "type %USERPROFILE%\AppData\Local\Temp\\" + NAMA],
+    [
+      "shell: set var lalu pakai",
+      'cmd /c "set A=' + TMPDIR + "& type %A%\\" + NAMA + '"',
+    ],
+    [
+      "shell: substring expansion",
+      'cmd /c "set A=' + TMPDIR + "& type %A:~0,99%\\" + NAMA + '"',
+    ],
+    ["shell: naik lewat ..", "type ..\..\Local\Temp\\" + NAMA],
+    [
+      "shell: pushd lalu type",
+      'cmd /c "pushd ' + TMPDIR + " & type " + NAMA + '"',
+    ],
+    ["powershell: path absolut", ps("Get-Content '" + RAHASIA + "'")],
+    [
+      "powershell: GetFolderPath",
+      ps(
+        "Get-Content (Join-Path ([Environment]::GetFolderPath('LocalApplicationData')) 'Temp\\" +
+          NAMA +
+          "')",
+      ),
+    ],
+    [
+      "powershell: resolve lewat ..",
+      ps("Get-Content ..\..\Local\Temp\\" + NAMA),
+    ],
+    ["powershell: $HOME", ps("Get-Content $HOME\AppData\Local\Temp\\" + NAMA)],
+  ])(
+    "%s tidak mengeluarkan isi berkas",
+    async (_l, cmd) => {
+      const r = await runSelfTool(
+        "bash",
+        { command: cmd, timeout: 25000 },
+        noop,
+        {
+          workspaceRoot: WS,
+        },
+      );
+      expect(String(r.output || "")).not.toContain(ISI);
+    },
+    40000,
+  );
+});
