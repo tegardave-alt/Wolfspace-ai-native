@@ -1516,6 +1516,98 @@ async function runSelfTool(name, args, emit, context = {}) {
         });
       });
     }
+    // ── Lampiran: barangnya sudah menyeberang, alamatnya tidak pernah ──
+    //
+    // Tak ada pemeriksaan path di sini, dan itu BUKAN kelalaian: jembatan
+    // (agent/attachment-bridge.cjs) tak pernah menerima path, jadi tak ada
+    // alamat yang bisa diperiksa maupun ditembus. Yang dipegang agent adalah
+    // handle acak; memegangnya memberi tepat satu hal — isi satu berkas itu.
+    // Ia tak memberi tahu berkas itu ada di mana, tak bisa dipakai membaca
+    // saudaranya, dan tak bisa mendaftar isi direktori mana pun.
+    //
+    // Tetap lewat CommandChain supaya teraudit dan bisa DIKUNCI per sesi
+    // (buatRuleset({ tanpa:["attachment.read"] })), mengikuti pola proc.raw.
+    if (name === "attachment_list" || name === "attachment_read") {
+      let bridge;
+      try {
+        bridge = require("../attachment-bridge.cjs");
+      } catch (e) {
+        return {
+          ok: false,
+          output: "jembatan lampiran tak tersedia: " + e.message,
+        };
+      }
+
+      if (name === "attachment_list") {
+        const d = bridge.daftar();
+        if (!d.length)
+          return {
+            ok: true,
+            output:
+              "(belum ada lampiran) — hanya user yang bisa melampirkan berkas; " +
+              "tak ada tool untuk membuka berkas dari direktori.",
+          };
+        return {
+          ok: true,
+          output: d
+            .map(
+              (a) =>
+                a.id +
+                "  " +
+                a.nama +
+                "  (" +
+                a.bytes +
+                " b" +
+                (a.tipe ? ", " + a.tipe : "") +
+                ")",
+            )
+            .join("\n"),
+        };
+      }
+
+      const cc = lazyCC();
+      if (cc) {
+        const rs = cc.sesiRuleset();
+        const adm = cc.periksa(rs, "attachment.read");
+        // enforced=true, dan ini SATU-SATUNYA kapabilitas berkas yang boleh
+        // mengakuinya di Windows: jaminannya bukan pengurungan direktori
+        // (yang memang advisory di sini) melainkan ketiadaan path sama sekali.
+        const kurungan = {
+          enforced: true,
+          mekanisme: "handle-only — alamat berkas tak pernah masuk ke sistem",
+        };
+        if (!adm.allow) {
+          cc.catat({
+            capability: "attachment.read",
+            decision: "DENY",
+            reason: adm.alasan,
+            params: { id: args.id },
+            kurungan,
+          });
+          return {
+            ok: false,
+            output:
+              "CommandChain menolak attachment.read: " +
+              adm.alasan +
+              ". Sesi ini dikunci tanpa pembacaan lampiran.",
+          };
+        }
+        cc.catat({
+          capability: "attachment.read",
+          decision: "ALLOW",
+          params: { id: args.id },
+          kurungan,
+        });
+      }
+
+      const r = bridge.ambil(args.id);
+      if (!r.ok) return { ok: false, output: r.error };
+      return {
+        ok: true,
+        output: "[" + r.nama + ", " + r.bytes + " byte]\n" + r.isi,
+      };
+    }
+
     if (name === "todowrite") {
       const todos = args.todos || [];
       if (emit) emit({ t: "todos", todos });

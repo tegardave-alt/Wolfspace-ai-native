@@ -41,6 +41,15 @@ const KOSAKATA_DEFAULT = [
   "network:tls",
   "network:dgram",
   "proc.raw",
+  // Membaca berkas yang DISERAHKAN user lewat jembatan lampiran.
+  //
+  // Terpisah dari readFile, dan bukan sekadar demi kerapian: readFile menerima
+  // PATH dan karena itu tunduk pada roots policy. attachment.read menerima
+  // HANDLE — tak ada path untuk diperiksa, karena alamat berkasnya tak pernah
+  // masuk ke sistem (lihat agent/attachment-bridge.cjs). Memisahkannya membuat
+  // sesi bisa dikunci tanpa lampiran (buatRuleset({ tanpa:["attachment.read"] }))
+  // tanpa ikut mematikan pembacaan berkas di dalam worktree.
+  "attachment.read",
 ];
 
 // Bekukan objek SAMPAI KE DALAM. Object.freeze dangkal masih membiarkan nested

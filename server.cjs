@@ -4427,6 +4427,54 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Penyerahan lampiran lewat jembatan: barangnya menyeberang, alamatnya tidak.
+  //
+  // Beda dari /upload di bawah, yang menulis ke <WOLFSPACE>/public/uploads/ lalu
+  // menyerahkan PATH-nya ke agent. Saat agent dikurung ke satu worktree, path
+  // itu di luar cakupan dan broker menolaknya — pengurungan yang benar justru
+  // mematikan attach. Di sini yang dikembalikan HANDLE, bukan lokasi, sehingga
+  // pengurungan tak perlu dilonggarkan sedikit pun.
+  //
+  // Tak ada yang menyentuh disk: isinya tinggal di memori proses backend, dan
+  // pratinjau di UI memakai URL.createObjectURL lokal yang sudah ada.
+  if (req.method === "POST" && req.url === "/attach") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const { name, data, type } = JSON.parse(body || "{}");
+        if (!name || !data) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(
+            JSON.stringify({ ok: false, error: "name & data wajib" }),
+          );
+        }
+        const bridge = require("./agent/attachment-bridge.cjs");
+        const hasil = bridge.serahkan({
+          nama: name, // dipotong jadi basename di dalam jembatan
+          isi: Buffer.from(data, "base64"),
+          tipe: type || null,
+        });
+        // Sengaja mencatat NAMA hasil sanitasi, bukan `name` mentah: kalau
+        // pemanggil keliru mengirim path absolut (File.path di renderer
+        // Electron), ia tak boleh mendarat di berkas log.
+        dlog("http", "info", "lampiran diserahkan", {
+          nama: hasil.nama,
+          bytes: hasil.bytes,
+          ok: hasil.ok,
+        });
+        res.writeHead(hasil.ok ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(JSON.stringify(hasil));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // Upload file attachment (base64 JSON â†’ saved to public/uploads/)
   if (req.method === "POST" && req.url === "/upload") {
     let body = "";

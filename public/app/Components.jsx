@@ -886,12 +886,27 @@ function Composer({
         reader.onload = async () => {
           try {
             const base64 = reader.result.split(",")[1] || reader.result;
-            const payload = { name: relPath, data: base64 };
-            let uploadedUrl = "";
+            // JEMBATAN, bukan unggahan. Yang kembali HANDLE (att_...), bukan
+            // path. Dulu berkas ditulis ke <WOLFSPACE>/public/uploads/ lalu
+            // PATH-nya diserahkan ke agent — dan saat agent dikurung ke satu
+            // worktree, path itu di luar cakupan sehingga broker menolaknya.
+            // Pengurungan yang benar justru mematikan attach. Dengan handle,
+            // pengurungan tak perlu dilonggarkan sedikit pun.
+            //
+            // file.name dipakai, BUKAN webkitRelativePath: yang terakhir
+            // membawa struktur direktori saat user memilih FOLDER, dan alamat
+            // tak boleh ikut menyeberang. (Jembatan tetap memotongnya lagi di
+            // sisi server — pertahanan berlapis, bukan pengganti.)
+            const payload = {
+              name: file.name,
+              data: base64,
+              type: file.type || null,
+            };
+            let attHandle = "";
             if (IPC && IPC.invoke) {
               const res = await IPC.invoke("api", {
                 method: "POST",
-                path: "/upload",
+                path: "/attach",
                 body: payload,
               });
               let parsed;
@@ -901,18 +916,18 @@ function Composer({
               } catch (_) {
                 parsed = res;
               }
-              if (res.status >= 400 || parsed.error)
-                throw new Error(parsed.error || "Upload failed");
-              uploadedUrl = parsed.url || "/uploads/" + parsed.name;
+              if (res.status >= 400 || !parsed.ok)
+                throw new Error(parsed.error || "Attach gagal");
+              attHandle = parsed.id;
             } else {
-              const r = await fetch("/upload", {
+              const r = await fetch("/attach", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
               });
               const res = await r.json();
-              if (res.error) throw new Error(res.error);
-              uploadedUrl = res.url || "/uploads/" + res.name;
+              if (!res.ok) throw new Error(res.error || "Attach gagal");
+              attHandle = res.id;
             }
             setAttachments((prev) =>
               prev.map((a) =>
@@ -920,8 +935,10 @@ function Composer({
                   ? {
                       ...a,
                       status: "ready",
-                      url: uploadedUrl,
-                      previewUrl: a.previewUrl || (isImg ? uploadedUrl : null),
+                      // Handle, bukan url. previewUrl tetap object URL lokal
+                      // yang sudah dibuat dari File — jadi tak ada berkas yang
+                      // perlu mendarat di disk hanya demi pratinjau.
+                      attId: attHandle,
                     }
                   : a,
               ),
@@ -971,10 +988,17 @@ function Composer({
     if ((!v && attachments.length === 0) || busy) return;
     let fullText = v;
     if (attachments.length > 0) {
+      // HANDLE, bukan path. Baris ini dulu berbunyi
+      //   "- [Attached]: <path> (… , url: /uploads/…)"
+      // dan itulah yang membenturkan attach ke pengurungan: agent disuruh
+      // membaca sebuah lokasi, lalu broker menolaknya karena di luar worktree.
+      // Sekarang yang diberikan id lampiran; agent membacanya lewat
+      // attachment_read, dan alamat berkasnya tak pernah ada untuk ditolak.
       const attSummary = attachments
         .map(
           (a) =>
-            `- [Attached]: ${a.path} (${Math.round(a.size / 1024)} KB${a.url ? `, url: ${a.url}` : ""})`,
+            `- [Terlampir] ${a.name} (${Math.round(a.size / 1024)} KB${a.type ? `, ${a.type}` : ""})` +
+            (a.attId ? ` — id: ${a.attId}` : " — GAGAL diserahkan"),
         )
         .join("\n");
       fullText = v
