@@ -1751,9 +1751,16 @@ function App() {
           (j) => {
             if (j.thread_id) simpanThreadTerputus(j.thread_id);
             if (j.t === "backup") upd({ backup: j.dir });
+            // model_wait: satu-satunya tanda hidup selama menunggu.
+            // Dulu di-emit backend tapi TAK ADA penanganannya di sini, dan tak
+            // ada cabang penampung — jadi hilang senyap. Akibatnya seluruh masa
+            // tunggu tampak sebagai layar diam: panggilan model yang 64 detik,
+            // dan penyiapan MCP yang sampai 60 detik. Justru saat itulah user
+            // paling butuh tahu agent masih hidup.
+            else if (j.t === "model_wait") upd({ status: j.m, busy: true });
             else if (j.t === "step") {
               think = "";
-              upd({ step: j.n, thinking: "" });
+              upd({ step: j.n, thinking: "", status: "" });
             } else if (j.t === "tok") {
               think += j.c;
               upd({ thinking: think });
@@ -1991,6 +1998,10 @@ function App() {
           workspace_root: resolveWorkspaceRoot(selectedProject) || undefined,
         },
         (j) => {
+          // Lihat catatan model_wait di penangan pertama — dua salinan penangan
+          // event, dan perbaikan yang hanya menyentuh satu membuat tanda hidup
+          // muncul di satu jalur saja.
+          if (j.t === "model_wait") return upd({ status: j.m, busy: true });
           if (j.t === "step") {
             think = "";
             upd({ thinking: "" });

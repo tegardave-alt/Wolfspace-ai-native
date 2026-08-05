@@ -2870,10 +2870,32 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       error: msg.slice(0, 100),
     });
     if (sessionSnapshotId && (edits || 0) === 0) {
-      rollback(sessionSnapshotId);
+      // Nilai balik rollback DIPERIKSA, dan panggilannya dibungkus.
+      //
+      // Dulu: `rollback(id)` tanpa memeriksa apa pun, lalu selalu memberi tahu
+      // "Proyek dipulihkan". Dua kegagalan terbukti lewat eksekusi blok ini
+      // apa adanya:
+      //   - snapshot tak ada  -> rollback {ok:false}, DIABAIKAN, user tetap
+      //     diberi tahu proyeknya sudah dipulihkan (padahal tidak)
+      //   - metadata rusak    -> rollback MELEMPAR, dan lemparan di sini
+      //     membunuh tiga emit di bawahnya termasuk adone. Hasilnya NOL pesan
+      //     ke UI, dan UI menggantung selamanya karena tak pernah tahu run
+      //     berakhir. Kegagalan pemulihan jadi UI beku permanen.
+      //
+      // Sekarang kabarnya jujur: berhasil disebut berhasil, gagal disebut gagal
+      // BESERTA sebabnya — justru saat itulah user paling perlu tahu, karena
+      // pekerjaannya mungkin memang belum kembali.
+      let pulih = { ok: false, error: "rollback tidak dijalankan" };
+      try {
+        pulih = rollback(sessionSnapshotId) || pulih;
+      } catch (errRb) {
+        pulih = { ok: false, error: errRb.message };
+      }
       emit({
         t: "err",
-        m: `[Auto-Rollback] Agen crash internal. Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).`,
+        m: pulih.ok
+          ? `[Auto-Rollback] Agen crash internal. Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).`
+          : `[Auto-Rollback GAGAL] Agen crash internal dan proyek TIDAK dipulihkan: ${pulih.error} (Snapshot: ${sessionSnapshotId}). Periksa berkas Anda sebelum melanjutkan.`,
       });
     }
     if (!isCancelled()) emit({ t: "err", m: e.message });

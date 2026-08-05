@@ -76,10 +76,34 @@ function rollback(snapshotId) {
 
   const metaPath = path.join(dir, "_meta.json");
   if (!fs.existsSync(metaPath)) {
-    return { ok: false, error: `Metadata snapshot '${snapshotId}' rusak.` };
+    return { ok: false, error: `Metadata snapshot '${snapshotId}' hilang.` };
   }
 
-  const meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+  // JSON.parse DIBUNGKUS. Cabang di atas mengaku menangani metadata "rusak",
+  // padahal ia hanya memeriksa KEBERADAAN berkas — isi yang rusak lolos ke sini
+  // lalu melempar.
+  //
+  // Lemparannya tak berhenti di sini. rollback() dipanggil dari dalam blok
+  // catch self_agent.cjs, di ATAS tiga emit — termasuk yang komentarnya sendiri
+  // berbunyi "ALWAYS emit adone so frontend knows the agent is done". Terbukti
+  // dengan mengeksekusi blok itu apa adanya: metadata rusak -> NOL pesan sampai
+  // ke UI, dan UI menggantung selamanya karena tak pernah tahu run berakhir.
+  // Jadi kegagalan pemulihan berubah jadi UI beku permanen.
+  let meta;
+  try {
+    meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
+  } catch (e) {
+    return {
+      ok: false,
+      error: `Metadata snapshot '${snapshotId}' rusak: ${e.message}`,
+    };
+  }
+  if (!meta || !Array.isArray(meta.files)) {
+    return {
+      ok: false,
+      error: `Metadata snapshot '${snapshotId}' tidak memuat daftar berkas.`,
+    };
+  }
   const restored = [];
 
   for (const rel of meta.files) {

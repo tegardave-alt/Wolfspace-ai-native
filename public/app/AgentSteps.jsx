@@ -630,7 +630,15 @@ function AgentSteps({ run }) {
         })()}
         {run.busy && (
           <div className="aal-row aal-thought-header">
-            <span>{run.thinking ? "Thinking..." : "Processing..."}</span>
+            {/* run.status ditampilkan APA ADANYA bila ada.
+                Dulu baris ini hanya bisa berbunyi "Thinking..." atau
+                "Processing...", sehingga seluruh masa tunggu tampak sama —
+                termasuk panggilan model 64 detik dan penyiapan MCP 60 detik.
+                Teks detak yang sudah dikirim backend ("Masih menunggu jawaban
+                model (30s)…") tak pernah sampai ke mata user. */}
+            <span>
+              {run.status || (run.thinking ? "Thinking..." : "Processing...")}
+            </span>
           </div>
         )}
       </div>
