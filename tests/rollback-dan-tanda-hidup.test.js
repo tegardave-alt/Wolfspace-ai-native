@@ -171,14 +171,40 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
     expect(STEPS).toContain('run.thinking ? "Thinking..." : "Processing..."');
   });
 
+  test("force_retry dan todos ditangani di KEDUA salinan penangan", () => {
+    // Pola dua permukaan lagi. force_retry di-emit dari ENAM titik di backend;
+    // tanpa ini setiap putaran ulang (bisa 4 kali, 60+ detik) tampak sebagai
+    // layar diam dan terbaca seolah run berhenti sendiri.
+    expect(
+      (UI.match(/j\.t === "force_retry"/g) || []).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect((UI.match(/j\.t === "todos"/g) || []).length).toBeGreaterThanOrEqual(
+      2,
+    );
+    // force_retry masuk timeline sebagai baris, memakai penampil yang sudah ada.
+    expect((UI.match(/kind: "retry"/g) || []).length).toBeGreaterThanOrEqual(2);
+    expect(STEPS).toContain('k === "retry"');
+    // todos jadi STATE checklist hidup, bukan baris timeline — isinya sudah
+    // muncul lewat keluaran tool todowrite, jadi mendorongnya ke timeline
+    // hanya menggandakan.
+    expect(
+      (UI.match(/upd\(\{ todos: j\.todos \}\)/g) || []).length,
+    ).toBeGreaterThanOrEqual(2);
+    expect(STEPS).toContain("run.todos");
+  });
+
   test("status dibersihkan saat langkah baru — tak menempel sesudah tunggu usai", () => {
     expect(UI).toMatch(/upd\(\{ step: j\.n, thinking: "", status: "" \}\)/);
   });
 
-  test("tak ada event backend yang tersisa tanpa penanganan SELAIN yang diketahui", () => {
-    // Penjaga arah. force_retry dan todos MASIH belum ditangani — itu diakui,
-    // bukan disembunyikan. Kalau daftar ini bertambah tanpa disengaja, tes ini
-    // merah dan pertambahannya terlihat.
+  test("TAK ADA event backend yang tersisa tanpa penanganan UI", () => {
+    // Penjaga arah, dan ia sudah membuktikan gunanya: saat force_retry dan
+    // todos akhirnya ditangani, tes ini MERAH dan memaksa daftarnya diperbarui
+    // secara sadar — bukan lewat begitu saja.
+    //
+    // Sekarang daftarnya KOSONG. Setiap event baru yang di-emit backend tanpa
+    // penanganan di UI akan membuat tes ini merah, jadi "hilang senyap" tak
+    // bisa terjadi diam-diam lagi.
     const be =
       fs.readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8") +
       fs.readFileSync(require.resolve("../agent/tools/index.cjs"), "utf8");
@@ -189,6 +215,6 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
       [...UI.matchAll(/j\.t === "([a-z_]+)"/g)].map((m) => m[1]),
     );
     const hilang = [...emit].filter((t) => !tangani.has(t)).sort();
-    expect(hilang).toEqual(["force_retry", "todos"]);
+    expect(hilang).toEqual([]);
   });
 });

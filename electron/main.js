@@ -210,29 +210,9 @@ function registerAppProtocol() {
   });
 }
 
-function findRuntime() {
-  for (const c of ["bun", "node"]) {
-    try {
-      const p = execSync(
-        (process.platform === "win32" ? "where " : "which ") + c,
-        { encoding: "utf8" },
-      )
-        .split(/\r?\n/)[0]
-        .trim();
-      if (p && fs.existsSync(p)) return p;
-    } catch (e) {}
-  }
-  const bundled = path.join(
-    process.env.LOCALAPPDATA || "",
-    "Programs",
-    "Qwen",
-    "resources",
-    "bun",
-    "bun.exe",
-  );
-  if (fs.existsSync(bundled)) return bundled;
-  return "node";
-}
+// findRuntime() DIHAPUS — nol pemanggil. Pencarian runtime bun/node relevan
+// saat backend di-spawn sebagai proses terpisah; sejak backend jalan
+// in-process lewat core.js, ia tak pernah dipakai lagi.
 
 function toolchainPath() {
   const maybe = [
@@ -303,12 +283,8 @@ function startBackend() {
   // by the renderer through Electron IPC (see registerIpc). Zero open ports.
 }
 
-// OBSOLETE: In Electron mode, server runs in-process via core.js IPC, no HTTP port.
-// This function was used for web-server startup detection and is no longer needed.
-function waitReady(cb, tries = 60) {
-  // No-op: IPC-based backend is ready immediately after core() initialization.
-  cb();
-}
+// waitReady() DIHAPUS — komentarnya sendiri sudah menandainya OBSOLETE, dan
+// isinya memang hanya cb() tanpa menunggu apa pun. Nol pemanggil.
 
 function createWindow() {
   const win = new BrowserWindow({

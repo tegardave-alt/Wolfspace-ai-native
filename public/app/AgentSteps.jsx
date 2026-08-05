@@ -246,6 +246,15 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
     } else if (k.includes("list") || k.includes("glob")) {
       verb = "Explored";
       icon = AG_SVG.glob;
+    } else if (k === "retry") {
+      // Pengulangan agent. Dulu di-emit backend sebagai force_retry dari ENAM
+      // tempat, tapi UI tak punya penanganannya dan tak ada cabang penampung —
+      // jadi hilang senyap. Akibatnya setiap putaran ulang (bisa 4 kali, 60+
+      // detik) tampak sebagai layar diam, dan itu ikut terbaca sebagai "run
+      // berhenti sendiri". Sekarang ia baris timeline, dengan sebabnya.
+      verb = "Retried";
+      icon = AG_SVG.grep;
+      color = "#d7ba7d";
     }
   }
 
@@ -628,6 +637,32 @@ function AgentSteps({ run }) {
             );
           });
         })()}
+        {/* Checklist HIDUP. Event t:"todos" dulu di-emit backend tiap kali
+            todowrite dipanggil, tapi tak ada penanganannya di UI — jadi satu-
+            satunya jejak checklist adalah keluaran tool yang tenggelam di
+            timeline. Di sini ia jadi keadaan yang selalu terlihat, dengan
+            item yang sedang dikerjakan ditandai. */}
+        {Array.isArray(run.todos) && run.todos.length > 0 && (
+          <div className="aal-todos">
+            {run.todos.map((t, i) => {
+              const st = t.status || "pending";
+              const ikon =
+                st === "completed"
+                  ? "✓"
+                  : st === "in_progress"
+                    ? "→"
+                    : st === "cancelled"
+                      ? "✗"
+                      : "○";
+              return (
+                <div className={"aal-todo st-" + st} key={i}>
+                  <span className="aal-todo-ikon">{ikon}</span>
+                  <span className="aal-todo-teks">{t.content}</span>
+                </div>
+              );
+            })}
+          </div>
+        )}
         {run.busy && (
           <div className="aal-row aal-thought-header">
             {/* run.status ditampilkan APA ADANYA bila ada.

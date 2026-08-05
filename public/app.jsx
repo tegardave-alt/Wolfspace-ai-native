@@ -1758,6 +1758,26 @@ function App() {
             // dan penyiapan MCP yang sampai 60 detik. Justru saat itulah user
             // paling butuh tahu agent masih hidup.
             else if (j.t === "model_wait") upd({ status: j.m, busy: true });
+            // force_retry: pengulangan agent, dari ENAM titik emit di backend.
+            // Didorong sebagai baris timeline ber-type "act" supaya memakai
+            // penampil yang sudah ada — tak perlu penampil baru, dan sebabnya
+            // ikut terlihat. Tanpa ini, setiap putaran ulang tampak sebagai
+            // layar diam dan terbaca seolah run berhenti sendiri.
+            else if (j.t === "force_retry") {
+              evlist.push({
+                type: "act",
+                kind: "retry",
+                arg: j.m,
+                ok: true,
+                output: j.m,
+              });
+              upd({ events: [...evlist], status: j.m, busy: true });
+            }
+            // todos: keadaan checklist. Disimpan sebagai STATE, bukan baris
+            // timeline — isinya sudah muncul lewat keluaran tool todowrite,
+            // jadi mendorongnya ke timeline hanya menggandakan. Yang belum ada
+            // adalah tampilan checklist yang hidup.
+            else if (j.t === "todos") upd({ todos: j.todos });
             else if (j.t === "step") {
               think = "";
               upd({ step: j.n, thinking: "", status: "" });
@@ -2002,6 +2022,19 @@ function App() {
           // event, dan perbaikan yang hanya menyentuh satu membuat tanda hidup
           // muncul di satu jalur saja.
           if (j.t === "model_wait") return upd({ status: j.m, busy: true });
+          // Lihat catatan di penangan pertama — dua salinan, keduanya harus
+          // diperlakukan sama.
+          if (j.t === "force_retry") {
+            evlist.push({
+              type: "act",
+              kind: "retry",
+              arg: j.m,
+              ok: true,
+              output: j.m,
+            });
+            return upd({ events: [...evlist], status: j.m, busy: true });
+          }
+          if (j.t === "todos") return upd({ todos: j.todos });
           if (j.t === "step") {
             think = "";
             upd({ thinking: "" });

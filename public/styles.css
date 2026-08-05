@@ -935,6 +935,45 @@ select {
   color: var(--text-dim, #8b949e);
   flex: 0 0 auto;
 }
+/* Checklist hidup di timeline agent (event t:"todos").
+   Sebelumnya event itu tak punya penanganan maupun gaya sama sekali. */
+.aal-todos {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+}
+.aal-todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim, #8b949e);
+}
+.aal-todo-ikon {
+  flex: 0 0 12px;
+  text-align: center;
+}
+.aal-todo-teks {
+  flex: 1 1 auto;
+}
+.aal-todo.st-in_progress {
+  color: #fff;
+  font-weight: 500;
+}
+.aal-todo.st-completed .aal-todo-teks {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+.aal-todo.st-cancelled .aal-todo-teks {
+  text-decoration: line-through;
+  opacity: 0.4;
+}
 .bubble-model {
   font-size: 13px;
   line-height: 1.5;

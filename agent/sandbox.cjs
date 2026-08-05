@@ -3,16 +3,16 @@
 // Provides capability-based filesystem access, resource limits,
 // workspace mirroring, and execution audit for safe agent code execution.
 
-const fs   = require('fs');
-const path = require('path');
-const os   = require('os');
-const { exec, spawn, execSync } = require('child_process');
-const util = require('util');
+const fs = require("fs");
+const path = require("path");
+const os = require("os");
+const { exec, spawn, execSync } = require("child_process");
+const util = require("util");
 const execP = util.promisify(exec);
-const { dlog } = require('./debug.cjs');
-const { getPlatformAdapter } = require('./platform/index.cjs');
+const { dlog } = require("./debug.cjs");
+const { getPlatformAdapter } = require("./platform/index.cjs");
 
-const QROOT = path.resolve(__dirname, '..');
+const QROOT = path.resolve(__dirname, "..");
 
 // ── Capability-based filesystem ──
 // A "capability" is a permission to read or write a specific directory tree.
@@ -20,9 +20,9 @@ const QROOT = path.resolve(__dirname, '..');
 
 class CapabilityFS {
   constructor(opts = {}) {
-    this.readRoots  = (opts.readRoots  || []).map(r => path.resolve(r));
-    this.writeRoots = (opts.writeRoots || []).map(r => path.resolve(r));
-    this.denyPaths  = (opts.denyPaths  || [
+    this.readRoots = (opts.readRoots || []).map((r) => path.resolve(r));
+    this.writeRoots = (opts.writeRoots || []).map((r) => path.resolve(r));
+    this.denyPaths = opts.denyPaths || [
       /[\\/]node_modules[\\/]/,
       /[\\/]\.git[\\/]/,
       /cloud-keys\.json$/,
@@ -30,7 +30,7 @@ class CapabilityFS {
       /\.env$/,
       /[\\/]System32[\\/]/,
       /[\\/]Windows[\\/]/,
-    ]);
+    ];
   }
 
   // Check if a path is allowed for the given operation
@@ -65,22 +65,25 @@ class CapabilityFS {
   // Read a file through capability check
   readFile(filePath) {
     const abs = path.resolve(filePath);
-    if (!this.allowRead(abs)) throw new Error(`Sandbox: read denied for ${filePath}`);
-    return fs.readFileSync(abs, 'utf8');
+    if (!this.allowRead(abs))
+      throw new Error(`Sandbox: read denied for ${filePath}`);
+    return fs.readFileSync(abs, "utf8");
   }
 
   // Write a file through capability check
   writeFile(filePath, content) {
     const abs = path.resolve(filePath);
-    if (!this.allowWrite(abs)) throw new Error(`Sandbox: write denied for ${filePath}`);
+    if (!this.allowWrite(abs))
+      throw new Error(`Sandbox: write denied for ${filePath}`);
     fs.mkdirSync(path.dirname(abs), { recursive: true });
-    fs.writeFileSync(abs, content, 'utf8');
+    fs.writeFileSync(abs, content, "utf8");
   }
 
   // List directory through capability check
   listDir(dirPath) {
     const abs = path.resolve(dirPath);
-    if (!this.allowRead(abs)) throw new Error(`Sandbox: list denied for ${dirPath}`);
+    if (!this.allowRead(abs))
+      throw new Error(`Sandbox: list denied for ${dirPath}`);
     return fs.readdirSync(abs, { withFileTypes: true });
   }
 }
@@ -89,8 +92,9 @@ class CapabilityFS {
 // Each session is a temporary workspace with mirrored input files.
 class SandboxSession {
   constructor(opts = {}) {
-    this.id = 'sbx-' + Date.now() + '-' + Math.random().toString(36).slice(2, 7);
-    this.dir = fs.mkdtempSync(path.join(os.tmpdir(), this.id + '-'));
+    this.id =
+      "sbx-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
+    this.dir = fs.mkdtempSync(path.join(os.tmpdir(), this.id + "-"));
     this.caps = new CapabilityFS(opts);
     this.adapter = opts.adapter || getPlatformAdapter(); // OS-specific exec/kill/env
     this.timeout = opts.timeout || 30000;
@@ -103,14 +107,15 @@ class SandboxSession {
   _audit(action, detail) {
     const entry = { ts: Date.now(), action, ...detail };
     this.auditLog.push(entry);
-    dlog('sandbox', 'info', action, { session: this.id, ...detail });
+    dlog("sandbox", "info", action, { session: this.id, ...detail });
     return entry;
   }
 
   // Mirror a file/dir into the sandbox (copy in)
   mirrorIn(srcPath, relDest) {
     const absSrc = path.resolve(srcPath);
-    if (!this.caps.allowRead(absSrc)) throw new Error(`Sandbox: mirror read denied for ${srcPath}`);
+    if (!this.caps.allowRead(absSrc))
+      throw new Error(`Sandbox: mirror read denied for ${srcPath}`);
     const dest = path.join(this.dir, relDest || path.basename(srcPath));
     const st = fs.statSync(absSrc);
     if (st.isDirectory()) {
@@ -119,23 +124,44 @@ class SandboxSession {
       fs.mkdirSync(path.dirname(dest), { recursive: true });
       fs.copyFileSync(absSrc, dest);
     }
-    this._audit('mirrorIn', { src: srcPath, dest: relDest });
+    this._audit("mirrorIn", { src: srcPath, dest: relDest });
     return dest;
   }
 
   // Mirror a file/dir out of the sandbox (copy result back)
   mirrorOut(relSrc, destPath) {
     const absDest = path.resolve(destPath);
-    if (!this.caps.allowWrite(absDest)) throw new Error(`Sandbox: mirror write denied for ${destPath}`);
+    if (!this.caps.allowWrite(absDest))
+      throw new Error(`Sandbox: mirror write denied for ${destPath}`);
     const src = path.join(this.dir, relSrc);
     const st = fs.statSync(src);
     if (st.isDirectory()) {
       fs.cpSync(src, absDest, { recursive: true });
     } else {
       fs.mkdirSync(path.dirname(absDest), { recursive: true });
-      fs.copyFileSync(src, absDest);
+      // ATOMIK: salin ke berkas sementara di direktori yang SAMA, lalu rename.
+      //
+      // copyFileSync membuka tujuan dengan O_TRUNC — ia MEMOTONG berkas user
+      // lebih dulu, baru menulis. Terukur: tujuan 5000 byte menjadi 6 byte
+      // seketika. Kalau proses mati di antara keduanya, yang tersisa berkas
+      // terpotong; dan inilah jalur yang dipakai SETIAP tulis/edit agent.
+      //
+      // rename dalam satu volume bersifat atomik di NTFS maupun POSIX: tujuan
+      // berisi versi lama ATAU versi baru, tak pernah setengah. Temp sengaja
+      // bersebelahan dengan tujuan — beda volume membuat rename jatuh ke
+      // salin-lalu-hapus, dan jaminannya hilang.
+      const tmp = absDest + "." + process.pid + ".atomic";
+      try {
+        fs.copyFileSync(src, tmp);
+        fs.renameSync(tmp, absDest);
+      } catch (e) {
+        try {
+          fs.unlinkSync(tmp);
+        } catch (_) {}
+        throw e;
+      }
     }
-    this._audit('mirrorOut', { src: relSrc, dest: destPath });
+    this._audit("mirrorOut", { src: relSrc, dest: destPath });
     return absDest;
   }
 
@@ -143,12 +169,22 @@ class SandboxSession {
   async exec(command, opts = {}) {
     const cmdTimeout = opts.timeout || this.timeout;
     const cmdCwd = opts.cwd || this.dir;
-    this._audit('exec', { command, cwd: path.relative(this.dir, cmdCwd), timeout: cmdTimeout });
+    this._audit("exec", {
+      command,
+      cwd: path.relative(this.dir, cmdCwd),
+      timeout: cmdTimeout,
+    });
 
-    const [shellCmd, shellArgs] = this.adapter.shellFor(command, { cwd: cmdCwd, networkAllowed: this.networkAllowed });
+    const [shellCmd, shellArgs] = this.adapter.shellFor(command, {
+      cwd: cmdCwd,
+      networkAllowed: this.networkAllowed,
+    });
 
     return new Promise((resolve) => {
-      let stdout = '', stderr = '', timedOut = false, settled = false;
+      let stdout = "",
+        stderr = "",
+        timedOut = false,
+        settled = false;
       const child = spawn(shellCmd, shellArgs, {
         cwd: cmdCwd,
         windowsHide: true,
@@ -159,11 +195,11 @@ class SandboxSession {
           // path out of untrusted code — see the adapter for this OS.
           ...this.adapter.sandboxEnv(this.dir),
           // App-level sandbox markers (OS-independent)
-          QUANTUM_SANDBOX: '1',
+          QUANTUM_SANDBOX: "1",
           QUANTUM_SANDBOX_ID: this.id,
           QUANTUM_SANDBOX_DIR: this.dir,
           // Advisory network flag (real enforcement needs OS isolation)
-          QUANTUM_SANDBOX_NETWORK: this.networkAllowed ? '1' : '0',
+          QUANTUM_SANDBOX_NETWORK: this.networkAllowed ? "1" : "0",
         },
       });
 
@@ -180,8 +216,13 @@ class SandboxSession {
       // actually bound runtime. The adapter knows how per OS (taskkill /T on
       // Windows, process-group kill on POSIX).
       const killTree = () => {
-        try { this.adapter.killTree(child); }
-        catch (_) { try { child.kill('SIGKILL'); } catch (__) {} }
+        try {
+          this.adapter.killTree(child);
+        } catch (_) {
+          try {
+            child.kill("SIGKILL");
+          } catch (__) {}
+        }
       };
 
       let graceTimer = null;
@@ -191,37 +232,49 @@ class SandboxSession {
         // If 'close' doesn't fire shortly after the kill (detached grandchildren,
         // stuck pipes), resolve anyway so a runaway process can't hang the caller.
         graceTimer = setTimeout(() => {
-          this._audit('timeout', { command, timeout: cmdTimeout });
-          finish({ ok: false, output: (stdout || stderr || '').slice(0, this.maxOutput), error: `TIMEOUT (${cmdTimeout}ms)` });
+          this._audit("timeout", { command, timeout: cmdTimeout });
+          finish({
+            ok: false,
+            output: (stdout || stderr || "").slice(0, this.maxOutput),
+            error: `TIMEOUT (${cmdTimeout}ms)`,
+          });
         }, 1500);
       }, cmdTimeout);
 
-      child.stdout.on('data', chunk => {
+      child.stdout.on("data", (chunk) => {
         const text = chunk.toString();
         if (stdout.length < this.maxOutput) stdout += text;
       });
-      child.stderr.on('data', chunk => {
+      child.stderr.on("data", (chunk) => {
         const text = chunk.toString();
         if (stderr.length < this.maxOutput) stderr += text;
       });
 
-      child.on('close', code => {
-        const output = (stdout || stderr || '').slice(0, this.maxOutput);
+      child.on("close", (code) => {
+        const output = (stdout || stderr || "").slice(0, this.maxOutput);
         if (timedOut) {
-          this._audit('timeout', { command, timeout: cmdTimeout });
+          this._audit("timeout", { command, timeout: cmdTimeout });
           finish({ ok: false, output, error: `TIMEOUT (${cmdTimeout}ms)` });
         } else if (code !== 0 && stderr.trim()) {
-          this._audit('fail', { command, exitCode: code, error: stderr.trim().slice(0, 200) });
-          finish({ ok: false, output, error: `exit ${code}: ${stderr.trim().slice(0, 1000)}` });
+          this._audit("fail", {
+            command,
+            exitCode: code,
+            error: stderr.trim().slice(0, 200),
+          });
+          finish({
+            ok: false,
+            output,
+            error: `exit ${code}: ${stderr.trim().slice(0, 1000)}`,
+          });
         } else {
-          this._audit('ok', { command, exitCode: code, bytes: output.length });
+          this._audit("ok", { command, exitCode: code, bytes: output.length });
           finish({ ok: true, output: output || `(exit ${code})` });
         }
       });
 
-      child.on('error', err => {
-        this._audit('error', { command, error: err.message });
-        finish({ ok: false, output: '', error: 'spawn error: ' + err.message });
+      child.on("error", (err) => {
+        this._audit("error", { command, error: err.message });
+        finish({ ok: false, output: "", error: "spawn error: " + err.message });
       });
     });
   }
@@ -230,17 +283,17 @@ class SandboxSession {
   writeTemp(filename, content) {
     const dest = path.join(this.dir, filename);
     fs.mkdirSync(path.dirname(dest), { recursive: true });
-    fs.writeFileSync(dest, content, 'utf8');
-    this._audit('writeTemp', { file: filename, bytes: content.length });
+    fs.writeFileSync(dest, content, "utf8");
+    this._audit("writeTemp", { file: filename, bytes: content.length });
     return dest;
   }
 
   // List files in sandbox directory
   listDir(subPath) {
     const dir = subPath ? path.join(this.dir, subPath) : this.dir;
-    return fs.readdirSync(dir, { withFileTypes: true }).map(e => ({
+    return fs.readdirSync(dir, { withFileTypes: true }).map((e) => ({
       name: e.name,
-      type: e.isDirectory() ? 'dir' : 'file',
+      type: e.isDirectory() ? "dir" : "file",
       size: e.isFile() ? fs.statSync(path.join(dir, e.name)).size : 0,
     }));
   }
@@ -248,23 +301,31 @@ class SandboxSession {
   // Read a file from sandbox
   readFile(subPath) {
     const abs = path.join(this.dir, subPath);
-    return fs.readFileSync(abs, 'utf8');
+    return fs.readFileSync(abs, "utf8");
   }
 
   // Cleanup the sandbox directory
   destroy() {
     if (this._closed) return;
     this._closed = true;
-    try { fs.rmSync(this.dir, { recursive: true, force: true }); } catch {}
-    this._audit('destroy', {});
-    dlog('sandbox', 'info', 'Sandbox destroyed', { session: this.id, auditEntries: this.auditLog.length });
+    try {
+      fs.rmSync(this.dir, { recursive: true, force: true });
+    } catch {}
+    this._audit("destroy", {});
+    dlog("sandbox", "info", "Sandbox destroyed", {
+      session: this.id,
+      auditEntries: this.auditLog.length,
+    });
   }
 
   // Get audit trail as text
   auditTrail() {
-    return this.auditLog.map(e =>
-      `[${new Date(e.ts).toISOString()}] ${e.action}: ${JSON.stringify(e)}`
-    ).join('\n');
+    return this.auditLog
+      .map(
+        (e) =>
+          `[${new Date(e.ts).toISOString()}] ${e.action}: ${JSON.stringify(e)}`,
+      )
+      .join("\n");
   }
 }
 
@@ -288,7 +349,9 @@ async function sandboxRun(command, opts = {}) {
     // Mirror out if requested
     if (result.ok && opts.mirrorOut) {
       for (const [src, dest] of Object.entries(opts.mirrorOut)) {
-        try { session.mirrorOut(src, dest); } catch (e) {
+        try {
+          session.mirrorOut(src, dest);
+        } catch (e) {
           result.mirrorErrors = result.mirrorErrors || [];
           result.mirrorErrors.push(`${src}: ${e.message}`);
         }
@@ -311,14 +374,14 @@ function defaultSandboxOpts() {
     readRoots: [
       os.homedir(),
       QROOT,
-      path.join(QROOT, 'workspace'),
+      path.join(QROOT, "workspace"),
       os.tmpdir(),
     ],
     writeRoots: [
       QROOT,
-      path.join(QROOT, 'workspace'),
+      path.join(QROOT, "workspace"),
       os.tmpdir(),
-      path.join(QROOT, 'skills'),
+      path.join(QROOT, "skills"),
     ],
     timeout: 60000,
     maxOutput: 100000,
@@ -331,13 +394,8 @@ function defaultSandboxOpts() {
 // Write: only temp
 function strictSandboxOpts() {
   return {
-    readRoots: [
-      path.join(QROOT, 'workspace'),
-      os.tmpdir(),
-    ],
-    writeRoots: [
-      os.tmpdir(),
-    ],
+    readRoots: [path.join(QROOT, "workspace"), os.tmpdir()],
+    writeRoots: [os.tmpdir()],
     timeout: 15000,
     maxOutput: 20000,
     networkAllowed: false,
@@ -378,9 +436,11 @@ function listSessions() {
 }
 
 // Cleanup all sessions on exit
-process.on('exit', () => {
+process.on("exit", () => {
   for (const [id, session] of activeSessions) {
-    try { session.destroy(); } catch {}
+    try {
+      session.destroy();
+    } catch {}
   }
 });
 
@@ -395,4 +455,3 @@ module.exports = {
   defaultSandboxOpts,
   strictSandboxOpts,
 };
-
