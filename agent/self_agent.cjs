@@ -44,9 +44,9 @@ const PROMPTS_CFG_PATH = path.join(__dirname, "..", "config", "prompts.json");
 // ===================== SISTEM ATURAN AGENT (HARDCODED RULES) =====================
 // Aturan yang dipindahkan dari prompt ke sistem untuk kepatuhan 100%
 const SYSTEM_RULES = {
-  // Kata-kata spekulatif yang dilarang
-  FORBIDDEN_SPECULATIVE:
-    /\b(mungkin|sepertinya|bisa jadi|perhaps|possibly|maybe|probably|seems|appears|I think|I believe|I assume|presumably)\b/gi,
+  // FORBIDDEN_SPECULATIVE DIHAPUS — jangan dihidupkan lagi. Lihat catatan di
+  // bekas sanitizeOutput() di bawah untuk alasannya.
+  //
   // Urutan tool yang wajib dicoba sebelum menyatakan "tidak ada"
   REQUIRED_TOOL_SEQUENCE: ["grep", "glob", "web_search"],
   // Minimal tools yang gagal sebelum bisa menyerah
@@ -92,29 +92,24 @@ const SYSTEM_RULES = {
 const accessedEvidence = new Set();
 let failedTools = new Set();
 
-// Bersihkan output dari kata spekulatif — TAPI jangan sentuh isi kutipan/backtick/code.
-// Kata seperti "seems"/"maybe" sering muncul sah di dalam pesan error yang dikutip atau
-// contoh kode; menyapunya di sana justru merusak jawaban yang benar (mis. pesan error
-// '"seems to be offline"' menjadi korup). Kita mask dulu span terlindung, sapu, lalu pulihkan.
-function sanitizeOutput(text) {
-  if (!text) return text;
-  // Sentinel di Private Use Area — takkan pernah muncul di output model, jadi
-  // pemulihan tidak akan salah menargetkan angka asli dalam prosa.
-  const protectedSpans = [];
-  const wrap = (i) => "" + i + "";
-  const maskedText = text.replace(
-    /```[\s\S]*?```|`[^`]*`|"[^"]*"|'[^']*'/g,
-    (m) => {
-      protectedSpans.push(m);
-      return wrap(protectedSpans.length - 1);
-    },
-  );
-  const sweptText = maskedText.replace(
-    SYSTEM_RULES.FORBIDDEN_SPECULATIVE,
-    "[kata-spekulatif-dihapus]",
-  );
-  return sweptText.replace(/(\d+)/g, (_, i) => protectedSpans[Number(i)]);
-}
+// sanitizeOutput() DIHAPUS — dulu ia menyapu kata spekulatif dari jawaban akhir
+// dan menggantinya dengan penanda "[kata-spekulatif-dihapus]". Penanda itu ikut
+// TAMPIL ke user, jadi jawaban yang benar pun terlihat rusak.
+//
+// Menghapus KATANYA saja (tanpa penanda) justru lebih berbahaya, dan itu sebabnya
+// penyapu ini tidak diganti melainkan dibuang:
+//
+//   "File config mungkin tidak ada"  ->  "File config tidak ada"
+//
+// Dugaan berubah jadi pernyataan pasti. Penyapu itu tak pernah menghapus
+// spekulasinya — ia hanya menghapus TANDA bahwa itu spekulasi, lalu menyajikan
+// tebakan sebagai fakta. Untuk alat yang gunanya melaporkan keadaan kode
+// sebenarnya, itu kegagalan yang jauh lebih mahal daripada penanda jelek.
+//
+// Spekulasi yang benar-benar berbahaya — model MENARASIKAN hasil eksekusi yang
+// tak pernah dijalankan — sudah ditangani di tempat yang tepat oleh
+// SIMULATION_CLAIMS + force_retry: modelnya DISURUH ULANG memanggil tool nyata,
+// bukan kalimatnya yang diedit diam-diam sesudah jadi.
 
 // Buang blok reasoning (<think>...</think>) dan tag think yang nyasar/tak berpasangan.
 // cloud.cjs membungkus reasoning-delta dengan tag ini untuk tampilan streaming, dan
@@ -2098,7 +2093,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         );
 
         let fallback = rawContent;
-        fallback = sanitizeOutput(fallback);
+        // Tak ada lagi penyapu kata spekulatif di sini — kalimat model sampai ke
+        // layar apa adanya. Dua langkah di bawah hanya MEMBUANG (rekap tool,
+        // kelebihan panjang), tidak menyisipkan penanda ke tengah kalimat.
         fallback = stripToolRecap(fallback);
         fallback = truncateToConcise(fallback, 2000);
         // Jaring pengaman: pastikan diagram architecture_map ikut terkirim (terender di UI)
