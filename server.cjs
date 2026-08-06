@@ -4541,6 +4541,116 @@ const server = http.createServer(async (req, res) => {
     }
   }
 
+  // GET /plugins — daftar plugin terpasang + status persetujuannya.
+  //
+  // Manifest yang RUSAK ikut dikirim (field `rusak`), tidak dibuang diam-diam.
+  // Plugin yang hilang tanpa jejak adalah persis cara skills.cjs jadi terlupakan
+  // sampai akhirnya jadi celah.
+  if (req.method === "GET" && req.url === "/plugins") {
+    try {
+      const P = require("./agent/plugins.cjs");
+      const { plugin, rusak } = P.pindai();
+      const setuju = new Set(P.disetujui());
+      const aktifSesi = new Set(P.kapabilitasDisetujui());
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          izinDikenal: P.IZIN_DIKENAL,
+          plugin: plugin.map((p) => ({
+            nama: p.nama,
+            versi: p.versi,
+            ket: p.ket,
+            sumber: [p.command].concat(p.args || []).join(" "),
+            izin: p.izin,
+            disetujui: setuju.has(p.nama),
+            // Persetujuan dibekukan ke genesis saat sesi mulai. Yang baru
+            // disetujui tampil `disetujui:true` tapi `aktifSesi:false` — dan
+            // perbedaan itu HARUS terlihat, karena kalau tidak user mengira
+            // plugin sudah hidup padahal agent belum bisa memanggilnya.
+            aktifSesi: aktifSesi.has(P.kapabilitas(p.nama)),
+          })),
+          rusak,
+        }),
+      );
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // POST /plugins/setujui — user MEMBERI atau MENCABUT izin sebuah plugin.
+  //
+  // Sengaja tak ada padanannya sebagai tool agent. Ini pintu user; kalau model
+  // bisa menyetujui plugin, seluruh pemisahan dua pintu itu runtuh.
+  if (req.method === "POST" && req.url === "/plugins/setujui") {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let b = {};
+      try {
+        b = JSON.parse(raw || "{}");
+      } catch (_) {}
+      const nama = String(b.nama || "");
+      const beri = b.setujui !== false;
+      try {
+        const P = require("./agent/plugins.cjs");
+        const ada = P.pindai().plugin.some((p) => p.nama === nama);
+        if (!ada) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "plugin tak ditemukan: " + nama,
+            }),
+          );
+          return;
+        }
+        const kini = new Set(P.disetujui());
+        if (beri) kini.add(nama);
+        else kini.delete(nama);
+        fs.mkdirSync(P.DIR_PLUGIN, { recursive: true });
+        fs.mkdirSync(P.DIR_PLUGIN, { recursive: true });
+        fs.writeFileSync(
+          P.BERKAS_SETUJU,
+          JSON.stringify([...kini].sort(), null, 2),
+        );
+
+        // PENCABUTAN harus punya efek SEKARANG, dan berkas persetujuan saja tak
+        // memberikannya: genesis sesi ini sudah dibekukan dengan kapabilitas itu
+        // di dalamnya, dan prosesnya sudah menyala. Jadi prosesnya dimatikan —
+        // tak ada yang tersisa untuk dipanggil, dan tool-nya lenyap dari daftar.
+        let dimatikan = false;
+        if (!beri) {
+          try {
+            const mcp = require("./agent/mcp-client.cjs");
+            mcp.stopServer(nama);
+            dimatikan = true;
+          } catch (_) {}
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            disetujui: beri,
+            dimatikan,
+            // Jujur soal kapan berlakunya. Genesis dibekukan sekali per sesi,
+            // jadi PEMBERIAN izin tidak menyentuh ruleset yang sedang berjalan.
+            catatan: beri
+              ? "Berlaku mulai sesi berikutnya — genesis sesi ini sudah dibekukan."
+              : "Prosesnya dihentikan sekarang; kapabilitasnya hilang dari genesis pada sesi berikutnya.",
+          }),
+        );
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // POST /flow/http — eksekutor node "HTTP Request" untuk kanvas Logic (integrasi).
   // Melakukan permintaan HTTP dari SISI SERVER supaya renderer tak kena CORS —
   // inilah tulang punggung "integrasi platform luar": panggilan keluar terpusat di

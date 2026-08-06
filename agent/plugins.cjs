@@ -202,6 +202,62 @@ function kapabilitasDisetujui() {
     .map(kapabilitas);
 }
 
+/**
+ * Konfigurasi server MCP untuk plugin yang SUDAH DISETUJUI, dalam bentuk yang
+ * sama dengan config/mcp.json.
+ *
+ * KENAPA BEGINI. mcp-client.cjs sudah menyelesaikan bagian yang sulit: spawn,
+ * framing JSON-RPC, handshake, pembersihan proses yatim, berkas PID, lazy start,
+ * dan bertahan melewati hot-reload backend. Menulis ulang semua itu untuk plugin
+ * berarti mengulang "pola dua permukaan" yang sudah berkali-kali menggigit repo
+ * ini — dua salinan yang harus diperbaiki bersamaan, dan salah satunya pasti
+ * terlupa.
+ *
+ * Jadi plugin tidak punya peluncur sendiri. Ia menumpang jalur MCP yang sudah
+ * ada, dan yang ditambahkan cuma gerbangnya.
+ *
+ * `cwd` sengaja diisi akar repo: manifest menulis args relatif
+ * ("agent/mcp-servers/kaggle-mcp.cjs"), dan tanpa cwd tetap, perintahnya
+ * bergantung pada dari mana WOLFSPACE dijalankan.
+ *
+ * @returns {Record<string, {command: string, args: string[], cwd: string, _plugin: true}>}
+ */
+function konfigMcp() {
+  const out = {};
+  const setuju = new Set(disetujui());
+  for (const p of pindai().plugin) {
+    if (!setuju.has(p.nama)) continue; // belum disetujui = tak pernah dinyalakan
+    out[p.nama] = {
+      command: p.command,
+      args: p.args,
+      cwd: AKAR,
+      // Penanda supaya mcp-client tahu entri ini WAJIB lewat admission, beda
+      // dari entri lama di config/mcp.json.
+      _plugin: true,
+    };
+  }
+  return out;
+}
+
+/**
+ * Apakah nama server MCP ini berasal dari sebuah plugin (bukan config/mcp.json).
+ *
+ * SENGAJA memakai pindai(), BUKAN konfigMcp(). Perbedaannya menentukan arah
+ * kegagalan: konfigMcp() hanya memuat yang DISETUJUI, jadi mencabut persetujuan
+ * akan membuat fungsi ini menjawab `false` — dan pemanggilnya menyimpulkan
+ * "bukan plugin, tak perlu digerbang". Mencabut izin justru MEMBUKA gerbangnya.
+ *
+ * Fungsi ini menjawab "apakah ia plugin", bukan "apakah ia boleh". Dua
+ * pertanyaan berbeda, dan mencampurnya menghasilkan fail-open.
+ *
+ * @param {string} nama
+ * @returns {boolean}
+ */
+function adalahPlugin(nama) {
+  const n = String(nama);
+  return pindai().plugin.some((p) => p.nama === n);
+}
+
 module.exports = {
   DIR_PLUGIN,
   BERKAS_SETUJU,
@@ -211,4 +267,6 @@ module.exports = {
   kapabilitas,
   disetujui,
   kapabilitasDisetujui,
+  konfigMcp,
+  adalahPlugin,
 };

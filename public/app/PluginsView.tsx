@@ -1,16 +1,16 @@
-// Plugins — halaman penuh. STATIS untuk sekarang.
-//
-// Belum ada backend, belum ada pemasangan sungguhan: daftar di bawah sengaja
-// hardcoded supaya bentuk dan rasanya bisa dinilai lebih dulu.
+// Plugins — halaman penuh, tersambung ke GET /plugins.
 //
 // Dua keputusan sengaja TERLIHAT di permukaan ini, bukan hanya di kode:
 //
 //   1. Tombol Install milik USER. Di VS Code tak ada agent yang bisa memasang
 //      extension sendiri; WOLFSPACE punya, jadi pemisahan "siapa memasang" vs
 //      "apa yang boleh dijangkau agent" harus kelihatan di UI juga.
-//   2. Tiap plugin memajang IZIN yang dimintanya. Izin inilah yang nanti jadi
-//      kosakata genesis CommandChain — plugin yang izinnya tak disetujui tetap
-//      terpasang, hanya tak bisa dipanggil agent.
+//   2. Tiap plugin memajang IZIN yang dimintanya. Izin itu jadi kosakata genesis
+//      CommandChain — plugin yang izinnya tak disetujui tetap terpasang dan
+//      tetap terlihat di sini, tapi tool-nya tak pernah muncul di mata model.
+//   3. `disetujui` dan `aktifSesi` ditampilkan TERPISAH. Memberi izin baru
+//      berlaku sesi berikutnya (genesis sudah beku); mencabut berlaku seketika.
+//      Menyamarkan bedanya membuat user mengira plugin sudah hidup.
 //
 // Berkas .tsx pertama di repo. Babel yang di-vendor membuang tipenya saat jalan;
 // `npm run typecheck` yang memeriksanya. Lihat public/tsconfig.json.
@@ -29,45 +29,36 @@ type IzinPlugin =
   | "attachment.read";
 
 interface PluginTerpasang {
-  id: string;
   nama: string;
   versi: string;
   ket: string;
   /** Perintah yang dijalankan sebagai server MCP — bukan berkas yang di-require. */
   sumber: string;
-  aktif: boolean;
   izin: readonly IzinPlugin[];
+  /** User sudah memberi izin. Ditulis ke plugins/_disetujui.json. */
+  disetujui: boolean;
+  /**
+   * Kapabilitasnya sudah masuk genesis SESI INI.
+   *
+   * Beda dari `disetujui`, dan perbedaannya HARUS terlihat: genesis dibekukan
+   * sekali saat sesi mulai, jadi yang baru disetujui akan `disetujui:true`
+   * tapi `aktifSesi:false`. Tanpa menampilkan itu, user mengira plugin sudah
+   * hidup padahal agent belum bisa memanggilnya sampai restart.
+   */
+  aktifSesi: boolean;
 }
 
-const PLUGIN_CONTOH: readonly PluginTerpasang[] = [
-  {
-    id: "kaggle",
-    nama: "Kaggle",
-    versi: "0.1.0",
-    ket: "Cari dataset dan kompetisi lewat API Kaggle.",
-    sumber: "node agent/mcp-servers/kaggle-mcp.cjs",
-    aktif: true,
-    izin: ["network:https"],
-  },
-  {
-    id: "notion",
-    nama: "Notion",
-    versi: "1.2.0",
-    ket: "Baca dan tulis halaman Notion.",
-    sumber: "npx @notionhq/notion-mcp-server",
-    aktif: true,
-    izin: ["network:https"],
-  },
-  {
-    id: "github",
-    nama: "GitHub",
-    versi: "0.4.1",
-    ket: "Issue, pull request, dan isi repositori.",
-    sumber: "npx @modelcontextprotocol/server-github",
-    aktif: false,
-    izin: ["network:https"],
-  },
-];
+interface ManifestRusak {
+  dir: string;
+  error: string;
+}
+
+interface JawabanPlugin {
+  ok: boolean;
+  plugin?: readonly PluginTerpasang[];
+  rusak?: readonly ManifestRusak[];
+  error?: string;
+}
 
 const KARTU = {
   background: "#181b20",
@@ -98,7 +89,15 @@ function IkonColokan({ ukuran = 18 }: { ukuran?: number }): JSX.Element {
   );
 }
 
-function BarisPlugin({ p }: { p: PluginTerpasang }): JSX.Element {
+function BarisPlugin({
+  p,
+  onUbah,
+  sibuk,
+}: {
+  p: PluginTerpasang;
+  onUbah: (nama: string, setujui: boolean) => void;
+  sibuk: boolean;
+}): JSX.Element {
   return (
     <div
       style={{
@@ -119,7 +118,7 @@ function BarisPlugin({ p }: { p: PluginTerpasang }): JSX.Element {
           flexShrink: 0,
           borderRadius: "8px",
           background: "rgba(255,255,255,0.04)",
-          color: p.aktif ? HIJAU : REDUP,
+          color: p.aktifSesi ? HIJAU : REDUP,
         }}
       >
         <IkonColokan />
@@ -195,39 +194,43 @@ function BarisPlugin({ p }: { p: PluginTerpasang }): JSX.Element {
       <div
         style={{
           display: "flex",
-          alignItems: "center",
-          gap: "10px",
+          flexDirection: "column",
+          alignItems: "flex-end",
+          gap: "6px",
           flexShrink: 0,
         }}
       >
-        <span style={{ fontSize: "11px", color: p.aktif ? HIJAU : REDUP }}>
-          {p.aktif ? "Aktif" : "Nonaktif"}
-        </span>
-        <span
-          aria-hidden="true"
+        <button
+          className="btn"
+          onClick={() => onUbah(p.nama, !p.disetujui)}
+          disabled={sibuk}
+          title={
+            p.disetujui
+              ? "Cabut izin — prosesnya dihentikan sekarang"
+              : "Beri izin — berlaku mulai sesi berikutnya"
+          }
           style={{
-            width: "34px",
-            height: "19px",
-            borderRadius: "999px",
-            background: p.aktif
-              ? "rgba(124,196,164,0.28)"
-              : "rgba(255,255,255,0.08)",
-            border: "1px solid rgba(255,255,255,0.08)",
-            position: "relative",
-            display: "inline-block",
+            padding: "6px 14px",
+            borderRadius: "8px",
+            fontSize: "12px",
+            opacity: sibuk ? 0.5 : 1,
           }}
         >
-          <span
-            style={{
-              position: "absolute",
-              top: "2px",
-              left: p.aktif ? "16px" : "2px",
-              width: "13px",
-              height: "13px",
-              borderRadius: "50%",
-              background: p.aktif ? HIJAU : REDUP,
-            }}
-          />
+          {p.disetujui ? "Cabut izin" : "Beri izin"}
+        </button>
+
+        {/* disetujui != aktif di sesi ini. Perbedaan itu sengaja ditampilkan:
+            genesis dibekukan saat sesi mulai, jadi izin yang baru diberi belum
+            bisa dipakai agent sampai restart. Menyembunyikannya membuat user
+            mengira plugin sudah hidup. */}
+        <span
+          style={{ fontSize: "10.5px", color: p.aktifSesi ? HIJAU : REDUP }}
+        >
+          {p.aktifSesi
+            ? "aktif di sesi ini"
+            : p.disetujui
+              ? "aktif setelah restart"
+              : "tak terjangkau agent"}
         </span>
       </div>
     </div>
@@ -236,8 +239,55 @@ function BarisPlugin({ p }: { p: PluginTerpasang }): JSX.Element {
 
 function PluginsView(): JSX.Element {
   const [cari, setCari] = useState<string>("");
+  const [semua, setSemua] = useState<readonly PluginTerpasang[]>([]);
+  const [rusak, setRusak] = useState<readonly ManifestRusak[]>([]);
+  const [galat, setGalat] = useState<string>("");
+  const [sibuk, setSibuk] = useState<boolean>(false);
+  const [memuat, setMemuat] = useState<boolean>(true);
 
-  const daftar: readonly PluginTerpasang[] = PLUGIN_CONTOH.filter((p) => {
+  const muat = useCallback(async (): Promise<void> => {
+    try {
+      const r = await fetch("/plugins");
+      const j: JawabanPlugin = await r.json();
+      if (!j.ok) throw new Error(j.error || "gagal memuat plugin");
+      setSemua(j.plugin || []);
+      setRusak(j.rusak || []);
+      setGalat("");
+    } catch (e) {
+      // Kegagalan muat DITAMPILKAN, tak diganti daftar kosong. Daftar kosong
+      // terbaca sebagai "belum ada plugin" — dua keadaan yang sangat berbeda.
+      setGalat(e instanceof Error ? e.message : String(e));
+    } finally {
+      setMemuat(false);
+    }
+  }, []);
+
+  useEffect(() => {
+    void muat();
+  }, [muat]);
+
+  const ubahIzin = useCallback(
+    async (nama: string, setujui: boolean): Promise<void> => {
+      setSibuk(true);
+      try {
+        const r = await fetch("/plugins/setujui", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nama, setujui }),
+        });
+        const j = await r.json();
+        if (!j.ok) setGalat(j.error || "gagal mengubah izin");
+        else await muat();
+      } catch (e) {
+        setGalat(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSibuk(false);
+      }
+    },
+    [muat],
+  );
+
+  const daftar: readonly PluginTerpasang[] = semua.filter((p) => {
     const q = cari.trim().toLowerCase();
     if (!q) return true;
     return p.nama.toLowerCase().includes(q) || p.ket.toLowerCase().includes(q);
@@ -337,10 +387,56 @@ function PluginsView(): JSX.Element {
         </button>
       </div>
 
-      {daftar.length > 0 ? (
+      {galat ? (
+        <div
+          style={{
+            ...KARTU,
+            borderColor: "rgba(248,113,113,0.35)",
+            padding: "16px 18px",
+            marginBottom: "10px",
+            fontSize: "12.5px",
+            color: "#f8b4b4",
+          }}
+        >
+          Gagal memuat daftar plugin: {galat}
+        </div>
+      ) : null}
+
+      {/* Manifest rusak DITAMPILKAN, tidak dibuang diam-diam. Plugin yang hilang
+          tanpa jejak adalah persis cara skills.cjs jadi terlupakan sampai
+          akhirnya jadi celah keamanan. */}
+      {rusak.map((r) => (
+        <div
+          key={r.dir}
+          style={{
+            ...KARTU,
+            borderColor: "rgba(210,153,34,0.35)",
+            padding: "14px 18px",
+            marginBottom: "10px",
+            fontSize: "12.5px",
+            color: "#d9b168",
+          }}
+        >
+          <b>plugins/{r.dir}</b> — manifest tak sah: {r.error}
+        </div>
+      ))}
+
+      {memuat ? (
+        <div
+          style={{
+            ...KARTU,
+            padding: "28px",
+            textAlign: "center",
+            fontSize: "13px",
+            color: REDUP,
+          }}
+        >
+          Memuat…
+        </div>
+      ) : daftar.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {daftar.map((p) => (
-            <BarisPlugin key={p.id} p={p} />
+            <BarisPlugin key={p.nama} p={p} onUbah={ubahIzin} sibuk={sibuk} />
           ))}
         </div>
       ) : (
@@ -353,7 +449,9 @@ function PluginsView(): JSX.Element {
             color: REDUP,
           }}
         >
-          Tak ada plugin yang cocok dengan “{cari}”.
+          {cari.trim()
+            ? `Tak ada plugin yang cocok dengan “${cari}”.`
+            : "Belum ada plugin. Taruh folder berisi manifest.json di plugins/."}
         </div>
       )}
     </div>

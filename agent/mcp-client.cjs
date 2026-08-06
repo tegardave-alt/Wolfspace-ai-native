@@ -177,12 +177,83 @@ class MCPClient {
   }
 
   _loadConfig() {
+    let dasar = {};
     try {
-      if (!fs.existsSync(CONFIG_PATH)) return {};
-      return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+      if (fs.existsSync(CONFIG_PATH))
+        dasar = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
     } catch (e) {
       dlog("mcp", "error", "Gagal memuat mcp.json", { error: e.message });
-      return {};
+      dasar = {};
+    }
+
+    // Plugin yang sudah DISETUJUI user ikut sebagai server MCP biasa, sehingga
+    // seluruh jalur di bawah (spawn, handshake, proses yatim, hot-reload) tak
+    // perlu digandakan. Yang membedakannya cuma penanda `_plugin`, yang membuat
+    // tools/panggilannya wajib lewat admission CommandChain.
+    //
+    // Ditaruh SESUDAH dasar: entri config/mcp.json bernama sama menang, supaya
+    // sebuah plugin tak bisa membajak nama server yang sudah user pakai.
+    let plug = {};
+    try {
+      plug = require("./plugins.cjs").konfigMcp();
+    } catch (_) {
+      plug = {};
+    }
+    const gabung = { ...plug, ...(dasar.mcpServers || {}) };
+    return { ...dasar, mcpServers: gabung };
+  }
+
+  // Apakah server ini berasal dari plugin.
+  //
+  // Dibaca dari DISK lewat plugins.adalahPlugin(), bukan dari konfigurasi
+  // gabungan. Konfigurasi hanya memuat plugin yang sudah disetujui, jadi
+  // memakainya di sini membuat pencabutan izin menjawab "bukan plugin" — dan
+  // pemanggil menyimpulkan tak perlu digerbang. Mencabut izin akan MEMBUKA
+  // gerbangnya. Dikunci oleh tes "mencabut izin tidak boleh membuka gerbang".
+  _dariPlugin(nama) {
+    try {
+      return require("./plugins.cjs").adalahPlugin(nama);
+    } catch (_) {
+      return false;
+    }
+  }
+
+  // Gerbang admission untuk server yang berasal dari plugin.
+  //
+  // Entri lama di config/mcp.json SENGAJA tidak ikut digerbang: mengubah
+  // perilakunya akan mematikan notion/github yang sudah user pakai hari ini,
+  // dan itu di luar cakupan. Asimetri ini bukan lubang — memasang lewat
+  // config/mcp.json adalah tindakan USER, dan user memang pihak yang tepercaya
+  // untuk memasang. Yang digerbang adalah jangkauan AGENT.
+  // DUA syarat, dan keduanya wajib. Asimetrinya disengaja:
+  //
+  //   genesis beku  -> MENAMBAH izin tak berlaku sampai sesi berikutnya
+  //   berkas setuju -> MENCABUT izin berlaku SEKARANG
+  //
+  // Aturannya satu kalimat: mempersempit selalu boleh, melebarkan tidak.
+  // Melebarkan di tengah sesi berarti ada jalan melonggarkan genesis sesudah ia
+  // dibekukan, dan seluruh guna pembekuan itu hilang. Mempersempit tak punya
+  // masalah itu — ia hanya mencabut sesuatu yang tadinya diizinkan.
+  //
+  // Tanpa syarat kedua, mencabut izin TIDAK berefek selama proses plugin masih
+  // hidup: kapabilitasnya sudah ada di genesis. Itu terukur — lihat catatan di
+  // tests/plugin-gerbang.test.js.
+  _izinPlugin(nama) {
+    if (!this._dariPlugin(nama)) return { allow: true, alasan: null };
+    try {
+      const cc = require("./broker/commandchain.cjs");
+      const P = require("./plugins.cjs");
+
+      const vonis = cc.periksa(cc.sesiRuleset(), P.kapabilitas(nama));
+      if (!vonis.allow) return vonis;
+
+      if (!P.disetujui().includes(String(nama))) {
+        return { allow: false, alasan: "izin plugin dicabut user" };
+      }
+      return vonis;
+    } catch (e) {
+      // Gagal memuat penjaga = TOLAK. Deny-by-default, bukan fail-open.
+      return { allow: false, alasan: "penjaga admission tak dapat dimuat" };
     }
   }
 
@@ -486,6 +557,20 @@ class MCPClient {
     for (const name of Object.keys(this.servers)) {
       if (!this.servers[name].ready) continue;
 
+      // Plugin yang tak disetujui TIDAK MUNCUL sama sekali di daftar tool.
+      //
+      // Ini beda penting dari "ditolak saat dipanggil": model tak pernah melihat
+      // tool-nya, jadi tak ada yang bisa dibujuk untuk memanggilnya. Isi tak
+      // tepercaya yang dibaca model tak bisa menyuruhnya memakai sesuatu yang
+      // tak ada di daftar.
+      const izin = this._izinPlugin(name);
+      if (!izin.allow) {
+        dlog("mcp", "info", `Plugin ${name} disembunyikan dari daftar tool`, {
+          alasan: izin.alasan,
+        });
+        continue;
+      }
+
       try {
         if (!this.toolsCache[name]) {
           const res = await this._request(name, "tools/list", {});
@@ -528,6 +613,36 @@ class MCPClient {
 
     if (!this.servers[serverName] || !this.servers[serverName].ready) {
       return { ok: false, output: `Server MCP ${serverName} is not active.` };
+    }
+
+    // Gerbang KEDUA. getTools() sudah menyembunyikan plugin yang tak disetujui,
+    // tapi daftar tool dibangun sekali di awal giliran sementara persetujuan bisa
+    // dicabut, dan nama tool bisa datang dari riwayat percakapan — bukan hanya
+    // dari daftar yang baru saja dikirim. Pemeriksaan di titik pemakaian ini yang
+    // menentukan; yang di getTools() hanya membuat godaannya tak pernah terlihat.
+    const izin = this._izinPlugin(serverName);
+    if (!izin.allow) {
+      try {
+        const cc = require("./broker/commandchain.cjs");
+        const P = require("./plugins.cjs");
+        cc.catat({
+          capability: P.kapabilitas(serverName),
+          decision: "DENY",
+          reason: izin.alasan,
+          params: { tool: toolName },
+          kurungan: {
+            enforced: true,
+            mekanisme: "admission genesis — plugin tak disetujui user",
+          },
+        });
+      } catch (_) {}
+      return {
+        ok: false,
+        output:
+          `Plugin '${serverName}' tidak disetujui untuk sesi ini: ` +
+          izin.alasan +
+          ". Persetujuan diberikan user di halaman Plugins, dan berlaku mulai sesi berikutnya.",
+      };
     }
 
     // BUANG argumen INTERNAL WOLFSPACE sebelum menyeberang ke protokol MCP.
