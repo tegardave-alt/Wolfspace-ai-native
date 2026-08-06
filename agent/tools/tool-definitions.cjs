@@ -251,6 +251,61 @@ const SELF_TOOLS = [
   {
     type: "function",
     function: {
+      name: "web_extract",
+      description:
+        "Ambil BAGIAN TERTENTU dari halaman web dengan browser sungguhan (Playwright). " +
+        "Pakai ini — BUKAN web_fetch — bila datanya dimuat oleh JavaScript, ada di dalam tabel/daftar, " +
+        "butuh atribut seperti href, atau ada jauh di bawah halaman. " +
+        "web_fetch mengembalikan innerText seluruh halaman dan memotongnya di 8KB, sehingga struktur hilang " +
+        "dan isi yang dimuat belakangan terbaca kosong.",
+      parameters: {
+        type: "object",
+        properties: {
+          url: { type: "string", description: "URL lengkap (http/https)" },
+          selector: {
+            type: "string",
+            description:
+              "Selector CSS bagian yang diambil, mis. 'table.harga', 'article h2', '.item'. Default 'body'.",
+          },
+          mode: {
+            type: "string",
+            enum: ["teks", "tabel", "tautan", "atribut", "html"],
+            description:
+              "teks=innerText per elemen; tabel=baris/kolom sebagai array; tautan=teks+href; atribut=nilai satu atribut; html=outerHTML",
+          },
+          atribut: {
+            type: "string",
+            description:
+              "Nama atribut bila mode='atribut' (mis. href, src, data-id)",
+          },
+          tunggu: {
+            type: "string",
+            description:
+              "Selector yang DITUNGGU sampai muncul sebelum mengambil. Pakai ini untuk konten yang dimuat JS — jauh lebih andal daripada menunggu waktu.",
+          },
+          tunggu_ms: {
+            type: "number",
+            description:
+              "Batas menunggu selector, 1000-45000 ms (default 15000)",
+          },
+          gulir: {
+            type: "number",
+            description:
+              "Berapa kali menggulir satu layar sebelum mengambil, 0-20. Untuk daftar lazy-load.",
+          },
+          batas: {
+            type: "number",
+            description:
+              "Maksimal elemen yang dikembalikan, 1-2000 (default 200)",
+          },
+        },
+        required: ["url"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "retrieve",
       description:
         'Ambil PENGETAHUAN dari memori proyek & dokumen (semantic recall) — keputusan/rangkuman run sebelumnya, gotcha berulang, dan docs library/API yang TIDAK ada di repo. Pakai untuk pertanyaan konseptual/historis ("kenapa dulu kita pilih X?", "cara pakai API Y"). JANGAN pakai untuk mencari lokasi kode di repo — itu tugas grep/glob/read.',

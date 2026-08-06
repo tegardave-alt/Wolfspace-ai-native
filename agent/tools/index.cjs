@@ -211,6 +211,15 @@ const webFetch = async (...a) => {
   const m = lazyWeb();
   return m.webFetch ? m.webFetch(...a) : "(web-tools not loaded)";
 };
+const webExtract = async (...a) => {
+  const m = lazyWeb();
+  // Dilempar, bukan dikembalikan sebagai string. Modul web yang gagal dimuat
+  // berarti browsernya tak ada — dan "(web-tools not loaded)" sebagai HASIL akan
+  // dibaca model sebagai isi halaman, lalu dilaporkan sebagai temuan.
+  if (!m.webExtract)
+    throw new Error("web-tools tidak dapat dimuat (playwright?)");
+  return m.webExtract(...a);
+};
 const skills = {
   listSkills: () => {
     const m = lazySkill();
@@ -1828,6 +1837,38 @@ async function runSelfTool(name, args, emit, context = {}) {
         (r) => ({ ok: true, output: r }),
         (e) => ({ ok: false, output: e.message }),
       );
+    if (name === "web_extract") {
+      // Digerbang admission, tak seperti web_fetch.
+      //
+      // Bedanya nyata: web_extract menjalankan browser penuh dan mengeksekusi
+      // JavaScript halaman. Itu kapabilitas jaringan yang jauh lebih luas
+      // daripada sekadar mengambil teks, jadi ia diperlakukan seperti kapabilitas
+      // lain — bisa dicabut lewat buatRuleset({ tanpa: ["network:https"] }) dan
+      // penolakannya tercatat di ledger.
+      //
+      // web_fetch sengaja TIDAK ikut digerbang di sini: mengubahnya akan
+      // mematahkan alur yang sudah dipakai, dan itu keputusan tersendiri.
+      const cc = require("../broker/commandchain.cjs");
+      const adm = cc.periksa(cc.sesiRuleset(), "network:https");
+      if (!adm.allow) {
+        cc.catat({
+          capability: "network:https",
+          decision: "DENY",
+          reason: adm.alasan,
+          params: { tool: "web_extract", url: args.url },
+          kurungan: {
+            enforced: true,
+            mekanisme:
+              "admission genesis + penjaga tujuan (loopback/privat ditolak)",
+          },
+        });
+        return { ok: false, output: "web_extract ditolak: " + adm.alasan };
+      }
+      return webExtract(args).then(
+        (r) => ({ ok: true, output: r }),
+        (e) => ({ ok: false, output: e.message }),
+      );
+    }
     if (name === "retrieve") {
       // RAG: recall PENGETAHUAN (memori proyek + docs). P1 = satu store "global"
       // agar ingest (frontend) & retrieve (di sini) selalu sekunci. Isolasi per-ww
