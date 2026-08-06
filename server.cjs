@@ -4580,6 +4580,79 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // POST /plugins/pasang — user memasang plugin baru.
+  //
+  // Tak ada padanannya sebagai tool agent, dan tak boleh ada. Ini pintu user;
+  // seluruh pemisahan dua pintu runtuh kalau model bisa memasang sendiri.
+  //
+  // Yang ditulis HANYA manifest — tak ada kode yang diunduh atau disalin. Jalur
+  // "ambil dari URL lalu simpan" yang dulu ada di skill_install sengaja tidak
+  // dihidupkan kembali.
+  if (req.method === "POST" && req.url === "/plugins/pasang") {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let b = {};
+      try {
+        b = JSON.parse(raw || "{}");
+      } catch (_) {}
+      try {
+        const P = require("./agent/plugins.cjs");
+        const r = P.pasang(b);
+        res.writeHead(r.ok ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(
+          JSON.stringify(
+            r.ok
+              ? {
+                  ok: true,
+                  // Memasang TIDAK memberi izin. Dikatakan terus terang supaya
+                  // user tak mengira plugin langsung bisa dipakai agent.
+                  catatan:
+                    "Terpasang. Belum diberi izin — agent belum bisa memanggilnya.",
+                }
+              : r,
+          ),
+        );
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /plugins/copot — user menghapus plugin beserta persetujuannya.
+  if (req.method === "POST" && req.url === "/plugins/copot") {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let b = {};
+      try {
+        b = JSON.parse(raw || "{}");
+      } catch (_) {}
+      const nama = String(b.nama || "");
+      try {
+        const P = require("./agent/plugins.cjs");
+        // Prosesnya dihentikan DULU, sebelum foldernya hilang: mencopot tanpa
+        // mematikan meninggalkan proses yatim yang masih melayani panggilan.
+        try {
+          require("./agent/mcp-client.cjs").stopServer(nama);
+        } catch (_) {}
+        const r = P.copot(nama);
+        res.writeHead(r.ok ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(JSON.stringify(r));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // POST /plugins/setujui — user MEMBERI atau MENCABUT izin sebuah plugin.
   //
   // Sengaja tak ada padanannya sebagai tool agent. Ini pintu user; kalau model

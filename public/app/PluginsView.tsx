@@ -55,6 +55,7 @@ interface ManifestRusak {
 
 interface JawabanPlugin {
   ok: boolean;
+  izinDikenal?: readonly string[];
   plugin?: readonly PluginTerpasang[];
   rusak?: readonly ManifestRusak[];
   error?: string;
@@ -92,10 +93,12 @@ function IkonColokan({ ukuran = 18 }: { ukuran?: number }): JSX.Element {
 function BarisPlugin({
   p,
   onUbah,
+  onCopot,
   sibuk,
 }: {
   p: PluginTerpasang;
   onUbah: (nama: string, setujui: boolean) => void;
+  onCopot: (nama: string) => void;
   sibuk: boolean;
 }): JSX.Element {
   return (
@@ -232,6 +235,181 @@ function BarisPlugin({
               ? "aktif setelah restart"
               : "tak terjangkau agent"}
         </span>
+
+        <button
+          onClick={() => onCopot(p.nama)}
+          disabled={sibuk}
+          title="Copot — folder dan persetujuannya dihapus"
+          style={{
+            background: "none",
+            border: "none",
+            padding: 0,
+            fontSize: "10.5px",
+            color: REDUP,
+            cursor: sibuk ? "default" : "pointer",
+            textDecoration: "underline",
+          }}
+        >
+          copot
+        </button>
+      </div>
+    </div>
+  );
+}
+
+/**
+ * Dialog pasang.
+ *
+ * Sengaja meminta PERINTAH, bukan berkas atau URL. Plugin dijalankan sebagai
+ * server MCP di proses terpisah, jadi yang perlu diketahui WOLFSPACE cuma cara
+ * menjalankannya — tak ada kode yang diunduh atau disalin ke sini. Jalur "ambil
+ * dari URL lalu simpan" yang dulu ada di skill_install tidak dihidupkan lagi.
+ *
+ * Izin diminta DI SINI, saat memasang, seperti memasang aplikasi ponsel. Itu
+ * satu-satunya saat user benar-benar memperhatikan apa yang ia berikan.
+ */
+function DialogPasang({
+  izinDikenal,
+  onBatal,
+  onPasang,
+  sibuk,
+}: {
+  izinDikenal: readonly string[];
+  onBatal: () => void;
+  onPasang: (p: {
+    nama: string;
+    ket: string;
+    command: string;
+    args: string[];
+    izin: string[];
+  }) => void;
+  sibuk: boolean;
+}): JSX.Element {
+  const [nama, setNama] = useState<string>("");
+  const [ket, setKet] = useState<string>("");
+  const [perintah, setPerintah] = useState<string>("");
+  const [izin, setIzin] = useState<readonly string[]>([]);
+
+  const gaya = {
+    width: "100%",
+    background: "#0f1115",
+    border: "1px solid rgba(255,255,255,0.08)",
+    borderRadius: "8px",
+    padding: "9px 12px",
+    color: "#e2e8f0",
+    fontSize: "13px",
+    outline: "none",
+  } as const;
+
+  // Perintah dipecah dengan spasi sederhana. Cukup untuk bentuk yang dipakai
+  // server MCP ("npx -y paket", "node skrip.cjs"); yang butuh tanda kutip bisa
+  // menyunting manifest.json langsung.
+  const potong = perintah.trim().split(/\s+/).filter(Boolean);
+
+  return (
+    <div
+      style={{
+        ...KARTU,
+        padding: "20px",
+        marginBottom: "16px",
+        display: "flex",
+        flexDirection: "column",
+        gap: "12px",
+      }}
+    >
+      <div style={{ fontSize: "14px", fontWeight: 600, color: "#f3f4f6" }}>
+        Pasang plugin
+      </div>
+
+      <div style={{ display: "flex", gap: "10px" }}>
+        <input
+          value={nama}
+          onChange={(e: { target: { value: string } }) =>
+            setNama(e.target.value)
+          }
+          placeholder="nama (mis. kaggle)"
+          style={{ ...gaya, flex: 1 }}
+        />
+        <input
+          value={ket}
+          onChange={(e: { target: { value: string } }) =>
+            setKet(e.target.value)
+          }
+          placeholder="keterangan singkat"
+          style={{ ...gaya, flex: 2 }}
+        />
+      </div>
+
+      <input
+        value={perintah}
+        onChange={(e: { target: { value: string } }) =>
+          setPerintah(e.target.value)
+        }
+        placeholder="perintah — mis. npx -y @notionhq/notion-mcp-server"
+        style={{ ...gaya, fontFamily: "var(--mono, monospace)" }}
+      />
+
+      <div>
+        <div style={{ fontSize: "12px", color: REDUP, marginBottom: "7px" }}>
+          Izin yang diminta plugin ini:
+        </div>
+        <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
+          {izinDikenal.map((z) => {
+            const pilih = izin.includes(z);
+            return (
+              <button
+                key={z}
+                onClick={() =>
+                  setIzin(
+                    pilih ? izin.filter((x) => x !== z) : izin.concat([z]),
+                  )
+                }
+                style={{
+                  fontSize: "10.5px",
+                  fontFamily: "var(--mono, monospace)",
+                  color: pilih ? "#0f1115" : "#9aa4b2",
+                  background: pilih ? HIJAU : "rgba(255,255,255,0.05)",
+                  border: "1px solid rgba(255,255,255,0.07)",
+                  borderRadius: "5px",
+                  padding: "3px 8px",
+                  cursor: "pointer",
+                }}
+              >
+                {z}
+              </button>
+            );
+          })}
+        </div>
+      </div>
+
+      <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
+        <button className="btn" onClick={onBatal} style={{ fontSize: "12px" }}>
+          Batal
+        </button>
+        <button
+          className="btn"
+          disabled={sibuk || !nama.trim() || potong.length === 0}
+          onClick={() =>
+            onPasang({
+              nama: nama.trim(),
+              ket: ket.trim(),
+              command: potong[0] as string,
+              args: potong.slice(1),
+              izin: izin.slice(),
+            })
+          }
+          style={{
+            fontSize: "12px",
+            opacity: sibuk || !nama.trim() || potong.length === 0 ? 0.5 : 1,
+          }}
+        >
+          Pasang
+        </button>
+      </div>
+
+      <div style={{ fontSize: "11px", color: REDUP, lineHeight: 1.5 }}>
+        Memasang tidak memberi izin. Sesudah terpasang, plugin masih harus Anda
+        setujui — dan agent baru bisa memanggilnya pada sesi berikutnya.
       </div>
     </div>
   );
@@ -244,6 +422,8 @@ function PluginsView(): JSX.Element {
   const [galat, setGalat] = useState<string>("");
   const [sibuk, setSibuk] = useState<boolean>(false);
   const [memuat, setMemuat] = useState<boolean>(true);
+  const [bukaPasang, setBukaPasang] = useState<boolean>(false);
+  const [izinDikenal, setIzinDikenal] = useState<readonly string[]>([]);
 
   const muat = useCallback(async (): Promise<void> => {
     try {
@@ -252,6 +432,7 @@ function PluginsView(): JSX.Element {
       if (!j.ok) throw new Error(j.error || "gagal memuat plugin");
       setSemua(j.plugin || []);
       setRusak(j.rusak || []);
+      setIzinDikenal(j.izinDikenal || []);
       setGalat("");
     } catch (e) {
       // Kegagalan muat DITAMPILKAN, tak diganti daftar kosong. Daftar kosong
@@ -277,6 +458,58 @@ function PluginsView(): JSX.Element {
         });
         const j = await r.json();
         if (!j.ok) setGalat(j.error || "gagal mengubah izin");
+        else await muat();
+      } catch (e) {
+        setGalat(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSibuk(false);
+      }
+    },
+    [muat],
+  );
+
+  const pasang = useCallback(
+    async (p: {
+      nama: string;
+      ket: string;
+      command: string;
+      args: string[];
+      izin: string[];
+    }): Promise<void> => {
+      setSibuk(true);
+      try {
+        const r = await fetch("/plugins/pasang", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(p),
+        });
+        const j = await r.json();
+        if (!j.ok) setGalat(j.error || "gagal memasang");
+        else {
+          setBukaPasang(false);
+          setGalat("");
+          await muat();
+        }
+      } catch (e) {
+        setGalat(e instanceof Error ? e.message : String(e));
+      } finally {
+        setSibuk(false);
+      }
+    },
+    [muat],
+  );
+
+  const copot = useCallback(
+    async (nama: string): Promise<void> => {
+      setSibuk(true);
+      try {
+        const r = await fetch("/plugins/copot", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ nama }),
+        });
+        const j = await r.json();
+        if (!j.ok) setGalat(j.error || "gagal mencopot");
         else await muat();
       } catch (e) {
         setGalat(e instanceof Error ? e.message : String(e));
@@ -361,7 +594,7 @@ function PluginsView(): JSX.Element {
             onChange={(e: { target: { value: string } }) =>
               setCari(e.target.value)
             }
-            placeholder="Cari plugin…"
+            placeholder="Saring plugin terpasang…"
             style={{
               flex: 1,
               background: "transparent",
@@ -374,6 +607,7 @@ function PluginsView(): JSX.Element {
         </div>
         <button
           className="btn"
+          onClick={() => setBukaPasang(!bukaPasang)}
           title="Memasang plugin adalah tindakan Anda, bukan agent"
           style={{
             padding: "10px 18px",
@@ -386,6 +620,15 @@ function PluginsView(): JSX.Element {
           + Install Plugin
         </button>
       </div>
+
+      {bukaPasang ? (
+        <DialogPasang
+          izinDikenal={izinDikenal}
+          onBatal={() => setBukaPasang(false)}
+          onPasang={pasang}
+          sibuk={sibuk}
+        />
+      ) : null}
 
       {galat ? (
         <div
@@ -436,7 +679,13 @@ function PluginsView(): JSX.Element {
       ) : daftar.length > 0 ? (
         <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
           {daftar.map((p) => (
-            <BarisPlugin key={p.nama} p={p} onUbah={ubahIzin} sibuk={sibuk} />
+            <BarisPlugin
+              key={p.nama}
+              p={p}
+              onUbah={ubahIzin}
+              onCopot={copot}
+              sibuk={sibuk}
+            />
           ))}
         </div>
       ) : (

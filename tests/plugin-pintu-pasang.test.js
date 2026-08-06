@@ -201,3 +201,103 @@ describe("kapabilitas plugin masuk genesis, sekali, saat dibekukan", () => {
     expect(cc.periksa(rs, "plugin.kaggle").allow).toBe(true);
   });
 });
+
+describe("pasang & copot: pintu user, dengan penjaga jalur", () => {
+  const os = require("os");
+  let setujuAsli = null;
+  let adaDirAsli = false;
+  const N = "ujipasangtes";
+
+  beforeAll(() => {
+    adaDirAsli = fs.existsSync(plugins.DIR_PLUGIN);
+    try {
+      setujuAsli = fs.readFileSync(plugins.BERKAS_SETUJU, "utf8");
+    } catch (_) {
+      setujuAsli = null;
+    }
+  });
+  afterEach(() => {
+    fs.rmSync(path.join(plugins.DIR_PLUGIN, N), {
+      recursive: true,
+      force: true,
+    });
+  });
+  afterAll(() => {
+    if (setujuAsli === null) fs.rmSync(plugins.BERKAS_SETUJU, { force: true });
+    else fs.writeFileSync(plugins.BERKAS_SETUJU, setujuAsli);
+    if (!adaDirAsli) {
+      try {
+        fs.rmdirSync(plugins.DIR_PLUGIN);
+      } catch (_) {}
+    }
+  });
+
+  test("nama dengan pemisah path DITOLAK sebelum menyentuh disk", () => {
+    // "../keluar" akan menulis di luar plugins/ dan menimpa berkas lain.
+    for (const n of ["../keluar", "a/b", "..\naik", "/mutlak"]) {
+      const r = plugins.pasang({ nama: n, command: "node" });
+      expect(r.ok).toBe(false);
+      expect(r.error).toMatch(/nama tak sah/);
+    }
+  });
+
+  test("perintah wajib — tak ada plugin tanpa cara menjalankannya", () => {
+    expect(plugins.pasang({ nama: N, command: "" }).ok).toBe(false);
+  });
+
+  test("izin asing ditolak saat memasang, bukan saat memanggil", () => {
+    const r = plugins.pasang({ nama: N, command: "node", izin: ["root.all"] });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/root\.all/);
+  });
+
+  test("memasang TIDAK memberi izin", () => {
+    // Inti pemisahan dua pintu: memasang dan menyetujui adalah dua tindakan.
+    expect(
+      plugins.pasang({
+        nama: N,
+        command: "npx",
+        args: ["-y", "@contoh/mcp"],
+        izin: ["network:https"],
+      }).ok,
+    ).toBe(true);
+    expect(plugins.disetujui()).not.toContain(N);
+    expect(plugins.kapabilitasDisetujui()).not.toContain("plugin." + N);
+  });
+
+  test("tak menimpa plugin yang sudah ada", () => {
+    expect(plugins.pasang({ nama: N, command: "node" }).ok).toBe(true);
+    const r = plugins.pasang({ nama: N, command: "lain" });
+    expect(r.ok).toBe(false);
+    expect(r.error).toMatch(/sudah terpasang/);
+  });
+
+  test("copot membuang persetujuannya juga", () => {
+    // Kalau tidak, memasang ulang plugin bernama sama mewarisi izin lama
+    // diam-diam — user mengira ia memasang sesuatu yang belum diberi apa-apa.
+    plugins.pasang({ nama: N, command: "node", izin: ["network:https"] });
+    fs.writeFileSync(
+      plugins.BERKAS_SETUJU,
+      JSON.stringify(plugins.disetujui().concat([N])),
+    );
+    expect(plugins.disetujui()).toContain(N);
+
+    expect(plugins.copot(N).ok).toBe(true);
+    expect(fs.existsSync(path.join(plugins.DIR_PLUGIN, N))).toBe(false);
+    expect(plugins.disetujui()).not.toContain(N);
+  });
+
+  test("copot menolak nama berbahaya", () => {
+    expect(plugins.copot("../..").ok).toBe(false);
+  });
+
+  test("pemasangan tak pernah mengunduh atau menyalin kode", () => {
+    // skill_install dulu menerima URL. Jalur itu sengaja tak dihidupkan lagi:
+    // yang ditulis hanya manifest, yaitu CARA MENJALANKAN sesuatu yang sudah ada.
+    const SRC = fs.readFileSync(
+      require.resolve("../agent/plugins.cjs"),
+      "utf8",
+    );
+    expect(SRC).not.toMatch(/https?:\/\/|fetch\(|https\.get|copyFileSync/);
+  });
+});

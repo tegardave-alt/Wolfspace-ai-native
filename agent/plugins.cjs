@@ -203,6 +203,101 @@ function kapabilitasDisetujui() {
 }
 
 /**
+ * Pasang plugin: tulis plugins/<nama>/manifest.json.
+ *
+ * Pemasangan SENGAJA tidak menyalin atau mengunduh kode apa pun. Yang ditulis
+ * cuma manifest — perintah untuk MENJALANKAN sesuatu yang sudah ada (npx, atau
+ * skrip di disk). Jadi tak ada jalur "ambil kode dari URL lalu simpan", yang
+ * dulu ada di skill_install dan jadi celahnya.
+ *
+ * Memasang TIDAK memberi izin. Manifest hanya MEREKAM izin yang diminta;
+ * persetujuan tetap tindakan terpisah lewat _disetujui.json. Itu sebabnya
+ * memasang plugin tak pernah bisa membuat sesuatu langsung terjangkau agent.
+ *
+ * @param {{nama: string, command: string, args?: string[], izin?: string[], ket?: string, versi?: string}} p
+ * @returns {{ok: true, dir: string} | {ok: false, error: string}}
+ */
+function pasang(p) {
+  const nama = String((p && p.nama) || "").trim();
+  // Divalidasi SEBELUM menyentuh path. "../sesuatu" akan keluar dari plugins/
+  // dan menimpa berkas di tempat lain; _amanNama menolak pemisah path apa pun.
+  if (!_amanNama(nama)) {
+    return {
+      ok: false,
+      error:
+        "nama tak sah: harus diawali huruf/angka, hanya boleh huruf, angka, titik, garis bawah, dan strip",
+    };
+  }
+  const command = String((p && p.command) || "").trim();
+  if (!command) return { ok: false, error: "perintah wajib diisi" };
+
+  const args = Array.isArray(p && p.args) ? p.args.map(String) : [];
+  const izin = Array.isArray(p && p.izin) ? p.izin.map(String) : [];
+  const asing = izin.filter((z) => !IZIN_DIKENAL.includes(z));
+  if (asing.length) {
+    return { ok: false, error: "izin tak dikenal: " + asing.join(", ") };
+  }
+
+  const dir = path.join(DIR_PLUGIN, nama);
+  // Penjaga kedua, setelah _amanNama: pastikan hasil join memang di dalam
+  // plugins/. Murah, dan menangkap kesalahan yang lolos dari regex mana pun.
+  if (path.relative(DIR_PLUGIN, dir).startsWith("..")) {
+    return { ok: false, error: "jalur keluar dari folder plugins" };
+  }
+  if (fs.existsSync(path.join(dir, "manifest.json"))) {
+    return { ok: false, error: "plugin '" + nama + "' sudah terpasang" };
+  }
+
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(
+      path.join(dir, "manifest.json"),
+      JSON.stringify(
+        {
+          nama,
+          versi: String((p && p.versi) || "0.1.0"),
+          ket: String((p && p.ket) || ""),
+          command,
+          args,
+          izin,
+        },
+        null,
+        2,
+      ),
+    );
+  } catch (e) {
+    return { ok: false, error: "gagal menulis manifest: " + e.message };
+  }
+  return { ok: true, dir };
+}
+
+/**
+ * Copot plugin: hapus foldernya DAN persetujuannya.
+ *
+ * Persetujuan ikut dibuang supaya memasang ulang plugin bernama sama tidak
+ * mewarisi izin lama diam-diam.
+ *
+ * @param {string} nama
+ * @returns {{ok: boolean, error?: string}}
+ */
+function copot(nama) {
+  const n = String(nama || "").trim();
+  if (!_amanNama(n)) return { ok: false, error: "nama tak sah" };
+  const dir = path.join(DIR_PLUGIN, n);
+  if (path.relative(DIR_PLUGIN, dir).startsWith("..")) {
+    return { ok: false, error: "jalur keluar dari folder plugins" };
+  }
+  try {
+    fs.rmSync(dir, { recursive: true, force: true });
+    const sisa = disetujui().filter((x) => x !== n);
+    fs.writeFileSync(BERKAS_SETUJU, JSON.stringify(sisa.sort(), null, 2));
+  } catch (e) {
+    return { ok: false, error: e.message };
+  }
+  return { ok: true };
+}
+
+/**
  * Konfigurasi server MCP untuk plugin yang SUDAH DISETUJUI, dalam bentuk yang
  * sama dengan config/mcp.json.
  *
@@ -269,4 +364,6 @@ module.exports = {
   kapabilitasDisetujui,
   konfigMcp,
   adalahPlugin,
+  pasang,
+  copot,
 };
