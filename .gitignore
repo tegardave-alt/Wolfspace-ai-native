@@ -3,6 +3,10 @@ cloud-keys.json
 workspace/
 dist-app/
 _agent_backups/
+
+# Profil CPU dari pengawas beku (scripts/profil-beku.cjs).
+# Berisi nama fungsi + jalur berkas mesin ini; jangan ikut ter-commit.
+_profil/
 dev.bat
 sync-installed.ps1
 sync-installed.bat
