@@ -470,23 +470,26 @@ const SELF_TOOLS = [
       },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "skill_install",
-      description: "Install a new skill from npm, a local .cjs file, or a URL.",
-      parameters: {
-        type: "object",
-        properties: {
-          source: {
-            type: "string",
-            description: "npm package name, path to .cjs file, or URL",
-          },
-        },
-        required: ["source"],
-      },
-    },
-  },
+  // skill_install DICABUT dari daftar tool model. Jangan dikembalikan.
+  //
+  // Dulu deskripsinya berbunyi "Install a new skill from npm, a local .cjs file,
+  // or a URL" — artinya model bisa memasang kode arbitrer untuk dirinya sendiri,
+  // tanpa satu pun persetujuan: tak ada admission CommandChain di cabang skill,
+  // dan EXECUTION_TOOLS (yang memicu HITL) hanya berisi "bash".
+  //
+  // Yang membuatnya serius bukan kemungkinan plugin-nya jahat, melainkan JALUR
+  // PEMANGGILANNYA: tool dipilih oleh model, dan model membaca isi berkas,
+  // keluaran tool, serta halaman web — semuanya bisa memuat kalimat yang
+  // berbunyi seperti perintah. Di VS Code tak ada masalah ini karena MANUSIA
+  // yang menekan tombol install.
+  //
+  // Memasang adalah tindakan manusia. Implementasinya sengaja DIBIARKAN hidup di
+  // tools/index.cjs supaya UI (dan jalur HITL nanti) tetap bisa memanggilnya —
+  // yang dicabut hanya pintu ke model.
+  //
+  // Kalau suatu saat model perlu MENGUSULKAN pemasangan, jalurnya sudah ada:
+  // tambahkan namanya ke EXECUTION_TOOLS di agent/self_agent.cjs, seperti bash.
+  // Dikunci oleh tests/plugin-pintu-pasang.test.js.
   {
     type: "function",
     function: {

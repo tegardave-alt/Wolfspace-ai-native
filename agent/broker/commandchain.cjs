@@ -165,7 +165,29 @@ function sesiRuleset() {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    _ruleset = mulaiSesi({ tanpa });
+
+    // Kapabilitas plugin yang SUDAH DISETUJUI user ikut dibekukan ke genesis.
+    // Dibaca sekali di sini, bersama sisa kosakata, jadi sifatnya sama: menyetujui
+    // plugin di tengah sesi TIDAK berlaku sampai sesi berikutnya.
+    //
+    // Itu disengaja, bukan keterbatasan. Kalau persetujuan bisa masuk ke ruleset
+    // yang sedang berjalan, maka ada jalan untuk MELONGGARKAN genesis setelah ia
+    // dibekukan — dan seluruh gunanya hilang. Yang tak disetujui tak ditolak saat
+    // dipanggil; ia tak pernah punya tool untuk dipanggil.
+    //
+    // require di dalam fungsi, bukan di kepala berkas: plugins.cjs memindai disk,
+    // dan modul ini dipakai di jalur yang harus tetap murni saat diuji.
+    let kapPlugin = [];
+    try {
+      kapPlugin = require("../plugins.cjs").kapabilitasDisetujui();
+    } catch (_) {
+      kapPlugin = []; // tak ada sistem plugin = tak ada kapabilitas plugin
+    }
+
+    _ruleset = mulaiSesi({
+      tanpa,
+      kapabilitas: KOSAKATA_DEFAULT.concat(kapPlugin),
+    });
   }
   return _ruleset;
 }
