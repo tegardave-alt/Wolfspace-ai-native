@@ -20,7 +20,7 @@
     "prepare": "husky",
     "vendor:reactflow": "node scripts/reactflow/build.cjs",
     "vendor:three": "node scripts/three/build.cjs",
-    "typecheck": "tsc -p agent/jsconfig.json"
+    "typecheck": "tsc -p agent/jsconfig.json && tsc -p public/tsconfig.json"
   },
   "keywords": [
     "ai",
@@ -121,10 +121,10 @@
       "node --check",
       "prettier --write"
     ],
-    "*.jsx": [
+    "*.{css,html,json,md}": [
       "prettier --write"
     ],
-    "*.{css,html,json,md}": [
+    "*.{jsx,tsx,ts}": [
       "prettier --write"
     ]
   },

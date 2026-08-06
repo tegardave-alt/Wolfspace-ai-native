@@ -2158,6 +2158,31 @@ function Sidebar({
             active={terminalOpen}
             onClick={() => setTerminalOpen(!terminalOpen)}
           />
+          {/* Plugins — halaman penuh (seperti Extensions di VS Code), bukan
+              panel bawah seperti Terminal. Ikon colokan: plugin = server MCP
+              yang dicolok dari luar, bukan modul yang di-require ke dalam. */}
+          <Item
+            icon={
+              <svg
+                width="19"
+                height="19"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="1.5"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <path d="M12 22v-5"></path>
+                <path d="M9 8V2"></path>
+                <path d="M15 8V2"></path>
+                <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"></path>
+              </svg>
+            }
+            label="Plugins"
+            active={view === "plugins"}
+            onClick={() => setView("plugins")}
+          />
         </div>
       )}
     </aside>

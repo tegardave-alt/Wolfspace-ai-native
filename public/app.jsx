@@ -3050,6 +3050,13 @@ function App() {
           </div>
           <div
             className={
+              "page hub-page " + (view === "plugins" ? "active" : "enter")
+            }
+          >
+            {view === "plugins" && <PluginsView />}
+          </div>
+          <div
+            className={
               "page hub-page " + (view === "agents" ? "active" : "enter")
             }
           >
