@@ -1,17 +1,17 @@
 /**
  * Terminal Worker - Worker Thread
- * 
+ *
  * Berjalan sebagai worker thread untuk execute terminal commands
  * tanpa blocking main thread.
- * 
+ *
  * Manfaat:
  * - Terminal execution tidak blocking server
  * - User lain tetap bisa chat saat command jalan
  * - Share memory untuk fast I/O
  */
 
-const { parentPort } = require('worker_threads');
-const pty = require('node-pty');
+const { parentPort } = require("worker_threads");
+const pty = require("node-pty");
 
 // Track active terminal sessions
 const sessions = new Map();
@@ -24,27 +24,27 @@ const sessions = new Map();
  * @returns {{id: string, pid: number}} Session info
  */
 function createSession(id, cwd, shell) {
-  const shellCmd = shell || (process.platform === 'win32' ? 'cmd.exe' : 'bash');
-  
+  const shellCmd = shell || (process.platform === "win32" ? "cmd.exe" : "bash");
+
   const child = pty.spawn(shellCmd, [], {
-    name: 'xterm-256color',
+    name: "xterm-256color",
     cols: 120,
     rows: 30,
     cwd: cwd || process.cwd(),
-    env: { ...process.env, TERM: 'xterm-256color' },
-    useConpty: process.platform === 'win32',
+    env: { ...process.env, TERM: "xterm-256color" },
+    useConpty: process.platform === "win32",
   });
-  
+
   const session = {
     id,
     pid: child.pid,
     process: child,
-    buffer: '',
+    buffer: "",
     createdAt: Date.now(),
   };
-  
+
   sessions.set(id, session);
-  
+
   // Stream output via node-pty onData
   child.onData((data) => {
     session.buffer += data;
@@ -53,23 +53,23 @@ function createSession(id, cwd, shell) {
       session.buffer = session.buffer.slice(-500000);
     }
     parentPort.postMessage({
-      type: 'output',
+      type: "output",
       id,
-      stream: 'stdout',
+      stream: "stdout",
       data: data,
     });
   });
-  
+
   // Handle exit via node-pty onExit
   child.onExit(({ exitCode }) => {
     parentPort.postMessage({
-      type: 'exit',
+      type: "exit",
       id,
       code: exitCode,
     });
     sessions.delete(id);
   });
-  
+
   return { id, pid: child.pid };
 }
 
@@ -84,7 +84,7 @@ function writeSession(id, data) {
   if (!session) {
     return { ok: false, error: "session not found" };
   }
-  
+
   try {
     session.process.write(data);
     return { ok: true };
@@ -102,14 +102,14 @@ function writeSession(id, data) {
 function readBuffer(id, clear) {
   const session = sessions.get(id);
   if (!session) {
-    return { ok: false, error: 'session not found' };
+    return { ok: false, error: "session not found" };
   }
-  
+
   const buffer = session.buffer;
   if (clear) {
-    session.buffer = '';
+    session.buffer = "";
   }
-  
+
   return { ok: true, buffer };
 }
 
@@ -121,12 +121,12 @@ function readBuffer(id, clear) {
 function destroySession(id) {
   const session = sessions.get(id);
   if (!session) {
-    return { ok: false, error: 'session not found' };
+    return { ok: false, error: "session not found" };
   }
-  
+
   if (session.destroying) return { ok: true };
   session.destroying = true;
-  
+
   try {
     session.process.kill();
     sessions.delete(id);
@@ -154,49 +154,50 @@ function listSessions() {
 }
 
 // Listen for messages from parent thread
-parentPort.on('message', (msg) => {
+parentPort.on("message", (msg) => {
   const { type, id, payload } = msg;
-  
+
   let result;
-  
+
   try {
     switch (type) {
-      case 'create':
+      case "create":
         result = createSession(id, payload?.cwd, payload?.shell);
         break;
-        
-      case 'write':
+
+      case "write":
         result = writeSession(id, payload?.data);
         break;
-        
-      case 'read':
+
+      case "read":
         result = readBuffer(id, payload?.clear);
         break;
-        
-      case 'destroy':
+
+      case "destroy":
         result = destroySession(id);
         break;
-        
-      case 'list':
+
+      case "list":
         result = listSessions();
         break;
-        
-      case 'shutdown':
+
+      case "shutdown":
         for (const [sid, session] of sessions) {
-          try { session.process.kill(); } catch(_) {}
+          try {
+            session.process.kill();
+          } catch (_) {}
         }
         setTimeout(() => process.exit(0), 500);
         break;
-        
+
       default:
-        result = { ok: false, error: \`unknown command: \${type}\` };
+        result = { ok: false, error: `unknown command: ${type}` };
     }
-    
-    parentPort.postMessage({ type: 'result', id, result });
-    
+
+    parentPort.postMessage({ type: "result", id, result });
   } catch (error) {
     parentPort.postMessage({
-      type: 'error',
+      type: "error",
       id,
       error: error.message,
     });
@@ -204,4 +205,4 @@ parentPort.on('message', (msg) => {
 });
 
 // Signal ready
-parentPort.postMessage({ type: 'ready' });
+parentPort.postMessage({ type: "ready" });

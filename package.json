@@ -19,7 +19,8 @@
     "test:watch": "jest --watch --verbose",
     "prepare": "husky",
     "vendor:reactflow": "node scripts/reactflow/build.cjs",
-    "vendor:three": "node scripts/three/build.cjs"
+    "vendor:three": "node scripts/three/build.cjs",
+    "typecheck": "tsc -p agent/jsconfig.json"
   },
   "keywords": [
     "ai",

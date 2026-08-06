@@ -30,9 +30,38 @@
 // Ia mati bersama aplikasi. Tak pernah menyentuh disk, jadi tak ada sisa yang
 // perlu dibersihkan dan tak ada berkas yang mengotori folder proyek.
 
+// @ts-check
 "use strict";
 
 const crypto = require("crypto");
+
+/**
+ * Hasil penyerahan. UNION, bukan `{ok:boolean, id?:string, ...}`.
+ *
+ * Bentuk longgar mengizinkan `{ok:true}` TANPA id — dan handle adalah
+ * kapabilitasnya, jadi sukses tanpa handle bukan sekadar janggal, itu jalan buntu
+ * yang baru ketahuan di pemanggil. Union menutupnya di titik deklarasi: sukses
+ * pasti membawa handle, gagal pasti membawa sebab.
+ *
+ * Perhatikan juga apa yang TIDAK ada di kedua cabang: tak ada field apa pun
+ * tentang asal berkas. Itu bukan kelalaian — itu inti modul ini, dan sekarang
+ * ikut tertulis di kontraknya.
+ *
+ * @typedef {{ ok: true, id: string, nama: string, bytes: number, tipe: string|null }
+ *         | { ok: false, error: string }} HasilSerah
+ */
+
+/**
+ * Hasil pembacaan lampiran.
+ *
+ * Cabang `biner` sengaja terpisah dari gagal biasa: pemanggil perlu bisa
+ * membedakan "tak dikenal" dari "ada tapi tak terbaca sebagai teks", karena yang
+ * kedua masih membawa nama dan ukuran yang berguna untuk ditampilkan.
+ *
+ * @typedef {{ ok: true, nama: string, bytes: number, isi: string }
+ *         | { ok: false, biner: true, nama: string, bytes: number, error: string }
+ *         | { ok: false, error: string }} HasilAmbil
+ */
 
 // Batas dijaga karena isinya tinggal di memori proses pemilik jendela.
 const MAKS_PER_BERKAS = 8 * 1024 * 1024; // 8 MB
@@ -77,7 +106,7 @@ function _totalByte() {
  * @param {string} b.nama  nama tampilan; dipotong jadi basename apa pun isinya
  * @param {Buffer|Uint8Array|string} b.isi  ISI berkas, sudah dibaca pemanggil
  * @param {string} [b.tipe] MIME dari pemilih berkas, sekadar keterangan
- * @returns {{ok:boolean, id?:string, nama?:string, bytes?:number, tipe?:string, error?:string}}
+ * @returns {HasilSerah}
  */
 function serahkan(b) {
   const nama = _namaAman(b && b.nama);
@@ -142,6 +171,9 @@ function _tampakBiner(buf) {
  * handle sengaja boleh dipakai berkali-kali: konteks agent kerap terpotong dan
  * ia perlu membaca ulang, sementara membaca ulang di sini tak menambah akses
  * apa pun.
+ *
+ * @param {string} id handle yang dikembalikan serahkan(); BUKAN path
+ * @returns {HasilAmbil}
  */
 function ambil(id) {
   const a = _simpan.get(String(id || ""));

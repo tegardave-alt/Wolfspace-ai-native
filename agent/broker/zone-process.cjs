@@ -8,7 +8,27 @@
 //
 // The zone process's ONLY channel to the outside world is IPC messages
 // forwarded here and validated by the Broker before anything executes.
+// @ts-check
 "use strict";
+
+/**
+ * Status pengurungan jaringan zona.
+ *
+ * UNION, dan di sini bentuknya menegakkan sesuatu yang nyata: `alasan` HANYA ada
+ * pada cabang yang TIDAK terkurung. Artinya tak mungkin ada "terkurung, tapi ini
+ * alasan kenapa tidak" — dan tak mungkin pula "tidak terkurung" tanpa
+ * menyebutkan sebabnya. Padahal justru sebab itulah satu-satunya hal yang
+ * membedakan pengaman yang memang tak tersedia dari pengaman yang mati diam-diam.
+ *
+ * Efek keduanya ada di laporSekali(): penjaga `if (... || st.jaringanTerkurung)
+ * return;` sekarang DIPERIKSA mesin. Kalau seseorang menghapus penjaga itu,
+ * pembacaan `st.alasan` di bawahnya langsung jadi error tipe — bukan `undefined`
+ * yang diam-diam tercetak ke peringatan keamanan.
+ *
+ * @typedef {{ transport: "linux-netns", jaringanTerkurung: true }
+ *         | { transport: "wsl-netns", jaringanTerkurung: true, distro: string }
+ *         | { transport: "fork", jaringanTerkurung: false, alasan: string }} StatusKurungan
+ */
 
 const { fork, spawn, execFileSync } = require("child_process");
 const path = require("path");
@@ -300,6 +320,12 @@ function wslZona() {
 // dengan gerbang Docker lama yang sudah dibuang — pengaman yang bisa mati
 // sendiri tanpa memberi tahu. Yang berbahaya bukan tak adanya pengurungan
 // (kadang memang tak tersedia), tapi tak adanya cara membedakan keduanya.
+/**
+ * @param {unknown} ns  hasil netnsWrapper() — truthy bila namespace Linux dipakai
+ * @param {{distro: string}|null|undefined} wsl  zona WSL bila dipakai
+ * @param {boolean} [matiSengaja] pemanggil mematikannya lewat opts.netns=false
+ * @returns {StatusKurungan}
+ */
 function statusKurungan(ns, wsl, matiSengaja) {
   if (ns) return { transport: "linux-netns", jaringanTerkurung: true };
   if (wsl)
@@ -325,6 +351,7 @@ function statusKurungan(ns, wsl, matiSengaja) {
 // justru paling perlu terlihat pada orang yang tak menyalakan apa pun. Sekali
 // jalan, bukan per eksekusi, supaya tak membanjiri keluaran agent.
 let _sudahLapor = false;
+/** @param {StatusKurungan} st */
 function laporSekali(st) {
   if (_sudahLapor || st.jaringanTerkurung) return;
   _sudahLapor = true;
@@ -452,11 +479,45 @@ function runInCapabilityZone(code, broker, opts = {}) {
       );
     }
 
+    // INVARIAN yang menjaga `...flagLokal` di bawah tetap aman, dan yang sampai
+    // sekarang tak tertulis di mana pun: `ns` hanya pernah terisi di Linux
+    // (netnsWrapper), `wsl` hanya di win32 (wslZona). Keduanya TAK PERNAH
+    // bersamaan. Karena itu cabang `if (ns)` hanya tercapai di Linux, di mana
+    // `wsl` pasti null, sehingga penjaga `!wsl && !flagLokal` di atas sudah
+    // memastikan flagLokal bukan null.
+    //
+    // Ditulis karena TypeScript menandainya dan invariannya ternyata hidup di
+    // DUA fungsi lain — pembaca tak punya cara tahu tanpa membuka keduanya.
+    // Kalau suatu saat wslZona() dibuat jalan di Linux (mis. untuk pengujian),
+    // cabang ini jadi tercapai dengan flagLokal null dan `...null` melempar.
+    // stdout/stderr ditegaskan non-null karena KETIGA cabang di bawah memakai
+    // "pipe" untuk keduanya. stdin sengaja TIDAK ditegaskan: dua dari tiga
+    // cabang memakai "ignore", jadi di sana ia memang null — dan itu tercermin
+    // di satu-satunya tempat yang menyentuhnya (cabang wsl).
+    /** @type {import("child_process").ChildProcess & {
+     *    stdout: import("stream").Readable,
+     *    stderr: import("stream").Readable }} */
     let child;
     if (ns) {
-      child = spawn(ns, ["-n", process.execPath, ...flagLokal, WORKER], {
-        stdio: ["ignore", "pipe", "pipe", "ipc"],
-      });
+      // Cast, BUKAN `|| []`. Bila invarian di atas suatu saat patah, `...null`
+      // melempar dan zona tak jadi berjalan — itu perilaku yang benar. `|| []`
+      // akan menjalankannya TANPA flag permission, yaitu diam-diam tanpa
+      // pengurungan berkas: persis kegagalan senyap yang dihindari modul ini.
+      // Cast hasil spawn: literal stdio disimpulkan sebagai string[], bukan
+      // tuple, jadi TypeScript memilih overload yang stream-nya nullable.
+      // "pipe" di posisi 1 dan 2 sudah terbaca jelas di baris berikutnya.
+      child = /** @type {typeof child} */ (
+        spawn(
+          ns,
+          [
+            "-n",
+            process.execPath,
+            .../** @type {string[]} */ (flagLokal),
+            WORKER,
+          ],
+          { stdio: ["ignore", "pipe", "pipe", "ipc"] },
+        )
+      );
     } else if (wsl) {
       child = spawn(
         "wsl.exe",
@@ -477,17 +538,28 @@ function runInCapabilityZone(code, broker, opts = {}) {
         { stdio: ["pipe", "pipe", "pipe"] },
       );
     } else {
-      child = fork(WORKER, [], {
-        execArgv: flagLokal, // tanpa --allow-fs-read/write => fs ditolak se-proses
-        stdio: ["ignore", "pipe", "pipe", "ipc"],
-      });
+      // Cabang ini hanya tercapai saat !ns && !wsl, dan penjaga di atas
+      // (`!wsl && !flagLokal` -> reject) sudah memastikan flagLokal bukan null
+      // persis di keadaan itu. Cast, bukan nilai default — Node tanpa flag
+      // permission harus GAGAL, bukan berjalan tanpa pengurungan berkas.
+      child = /** @type {typeof child} */ (
+        fork(WORKER, [], {
+          execArgv: /** @type {string[]} */ (flagLokal), // tanpa --allow-fs-read/write => fs ditolak se-proses
+          stdio: ["ignore", "pipe", "pipe", "ipc"],
+        })
+      );
     }
 
     // Satu cara mengirim, apa pun transportnya.
     const kirimKeZona = (msg) => {
       if (wsl) {
         try {
-          child.stdin.write(JSON.stringify(msg) + "\n");
+          // Hanya cabang wsl yang memakai stdio "pipe" di posisi 0; di dua
+          // cabang lain stdin memang null. Penjaga `if (wsl)` inilah yang
+          // membuatnya aman, dan cast ini menandai ketergantungan itu.
+          /** @type {import("stream").Writable} */ (child.stdin).write(
+            JSON.stringify(msg) + "\n",
+          );
         } catch (_) {}
         return;
       }
