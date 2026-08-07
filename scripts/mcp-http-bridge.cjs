@@ -112,7 +112,21 @@ async function kirimStreamable(pesan) {
 
   const ct = (res.headers.get("content-type") || "").toLowerCase();
   if (ct.includes("text/event-stream")) {
-    await teruskanSSE(res);
+    // JANGAN di-await.
+    //
+    // Streamable HTTP MEMBOLEHKAN server menahan aliran tetap terbuka setelah
+    // membalas, untuk pesan susulan yang ia mulai sendiri. Menunggu `done`
+    // berarti menunggu server menutupnya — dan server yang tak pernah menutup
+    // membuat antrean di bawah macet selamanya.
+    //
+    // Terukur pada @penpot/mcp: `initialize` dibalas dan lolos, lalu
+    // `tools/list` menggantung sampai timeout 60 detik. Bukan Penpot yang
+    // salah — permintaan yang sama lewat curl dijawab seketika.
+    //
+    // Kekhawatiran lama "balasannya saling menyalip di stdout" tidak berlaku:
+    // JSON-RPC membawa `id`, klien mencocokkan balasan lewat id, dan keluar()
+    // menulis satu baris utuh sekali jalan.
+    teruskanSSE(res).catch((e) => catat("aliran SSE putus: " + e.message));
     return true;
   }
   if (ct.includes("application/json")) {

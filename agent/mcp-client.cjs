@@ -341,9 +341,20 @@ class MCPClient {
         process.platform === "win32" && conf.command === "npx"
           ? "npx.cmd"
           : conf.command;
+      // cwd DITERUSKAN. Sebelum ini field itu diam-diam diabaikan: konfigurasi
+      // boleh menuliskannya, spawn tak pernah memakainya.
+      //
+      // Akibatnya nyata, bukan teoretis. Server MCP Penpot mencari berkas
+      // konfigurasinya relatif terhadap cwd (`data/initial_instructions.md`),
+      // jadi ia selalu mencarinya di akar WOLFSPACE dan mati saat start dengan
+      // "Configuration file not found" — pesan yang menunjuk ke jalur yang tak
+      // pernah ada di sana. Ini juga membuat `cwd` yang ditulis
+      // plugins.cjs konfigMcp() ikut tak berguna: args relatif di manifest
+      // plugin diselesaikan dari cwd proses induk, bukan dari akar repo.
       const proc = spawn(cmd, conf.args || [], {
         env,
         shell: process.platform === "win32",
+        cwd: conf.cwd || undefined,
       });
 
       let buffer = "";
