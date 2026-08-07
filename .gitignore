@@ -7,6 +7,10 @@ _agent_backups/
 # Profil CPU dari pengawas beku (scripts/profil-beku.cjs).
 # Berisi nama fungsi + jalur berkas mesin ini; jangan ikut ter-commit.
 _profil/
+
+# Persetujuan plugin: keputusan PER-MESIN, bukan bagian dari kode.
+# Ikut ter-commit berarti meng-clone repo ini = mewarisi izin milik orang lain.
+plugins/_disetujui.json
 dev.bat
 sync-installed.ps1
 sync-installed.bat
