@@ -191,3 +191,50 @@ describe("melebarkan dibekukan, mempersempit selalu boleh", () => {
     expect(SRC_MCP).toMatch(/izin plugin dicabut user/);
   });
 });
+
+describe("menulis konfigurasi memakai isi berkas, bukan gabungan", () => {
+  // KENAPA ADA. _loadConfig() mengembalikan GABUNGAN berkas + plugin. addServer()
+  // dan removeServer() membacanya lalu menulis balik SELURUHNYA lewat
+  // _saveConfig(). Tanpa pemisahan ini, menambah satu server MCP dari UI akan
+  // memanggang setiap plugin yang disetujui ke dalam config/mcp.json — lengkap
+  // dengan penanda _plugin.
+  //
+  // Akibatnya plugin punya dua rumah, dan yang di config/mcp.json menang
+  // (lihat urutan penggabungan). Plugin dicopot dari halaman Plugins pun entri
+  // bayangannya tetap tinggal di berkas, hidup, tanpa ada yang tahu asalnya.
+  // Kelas kesalahan yang sama dengan skills.cjs: config mati yang bertahan.
+  test("addServer & removeServer membaca _loadConfigMentah()", () => {
+    for (const nama of ["addServer", "removeServer", "toggleServer"]) {
+      const i = SRC_MCP.indexOf(nama + "(name");
+      expect(i).toBeGreaterThan(-1);
+      const blok = SRC_MCP.slice(i, i + 700);
+      expect(blok).toMatch(/_loadConfigMentah\(\)/);
+      // Gabungan tak boleh dipakai di jalur yang menulis.
+      expect(blok).not.toMatch(/const config = this\._loadConfig\(\);/);
+    }
+  });
+
+  test("toggleServer menolak plugin dengan jelas, bukan diam", () => {
+    // Hidup-matinya plugin ditentukan PERSETUJUAN di halaman Plugins, bukan
+    // sakelar disabled di config/mcp.json. Tanpa pesan ini, sakelarnya tampak
+    // rusak.
+    const i = SRC_MCP.indexOf("async toggleServer(");
+    const blok = SRC_MCP.slice(i, i + 1100);
+    expect(blok).toMatch(/_dariPlugin\(name\)/);
+    expect(blok).toMatch(/halaman Plugins/);
+  });
+
+  test("_loadConfigMentah TIDAK menyentuh plugin", () => {
+    const i = SRC_MCP.indexOf("_loadConfigMentah() {");
+    const blok = SRC_MCP.slice(i, SRC_MCP.indexOf("_loadConfig() {", i));
+    expect(blok).not.toMatch(/plugins\.cjs|konfigMcp/);
+  });
+
+  test("penanda _plugin tak pernah ditulis ke berkas", () => {
+    // Penjaga arah: satu-satunya tempat _plugin muncul adalah hasil gabungan
+    // di memori, bukan sesuatu yang bisa mendarat di disk.
+    const i = SRC_MCP.indexOf("_saveConfig(");
+    const blok = SRC_MCP.slice(i, i + 400);
+    expect(blok).not.toMatch(/_plugin/);
+  });
+});

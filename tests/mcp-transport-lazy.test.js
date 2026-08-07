@@ -256,8 +256,12 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
   });
 
   test("toggle menyalakan lewat connectServer, bukan _startServer langsung", () => {
+    // Diiris sampai AKHIR fungsi, bukan sejumlah karakter tetap. Jendela tetap
+    // pernah membuat tes ini merah hanya karena komentar di dalam fungsinya
+    // bertambah — kegagalan yang tak ada hubungannya dengan sifat yang dijaga.
     const i = SRC.indexOf("async toggleServer");
-    const blok = SRC.slice(i, i + 1200);
+    const j = SRC.indexOf("\n  }", i);
+    const blok = SRC.slice(i, j > i ? j : i + 2400);
     expect(blok).toMatch(/await this\.connectServer\(name\)/);
     expect(blok).not.toMatch(/await this\._startServer/);
   });

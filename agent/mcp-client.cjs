@@ -176,15 +176,26 @@ class MCPClient {
     this.initialized = false;
   }
 
-  _loadConfig() {
-    let dasar = {};
+  // Isi berkas APA ADANYA, tanpa plugin.
+  //
+  // WAJIB dipakai oleh apa pun yang akan MENULIS balik. _loadConfig() di bawah
+  // mengembalikan gabungan berkas + plugin; menyimpan hasil gabungan itu akan
+  // memanggang entri plugin ke dalam config/mcp.json secara permanen — lengkap
+  // dengan penanda _plugin — sehingga plugin punya dua rumah sekaligus dan yang
+  // di config/mcp.json menang. Persis kelas kesalahan yang membuat config mati
+  // bertahan tanpa ada yang tahu.
+  _loadConfigMentah() {
     try {
       if (fs.existsSync(CONFIG_PATH))
-        dasar = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
+        return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
     } catch (e) {
       dlog("mcp", "error", "Gagal memuat mcp.json", { error: e.message });
-      dasar = {};
     }
+    return {};
+  }
+
+  _loadConfig() {
+    const dasar = this._loadConfigMentah();
 
     // Plugin yang sudah DISETUJUI user ikut sebagai server MCP biasa, sehingga
     // seluruh jalur di bawah (spawn, handshake, proses yatim, hot-reload) tak
@@ -425,7 +436,9 @@ class MCPClient {
 
   async addServer(name, conf) {
     this.stopServer(name);
-    const config = this._loadConfig();
+    // MENTAH, bukan gabungan: menyimpan hasil gabungan akan menulis entri plugin
+    // ke config/mcp.json secara permanen.
+    const config = this._loadConfigMentah();
     if (!config.mcpServers) config.mcpServers = {};
     config.mcpServers[name] = conf;
     this._saveConfig(config);
@@ -439,7 +452,9 @@ class MCPClient {
 
   removeServer(name) {
     this.stopServer(name);
-    const config = this._loadConfig();
+    // MENTAH: yang boleh dihapus dari berkas hanya yang memang ada di berkas.
+    // Plugin dicopot lewat halaman Plugins, bukan dari sini.
+    const config = this._loadConfigMentah();
     // Bedakan "terhapus" dari "memang tak ada": dulu keduanya membalas {ok:true}
     // sehingga salah ketik nama tampak berhasil dan UI diam-diam tak berubah.
     const existed = !!(config.mcpServers && config.mcpServers[name]);
@@ -451,8 +466,22 @@ class MCPClient {
   }
 
   async toggleServer(name, enabled) {
-    const config = this._loadConfig();
+    // MENTAH, seperti addServer/removeServer: menulis hasil gabungan akan
+    // memanggang entri plugin ke config/mcp.json.
+    const config = this._loadConfigMentah();
     if (!config.mcpServers || !config.mcpServers[name]) {
+      // Plugin memang tak akan ditemukan di sini, dan itu benar: hidup-matinya
+      // ditentukan PERSETUJUAN user di halaman Plugins, bukan sakelar disabled
+      // di config/mcp.json. Dikatakan terus terang supaya user tak mengira
+      // sakelarnya rusak.
+      if (this._dariPlugin(name)) {
+        return {
+          ok: false,
+          error:
+            `'${name}' adalah plugin, bukan entri config/mcp.json. ` +
+            "Beri atau cabut izinnya di halaman Plugins.",
+        };
+      }
       return { ok: false, error: "MCP server not found in configuration" };
     }
     const conf = config.mcpServers[name];
