@@ -101,11 +101,24 @@ describe("jembatan remote bicara Streamable HTTP, bukan cuma SSE lama", () => {
 
   test("berkasnya ada dan dipakai oleh UI", () => {
     expect(fs.existsSync(BRIDGE)).toBe(true);
-    const UI = fs.readFileSync(
-      require.resolve("../public/app/Components.jsx"),
+    // Resolusi perintah MCP sekarang SATU sumber di Config.jsx. Sebelumnya ia
+    // digandakan di Components.jsx dan Screens.jsx, dan dua salinan itu sudah
+    // melenceng — satu masih memakai sse-bridge.cjs lama. Tes ini dulu menunjuk
+    // salah satu salinan; sekarang menunjuk sumbernya.
+    const CFG = fs.readFileSync(
+      require.resolve("../public/app/Config.jsx"),
       "utf8",
     );
-    expect(UI).toContain("scripts/mcp-http-bridge.cjs");
+    expect(CFG).toContain("scripts/mcp-http-bridge.cjs");
+
+    // Dan permukaannya benar-benar memakai resolver itu, bukan menyusun sendiri.
+    for (const f of [
+      "../public/app/Components.jsx",
+      "../public/app/Screens.jsx",
+    ]) {
+      const UI = fs.readFileSync(require.resolve(f), "utf8");
+      expect(UI).toMatch(/mcpResolvePerintah\(type\)/);
+    }
   });
 
   // Server uji NYATA (bukan mock): satu endpoint POST yang berperilaku sesuai

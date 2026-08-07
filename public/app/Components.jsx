@@ -680,33 +680,13 @@ function Composer({
     setMcpInputError("");
     setMcpInputSuccess("");
 
-    let command = "npx";
-    let args = [];
-    let cleanType = type.toLowerCase();
-
-    if (cleanType.startsWith("npx ")) {
-      const parts = type.split(/\s+/);
-      command = parts[0];
-      args = parts.slice(1);
-    } else if (cleanType.startsWith("http")) {
-      // Jembatan baru: coba Streamable HTTP dulu (spesifikasi MCP sekarang),
-      // jatuh ke SSE lama bila server menolaknya. sse-bridge.cjs yang lama
-      // HANYA bicara SSE, sehingga server yang cuma menyediakan /mcp tak
-      // pernah bisa tersambung — dan gagalnya senyap.
-      command = "node";
-      args = ["scripts/mcp-http-bridge.cjs", type];
-    } else if (cleanType.includes("/")) {
-      args = ["-y", type];
-    } else if (cleanType === "notion") {
-      args = ["-y", "@notionhq/notion-mcp-server"];
-    } else if (cleanType === "penpot") {
-      command = "node";
-      args = [
-        "C:\\langs\\node\\node_modules\\@penpot\\mcp\\packages\\server\\dist\\index.js",
-      ];
-    } else {
-      args = ["-y", `@modelcontextprotocol/server-${cleanType}`];
-    }
+    // Satu sumber: lihat mcpResolvePerintah() di app/Config.jsx. Digandakan
+    // di sini dulu, dan dua salinannya sempat melenceng.
+    const _r = mcpResolvePerintah(type);
+    let command = _r.command;
+    let args = _r.args;
+    // Masih dipakai di bawah untuk memetakan env var per layanan.
+    const cleanType = String(type || "").toLowerCase();
 
     // Nama server TIDAK BOLEH diturunkan dari URL mentah.
     //
