@@ -80,33 +80,13 @@ containment works on both. See `agent/broker/README.md`.
 The installer is **not code-signed**, so Windows SmartScreen will warn on first run —
 choose _More info → Run anyway_.
 
-### With Docker
+### Container / hosted
 
-Runs the server + agent in a container; the UI is served over HTTP rather than in a
-native window. Note this image runs Node and Python only — Go/Java/Rust/PHP/C toolchains
-are not installed, and `config.docker.json` leaves those runners unset.
-
-```bash
-docker build -t wolfspace .
-docker run -p 8090:8090 -v wolfspace-data:/data wolfspace
-```
-
-The container runs as a non-root user, honours an injected `PORT`, exposes
-`/healthz` for probes, and keeps API keys and snapshots on the `/data` volume.
-
-### Hosting it (container platforms only)
-
-Deploy the image above to anything that runs containers — Railway, Render, Fly.io,
-or a plain VPS. Point the platform at the `Dockerfile`, let it inject `PORT`, mount a
-volume at `/data`, and set the health check path to `/healthz`.
-
-**Serverless platforms cannot run WOLFSPACE, and this is not a configuration gap.**
-Vercel, Netlify Functions, and Cloudflare Workers all fail on the same four things:
-`server.cjs` binds a long-lived port instead of exporting a request handler; `node-pty`
-is a native addon loaded at boot and there is no TTY; the agent spawns `bash`/`python`
-subprocesses to run code; and snapshots, uploads, and `cloud-keys.json` need a writable
-persistent filesystem. Removing those leaves the product without the one thing it
-exists to do — proving code by executing it.
+Removed. The `Dockerfile`, `.dockerignore`, `config.docker.json`, and `sandbox/`
+image are gone — nothing in the app shelled out to `docker` anymore, so the files
+only described a deployment path that was no longer exercised. Containment now
+comes from Node `--permission` (capability zone), Linux namespaces
+(`agent/tools/bash-jail.cjs`), and the WSL zone — none of which need a daemon.
 
 ### Local models: not currently wired
 
@@ -183,8 +163,8 @@ graph TD
     Broker --> Platform
 ```
 
-Both the desktop shell and the Docker image run the same core — Electron hosts the UI in a
-native window, the container serves it over HTTP.
+The desktop shell and the plain `npm start` server run the same core — Electron hosts the
+UI in a native window, the server serves it over HTTP.
 
 ## Security
 
@@ -214,9 +194,8 @@ npm run dev                    # nodemon
 npm run stress                 # broker/agent leak + concurrency check
 ```
 
-CI runs three jobs on every push: tests, a Windows Electron build (verifying the packaged
-output actually loads), and a Docker build (asserting the sandbox image executes code as a
-non-root user).
+CI runs two jobs on every push: tests, and a Windows Electron build (verifying the packaged
+output actually loads).
 
 ## Roadmap
 

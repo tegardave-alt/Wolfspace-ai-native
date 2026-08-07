@@ -242,10 +242,11 @@ dulu.** Uji yang lulus karena keadaan kebetulan menguntungkan (DNS mati, distro
 tak berjaringan) tidak membuktikan apa pun — kesalahan ini sudah terjadi dua kali
 dan sekarang dijaga eksplisit.
 
-CI (`.github/workflows/ci.yml`) menjalankan tiga job: **Test & syntax**
-(ubuntu), **Build Electron** (windows, memverifikasi isi paket dan rantai
-`require` dari hasil build), dan **Build image Docker**. Alasannya tertulis di
-berkas itu: _fitur yang tak pernah dieksekusi = rusak diam-diam_.
+CI (`.github/workflows/ci.yml`) menjalankan dua job: **Test & syntax**
+(ubuntu) dan **Build Electron** (windows, memverifikasi isi paket dan rantai
+`require` dari hasil build). Alasannya tertulis di berkas itu: _fitur yang tak
+pernah dieksekusi = rusak diam-diam_. Job **Build image Docker** dihapus
+bersama berkas Docker-nya.
 
 ---
 
