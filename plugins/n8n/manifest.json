@@ -1,8 +1,0 @@
-{
-  "nama": "n8n",
-  "versi": "2.68.0",
-  "ket": "Dokumentasi & validasi node/workflow n8n. TANPA API key: hanya baca dokumentasi, tak menyentuh instance n8n Anda.",
-  "command": "npx",
-  "args": ["-y", "n8n-mcp"],
-  "izin": ["network:https"]
-}
