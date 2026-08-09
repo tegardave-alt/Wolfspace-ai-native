@@ -65,46 +65,65 @@ when the agent chooses to run something, not automatically on every answer.
 
 ## Quickstart
 
-### From source
-
 ```bash
 git clone https://github.com/tegardave-alt/Wolfspace-ai-native
 cd Wolfspace-ai-native
 npm install
-npm start                      # -> http://127.0.0.1:8090
+npm run app                    # <- this is how you run WOLFSPACE
 ```
 
-Open **http://127.0.0.1:8090**, paste any **cloud API key** in settings, then give the agent
-a task. It edits files and runs commands, and you see the real output.
+`npm run app` launches the desktop shell: Electron opens a native window and the backend
+runs **in-process** inside it. That is the supported way to run WOLFSPACE, and the one the
+rest of this README assumes.
+
+Paste any **cloud API key** in settings, then give the agent a task. It edits files and runs
+commands, and you see the real output.
+
+> **On Windows PowerShell, use `npm.cmd run app` (or `node scripts/app.cjs`).**
+> PowerShell resolves `npm` to `npm.ps1` before `npm.cmd`, and the default execution policy
+> (`Restricted`) blocks `.ps1` — so a bare `npm run app` fails with a policy error while
+> `npm.cmd run app` works. Calling `node` directly avoids the shim entirely and behaves the
+> same in every shell.
 
 **Requirements:** [Node.js](https://nodejs.org) 18+. Python is optional (the agent uses it if
 your task does). No build step — the UI is served as-is.
 
-> Bun is no longer claimed as a supported runtime. Nothing detects or configures it: the
-> JS runtime is simply whatever launched the server (`process.execPath`), so launching with
-> Bun happens to work rather than being a supported path.
-
-### As a desktop app
-
-The same core wrapped in an Electron shell, with hot-reload during development:
+### `npm start`: server only, no window
 
 ```bash
-node scripts/app.cjs           # launch the desktop shell (= npm run app)
-npm run dist                   # build a Windows NSIS installer
+npm start                      # -> http://127.0.0.1:8090
 ```
 
-> **On Windows PowerShell, prefer `node scripts/…` or `npm.cmd run …`.**
-> PowerShell resolves `npm` to `npm.ps1` before `npm.cmd`, and the default
-> execution policy (`Restricted`) blocks `.ps1` — so a bare `npm run app` fails
-> with a policy error while `npm.cmd run app` works. Calling `node` directly
-> avoids the shim entirely and behaves the same in every shell.
+This starts the same backend as a plain HTTP server and serves the UI in your browser. It is
+useful for headless machines, remote access over SSH tunnels, and debugging with browser
+devtools — but it is **not** the primary path, and a few things differ:
 
-`npm run app` runs the backend **in-process on Windows** — the default, unchanged.
-`npm run app:wsl` is the opt-in variant that runs the backend inside WSL, which is
-the only place the agent sandbox's network containment actually applies (Node's
-permission model has no network dimension, and Windows firewall rules are
-per-executable — the zone is the same `node.exe` as the host). Filesystem
-containment works on both. See `agent/broker/README.md`.
+- no native window, no `app://` protocol, no Electron IPC (the UI falls back to `fetch`)
+- the JS runtime for executed code is `node.exe` rather than `electron.exe`, so the two modes
+  do not exercise the same code path (see the `ELECTRON_RUN_AS_NODE` note in **Roadmap**
+  history — that bug only ever appeared under `npm run app`)
+
+Bun is not a supported runtime. Nothing detects or configures it: the JS runtime is simply
+whatever launched the server (`process.execPath`), so launching with Bun happens to work
+rather than being supported.
+
+### WSL variant
+
+`npm run app:wsl` runs the backend inside WSL, which is the only place the agent sandbox's
+network containment actually applies (Node's permission model has no network dimension, and
+Windows firewall rules are per-executable — the zone is the same `node.exe` as the host).
+Filesystem containment works on both. See `agent/broker/README.md`.
+
+### Building the installer
+
+```bash
+npm run dist                   # electron-builder --win -> dist-app/
+```
+
+Produces an NSIS installer plus an unpacked build under `dist-app/win-unpacked/`. The
+packaged app's Electron entry point is rewritten by `build.extraMetadata.main` to
+`electron/main.js` — `package.json`'s own `main` field says `server.cjs`, which is correct
+for `npm start` but would be wrong for the packaged app.
 
 The installer is **not code-signed**, so Windows SmartScreen will warn on first run —
 choose _More info → Run anyway_.
@@ -132,13 +151,13 @@ Local models use [llama.cpp](https://github.com/ggml-org/llama.cpp). One-time se
 ```powershell
 powershell scripts/setup.ps1          # Windows: fetches llama.cpp + models
 powershell scripts/start-models.ps1   # launch the local model servers
-npm start
+npm.cmd run app
 ```
 
 ```bash
 bash scripts/setup.sh                 # Linux/macOS
 bash scripts/start-models.sh
-npm start
+npm run app
 ```
 
 `/models` will still report a running local server, but nothing consumes that — see the
