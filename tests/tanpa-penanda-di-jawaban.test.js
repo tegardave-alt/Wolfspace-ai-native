@@ -76,4 +76,32 @@ describe("jawaban akhir tidak disisipi penanda sistem", () => {
     }
     expect(temuan).toEqual([]);
   });
+
+  // Varian kedua dari cacat yang sama. Bukan penanda dalam kurung siku, tapi
+  // LABEL KEADAAN yang ditempel di depan teks agent:
+  //
+  //   localSummary = "Menunggu jawaban user: " + results[i].question;
+  //     -> "Menunggu jawaban user: Maksudnya "scibd" itu apa? …"
+  //
+  // User membacanya sebagai bagian dari kalimat agent. Padahal keadaan menunggu
+  // sudah disampaikan UI dua kali — panel "Question from the Agent" dan status
+  // "Menunggu jawaban Anda...". Labelnya menarasikan mekanisme UI, bukan
+  // menjawab apa pun.
+  test("finalSummary tidak diawali label keadaan atau jargon internal", () => {
+    // Hanya teks yang BENAR-BENAR jadi ringkasan untuk user.
+    const penugasan =
+      KODE.match(/(?:localSummary|finalSummary)\s*[:=]\s*\n?\s*"[^"]*"/g) || [];
+    const bocor = penugasan.filter((p) =>
+      /"(Menunggu|Waiting|Berhenti:)|HITL/.test(p),
+    );
+    expect(bocor).toEqual([]);
+  });
+
+  test('"HITL" tak pernah muncul di teks yang tampil ke user', () => {
+    // Istilah internal: tak berarti apa pun bagi user yang membacanya.
+    const literal = KODE.match(/"[^"]*HITL[^"]*"/g) || [];
+    // Boleh dipakai sebagai NILAI internal (stopReason: "hitl"), bukan sebagai
+    // kalimat — jadi yang ditolak hanya string yang mengandung spasi.
+    expect(literal.filter((s) => /\s/.test(s.slice(1, -1)))).toEqual([]);
+  });
 });
