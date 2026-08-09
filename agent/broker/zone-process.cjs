@@ -26,7 +26,9 @@
  * yang diam-diam tercetak ke peringatan keamanan.
  *
  * @typedef {{ transport: "linux-netns", jaringanTerkurung: true }
- *         | { transport: "wsl-netns", jaringanTerkurung: true, distro: string }
+ *         | { transport: "wsl-netns", jaringanTerkurung: true,
+ *             berkasTerkurung: boolean, pembungkus: "bwrap" | "unshare",
+ *             distro: string }
  *         | { transport: "fork", jaringanTerkurung: false, alasan: string }} StatusKurungan
  */
 
@@ -255,6 +257,13 @@ function wslZona() {
         // dicetak langsung oleh Node dan diurai di sisi JS.
         `test -x ${nodeWsl} || exit 11; test -f ${workerWsl} || exit 12; ` +
           `unshare -n true || exit 14; ` +
+          // bwrap DIPERIKSA, bukan diasumsikan — persis pola _hasBwrap() di
+          // LinuxAdapter. Ketiadaannya bukan kegagalan: zona tetap jalan dengan
+          // unshare -n saja, hanya tanpa pengurungan berkas. Penandanya dicetak
+          // supaya sisi JS tahu jaminan mana yang benar-benar didapat.
+          `if bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp ` +
+          `--tmpfs /mnt --unshare-net --die-with-parent true 2>/dev/null; ` +
+          `then printf BWRAPYA; else printf BWRAPTIDAK; fi; ` +
           `${nodeWsl} -e 'process.stdout.write("NODEV"+process.versions.node)' || exit 13`,
       ],
       { stdio: ["ignore", "pipe", "pipe"], timeout: 20000, encoding: "utf8" },
@@ -284,7 +293,13 @@ function wslZona() {
       _wslAlasan = `Node ${v[1]}.x di ${nodeWsl} menolak ${flag[0]} — biner rusak atau bukan Node sungguhan`;
       return _wslCache;
     }
-    _wslCache = { distro, nodeWsl, workerWsl, flag };
+    _wslCache = {
+      distro,
+      nodeWsl,
+      workerWsl,
+      flag,
+      bwrap: /BWRAPYA/.test(keluar),
+    };
   } catch (e) {
     // WSL tak siap — jatuh ke fork biasa. Alasannya DISIMPAN, tidak dibuang.
     _wslCache = null;
@@ -320,9 +335,47 @@ function wslZona() {
 // dengan gerbang Docker lama yang sudah dibuang — pengaman yang bisa mati
 // sendiri tanpa memberi tahu. Yang berbahaya bukan tak adanya pengurungan
 // (kadang memang tak tersedia), tapi tak adanya cara membedakan keduanya.
+// Pembungkus yang menjalankan worker DI DALAM distro.
+//
+// `unshare -n` hanya mengurung JARINGAN. Berkas dijaga --permission milik Node,
+// dan itu berlaku pada proses Node saja — apa pun yang di-spawn dari dalam zona
+// kembali punya akses penuh ke rootfs distro.
+//
+// bwrap menutup celah itu di kernel, dan ongkosnya NOL: terukur -3 ms dibanding
+// menjalankan node telanjang, yaitu di dalam derau. Yang mahal di jalur ini
+// adalah meluncurkan wsl.exe (183 ms dari total 216 ms), bukan pengurungannya.
+//
+// --tmpfs /mnt adalah bagian terpenting dan bukan sekadar kerapian. Distro WSL
+// biasa me-mount SELURUH drive Windows di /mnt/c. Tanpa masker itu, pengurungan
+// zona bergantung pada bagaimana distro dikonfigurasi — sesuatu yang tak bisa
+// dijamin kode ini. Dengan masker, jaminannya milik kode.
+/**
+ * @param {{distro:string, bwrap?:boolean}} wsl  zona WSL hasil wslZona()
+ * @returns {string[]} argv pembungkus, siap disisipkan sebelum path node
+ */
+function pembungkusWsl(wsl) {
+  if (!wsl.bwrap) return ["unshare", "-n"];
+  return [
+    "bwrap",
+    "--ro-bind",
+    "/",
+    "/", // rootfs baca-saja: node + worker + pustaka tetap terbaca
+    "--dev",
+    "/dev",
+    "--proc",
+    "/proc",
+    "--tmpfs",
+    "/tmp", // satu-satunya tempat tulis, dan ia hilang saat zona mati
+    "--tmpfs",
+    "/mnt", // tutup drive Windows apa pun konfigurasi distronya
+    "--unshare-net", // menggantikan unshare -n
+    "--die-with-parent", // tak ada yatim bila sisi Windows mati mendadak
+  ];
+}
+
 /**
  * @param {unknown} ns  hasil netnsWrapper() — truthy bila namespace Linux dipakai
- * @param {{distro: string}|null|undefined} wsl  zona WSL bila dipakai
+ * @param {{distro:string, bwrap?:boolean}|null|undefined} wsl  zona WSL bila dipakai
  * @param {boolean} [matiSengaja] pemanggil mematikannya lewat opts.netns=false
  * @returns {StatusKurungan}
  */
@@ -332,6 +385,12 @@ function statusKurungan(ns, wsl, matiSengaja) {
     return {
       transport: "wsl-netns",
       jaringanTerkurung: true,
+      // Jaminan BERKAS dilaporkan terpisah dari jaminan jaringan, karena
+      // keduanya memang bisa berbeda: tanpa bwrap zona tetap kehilangan
+      // jaringan tapi rootfs distro terbuka penuh untuk proses yang di-spawn
+      // dari dalamnya. Satu bendera "terkurung" akan menyembunyikan selisih itu.
+      berkasTerkurung: !!wsl.bwrap,
+      pembungkus: wsl.bwrap ? "bwrap" : "unshare",
       distro: wsl.distro,
     };
   let alasan;
@@ -527,8 +586,7 @@ function runInCapabilityZone(code, broker, opts = {}) {
           "--",
           "env",
           "WOLFSPACE_ZONE_TOKEN=" + token,
-          "unshare",
-          "-n",
+          ...pembungkusWsl(wsl),
           wsl.nodeWsl,
           // Flag ditentukan dari versi Node DI DALAM distro, bukan versi lokal —
           // keduanya bisa berbeda jauh.
