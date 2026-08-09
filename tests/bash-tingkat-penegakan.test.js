@@ -37,14 +37,14 @@ describe("bash melaporkan tingkat penegakan", () => {
     const r = await bash('node -e "console.log(42)"');
     expect(r.ok).toBe(true);
     expect(["kernel", "penasihat"]).toContain(r.penegakan);
-    expect(["namespace", "regex"]).toContain(r.mekanisme);
+    expect(["namespace", "heuristik-teks"]).toContain(r.mekanisme);
   }, 60000);
 
   test("hasil DITOLAK juga membawa label yang sama", async () => {
     const r = await bash("ls ../Desktop");
     expect(r.ok).toBe(false);
     expect(["kernel", "penasihat"]).toContain(r.penegakan);
-    expect(["namespace", "regex"]).toContain(r.mekanisme);
+    expect(["namespace", "heuristik-teks"]).toContain(r.mekanisme);
   }, 60000);
 
   test("label COCOK dengan mekanisme yang benar-benar dipakai", async () => {
@@ -58,19 +58,19 @@ describe("bash melaporkan tingkat penegakan", () => {
         "auto",
       );
     const r = await bash('node -e "console.log(1)"');
-    expect(r.mekanisme).toBe(pakaiJail ? "namespace" : "regex");
+    expect(r.mekanisme).toBe(pakaiJail ? "namespace" : "heuristik-teks");
     expect(r.penegakan).toBe(pakaiJail ? "kernel" : "penasihat");
     expect(r.terkurungOs).toBe(pakaiJail);
   }, 60000);
 });
 
 // Batas yang DIDOKUMENTASIKAN, bukan yang diharapkan. Uji ini hanya berjalan
-// saat penegakannya "regex" — kalau suatu hari Windows dapat pengurungan nyata,
+// saat penegakannya "heuristik-teks" — kalau suatu hari Windows dapat pengurungan nyata,
 // ia melewatkan diri sendiri alih-alih jadi merah palsu.
 describe("batas jalur regex (didokumentasikan, bukan diinginkan)", () => {
   test("path yang DITULIS sebagai token memang ditahan", async () => {
     const r = await bash('ls "C:/Users/dave/Desktop"');
-    if (r.mekanisme !== "regex") return; // jail aktif — bukan wilayah uji ini
+    if (r.mekanisme !== "heuristik-teks") return; // jail aktif — bukan wilayah uji ini
     expect(r.ok).toBe(false);
     expect(String(r.output)).toMatch(/menembus keluar workspace|dilarang/);
   }, 60000);
@@ -83,7 +83,7 @@ describe("batas jalur regex (didokumentasikan, bukan diinginkan)", () => {
       "const p=String.fromCharCode(67,58,47,85,115,101,114,115);" +
       "console.log('N:'+f.readdirSync(p).length)";
     const r = await bash('node -e "' + kode + '"');
-    if (r.mekanisme !== "regex") return;
+    if (r.mekanisme !== "heuristik-teks") return;
     // Kalau baris ini suatu saat merah, artinya jalur regex BERHASIL menahannya —
     // kabar baik, dan uji ini yang harus diperbarui, bukan kodenya.
     expect(r.ok).toBe(true);
