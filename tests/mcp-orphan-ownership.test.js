@@ -104,6 +104,74 @@ describe("pelacakan PID MCP per pemilik", () => {
     }, 400);
   }, 15000);
 
+  // Nomor PID bukan identitas. Sistem operasi memakainya ulang, jadi catatan
+  // yang tertinggal dari sesi yang mati mendadak bisa menunjuk ke proses milik
+  // ORANG LAIN yang kebetulan mewarisi nomor itu. Membunuhnya akan tercatat di
+  // log sebagai "MCP orphan PID N dihentikan" — terbaca seperti pembersihan
+  // yang berhasil, padahal proses asing yang mati. Waktu-mulai memisahkannya:
+  // proses kita mulai pada atau sebelum saat kita mencatatnya.
+  test("PID yang nomornya DIDAUR ULANG tidak dibunuh", (done) => {
+    const asing = bonekaHidup(); // proses nyata, hidup, bukan milik kita
+    boneka.push(asing);
+
+    setTimeout(() => {
+      // Catatan seolah dibuat KEMARIN oleh pemilik yang sudah mati: bentuk
+      // persis yang tertinggal sesudah WOLFSPACE mati mendadak.
+      tulisBerkasPemilik(999999, [
+        { pid: asing.pid, ts: Date.now() - 24 * 3600 * 1000 },
+      ]);
+
+      mcp._killOrphans();
+
+      setTimeout(() => {
+        expect(alive(asing.pid)).toBe(true); // INTI: proses asing selamat
+        done();
+      }, 800);
+    }, 400);
+  }, 15000);
+
+  test("yatim ASLI tetap dibunuh — verifikasi tidak melumpuhkan pembersihan", (done) => {
+    const yatim = bonekaHidup();
+    boneka.push(yatim);
+
+    setTimeout(() => {
+      // ts sekarang: waktu-mulai proses cocok, jadi ia memang milik kita.
+      tulisBerkasPemilik(999999, [{ pid: yatim.pid, ts: Date.now() }]);
+
+      mcp._killOrphans();
+
+      setTimeout(() => {
+        expect(alive(yatim.pid)).toBe(false);
+        done();
+      }, 1200);
+    }, 400);
+  }, 15000);
+
+  // Tanpa pencabutan, berkas pemilik hanya bertambah: tiap PID mati yang
+  // tertinggal adalah calon korban daur-ulang pada pembersihan berikutnya.
+  // Jadi pencabutan bukan sekadar kerapian — ia yang menjaga daftarnya kecil.
+  test("catatan PID DICABUT saat server berhenti, bukan menumpuk", () => {
+    const p1 = bonekaHidup();
+    const p2 = bonekaHidup();
+    boneka.push(p1, p2);
+
+    mcp._recordPid(p1.pid);
+    mcp._recordPid(p2.pid);
+    const sesudahCatat = JSON.parse(fs.readFileSync(mcp._ownFile(), "utf8"));
+    expect(sesudahCatat.map((e) => e.pid).sort()).toEqual(
+      [p1.pid, p2.pid].sort(),
+    );
+    expect(typeof sesudahCatat[0].ts).toBe("number"); // ts ikut tersimpan
+
+    mcp._forgetPid(p1.pid);
+    const sisa = JSON.parse(fs.readFileSync(mcp._ownFile(), "utf8"));
+    expect(sisa.map((e) => e.pid)).toEqual([p2.pid]);
+
+    // Entri terakhir dicabut -> berkasnya ikut hilang, bukan tertinggal kosong.
+    mcp._forgetPid(p2.pid);
+    expect(fs.existsSync(mcp._ownFile())).toBe(false);
+  });
+
   test("BALAPAN: penulisan serentak banyak proses tak menghilangkan catatan", () => {
     // Inilah alasan pindah dari berkas bersama. Tiap proses anak mencatat 40
     // PID ke berkasnya SENDIRI, semuanya bersamaan. Dengan berkas bersama,

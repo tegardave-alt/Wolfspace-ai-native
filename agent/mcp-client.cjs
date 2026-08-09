@@ -40,12 +40,27 @@ function _ownFile(owner = process.pid) {
   return path.join(PID_DIR, owner + ".json");
 }
 
+// Entri disimpan sebagai {pid, ts}. Format lama (angka telanjang) tetap
+// terbaca, tapi entri tanpa ts tak bisa diverifikasi — lihat _bukanMilikKita.
 function _readOwn(owner = process.pid) {
   try {
-    return JSON.parse(fs.readFileSync(_ownFile(owner), "utf8")) || [];
+    const raw = JSON.parse(fs.readFileSync(_ownFile(owner), "utf8")) || [];
+    return raw
+      .map((e) => (typeof e === "number" ? { pid: e, ts: null } : e))
+      .filter((e) => e && typeof e.pid === "number");
   } catch (_) {
     return [];
   }
+}
+
+function _writeOwn(entries, owner = process.pid) {
+  if (!entries.length) {
+    try {
+      fs.unlinkSync(_ownFile(owner));
+    } catch (_) {}
+    return;
+  }
+  fs.writeFileSync(_ownFile(owner), JSON.stringify(entries), "utf8");
 }
 
 // Hanya pemiliknya sendiri yang memanggil ini untuk berkasnya sendiri, jadi
@@ -54,18 +69,111 @@ function _recordPid(pid) {
   try {
     if (!fs.existsSync(PID_DIR)) fs.mkdirSync(PID_DIR, { recursive: true });
     const mine = _readOwn();
-    if (mine.includes(pid)) return;
-    mine.push(pid);
-    fs.writeFileSync(_ownFile(), JSON.stringify(mine), "utf8");
+    if (mine.some((e) => e.pid === pid)) return;
+    // ts dipakai untuk membedakan proses kita dari proses lain yang kelak
+    // memakai ulang nomor PID yang sama. Lihat _bukanMilikKita.
+    mine.push({ pid, ts: Date.now() });
+    _writeOwn(mine);
   } catch (_) {}
 }
 
-function _killPids(pids, asal) {
-  for (const pid of pids) {
+// Dipanggil saat server berhenti normal. Tanpa ini berkas pemilik hanya
+// bertambah: PID mati menumpuk selamanya, dan tiap satu di antaranya adalah
+// calon korban daur-ulang PID pada pembersihan berikutnya.
+function _forgetPid(pid) {
+  try {
+    const mine = _readOwn();
+    const sisa = mine.filter((e) => e.pid !== pid);
+    if (sisa.length !== mine.length) _writeOwn(sisa);
+  } catch (_) {}
+}
+
+// Selisih yang ditoleransi antara waktu-mulai proses dan saat kita mencatatnya.
+// Pencatatan terjadi beberapa milidetik sesudah spawn, jadi start <= ts selalu;
+// jendela ini hanya menyerap ketidaktepatan jam. Proses hasil daur-ulang PID
+// mulai jauh belakangan — biasanya berjam-jam — sehingga terjaring dengan mudah.
+const TOLERANSI_MULAI_MS = 15000;
+
+// Waktu-mulai proses dalam milidetik epoch, untuk sekumpulan PID sekaligus.
+// PID yang tak terbaca tidak dimasukkan ke Map. Satu panggilan untuk semua:
+// pembersihan hanya terjadi saat start, dan hanya bila ada berkas yatim.
+function _waktuMulai(pids) {
+  const peta = new Map();
+  if (!pids.length) return peta;
+  try {
+    if (process.platform === "win32") {
+      const out = execSync(
+        'powershell -NoProfile -NonInteractive -Command "Get-CimInstance Win32_Process | ' +
+          "Where-Object { $_.CreationDate } | ForEach-Object { " +
+          '\\"$($_.ProcessId) $($_.CreationDate.ToUniversalTime().ToString(\'o\'))\\" }"',
+        {
+          encoding: "utf8",
+          timeout: 20000,
+          stdio: ["ignore", "pipe", "ignore"],
+        },
+      );
+      for (const baris of out.split("\n")) {
+        const [p, iso] = baris.trim().split(/\s+/);
+        const pid = parseInt(p, 10);
+        const ms = Date.parse(iso);
+        if (Number.isFinite(pid) && Number.isFinite(ms)) peta.set(pid, ms);
+      }
+    } else if (process.platform === "linux") {
+      // starttime = medan ke-22 di /proc/<pid>/stat, dalam clock tick sejak
+      // boot. Medan ke-2 adalah comm yang boleh berisi spasi dan tanda kurung,
+      // jadi pemotongan dilakukan sesudah ')' terakhir.
+      const btime = (fs
+        .readFileSync("/proc/stat", "utf8")
+        .match(/^btime (\d+)/m) || [])[1];
+      if (!btime) return peta;
+      const HZ = 100; // USER_HZ, tetap 100 pada semua Linux arus utama
+      for (const pid of pids) {
+        try {
+          const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
+          const medan = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
+          const tick = Number(medan[19]); // ke-22 dikurangi 2 medan pertama
+          if (Number.isFinite(tick))
+            peta.set(pid, (Number(btime) + tick / HZ) * 1000);
+        } catch (_) {}
+      }
+    }
+  } catch (_) {}
+  return peta;
+}
+
+// Nomor PID tidak menjamin identitas: sistem operasi memakainya ulang. Sebuah
+// PID yang kita catat lalu mati bisa ditempati aplikasi lain, dan membunuhnya
+// berarti membunuh proses milik orang lain — tercatat di log seolah pembersihan
+// yang berhasil. Waktu-mulai memisahkan keduanya: proses kita mulai pada atau
+// sebelum saat kita mencatatnya, penghuni baru selalu jauh sesudahnya.
+function _bukanMilikKita(entri, mulai) {
+  if (!entri.ts) return false; // entri format lama: tak ada dasar untuk menolak
+  const t = mulai.get(entri.pid);
+  if (t === undefined) return false; // tak terbaca: jangan mengarang kesimpulan
+  return t > entri.ts + TOLERANSI_MULAI_MS;
+}
+
+function _killPids(entries, asal) {
+  const hidup = entries.filter((e) => _alive(e.pid));
+  if (!hidup.length) return;
+  const mulai = _waktuMulai(hidup.map((e) => e.pid));
+  for (const e of hidup) {
     try {
-      if (!_alive(pid)) continue;
-      process.kill(pid);
-      dlog("mcp", "info", `MCP orphan PID ${pid} dihentikan.`, { asal });
+      if (_bukanMilikKita(e, mulai)) {
+        dlog(
+          "mcp",
+          "info",
+          `PID ${e.pid} dilewati: nomornya sudah didaur ulang.`,
+          {
+            asal,
+            dicatat: new Date(e.ts).toISOString(),
+            mulai: new Date(mulai.get(e.pid)).toISOString(),
+          },
+        );
+        continue;
+      }
+      process.kill(e.pid);
+      dlog("mcp", "info", `MCP orphan PID ${e.pid} dihentikan.`, { asal });
     } catch (_) {}
   }
 }
@@ -77,8 +185,8 @@ function _killOrphans() {
     if (fs.existsSync(LEGACY_PID_FILE)) {
       const raw = JSON.parse(fs.readFileSync(LEGACY_PID_FILE, "utf8")) || [];
       const pids = raw
-        .map((e) => (typeof e === "number" ? e : e && e.pid))
-        .filter((p) => typeof p === "number");
+        .map((e) => (typeof e === "number" ? { pid: e, ts: null } : e))
+        .filter((e) => e && typeof e.pid === "number");
       if (pids.length) _killPids(pids, "berkas-lama");
       fs.unlinkSync(LEGACY_PID_FILE);
     }
@@ -381,6 +489,9 @@ class MCPClient {
 
       proc.on("close", (code) => {
         dlog("mcp", "info", `MCP server ${name} ditutup dengan kode ${code}`);
+        // Server yang mati sendiri juga harus dicabut catatannya; stopServer
+        // saja tak cukup, karena jalur ini tidak melewatinya.
+        if (proc.pid) _forgetPid(proc.pid);
         delete this.servers[name];
         delete this.toolsCache[name];
       });
@@ -440,6 +551,9 @@ class MCPClient {
       try {
         srv.proc.kill();
       } catch (e) {}
+      // Catatannya dicabut di sini, bukan menunggu pembersihan yatim: PID yang
+      // sudah mati tapi masih tercatat adalah calon korban daur-ulang nomor.
+      if (srv.proc.pid) _forgetPid(srv.proc.pid);
       delete this.servers[name];
       delete this.toolsCache[name];
     }
@@ -821,6 +935,7 @@ if (Object.getPrototypeOf(mcpClient) !== MCPClient.prototype) {
 // jaringan, dan justru mengaburkan yang ingin diuji: keputusan bunuh/pertahankan.
 mcpClient._killOrphans = _killOrphans;
 mcpClient._recordPid = _recordPid;
+mcpClient._forgetPid = _forgetPid;
 mcpClient._readOwn = _readOwn;
 mcpClient._ownFile = _ownFile;
 mcpClient.PID_DIR = PID_DIR;
