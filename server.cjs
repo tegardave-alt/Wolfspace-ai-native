@@ -2498,7 +2498,22 @@ async function runInWorkspace(lang, code) {
             timeout: EXEC_TIMEOUT,
             encoding: "utf8",
             maxBuffer: 200 * 1024,
-            env,
+            // JS_RUNTIME adalah process.execPath. Di `npm run app` backend jalan
+            // IN-PROCESS di dalam Electron, jadi nilainya electron.exe — bukan
+            // node.exe. Tanpa tanda ini, `electron.exe skrip.js` memperlakukan
+            // skrip sebagai entri APLIKASI: ia mencetak stdout dengan benar lalu
+            // TIDAK PERNAH KELUAR, karena Electron menunggu event aplikasi yang
+            // tak akan datang. Akibatnya exec menunggu sampai EXEC_TIMEOUT habis
+            // lalu menolak dengan SIGTERM, dan verifikasi dilaporkan GAGAL
+            // meskipun kodenya benar. Terukur: 120.046 ms, ok:false, sementara
+            // stdout-nya berisi "halo dari javascript" — hasil yang benar,
+            // vonis yang salah. Pola yang sama sudah dipakai
+            // agent/tools/index.cjs dan agent/tools/file-tools.cjs.
+            //
+            // _envVerifikasi() memakai daftar-putih, jadi variabel ini TIDAK
+            // diwarisi dari proses induk dan harus disetel di sini. Di luar
+            // Electron ia diabaikan, jadi jalur `npm start` tak berubah.
+            env: { ...env, ELECTRON_RUN_AS_NODE: "1" },
           },
           (error, stdout, stderr) => {
             if (error) reject(error);
@@ -4955,6 +4970,10 @@ module.exports = {
   // high-level streaming ops (emit-based, req/res-free) Ã¢â‚¬â€ for HTTP + IPC
   chatStream,
   selfAgentStream,
+  // Kait uji. runInWorkspace() hanya dipanggil dari dalam loop /agent, dan
+  // loop itu butuh panggilan model — tak bisa diuji langsung. Diekspor supaya
+  // perilaku eksekusinya bisa diukur tanpa jaringan.
+  runInWorkspace,
   // system prompts
   SYS,
   WEBDEV_SYS,
