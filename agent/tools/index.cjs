@@ -255,6 +255,16 @@ const sandbox = {
     const m = lazySkill();
     return m.sandbox ? m.sandbox.defaultSandboxOpts() : {};
   },
+  // null berarti "tak diketahui", dan penegakan.js menerjemahkannya jadi
+  // "penasihat" — bukan diam-diam jadi "kernel". Arah default itu disengaja:
+  // salah menebak ke arah lebih lemah menghasilkan peringatan berlebih; salah
+  // ke arah lebih kuat menghasilkan jaminan palsu.
+  adapterCapabilities: () => {
+    const m = lazySkill();
+    return m.sandbox && m.sandbox.adapterCapabilities
+      ? m.sandbox.adapterCapabilities()
+      : null;
+  },
 };
 
 // ── Tool result cache (L1 in-memory with TTL) ──
@@ -459,6 +469,7 @@ function _workdirDalamJail(root, cwd) {
 // terkuat jadi paling jarang aktif: saat daemon mati, yang benar-benar berjalan
 // adalah penjaga regex di bawah.
 const _sandboxPolicy = require("../sandbox-policy.cjs");
+const _penegakanLabel = require("../penegakan.cjs");
 
 // PENEGAKAN DI KODE (bukan anjuran prompt): tolak perintah bash yang menyebut
 // path HOST di luar workspace, SEBELUM dikirim ke container.
@@ -1338,7 +1349,7 @@ async function runSelfTool(name, args, emit, context = {}) {
       // Tingkat penegakan kurungan untuk eksekusi INI. Dilaporkan ke
       // pemanggil supaya "terkurung" tak lagi jadi satu kata untuk dua hal
       // yang sangat berbeda kekuatannya.
-      let _penegakan = "namespace";
+      let _label = _penegakanLabel.label("kernel", "namespace");
 
       let cwd = QROOT;
       if (args.cwd) {
@@ -1408,7 +1419,10 @@ async function runSelfTool(name, args, emit, context = {}) {
             timeout: args.timeout || 60000,
             workdir: wd,
           });
-          return { ...hasilJail, penegakan: "namespace" };
+          return {
+            ...hasilJail,
+            ..._penegakanLabel.label("kernel", "namespace"),
+          };
         }
         // Cadangan: guard regex (bocor, defense-in-depth) saat namespace tak
         // tersedia — mis. di Windows, yang tak punya padanan di kernelnya.
@@ -1430,12 +1444,12 @@ async function runSelfTool(name, args, emit, context = {}) {
         // Karena itu hasilnya DILABELI. Tanpa label, "TERKURUNG WORKSPACE"
         // terbaca seperti jaminan kernel padahal bukan — persis jenis laporan
         // yang lebih berbahaya daripada tak melaporkan apa pun.
-        _penegakan = "regex";
+        _label = _penegakanLabel.label("penasihat", "regex");
         const guard = _confineBash(cmd, args.cwd, _confineRoot);
         if (!guard.ok)
           return {
             ok: false,
-            penegakan: "regex",
+            ..._penegakanLabel.label("penasihat", "regex"),
             output: "TERKURUNG WORKSPACE (regex fallback): " + guard.reason,
           };
         cwd = guard.cwd;
@@ -1550,7 +1564,7 @@ async function runSelfTool(name, args, emit, context = {}) {
               // Ikut pada hasil SUKSES, bukan hanya pada penolakan. Justru saat
               // perintah berhasil-lah penting diketahui batas mana yang berlaku:
               // penolakan sudah jelas ditahan sesuatu, keberhasilan tidak.
-              penegakan: _penegakan,
+              ..._label,
               output: full.slice(0, 4000) || "(exit " + code + ")",
             });
           }
@@ -2031,13 +2045,27 @@ async function runSelfTool(name, args, emit, context = {}) {
       if (args.network !== undefined) opts.networkAllowed = args.network;
       if (args.readRoots) opts.readRoots = args.readRoots;
       if (args.writeRoots) opts.writeRoots = args.writeRoots;
+      // sandbox_run dulu satu-satunya tool eksekusi yang tak melaporkan tingkat
+      // penegakannya, padahal deskripsinya sendiri sudah mengaku: "the spawned
+      // process itself has normal OS-level filesystem and network access, so
+      // this is NOT a security boundary". Pengakuan itu ada di teks untuk model
+      // — tak ada di HASIL, tempat ia bisa diperiksa mesin.
+      //
+      // Sumbernya bukan tebakan: adapter platform sudah menjawabnya lewat
+      // capabilities().fsIsolation ('none' | 'advisory' | 'enforced'). Yang
+      // belum ada cuma jalan bagi jawaban itu untuk sampai ke pemanggil.
+      const _labelSandbox = _penegakanLabel.dariAdapter(
+        sandbox.adapterCapabilities(),
+        "bwrap",
+      );
       return sandbox.sandboxRun(args.command, opts).then(
         (r) => ({
           ok: r.ok,
           output: r.output + (r.error ? "\nError: " + r.error : ""),
           sandboxId: r.sessionId,
+          ..._labelSandbox,
         }),
-        (e) => ({ ok: false, output: e.message }),
+        (e) => ({ ok: false, output: e.message, ..._labelSandbox }),
       );
     }
     if (name === "capability_exec") {
