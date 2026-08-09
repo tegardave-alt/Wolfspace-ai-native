@@ -8,6 +8,9 @@ _agent_backups/
 # Berisi nama fungsi + jalur berkas mesin ini; jangan ikut ter-commit.
 _profil/
 
+# Jurnal temuan agent: catatan per-mesin tentang berkas yang sudah dibaca.
+.wolfspace/temuan/
+
 # Persetujuan plugin: keputusan PER-MESIN, bukan bagian dari kode.
 # Ikut ter-commit berarti meng-clone repo ini = mewarisi izin milik orang lain.
 plugins/_disetujui.json

@@ -874,7 +874,32 @@ async function runSelfTool(name, args, emit, context = {}) {
         };
       return _cachedResult(
         "read|" + (args.path || "") + "|" + (args.near || ""),
-        () => ({ ok: true, output: qRead(args.path, args.near) }),
+        () => {
+          const output = qRead(args.path, args.near);
+          // Catat bahwa jalur ini SUDAH dibaca.
+          //
+          // KENAPA DI SINI. Cache tool ber-TTL 30 detik; di run nyata median
+          // jeda antar-aksi 5,8 detik tapi jeda terpanjang 395 detik, jadi
+          // cache tak menolong untuk pembacaan yang terpisah puluhan langkah —
+          // dan justru itu bentuk pengulangan yang terukur (berkas sama dibaca
+          // 13x, beruntun cuma 4x).
+          //
+          // Murah dan tak boleh menggagalkan tool: catat() menulis JSONL secara
+          // append dan menelan galatnya sendiri.
+          try {
+            // Kunci workspace dihitung oleh temuan.kunciWs() — SATU tempat.
+            // Kalau rantai fallback-nya berbeda antara sisi tulis dan sisi baca,
+            // blok "SUDAH DIBACA" jadi selalu kosong tanpa satu pun error.
+            const _t = require("../temuan.cjs");
+            _t.catat(
+              _t.kunciWs(context && context.workspaceRoot),
+              args.path,
+              output,
+              { alat: "read" },
+            );
+          } catch (_) {}
+          return { ok: true, output };
+        },
       );
     }
     if (name === "grep") {

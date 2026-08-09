@@ -735,6 +735,15 @@ async function selfAgentStream(payload, emit, ctl = {}) {
       _wsRoot = null;
     }
   }
+  // Muat jurnal temuan sekali per run. Inilah yang membuat pengetahuan
+  // menyeberangi RESTART proses — bagian yang tak diberikan checklist, karena
+  // checkpoint-nya memakai MemorySaver yang mati bersama prosesnya.
+  try {
+    const _t = require("./temuan.cjs");
+    const _n = _t.muat(_t.kunciWs(_wsRoot));
+    if (_n) dlog("self", "info", "temuan dimuat", { berkas: _n });
+  } catch (_) {}
+
   const agentCtx = { sessionId: thread_id, workspaceRoot: _wsRoot };
   if (_wsRoot)
     emit({
@@ -1194,6 +1203,30 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               ? "\nIni status TERKINI, bukan rencana awal. JANGAN kerjakan ulang item [x]. Kerjakan item [→], lalu lanjut ke [ ] berikutnya, dan perbarui lewat todowrite setiap kali status berubah."
               : "\nFokus selesaikan item di atas secara berurutan dengan menggunakan tools.");
           activeMessages[0] = sysMsg;
+        }
+
+        // TEMUAN: apa yang sudah DIKETAHUI, bukan apa yang harus dikerjakan.
+        //
+        // Checklist di atas menjaga agar agent ingat TUGASNYA. Blok ini menjaga
+        // agar ia ingat PENGETAHUANNYA — dan itu dua hal berbeda yang selama ini
+        // hanya satu yang dijaga.
+        //
+        // Terukur di ledger run nyata (pid 12932): 246 aksi untuk 22 perintah
+        // unik, dengan index.html dibaca 13x dan app.js 12x. Pengulangan
+        // beruntunnya cuma 4x, jadi itu bukan loop — melainkan history.slice(-16)
+        // membuang hasil `read` (isinya paling panjang, jadi paling cepat
+        // terpotong) sehingga agent tak tahu ia pernah membacanya.
+        try {
+          const _temuan = require("./temuan.cjs");
+          const _blok = _temuan.blokPrompt(_temuan.kunciWs(_wsRoot));
+          if (_blok) {
+            const m = { ...activeMessages[0] };
+            m.content += _blok;
+            activeMessages[0] = m;
+          }
+        } catch (_) {
+          // Kegagalan mengingat tak boleh menghentikan run: tanpa blok ini
+          // agent kembali ke perilaku lama, bukan gagal.
         }
 
         let msg;
