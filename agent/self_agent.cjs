@@ -1910,10 +1910,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             accessedEvidence: Array.from(localAccessed),
             failedTools: Array.from(localFailed),
             stopReason: "hitl",
+            // "HITL" istilah internal dan tak berarti bagi user; keadaan
+            // menunggunya pun sudah tampak dari tombol setujui/tolak. Yang
+            // tersisa hanya fakta yang berguna: berapa perintah.
             finalSummary:
-              "Menunggu persetujuan (HITL) untuk " +
               executionCalls.length +
-              " eksekusi perintah.",
+              " perintah perlu persetujuan Anda sebelum dijalankan.",
             waitForAnswer: false,
             hitlPending: true,
             pendingToolCalls: executionCalls,
@@ -1984,7 +1986,14 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             if (results[i].waitForAnswer) {
               waitForAnswer = true;
               stopReason = "waiting_for_user_answer";
-              localSummary = "Menunggu jawaban user: " + results[i].question;
+              // Pertanyaannya saja, TANPA awalan "Menunggu jawaban user: ".
+              // Keadaan menunggu sudah disampaikan UI dua kali — lewat panel
+              // "Question from the Agent" (j.question) dan status "Menunggu
+              // jawaban Anda...". Awalan ini menempel ke teks pertanyaan lalu
+              // ikut terbaca user sebagai bagian dari kalimat agent, persis
+              // seperti penanda [kata-spekulatif-dihapus] dulu: label internal
+              // yang bocor ke permukaan.
+              localSummary = results[i].question;
             } else {
               stopReason = "repeated_tool_calls";
               localSummary =
@@ -2109,10 +2118,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             });
             waitForAnswer = true;
             stopReason = "item_macet";
-            localSummary =
-              "Berhenti: item checklist gagal " +
-              n +
-              "× — menunggu keputusan user.";
+            // "menunggu keputusan user" dibuang karena alasan yang sama:
+            // pilihannya sudah tampil sebagai tombol, jadi kalimat itu cuma
+            // menarasikan mekanisme UI kepada user.
+            localSummary = "Item checklist gagal " + n + "× berturut-turut.";
           }
         }
 
