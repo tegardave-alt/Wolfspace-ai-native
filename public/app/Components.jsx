@@ -229,36 +229,6 @@ function Blocks({ text }) {
     ),
   );
 }
-function Verdict({ run }) {
-  if (!run) return null;
-  const q = run.quality;
-  const tier = !q
-    ? ""
-    : q.score >= 85
-      ? "q-hi"
-      : q.score >= 60
-        ? "q-mid"
-        : "q-lo";
-  return (
-    <div className="verdict-wrap">
-      {q && (
-        <div className={"quality " + tier}>
-          <span className="q-score">kualitas {q.score}/100</span>
-          {q.hasTest ? <span className="q-tag"> ada self-test</span> : null}
-          {q.notes && q.notes.length > 0 && (
-            <ul className="q-notes">
-              {q.notes.map((n, i) => (
-                <li key={i} className={"q-" + n.sev}>
-                  {n.msg}
-                </li>
-              ))}
-            </ul>
-          )}
-        </div>
-      )}
-    </div>
-  );
-}
 // DIBUNGKUS React.memo di bawah — jangan pakai MessageDasar langsung.
 //
 // KENAPA. app.jsx merender riwayat utuh: {messages.map((m,i) => <Message .../>)}.
@@ -333,7 +303,9 @@ function MessageDasar({ msg }) {
           </div>
         )}
       </div>
-      <Verdict run={msg.run} />
+      {/* <Verdict> DIHAPUS bersama analyzeCode di server.cjs — satu-satunya
+          sumber `quality` yang dirender komponen itu. Tanpanya ia hanya
+          menghasilkan <div class="verdict-wrap"> kosong pada setiap pesan. */}
     </div>
   );
 }

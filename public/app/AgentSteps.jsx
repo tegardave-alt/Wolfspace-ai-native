@@ -533,7 +533,6 @@ function AgentSteps({ run }) {
         <div className="bubble-model">
           <Blocks text={summary} />
         </div>
-        <Verdict run={run.run} />
       </React.Fragment>
     );
   if (!run.busy && allActs.length === 0 && run.error)
@@ -678,14 +677,14 @@ function AgentSteps({ run }) {
         )}
       </div>
 
-      {run.done && (summary || run.run) ? (
+      {/* Dulu syaratnya `summary || run.run`. run.run SELALU truthy — isinya
+          objek stub dari runReply — jadi blok ini ikut dirender walau summary
+          kosong, menghasilkan panel hampa. Kini murni bergantung pada summary. */}
+      {run.done && summary ? (
         <div style={{ marginTop: "8px" }}>
-          {summary ? (
-            <div className="bubble-model av2-result-bubble">
-              <Blocks text={summary} />
-            </div>
-          ) : null}
-          <Verdict run={run.run} />
+          <div className="bubble-model av2-result-bubble">
+            <Blocks text={summary} />
+          </div>
         </div>
       ) : null}
     </div>

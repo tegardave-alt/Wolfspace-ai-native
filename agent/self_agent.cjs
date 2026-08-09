@@ -15,7 +15,9 @@ const {
   qBackup,
   qBackupAsync,
 } = require("./tools.cjs");
-const { runReply } = require("./chat.cjs");
+// runReply DIHAPUS dari chat.cjs — ia tak menjalankan apa pun, hanya
+// mengembalikan {ok:true, info:"auto-run disabled"} yang dulu dipancarkan
+// sebagai field `run` di event adone. Verifikasi nyata ada di tool agent.
 const { getOptimized, optimizeInBackground } = require("./sysprompt_opt.cjs");
 const {
   parsePseudoCalls,
@@ -2440,14 +2442,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           ],
         });
 
-        const runRes = hasContent ? await runReply(fallback) : null;
         emit({
           t: "adone",
           steps: state.step,
           edits: state.edits,
           summary: fallback,
           backup: sessionSnapshotId,
-          run: runRes,
         });
 
         emitPhase("return", {
@@ -2849,16 +2849,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           thread_id,
         });
       } else {
-        const runRes = finalState.finalSummary
-          ? await runReply(finalState.finalSummary)
-          : null;
         emit({
           t: "adone",
           steps: finalState.step,
           edits: finalState.edits,
           summary: finalState.finalSummary,
           backup: sessionSnapshotId,
-          run: runRes,
         });
       }
     } else if (

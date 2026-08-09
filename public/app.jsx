@@ -1912,7 +1912,9 @@ function App() {
                 summary: j.summary,
                 editCount: j.edits,
                 backup: j.backup,
-                run: j.run,
+                // `run` DIHAPUS: self_agent tak lagi memancarkannya. Dulu isinya
+                // {ok:true, info:"auto-run disabled"} dari runReply yang tak
+                // menjalankan apa pun — ok:true tanpa eksekusi di baliknya.
                 phase: j.phase,
                 phaseNodes: [...phaseNodes],
               });
