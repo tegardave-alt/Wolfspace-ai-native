@@ -613,6 +613,21 @@ async function _brokeredFileOp(name, args, wsRoot) {
   try {
     if (name === "read") {
       const content = await broker.request("readFile", { path: abs });
+      // Catat temuan DI SINI juga, bukan hanya di cabang qRead.
+      //
+      // KENAPA DUA TEMPAT. Ada DUA cabang `name === "read"` di berkas ini:
+      // yang ini (lewat broker, dipakai saat sebuah workspace dipilih) dan satu
+      // lagi lewat qRead(). Versi pertama catatan temuan hanya mengait cabang
+      // qRead — dan di run nyata pengguna, seluruh 23 pembacaan lewat broker,
+      // sehingga jurnalnya tetap kosong tanpa satu pun error.
+      //
+      // Itu "pola dua permukaan" yang sama yang sudah berkali-kali menggigit
+      // repo ini. wsRoot dipakai apa adanya: ia sudah jadi akar terkurung yang
+      // divalidasi, dan itulah kunci yang sama yang dibaca sisi prompt.
+      try {
+        const _t = require("../temuan.cjs");
+        _t.catat(_t.kunciWs(wsRoot), args.path, content, { alat: "read" });
+      } catch (_) {}
       return { ok: true, output: content, auditTrail: broker.auditTrail() };
     }
     if (name === "write") {

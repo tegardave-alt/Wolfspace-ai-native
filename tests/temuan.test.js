@@ -199,3 +199,69 @@ describe("terpasang di jalur yang benar", () => {
     expect(() => T.blokPrompt(undefined)).not.toThrow();
   });
 });
+
+describe("KEDUA jalur read mencatat temuan", () => {
+  // KENAPA ADA. Versi pertama hanya mengait cabang qRead — dan di run nyata
+  // pengguna, SELURUH 23 pembacaan lewat broker (terlihat di ledger sebagai
+  // "ALLOW readFile"). Jurnalnya tetap kosong tanpa satu pun error, jadi
+  // kegagalannya senyap: mekanismenya terpasang, teruji, dan tak pernah jalan.
+  //
+  // Ada DUA cabang `name === "read"` di agent/tools/index.cjs:
+  //   _brokeredFileOp()  dipakai saat sebuah workspace dipilih  <- yang terlewat
+  //   qRead()            dipakai saat tidak ada workspace
+  //
+  // "Pola dua permukaan" yang sama yang sudah berkali-kali menggigit repo ini.
+  const fs = require("fs");
+  const IDX = fs.readFileSync(
+    require.resolve("../agent/tools/index.cjs"),
+    "utf8",
+  );
+
+  test("ada dua cabang read, dan KEDUANYA mencatat", () => {
+    const cabang = (IDX.match(/if \(name === "read"\) \{/g) || []).length;
+    expect(cabang).toBe(2);
+    // Satu catat() per cabang. Kalau salah satu hilang, jurnal jadi kosong di
+    // separuh konfigurasi tanpa gejala apa pun.
+    expect((IDX.match(/_t\.catat\(/g) || []).length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("jalur broker memakai wsRoot yang sudah terkurung", () => {
+    const blok = IDX.slice(
+      IDX.indexOf('const content = await broker.request("readFile"'),
+      IDX.indexOf('const content = await broker.request("readFile"') + 1200,
+    );
+    expect(blok).toMatch(/_t\.catat\(_t\.kunciWs\(wsRoot\)/);
+  });
+
+  test("jalur broker BENAR-BENAR mencatat saat dipanggil", async () => {
+    const os = require("os");
+    const path = require("path");
+    const { runSelfTool } = require("../agent/tools/index.cjs");
+    const ws = fs.mkdtempSync(path.join(os.tmpdir(), "wolf-tes-broker-"));
+    fs.writeFileSync(path.join(ws, "a.js"), "// berkas uji\nlet x = 1;\n");
+    const kunci = T.kunciWs(ws);
+    T.bersihkan(kunci);
+    try {
+      const r = await runSelfTool("read", { path: "a.js" }, () => {}, {
+        workspaceRoot: ws,
+      });
+      expect(r.ok).toBe(true);
+      expect(T.sudahDibaca(kunci, "a.js")).toBeTruthy();
+      expect(T.blokPrompt(kunci)).toMatch(/a\.js/);
+    } finally {
+      T.bersihkan(kunci);
+      try {
+        fs.rmSync(
+          path.join(
+            T.DIR,
+            String(kunci)
+              .replace(/[^A-Za-z0-9._-]/g, "_")
+              .slice(-80) + ".jsonl",
+          ),
+          { force: true },
+        );
+      } catch (_) {}
+      fs.rmSync(ws, { recursive: true, force: true });
+    }
+  }, 30000);
+});
