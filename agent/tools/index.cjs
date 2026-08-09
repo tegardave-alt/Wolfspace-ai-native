@@ -1335,6 +1335,11 @@ async function runSelfTool(name, args, emit, context = {}) {
         }
       }
 
+      // Tingkat penegakan kurungan untuk eksekusi INI. Dilaporkan ke
+      // pemanggil supaya "terkurung" tak lagi jadi satu kata untuk dua hal
+      // yang sangat berbeda kekuatannya.
+      let _penegakan = "namespace";
+
       let cwd = QROOT;
       if (args.cwd) {
         try {
@@ -1399,17 +1404,38 @@ async function runSelfTool(name, args, emit, context = {}) {
                 "akses berpolicy + audit.",
             };
           const wd = _workdirDalamJail(_confineRoot, args.cwd);
-          return await _bashJail.jalankan(cmd, _confineRoot, {
+          const hasilJail = await _bashJail.jalankan(cmd, _confineRoot, {
             timeout: args.timeout || 60000,
             workdir: wd,
           });
+          return { ...hasilJail, penegakan: "namespace" };
         }
         // Cadangan: guard regex (bocor, defense-in-depth) saat namespace tak
         // tersedia — mis. di Windows, yang tak punya padanan di kernelnya.
+        //
+        // "Bocor" itu TERUKUR, bukan kehati-hatian retorik. Penjaganya memindai
+        // TEKS perintah: tolak '..', lalu tiap token berbentuk path harus resolve
+        // di dalam root. Perintah yang MERAKIT path saat jalan tak punya token
+        // untuk dipindai, jadi lewat begitu saja:
+        //
+        //   ls "C:/Users/dave/Desktop"                      -> ditahan
+        //   ls ../Desktop                                   -> ditahan
+        //   node -e "...String.fromCharCode(67,58,47,...)"  -> LOLOS, terbaca
+        //
+        // Percobaan ketiga membaca direktori di luar workspace dan berhasil.
+        // Itu bukan cacat yang bisa ditambal dengan regex yang lebih pintar —
+        // memindai teks tak akan pernah tahu apa yang dirakit saat jalan. Batas
+        // yang benar ada di kernel, dan di Windows kernelnya tak punya padanan.
+        //
+        // Karena itu hasilnya DILABELI. Tanpa label, "TERKURUNG WORKSPACE"
+        // terbaca seperti jaminan kernel padahal bukan — persis jenis laporan
+        // yang lebih berbahaya daripada tak melaporkan apa pun.
+        _penegakan = "regex";
         const guard = _confineBash(cmd, args.cwd, _confineRoot);
         if (!guard.ok)
           return {
             ok: false,
+            penegakan: "regex",
             output: "TERKURUNG WORKSPACE (regex fallback): " + guard.reason,
           };
         cwd = guard.cwd;
@@ -1521,6 +1547,10 @@ async function runSelfTool(name, args, emit, context = {}) {
           } else {
             resolve({
               ok: true,
+              // Ikut pada hasil SUKSES, bukan hanya pada penolakan. Justru saat
+              // perintah berhasil-lah penting diketahui batas mana yang berlaku:
+              // penolakan sudah jelas ditahan sesuatu, keberhasilan tidak.
+              penegakan: _penegakan,
               output: full.slice(0, 4000) || "(exit " + code + ")",
             });
           }
