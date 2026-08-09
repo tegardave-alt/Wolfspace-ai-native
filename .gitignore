@@ -7,6 +7,18 @@ _agent_backups/
 # Profil CPU dari pengawas beku (scripts/profil-beku.cjs).
 # Berisi nama fungsi + jalur berkas mesin ini; jangan ikut ter-commit.
 _profil/
+*.cpuprofile
+
+# Heap snapshot adalah SALINAN ISI MEMORI proses, dan proses ini memegang kunci
+# API cloud sebagai string biasa. Satu berkas yang lolos ke repo publik = kunci
+# hidup masuk riwayat git selamanya. Berkas ini justru dibuat saat menyelidiki
+# anomali memori — saat perhatian sedang tertuju ke hal lain.
+*.heapsnapshot
+
+# Log runtime: jejak jalur mesin ini, kadang argumen perintah. _crash.log,
+# server.log, dan server_err.log terlanjur terlacak sejak lama; pola ini
+# menghentikan yang BARU, tapi yang lama perlu `git rm --cached` sendiri.
+*.log
 
 # Jurnal temuan agent: catatan per-mesin tentang berkas yang sudah dibaca.
 .wolfspace/temuan/
