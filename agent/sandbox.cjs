@@ -444,10 +444,23 @@ process.on("exit", () => {
   }
 });
 
+// Kapabilitas adapter yang BENAR-BENAR dipakai modul ini, diteruskan apa adanya.
+// Diekspor supaya pemanggil tool bisa melaporkan tingkat penegakan tanpa
+// menebak dari process.platform — tebakan yang akan salah persis di kasus yang
+// paling penting (Linux tanpa bwrap terbaca sama dengan Linux dengan bwrap).
+function adapterCapabilities() {
+  try {
+    return getPlatformAdapter().capabilities();
+  } catch (_) {
+    return null;
+  }
+}
+
 module.exports = {
   CapabilityFS,
   SandboxSession,
   sandboxRun,
+  adapterCapabilities,
   createSession,
   destroySession,
   getSession,

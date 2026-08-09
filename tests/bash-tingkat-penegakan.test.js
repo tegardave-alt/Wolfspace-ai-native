@@ -36,13 +36,15 @@ describe("bash melaporkan tingkat penegakan", () => {
   test("hasil SUKSES membawa label penegakan", async () => {
     const r = await bash('node -e "console.log(42)"');
     expect(r.ok).toBe(true);
-    expect(["namespace", "regex"]).toContain(r.penegakan);
+    expect(["kernel", "penasihat"]).toContain(r.penegakan);
+    expect(["namespace", "regex"]).toContain(r.mekanisme);
   }, 60000);
 
   test("hasil DITOLAK juga membawa label yang sama", async () => {
     const r = await bash("ls ../Desktop");
     expect(r.ok).toBe(false);
-    expect(["namespace", "regex"]).toContain(r.penegakan);
+    expect(["kernel", "penasihat"]).toContain(r.penegakan);
+    expect(["namespace", "regex"]).toContain(r.mekanisme);
   }, 60000);
 
   test("label COCOK dengan mekanisme yang benar-benar dipakai", async () => {
@@ -56,7 +58,9 @@ describe("bash melaporkan tingkat penegakan", () => {
         "auto",
       );
     const r = await bash('node -e "console.log(1)"');
-    expect(r.penegakan).toBe(pakaiJail ? "namespace" : "regex");
+    expect(r.mekanisme).toBe(pakaiJail ? "namespace" : "regex");
+    expect(r.penegakan).toBe(pakaiJail ? "kernel" : "penasihat");
+    expect(r.terkurungOs).toBe(pakaiJail);
   }, 60000);
 });
 
@@ -66,7 +70,7 @@ describe("bash melaporkan tingkat penegakan", () => {
 describe("batas jalur regex (didokumentasikan, bukan diinginkan)", () => {
   test("path yang DITULIS sebagai token memang ditahan", async () => {
     const r = await bash('ls "C:/Users/dave/Desktop"');
-    if (r.penegakan !== "regex") return; // jail aktif — bukan wilayah uji ini
+    if (r.mekanisme !== "regex") return; // jail aktif — bukan wilayah uji ini
     expect(r.ok).toBe(false);
     expect(String(r.output)).toMatch(/menembus keluar workspace|dilarang/);
   }, 60000);
@@ -79,7 +83,7 @@ describe("batas jalur regex (didokumentasikan, bukan diinginkan)", () => {
       "const p=String.fromCharCode(67,58,47,85,115,101,114,115);" +
       "console.log('N:'+f.readdirSync(p).length)";
     const r = await bash('node -e "' + kode + '"');
-    if (r.penegakan !== "regex") return;
+    if (r.mekanisme !== "regex") return;
     // Kalau baris ini suatu saat merah, artinya jalur regex BERHASIL menahannya —
     // kabar baik, dan uji ini yang harus diperbarui, bukan kodenya.
     expect(r.ok).toBe(true);
