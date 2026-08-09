@@ -205,7 +205,7 @@ const SELF_TOOLS = [
     function: {
       name: "bash",
       description:
-        "Run PowerShell command. DILARANG pakai untuk edit/hapus file — gunakan edit tool. Hanya untuk: install package, run script, cek status sistem.",
+        "Run PowerShell command. DILARANG pakai untuk edit/hapus file — gunakan edit tool. Hanya untuk: install package, run script, cek status sistem. PENTING soal batas: di luar `npm run app:wsl`, penolakan path hanya berasal dari pemindaian TEKS perintah, bukan dari batas OS, dan ia MELEWATKAN path yang dirakit saat jalan. JANGAN katakan kepada user bahwa sesuatu 'diblokir oleh sistem keamanan' atau bahwa kamu 'terkurung'. Yang benar: perintah itu ditolak oleh pemeriksaan teks, dan pemeriksaan itu bukan jaminan. Hasil tool membawa medan `penegakan` dan `terkurungOs` yang menyatakan keadaan sebenarnya.",
       parameters: {
         type: "object",
         properties: {

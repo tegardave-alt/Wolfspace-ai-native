@@ -1444,13 +1444,32 @@ async function runSelfTool(name, args, emit, context = {}) {
         // Karena itu hasilnya DILABELI. Tanpa label, "TERKURUNG WORKSPACE"
         // terbaca seperti jaminan kernel padahal bukan — persis jenis laporan
         // yang lebih berbahaya daripada tak melaporkan apa pun.
-        _label = _penegakanLabel.label("penasihat", "regex");
+        _label = _penegakanLabel.label("penasihat", "heuristik-teks");
         const guard = _confineBash(cmd, args.cwd, _confineRoot);
         if (!guard.ok)
           return {
             ok: false,
-            ..._penegakanLabel.label("penasihat", "regex"),
-            output: "TERKURUNG WORKSPACE (regex fallback): " + guard.reason,
+            ..._penegakanLabel.label("penasihat", "heuristik-teks"),
+            // Kalimatnya sengaja TIDAK menyebut "terkurung".
+            //
+            // Sebelum ini bunyinya "TERKURUNG WORKSPACE (regex fallback)", dan
+            // akibatnya terukur: agent meneruskannya ke user sebagai "percobaan
+            // pindah ke C:\Users\dave\Desktop diblokir oleh sistem keamanan".
+            // Kalimat itu benar untuk perintah ITU, tapi terbaca sebagai jaminan
+            // yang berlaku umum — padahal perintah berikutnya, dengan path yang
+            // dirakit saat jalan, berhasil MEMBUAT folder di Desktop.
+            //
+            // Menahan sebagian sambil terdengar seperti menahan semuanya lebih
+            // buruk daripada tak menahan apa pun: orang berhenti waspada. Jadi
+            // yang dibuang klaimnya, bukan pemeriksaannya — pemeriksaan ini
+            // masih berguna untuk menangkap salah ketik, dan hanya untuk itu.
+            output:
+              "DITOLAK oleh pemeriksaan teks (BUKAN batas keamanan): " +
+              guard.reason +
+              "\nPemeriksaan ini hanya memindai teks perintah, jadi ia MELEWATKAN " +
+              "path yang dirakit saat jalan. Jangan perlakukan sebagai jaminan.\n" +
+              "Pengurungan sungguhan: jalankan dengan `npm run app:wsl` (batas " +
+              "kernel), atau pakai capability_exec (akses berpolicy + audit).",
           };
         cwd = guard.cwd;
       }

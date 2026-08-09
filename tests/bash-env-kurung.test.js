@@ -59,7 +59,12 @@ describe("%VAR% tak lagi menembus penjaga path", () => {
   test("path host yang ditulis TERANG tetap ditahan penjaga", async () => {
     const r = await jalan("type " + RAHASIA);
     expect(String(r.output || "")).not.toContain(ISI);
-    expect(r.output).toMatch(/TERKURUNG WORKSPACE/);
+    // Sengaja TIDAK terikat pada bunyi pesannya: yang diuji adalah penjaga
+    // masih menahan, bukan kalimat apa yang dipakainya. Kalimat lama
+    // ("TERKURUNG WORKSPACE") dibuang justru karena terdengar seperti
+    // jaminan kernel yang tak dimilikinya.
+    expect(r.ok).toBe(false);
+    expect(r.output).toMatch(/menembus keluar workspace/);
   }, 30000);
 
   test.each([
