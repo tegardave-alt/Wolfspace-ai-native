@@ -1,32 +1,47 @@
 # 🐺 WOLFSPACE
 
-**A local, open-source AI coding workspace that _proves_ its code by actually running it.**
+**A local, open-source AI coding agent that works on your files and runs what it writes.**
 
 [**wolfspace site**](https://tegardave-alt.github.io/Wolfspace-ai-native/) — overview and
 download links. The app itself runs on your machine, not on the web.
 
-Most AI coding tools hand you code and hope it works. WOLFSPACE treats the model as an
-**untrusted guesser** and your **CPU as the judge**: generated code is executed and tested
-automatically, and if it fails, the error is fed back to the model to fix — looping until it
-genuinely runs.
+WOLFSPACE treats the model as an **untrusted guesser**: it reads, greps, and edits your
+source through tools, and when it needs to know whether something works, it runs a command
+and reads the real output — under a policy that can deny the call and an audit trail that
+records it.
 
-> **model guesses → your CPU runs it → pass / fail (real)**
+> **model proposes → a tool runs it → real stdout/stderr comes back**
 
-You don't get a smarter model. You get **output you can trust**, because it was proven by
-execution, not by appearance.
+### What changed, and why this section is worded carefully
+
+Earlier versions of this README promised something stronger: that **every** code answer was
+executed automatically, and that the agent _"cannot even declare itself done without a
+successful execution to point at."_ That auto-run pipeline has been removed — it had already
+stopped working long before it was deleted:
+
+- the `/run` endpoint did not exist; the UI's Run button POSTed to it and got the HTML index
+  page back, then failed on `r.json()` with _"Server unreachable"_
+- `runReply()` returned `{ok: true, info: "auto-run disabled in normal chat"}` without
+  executing anything, and that `ok: true` was emitted to the UI as if it were a verdict
+- the nine-language dispatcher (`runByLang`) had **zero callers** in either of the two copies
+  it existed in
+
+About 1,100 lines of it are gone. Verification today is real but **agent-driven**: it happens
+when the agent chooses to run something, not automatically on every answer.
 
 ---
 
 ## Features
 
-- ✅ **Verified, not vibes.** Every code answer is run; you see its real stdout/stderr and a
-  pass/fail indicator — not "looks right." The agent cannot even declare itself done
-  without a successful execution to point at.
+- ✅ **Runs what it writes.** The agent executes commands through `sandbox_run` (crash
+  isolation, process-tree-killing timeout) and `capability_exec` (deny-by-default broker,
+  audited) and reads the real stdout/stderr back. Execution is a step the agent takes, not
+  an automatic pass over every reply.
 - 🔌 **Any cloud model.** Bring your own API key — the provider is auto-detected from the key
   (OpenAI, Claude, Gemini, Groq, OpenRouter, GitHub Models, NVIDIA, DeepSeek, Qwen,
   OpenCode, or any OpenAI-compatible endpoint).
-- ✏️ **Real editor.** Monaco (VS Code's editor) for every code block — edit in place, re-run,
-  or ask the AI to revise.
+- ✏️ **Real editor.** Monaco (VS Code's editor) for every code block — edit in place or ask
+  the AI to revise.
 - 🔗 **MCP tools.** Connect Model Context Protocol servers (Notion, GitHub, filesystem, …);
   their tools become callable by the agent, with live per-server connection status.
   The client speaks **stdio** JSON-RPC; Streamable-HTTP and legacy-SSE servers are
@@ -59,11 +74,15 @@ npm install
 npm start                      # -> http://127.0.0.1:8090
 ```
 
-Open **http://127.0.0.1:8090**, paste any **cloud API key** in settings, then ask for code.
-It runs and verifies automatically.
+Open **http://127.0.0.1:8090**, paste any **cloud API key** in settings, then give the agent
+a task. It edits files and runs commands, and you see the real output.
 
-**Requirements:** [Node.js](https://nodejs.org) 18+ (or [Bun](https://bun.sh)).
-Python is optional (only to execute Python snippets). No build step — the UI is served as-is.
+**Requirements:** [Node.js](https://nodejs.org) 18+. Python is optional (the agent uses it if
+your task does). No build step — the UI is served as-is.
+
+> Bun is no longer claimed as a supported runtime. Nothing detects or configures it: the
+> JS runtime is simply whatever launched the server (`process.execPath`), so launching with
+> Bun happens to work rather than being a supported path.
 
 ### As a desktop app
 
@@ -100,12 +119,12 @@ comes from Node `--permission` (capability zone), Linux namespaces
 
 ### Local models: not currently wired
 
-> **A cloud API key is required.** The llama.cpp path is **not connected** anymore: the
-> chat/agent code no longer routes any request to a local model, so a running
-> `llama-server` is never used even if `/models` reports it. The setup scripts below are
-> kept because they still fetch and launch llama.cpp correctly — only the wiring into the
-> request path is gone. Reconnecting it means restoring a caller for `askModelStream()`
-> in `agent/chat.cjs`.
+> **A cloud API key is required.** The llama.cpp path is **not connected**, and the client
+> code for it is now gone: `askModelStream()` lived in `agent/runners.cjs`, which was deleted
+> along with the rest of the unused execution stack. A running `llama-server` is never used
+> even if `/models` reports it. The setup scripts below are kept because they still fetch and
+> launch llama.cpp correctly, but reconnecting local models now means **writing a new client**,
+> not restoring a call.
 
 Local models use [llama.cpp](https://github.com/ggml-org/llama.cpp). One-time setup downloads
 `llama-server` + a small CPU-friendly model:
@@ -129,19 +148,33 @@ note above. What actually answers requests today is whichever cloud key you conf
 
 ## Languages
 
-Runs **Python** and **JavaScript** out of the box (JS via your Node/Bun runtime). WOLFSPACE also
-runs **C, C++, Go, Java, PHP, Rust, and Kotlin** if their compilers are on your PATH — point to
-them under `runners` in `config.json`. HTML/CSS preview live in an iframe.
+**The nine-language dispatcher has been removed.** It compiled and ran C, C++, Go, Java, PHP,
+Rust, and Kotlin from paths configured under `runners` in `config.json` — and it worked, but
+nothing called it. It existed for the original local-model flow ("model emits a code block,
+we compile and run it"), which no longer exists.
+
+What executes code today:
+
+| Path                                      | Languages                     | Reached by                      |
+| ----------------------------------------- | ----------------------------- | ------------------------------- |
+| `sandbox_run` / `capability_exec` (tools) | anything you can shell out to | the agent, per its own decision |
+| `runInWorkspace()` (`/agent` endpoint)    | Python, JavaScript only       | HTTP; the UI does not call it   |
+
+The `runners` block in `config.json` is now read by nothing. It is left in place so an
+existing config does not error, but editing it has no effect — remove it when convenient.
+
+HTML/CSS still preview live in an iframe, and the agent auto-renders `.html` files it writes.
 
 ## How it works
 
-| Layer                                         | Role                                                                         |
-| --------------------------------------------- | ---------------------------------------------------------------------------- |
-| **Generator** (untrusted)                     | guesses code — a cloud API (local llama-server is not wired in)              |
-| **Bridge** (`server.cjs` + `server/routes/*`) | streams tokens, extracts the code block, runs it, feeds errors back to retry |
-| **Judge** (ground truth)                      | says what the code actually does — your CPU (subprocess)                     |
+| Layer                                         | Role                                                                           |
+| --------------------------------------------- | ------------------------------------------------------------------------------ |
+| **Generator** (untrusted)                     | proposes edits and commands — a cloud API (local llama-server is not wired in) |
+| **Bridge** (`server.cjs` + `server/routes/*`) | streams tokens, dispatches tool calls, streams results back                    |
+| **Judge** (ground truth)                      | says what the code actually does — your CPU, via the agent's exec tools        |
 
-Configure everything in `config.json`: models/ports, local model dir, language runners.
+Configure everything in `config.json`: models/ports and local model dir. (The `runners`
+block is vestigial — see **Languages** above.)
 Cloud keys are stored server-side in `~/.wolfspace/cloud-keys.json` — outside the project
 tree, never in the browser, never committed. MCP servers live in `config/mcp.json`
 (see `config/mcp.example.json`), which is likewise untracked.
@@ -239,6 +272,14 @@ output actually loads). The Docker job was removed along with the image it guard
   name you already know; there is no browsing or search
 - Reconnecting the local-model path, or removing the llama.cpp scripts outright — keeping
   scripts for a path nothing calls is the kind of drift this README exists to prevent
+- Fixing JS execution under the desktop shell. `runInWorkspace()` runs JavaScript with
+  `process.execPath`, which is `electron.exe` when the backend runs in-process under
+  `npm run app`. Electron never exits after the script finishes, so the call burns the full
+  120-second `EXEC_TIMEOUT` and then reports failure **even though the output was correct**.
+  Measured: 120,046 ms, `ok: false`, stdout `"halo dari javascript"`. The fix is the same
+  `ELECTRON_RUN_AS_NODE: "1"` already used in `agent/tools/index.cjs`
+- Deleting the `/agent` endpoint, or wiring it up. Nothing in the app calls it — the UI uses
+  `/self-agent` exclusively — but it is still reachable over HTTP
 
 ## License
 

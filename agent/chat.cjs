@@ -4,7 +4,10 @@ const http = require("http");
 const https = require("https");
 const { dlog } = require("./debug.cjs");
 const { pickSystem } = require("./prompts.cjs");
-const { runByLang, detectLang, extractCode } = require("./runners.cjs");
+// runners.cjs DIHAPUS bersama runByLang/detectLang/extractCode: ketiganya
+// diimpor di sini tapi TIDAK PERNAH dipanggil — masing-masing muncul tepat
+// sekali, yaitu di baris impor ini. Eksekusi kode berjalan lewat tool agent
+// (sandbox_run / capability_exec), bukan lewat dispatcher bahasa.
 const { runSelfTool, SELF_TOOLS } = require("./tools.cjs");
 const {
   askCloudStream,
@@ -124,7 +127,7 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
       dlog("chat", "info", "stream completed", { length: full.length });
       tagFilter.flush(); // release any held-back tail (e.g. text that merely started with "<f")
 
-      return runReply(full, safeHistory, emit);
+      return { ok: true, reply: full };
     })
     .catch(onError);
 }
@@ -138,18 +141,13 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
 // _isExecutionRequested() DIHAPUS — nol pemanggil di seluruh repo. Deteksi
 // "user minta eksekusi" sudah pindah ke jalur tool-calling self_agent.cjs.
 
-/**
- * Process the assistant's full reply: detect code blocks, execute if requested,
- * and handle function‑calling style tool invocations.
- * @param {string} reply - full text from the model.
- * @param {Array} history - chat history (may be used for context).
- */
-async function runReply(reply, history, emit) {
-  // Fitur auto-run dimatikan agar chat biasa tidak secara agresif
-  // menjalankan regex tool atau mengeksekusi blok kode.
-  // Eksekusi hanya dilakukan di mode Agent Runner (/self-agent).
-  return { ok: true, info: "auto-run disabled in normal chat", reply };
-}
+// runReply() DIHAPUS. Docstring-nya menjanjikan "detect code blocks, execute if
+// requested", tapi badannya sudah lama hanya mengembalikan
+//     { ok: true, info: "auto-run disabled in normal chat", reply }
+// tanpa menjalankan apa pun. Objek itu ikut dipancarkan self_agent sebagai
+// field `run` pada event adone, sehingga UI menerima ok:true yang terbaca
+// seperti "eksekusi berhasil" padahal tak ada eksekusi, plus salinan penuh teks
+// ringkasan di bawah nama `run`. Verifikasi nyata terjadi di tool agent.
 
 /**
  * Helper to parse a pseudo‑action line like "!run python ..." – not used currently
@@ -163,7 +161,6 @@ function parseAction(line) {
 
 module.exports = {
   chatStream,
-  runReply,
   parseAction,
   SELF_TOOLS,
 };
