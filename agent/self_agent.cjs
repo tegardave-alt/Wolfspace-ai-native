@@ -128,28 +128,69 @@ function stripThinkBlocks(text) {
     .trim();
 }
 
+// Apakah sepotong teks itu CATATAN KERJA, bukan kesimpulan?
+//
+// Ciri catatan kerja: didominasi baris daftar/pemetaan, nyaris tanpa kalimat.
+// Contoh nyata yang memicu perbaikan ini — potongan yang sampai ke layar user
+// dengan label "berikut kesimpulan dari proses berpikirnya":
+//
+//   Language to Devicon mapping:
+//   - js → devicon-javascript-plain
+//   - ts → devicon-typescript-plain
+//   ... (terpotong di tengah daftar)
+//
+// Itu tabel rujukan yang sedang disusun model, bukan jawaban. Menyebutnya
+// kesimpulan membuat user membaca catatan setengah jadi sebagai hasil kerja.
+function _tampakCatatanKerja(teks) {
+  const baris = String(teks || "")
+    .split("\n")
+    .map((b) => b.trim())
+    .filter(Boolean);
+  if (baris.length < 3) return false;
+  const daftar = baris.filter((b) =>
+    /^[-*•|]|\s(?:→|->|=>)\s|^\d+[.)]\s/.test(b),
+  ).length;
+  // Kalimat = baris yang diakhiri titik/tanya/seru dan cukup panjang.
+  const kalimat = baris.filter((b) => b.length > 40 && /[.!?]$/.test(b)).length;
+  return daftar / baris.length >= 0.6 && kalimat <= 1;
+}
+
 // Ambil kesimpulan dari monolog reasoning saat model tak pernah menutup
-// jawabannya di `content`. Bukan menampilkan mentah-mentah: monolog itu panjang
-// dan berisi keraguan/koreksi diri. Strategi: cari penanda kesimpulan; kalau tak
-// ada, ambil paragraf-paragraf TERAKHIR (bagian paling matang dari penalaran).
+// jawabannya di `content`.
+//
+// MENGEMBALIKAN JENISNYA, bukan cuma teks. Versi lama selalu mengembalikan
+// string dan pemanggilnya selalu memberi label "berikut kesimpulan dari proses
+// berpikirnya" — padahal hanya cabang PERTAMA yang benar-benar menemukan
+// kesimpulan. Cabang kedua sekadar mengambil paragraf terakhir, dan paragraf
+// terakhir sebuah monolog sering justru bagian yang belum selesai.
+//
+// Labelnya harus mengikuti isinya. Kalau tidak, user membaca catatan kerja
+// sebagai jawaban — dan itu lebih buruk daripada tidak menampilkan apa pun,
+// karena ia terlihat seperti hasil yang sah.
+//
+// @returns {{teks: string, jenis: "kesimpulan"|"catatan"|"kosong"}}
 function salvageReasoning(reasoning) {
   let t = String(reasoning || "");
-  if (!t.trim()) return "";
+  if (!t.trim()) return { teks: "", jenis: "kosong" };
   t = stripThinkBlocks(t) || t; // buang tag think bila reasoning ikut membawanya
   t = t.trim();
-  if (!t) return "";
+  if (!t) return { teks: "", jenis: "kosong" };
 
   // 1) Penanda kesimpulan eksplisit — ambil dari kemunculan TERAKHIR.
+  //    Hanya cabang ini yang boleh disebut "kesimpulan".
   const marker =
     /(?:^|\n)\s*(?:kesimpulan|jawaban akhir|final answer|jadi,|singkatnya|ringkasnya)\s*[:\-]?\s*/gi;
   let lastIdx = -1;
   for (const m of t.matchAll(marker)) lastIdx = m.index + m[0].length;
   if (lastIdx > -1) {
     const tail = t.slice(lastIdx).trim();
-    if (tail.length > 40) return tail.slice(0, 4000);
+    if (tail.length > 40) {
+      return { teks: tail.slice(0, 4000), jenis: "kesimpulan" };
+    }
   }
 
-  // 2) Tanpa penanda: ambil paragraf terakhir sampai ~1200 karakter.
+  // 2) Tanpa penanda: paragraf terakhir. Ini BUKAN kesimpulan, dan tak boleh
+  //    disebut begitu.
   const paras = t.split(/\n\s*\n/).filter((p) => p.trim());
   const out = [];
   let n = 0;
@@ -157,7 +198,13 @@ function salvageReasoning(reasoning) {
     out.unshift(paras[i].trim());
     n += paras[i].length;
   }
-  return out.join("\n\n").slice(0, 4000);
+  const ekor = out.join("\n\n").slice(0, 4000);
+
+  // Catatan kerja murni TIDAK diselamatkan sama sekali. Daftar pemetaan
+  // setengah jadi tak menjawab apa pun, dan menampilkannya hanya membuat user
+  // mengira ada hasil.
+  if (!ekor || _tampakCatatanKerja(ekor)) return { teks: "", jenis: "kosong" };
+  return { teks: ekor, jenis: "catatan" };
 }
 
 // Hapus rekapitulasi tool / daftar bukti / kalimat pengantar yang tidak perlu
@@ -1325,21 +1372,40 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               forceRetryCount: state.forceRetryCount + 1,
             };
           }
-          // SELAMATKAN isi reasoning. Setelah 3 retry, dulu user cuma menerima
-          // placeholder "(model tidak memberikan jawaban final)" — padahal model
-          // SUDAH bekerja: jawabannya ada di dalam monolog reasoning, hanya tak
-          // pernah dipindahkan ke content. Membuangnya berarti membuang hasil
-          // kerja yang sudah dibayar. Ambil bagian akhir reasoning (bagian yang
-          // paling mungkin berisi kesimpulan) dan tandai asalnya dengan jujur.
+          // SELAMATKAN isi reasoning — TAPI dengan label yang sesuai isinya.
+          //
+          // Alasan menyelamatkan tetap berlaku: kadang jawabannya memang ada di
+          // monolog reasoning, cuma tak pernah dipindahkan ke content, dan
+          // membuangnya berarti membuang kerja yang sudah dibayar.
+          //
+          // Yang DIPERBAIKI: dulu apa pun yang terselamatkan diberi label
+          // "berikut kesimpulan dari proses berpikirnya" — termasuk saat yang
+          // terambil cuma paragraf terakhir. Akibatnya catatan kerja setengah
+          // jadi tampil sebagai hasil. Terlihat langsung di layar user: sebuah
+          // daftar pemetaan bahasa->ikon yang terpotong di tengah, disajikan
+          // seolah itu jawabannya.
+          //
+          // Sekarang labelnya mengikuti jenisnya, dan catatan kerja murni tidak
+          // ditampilkan sama sekali — lebih baik mengaku tak ada jawaban
+          // daripada menyodorkan sesuatu yang terlihat seperti jawaban.
           const salvaged = salvageReasoning(msg.reasoning);
-          msg.content = salvaged
-            ? "_(Model tidak menutup jawabannya; berikut kesimpulan dari proses berpikirnya.)_\n\n" +
-              salvaged
-            : "(the model gave no final answer)";
+          if (salvaged.jenis === "kesimpulan") {
+            msg.content =
+              "_(Model tidak menutup jawabannya; berikut kesimpulan dari proses berpikirnya.)_\n\n" +
+              salvaged.teks;
+          } else if (salvaged.jenis === "catatan") {
+            msg.content =
+              "_(Model tidak memberikan jawaban final. Berikut CATATAN TERAKHIR dari proses berpikirnya — ini bukan kesimpulan, dan mungkin belum selesai.)_\n\n" +
+              salvaged.teks;
+          } else {
+            msg.content =
+              "(Model tidak memberikan jawaban final, dan proses berpikirnya tidak memuat kesimpulan yang bisa dipakai. Coba jalankan ulang, atau persempit permintaannya.)";
+          }
           dlog("self", "info", "reasoning_salvage", {
             step: state.step,
+            jenis: salvaged.jenis,
             reasoningChars: String(msg.reasoning || "").length,
-            salvagedChars: salvaged ? salvaged.length : 0,
+            salvagedChars: salvaged.teks ? salvaged.teks.length : 0,
           });
         }
 
