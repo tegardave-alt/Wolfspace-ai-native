@@ -3,7 +3,7 @@
 **A local, open-source AI coding workspace that _proves_ its code by actually running it.**
 
 [**wolfspace site**](https://tegardave-alt.github.io/Wolfspace-ai-native/) — overview and
-download links. The app itself runs on your machine or in a container, not on the web.
+download links. The app itself runs on your machine, not on the web.
 
 Most AI coding tools hand you code and hope it works. WOLFSPACE treats the model as an
 **untrusted guesser** and your **CPU as the judge**: generated code is executed and tested
@@ -29,8 +29,18 @@ execution, not by appearance.
   or ask the AI to revise.
 - 🔗 **MCP tools.** Connect Model Context Protocol servers (Notion, GitHub, filesystem, …);
   their tools become callable by the agent, with live per-server connection status.
+  The client speaks **stdio** JSON-RPC; Streamable-HTTP and legacy-SSE servers are
+  reached through `scripts/mcp-http-bridge.cjs`.
+- 🧩 **Plugins.** Install a plugin and it contributes an MCP server of its own, declaring
+  the permissions it wants in a manifest. Nothing is granted until you approve it, and
+  revoking approval closes the gate again — a plugin can only ever narrow what it was
+  granted, never widen it.
 - 🕸️ **Logic canvas.** A React Flow node graph for composing multi-step workflows from
   Trigger, HTTP Request, Transform, Condition, and Output nodes, wired together visually.
+- 🌐 **Web fetch with a real browser.** `webExtract` drives Playwright for pages that only
+  assemble their content after scripts run, so the agent reads what a browser would see
+  rather than the empty shell the server sends. Outbound URLs pass an SSRF check that
+  resolves DNS first, so a hostname cannot smuggle in a private address.
 - 🔒 **Local-first.** Runs on your machine, with your keys. Nothing leaves your computer
   except the model API calls you opt into.
 - 🤖 **Self-editing agent.** WOLFSPACE ships an agent that can read, grep, and edit
@@ -80,33 +90,13 @@ containment works on both. See `agent/broker/README.md`.
 The installer is **not code-signed**, so Windows SmartScreen will warn on first run —
 choose _More info → Run anyway_.
 
-### With Docker
+### Container / hosted
 
-Runs the server + agent in a container; the UI is served over HTTP rather than in a
-native window. Note this image runs Node and Python only — Go/Java/Rust/PHP/C toolchains
-are not installed, and `config.docker.json` leaves those runners unset.
-
-```bash
-docker build -t wolfspace .
-docker run -p 8090:8090 -v wolfspace-data:/data wolfspace
-```
-
-The container runs as a non-root user, honours an injected `PORT`, exposes
-`/healthz` for probes, and keeps API keys and snapshots on the `/data` volume.
-
-### Hosting it (container platforms only)
-
-Deploy the image above to anything that runs containers — Railway, Render, Fly.io,
-or a plain VPS. Point the platform at the `Dockerfile`, let it inject `PORT`, mount a
-volume at `/data`, and set the health check path to `/healthz`.
-
-**Serverless platforms cannot run WOLFSPACE, and this is not a configuration gap.**
-Vercel, Netlify Functions, and Cloudflare Workers all fail on the same four things:
-`server.cjs` binds a long-lived port instead of exporting a request handler; `node-pty`
-is a native addon loaded at boot and there is no TTY; the agent spawns `bash`/`python`
-subprocesses to run code; and snapshots, uploads, and `cloud-keys.json` need a writable
-persistent filesystem. Removing those leaves the product without the one thing it
-exists to do — proving code by executing it.
+Removed. The `Dockerfile`, `.dockerignore`, `config.docker.json`, and `sandbox/`
+image are gone — nothing in the app shelled out to `docker` anymore, so the files
+only described a deployment path that was no longer exercised. Containment now
+comes from Node `--permission` (capability zone), Linux namespaces
+(`agent/tools/bash-jail.cjs`), and the WSL zone — none of which need a daemon.
 
 ### Local models: not currently wired
 
@@ -161,12 +151,14 @@ tree, never in the browser, never committed. MCP servers live in `config/mcp.jso
 ```mermaid
 graph TD
     Shell["electron/main.js<br/>(desktop shell, app:// protocol, HMR)"]
-    UI["public/app.jsx<br/>(React, Babel-in-browser, no build step)"]
+    UI["public/app.jsx + public/app/*.tsx<br/>(React, Babel-in-browser, no build step)"]
     API["server.cjs<br/>(HTTP entry, dispatches to routes)"]
-    Routes["server/routes/*<br/>(cloud, terminal, snapshots, openclaw,<br/>hunks — modular per domain)"]
+    Routes["server/routes/*<br/>(cloud, terminal, snapshots, openclaw,<br/>debug, hunks — modular per domain)"]
     Agent["agent/self_agent.cjs<br/>(ReAct loop, tool-calling, HITL)"]
-    Tools["agent/tools/*<br/>(file, exec, disk, web, skills)"]
+    Tools["agent/tools/*<br/>(file, exec, disk, web, skills, arch, gen3d)"]
+    Memory["agent/temuan.cjs<br/>(what has already been read this run —<br/>survives context truncation)"]
     MCP["agent/mcp-client.cjs<br/>(MCP servers over stdio JSON-RPC)"]
+    Plugins["agent/plugins.cjs<br/>(manifest + explicit approval;<br/>each plugin contributes an MCP server)"]
     Sandbox["agent/sandbox.cjs<br/>(resiliency: timeout, process-tree kill,<br/>cleanup — advisory FS isolation)"]
     Broker["agent/broker/*<br/>(capability_exec: deny-by-default policy,<br/>--permission-enforced isolation, audit log)"]
     Platform["agent/platform/*<br/>(Windows/macOS/Linux adapter,<br/>capability-negotiated)"]
@@ -176,15 +168,23 @@ graph TD
     API --> Routes
     API --> Agent
     Agent --> Tools
+    Agent --> Memory
     Agent --> MCP
+    Plugins -->|registers servers| MCP
     Tools -->|sandbox_run| Sandbox
     Tools -->|capability_exec| Broker
     Sandbox --> Platform
     Broker --> Platform
 ```
 
-Both the desktop shell and the Docker image run the same core — Electron hosts the UI in a
-native window, the container serves it over HTTP.
+The desktop shell and the plain `npm start` server run the same core — Electron hosts the
+UI in a native window, the server serves it over HTTP.
+
+**On the "no build step" claim and TypeScript.** The UI is still served as-is: the
+vendored Babel in the browser strips the types at load time, so `.tsx` files need no
+compiler pass to run. Type checking is a separate, deliberate step (`npm run typecheck`)
+that runs `tsc --noEmit` over both `agent/` and `public/` — it never emits, so nothing
+in the runtime path depends on it.
 
 ## Security
 
@@ -199,6 +199,13 @@ bash jail (`agent/tools/bash-jail.cjs`, Linux namespaces — no daemon). The dae
 Docker execution sandbox has been removed; on Windows the kernel-level containment applies
 only under `npm run app:wsl`.
 
+MCP servers are child processes, and WOLFSPACE records the PIDs it spawns so a crashed
+session's leftovers can be cleaned up on the next start. That record stores a timestamp
+alongside each PID, because **a PID number is not an identity** — the OS reuses it. Without
+the timestamp, a stale record could point at whatever process later inherited the number,
+and the cleanup would kill a stranger's process while logging it as a success. Records are
+also dropped the moment a server stops, so dead PIDs never accumulate in the first place.
+
 Every layer's guarantees, its **limits**, and the escape tests it was measured against are
 documented in **[docs/SECURITY.md](docs/SECURITY.md)** — along with the rollback design that
 lets the app survive a broken edit to its own source.
@@ -211,12 +218,13 @@ still open — see **[docs/PETA.md](docs/PETA.md)**.
 ```bash
 npm test                       # jest
 npm run dev                    # nodemon
+npm run typecheck              # tsc --noEmit over agent/ and public/ (no emit, no build)
 npm run stress                 # broker/agent leak + concurrency check
+npm run profil                 # CPU profile a freeze; writes a .cpuprofile you can attach
 ```
 
-CI runs three jobs on every push: tests, a Windows Electron build (verifying the packaged
-output actually loads), and a Docker build (asserting the sandbox image executes code as a
-non-root user).
+CI runs two jobs on every push: tests, and a Windows Electron build (verifying the packaged
+output actually loads). The Docker job was removed along with the image it guarded.
 
 ## Roadmap
 
@@ -227,6 +235,10 @@ non-root user).
   real macOS hardware
 - Code-signed installers (currently unsigned; SmartScreen warns on first run)
 - Richer verification (tests-as-spec, coverage)
+- A plugin registry — installing today means pointing at a local directory or a package
+  name you already know; there is no browsing or search
+- Reconnecting the local-model path, or removing the llama.cpp scripts outright — keeping
+  scripts for a path nothing calls is the kind of drift this README exists to prevent
 
 ## License
 

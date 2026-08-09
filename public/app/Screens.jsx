@@ -258,7 +258,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
           name: name,
           desc:
             (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
-          active: !!s.ready && s.lastCallOk !== false,
+          // Jika server di-disabled di backend, paksa active = false.
+          // Tanpa ini polling status akan menimpa hasil toggle dan server
+          // terkesan "hidup kembali" sendiri walaupun sudah dinonaktifkan.
+          active: !s.disabled && !!s.ready && s.lastCallOk !== false,
           status: s,
           conf: conf,
         };
@@ -295,21 +298,13 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     setPickerMcpInputError("");
     setPickerMcpInputSuccess("");
 
-    let command = "npx";
-    let args = [];
-    let cleanType = type.toLowerCase();
-
-    if (cleanType.startsWith("npx ")) {
-      const parts = type.split(/\s+/);
-      command = parts[0];
-      args = parts.slice(1);
-    } else if (cleanType.includes("/")) {
-      args = ["-y", type];
-    } else if (cleanType === "notion") {
-      args = ["-y", "@notionhq/notion-mcp-server"];
-    } else {
-      args = ["-y", `@modelcontextprotocol/server-${cleanType}`];
-    }
+    // Satu sumber: lihat mcpResolvePerintah() di app/Config.jsx. Digandakan
+    // di sini dulu, dan dua salinannya sempat melenceng.
+    const _r = mcpResolvePerintah(type);
+    let command = _r.command;
+    let args = _r.args;
+    // Masih dipakai di bawah untuk memetakan env var per layanan.
+    const cleanType = String(type || "").toLowerCase();
 
     let name = type
       .split("/")
@@ -330,7 +325,17 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         else if (cleanType.includes("slack"))
           env = { SLACK_BOT_TOKEN: envVars };
         else if (cleanType.includes("notion")) env = { NOTION_TOKEN: envVars };
-        else env = { TOKEN: envVars };
+        else if (cleanType.includes("penpot"))
+          env = { PENPOT_ACCESS_TOKEN: envVars };
+        else if (cleanType === "figma") {
+          // figma-developer-mcp menerima token via --figma-api-key arg, bukan env, dan butuh --stdio
+          args = [
+            "-y",
+            "figma-developer-mcp",
+            "--stdio",
+            `--figma-api-key=${envVars}`,
+          ];
+        } else env = { TOKEN: envVars };
       }
     }
 
@@ -465,12 +470,21 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         reader.onload = async () => {
           try {
             const base64 = reader.result.split(",")[1] || reader.result;
-            const payload = { name: relPath, data: base64 };
-            let uploadedUrl = "";
+            // JEMBATAN, bukan unggahan — alasan lengkapnya di Components.jsx.
+            // Permukaan KEDUA: logika attach terduplikasi di dua berkas ini,
+            // dan perbaikan yang hanya menyentuh satu membuat perilaku aplikasi
+            // bergantung pada layar mana yang kebetulan dipakai. Itu persis
+            // yang terjadi pada daftar MCP sebelumnya.
+            const payload = {
+              name: file.name,
+              data: base64,
+              type: file.type || null,
+            };
+            let attHandle = "";
             if (window.IPC && window.IPC.invoke) {
               const res = await window.IPC.invoke("api", {
                 method: "POST",
-                path: "/upload",
+                path: "/attach",
                 body: payload,
               });
               let parsed;
@@ -480,18 +494,18 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               } catch (_) {
                 parsed = res;
               }
-              if (res.status >= 400 || parsed.error)
-                throw new Error(parsed.error || "Upload failed");
-              uploadedUrl = parsed.url || "/uploads/" + parsed.name;
+              if (res.status >= 400 || !parsed.ok)
+                throw new Error(parsed.error || "Attach gagal");
+              attHandle = parsed.id;
             } else {
-              const r = await fetch("/upload", {
+              const r = await fetch("/attach", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
               });
               const res = await r.json();
-              if (res.error) throw new Error(res.error);
-              uploadedUrl = res.url || "/uploads/" + res.name;
+              if (!res.ok) throw new Error(res.error || "Attach gagal");
+              attHandle = res.id;
             }
             setAttachments((prev) =>
               prev.map((a) =>
@@ -499,8 +513,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                   ? {
                       ...a,
                       status: "ready",
-                      url: uploadedUrl,
-                      previewUrl: a.previewUrl || (isImg ? uploadedUrl : null),
+                      attId: attHandle,
                     }
                   : a,
               ),
@@ -543,10 +556,14 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     if (!v && attachments.length === 0) return;
     let fullText = v;
     if (attachments.length > 0) {
+      // HANDLE, bukan path — alasan lengkapnya di Components.jsx. Bentuknya
+      // harus IDENTIK di kedua permukaan; kalau berbeda, agent menerima format
+      // lampiran yang berbeda tergantung layar mana yang dipakai user.
       const attSummary = attachments
         .map(
           (a) =>
-            `- [Attached]: ${a.path} (${Math.round(a.size / 1024)} KB${a.url ? `, url: ${a.url}` : ""})`,
+            `- [Terlampir] ${a.name} (${Math.round(a.size / 1024)} KB${a.type ? `, ${a.type}` : ""})` +
+            (a.attId ? ` — id: ${a.attId}` : " — GAGAL diserahkan"),
         )
         .join("\n");
       fullText = v
@@ -561,7 +578,19 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       : project.includes(":") || project.includes("/") || project.includes("\\")
         ? project
         : `c:\\Users\\dave\\${project}`;
-    onStart(fullText, chosenPath);
+    // Argumen KETIGA memisahkan yang dilihat user dari yang dikirim ke model —
+    // sama seperti Composer. Tanpa ini, baris lampiran beserta handle att_…
+    // mendarat mentah di gelembung chat pertama.
+    onStart(fullText, chosenPath, {
+      text: v,
+      attachments: attachments.map((a) => ({
+        name: a.name,
+        size: a.size,
+        type: a.type,
+        previewUrl: a.previewUrl,
+        ok: !!a.attId,
+      })),
+    });
   };
   // Pasang folder ke WOLFSPACE = beri worktree+branch terikat ke alamat aslinya
   // (lewat /ww/attach). Idempoten & non-destruktif. Simpan dgn path yang benar.
@@ -912,15 +941,65 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                         <button
                           className="am-item"
                           style={{ padding: "8px 12px", flex: 1 }}
-                          onClick={(e) => {
+                          onClick={async (e) => {
                             e.stopPropagation();
+                            // Daftar MCP KEDUA. Yang pertama ada di Composer
+                            // (Components.jsx) dan sudah memisahkan CONNECT
+                            // dari toggle; yang ini terlewat pada perubahan itu.
+                            //
+                            // Terbukti dari log run nyata: klik di layar ini
+                            // menghasilkan `POST /mcp/toggle`, bukan
+                            // `POST /mcp/connect` — jadi sekadar menyambungkan
+                            // server ikut menulis `disabled` ke mcp.json.
+                            // Logikanya harus SAMA di kedua tempat, kalau tidak
+                            // perilaku aplikasi bergantung pada layar mana yang
+                            // kebetulan dipakai.
+                            const perluConnect =
+                              !srv.active &&
+                              !(srv.status && srv.status.disabled);
+                            const jalur = perluConnect
+                              ? "/mcp/connect"
+                              : "/mcp/toggle";
+                            const muatan = perluConnect
+                              ? { name: srv.id }
+                              : { name: srv.id, enabled: !srv.active };
                             setPickerMcp((prev) =>
                               prev.map((item) =>
                                 item.id === srv.id
-                                  ? { ...item, active: !item.active }
+                                  ? {
+                                      ...item,
+                                      active: !srv.active,
+                                      connecting: perluConnect,
+                                    }
                                   : item,
                               ),
                             );
+                            try {
+                              if (window.WOLFSPACE && window.WOLFSPACE.invoke) {
+                                await window.WOLFSPACE.invoke("api", {
+                                  method: "POST",
+                                  path: jalur,
+                                  body: muatan,
+                                });
+                              } else {
+                                await fetch(jalur, {
+                                  method: "POST",
+                                  headers: {
+                                    "Content-Type": "application/json",
+                                  },
+                                  body: JSON.stringify(muatan),
+                                });
+                              }
+                            } catch (err) {
+                              console.error("Error toggling MCP server", err);
+                            } finally {
+                              // finally, bukan hanya jalur sukses: kalau gagal,
+                              // badge "⟳ Connecting…" menempel selamanya karena
+                              // tak ada yang menyegarkannya dari status runtime.
+                              window.dispatchEvent(
+                                new CustomEvent("wolfspace_mcp_changed"),
+                              );
+                            }
                           }}
                         >
                           <div
@@ -948,7 +1027,20 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                   gap: "6px",
                                 }}
                               >
-                                {srv.active ? (
+                                {srv.connecting ? (
+                                  <span
+                                    style={{
+                                      fontSize: "11px",
+                                      fontWeight: 500,
+                                      padding: "2px 6px",
+                                      borderRadius: "10px",
+                                      color: "#d7ba7d",
+                                      background: "rgba(215, 186, 125, 0.12)",
+                                    }}
+                                  >
+                                    ⟳ Connecting…
+                                  </span>
+                                ) : srv.active ? (
                                   <span
                                     style={{
                                       fontSize: "11px",

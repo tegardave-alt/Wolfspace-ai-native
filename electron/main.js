@@ -210,29 +210,9 @@ function registerAppProtocol() {
   });
 }
 
-function findRuntime() {
-  for (const c of ["bun", "node"]) {
-    try {
-      const p = execSync(
-        (process.platform === "win32" ? "where " : "which ") + c,
-        { encoding: "utf8" },
-      )
-        .split(/\r?\n/)[0]
-        .trim();
-      if (p && fs.existsSync(p)) return p;
-    } catch (e) {}
-  }
-  const bundled = path.join(
-    process.env.LOCALAPPDATA || "",
-    "Programs",
-    "Qwen",
-    "resources",
-    "bun",
-    "bun.exe",
-  );
-  if (fs.existsSync(bundled)) return bundled;
-  return "node";
-}
+// findRuntime() DIHAPUS — nol pemanggil. Pencarian runtime bun/node relevan
+// saat backend di-spawn sebagai proses terpisah; sejak backend jalan
+// in-process lewat core.js, ia tak pernah dipakai lagi.
 
 function toolchainPath() {
   const maybe = [
@@ -303,12 +283,8 @@ function startBackend() {
   // by the renderer through Electron IPC (see registerIpc). Zero open ports.
 }
 
-// OBSOLETE: In Electron mode, server runs in-process via core.js IPC, no HTTP port.
-// This function was used for web-server startup detection and is no longer needed.
-function waitReady(cb, tries = 60) {
-  // No-op: IPC-based backend is ready immediately after core() initialization.
-  cb();
-}
+// waitReady() DIHAPUS — komentarnya sendiri sudah menandainya OBSOLETE, dan
+// isinya memang hanya cb() tanpa menunggu apa pun. Nol pemanggil.
 
 function createWindow() {
   const win = new BrowserWindow({
@@ -360,8 +336,19 @@ function createWindow() {
   // console.log di app.jsx (browser DevTools) tak pernah terlihat lewat terminal/log
   // dev, hanya lewat DevTools yang tak selalu dibuka. Beda dari dlog/[WOLFSPACE:xxx]
   // yang berasal dari proses BACKEND (Node), bukan renderer.
+  // Electron >= 33 mengirim SATU objek event ({level, message, lineNumber,
+  // sourceId, frame}) — bukan lagi (event, level, message, line, sourceId).
+  // Dengan tanda tangan lama, `message` menerima argumen posisi yang salah dan
+  // yang tercetak justru objek `console` global secara utuh, satu kali PER BARIS
+  // log renderer. Terpantau di app nyata: satu baris "[Composer] render" ikut
+  // menyeret dump 25 properti console. Kedua bentuk didukung di sini supaya
+  // tak terikat satu versi Electron.
   const LEVELS = ["log", "warning", "error"];
-  win.webContents.on("console-message", (_e, level, message) => {
+  win.webContents.on("console-message", (...a) => {
+    const ev =
+      a[0] && typeof a[0] === "object" && "message" in a[0] ? a[0] : null;
+    const level = ev ? ev.level : a[1];
+    const message = ev ? ev.message : a[2];
     console.log("[renderer:" + (LEVELS[level] || level) + "]", message);
   });
 }

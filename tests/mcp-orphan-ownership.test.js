@@ -104,6 +104,74 @@ describe("pelacakan PID MCP per pemilik", () => {
     }, 400);
   }, 15000);
 
+  // Nomor PID bukan identitas. Sistem operasi memakainya ulang, jadi catatan
+  // yang tertinggal dari sesi yang mati mendadak bisa menunjuk ke proses milik
+  // ORANG LAIN yang kebetulan mewarisi nomor itu. Membunuhnya akan tercatat di
+  // log sebagai "MCP orphan PID N dihentikan" — terbaca seperti pembersihan
+  // yang berhasil, padahal proses asing yang mati. Waktu-mulai memisahkannya:
+  // proses kita mulai pada atau sebelum saat kita mencatatnya.
+  test("PID yang nomornya DIDAUR ULANG tidak dibunuh", (done) => {
+    const asing = bonekaHidup(); // proses nyata, hidup, bukan milik kita
+    boneka.push(asing);
+
+    setTimeout(() => {
+      // Catatan seolah dibuat KEMARIN oleh pemilik yang sudah mati: bentuk
+      // persis yang tertinggal sesudah WOLFSPACE mati mendadak.
+      tulisBerkasPemilik(999999, [
+        { pid: asing.pid, ts: Date.now() - 24 * 3600 * 1000 },
+      ]);
+
+      mcp._killOrphans();
+
+      setTimeout(() => {
+        expect(alive(asing.pid)).toBe(true); // INTI: proses asing selamat
+        done();
+      }, 800);
+    }, 400);
+  }, 15000);
+
+  test("yatim ASLI tetap dibunuh — verifikasi tidak melumpuhkan pembersihan", (done) => {
+    const yatim = bonekaHidup();
+    boneka.push(yatim);
+
+    setTimeout(() => {
+      // ts sekarang: waktu-mulai proses cocok, jadi ia memang milik kita.
+      tulisBerkasPemilik(999999, [{ pid: yatim.pid, ts: Date.now() }]);
+
+      mcp._killOrphans();
+
+      setTimeout(() => {
+        expect(alive(yatim.pid)).toBe(false);
+        done();
+      }, 1200);
+    }, 400);
+  }, 15000);
+
+  // Tanpa pencabutan, berkas pemilik hanya bertambah: tiap PID mati yang
+  // tertinggal adalah calon korban daur-ulang pada pembersihan berikutnya.
+  // Jadi pencabutan bukan sekadar kerapian — ia yang menjaga daftarnya kecil.
+  test("catatan PID DICABUT saat server berhenti, bukan menumpuk", () => {
+    const p1 = bonekaHidup();
+    const p2 = bonekaHidup();
+    boneka.push(p1, p2);
+
+    mcp._recordPid(p1.pid);
+    mcp._recordPid(p2.pid);
+    const sesudahCatat = JSON.parse(fs.readFileSync(mcp._ownFile(), "utf8"));
+    expect(sesudahCatat.map((e) => e.pid).sort()).toEqual(
+      [p1.pid, p2.pid].sort(),
+    );
+    expect(typeof sesudahCatat[0].ts).toBe("number"); // ts ikut tersimpan
+
+    mcp._forgetPid(p1.pid);
+    const sisa = JSON.parse(fs.readFileSync(mcp._ownFile(), "utf8"));
+    expect(sisa.map((e) => e.pid)).toEqual([p2.pid]);
+
+    // Entri terakhir dicabut -> berkasnya ikut hilang, bukan tertinggal kosong.
+    mcp._forgetPid(p2.pid);
+    expect(fs.existsSync(mcp._ownFile())).toBe(false);
+  });
+
   test("BALAPAN: penulisan serentak banyak proses tak menghilangkan catatan", () => {
     // Inilah alasan pindah dari berkas bersama. Tiap proses anak mencatat 40
     // PID ke berkasnya SENDIRI, semuanya bersamaan. Dengan berkas bersama,
@@ -168,17 +236,42 @@ describe("pelacakan PID MCP per pemilik", () => {
   test("server dinyalakan PARALEL, bukan berurutan", () => {
     // `await` di dalam loop membuat waktu tunggu = JUMLAH semua server, bukan
     // yang terlama; satu server mati menahan seluruh agent.
+    //
+    // Sifat ini PINDAH, bukan hilang. init() dulu men-spawn semua server dan
+    // dipanggil getTools() di langkah pertama run agent — terukur 60,3 detik
+    // diam tanpa satu pun event. Sekarang penyalaan adalah tindakan eksplisit
+    // user (Connect), dan yang menyalakan banyak server sekaligus adalah
+    // connectAll(). Di situlah paralelisme sekarang harus dijaga.
+    const src = fs.readFileSync(
+      require.resolve("../agent/mcp-client.cjs"),
+      "utf8",
+    );
+    const body = src.slice(
+      src.indexOf("async connectAll()"),
+      src.indexOf(
+        "_startServer(name, conf)",
+        src.indexOf("async connectAll()"),
+      ),
+    );
+    expect(body).toMatch(/Promise\.all/);
+    expect(body).not.toMatch(
+      /for\s*\([^)]*\)\s*\{[\s\S]*await this\.connectServer/,
+    );
+  });
+
+  test("init() tak lagi menyalakan server — itu tugas Connect", () => {
+    // Penjaga arah: kalau suatu saat ada yang menambahkan connectAll() ke
+    // dalam init() demi kenyamanan, cold start 60 detik itu kembali dan
+    // gejalanya (run agent diam di awal) sangat sulit ditelusuri balik ke sini.
     const src = fs.readFileSync(
       require.resolve("../agent/mcp-client.cjs"),
       "utf8",
     );
     const initBody = src.slice(
-      src.indexOf("_killOrphans();"),
-      src.indexOf("this.initialized = true;"),
+      src.indexOf("async init()"),
+      src.indexOf("async connectServer"),
     );
-    expect(initBody).toMatch(/Promise\.all/);
-    expect(initBody).not.toMatch(
-      /for\s*\([^)]*\)\s*\{[\s\S]*await this\._startServer/,
-    );
+    expect(initBody).not.toMatch(/_startServer|connectAll/);
+    expect(initBody).toMatch(/_killOrphans\(\)/);
   });
 });

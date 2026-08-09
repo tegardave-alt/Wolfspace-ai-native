@@ -135,24 +135,8 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
  * @param {Array} history - chat history
  * @returns {boolean} true if the latest user message explicitly requests execution.
  */
-function _isExecutionRequested(history) {
-  // Guard: jika history bukan array, langsung kembalikan false
-  if (!Array.isArray(history) || history.length === 0) return false;
-  // Find the latest user message
-  let latestUser = null;
-  for (let i = history.length - 1; i >= 0; i--) {
-    if (history[i].role === "user") {
-      latestUser = history[i].content || "";
-      break;
-    }
-  }
-  if (!latestUser) return false;
-
-  // Explicit execution keywords: run, execute, test, jalankan, cobakan, eksekusi, try it, run it, execute it, etc.
-  const explicitExec =
-    /\b(run|execute|test|jalankan|cobakan|eksekusi|try it|run it|execute it|test it|execute this|run this|test this|compile this)\b/gi;
-  return explicitExec.test(latestUser);
-}
+// _isExecutionRequested() DIHAPUS — nol pemanggil di seluruh repo. Deteksi
+// "user minta eksekusi" sudah pindah ke jalur tool-calling self_agent.cjs.
 
 /**
  * Process the assistant's full reply: detect code blocks, execute if requested,

@@ -330,9 +330,22 @@ function dlog(cat, level, msg, data) {
 const _origLog = console.log;
 const _origError = console.error;
 const _origWarn = console.warn;
-const _writeSafe = (fn, ...args) => {
+// Argumen kedua adalah KONTEKS (`this`), bukan data yang dicetak.
+//
+// Ketiga pemanggil di bawah menulis `_writeSafe(_origLog, console, ...args)` —
+// maksudnya jelas `_origLog.call(console, ...args)`. Tapi versi lama menyapu
+// semuanya ke dalam `...args` lalu `fn(...args)`, sehingga `console` ikut
+// TERCETAK sebagai argumen pertama. Akibatnya SETIAP baris log backend
+// menyeret dump 25 properti objek console:
+//
+//   Object [console] { log: [Function], warn: [Function], ... } [renderer:warning] …
+//
+// Terlihat di stdout `npm run app` pada setiap pesan, dan di mode Electron
+// backend berjalan di proses MAIN — jadi ongkos serialisasi itu ditanggung
+// pemilik jendela, berulang untuk tiap baris log.
+const _writeSafe = (fn, ctx, ...args) => {
   try {
-    fn(...args);
+    fn.apply(ctx, args);
   } catch (_) {}
 };
 let _qLogReentrant = false;
@@ -2800,374 +2813,27 @@ const SELF_TOOLS = [
 // Chat with tools Ã¢â€ â€™ assistant message {content, tool_calls}. Uses stream:true because
 // several providers (e.g. NVIDIA NIM) HANG on stream:false + tools; we accumulate the
 // streamed deltas (content + tool_calls by index) and return the assembled message.
-function _askCloudToolsOnce(cloud, messages) {
-  return new Promise((resolve, reject) => {
-    const provider = cloud.provider || detectProvider(cloud.key);
-    const cfg = CLOUD[provider] || CLOUD.openai;
-    let model = (cloud.model || "").trim();
-    if (!model || /^(sk-|gsk_|AIza|nvapi-)/.test(model)) model = cfg.model;
-    const aliases = MODEL_ALIASES[provider];
-    if (aliases && aliases[model.toLowerCase()])
-      model = aliases[model.toLowerCase()];
-    let host = cfg.host,
-      p = cfg.path,
-      port,
-      transport = https;
-    if (cloud.baseUrl) {
-      try {
-        const u = new URL(
-          cloud.baseUrl.replace(/\/+$/, "") + "/chat/completions",
-        );
-        host = u.hostname;
-        p = u.pathname + (u.search || "");
-        port = u.port || undefined;
-        transport = u.protocol === "http:" ? http : https;
-      } catch {}
-    }
-    // max_tokens caps runaway rambling (some models write essays instead of a tool call),
-    // which keeps each agent step fast. Tool calls + short answers fit easily.
-    const isReasoning = /deepseek|reason/i.test(model);
-    const body = JSON.stringify({
-      model,
-      messages,
-      tools: SELF_TOOLS,
-      tool_choice: "auto",
-      temperature: 0.1,
-      stream: true,
-      max_tokens: isReasoning ? 16384 : 8192,
-    });
-    const headers = {
-      "content-type": "application/json",
-      authorization: "Bearer " + cloud.key,
-      "content-length": Buffer.byteLength(body),
-    };
-    const r = transport.request(
-      {
-        hostname: host,
-        port,
-        path: p,
-        method: "POST",
-        headers,
-        timeout: 300000,
-      },
-      (s) => {
-        const bad = s.statusCode >= 400;
-        let buf = "",
-          errBody = "",
-          content = "",
-          reasoning = "";
-        const tcs = [];
-        s.on("data", (c) => {
-          if (bad) {
-            errBody += c;
-            return;
-          }
-          buf += c;
-          let nl;
-          while ((nl = buf.indexOf("\n")) >= 0) {
-            const line = buf.slice(0, nl).trim();
-            buf = buf.slice(nl + 1);
-            const m = line.match(/^data:\s*(.*)$/);
-            if (!m || m[1] === "[DONE]") continue;
-            let j;
-            try {
-              j = JSON.parse(m[1]);
-            } catch {
-              continue;
-            }
-            const delta = j.choices && j.choices[0] && j.choices[0].delta;
-            if (!delta) continue;
-            if (delta.content) content += delta.content;
-            else if (delta.reasoning_content)
-              reasoning += delta.reasoning_content;
-            if (delta.tool_calls)
-              for (const t of delta.tool_calls) {
-                const i = t.index || 0;
-                if (!tcs[i])
-                  tcs[i] = {
-                    id: t.id || "call_" + i,
-                    type: "function",
-                    function: { name: "", arguments: "" },
-                  };
-                if (t.id) tcs[i].id = t.id;
-                if (t.function) {
-                  if (t.function.name) tcs[i].function.name = t.function.name;
-                  if (t.function.arguments)
-                    tcs[i].function.arguments += t.function.arguments;
-                }
-              }
-          }
-        });
-        s.on("end", () => {
-          if (bad) {
-            // Some providers (esp. groq) hard-fail with tool_use_failed when the model
-            // answers in plain text Ã¢â‚¬â€ treat that text as a normal reply, not an error.
-            try {
-              const err = JSON.parse(errBody).error || {};
-              if (
-                (err.code === "tool_use_failed" ||
-                  /tool/i.test(err.message || "")) &&
-                err.failed_generation
-              )
-                return resolve({
-                  role: "assistant",
-                  content: String(err.failed_generation),
-                  // Jangan kirim tool_calls: [] karena DeepSeek menolak array kosong
-                });
-            } catch (_) {}
-            return reject(
-              new Error(
-                provider + " " + s.statusCode + ": " + errBody.slice(0, 300),
-              ),
-            );
-          }
-          const validToolCalls = tcs.filter(Boolean);
-          const response = {
-            role: "assistant",
-            content: content || reasoning || null,
-          };
-          // Hanya kirim tool_calls jika ada setidaknya 1 tool call (hindari error DeepSeek)
-          if (validToolCalls.length > 0) {
-            response.tool_calls = validToolCalls;
-          }
-          resolve(response);
-        });
-      },
-    );
-    r.on("error", reject);
-    r.on("timeout", () => r.destroy(new Error("timeout")));
-    r.write(body);
-    r.end();
-  });
-}
 
 // Retry transient network failures (read ECONNRESET / timeout / socket hang up).
 const _TRANSIENT =
   /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit/i;
-async function askCloudTools(cloud, messages) {
-  let last;
-  for (let attempt = 1; attempt <= 3; attempt++) {
-    try {
-      return await _askCloudToolsOnce(cloud, messages);
-    } catch (e) {
-      last = e;
-      if (!_TRANSIENT.test(e.message || "") || attempt === 3) throw e;
-      await new Promise((r) => setTimeout(r, 400 * attempt));
-    }
-  }
-  throw last;
-}
 
 // Execute one validated tool call. Returns { ok, output, edited }.
-function runSelfTool(name, args, emit) {
-  try {
-    if (name === "list") return { ok: true, output: qList() };
-    if (name === "glob") return { ok: true, output: qGlob(args.pattern) };
-    if (name === "read")
-      return { ok: true, output: qRead(args.path, args.near) };
-    if (name === "grep") return { ok: true, output: qGrep(args.pattern) };
-    if (name === "edit") {
-      const dest = qResolve(args.path, true);
-      const old = fs.readFileSync(dest, "utf8");
-      if (!old.includes(args.old_string))
-        return {
-          ok: false,
-          output:
-            "old_string was not found in file \u2014 read ulang & salin persis.",
-        };
-      if (args.old_string === args.new_string)
-        return {
-          ok: false,
-          output:
-            "NOOP: old_string is identical to new_string \u2014 edit cancelled.",
-        };
-      const patched = old.replace(args.old_string, args.new_string);
-      if (old === patched)
-        return {
-          ok: false,
-          output:
-            "NOOP: replace changed nothing (old_string did not match, or is already identical).",
-        };
-      // Safe-Edit Protocol: snapshot → syntax check → apply / rollback + quarantine
-      const editResult = safeWriteFile(dest, patched);
-      if (!editResult.ok) {
-        return {
-          ok: false,
-          output:
-            "REJECTED & auto-ROLLED BACK (broken syntax):\n" +
-            editResult.error +
-            "\n[Snapshot: " +
-            editResult.snapshotId +
-            "]" +
-            "\n[Karantina: " +
-            (editResult.quarantineFile || "-") +
-            "]",
-        };
-      }
-      return {
-        ok: true,
-        edited: true,
-        output:
-          "edited " +
-          args.path +
-          " (" +
-          old.length +
-          "->" +
-          patched.length +
-          " b, sintaks OK)" +
-          " [snapshot: " +
-          editResult.snapshotId +
-          "]",
-      };
-    }
-
-    if (name === "write") {
-      const dest = qResolve(args.path, true);
-      // Safe-Edit Protocol: snapshot → syntax check → apply / rollback + quarantine
-      const writeResult = safeWriteFile(dest, args.content || "");
-      if (!writeResult.ok) {
-        return {
-          ok: false,
-          output:
-            "REJECTED & auto-ROLLED BACK (broken syntax):\n" +
-            writeResult.error +
-            "\n[Snapshot: " +
-            writeResult.snapshotId +
-            "]" +
-            "\n[Karantina: " +
-            (writeResult.quarantineFile || "-") +
-            "]",
-        };
-      }
-      return {
-        ok: true,
-        edited: true,
-        output:
-          "created/overwrote " +
-          args.path +
-          " (sintaks OK) [snapshot: " +
-          writeResult.snapshotId +
-          "]",
-      };
-    }
-    if (name === "bash") {
-      const cmd = (args.command || "").trim();
-      if (
-        /\brm\s+-rf\b|\bdel\s+\/|\bformat\b|\bmkfs\b|shutdown|\breboot\b|:\(\)\s*\{|>\s*\/dev\/sd|\bcurl\b[^|]*\|\s*(sh|bash)|\bgit\s+push\b/i.test(
-          cmd,
-        )
-      )
-        return { ok: false, output: "dangerous command rejected" };
-      let cwd = QROOT;
-      if (args.cwd) {
-        try {
-          const resolved = resolveDiskPath(args.cwd);
-          const st = fs.statSync(resolved);
-          if (st.isDirectory()) cwd = resolved;
-        } catch {}
-      }
-      // Use spawn for streaming output — no blocking
-      return new Promise((resolve) => {
-        const child = spawn("cmd.exe", ["/d", "/c", cmd], {
-          cwd,
-          windowsHide: true,
-          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-        });
-        let stdout = "",
-          stderr = "",
-          timedOut = false;
-        const timer = setTimeout(() => {
-          timedOut = true;
-          child.kill();
-        }, 60000);
-        child.stdout.on("data", (chunk) => {
-          const text = chunk.toString();
-          stdout += text;
-          if (emit)
-            emit({
-              t: "act",
-              kind: "bash",
-              arg: cmd.slice(0, 60),
-              ok: true,
-              output: text.slice(0, 1000),
-            });
-        });
-        child.stderr.on("data", (chunk) => {
-          const text = chunk.toString();
-          stderr += text;
-          if (emit)
-            emit({
-              t: "act",
-              kind: "bash",
-              arg: cmd.slice(0, 60),
-              ok: true,
-              output: text.slice(0, 1000),
-            });
-        });
-        child.on("close", (code) => {
-          clearTimeout(timer);
-          if (timedOut)
-            return resolve({
-              ok: false,
-              output: "TIMEOUT (60s): " + cmd.slice(0, 100),
-            });
-          const full = (stdout || stderr || "").trim();
-          if (code !== 0 && stderr) {
-            resolve({
-              ok: false,
-              output:
-                "exit " +
-                code +
-                ":\n" +
-                (stderr.trim() || stdout.trim() || "(no output)").slice(
-                  0,
-                  4000,
-                ),
-            });
-          } else {
-            resolve({
-              ok: true,
-              output: full.slice(0, 4000) || "(exit " + code + ")",
-            });
-          }
-        });
-        child.on("error", (err) => {
-          clearTimeout(timer);
-          resolve({ ok: false, output: "spawn error: " + err.message });
-        });
-      });
-    }
-    if (name === "disk_list") return { ok: true, output: diskList(args.path) };
-    if (name === "disk_read")
-      return { ok: true, output: diskRead(args.path, args.near) };
-    if (name === "disk_glob")
-      return { ok: true, output: diskGlob(args.path, args.pattern) };
-    if (name === "disk_grep")
-      return { ok: true, output: diskGrep(args.path, args.pattern) };
-    if (name === "web_search")
-      return {
-        ok: true,
-        output: "(web_search is unavailable from the agent workspace)",
-      };
-    if (name === "web_fetch")
-      return {
-        ok: true,
-        output: "(web_fetch is unavailable from the agent workspace)",
-      };
-    if (name === "todowrite") return { ok: true, output: "task list updated" };
-    if (name === "question")
-      return {
-        ok: true,
-        output: "question: " + (args.question || ""),
-        needsAnswer: true,
-        question: args.question || "",
-        choices: args.choices || [],
-      };
-    return { ok: false, output: "unknown tool: " + name };
-  } catch (e) {
-    return { ok: false, output: "error: " + e.message };
-  }
-}
+// CATATAN: _askCloudToolsOnce / askCloudTools / runSelfTool DIHAPUS dari sini.
+//
+// Ketiganya salinan LENGKAP dari jalur agent yang sudah pindah ke modul
+// (agent/cloud.cjs dan agent/tools/index.cjs), dan tak punya satu pun
+// pemanggil: tidak di server.cjs, tidak di electron/main.js, tidak di preload,
+// tidak di renderer. Diekspor, tapi tak pernah dikonsumsi.
+//
+// KENAPA DIHAPUS, bukan dibiarkan. Salinan runSelfTool di sini menjalankan bash
+// dengan  — TANPA pemangkasan env, TANPA _confineBash,
+// TANPA CommandChain. Semua yang baru ditutup di jalur modul masih menganga di
+// sini. Kode mati yang menembus pengurungan adalah ranjau: satu baris yang
+// memanggilnya membatalkan seluruh pengurungan tanpa satu pun tes jadi merah.
+// Pola yang sama sudah dihapus untuk tool disk_* (cdc00bb).
+//
+// _TRANSIENT sengaja DIPERTAHANKAN di bawah — ia masih dipakai baris ~1999.
 
 const AGENT_SYS = [
   "You are an autonomous coding agent working inside a project workspace.",
@@ -3824,6 +3490,55 @@ const server = http.createServer(async (req, res) => {
     return res.end(JSON.stringify(mcpClient.status()));
   }
 
+  // Menyalakan server MCP atas permintaan user (tombol Connect), bukan saat
+  // aplikasi start. Tanpa `name`, semua server yang tak di-disable dinyalakan.
+  //
+  // Ini pasangan backend dari perubahan di mcp-client: init() tak lagi
+  // men-spawn apa pun, sehingga langkah pertama run agent tidak menanggung
+  // cold start `npx` seluruh server (terukur 60,3 detik diam tanpa satu pun
+  // event sebelum perubahan ini).
+  if (_path === "/mcp/connect" && req.method === "POST") {
+    const mcpClient = require("./agent/mcp-client.cjs");
+    let body = "";
+    req.on("data", (c) => (body += c.toString()));
+    req.on("end", async () => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        const hasil = payload.name
+          ? await mcpClient.connectServer(payload.name)
+          : { all: await mcpClient.connectAll() };
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: true, ...hasil }));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  if (_path === "/mcp/toggle" && req.method === "POST") {
+    const mcpClient = require("./agent/mcp-client.cjs");
+    let body = "";
+    req.on("data", (c) => (body += c.toString()));
+    req.on("end", async () => {
+      try {
+        const payload = JSON.parse(body || "{}");
+        if (!payload.name) throw new Error("Missing name");
+        const result = await mcpClient.toggleServer(
+          payload.name,
+          !!payload.enabled,
+        );
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(result));
+      } catch (e) {
+        res.writeHead(400, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   if (_path === "/mcp") {
     const mcpClient = require("./agent/mcp-client.cjs");
     if (req.method === "GET") {
@@ -4365,6 +4080,54 @@ const server = http.createServer(async (req, res) => {
     return;
   }
 
+  // Penyerahan lampiran lewat jembatan: barangnya menyeberang, alamatnya tidak.
+  //
+  // Beda dari /upload di bawah, yang menulis ke <WOLFSPACE>/public/uploads/ lalu
+  // menyerahkan PATH-nya ke agent. Saat agent dikurung ke satu worktree, path
+  // itu di luar cakupan dan broker menolaknya — pengurungan yang benar justru
+  // mematikan attach. Di sini yang dikembalikan HANDLE, bukan lokasi, sehingga
+  // pengurungan tak perlu dilonggarkan sedikit pun.
+  //
+  // Tak ada yang menyentuh disk: isinya tinggal di memori proses backend, dan
+  // pratinjau di UI memakai URL.createObjectURL lokal yang sudah ada.
+  if (req.method === "POST" && req.url === "/attach") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      try {
+        const { name, data, type } = JSON.parse(body || "{}");
+        if (!name || !data) {
+          res.writeHead(400, { "Content-Type": "application/json" });
+          return res.end(
+            JSON.stringify({ ok: false, error: "name & data wajib" }),
+          );
+        }
+        const bridge = require("./agent/attachment-bridge.cjs");
+        const hasil = bridge.serahkan({
+          nama: name, // dipotong jadi basename di dalam jembatan
+          isi: Buffer.from(data, "base64"),
+          tipe: type || null,
+        });
+        // Sengaja mencatat NAMA hasil sanitasi, bukan `name` mentah: kalau
+        // pemanggil keliru mengirim path absolut (File.path di renderer
+        // Electron), ia tak boleh mendarat di berkas log.
+        dlog("http", "info", "lampiran diserahkan", {
+          nama: hasil.nama,
+          bytes: hasil.bytes,
+          ok: hasil.ok,
+        });
+        res.writeHead(hasil.ok ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(JSON.stringify(hasil));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
   // Upload file attachment (base64 JSON â†’ saved to public/uploads/)
   if (req.method === "POST" && req.url === "/upload") {
     let body = "";
@@ -4776,6 +4539,189 @@ const server = http.createServer(async (req, res) => {
         JSON.stringify({ root: "", entries: [], error: e.message }),
       );
     }
+  }
+
+  // GET /plugins — daftar plugin terpasang + status persetujuannya.
+  //
+  // Manifest yang RUSAK ikut dikirim (field `rusak`), tidak dibuang diam-diam.
+  // Plugin yang hilang tanpa jejak adalah persis cara skills.cjs jadi terlupakan
+  // sampai akhirnya jadi celah.
+  if (req.method === "GET" && req.url === "/plugins") {
+    try {
+      const P = require("./agent/plugins.cjs");
+      const { plugin, rusak } = P.pindai();
+      const setuju = new Set(P.disetujui());
+      const aktifSesi = new Set(P.kapabilitasDisetujui());
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(
+        JSON.stringify({
+          ok: true,
+          izinDikenal: P.IZIN_DIKENAL,
+          plugin: plugin.map((p) => ({
+            nama: p.nama,
+            versi: p.versi,
+            ket: p.ket,
+            sumber: [p.command].concat(p.args || []).join(" "),
+            izin: p.izin,
+            disetujui: setuju.has(p.nama),
+            // Persetujuan dibekukan ke genesis saat sesi mulai. Yang baru
+            // disetujui tampil `disetujui:true` tapi `aktifSesi:false` — dan
+            // perbedaan itu HARUS terlihat, karena kalau tidak user mengira
+            // plugin sudah hidup padahal agent belum bisa memanggilnya.
+            aktifSesi: aktifSesi.has(P.kapabilitas(p.nama)),
+          })),
+          rusak,
+        }),
+      );
+    } catch (e) {
+      res.writeHead(500, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: false, error: e.message }));
+    }
+    return;
+  }
+
+  // POST /plugins/pasang — user memasang plugin baru.
+  //
+  // Tak ada padanannya sebagai tool agent, dan tak boleh ada. Ini pintu user;
+  // seluruh pemisahan dua pintu runtuh kalau model bisa memasang sendiri.
+  //
+  // Yang ditulis HANYA manifest — tak ada kode yang diunduh atau disalin. Jalur
+  // "ambil dari URL lalu simpan" yang dulu ada di skill_install sengaja tidak
+  // dihidupkan kembali.
+  if (req.method === "POST" && req.url === "/plugins/pasang") {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let b = {};
+      try {
+        b = JSON.parse(raw || "{}");
+      } catch (_) {}
+      try {
+        const P = require("./agent/plugins.cjs");
+        const r = P.pasang(b);
+        res.writeHead(r.ok ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(
+          JSON.stringify(
+            r.ok
+              ? {
+                  ok: true,
+                  // Memasang TIDAK memberi izin. Dikatakan terus terang supaya
+                  // user tak mengira plugin langsung bisa dipakai agent.
+                  catatan:
+                    "Terpasang. Belum diberi izin — agent belum bisa memanggilnya.",
+                }
+              : r,
+          ),
+        );
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /plugins/copot — user menghapus plugin beserta persetujuannya.
+  if (req.method === "POST" && req.url === "/plugins/copot") {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let b = {};
+      try {
+        b = JSON.parse(raw || "{}");
+      } catch (_) {}
+      const nama = String(b.nama || "");
+      try {
+        const P = require("./agent/plugins.cjs");
+        // Prosesnya dihentikan DULU, sebelum foldernya hilang: mencopot tanpa
+        // mematikan meninggalkan proses yatim yang masih melayani panggilan.
+        try {
+          require("./agent/mcp-client.cjs").stopServer(nama);
+        } catch (_) {}
+        const r = P.copot(nama);
+        res.writeHead(r.ok ? 200 : 400, {
+          "Content-Type": "application/json",
+        });
+        res.end(JSON.stringify(r));
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
+  }
+
+  // POST /plugins/setujui — user MEMBERI atau MENCABUT izin sebuah plugin.
+  //
+  // Sengaja tak ada padanannya sebagai tool agent. Ini pintu user; kalau model
+  // bisa menyetujui plugin, seluruh pemisahan dua pintu itu runtuh.
+  if (req.method === "POST" && req.url === "/plugins/setujui") {
+    let raw = "";
+    req.on("data", (c) => (raw += c));
+    req.on("end", () => {
+      let b = {};
+      try {
+        b = JSON.parse(raw || "{}");
+      } catch (_) {}
+      const nama = String(b.nama || "");
+      const beri = b.setujui !== false;
+      try {
+        const P = require("./agent/plugins.cjs");
+        const ada = P.pindai().plugin.some((p) => p.nama === nama);
+        if (!ada) {
+          res.writeHead(404, { "Content-Type": "application/json" });
+          res.end(
+            JSON.stringify({
+              ok: false,
+              error: "plugin tak ditemukan: " + nama,
+            }),
+          );
+          return;
+        }
+        const kini = new Set(P.disetujui());
+        if (beri) kini.add(nama);
+        else kini.delete(nama);
+        fs.mkdirSync(P.DIR_PLUGIN, { recursive: true });
+        fs.mkdirSync(P.DIR_PLUGIN, { recursive: true });
+        fs.writeFileSync(
+          P.BERKAS_SETUJU,
+          JSON.stringify([...kini].sort(), null, 2),
+        );
+
+        // PENCABUTAN harus punya efek SEKARANG, dan berkas persetujuan saja tak
+        // memberikannya: genesis sesi ini sudah dibekukan dengan kapabilitas itu
+        // di dalamnya, dan prosesnya sudah menyala. Jadi prosesnya dimatikan —
+        // tak ada yang tersisa untuk dipanggil, dan tool-nya lenyap dari daftar.
+        let dimatikan = false;
+        if (!beri) {
+          try {
+            const mcp = require("./agent/mcp-client.cjs");
+            mcp.stopServer(nama);
+            dimatikan = true;
+          } catch (_) {}
+        }
+
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            disetujui: beri,
+            dimatikan,
+            // Jujur soal kapan berlakunya. Genesis dibekukan sekali per sesi,
+            // jadi PEMBERIAN izin tidak menyentuh ruleset yang sedang berjalan.
+            catatan: beri
+              ? "Berlaku mulai sesi berikutnya — genesis sesi ini sudah dibekukan."
+              : "Prosesnya dihentikan sekarang; kapabilitasnya hilang dari genesis pada sesi berikutnya.",
+          }),
+        );
+      } catch (e) {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      }
+    });
+    return;
   }
 
   // POST /flow/http — eksekutor node "HTTP Request" untuk kanvas Logic (integrasi).
@@ -5549,7 +5495,6 @@ module.exports = {
   getCloudKeys: () => CLOUD_KEYS,
   // model calls (callback-based, already pure)
   askCloudStream,
-  askCloudTools,
   // high-level streaming ops (emit-based, req/res-free) Ã¢â‚¬â€ for HTTP + IPC
   chatStream,
   selfAgentStream,
@@ -5560,7 +5505,6 @@ module.exports = {
   pickSystem,
   isCodingTask,
   // self-agent tools + patch helpers
-  runSelfTool,
   applyHunks,
   braceProfile,
   qList,

@@ -6,10 +6,13 @@
 # membuktikannya:
 #   - build Electron tak pernah dicoba -> hanya 2 dari 39 file yg di-require ikut
 #     terpaket; app terpasang membuka jendela tapi seluruh backend mati.
-#   - sandbox/Dockerfile tak ada selama ~5 minggu; tak ketahuan karena tak ada
-#     yang punya Docker untuk mencobanya. Nama image juga sempat huruf besar,
-#     yang membuat `docker build` mustahil berhasil.
-# Pola ketiganya sama: FITUR YANG TAK PERNAH DIEKSEKUSI = RUSAK DIAM-DIAM.
+# Polanya: FITUR YANG TAK PERNAH DIEKSEKUSI = RUSAK DIAM-DIAM.
+#
+# Job build-docker DIHAPUS bersama berkas Docker-nya. Ia dulu menjaga
+# sandbox/Dockerfile — yang pernah hilang ~5 minggu tanpa ketahuan karena tak
+# ada yang punya Docker untuk mencobanya. Pengurungan sekarang memakai namespace
+# Linux (agent/tools/bash-jail.cjs) dan zona WSL, tanpa daemon apa pun, dan
+# keduanya diuji di suite biasa.
 #
 # Sengaja TANPA CD (tak ada rilis/publish). Tambahkan itu belakangan, dipicu tag,
 # supaya commit eksperimental tidak menghabiskan menit build.
@@ -22,9 +25,9 @@ on:
     branches: [main, develop]
   workflow_dispatch: # bisa dijalankan manual dari tab Actions
 
-# Push beruntun ke branch yang sama: batalkan run lama. Job Electron & Docker
-# memakan menit build cukup besar, jadi jangan biarkan antrean menumpuk untuk
-# commit yang sudah usang.
+# Push beruntun ke branch yang sama: batalkan run lama. Job Electron memakan
+# menit build cukup besar, jadi jangan biarkan antrean menumpuk untuk commit
+# yang sudah usang.
 concurrency:
   group: ci-${{ github.ref }}
   cancel-in-progress: true
@@ -103,27 +106,3 @@ jobs:
             if (!core || !core.server) { console.error('core.server tidak tersedia'); process.exit(1); }
             console.log('core.js OK, ekspor:', Object.keys(core).length);
           "
-
-  build-docker:
-    name: Build image Docker
-    runs-on: ubuntu-latest
-    timeout-minutes: 20
-    steps:
-      - uses: actions/checkout@v7
-      # Image aplikasi (mode hosted). Menangkap Dockerfile yang rusak/tak lengkap.
-      - name: Image aplikasi
-        run: docker build -t wolfspace:ci .
-      # Image sandbox eksekusi. Pernah TIDAK BISA dibangun selama berminggu-minggu
-      # tanpa ketahuan; job ini membuat kegagalan seperti itu langsung terlihat.
-      - name: Image sandbox
-        run: docker build -t wolfspace-sandbox:ci sandbox/
-      - name: Uji cepat sandbox
-        run: |
-          set -e
-          out=$(docker run --rm --network none --memory 256m --read-only \
-                  --tmpfs /tmp:size=16m wolfspace-sandbox:ci sh -c "python -c 'print(1+1)'")
-          echo "python -> $out"
-          [ "$out" = "2" ] || { echo "::error::sandbox tak menjalankan python dgn benar"; exit 1; }
-          id_out=$(docker run --rm wolfspace-sandbox:ci id -u)
-          echo "uid -> $id_out"
-          [ "$id_out" != "0" ] || { echo "::error::sandbox berjalan sebagai root"; exit 1; }

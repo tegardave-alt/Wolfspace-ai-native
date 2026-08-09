@@ -1531,6 +1531,27 @@ function App() {
 
   const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
 
+  // Memisahkan APA YANG DIKIRIM ke model dari APA YANG DILIHAT user.
+  //
+  // Lampiran dulu ikut mendarat di gelembung chat sebagai baris teks mentah
+  // ("- [Terlampir] a.pdf … — id: att_57a5…"). Handle itu memang harus sampai
+  // ke model — ia satu-satunya cara agent membaca lampiran — tapi tak ada
+  // gunanya dibaca manusia, dan sesudah jembatan handle dipasang ia jadi makin
+  // panjang serta makin tak terbaca.
+  //
+  // Parameter `display` sudah lama ada untuk keperluan ini, hanya tak pernah
+  // dipakai Composer. Sekarang ia boleh berupa objek {text, attachments}:
+  // `text` yang tampil di gelembung, `attachments` dirender sebagai kartu.
+  // Bentuk string lama tetap didukung — beberapa pemanggil lain memakainya.
+  const _pesanUser = (content, display) => {
+    if (display && typeof display === "object")
+      return {
+        text: display.text || "",
+        attachments: display.attachments || [],
+      };
+    return { text: display || content };
+  };
+
   const doSend = async (content, display, hitlData = null) => {
     if (!content && !hitlData) return;
     const trimmedContent = content.trim();
@@ -1545,7 +1566,10 @@ function App() {
       if (!openclawMessage) {
         setMessages((m) => [
           ...m,
-          { role: "user", text: display || content },
+          {
+            role: "user",
+            ..._pesanUser(content, display),
+          },
           {
             role: "model",
             text: "The /openclaw message cannot be empty. Example: /openclaw summarise this project",
@@ -1560,7 +1584,10 @@ function App() {
       setStatus("Running OpenClaw...");
       setMessages((m) => [
         ...m,
-        { role: "user", text: display || content },
+        {
+          role: "user",
+          ..._pesanUser(content, display),
+        },
         { role: "model", text: "Running OpenClaw..." },
       ]);
       try {
@@ -1644,7 +1671,10 @@ function App() {
       // Bridge / local model: plain conversational chat (text streaming, no function-calling).
       setMessages((m) => [
         ...m,
-        { role: "user", text: display || content },
+        {
+          role: "user",
+          ..._pesanUser(content, display),
+        },
         { role: "model", text: "", run: null },
       ]);
       try {
@@ -1675,7 +1705,10 @@ function App() {
       if (!hitlData) {
         setMessages((m) => [
           ...m,
-          { role: "user", text: display || content },
+          {
+            role: "user",
+            ..._pesanUser(content, display),
+          },
           { role: "agent", agent: { events: [], busy: true } },
         ]);
       } else {
@@ -1718,9 +1751,36 @@ function App() {
           (j) => {
             if (j.thread_id) simpanThreadTerputus(j.thread_id);
             if (j.t === "backup") upd({ backup: j.dir });
+            // model_wait: satu-satunya tanda hidup selama menunggu.
+            // Dulu di-emit backend tapi TAK ADA penanganannya di sini, dan tak
+            // ada cabang penampung — jadi hilang senyap. Akibatnya seluruh masa
+            // tunggu tampak sebagai layar diam: panggilan model yang 64 detik,
+            // dan penyiapan MCP yang sampai 60 detik. Justru saat itulah user
+            // paling butuh tahu agent masih hidup.
+            else if (j.t === "model_wait") upd({ status: j.m, busy: true });
+            // force_retry: pengulangan agent, dari ENAM titik emit di backend.
+            // Didorong sebagai baris timeline ber-type "act" supaya memakai
+            // penampil yang sudah ada — tak perlu penampil baru, dan sebabnya
+            // ikut terlihat. Tanpa ini, setiap putaran ulang tampak sebagai
+            // layar diam dan terbaca seolah run berhenti sendiri.
+            else if (j.t === "force_retry") {
+              evlist.push({
+                type: "act",
+                kind: "retry",
+                arg: j.m,
+                ok: true,
+                output: j.m,
+              });
+              upd({ events: [...evlist], status: j.m, busy: true });
+            }
+            // todos: keadaan checklist. Disimpan sebagai STATE, bukan baris
+            // timeline — isinya sudah muncul lewat keluaran tool todowrite,
+            // jadi mendorongnya ke timeline hanya menggandakan. Yang belum ada
+            // adalah tampilan checklist yang hidup.
+            else if (j.t === "todos") upd({ todos: j.todos });
             else if (j.t === "step") {
               think = "";
-              upd({ step: j.n, thinking: "" });
+              upd({ step: j.n, thinking: "", status: "" });
             } else if (j.t === "tok") {
               think += j.c;
               upd({ thinking: think });
@@ -1958,6 +2018,23 @@ function App() {
           workspace_root: resolveWorkspaceRoot(selectedProject) || undefined,
         },
         (j) => {
+          // Lihat catatan model_wait di penangan pertama — dua salinan penangan
+          // event, dan perbaikan yang hanya menyentuh satu membuat tanda hidup
+          // muncul di satu jalur saja.
+          if (j.t === "model_wait") return upd({ status: j.m, busy: true });
+          // Lihat catatan di penangan pertama — dua salinan, keduanya harus
+          // diperlakukan sama.
+          if (j.t === "force_retry") {
+            evlist.push({
+              type: "act",
+              kind: "retry",
+              arg: j.m,
+              ok: true,
+              output: j.m,
+            });
+            return upd({ events: [...evlist], status: j.m, busy: true });
+          }
+          if (j.t === "todos") return upd({ todos: j.todos });
           if (j.t === "step") {
             think = "";
             upd({ thinking: "" });
@@ -2194,10 +2271,10 @@ function App() {
             models={models}
             modelVal={modelVal}
             setModelVal={setModelVal}
-            onStart={(msg, project) => {
+            onStart={(msg, project, tampil) => {
               setSelectedProject(project);
               setPickerDone(true);
-              setTimeout(() => doSend(msg), 0);
+              setTimeout(() => doSend(msg, tampil), 0);
             }}
           />
         )}
@@ -2300,7 +2377,7 @@ function App() {
                   models={models}
                   modelVal={modelVal}
                   setModelVal={setModelVal}
-                  onSend={(t) => doSend(t)}
+                  onSend={(t, tampil) => doSend(t, tampil)}
                   onCancel={cancel}
                   busy={busy}
                 />
@@ -2970,6 +3047,13 @@ function App() {
                 onCloudChanged={() => setCloudVersion((v) => v + 1)}
               />
             )}
+          </div>
+          <div
+            className={
+              "page hub-page " + (view === "plugins" ? "active" : "enter")
+            }
+          >
+            {view === "plugins" && <PluginsView />}
           </div>
           <div
             className={

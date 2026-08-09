@@ -23,17 +23,6 @@ function TopBar({
         className={`panel-toggle-btn ${panelOpen ? "active" : ""}`}
         onClick={() => setPanelOpen(!panelOpen)}
         title="Toggle Right Panel"
-        style={{
-          opacity: panelOpen ? 1 : 0.7,
-          background: "transparent",
-          border: "none",
-          cursor: "pointer",
-          color: "inherit",
-          padding: "6px",
-          borderRadius: "6px",
-          display: "flex",
-          alignItems: "center",
-        }}
       >
         <svg
           xmlns="http://www.w3.org/2000/svg"
@@ -270,12 +259,57 @@ function Verdict({ run }) {
     </div>
   );
 }
-function Message({ msg }) {
+// DIBUNGKUS React.memo di bawah — jangan pakai MessageDasar langsung.
+//
+// KENAPA. app.jsx merender riwayat utuh: {messages.map((m,i) => <Message .../>)}.
+// Selama agent bekerja, handler stream memanggil upd() pada SETIAP token, dan
+// upd() melakukan setMessages(m => ...) yang menyalin array. Tanpa memo, tiap
+// token merekonsiliasi ULANG seluruh daftar — termasuk setiap ToolOutput dan
+// CodeBlock yang punya editor Monaco hidup di dalamnya.
+//
+// Biayanya berbanding lurus dengan (jumlah editor hidup x jumlah token), dan
+// itulah kenapa gejalanya muncul "saat Monaco muncul" dan makin parah makin
+// panjang riwayatnya. Diukur di aplikasi nyata lewat CDP: tugas pemblokir
+// sampai 358ms dan total ~2,4 detik beku dalam satu run 123 detik — padahal
+// baru 3 editor hidup.
+//
+// upd() hanya mengganti objek pesan TERAKHIR, jadi dengan memo hanya satu
+// Message yang benar-benar dirender ulang per token. Message murni fungsi dari
+// prop `msg` (tak menyentuh context maupun closure yang berubah), sehingga
+// pembandingan referensi bawaan React.memo sudah tepat — tak perlu komparator.
+function MessageDasar({ msg }) {
   if (msg.role === "user")
     return (
       <div className="msg user">
         <span className="msg-role">You</span>
-        <div className="bubble-user">{msg.text}</div>
+        {/* Lampiran dirender sebagai KARTU, bukan baris teks di dalam
+            gelembung. Handle att_… tetap dikirim ke model lewat argumen
+            pertama onSend — ia perlu itu untuk membaca lampiran — tapi tak
+            ada gunanya dibaca manusia. */}
+        {msg.attachments && msg.attachments.length > 0 && (
+          <div className="msg-attachments">
+            {msg.attachments.map((a, i) => (
+              <div
+                className={"msg-att" + (a.ok ? "" : " err")}
+                key={i}
+                title={a.ok ? a.name : a.name + " — gagal diserahkan"}
+              >
+                {a.previewUrl && /^image\//.test(a.type || "") ? (
+                  <img className="msg-att-thumb" src={a.previewUrl} alt="" />
+                ) : (
+                  <span className="msg-att-ico">{a.ok ? "📎" : "⚠"}</span>
+                )}
+                <span className="msg-att-name">{a.name}</span>
+                <span className="msg-att-size">
+                  {a.size < 1024
+                    ? a.size + " B"
+                    : Math.round(a.size / 1024) + " KB"}
+                </span>
+              </div>
+            ))}
+          </div>
+        )}
+        {msg.text ? <div className="bubble-user">{msg.text}</div> : null}
       </div>
     );
   if (msg.role === "agent")
@@ -303,6 +337,7 @@ function Message({ msg }) {
     </div>
   );
 }
+const Message = React.memo(MessageDasar);
 
 /* ----------------------------- Composer ----------------------------- */
 // Line icons for the composer "+" menu (match the reference design).
@@ -605,8 +640,10 @@ function Composer({
           name: name,
           desc:
             (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
-          // Hijau HANYA bila benar-benar siap DAN panggilan terakhir tidak gagal.
-          active: !!s.ready && s.lastCallOk !== false,
+          // Jika server di-disabled di backend, paksa active = false.
+          // Tanpa ini polling status akan menimpa hasil toggle dan server
+          // terkesan "hidup kembali" sendiri walaupun sudah dinonaktifkan.
+          active: !s.disabled && !!s.ready && s.lastCallOk !== false,
           status: s,
           conf: conf,
         };
@@ -643,25 +680,43 @@ function Composer({
     setMcpInputError("");
     setMcpInputSuccess("");
 
-    let command = "npx";
-    let args = [];
-    let cleanType = type.toLowerCase();
+    // Satu sumber: lihat mcpResolvePerintah() di app/Config.jsx. Digandakan
+    // di sini dulu, dan dua salinannya sempat melenceng.
+    const _r = mcpResolvePerintah(type);
+    let command = _r.command;
+    let args = _r.args;
+    // Masih dipakai di bawah untuk memetakan env var per layanan.
+    const cleanType = String(type || "").toLowerCase();
 
-    if (cleanType.startsWith("npx ")) {
-      const parts = type.split(/\s+/);
-      command = parts[0];
-      args = parts.slice(1);
-    } else if (cleanType.includes("/")) {
-      args = ["-y", type];
+    // Nama server TIDAK BOLEH diturunkan dari URL mentah.
+    //
+    // Rumus lama: type.split("/").pop().replace(/[^a-zA-Z0-9-]/g,"").
+    // Untuk URL remote yang membawa kredensial di query string, potongan
+    // terakhirnya adalah "stream?user=...&token=eyJhbGci...", dan pembuangan
+    // karakter non-alfanumerik justru MERAPATKAN token itu menjadi satu kata
+    // yang lolos sebagai nama. Terbukti di log nyata: beberapa entri bernama
+    // "streamuserTokeneyJhbGciOiJBMjU2S1ciLCJlbmMi..." — JWT utuh, tersimpan
+    // ke config/mcp.json DAN tercetak berulang kali ke berkas debug.
+    //
+    // Untuk URL, yang dipakai sekarang hanya HOST-nya (tak pernah membawa
+    // rahasia). Untuk selain URL, perilaku lama dipertahankan.
+    let name;
+    if (/^https?:/i.test(type)) {
+      let host = "";
+      try {
+        host = new URL(type).hostname;
+      } catch (_) {
+        host = "";
+      }
+      name = (host || "remote").replace(/[^a-zA-Z0-9.-]/g, "").slice(0, 40);
     } else {
-      args = ["-y", `@modelcontextprotocol/server-${cleanType}`];
+      name = type
+        .split("/")
+        .pop()
+        .replace("server-", "")
+        .replace(/[^a-zA-Z0-9-]/g, "");
     }
-
-    let name = type
-      .split("/")
-      .pop()
-      .replace("server-", "")
-      .replace(/[^a-zA-Z0-9-]/g, "");
+    if (!name) name = "mcp-" + Date.now().toString(36);
 
     let env = {};
     if (envVars) {
@@ -675,7 +730,28 @@ function Composer({
           env = { POSTGRES_URL: envVars };
         else if (cleanType.includes("slack"))
           env = { SLACK_BOT_TOKEN: envVars };
-        else env = { TOKEN: envVars };
+        else if (cleanType.includes("penpot"))
+          env = { PENPOT_ACCESS_TOKEN: envVars };
+        else if (cleanType === "figma") {
+          // figma-developer-mcp butuh token via --figma-api-key dan stdout pipe via --stdio
+          args = [
+            "-y",
+            "figma-developer-mcp",
+            "--stdio",
+            `--figma-api-key=${envVars}`,
+          ];
+        } else if (cleanType.startsWith("http")) {
+          // Server remote: kredensial dikirim sebagai HEADER lewat env, BUKAN
+          // ditempel ke URL di argv. argv terlihat di daftar proses mana pun
+          // dan ikut tercatat; env tidak pernah dicatat oleh mcp-client.
+          // Ini jalur untuk token TELANJANG (gagal di-JSON.parse di atas), yang
+          // diperlakukan sebagai bearer. Kalau user memasukkan JSON, cabang
+          // JSON.parse di atas sudah memakainya sebagai env apa adanya — di
+          // situ ia bisa menulis MCP_HEADERS sendiri untuk header non-standar.
+          env = {
+            MCP_HEADERS: JSON.stringify({ Authorization: "Bearer " + envVars }),
+          };
+        } else env = { TOKEN: envVars };
       }
     }
 
@@ -761,7 +837,12 @@ function Composer({
     el.style.height = Math.min(el.scrollHeight, 180) + "px";
   };
 
-  console.log("[Composer] render, busy:", busy, "val:", val);
+  // Log jalur render DIBUANG. Tiap console.* di renderer Electron diserialisasi
+  // dan dikirim lewat IPC ke proses main (main.js meneruskannya ke stdout), jadi
+  // ongkosnya bukan cuma "nulis teks". Composer ikut dirender ulang setiap kali
+  // induknya render — yaitu setiap token selama agent bekerja. Terpantau di app
+  // nyata: 7 baris ini keluar hanya dari startup diam, sebelum satu tugas pun
+  // dijalankan. Debug seperti ini tak boleh tinggal di jalur yang panas.
 
   const handleAttachmentSelect = async (e) => {
     const files = Array.from(e.target.files || []);
@@ -812,12 +893,27 @@ function Composer({
         reader.onload = async () => {
           try {
             const base64 = reader.result.split(",")[1] || reader.result;
-            const payload = { name: relPath, data: base64 };
-            let uploadedUrl = "";
+            // JEMBATAN, bukan unggahan. Yang kembali HANDLE (att_...), bukan
+            // path. Dulu berkas ditulis ke <WOLFSPACE>/public/uploads/ lalu
+            // PATH-nya diserahkan ke agent — dan saat agent dikurung ke satu
+            // worktree, path itu di luar cakupan sehingga broker menolaknya.
+            // Pengurungan yang benar justru mematikan attach. Dengan handle,
+            // pengurungan tak perlu dilonggarkan sedikit pun.
+            //
+            // file.name dipakai, BUKAN webkitRelativePath: yang terakhir
+            // membawa struktur direktori saat user memilih FOLDER, dan alamat
+            // tak boleh ikut menyeberang. (Jembatan tetap memotongnya lagi di
+            // sisi server — pertahanan berlapis, bukan pengganti.)
+            const payload = {
+              name: file.name,
+              data: base64,
+              type: file.type || null,
+            };
+            let attHandle = "";
             if (IPC && IPC.invoke) {
               const res = await IPC.invoke("api", {
                 method: "POST",
-                path: "/upload",
+                path: "/attach",
                 body: payload,
               });
               let parsed;
@@ -827,18 +923,18 @@ function Composer({
               } catch (_) {
                 parsed = res;
               }
-              if (res.status >= 400 || parsed.error)
-                throw new Error(parsed.error || "Upload failed");
-              uploadedUrl = parsed.url || "/uploads/" + parsed.name;
+              if (res.status >= 400 || !parsed.ok)
+                throw new Error(parsed.error || "Attach gagal");
+              attHandle = parsed.id;
             } else {
-              const r = await fetch("/upload", {
+              const r = await fetch("/attach", {
                 method: "POST",
                 headers: { "Content-Type": "application/json" },
                 body: JSON.stringify(payload),
               });
               const res = await r.json();
-              if (res.error) throw new Error(res.error);
-              uploadedUrl = res.url || "/uploads/" + res.name;
+              if (!res.ok) throw new Error(res.error || "Attach gagal");
+              attHandle = res.id;
             }
             setAttachments((prev) =>
               prev.map((a) =>
@@ -846,8 +942,10 @@ function Composer({
                   ? {
                       ...a,
                       status: "ready",
-                      url: uploadedUrl,
-                      previewUrl: a.previewUrl || (isImg ? uploadedUrl : null),
+                      // Handle, bukan url. previewUrl tetap object URL lokal
+                      // yang sudah dibuat dari File — jadi tak ada berkas yang
+                      // perlu mendarat di disk hanya demi pratinjau.
+                      attId: attHandle,
                     }
                   : a,
               ),
@@ -897,18 +995,37 @@ function Composer({
     if ((!v && attachments.length === 0) || busy) return;
     let fullText = v;
     if (attachments.length > 0) {
+      // HANDLE, bukan path. Baris ini dulu berbunyi
+      //   "- [Attached]: <path> (… , url: /uploads/…)"
+      // dan itulah yang membenturkan attach ke pengurungan: agent disuruh
+      // membaca sebuah lokasi, lalu broker menolaknya karena di luar worktree.
+      // Sekarang yang diberikan id lampiran; agent membacanya lewat
+      // attachment_read, dan alamat berkasnya tak pernah ada untuk ditolak.
       const attSummary = attachments
         .map(
           (a) =>
-            `- [Attached]: ${a.path} (${Math.round(a.size / 1024)} KB${a.url ? `, url: ${a.url}` : ""})`,
+            `- [Terlampir] ${a.name} (${Math.round(a.size / 1024)} KB${a.type ? `, ${a.type}` : ""})` +
+            (a.attId ? ` — id: ${a.attId}` : " — GAGAL diserahkan"),
         )
         .join("\n");
       fullText = v
         ? `${v}\n\nAttachments:\n${attSummary}`
         : `Attachments:\n${attSummary}`;
     }
-    console.log("[Composer submit] calling onSend with:", fullText);
-    onSend(fullText);
+    // Dua argumen: yang PERTAMA untuk model (memuat handle lampiran), yang
+    // KEDUA untuk mata user. Dulu hanya satu yang dikirim, sehingga baris
+    // lampiran — termasuk handle att_… yang tak ada gunanya dibaca manusia —
+    // mendarat mentah di gelembung chat.
+    onSend(fullText, {
+      text: v,
+      attachments: attachments.map((a) => ({
+        name: a.name,
+        size: a.size,
+        type: a.type,
+        previewUrl: a.previewUrl,
+        ok: !!a.attId,
+      })),
+    });
     console.log(
       "[Composer submit] setting val to empty string and resetting attachments",
     );
@@ -1361,15 +1478,86 @@ function Composer({
                           <button
                             className="am-item"
                             style={{ padding: "8px 12px", flex: 1 }}
-                            onClick={(e) => {
+                            onClick={async (e) => {
                               e.stopPropagation();
+                              // Server MCP tidak lagi dinyalakan saat WOLFSPACE
+                              // start — penyalaannya tindakan eksplisit di sini.
+                              //
+                              // Dua maksud yang BERBEDA dibedakan, karena dulu
+                              // keduanya jatuh ke /mcp/toggle:
+                              //   - belum jalan & tidak di-disable -> CONNECT
+                              //     (nyalakan saja; jangan sentuh konfigurasi)
+                              //   - selain itu -> TOGGLE enable/disable, yang
+                              //     memang menulis `disabled` ke mcp.json
+                              // Tanpa pemisahan ini, sekadar menyambungkan
+                              // server ikut mengubah berkas konfigurasi.
+                              const perluConnect =
+                                !srv.active &&
+                                !(srv.status && srv.status.disabled);
+                              const jalur = perluConnect
+                                ? "/mcp/connect"
+                                : "/mcp/toggle";
+                              const muatan = perluConnect
+                                ? { name: srv.id }
+                                : { name: srv.id, enabled: !srv.active };
+                              // Optimistis HANYA saat menyambung; hasil
+                              // sebenarnya disegarkan dari status runtime.
                               setMcpServers((prev) =>
                                 prev.map((item) =>
                                   item.id === srv.id
-                                    ? { ...item, active: !item.active }
+                                    ? {
+                                        ...item,
+                                        active: !srv.active,
+                                        // Menyambung BUKAN "sudah tersambung".
+                                        //
+                                        // Diukur di jalur nyata: connect makan
+                                        // 4302ms (npx + handshake), dan bisa
+                                        // sampai HANDSHAKE_TIMEOUT_MS 60 detik
+                                        // untuk server bermasalah. Selama itu
+                                        // event loop TIDAK terblokir sama
+                                        // sekali (lag-puncak 55ms, 276 tick) —
+                                        // jadi ini bukan hang, tapi dulu badge
+                                        // langsung hijau "✓ Connected" padahal
+                                        // handshake belum selesai. User melihat
+                                        // "tersambung" lalu diam lama, dan itu
+                                        // yang terbaca sebagai macet.
+                                        connecting: perluConnect,
+                                      }
                                     : item,
                                 ),
                               );
+                              try {
+                                if (
+                                  window.WOLFSPACE &&
+                                  window.WOLFSPACE.invoke
+                                ) {
+                                  await window.WOLFSPACE.invoke("api", {
+                                    method: "POST",
+                                    path: jalur,
+                                    body: muatan,
+                                  });
+                                } else {
+                                  await fetch(jalur, {
+                                    method: "POST",
+                                    headers: {
+                                      "Content-Type": "application/json",
+                                    },
+                                    body: JSON.stringify(muatan),
+                                  });
+                                }
+                              } catch (err) {
+                                console.error("Error toggling MCP server", err);
+                              } finally {
+                                // Di finally, BUKAN di jalur sukses saja.
+                                // Kalau permintaannya gagal, badge "⟳
+                                // Connecting…" akan menempel selamanya karena
+                                // tak ada yang menyegarkannya dari status
+                                // runtime — dan server yang gagal justru
+                                // paling perlu terlihat gagal.
+                                window.dispatchEvent(
+                                  new CustomEvent("wolfspace_mcp_changed"),
+                                );
+                              }
                             }}
                           >
                             <div
@@ -1399,7 +1587,20 @@ function Composer({
                                     gap: "6px",
                                   }}
                                 >
-                                  {srv.active ? (
+                                  {srv.connecting ? (
+                                    <span
+                                      style={{
+                                        fontSize: "11px",
+                                        fontWeight: 500,
+                                        padding: "2px 6px",
+                                        borderRadius: "10px",
+                                        color: "#d7ba7d",
+                                        background: "rgba(215, 186, 125, 0.12)",
+                                      }}
+                                    >
+                                      ⟳ Connecting…
+                                    </span>
+                                  ) : srv.active ? (
                                     <span
                                       style={{
                                         fontSize: "11px",

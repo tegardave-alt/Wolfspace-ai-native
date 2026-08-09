@@ -47,8 +47,10 @@ Both callers are gone. What made it removable rather than a regression:
   in the default posture it never ran. `agent/runners.cjs` still exports the name; nothing
   calls it.
 
-`sandbox/Dockerfile` is kept — it is still built in CI as a non-root image — but nothing in
-the app shells out to `docker run` anymore.
+`sandbox/Dockerfile` has now been deleted too, along with the root `Dockerfile`,
+`.dockerignore`, `config.docker.json`, and the CI job that built them. It was kept for a
+while as a CI-verified non-root image, but nothing in the app shelled out to `docker run`,
+so it only proved that an unused file still compiled.
 
 ### Default posture
 

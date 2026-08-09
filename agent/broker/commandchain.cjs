@@ -17,9 +17,35 @@
 //   - "deterministik" hanya berlaku pada KEPUTUSAN ini, bukan pada eksekusinya.
 //   - allowlist, bukan denylist: yang tak ada di kosakata tak bisa dijalankan.
 //   - hash-chain tamper-EVIDENT, bukan tamper-PROOF.
+// @ts-check
 "use strict";
 
 const audit = require("./audit-log.cjs");
+
+/**
+ * Ruleset genesis — dibekukan saat sesi mulai, tak bisa dilonggarkan sesudahnya.
+ *
+ * @typedef {object} Ruleset
+ * @property {number} versi
+ * @property {string} sesi
+ * @property {string[]} kapabilitas  kosakata yang DIDEKLARASIKAN; di luar ini ditolak
+ * @property {number|null} gas
+ * @property {string} catatan
+ */
+
+/**
+ * Vonis admission — ditulis sebagai UNION, bukan `{allow:boolean, alasan?:string}`.
+ *
+ * Bedanya bukan gaya. Bentuk longgar mengizinkan `{allow:false}` tanpa alasan dan
+ * `{allow:true, alasan:"ditolak"}` sekaligus — dua keadaan yang tak boleh ada,
+ * tapi tak ada yang menahannya. Union membuat keduanya TAK BISA DIUNGKAPKAN:
+ * izin selalu tanpa alasan, tolak selalu membawa sebabnya.
+ *
+ * Ini prinsip yang sama dengan genesis beku itu sendiri — ditegakkan oleh
+ * bentuknya, bukan oleh kedisiplinan penulisnya.
+ *
+ * @typedef {{ allow: true, alasan: null } | { allow: false, alasan: string }} Vonis
+ */
 
 // Kosakata bawaan — kapabilitas yang dideklarasikan genesis.
 //
@@ -41,6 +67,15 @@ const KOSAKATA_DEFAULT = [
   "network:tls",
   "network:dgram",
   "proc.raw",
+  // Membaca berkas yang DISERAHKAN user lewat jembatan lampiran.
+  //
+  // Terpisah dari readFile, dan bukan sekadar demi kerapian: readFile menerima
+  // PATH dan karena itu tunduk pada roots policy. attachment.read menerima
+  // HANDLE — tak ada path untuk diperiksa, karena alamat berkasnya tak pernah
+  // masuk ke sistem (lihat agent/attachment-bridge.cjs). Memisahkannya membuat
+  // sesi bisa dikunci tanpa lampiran (buatRuleset({ tanpa:["attachment.read"] }))
+  // tanpa ikut mematikan pembacaan berkas di dalam worktree.
+  "attachment.read",
 ];
 
 // Bekukan objek SAMPAI KE DALAM. Object.freeze dangkal masih membiarkan nested
@@ -58,10 +93,19 @@ function bekukanDalam(obj) {
 //   opts.kapabilitas : daftar eksplisit (mengganti default)
 //   opts.tanpa       : cabut kapabilitas tertentu dari default (mis. lockdown
 //                      dengan tanpa:["proc.raw"] → bash mati untuk sesi itu)
+/**
+ * @param {{kapabilitas?: string[], tanpa?: string[], sesi?: string, gas?: number|null}} [opts]
+ * @returns {Ruleset} beku — pemanggil tak bisa melonggarkannya setelah ini
+ */
 function buatRuleset(opts = {}) {
   let kapabilitas = opts.kapabilitas || KOSAKATA_DEFAULT.slice();
   if (Array.isArray(opts.tanpa) && opts.tanpa.length) {
-    kapabilitas = kapabilitas.filter((k) => !opts.tanpa.includes(k));
+    // Disalin ke const dulu. Penyempitan dari Array.isArray() di atas tidak ikut
+    // masuk ke dalam closure — TypeScript menganggap opts.tanpa bisa berubah
+    // sebelum callback jalan. Di sini tidak bisa (filter sinkron), tapi menyalin
+    // membuat itu benar secara bentuk, bukan hanya secara kebetulan.
+    const tanpa = opts.tanpa;
+    kapabilitas = kapabilitas.filter((k) => !tanpa.includes(k));
   }
   return bekukanDalam({
     versi: 1,
@@ -73,6 +117,11 @@ function buatRuleset(opts = {}) {
 }
 
 // Admission: MURNI, deny-by-default. Tidak menyentuh I/O, tidak melempar.
+/**
+ * @param {Ruleset|null|undefined} ruleset  tak ada ruleset = tolak, bukan izinkan
+ * @param {string} capability
+ * @returns {Vonis}
+ */
 function periksa(ruleset, capability) {
   if (!ruleset || !Array.isArray(ruleset.kapabilitas)) {
     return { allow: false, alasan: "tak ada ruleset — deny-by-default" };
@@ -90,6 +139,10 @@ function periksa(ruleset, capability) {
 // ruleset beku. Bila ledger SUDAH berisi, genesis tak bisa disisipkan lagi —
 // mengembalikan ruleset apa adanya tanpa menulis (rantai yang berjalan tak boleh
 // ditulis ulang kepalanya).
+/**
+ * @param {{kapabilitas?: string[], tanpa?: string[], sesi?: string, gas?: number|null}} [opts]
+ * @returns {Ruleset}
+ */
 function mulaiSesi(opts = {}) {
   const ruleset = buatRuleset(opts);
   audit.catatGenesis(ruleset); // no-op bila ledger tak kosong
@@ -100,7 +153,9 @@ function mulaiSesi(opts = {}) {
 // di luar broker (mis. tool bash) yang perlu memeriksa admission terhadap ruleset
 // yang SAMA. Disimpan di memori modul supaya seluruh proses berbagi satu ruleset
 // sesi — bukan membuat yang baru tiap panggilan.
+/** @type {Ruleset|null} */
 let _ruleset = null;
+/** @returns {Ruleset} */
 function sesiRuleset() {
   if (!_ruleset) {
     // Lockdown deklaratif tanpa ubah kode: WOLFSPACE_CC_TANPA=proc.raw mengunci
@@ -110,7 +165,29 @@ function sesiRuleset() {
       .split(",")
       .map((s) => s.trim())
       .filter(Boolean);
-    _ruleset = mulaiSesi({ tanpa });
+
+    // Kapabilitas plugin yang SUDAH DISETUJUI user ikut dibekukan ke genesis.
+    // Dibaca sekali di sini, bersama sisa kosakata, jadi sifatnya sama: menyetujui
+    // plugin di tengah sesi TIDAK berlaku sampai sesi berikutnya.
+    //
+    // Itu disengaja, bukan keterbatasan. Kalau persetujuan bisa masuk ke ruleset
+    // yang sedang berjalan, maka ada jalan untuk MELONGGARKAN genesis setelah ia
+    // dibekukan — dan seluruh gunanya hilang. Yang tak disetujui tak ditolak saat
+    // dipanggil; ia tak pernah punya tool untuk dipanggil.
+    //
+    // require di dalam fungsi, bukan di kepala berkas: plugins.cjs memindai disk,
+    // dan modul ini dipakai di jalur yang harus tetap murni saat diuji.
+    let kapPlugin = [];
+    try {
+      kapPlugin = require("../plugins.cjs").kapabilitasDisetujui();
+    } catch (_) {
+      kapPlugin = []; // tak ada sistem plugin = tak ada kapabilitas plugin
+    }
+
+    _ruleset = mulaiSesi({
+      tanpa,
+      kapabilitas: KOSAKATA_DEFAULT.concat(kapPlugin),
+    });
   }
   return _ruleset;
 }

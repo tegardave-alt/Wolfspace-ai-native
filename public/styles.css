@@ -112,7 +112,7 @@ select {
   display: flex;
   flex-direction: column;
   gap: 2px;
-  padding: 12px 10px;
+  padding: 0 10px 12px;
   background: var(--surface-1, #0f1318);
   border-right: 1px solid var(--line, #1f2733);
   transition: width 0.18s cubic-bezier(0.4, 0, 0.2, 1);
@@ -122,7 +122,7 @@ select {
 }
 .sidebar.collapsed {
   width: 60px;
-  padding: 12px 8px;
+  padding: 0 8px 12px;
   overflow: hidden;
 }
 .sidebar.resizing {
@@ -149,39 +149,93 @@ select {
   align-items: center;
   justify-content: space-between;
   gap: 8px;
-  height: 38px;
-  padding: 0 6px 0 8px;
+  height: 46px;
+  padding: 0 2px 0 8px;
+  flex-shrink: 0;
+  border-bottom: 1px solid var(--line, #1f2733);
   margin-bottom: 8px;
 }
 .sb-toggle {
-  width: 36px;
-  height: 36px;
   flex-shrink: 0;
-  border-radius: 9px;
-  display: grid;
-  place-items: center;
-  color: var(--text-muted, #8b98a9);
+  background: transparent;
+  border: none;
+  outline: none;
   cursor: pointer;
+  color: var(--text-muted, #8b98a9);
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  opacity: 0.55;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
 }
 .sb-toggle:hover {
   background: var(--surface-2, #11151c);
   color: var(--text, #e6edf3);
+  opacity: 1;
+}
+/* Panel kanan — state default: transparan, tidak ada border/outline sama sekali */
+.panel-toggle-btn {
+  flex-shrink: 0;
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  color: var(--text-muted, #8b98a9);
+  padding: 6px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  opacity: 0.55;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease,
+    opacity 0.15s ease;
+}
+.panel-toggle-btn:hover {
+  background: var(--surface-2, #11151c);
+  color: var(--text, #e6edf3);
+  opacity: 1;
+}
+.panel-toggle-btn.active {
+  color: var(--text, #e6edf3);
+  opacity: 1;
+}
+.panel-toggle-btn.active:hover {
+  background: var(--surface-2, #11151c);
 }
 .sb-brand {
   display: flex;
   align-items: center;
-  gap: 8px;
-  font-size: 15px;
+  gap: 6px;
+  font-size: 13.5px;
+  font-weight: 600;
+  letter-spacing: 0.3px;
   color: var(--text, #e6edf3);
   white-space: nowrap;
   overflow: hidden;
+  flex: 1;
+  min-width: 0;
 }
 .sb-brand b {
-  font-weight: 600;
+  font-weight: 700;
+  letter-spacing: 0.5px;
 }
 .sidebar.collapsed .sb-brand {
   opacity: 0;
   width: 0;
+}
+/* Logo di dalam header sidebar — lebih kecil dari brand-mark di topbar */
+.sb-head .brand-mark {
+  width: 26px;
+  height: 26px;
+}
+.sb-head .brand-mark svg {
+  width: 22px;
+  height: 22px;
 }
 .sb-group {
   display: flex;
@@ -251,7 +305,7 @@ select {
   display: none;
 }
 .sidebar.collapsed .sb-head {
-  width: 36px;
+  width: 100%;
   padding: 0;
   gap: 0;
   justify-content: center;
@@ -267,7 +321,7 @@ select {
   width: 36px;
   height: 36px;
   gap: 0;
-  padding: 0;
+  padding: 6px;
   justify-content: center;
 }
 
@@ -829,6 +883,96 @@ select {
   max-width: 78%;
   box-shadow: var(--shadow-soft);
   white-space: pre-wrap;
+}
+/* Kartu lampiran di pesan user.
+   Lampiran dulu ikut tercetak sebagai baris teks di dalam .bubble-user —
+   termasuk handle att_… yang hanya berguna bagi model. Di sini ia jadi kartu
+   sendiri, sejajar gelembung (ikut rata kanan), dan gelembungnya hanya memuat
+   yang benar-benar diketik user. */
+.msg-attachments {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  max-width: 78%;
+  margin-bottom: 6px;
+  justify-content: flex-end;
+}
+.msg-att {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  padding: 6px 10px 6px 7px;
+  border-radius: 10px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+  box-shadow: var(--shadow-soft);
+  font-size: 12px;
+  max-width: 100%;
+}
+.msg-att.err {
+  border-color: rgba(224, 108, 117, 0.45);
+}
+.msg-att-thumb {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  object-fit: cover;
+  flex: 0 0 auto;
+}
+.msg-att-ico {
+  font-size: 14px;
+  line-height: 1;
+  flex: 0 0 auto;
+}
+.msg-att-name {
+  color: #fff;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 220px;
+}
+.msg-att-size {
+  color: var(--text-dim, #8b949e);
+  flex: 0 0 auto;
+}
+/* Checklist hidup di timeline agent (event t:"todos").
+   Sebelumnya event itu tak punya penanganan maupun gaya sama sekali. */
+.aal-todos {
+  display: flex;
+  flex-direction: column;
+  gap: 3px;
+  margin: 6px 0 8px;
+  padding: 8px 10px;
+  border-radius: 8px;
+  background: var(--surface-3);
+  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
+}
+.aal-todo {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--text-dim, #8b949e);
+}
+.aal-todo-ikon {
+  flex: 0 0 12px;
+  text-align: center;
+}
+.aal-todo-teks {
+  flex: 1 1 auto;
+}
+.aal-todo.st-in_progress {
+  color: #fff;
+  font-weight: 500;
+}
+.aal-todo.st-completed .aal-todo-teks {
+  text-decoration: line-through;
+  opacity: 0.65;
+}
+.aal-todo.st-cancelled .aal-todo-teks {
+  text-decoration: line-through;
+  opacity: 0.4;
 }
 .bubble-model {
   font-size: 13px;

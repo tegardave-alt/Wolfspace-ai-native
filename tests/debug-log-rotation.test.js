@@ -105,3 +105,53 @@ describe("rotasi log debug", () => {
     expect(require("../agent/debug.cjs")).toHaveProperty("VERBOSE");
   });
 });
+
+describe("override console tidak menyeret objek console ke tiap baris log", () => {
+  // KENAPA ADA. server.cjs membungkus console.log/warn/error untuk mencerminkan
+  // keluaran ke dlog. Pembungkusnya memanggil:
+  //     _writeSafe(_origLog, console, ...args)
+  // dengan maksud jelas `_origLog.call(console, ...args)`. Tapi _writeSafe
+  // menyapu semuanya ke `...args` lalu `fn(...args)`, sehingga `console` ikut
+  // TERCETAK sebagai argumen pertama — pada SETIAP baris log backend:
+  //
+  //   Object [console] { log: [Function], warn: [Function], ... } [renderer:warning] ...
+  //
+  // Terlihat langsung di stdout `npm run app`: startup yang sama menghasilkan
+  // 147 baris sebelum perbaikan, 11 baris sesudahnya. Di mode Electron backend
+  // hidup di proses MAIN — pemilik jendela — jadi serialisasi 25 properti itu
+  // ditanggung di sana, berulang untuk tiap baris.
+  const src = fs.readFileSync(path.join(ROOT, "server.cjs"), "utf8");
+
+  test("_writeSafe memperlakukan argumen kedua sebagai KONTEKS, bukan data", () => {
+    const i = src.indexOf("const _writeSafe =");
+    expect(i).toBeGreaterThan(-1);
+    const fn = src.slice(i, i + 200);
+    expect(fn).toMatch(/\(fn, ctx, \.\.\.args\)/);
+    expect(fn).toMatch(/fn\.apply\(ctx, args\)/);
+    // Bentuk lama yang menjadikan konteks sebagai argumen cetak.
+    expect(fn).not.toMatch(/fn\(\.\.\.args\)/);
+  });
+
+  test("ketiga pembungkus tetap mengirim console sebagai konteks", () => {
+    // Kalau salah satu berubah bentuk, perbaikan di _writeSafe tak berlaku
+    // untuk jalur itu dan bug-nya kembali diam-diam untuk satu level saja.
+    for (const asli of ["_origLog", "_origError", "_origWarn"])
+      expect(src).toContain("_writeSafe(" + asli + ", console, ...args)");
+  });
+
+  test("PERILAKU: yang tercetak hanya argumennya, tanpa objek konteks", () => {
+    // Kedua bentuk dijalankan berdampingan supaya bedanya terlihat sebagai
+    // perilaku, bukan sekadar bentuk kode.
+    const lama = (f, ...a) => f(...a);
+    const baru = (f, ctx, ...a) => f.apply(ctx, a);
+    const tangkap = [];
+    const rekam = function (...a) {
+      tangkap.push(a);
+    };
+    lama(rekam, console, "pesan uji");
+    baru(rekam, console, "pesan uji");
+    expect(tangkap[0]).toHaveLength(2); // console + pesan  <- bug
+    expect(typeof tangkap[0][0]).toBe("object");
+    expect(tangkap[1]).toEqual(["pesan uji"]); // hanya pesan  <- benar
+  });
+});

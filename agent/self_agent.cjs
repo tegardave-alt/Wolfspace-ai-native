@@ -9,7 +9,12 @@ const {
   loadCloudKeys,
   askCloudTools,
 } = require("./cloud.cjs");
-const { runSelfTool, SELF_TOOLS, qBackup } = require("./tools.cjs");
+const {
+  runSelfTool,
+  SELF_TOOLS,
+  qBackup,
+  qBackupAsync,
+} = require("./tools.cjs");
 const { runReply } = require("./chat.cjs");
 const { getOptimized, optimizeInBackground } = require("./sysprompt_opt.cjs");
 const {
@@ -39,42 +44,72 @@ const PROMPTS_CFG_PATH = path.join(__dirname, "..", "config", "prompts.json");
 // ===================== SISTEM ATURAN AGENT (HARDCODED RULES) =====================
 // Aturan yang dipindahkan dari prompt ke sistem untuk kepatuhan 100%
 const SYSTEM_RULES = {
-  // Kata-kata spekulatif yang dilarang
-  FORBIDDEN_SPECULATIVE:
-    /\b(mungkin|sepertinya|bisa jadi|perhaps|possibly|maybe|probably|seems|appears|I think|I believe|I assume|presumably)\b/gi,
+  // FORBIDDEN_SPECULATIVE DIHAPUS — jangan dihidupkan lagi. Lihat catatan di
+  // bekas sanitizeOutput() di bawah untuk alasannya.
+  //
   // Urutan tool yang wajib dicoba sebelum menyatakan "tidak ada"
   REQUIRED_TOOL_SEQUENCE: ["grep", "glob", "web_search"],
   // Minimal tools yang gagal sebelum bisa menyerah
   MIN_FAILED_TOOLS: 3,
+  // Berapa kali satu ITEM checklist boleh gagal sebelum run BERHENTI dan bertanya.
+  //
+  // KENAPA ADA. Checklist adalah ground truth yang disuntik ulang tiap langkah —
+  // tapi ia dulu tak punya status "gagal" sama sekali (_TODO_ICON hanya mengenal
+  // completed/in_progress/cancelled/pending), dan kegagalan tak pernah menyentuh
+  // task_checklist. Akibatnya item yang sudah dicoba dan gagal tetap tampil
+  // "[→] sedang dikerjakan" selamanya. Untuk tahu ia pernah gagal, model HARUS
+  // menggali riwayat percakapan — persis hal yang paling cepat memburuk saat
+  // konteks memanjang. Jadi jangkarnya bocor tepat di tempat yang paling perlu.
+  //
+  // MAX_STEPS memang sudah membatasi, tapi ia plafon BUTA: ia membunuh run tanpa
+  // memberitahu apa yang macet. Batas ini beda — ia berhenti pada item yang
+  // SPESIFIK, membawa sebabnya, dan bertanya ke user alih-alih menyerah diam-diam.
+  MAX_ITEM_ATTEMPTS: 3,
+
+  // Berapa kali run boleh DIDORONG melanjutkan saat model menutup giliran dengan
+  // TEKS padahal checklist masih terbuka.
+  //
+  // KENAPA ADA. Cabang penutup di executor memperlakukan "ada content, tak ada
+  // tool_calls" sebagai jawaban akhir dan MENGAKHIRI run — tanpa sekali pun
+  // melihat apakah pekerjaannya sudah tuntas. Untuk model yang gemar
+  // mengumumkan rencananya dalam prosa sebelum bertindak, satu kalimat niat
+  // sudah cukup untuk membunuh run di tengah jalan.
+  //
+  // Terekam di log run nyata (GLM-5.2, tugas landing page):
+  //   step 5  toolCalls=3            <- sedang bekerja
+  //   step 6  content=176 toolCalls=0 -> stop "text_response_no_tools"
+  // Checklist masih 0/4, tapi run sudah ditutup dan kalimat niat itu yang
+  // ditampilkan sebagai hasil akhir. Dari layar, gejalanya persis "agent
+  // berhenti sendiri dan tidak mengikuti todo".
+  //
+  // Dibatasi supaya tak jadi loop: kalau sesudah beberapa dorongan model tetap
+  // menarasikan, run ditutup seperti sebelumnya — sekarang dengan catatan jujur
+  // bahwa checklist belum tuntas.
+  MAX_CONTINUE_NUDGE: 3,
 };
 
 // Simpan bukti dari tool yang sudah diakses untuk validasi
 const accessedEvidence = new Set();
 let failedTools = new Set();
 
-// Bersihkan output dari kata spekulatif — TAPI jangan sentuh isi kutipan/backtick/code.
-// Kata seperti "seems"/"maybe" sering muncul sah di dalam pesan error yang dikutip atau
-// contoh kode; menyapunya di sana justru merusak jawaban yang benar (mis. pesan error
-// '"seems to be offline"' menjadi korup). Kita mask dulu span terlindung, sapu, lalu pulihkan.
-function sanitizeOutput(text) {
-  if (!text) return text;
-  // Sentinel di Private Use Area — takkan pernah muncul di output model, jadi
-  // pemulihan tidak akan salah menargetkan angka asli dalam prosa.
-  const protectedSpans = [];
-  const wrap = (i) => "" + i + "";
-  const maskedText = text.replace(
-    /```[\s\S]*?```|`[^`]*`|"[^"]*"|'[^']*'/g,
-    (m) => {
-      protectedSpans.push(m);
-      return wrap(protectedSpans.length - 1);
-    },
-  );
-  const sweptText = maskedText.replace(
-    SYSTEM_RULES.FORBIDDEN_SPECULATIVE,
-    "[kata-spekulatif-dihapus]",
-  );
-  return sweptText.replace(/(\d+)/g, (_, i) => protectedSpans[Number(i)]);
-}
+// sanitizeOutput() DIHAPUS — dulu ia menyapu kata spekulatif dari jawaban akhir
+// dan menggantinya dengan penanda "[kata-spekulatif-dihapus]". Penanda itu ikut
+// TAMPIL ke user, jadi jawaban yang benar pun terlihat rusak.
+//
+// Menghapus KATANYA saja (tanpa penanda) justru lebih berbahaya, dan itu sebabnya
+// penyapu ini tidak diganti melainkan dibuang:
+//
+//   "File config mungkin tidak ada"  ->  "File config tidak ada"
+//
+// Dugaan berubah jadi pernyataan pasti. Penyapu itu tak pernah menghapus
+// spekulasinya — ia hanya menghapus TANDA bahwa itu spekulasi, lalu menyajikan
+// tebakan sebagai fakta. Untuk alat yang gunanya melaporkan keadaan kode
+// sebenarnya, itu kegagalan yang jauh lebih mahal daripada penanda jelek.
+//
+// Spekulasi yang benar-benar berbahaya — model MENARASIKAN hasil eksekusi yang
+// tak pernah dijalankan — sudah ditangani di tempat yang tepat oleh
+// SIMULATION_CLAIMS + force_retry: modelnya DISURUH ULANG memanggil tool nyata,
+// bukan kalimatnya yang diedit diam-diam sesudah jadi.
 
 // Buang blok reasoning (<think>...</think>) dan tag think yang nyasar/tak berpasangan.
 // cloud.cjs membungkus reasoning-delta dengan tag ini untuk tampilan streaming, dan
@@ -93,28 +128,69 @@ function stripThinkBlocks(text) {
     .trim();
 }
 
+// Apakah sepotong teks itu CATATAN KERJA, bukan kesimpulan?
+//
+// Ciri catatan kerja: didominasi baris daftar/pemetaan, nyaris tanpa kalimat.
+// Contoh nyata yang memicu perbaikan ini — potongan yang sampai ke layar user
+// dengan label "berikut kesimpulan dari proses berpikirnya":
+//
+//   Language to Devicon mapping:
+//   - js → devicon-javascript-plain
+//   - ts → devicon-typescript-plain
+//   ... (terpotong di tengah daftar)
+//
+// Itu tabel rujukan yang sedang disusun model, bukan jawaban. Menyebutnya
+// kesimpulan membuat user membaca catatan setengah jadi sebagai hasil kerja.
+function _tampakCatatanKerja(teks) {
+  const baris = String(teks || "")
+    .split("\n")
+    .map((b) => b.trim())
+    .filter(Boolean);
+  if (baris.length < 3) return false;
+  const daftar = baris.filter((b) =>
+    /^[-*•|]|\s(?:→|->|=>)\s|^\d+[.)]\s/.test(b),
+  ).length;
+  // Kalimat = baris yang diakhiri titik/tanya/seru dan cukup panjang.
+  const kalimat = baris.filter((b) => b.length > 40 && /[.!?]$/.test(b)).length;
+  return daftar / baris.length >= 0.6 && kalimat <= 1;
+}
+
 // Ambil kesimpulan dari monolog reasoning saat model tak pernah menutup
-// jawabannya di `content`. Bukan menampilkan mentah-mentah: monolog itu panjang
-// dan berisi keraguan/koreksi diri. Strategi: cari penanda kesimpulan; kalau tak
-// ada, ambil paragraf-paragraf TERAKHIR (bagian paling matang dari penalaran).
+// jawabannya di `content`.
+//
+// MENGEMBALIKAN JENISNYA, bukan cuma teks. Versi lama selalu mengembalikan
+// string dan pemanggilnya selalu memberi label "berikut kesimpulan dari proses
+// berpikirnya" — padahal hanya cabang PERTAMA yang benar-benar menemukan
+// kesimpulan. Cabang kedua sekadar mengambil paragraf terakhir, dan paragraf
+// terakhir sebuah monolog sering justru bagian yang belum selesai.
+//
+// Labelnya harus mengikuti isinya. Kalau tidak, user membaca catatan kerja
+// sebagai jawaban — dan itu lebih buruk daripada tidak menampilkan apa pun,
+// karena ia terlihat seperti hasil yang sah.
+//
+// @returns {{teks: string, jenis: "kesimpulan"|"catatan"|"kosong"}}
 function salvageReasoning(reasoning) {
   let t = String(reasoning || "");
-  if (!t.trim()) return "";
+  if (!t.trim()) return { teks: "", jenis: "kosong" };
   t = stripThinkBlocks(t) || t; // buang tag think bila reasoning ikut membawanya
   t = t.trim();
-  if (!t) return "";
+  if (!t) return { teks: "", jenis: "kosong" };
 
   // 1) Penanda kesimpulan eksplisit — ambil dari kemunculan TERAKHIR.
+  //    Hanya cabang ini yang boleh disebut "kesimpulan".
   const marker =
     /(?:^|\n)\s*(?:kesimpulan|jawaban akhir|final answer|jadi,|singkatnya|ringkasnya)\s*[:\-]?\s*/gi;
   let lastIdx = -1;
   for (const m of t.matchAll(marker)) lastIdx = m.index + m[0].length;
   if (lastIdx > -1) {
     const tail = t.slice(lastIdx).trim();
-    if (tail.length > 40) return tail.slice(0, 4000);
+    if (tail.length > 40) {
+      return { teks: tail.slice(0, 4000), jenis: "kesimpulan" };
+    }
   }
 
-  // 2) Tanpa penanda: ambil paragraf terakhir sampai ~1200 karakter.
+  // 2) Tanpa penanda: paragraf terakhir. Ini BUKAN kesimpulan, dan tak boleh
+  //    disebut begitu.
   const paras = t.split(/\n\s*\n/).filter((p) => p.trim());
   const out = [];
   let n = 0;
@@ -122,7 +198,13 @@ function salvageReasoning(reasoning) {
     out.unshift(paras[i].trim());
     n += paras[i].length;
   }
-  return out.join("\n\n").slice(0, 4000);
+  const ekor = out.join("\n\n").slice(0, 4000);
+
+  // Catatan kerja murni TIDAK diselamatkan sama sekali. Daftar pemetaan
+  // setengah jadi tak menjawab apa pun, dan menampilkannya hanya membuat user
+  // mengira ada hasil.
+  if (!ekor || _tampakCatatanKerja(ekor)) return { teks: "", jenis: "kosong" };
+  return { teks: ekor, jenis: "catatan" };
 }
 
 // Hapus rekapitulasi tool / daftar bukti / kalimat pengantar yang tidak perlu
@@ -483,6 +565,55 @@ function formatChecklist(todos) {
 
 // Item yang belum tuntas — dipakai di pesan jeda supaya "Lanjutkan" menyebut
 // pekerjaan yang tersisa, bukan sekadar berapa langkah terpakai.
+// Item yang sedang dikerjakan — penanda "[→]" dari todowrite. Kegagalan tool
+// dihitung terhadap item INI, karena itulah pekerjaan yang sedang berlangsung.
+// Tanpa item aktif, kegagalan tak bisa ditautkan ke apa pun dan diabaikan (agent
+// mungkin sedang menjelajah, bukan mengerjakan rencana).
+function itemAktif(checklist) {
+  const l = (checklist || []).find((t) => String(t).startsWith("[→]"));
+  return l ? String(l).slice(3).trim() : null;
+}
+
+// Tandai kegagalan pada item aktif, kembalikan peta baru (tak memutasi yang lama —
+// reducer state ini "ganti total", jadi mutasi di tempat tak akan terlihat).
+function catatGagalItem(fails, item, sebab) {
+  if (!item) return fails || {};
+  const lama = (fails || {})[item] || { n: 0, sebab: [] };
+  return {
+    ...(fails || {}),
+    [item]: {
+      n: lama.n + 1,
+      // Hanya 3 sebab terakhir yang disimpan: yang dibutuhkan model adalah POLA
+      // kegagalan, bukan arsip lengkap — dan checklist ini disuntik ulang tiap
+      // langkah, jadi panjangnya berbanding lurus dengan ongkos token.
+      sebab: [...lama.sebab, String(sebab || "").slice(0, 120)].slice(-3),
+    },
+  };
+}
+
+// Baris checklist + penanda kegagalan, siap disuntik ke system message.
+// Item yang pernah gagal ditampilkan "[!] teks (gagal N×: sebab)" menggantikan
+// "[→]", supaya model MELIHAT kemacetan alih-alih harus mengingatnya.
+function checklistDenganKegagalan(checklist, fails) {
+  const f = fails || {};
+  return (checklist || []).map((baris) => {
+    const teks = String(baris)
+      .replace(/^\[[x→\- ]\]\s*/, "")
+      .trim();
+    const g = f[teks];
+    if (!g || !g.n) return baris;
+    return (
+      "[!] " +
+      teks +
+      " (gagal " +
+      g.n +
+      "×" +
+      (g.sebab.length ? ": " + g.sebab[g.sebab.length - 1] : "") +
+      ")"
+    );
+  });
+}
+
 function pendingChecklist(checklist) {
   return (checklist || []).filter(
     (l) => !l.startsWith("[x]") && !l.startsWith("[-]"),
@@ -554,6 +685,17 @@ const AgentState = Annotation.Root({
   pendingToolCall: Annotation({ reducer: (x, y) => y, default: () => null }),
   pendingToolCalls: Annotation({ reducer: (x, y) => y, default: () => [] }),
   task_checklist: Annotation({ reducer: (x, y) => y, default: () => [] }),
+  // Kegagalan PER-ITEM checklist: { "<teks item>": { n, sebab: [...] } }.
+  // Terpisah dari failedTools (yang mencatat NAMA TOOL, bukan pekerjaan mana yang
+  // macet). Ini yang membuat kegagalan ikut terbawa di jangkar ground truth.
+  checklistFails: Annotation({ reducer: (x, y) => y, default: () => ({}) }),
+  // Berapa kali run sudah didorong melanjutkan karena model menutup giliran
+  // dengan teks padahal checklist masih terbuka. Dihitung TERPISAH dari
+  // forceRetryCount: penghitung itu sudah dipakai bersama oleh tiga gerbang lain
+  // (bukti tool, reasoning-tanpa-jawaban, hallucination guard), jadi menumpang
+  // di sana membuat dorongan ini kehabisan jatah karena kejadian yang sama
+  // sekali tak berhubungan.
+  continueNudge: Annotation({ reducer: (x, y) => y, default: () => 0 }),
   // Plafon langkah untuk giliran ini. 0 = pakai MAX_STEPS default. Saat user memilih
   // "lanjutkan" setelah jeda budget, plafon diperpanjang (bukan direset), sehingga
   // langkah menjadi checkpoint "masih lanjut?" alih-alih tebing yang menggagalkan.
@@ -593,6 +735,15 @@ async function selfAgentStream(payload, emit, ctl = {}) {
       _wsRoot = null;
     }
   }
+  // Muat jurnal temuan sekali per run. Inilah yang membuat pengetahuan
+  // menyeberangi RESTART proses — bagian yang tak diberikan checklist, karena
+  // checkpoint-nya memakai MemorySaver yang mati bersama prosesnya.
+  try {
+    const _t = require("./temuan.cjs");
+    const _n = _t.muat(_t.kunciWs(_wsRoot));
+    if (_n) dlog("self", "info", "temuan dimuat", { berkas: _n });
+  } catch (_) {}
+
   const agentCtx = { sessionId: thread_id, workspaceRoot: _wsRoot };
   if (_wsRoot)
     emit({
@@ -608,21 +759,33 @@ async function selfAgentStream(payload, emit, ctl = {}) {
   const MAX_DEPTH = 3;
   let finalSummary = "";
   const emitPhase = makePhaseEmitter(emit);
+  const failedProviders = []; // Lacak provider yang sudah gagal agar fallback tidak ping-pong
   loadCloudKeys(); // ensure keys are loaded
   fillCloudKey(cloud);
 
-  // Resolve a cloud model if none provided (pick first available key)
+  // Resolve a cloud model if none provided (pick first available key from clientKeys or CLOUD_KEYS)
   if (!(cloud && cloud.key)) {
-    const prov = Object.keys(CLOUD_KEYS).find(
-      (p) => CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
+    const availableKeys =
+      cloud && cloud.clientKeys
+        ? { ...CLOUD_KEYS, ...cloud.clientKeys }
+        : CLOUD_KEYS;
+    const prov = Object.keys(availableKeys).find(
+      (p) =>
+        availableKeys[p] &&
+        (typeof availableKeys[p] === "string"
+          ? availableKeys[p]
+          : availableKeys[p].key),
     );
-    if (prov)
+    if (prov) {
+      const kObj = availableKeys[prov];
       cloud = {
         provider: prov,
-        key: CLOUD_KEYS[prov].key,
-        model: CLOUD_KEYS[prov].model,
-        baseUrl: CLOUD_KEYS[prov].baseUrl,
+        key: typeof kObj === "string" ? kObj : kObj.key,
+        model: typeof kObj === "object" ? kObj.model : undefined,
+        baseUrl: typeof kObj === "object" ? kObj.baseUrl : undefined,
+        clientKeys: cloud ? cloud.clientKeys : undefined,
       };
+    }
   }
   if (!(cloud && cloud.key)) {
     dlog("self", "info", "stop", { reason: "no_cloud_key", depth });
@@ -664,9 +827,19 @@ async function selfAgentStream(payload, emit, ctl = {}) {
 
   let sessionSnapshotId = null;
   const { rollback } = require("./snapshot.cjs");
-  const ensureBackup = () => {
+  // ASINKRON, dan itu disengaja. Di mode Electron seluruh run agent berjalan di
+  // dalam proses MAIN — pemilik BrowserWindow dan pemompa antrean pesan Windows.
+  // qBackup() sinkron menyalin ~112 berkas dengan copyFileSync (terukur 285-365ms
+  // memblokir penuh, ~1,8 detik saat cache dingin); selama itu jendela tak
+  // memompa pesan. Versi async menyalin dengan paralel terbatas dan melepas
+  // event loop di antaranya.
+  //
+  // Kedua pemanggilnya ada di fungsi async, tepat sebelum `await runSelfTool`,
+  // jadi menunggu di sini tidak mengubah urutan apa pun: backup tetap selesai
+  // SEBELUM tool penyunting pertama berjalan — yang memang jaminannya.
+  const ensureBackup = async () => {
     if (!sessionSnapshotId) {
-      sessionSnapshotId = qBackup();
+      sessionSnapshotId = qBackupAsync ? await qBackupAsync() : qBackup();
       if (sessionSnapshotId) {
         emit({ t: "backup", dir: sessionSnapshotId });
         dlog("self", "info", "self-agent edit start", {
@@ -782,13 +955,37 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   let lastReadFile = sess.lastReadFile;
   let readFileCount = sess.readFileCount;
   const _TRANSIENT_SELF =
-    /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
+    /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|403|401|RegionError|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
 
   // Load MCP tools dynamically
+  //
+  // getTools() menahan LANGKAH PERTAMA run, sebelum satu pun event lain
+  // terkirim. Handshake tiap server MCP boleh sampai HANDSHAKE_TIMEOUT_MS
+  // (60s di mcp-client.cjs) sebelum menyerah, dan diukur langsung: satu run
+  // diam 60,3 detik penuh di sini saat dua server (figma, github) timeout
+  // bersamaan — tanpa satu pun tanda ke user bahwa agent masih hidup. Detak
+  // di bawah ini menyamai pola model_wait yang sudah ada, supaya frontend
+  // tak perlu jenis event baru untuk menampilkannya.
   const mcpClient = require("./mcp-client.cjs");
   let currentTools = [...SELF_TOOLS];
   try {
-    const mcpTools = await mcpClient.getTools();
+    const _mcpT0 = Date.now();
+    emit({ t: "model_wait", m: "Menyiapkan koneksi MCP…" });
+    const _mcpHb = setInterval(() => {
+      emit({
+        t: "model_wait",
+        m:
+          "Masih menyiapkan MCP (" +
+          Math.round((Date.now() - _mcpT0) / 1000) +
+          "s)…",
+      });
+    }, 10000);
+    let mcpTools;
+    try {
+      mcpTools = await mcpClient.getTools();
+    } finally {
+      clearInterval(_mcpHb);
+    }
     if (mcpTools.length > 0) {
       currentTools = currentTools.concat(mcpTools);
       // HARDCODE RULE: Filter web_search/web_fetch dinamis jika query berkaitan dengan MCP / Tools yang aktif
@@ -881,15 +1078,56 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         });
         const lastMsg = state.messages[state.messages.length - 1];
         const prompt = `Anda adalah AI Planner. Berdasarkan permintaan user, buat checklist SANGAT SINGKAT (maksimal 3 langkah). Tiap langkah di baris baru diawali "- ". JANGAN detail — langsung ke inti tugas. Jangan tambahkan teks lain.\n\nPermintaan: ${lastMsg.content}`;
-        const reply = await askCloudTools(
-          cloud,
-          [{ role: "user", content: prompt }],
-          [],
-        );
-        const lines = (reply.content || "")
-          .split("\n")
-          .filter((l) => l.trim().startsWith("-"))
-          .map((l) => l.trim().replace(/^- /, ""));
+        // Planner bukan langkah yang boleh membunuh run: checklist-nya cuma hiasan
+        // (executor jalan sama saja tanpanya, lihat fallback "Jalankan tugas user."
+        // di bawah). Sebelum ada fallback provider di sini, satu kunci mati di urutan
+        // pertama (mis. github 401) mematikan SELURUH run 1-2 detik masuk — sebelum
+        // executor bahkan sempat mencoba providernya sendiri. Diverifikasi lewat run
+        // nyata: 8 dari 10 kunci di CLOUD_KEYS mati saat diukur.
+        const _planTried = [];
+        let _planCloud = cloud;
+        let reply = null;
+        for (let _t = 0; _t < 4; _t++) {
+          try {
+            reply = await askCloudTools(
+              _planCloud,
+              [{ role: "user", content: prompt }],
+              [],
+            );
+            if (_planCloud !== cloud) {
+              cloud = _planCloud; // provider yang hidup dipakai juga oleh executor
+              dlog("self", "info", "planner fallback established", {
+                provider: cloud.provider,
+              });
+            }
+            break;
+          } catch (e) {
+            dlog("self", "warn", "planner_request_failed", {
+              provider: _planCloud.provider,
+              error: ((e && e.message) || "").slice(0, 120),
+            });
+            if (!_TRANSIENT_SELF.test((e && e.message) || "")) break;
+            _planTried.push(_planCloud.provider);
+            const fb = Object.keys(CLOUD_KEYS).find(
+              (p) =>
+                !_planTried.includes(p) && CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
+            );
+            if (!fb) break;
+            _planCloud = {
+              provider: fb,
+              key: CLOUD_KEYS[fb].key,
+              model: CLOUD_KEYS[fb].model,
+              baseUrl: CLOUD_KEYS[fb].baseUrl,
+            };
+            fillCloudKey(_planCloud);
+          }
+        }
+        const lines = reply
+          ? (reply.content || "")
+              .split("\n")
+              .filter((l) => l.trim().startsWith("-"))
+              .map((l) => l.trim().replace(/^- /, ""))
+          : [];
         if (lines.length === 0) lines.push("Jalankan tugas user.");
         emit({
           t: "act",
@@ -945,15 +1183,50 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           const hasStatus = state.task_checklist.some((t) =>
             /^\[[x→\- ]\] /.test(t),
           );
+          // Kegagalan ikut tersuntik di sini, bukan cuma di riwayat percakapan:
+          // inilah yang membuat "sudah pernah dicoba dan gagal" jadi bagian dari
+          // ground truth, bukan sesuatu yang harus diingat model.
+          const barisChecklist = checklistDenganKegagalan(
+            state.task_checklist,
+            state.checklistFails,
+          );
+          const adaGagal = barisChecklist.some((t) => t.startsWith("[!]"));
           sysMsg.content +=
             "\n\n[TASK CHECKLIST AKTIF]:\n" +
-            state.task_checklist
-              .map((t) => (/^\[[x→\- ]\] /.test(t) ? t : "- " + t))
+            barisChecklist
+              .map((t) => (/^\[[x→\-! ]\] /.test(t) ? t : "- " + t))
               .join("\n") +
+            (adaGagal
+              ? "\nItem [!] SUDAH DICOBA dan gagal. JANGAN ulangi pendekatan yang sama — ganti cara, atau jelaskan ke user kenapa item itu tak bisa diselesaikan."
+              : "") +
             (hasStatus
               ? "\nIni status TERKINI, bukan rencana awal. JANGAN kerjakan ulang item [x]. Kerjakan item [→], lalu lanjut ke [ ] berikutnya, dan perbarui lewat todowrite setiap kali status berubah."
               : "\nFokus selesaikan item di atas secara berurutan dengan menggunakan tools.");
           activeMessages[0] = sysMsg;
+        }
+
+        // TEMUAN: apa yang sudah DIKETAHUI, bukan apa yang harus dikerjakan.
+        //
+        // Checklist di atas menjaga agar agent ingat TUGASNYA. Blok ini menjaga
+        // agar ia ingat PENGETAHUANNYA — dan itu dua hal berbeda yang selama ini
+        // hanya satu yang dijaga.
+        //
+        // Terukur di ledger run nyata (pid 12932): 246 aksi untuk 22 perintah
+        // unik, dengan index.html dibaca 13x dan app.js 12x. Pengulangan
+        // beruntunnya cuma 4x, jadi itu bukan loop — melainkan history.slice(-16)
+        // membuang hasil `read` (isinya paling panjang, jadi paling cepat
+        // terpotong) sehingga agent tak tahu ia pernah membacanya.
+        try {
+          const _temuan = require("./temuan.cjs");
+          const _blok = _temuan.blokPrompt(_temuan.kunciWs(_wsRoot));
+          if (_blok) {
+            const m = { ...activeMessages[0] };
+            m.content += _blok;
+            activeMessages[0] = m;
+          }
+        } catch (_) {
+          // Kegagalan mengingat tak boleh menghentikan run: tanpa blok ini
+          // agent kembali ke perilaku lama, bukan gagal.
         }
 
         let msg;
@@ -1012,8 +1285,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             _TRANSIENT_SELF.test(e.message || "") &&
             state.fallbackCount < 3
           ) {
+            failedProviders.push(cloud.provider);
             const fb = Object.keys(CLOUD_KEYS).find(
-              (p) => p !== cloud.provider && CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
+              (p) =>
+                !failedProviders.includes(p) &&
+                CLOUD_KEYS[p] &&
+                CLOUD_KEYS[p].key,
             );
             if (fb) {
               dlog("self", "warn", "provider fallback", {
@@ -1050,6 +1327,58 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         }
         if (isCancelled()) return { stopReason: "cancelled_after_tools" };
 
+        // ── Respons HAMPA = provider bermasalah, bukan model yang "selesai" ──
+        //
+        // Sebagian provider membalas HTTP 200 dengan badan yang sah tapi NIHIL:
+        // tanpa content, tanpa reasoning, tanpa tool_calls. Karena bukan error,
+        // ia tak pernah cocok dengan _TRANSIENT_SELF, jadi fallback provider yang
+        // sudah ada di blok catch di atas tak pernah terpicu — padahal akibatnya
+        // sama saja dengan 502: giliran itu hilang begitu saja.
+        //
+        // Terukur pada run nyata GLM-5.2 lewat provider opencode: 5 dari 6
+        // panggilan mengembalikan 0/0/0, dan run mati di langkah 2 dengan
+        // "(tidak ada respons dari model)" — pesan yang menyalahkan model,
+        // padahal yang gagal adalah salurannya.
+        //
+        // Diperlakukan sama persis dengan kegagalan transient: pindah provider,
+        // dibatasi fallbackCount yang sama, dan diberitahukan ke user.
+        if (
+          !msg.content &&
+          !msg.reasoning &&
+          !(msg.tool_calls && msg.tool_calls.length) &&
+          state.fallbackCount < 3
+        ) {
+          failedProviders.push(cloud.provider);
+          const fbHampa = Object.keys(CLOUD_KEYS).find(
+            (p) =>
+              !failedProviders.includes(p) &&
+              CLOUD_KEYS[p] &&
+              CLOUD_KEYS[p].key,
+          );
+          if (fbHampa) {
+            dlog("self", "warn", "provider fallback (respons hampa)", {
+              from: cloud.provider,
+              to: fbHampa,
+              step: state.step,
+            });
+            emit({
+              t: "err",
+              m:
+                cloud.provider +
+                " membalas kosong (tanpa teks/tool) — beralih ke " +
+                fbHampa,
+            });
+            cloud = {
+              provider: fbHampa,
+              key: CLOUD_KEYS[fbHampa].key,
+              model: CLOUD_KEYS[fbHampa].model,
+              baseUrl: CLOUD_KEYS[fbHampa].baseUrl,
+            };
+            fillCloudKey(cloud);
+            return { fallbackCount: state.fallbackCount + 1 };
+          }
+        }
+
         // Reasoning bisa bocor lewat dua jalur: terselip di content (tag <think> dari
         // cloud.cjs/model) atau model menghabiskan giliran HANYA berpikir (content
         // kosong, field reasoning terisi). Bersihkan yang pertama; untuk yang kedua,
@@ -1076,21 +1405,40 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               forceRetryCount: state.forceRetryCount + 1,
             };
           }
-          // SELAMATKAN isi reasoning. Setelah 3 retry, dulu user cuma menerima
-          // placeholder "(model tidak memberikan jawaban final)" — padahal model
-          // SUDAH bekerja: jawabannya ada di dalam monolog reasoning, hanya tak
-          // pernah dipindahkan ke content. Membuangnya berarti membuang hasil
-          // kerja yang sudah dibayar. Ambil bagian akhir reasoning (bagian yang
-          // paling mungkin berisi kesimpulan) dan tandai asalnya dengan jujur.
+          // SELAMATKAN isi reasoning — TAPI dengan label yang sesuai isinya.
+          //
+          // Alasan menyelamatkan tetap berlaku: kadang jawabannya memang ada di
+          // monolog reasoning, cuma tak pernah dipindahkan ke content, dan
+          // membuangnya berarti membuang kerja yang sudah dibayar.
+          //
+          // Yang DIPERBAIKI: dulu apa pun yang terselamatkan diberi label
+          // "berikut kesimpulan dari proses berpikirnya" — termasuk saat yang
+          // terambil cuma paragraf terakhir. Akibatnya catatan kerja setengah
+          // jadi tampil sebagai hasil. Terlihat langsung di layar user: sebuah
+          // daftar pemetaan bahasa->ikon yang terpotong di tengah, disajikan
+          // seolah itu jawabannya.
+          //
+          // Sekarang labelnya mengikuti jenisnya, dan catatan kerja murni tidak
+          // ditampilkan sama sekali — lebih baik mengaku tak ada jawaban
+          // daripada menyodorkan sesuatu yang terlihat seperti jawaban.
           const salvaged = salvageReasoning(msg.reasoning);
-          msg.content = salvaged
-            ? "_(Model tidak menutup jawabannya; berikut kesimpulan dari proses berpikirnya.)_\n\n" +
-              salvaged
-            : "(the model gave no final answer)";
+          if (salvaged.jenis === "kesimpulan") {
+            msg.content =
+              "_(Model tidak menutup jawabannya; berikut kesimpulan dari proses berpikirnya.)_\n\n" +
+              salvaged.teks;
+          } else if (salvaged.jenis === "catatan") {
+            msg.content =
+              "_(Model tidak memberikan jawaban final. Berikut CATATAN TERAKHIR dari proses berpikirnya — ini bukan kesimpulan, dan mungkin belum selesai.)_\n\n" +
+              salvaged.teks;
+          } else {
+            msg.content =
+              "(Model tidak memberikan jawaban final, dan proses berpikirnya tidak memuat kesimpulan yang bisa dipakai. Coba jalankan ulang, atau persempit permintaannya.)";
+          }
           dlog("self", "info", "reasoning_salvage", {
             step: state.step,
+            jenis: salvaged.jenis,
             reasoningChars: String(msg.reasoning || "").length,
-            salvagedChars: salvaged ? salvaged.length : 0,
+            salvagedChars: salvaged.teks ? salvaged.teks.length : 0,
           });
         }
 
@@ -1123,6 +1471,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         const localAccessed = new Set();
         const localFailed = new Set();
         const localEditLog = [];
+        // Kegagalan ditautkan ke ITEM checklist yang sedang dikerjakan, bukan ke
+        // nama tool. Dikumpulkan di sini lalu dihitung sekali di akhir langkah.
+        const itemSedangDikerjakan = itemAktif(state.task_checklist);
+        const sebabGagalLangkahIni = [];
 
         const runOne = async (tc) => {
           let args = {};
@@ -1196,7 +1548,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               tc.function.name,
             )
           )
-            ensureBackup();
+            await ensureBackup();
           if (tc.function.name === "bash") {
             emit({
               t: "act",
@@ -1265,6 +1617,20 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)
           )
             localFailed.add(tc.function.name);
+
+          // Kegagalan APA PUN dicatat terhadap item checklist yang aktif —
+          // bukan hanya tool pencarian di REQUIRED_TOOL_SEQUENCE di atas. Yang
+          // membuat pekerjaan macet biasanya justru edit/bash/write yang gagal
+          // berulang, dan itu yang perlu terlihat di jangkar.
+          if (!r.ok && itemSedangDikerjakan) {
+            sebabGagalLangkahIni.push(
+              tc.function.name +
+                ": " +
+                String(r.output || "gagal")
+                  .trim()
+                  .split("\n")[0],
+            );
+          }
 
           // Track consecutive edit failures
           if (tc.function.name === "edit" && !r.ok) {
@@ -1563,6 +1929,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         let stopReason = "";
         let waitForAnswer = false;
         let localSummary = "";
+        // Peta kegagalan per-item sesudah langkah ini. Dihitung setelah semua
+        // tool selesai (lihat gerbang MAX_ITEM_ATTEMPTS di bawah).
+        let failsBaru = state.checklistFails || {};
         // Rencana hidup dari todowrite. null = tak ada panggilan todowrite di
         // langkah ini, jadi checklist yang sudah ada TIDAK ditimpa.
         let todoUpdate = null;
@@ -1696,6 +2065,55 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           });
         }
 
+        // ── Gerbang kemacetan per-item: berhenti dan TANYA, bukan menyerah ──
+        //
+        // Kegagalan langkah ini dihitung terhadap item checklist yang aktif. Saat
+        // satu item gagal MAX_ITEM_ATTEMPTS kali, run DIHENTIKAN dan user ditanya.
+        //
+        // Kenapa bertanya, bukan otomatis melewati item itu: melewatinya membuat
+        // agent tetap produktif tapi bisa menyerah diam-diam pada hal yang justru
+        // paling penting — dan kegagalan yang disembunyikan persis yang harus
+        // dihindari sistem ini. Berhenti-dan-tanya membuat kemacetan terlihat pada
+        // orang yang bisa memutuskan.
+        //
+        // Jalur jeda memakai mekanisme yang SUDAH ada (t:"ask" + waitForAnswer),
+        // bukan jalur baru — sehingga resume, checkpoint HITL, dan UI-nya
+        // otomatis ikut bekerja.
+        if (sebabGagalLangkahIni.length && itemSedangDikerjakan) {
+          failsBaru = catatGagalItem(
+            state.checklistFails,
+            itemSedangDikerjakan,
+            sebabGagalLangkahIni[0],
+          );
+          const n = failsBaru[itemSedangDikerjakan].n;
+          if (n >= SYSTEM_RULES.MAX_ITEM_ATTEMPTS && !waitForAnswer) {
+            const sebab = failsBaru[itemSedangDikerjakan].sebab;
+            const pertanyaan =
+              'Item "' +
+              itemSedangDikerjakan +
+              '" sudah gagal ' +
+              n +
+              "× berturut-turut.\nSebab terakhir: " +
+              (sebab[sebab.length - 1] || "tidak tercatat") +
+              "\n\nSaya berhenti di sini alih-alih mencoba lagi dengan cara yang sama. Bagaimana lanjutnya?";
+            emit({
+              t: "ask",
+              question: pertanyaan,
+              choices: [
+                "Coba pendekatan lain",
+                "Lewati item ini, lanjut ke berikutnya",
+                "Hentikan run",
+              ],
+            });
+            waitForAnswer = true;
+            stopReason = "item_macet";
+            localSummary =
+              "Berhenti: item checklist gagal " +
+              n +
+              "× — menunggu keputusan user.";
+          }
+        }
+
         // Persist session state for HITL resume
         sess.grepReadSteps = grepReadSteps;
         sess.lastReadFile = lastReadFile;
@@ -1710,6 +2128,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           editLog: localEditLog,
           accessedEvidence: Array.from(localAccessed),
           failedTools: Array.from(localFailed),
+          ...(sebabGagalLangkahIni.length ? { checklistFails: failsBaru } : {}),
           stopReason,
           waitForAnswer,
           hitlPending: stopReason === "hitl",
@@ -1773,7 +2192,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         );
 
         let fallback = rawContent;
-        fallback = sanitizeOutput(fallback);
+        // Tak ada lagi penyapu kata spekulatif di sini — kalimat model sampai ke
+        // layar apa adanya. Dua langkah di bawah hanya MEMBUANG (rekap tool,
+        // kelebihan panjang), tidak menyisipkan penanda ke tengah kalimat.
         fallback = stripToolRecap(fallback);
         fallback = truncateToConcise(fallback, 2000);
         // Jaring pengaman: pastikan diagram architecture_map ikut terkirim (terender di UI)
@@ -1914,6 +2335,71 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         }
         // verdict === 'clean': jawaban bersih, lanjut
         // ── END HALLUCINATION GUARD ─────────────────────────────────────────────────
+
+        // ── Teks bukan tanda selesai bila checklist MASIH terbuka ──
+        //
+        // Di bawah ini run DITUTUP dan teks model dipakai sebagai jawaban akhir.
+        // Itu benar kalau pekerjaannya memang tuntas — tapi tak ada satu pun
+        // pemeriksaan bahwa ia tuntas. Model yang mengumumkan rencananya lebih
+        // dulu ("Saya buat folder baru freelance-landing/ ...") menutup run-nya
+        // sendiri dengan satu kalimat niat, di tengah checklist yang masih 0/4.
+        //
+        // Sengaja MENDORONG, bukan memaksa: dorongan dibatasi
+        // MAX_CONTINUE_NUDGE, dan sesudah itu run tetap ditutup — dengan catatan
+        // jujur bahwa checklist belum tuntas, bukan diam-diam seolah selesai.
+        const _sisa = (state.task_checklist || []).filter((b) =>
+          /^\[(?: |→|!)\]/.test(String(b)),
+        );
+        if (
+          hasContent &&
+          _sisa.length &&
+          (state.continueNudge || 0) < SYSTEM_RULES.MAX_CONTINUE_NUDGE
+        ) {
+          dlog("self", "info", "continue_nudge", {
+            step: state.step,
+            sisa: _sisa.length,
+            ke: (state.continueNudge || 0) + 1,
+          });
+          emit({
+            t: "force_retry",
+            m:
+              "Checklist belum tuntas (" +
+              _sisa.length +
+              " item) — melanjutkan, bukan menutup.",
+          });
+          return {
+            messages: [
+              {
+                role: "user",
+                content:
+                  "JANGAN menutup pekerjaan. Checklist Anda masih punya " +
+                  _sisa.length +
+                  " item yang belum tuntas:\n" +
+                  _sisa.join("\n") +
+                  "\n\nDILARANG menarasikan rencana. PANGGIL tool untuk MENGERJAKAN " +
+                  "item yang bertanda [→] sekarang juga. Kalau item itu sebenarnya " +
+                  "sudah selesai, panggil todowrite untuk menandainya [x] lalu " +
+                  "langsung kerjakan item berikutnya.",
+              },
+            ],
+            continueNudge: (state.continueNudge || 0) + 1,
+          };
+        }
+        // Sudah didorong sampai batas dan model tetap menarasikan: tutup, tapi
+        // JANGAN mengaku selesai. Sisa pekerjaan disebutkan supaya user tahu
+        // persis apa yang tak dikerjakan.
+        if (hasContent && _sisa.length) {
+          dlog("self", "warn", "continue_nudge limit reached", {
+            step: state.step,
+            sisa: _sisa.length,
+          });
+          fallback =
+            fallback +
+            "\n\n⚠ Run berhenti dengan " +
+            _sisa.length +
+            " item checklist BELUM tuntas:\n" +
+            _sisa.join("\n");
+        }
 
         dlog("self", "info", "stop", {
           reason: hasContent ? "text_response_no_tools" : "no_response",
@@ -2077,7 +2563,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               pendingTc.function.name,
             )
           )
-            ensureBackup();
+            await ensureBackup();
 
           const r = await runSelfTool(
             pendingTc.function.name,
@@ -2480,10 +2966,32 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       error: msg.slice(0, 100),
     });
     if (sessionSnapshotId && (edits || 0) === 0) {
-      rollback(sessionSnapshotId);
+      // Nilai balik rollback DIPERIKSA, dan panggilannya dibungkus.
+      //
+      // Dulu: `rollback(id)` tanpa memeriksa apa pun, lalu selalu memberi tahu
+      // "Proyek dipulihkan". Dua kegagalan terbukti lewat eksekusi blok ini
+      // apa adanya:
+      //   - snapshot tak ada  -> rollback {ok:false}, DIABAIKAN, user tetap
+      //     diberi tahu proyeknya sudah dipulihkan (padahal tidak)
+      //   - metadata rusak    -> rollback MELEMPAR, dan lemparan di sini
+      //     membunuh tiga emit di bawahnya termasuk adone. Hasilnya NOL pesan
+      //     ke UI, dan UI menggantung selamanya karena tak pernah tahu run
+      //     berakhir. Kegagalan pemulihan jadi UI beku permanen.
+      //
+      // Sekarang kabarnya jujur: berhasil disebut berhasil, gagal disebut gagal
+      // BESERTA sebabnya — justru saat itulah user paling perlu tahu, karena
+      // pekerjaannya mungkin memang belum kembali.
+      let pulih = { ok: false, error: "rollback tidak dijalankan" };
+      try {
+        pulih = rollback(sessionSnapshotId) || pulih;
+      } catch (errRb) {
+        pulih = { ok: false, error: errRb.message };
+      }
       emit({
         t: "err",
-        m: `[Auto-Rollback] Agen crash internal. Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).`,
+        m: pulih.ok
+          ? `[Auto-Rollback] Agen crash internal. Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).`
+          : `[Auto-Rollback GAGAL] Agen crash internal dan proyek TIDAK dipulihkan: ${pulih.error} (Snapshot: ${sessionSnapshotId}). Periksa berkas Anda sebelum melanjutkan.`,
       });
     }
     if (!isCancelled()) emit({ t: "err", m: e.message });
@@ -2508,4 +3016,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 // keluar) sehingga bisa diverifikasi tanpa menjalankan graph atau memanggil
 // model — kalau tidak, satu-satunya cara mengujinya adalah menunggu agent
 // benar-benar menyentuh plafon langkah.
-module.exports = { selfAgentStream, describePauseActivity };
+module.exports = {
+  selfAgentStream,
+  describePauseActivity,
+  // Diekspor untuk diuji: helper murni, tak menyentuh graph/IO.
+  itemAktif,
+  catatGagalItem,
+  checklistDenganKegagalan,
+  SYSTEM_RULES,
+};

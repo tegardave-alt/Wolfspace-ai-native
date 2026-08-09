@@ -261,6 +261,7 @@
             "/app/VisualTools.jsx",
             "/app/CodeBlocks.jsx",
             "/app/Views.jsx",
+            "/app/PluginsView.tsx",
             "/app/Components.jsx",
             "/app/Screens.jsx",
             "/app/Sidebar.jsx",
@@ -296,7 +297,14 @@
               .map(
                 (p) =>
                   Babel.transform(p.src, {
-                    presets: ["react"],
+                    // Preset typescript HANYA untuk .ts/.tsx. Bundel Babel yang
+                    // di-vendor (7.29.0) sudah memuatnya, jadi TSX jalan tanpa
+                    // build step — sama seperti JSX selama ini. Berkas .jsx yang
+                    // sudah ada sengaja tak ikut: parser TS lebih ketat di
+                    // beberapa tempat, dan tak ada alasan mempertaruhkannya.
+                    presets: /\.tsx?$/.test(p.name)
+                      ? ["react", "typescript"]
+                      : ["react"],
                     filename: p.name,
                   }).code,
               )

@@ -10,8 +10,9 @@
 //
 // LATAR: dulu ada DUA gerbang yang saling tak sepakat --
 //   - server.cjs/runners.cjs : CONFIG.sandbox === true && hasDocker()
-//       -> "sandbox" tak pernah diset di config.json MAUPUN config.docker.json,
-//          jadi jalur ini mati total; dan menyetel false pun tak berbeda.
+//       -> "sandbox" tak pernah diset di config.json maupun di config.docker.json
+//          (berkas itu kini sudah dihapus bersama seluruh berkas Docker), jadi
+//          jalur ini mati total; dan menyetel false pun tak berbeda.
 //   - agent/tools/index.cjs  : _hasDocker() saja
 //       -> menyala sendiri kalau Docker hidup, dan MENGABAIKAN sandbox:false.
 // Akibatnya "sandbox: false" tidak benar-benar mematikan sandbox, dan

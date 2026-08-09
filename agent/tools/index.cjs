@@ -143,6 +143,13 @@ const qRead =
   fileTools.qRead || ((p) => "(file-tools not loaded: read unavailable)");
 const qGrep =
   fileTools.qGrep || ((p) => "(file-tools not loaded: grep unavailable)");
+// Jalur tool agent memakai varian ASINKRON. Di mode Electron kode ini berjalan
+// di proses main — pemilik jendela — jadi pemindaian sinkron di sini membekukan
+// UI. Fallback ke versi sinkron kalau modulnya versi lama (mis. salinan di
+// _agent_backups yang di-require jalur lain), supaya tak ada yang mati total.
+const qListA = fileTools.qListAsync || (async () => qList());
+const qGlobA = fileTools.qGlobAsync || (async (p, o) => qGlob(p, o));
+const qGrepA = fileTools.qGrepAsync || (async (p, o) => qGrep(p, o));
 const qBackup =
   fileTools.qBackup ||
   (() => {
@@ -172,10 +179,6 @@ const diskList = (...a) => {
   const m = lazyDisk();
   return m.diskList ? m.diskList(...a) : "(disk-tools not loaded)";
 };
-const diskRead = (...a) => {
-  const m = lazyDisk();
-  return m.diskRead ? m.diskRead(...a) : "(disk-tools not loaded)";
-};
 const diskGlob = (...a) => {
   const m = lazyDisk();
   return m.diskGlob ? m.diskGlob(...a) : "(disk-tools not loaded)";
@@ -184,6 +187,22 @@ const diskGrep = (...a) => {
   const m = lazyDisk();
   return m.diskGrep ? m.diskGrep(...a) : "(disk-tools not loaded)";
 };
+// Varian ASINKRON untuk jalur tool agent. Di mode Electron kode ini berjalan di
+// proses main (pemilik jendela), dan profil CPU menunjukkan diskWalk sinkron
+// menahannya 8-13 detik sekali hentak. Fallback ke sinkron kalau modulnya versi
+// lama, supaya tak ada tool yang mati total.
+const diskListA = async (...a) => {
+  const m = lazyDisk();
+  return m.diskListAsync ? m.diskListAsync(...a) : diskList(...a);
+};
+const diskGlobA = async (...a) => {
+  const m = lazyDisk();
+  return m.diskGlobAsync ? m.diskGlobAsync(...a) : diskGlob(...a);
+};
+const diskGrepA = async (...a) => {
+  const m = lazyDisk();
+  return m.diskGrepAsync ? m.diskGrepAsync(...a) : diskGrep(...a);
+};
 const webSearch = async (...a) => {
   const m = lazyWeb();
   return m.webSearch ? m.webSearch(...a) : "(web-tools not loaded)";
@@ -191,6 +210,15 @@ const webSearch = async (...a) => {
 const webFetch = async (...a) => {
   const m = lazyWeb();
   return m.webFetch ? m.webFetch(...a) : "(web-tools not loaded)";
+};
+const webExtract = async (...a) => {
+  const m = lazyWeb();
+  // Dilempar, bukan dikembalikan sebagai string. Modul web yang gagal dimuat
+  // berarti browsernya tak ada — dan "(web-tools not loaded)" sebagai HASIL akan
+  // dibaca model sebagai isi halaman, lalu dilaporkan sebagai temuan.
+  if (!m.webExtract)
+    throw new Error("web-tools tidak dapat dimuat (playwright?)");
+  return m.webExtract(...a);
 };
 const skills = {
   listSkills: () => {
@@ -442,6 +470,91 @@ const _sandboxPolicy = require("../sandbox-policy.cjs");
 // yang sama berkali-kali (terpantau 6x beruntun sampai penjaga kemandekan
 // menghentikannya). Instruksi di prompt tak cukup: model bisa mengabaikannya.
 // Di sini kegagalan diubah jadi ARAHAN — sebutkan batasnya dan tool penggantinya.
+// Environment bash TIDAK lagi diwariskan utuh.
+//
+// KENAPA. Penjaga path (_HOST_PATH_RE di bawah) memeriksa STRING perintah
+// sebelum dijalankan. Tapi %VAR% baru diperluas DI DALAM cmd.exe — sesudah
+// pemeriksaan itu selesai. Penjaga melihat "%TEMP%", shell melihat
+// "C:\Users\dave\AppData\Local\Temp". Dua string berbeda, dan yang benar-benar
+// menyentuh disk adalah yang kedua.
+//
+// Diukur pada worktree DI LUAR TEMP (supaya tak bisa dibantah sebagai "cuma
+// naik satu tingkat"):
+//     type C:\...\rahasia.txt   -> DITAHAN
+//     type %TEMP%\rahasia.txt   -> BOCOR
+//     type %TMP%\rahasia.txt    -> BOCOR
+//     type %USERPROFILE%\...    -> BOCOR
+//
+// Menambal regex tak menyelesaikannya: jumlah variabel tak terbatas, dan
+// cmd.exe punya %CD%, substring expansion (%TEMP:~0,3% menghasilkan "C:\"
+// tanpa pernah menuliskannya), serta penyambungan lewat `set`. Lomba yang tak
+// bisa dimenangkan pemeriksa string.
+//
+// Yang ditutup di sini SUMBERNYA: kalau %TEMP% tak ada di environment, ia tak
+// bisa diperluas jadi apa pun — pemeriksa dan shell kembali melihat string yang
+// sama. Pola dan daftarnya mengikuti _envVerifikasi() di server.cjs, yang sudah
+// melakukan hal ini untuk jalur verifikasi.
+//
+// BUKAN pengurungan sungguhan. Ini menutup satu keluarga pelarian, bukan
+// membuat shell tak bisa menjangkau luar — path absolut yang ditulis terang
+// masih diandalkan pada penjaga regex. Pengurungan sungguhan butuh level OS
+// (bash-jail.cjs di Linux; di Windows padanannya WSL).
+const _ENV_BASH_IZIN = [
+  "PATH",
+  "Path",
+  "PATHEXT",
+  "SystemRoot",
+  "SystemDrive",
+  "windir",
+  "ComSpec",
+  "NUMBER_OF_PROCESSORS",
+  "PROCESSOR_ARCHITECTURE",
+  "PROCESSOR_IDENTIFIER",
+  "OS",
+  "LANG",
+  "LC_ALL",
+  "PYTHONIOENCODING",
+];
+function _envBash(cwd) {
+  // Jalan keluar darurat, dan sengaja hanya bisa disetel oleh yang MELUNCURKAN
+  // aplikasi — bukan oleh agent, yang tak bisa menyentuh env proses backend.
+  if (process.env.WOLFSPACE_BASH_ENV === "full")
+    return { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
+
+  const e = process.env;
+  const out = {};
+  for (const k of _ENV_BASH_IZIN) if (e[k] != null) out[k] = e[k];
+  // TEMP/TMP diarahkan ke DALAM direktori kerja, bukan dihapus: banyak alat
+  // (npm, python, kompilator) menulis berkas sementara dan GAGAL bila keduanya
+  // hilang. Mengarahkannya membuat berkas itu mendarat di dalam cakupan, dan
+  // %TEMP% tak lagi menunjuk ke pohon host.
+  out.TEMP = cwd;
+  out.TMP = cwd;
+  out.PYTHONIOENCODING = out.PYTHONIOENCODING || "utf-8";
+  out.ELECTRON_RUN_AS_NODE = "1";
+
+  // MENYARING SAJA TIDAK CUKUP DI WINDOWS.
+  //
+  // cmd.exe memasok sendiri variabel identitas pengguna dari token proses,
+  // terlepas dari blok environment yang diberikan. Terukur: sesudah allowlist
+  // dipasang, `set` di dalam shell tetap memperlihatkan HOMEDRIVE, HOMEPATH,
+  // LOGONSERVER, USERDOMAIN, USERNAME, dan USERPROFILE — dan %USERPROFILE%
+  // tetap menembus penjaga path, satu-satunya yang masih bocor dari empat
+  // kasus uji.
+  //
+  // Karena itu keenamnya DITIMPA, bukan dihapus: nilai eksplisit mengalahkan
+  // suntikan cmd.exe. Yang menunjuk lokasi diarahkan ke direktori kerja;
+  // yang sekadar identitas dinetralkan supaya tak membocorkan nama akun.
+  out.USERPROFILE = cwd;
+  out.HOMEDRIVE = String(cwd).slice(0, 2); // "C:"
+  out.HOMEPATH = String(cwd).slice(2) || "\\";
+  out.HOME = cwd; // dipakai git/ssh di jalur POSIX
+  out.USERNAME = "wolfspace";
+  out.USERDOMAIN = "wolfspace";
+  out.LOGONSERVER = "";
+  return out;
+}
+
 const _HOST_PATH_RE = [
   /\b[A-Za-z]:[\\/]/, //  C:\... atau D:/...
   /(^|\s|['"=(])\/[a-z]\/(Users|Program|Windows)/i, // /c/Users/... (gaya MSYS)
@@ -500,6 +613,21 @@ async function _brokeredFileOp(name, args, wsRoot) {
   try {
     if (name === "read") {
       const content = await broker.request("readFile", { path: abs });
+      // Catat temuan DI SINI juga, bukan hanya di cabang qRead.
+      //
+      // KENAPA DUA TEMPAT. Ada DUA cabang `name === "read"` di berkas ini:
+      // yang ini (lewat broker, dipakai saat sebuah workspace dipilih) dan satu
+      // lagi lewat qRead(). Versi pertama catatan temuan hanya mengait cabang
+      // qRead — dan di run nyata pengguna, seluruh 23 pembacaan lewat broker,
+      // sehingga jurnalnya tetap kosong tanpa satu pun error.
+      //
+      // Itu "pola dua permukaan" yang sama yang sudah berkali-kali menggigit
+      // repo ini. wsRoot dipakai apa adanya: ia sudah jadi akar terkurung yang
+      // divalidasi, dan itulah kunci yang sama yang dibaca sisi prompt.
+      try {
+        const _t = require("../temuan.cjs");
+        _t.catat(_t.kunciWs(wsRoot), args.path, content, { alat: "read" });
+      } catch (_) {}
       return { ok: true, output: content, auditTrail: broker.auditTrail() };
     }
     if (name === "write") {
@@ -686,16 +814,19 @@ async function runSelfTool(name, args, emit, context = {}) {
           return await _brokeredFileOp(name, args, _wsRoot);
         }
         // Eksplorasi read-only → scope ke folder ww (bukan QROOT).
-        if (name === "list") return { ok: true, output: diskList(_wsRoot) };
+        if (name === "list")
+          return { ok: true, output: await diskListA(_wsRoot) };
         if (name === "glob")
           return {
             ok: true,
-            output: diskGlob(_wsRoot, args.pattern, { intent: args.intent }),
+            output: await diskGlobA(_wsRoot, args.pattern, {
+              intent: args.intent,
+            }),
           };
         if (name === "grep")
           return {
             ok: true,
-            output: diskGrep(_wsRoot, args.pattern, {
+            output: await diskGrepA(_wsRoot, args.pattern, {
               intent: args.intent,
               semantic: args.semantic,
             }),
@@ -730,14 +861,20 @@ async function runSelfTool(name, args, emit, context = {}) {
       }
     }
 
+    // _cachedResult sudah menangani nilai balik berupa Promise (ia menyimpan
+    // hasilnya setelah resolve), jadi ketiga tool ini bisa asinkron tanpa
+    // mengubah pemanggilnya.
     if (name === "list")
-      return _cachedResult("list", () => ({ ok: true, output: qList() }));
+      return _cachedResult("list", async () => ({
+        ok: true,
+        output: await qListA(),
+      }));
     if (name === "glob")
       return _cachedResult(
         "glob|" + (args.pattern || "") + "|" + (args.intent || ""),
-        () => ({
+        async () => ({
           ok: true,
-          output: qGlob(args.pattern, { intent: args.intent }),
+          output: await qGlobA(args.pattern, { intent: args.intent }),
         }),
       );
     if (name === "read") {
@@ -752,10 +889,45 @@ async function runSelfTool(name, args, emit, context = {}) {
         };
       return _cachedResult(
         "read|" + (args.path || "") + "|" + (args.near || ""),
-        () => ({ ok: true, output: qRead(args.path, args.near) }),
+        () => {
+          const output = qRead(args.path, args.near);
+          // Catat bahwa jalur ini SUDAH dibaca.
+          //
+          // KENAPA DI SINI. Cache tool ber-TTL 30 detik; di run nyata median
+          // jeda antar-aksi 5,8 detik tapi jeda terpanjang 395 detik, jadi
+          // cache tak menolong untuk pembacaan yang terpisah puluhan langkah —
+          // dan justru itu bentuk pengulangan yang terukur (berkas sama dibaca
+          // 13x, beruntun cuma 4x).
+          //
+          // Murah dan tak boleh menggagalkan tool: catat() menulis JSONL secara
+          // append dan menelan galatnya sendiri.
+          try {
+            // Kunci workspace dihitung oleh temuan.kunciWs() — SATU tempat.
+            // Kalau rantai fallback-nya berbeda antara sisi tulis dan sisi baca,
+            // blok "SUDAH DIBACA" jadi selalu kosong tanpa satu pun error.
+            const _t = require("../temuan.cjs");
+            _t.catat(
+              _t.kunciWs(context && context.workspaceRoot),
+              args.path,
+              output,
+              { alat: "read" },
+            );
+          } catch (_) {}
+          return { ok: true, output };
+        },
       );
     }
     if (name === "grep") {
+      // qGrep() memindai SELURUH pohon source (readFileSync tiap berkas cocok,
+      // sampai 600 berkas) — diukur 5,26s dingin, 252ms panas, dan LOOP
+      // TERBLOKIR hampir sepanjang itu (event loop sampler: ~93% dari durasi).
+      //
+      // Cache-nya dulu tak berguna: qGrep() dipanggil DI LUAR _cachedResult,
+      // jadi kerja mahalnya selalu dijalankan ulang — _cachedResult hanya
+      // menyimpan hasil yang SUDAH dihitung, bukan mencegah penghitungannya.
+      // Pola paling umum di run agent adalah grep pola yang sama/mirip
+      // berkali-kali dalam satu sesi; itu yang tak terselamatkan sama sekali.
+      // Sekarang qGrep() pindah ke DALAM callback, menyamai pola list/read/glob.
       const _grepKey =
         "grep|" +
         (args.pattern || "") +
@@ -763,27 +935,34 @@ async function runSelfTool(name, args, emit, context = {}) {
         (args.intent || "") +
         "|" +
         !!args.semantic;
-      let output = qGrep(args.pattern, {
-        intent: args.intent,
-        semantic: args.semantic,
-      });
-      // Warn if results contain sensitive files (credential/config_sensitive)
-      if (output && !output.startsWith("(") && !args.intent && !args.semantic) {
-        const sensitiveFiles = output.split("\n").filter((line) => {
-          const filePath = line.split(":")[0];
-          if (!filePath) return false;
-          const { blocking } = qSemanticCheck(filePath, "");
-          return blocking.length > 0;
+      return _cachedResult(_grepKey, async () => {
+        let output = await qGrepA(args.pattern, {
+          intent: args.intent,
+          semantic: args.semantic,
         });
-        if (sensitiveFiles.length > 0) {
-          output =
-            "⚠️  PERINGATAN: " +
-            sensitiveFiles.length +
-            " sensitive files detected (credentials/config). Use `semantic:true` or `intent` for a safe search.\n\n" +
-            output;
+        // Warn if results contain sensitive files (credential/config_sensitive)
+        if (
+          output &&
+          !output.startsWith("(") &&
+          !args.intent &&
+          !args.semantic
+        ) {
+          const sensitiveFiles = output.split("\n").filter((line) => {
+            const filePath = line.split(":")[0];
+            if (!filePath) return false;
+            const { blocking } = qSemanticCheck(filePath, "");
+            return blocking.length > 0;
+          });
+          if (sensitiveFiles.length > 0) {
+            output =
+              "⚠️  PERINGATAN: " +
+              sensitiveFiles.length +
+              " sensitive files detected (credentials/config). Use `semantic:true` or `intent` for a safe search.\n\n" +
+              output;
+          }
         }
-      }
-      return _cachedResult(_grepKey, () => ({ ok: true, output }));
+        return { ok: true, output };
+      });
     }
     if (name === "edit") {
       const dest = qResolve(args.path, true);
@@ -1064,14 +1243,27 @@ async function runSelfTool(name, args, emit, context = {}) {
         )
       )
         return { ok: false, output: "dangerous command rejected" };
-      // Reject bash commands that try to edit files — must use 'edit' tool instead
+      // Reject bash commands that try to edit files — must use 'edit' tool instead.
+      //
+      // SEMPIT, tak sekadar cocok nama perintah. Regex lama menandai `findstr`
+      // (grep Windows, tak pernah menulis), `sed` tanpa -i (juga tak menulis),
+      // dan `node -e`/`node --eval` APA PUN isinya — termasuk perintah
+      // verifikasi paling wajar sekalipun, `node -e "console.log(1)"`. Diuji
+      // langsung: perintah itu ditolak dengan pesan "gunakan tool edit" yang
+      // tak nyambung (tak ada satu berkas pun yang mau diedit).
+      //
+      // ok DULU true untuk penolakan ini — bug tersendiri. `ok:true` membuat
+      // pesan penolakan lolos sebagai "bukti" ke hallucination guard
+      // (localAccessed, self_agent.cjs) dan tak pernah terhitung gagal oleh
+      // gerbang item-macet (yang hanya melihat `!r.ok`). Sekarang `ok:false`,
+      // supaya penolakan terlihat sebagai penolakan.
       if (
-        /\b(sed|findstr|Set-Content|Out-File|Add-Content|node\s+-e|node\s+--eval|fs\.writeFile)\b/i.test(
+        /\b(sed\s+(?:-[a-z]*i\S*|--in-place)|Set-Content|Out-File|Add-Content|fs\.writeFile)\b/i.test(
           cmd,
         )
       )
         return {
-          ok: true,
+          ok: false,
           output:
             'DILARANG edit file via bash. Gunakan tool "edit" now with parameters: path=file, old_string=the removed code, new_string="" (kosong untuk hapus). JANGAN coba bash lagi.',
         };
@@ -1151,11 +1343,28 @@ async function runSelfTool(name, args, emit, context = {}) {
           if (st.isDirectory()) cwd = resolved;
         } catch {}
       }
-      // ── Confinement per-workspace (opt-in): kurung bash ke folder aktif ──
+      // ── Confinement bash: SELALU ada akarnya, tak pernah null ──
+      //
+      // Dulu opt-in: tanpa proyek aktif, _confineRoot null dan seluruh blok di
+      // bawah — termasuk _confineBash — TIDAK PERNAH jalan. Bash lalu bebas
+      // sepenuhnya. Terukur, dan inilah yang membuat perbaikan %VAR% tampak
+      // "belum terjadi" saat diuji tanpa memilih proyek:
+      //
+      //   tanpa workspaceRoot : `type C:\...\rahasia.txt` -> BOCOR
+      //   dengan workspaceRoot: `type C:\...\rahasia.txt` -> TERKURUNG
+      //
+      // Ke-13 kasus pelarian yang saya uji sebelumnya semuanya memakai
+      // workspaceRoot, jadi kondisi "belum pilih proyek" tak pernah tersentuh —
+      // padahal itu keadaan default saat aplikasi baru dibuka.
+      //
+      // Sekarang QROOT jadi akar cadangan: agent tetap bisa menyunting sumbernya
+      // sendiri (itu memang fungsi self-agent), tapi tak bisa keluar dari pohon
+      // WOLFSPACE. Pengurungan jadi sifat yang selalu ada, bukan yang menyala
+      // hanya bila kebetulan ada proyek dipilih.
       const _confineRoot =
         (context && context.workspaceRoot) ||
         process.env.WW_WORKSPACE_ROOT ||
-        null;
+        QROOT;
       if (_confineRoot) {
         // Utama: pengurungan OS lewat namespace Linux — batas nyata, bukan regex.
         // Gerbangnya lewat kebijakan terpusat (agent/sandbox-policy.cjs) dengan
@@ -1228,7 +1437,7 @@ async function runSelfTool(name, args, emit, context = {}) {
         const child = spawn(shBin, shArgs, {
           cwd,
           windowsHide: true,
-          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+          env: _envBash(cwd),
           signal,
         });
         trackProcess(sessId, child);
@@ -1320,12 +1529,30 @@ async function runSelfTool(name, args, emit, context = {}) {
           clearTimeout(timer);
           clearInterval(cancelCheck);
           _unregisterBashProcess(sessId, entry);
-          // AbortError (from isCancelled or external abort) is expected — don't surface as error
-          if (err.name === "AbortError")
+          // AbortError bisa datang dari DUA sumber (timer timeout ATAU cancelCheck
+          // user), dan `error` selalu menyala lebih dulu daripada `close` — spawn
+          // dengan `signal` melempar error segera setelah abort(), sementara close
+          // menunggu OS benar-benar mereap proses. Jadi cabang "TIMEOUT" di close
+          // di bawah TAK PERNAH tercapai untuk kasus timeout: error menang duluan.
+          // Diukur langsung: timeout 3s dilaporkan sebagai "DIBATALKAN: perintah
+          // dihentikan oleh user" — model membaca ini sebagai "user menghentikan
+          // saya", bukan "perintah saya terlalu lama", dan tak pernah belajar
+          // memperpendek pekerjaannya. `aborted` hanya diset true oleh cancelCheck
+          // (pembatalan user sungguhan), jadi itu yang membedakan keduanya.
+          if (err.name === "AbortError") {
+            if (aborted)
+              return resolve({
+                ok: false,
+                output:
+                  "DIBATALKAN: perintah dihentikan oleh user.\n" +
+                  cmd.slice(0, 200),
+              });
             return resolve({
               ok: false,
-              output: "DIBATALKAN: " + cmd.slice(0, 200),
+              output:
+                "TIMEOUT (" + timeoutMs / 1000 + "s): " + cmd.slice(0, 100),
             });
+          }
           resolve({ ok: false, output: "spawn error: " + err.message });
         });
       });
@@ -1436,6 +1663,98 @@ async function runSelfTool(name, args, emit, context = {}) {
         });
       });
     }
+    // ── Lampiran: barangnya sudah menyeberang, alamatnya tidak pernah ──
+    //
+    // Tak ada pemeriksaan path di sini, dan itu BUKAN kelalaian: jembatan
+    // (agent/attachment-bridge.cjs) tak pernah menerima path, jadi tak ada
+    // alamat yang bisa diperiksa maupun ditembus. Yang dipegang agent adalah
+    // handle acak; memegangnya memberi tepat satu hal — isi satu berkas itu.
+    // Ia tak memberi tahu berkas itu ada di mana, tak bisa dipakai membaca
+    // saudaranya, dan tak bisa mendaftar isi direktori mana pun.
+    //
+    // Tetap lewat CommandChain supaya teraudit dan bisa DIKUNCI per sesi
+    // (buatRuleset({ tanpa:["attachment.read"] })), mengikuti pola proc.raw.
+    if (name === "attachment_list" || name === "attachment_read") {
+      let bridge;
+      try {
+        bridge = require("../attachment-bridge.cjs");
+      } catch (e) {
+        return {
+          ok: false,
+          output: "jembatan lampiran tak tersedia: " + e.message,
+        };
+      }
+
+      if (name === "attachment_list") {
+        const d = bridge.daftar();
+        if (!d.length)
+          return {
+            ok: true,
+            output:
+              "(belum ada lampiran) — hanya user yang bisa melampirkan berkas; " +
+              "tak ada tool untuk membuka berkas dari direktori.",
+          };
+        return {
+          ok: true,
+          output: d
+            .map(
+              (a) =>
+                a.id +
+                "  " +
+                a.nama +
+                "  (" +
+                a.bytes +
+                " b" +
+                (a.tipe ? ", " + a.tipe : "") +
+                ")",
+            )
+            .join("\n"),
+        };
+      }
+
+      const cc = lazyCC();
+      if (cc) {
+        const rs = cc.sesiRuleset();
+        const adm = cc.periksa(rs, "attachment.read");
+        // enforced=true, dan ini SATU-SATUNYA kapabilitas berkas yang boleh
+        // mengakuinya di Windows: jaminannya bukan pengurungan direktori
+        // (yang memang advisory di sini) melainkan ketiadaan path sama sekali.
+        const kurungan = {
+          enforced: true,
+          mekanisme: "handle-only — alamat berkas tak pernah masuk ke sistem",
+        };
+        if (!adm.allow) {
+          cc.catat({
+            capability: "attachment.read",
+            decision: "DENY",
+            reason: adm.alasan,
+            params: { id: args.id },
+            kurungan,
+          });
+          return {
+            ok: false,
+            output:
+              "CommandChain menolak attachment.read: " +
+              adm.alasan +
+              ". Sesi ini dikunci tanpa pembacaan lampiran.",
+          };
+        }
+        cc.catat({
+          capability: "attachment.read",
+          decision: "ALLOW",
+          params: { id: args.id },
+          kurungan,
+        });
+      }
+
+      const r = bridge.ambil(args.id);
+      if (!r.ok) return { ok: false, output: r.error };
+      return {
+        ok: true,
+        output: "[" + r.nama + ", " + r.bytes + " byte]\n" + r.isi,
+      };
+    }
+
     if (name === "todowrite") {
       const todos = args.todos || [];
       if (emit) emit({ t: "todos", todos });
@@ -1558,6 +1877,38 @@ async function runSelfTool(name, args, emit, context = {}) {
         (r) => ({ ok: true, output: r }),
         (e) => ({ ok: false, output: e.message }),
       );
+    if (name === "web_extract") {
+      // Digerbang admission, tak seperti web_fetch.
+      //
+      // Bedanya nyata: web_extract menjalankan browser penuh dan mengeksekusi
+      // JavaScript halaman. Itu kapabilitas jaringan yang jauh lebih luas
+      // daripada sekadar mengambil teks, jadi ia diperlakukan seperti kapabilitas
+      // lain — bisa dicabut lewat buatRuleset({ tanpa: ["network:https"] }) dan
+      // penolakannya tercatat di ledger.
+      //
+      // web_fetch sengaja TIDAK ikut digerbang di sini: mengubahnya akan
+      // mematahkan alur yang sudah dipakai, dan itu keputusan tersendiri.
+      const cc = require("../broker/commandchain.cjs");
+      const adm = cc.periksa(cc.sesiRuleset(), "network:https");
+      if (!adm.allow) {
+        cc.catat({
+          capability: "network:https",
+          decision: "DENY",
+          reason: adm.alasan,
+          params: { tool: "web_extract", url: args.url },
+          kurungan: {
+            enforced: true,
+            mekanisme:
+              "admission genesis + penjaga tujuan (loopback/privat ditolak)",
+          },
+        });
+        return { ok: false, output: "web_extract ditolak: " + adm.alasan };
+      }
+      return webExtract(args).then(
+        (r) => ({ ok: true, output: r }),
+        (e) => ({ ok: false, output: e.message }),
+      );
+    }
     if (name === "retrieve") {
       // RAG: recall PENGETAHUAN (memori proyek + docs). P1 = satu store "global"
       // agar ingest (frontend) & retrieve (di sini) selalu sekunci. Isolasi per-ww
@@ -1580,44 +1931,21 @@ async function runSelfTool(name, args, emit, context = {}) {
       const g3 = require("./gen3d-tools.cjs");
       return await g3.generate3d(args, context);
     }
-    if (name === "disk_list")
-      return _cachedResult("disk_list|" + (args.path || ""), () => ({
-        ok: true,
-        output: diskList(args.path),
-      }));
-    if (name === "disk_read")
-      return _cachedResult(
-        "disk_read|" + (args.path || "") + "|" + (args.near || ""),
-        () => ({ ok: true, output: diskRead(args.path, args.near) }),
-      );
-    if (name === "disk_glob")
-      return _cachedResult(
-        "disk_glob|" +
-          (args.path || "") +
-          "|" +
-          (args.pattern || "") +
-          "|" +
-          (args.intent || ""),
-        () => ({
-          ok: true,
-          output: diskGlob(args.path, args.pattern, { intent: args.intent }),
-        }),
-      );
-    if (name === "disk_grep")
-      return _cachedResult(
-        "disk_grep|" +
-          (args.path || "") +
-          "|" +
-          (args.pattern || "") +
-          "|" +
-          (args.include_extensions || ""),
-        () => ({
-          ok: true,
-          output: diskGrep(args.path, args.pattern, {
-            include_extensions: args.include_extensions,
-          }),
-        }),
-      );
+    // Tool disk_* DIHAPUS — dulu di sini ada disk_list/disk_read/disk_glob/
+    // disk_grep yang menerima path SEMBARANG dan tak pernah melewati blok
+    // `if (_wsRoot)` di atas, sehingga mereka mengabaikan pengurungan worktree
+    // sepenuhnya.
+    //
+    // Mereka sudah lama dicabut dari SELF_TOOLS (lihat catatan di
+    // tool-definitions.cjs), jadi model TIDAK BISA memanggilnya — implementasi
+    // ini kode mati. Tapi kode mati yang menembus pengurungan adalah ranjau:
+    // satu baris yang mengembalikannya ke daftar tool sudah cukup untuk
+    // membatalkan seluruh pengurungan, tanpa satu pun tes menjadi merah.
+    //
+    // Fungsi disk-tools.cjs sendiri TETAP dipakai: diskListA/diskGlobA/
+    // diskGrepA melayani list/glob/grep yang DIKURUNG ke _wsRoot, dan
+    // resolveDiskPath dipakai bash untuk cwd. Yang dihapus jalur tool-nya,
+    // bukan modulnya.
 
     if (name === "skill_list") {
       const list = skills.listSkills();
@@ -1786,10 +2114,10 @@ module.exports = {
   qRead,
   qGrep,
   qBackup,
+  qBackupAsync: fileTools.qBackupAsync,
   qSyntaxOk,
   qResolve,
   diskList,
-  diskRead,
   diskGlob,
   diskGrep,
   resolveDiskPath,

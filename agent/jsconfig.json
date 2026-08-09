@@ -1,0 +1,54 @@
+{
+  // Pemeriksa tipe untuk agent/ — TANPA migrasi ke TypeScript.
+  //
+  // Tak ada berkas .ts, tak ada build step, tak ada perubahan cara menjalankan.
+  // Kontraknya ditulis sebagai JSDoc di komentar; TypeScript hanya membacanya
+  // dan menagih janjinya. Kode yang dieksekusi Node tetap persis sama.
+  //
+  // KENAPA hanya agent/. public/ (104rb baris) mengompilasi JSX di BROWSER lewat
+  // vendor/babel.min.js — tak ada build step sama sekali di sana, jadi memeriksa
+  // tipe di public/ berarti membangun pipeline baru dari nol. agent/ adalah
+  // CommonJS Node biasa: tak butuh apa pun selain berkas ini.
+  //
+  // Jalankan:
+  //   node node_modules/typescript/bin/tsc -p agent/jsconfig.json
+  "compilerOptions": {
+    // OPT-IN, bukan menyeluruh. Berkas hanya diperiksa bila diawali `// @ts-check`.
+    //
+    // Menyalakan checkJs global akan membuat 278 error muncul serentak, dan
+    // daftar merah sepanjang itu selalu berakhir diabaikan. Pola ratchet yang
+    // sudah dipakai code-quality.test.js: berkas lama dibiarkan, yang sudah
+    // masuk tak boleh mundur.
+    "checkJs": false,
+    "allowJs": true,
+    "noEmit": true,
+
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+
+    // Tipe pihak ketiga dipercaya apa adanya — yang diperiksa kode kita.
+    "skipLibCheck": true,
+    "maxNodeModuleJsDepth": 0,
+
+    // Tahap 1 sengaja longgar soal parameter: yang dikejar adalah KONTRAK fungsi
+    // vonis (union yang membuat keadaan mustahil tak bisa diungkapkan), bukan
+    // memberi tipe pada 177 parameter sekaligus.
+    //
+    // Ratchet berikutnya, saat berkas ber-@ts-check sudah bertambah:
+    //   "noImplicitAny": true  -> parameter wajib bertipe
+    "strict": false,
+    "noImplicitAny": false,
+
+    // WAJIB, dan bukan sekadar "lebih ketat". Tanpa ini, narrowing pada
+    // diskriminan boletan tidak jalan sama sekali — union `jaringanTerkurung:
+    // true|false` gagal menyempit, dan seluruh gunanya hilang. Diuji langsung:
+    // dengan flag ini mati, penjaga di laporSekali() TIDAK terverifikasi.
+    "strictNullChecks": true
+  },
+  "include": ["**/*.cjs", "**/*.js"],
+  // _agent_backups/ berisi salinan lama hasil snapshot otomatis — sebagian
+  // rusak encoding-nya dan gagal di-parse. Itu arsip, bukan kode hidup.
+  "exclude": ["node_modules", "_agent_backups", "**/_*.cjs"]
+}

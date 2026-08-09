@@ -1,0 +1,35 @@
+{
+  // Pemeriksa tipe untuk berkas .ts/.tsx di public/ — TANPA build step.
+  //
+  // index.html tetap mentranspilasi di browser lewat vendor/babel.min.js
+  // (7.29.0, preset `typescript` sudah ada di bundelnya). Jadi Babel yang
+  // MEMBUANG tipe saat jalan, dan tsc di sini yang MEMERIKSANYA saat kerja.
+  // Keduanya tak pernah bertemu: tsc noEmit, Babel tak pernah type-check.
+  //
+  // .jsx yang sudah ada (104rb baris) sengaja TIDAK ikut. Memeriksanya berarti
+  // pekerjaan besar tanpa hasil yang bisa dipakai hari ini; berkas .tsx baru
+  // masuk sejak lahir, jadi tak pernah ada utang yang menumpuk.
+  //
+  // Jalankan: npm run typecheck
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "ESNext",
+    "moduleResolution": "bundler",
+    "jsx": "react",
+    "lib": ["ES2022", "DOM", "DOM.Iterable"],
+    "skipLibCheck": true,
+
+    // Berkas .tsx baru tak punya utang, jadi tak ada alasan longgar.
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+
+    // Modul di sini digabung jadi SATU scope global, bukan modul ES. Tanpa ini
+    // TypeScript memperlakukan tiap berkas sebagai skrip global dan mengeluh
+    // soal deklarasi bertabrakan dengan .jsx yang tak ia lihat.
+    "isolatedModules": false,
+    "allowJs": false
+  },
+  "include": ["app/**/*.ts", "app/**/*.tsx", "app/globals.d.ts"],
+  "exclude": ["../node_modules", "vendor"]
+}
