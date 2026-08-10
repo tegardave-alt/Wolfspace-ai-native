@@ -548,6 +548,40 @@ const SELF_TOOLS = [
   {
     type: "function",
     function: {
+      name: "net_diag",
+      description:
+        "Diagnostik jaringan yang dijalankan DI DALAM distro WSL. TIDAK menerima " +
+        "perintah bebas — hanya operasi bernama dari daftar tetap, dan argv-nya " +
+        "dibangun tool ini sendiri dari parameter yang sudah divalidasi. Karena " +
+        "tak ada teks perintah yang perlu dipindai, tak ada yang bisa dirakit " +
+        "untuk lolos; batasnya sifat dari bentuk datanya, bukan tebakan atas " +
+        "string. Operasi: ping (4 paket ICMP), rute (tabel rute), antarmuka " +
+        "(ip addr), jejak (traceroute), port (cek satu port TCP), kepala (header " +
+        "HTTP saja, tanpa mengunduh isi). Pakai ini alih-alih bash untuk " +
+        "pertanyaan jaringan — bash di Windows batasnya cuma pemindaian teks.",
+      parameters: {
+        type: "object",
+        properties: {
+          operasi: {
+            type: "string",
+            enum: ["ping", "rute", "antarmuka", "jejak", "port", "kepala"],
+          },
+          host: {
+            type: "string",
+            description: "nama domain atau IP; tanpa skema, tanpa path",
+          },
+          port: {
+            type: "number",
+            description: "1-65535, hanya untuk operasi 'port'",
+          },
+        },
+        required: ["operasi"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "sandbox_run",
       description:
         "Jalankan perintah shell di direktori sementara, dengan timeout yang membunuh pohon proses dan pembersihan otomatis. BUKAN pilihan pertama: untuk kode yang kamu tulis sendiri, pakai capability_exec yang batasnya ditegakkan. Tool ini berguna untuk mengisolasi CRASH dan HANG, bukan untuk menahan kode yang berusaha keluar. Good for isolating crashes/hangs from the host. NOTE: readRoots/writeRoots/network only gate this tool's own JS helpers -- the spawned process itself has normal OS-level filesystem and network access, so this is NOT a security boundary against code that deliberately tries to read files or make network calls. Use capability_exec instead when the code needs to read/write files outside its own scratch dir or make network calls and that access should be policy-checked and audited.",

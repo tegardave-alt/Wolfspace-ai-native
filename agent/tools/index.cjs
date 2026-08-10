@@ -2044,6 +2044,13 @@ async function runSelfTool(name, args, emit, context = {}) {
         (e) => ({ ok: false, output: e.message }),
       );
     }
+    if (name === "net_diag") {
+      // Tak lewat admission proc.raw: tool ini TIDAK men-spawn shell dan tak
+      // menerima perintah. Ia memanggil wsl.exe dengan argv yang dibangun
+      // sendiri dari daftar tetap, jadi kewenangannya sudah sesempit
+      // definisinya — bukan sesuatu yang perlu dicabut terpisah.
+      return require("./net-diag.cjs").jalankan(args || {});
+    }
     if (name === "sandbox_run") {
       // ── Admission proc.raw, sama seperti bash ──
       //
