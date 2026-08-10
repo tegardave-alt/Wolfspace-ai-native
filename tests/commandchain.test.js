@@ -212,7 +212,13 @@ describe("Fase 2: bash = proc.raw, on-by-default tapi bisa dikunci", () => {
     );
     expect(T).toMatch(/periksa\(rs, "proc\.raw"\)/);
     expect(T).toMatch(/capability: "proc\.raw"/);
-    expect(T).toMatch(/CommandChain menolak proc\.raw/);
+    // Yang diuji: penolakan MENYEBUTKAN jalan keluarnya. Dulu baris ini
+    // mencocokkan kalimat "CommandChain menolak proc.raw" — dan jadi merah
+    // begitu kalimatnya disusun ulang, padahal perilakunya tak berubah.
+    // Mengikat uji pada bunyi kalimat membuatnya menghukum penulisan ulang,
+    // bukan menjaga perilaku.
+    expect(T).toMatch(/WOLFSPACE_SHELL=1/);
+    expect(T).toMatch(/capability_exec/);
     // Penanda cakupan jujur: advisory di Windows.
     expect(T).toMatch(/advisory — Windows tanpa namespace/);
   });

@@ -1332,9 +1332,9 @@ async function runSelfTool(name, args, emit, context = {}) {
             return {
               ok: false,
               output:
-                "CommandChain menolak proc.raw (bash): " +
-                adm.alasan +
-                ". Sesi ini dikunci tanpa eksekusi shell mentah.",
+                "Shell mentah MATI secara bawaan karena di Windows ia terbukti bisa keluar dari workspace. Pakai capability_exec: ia terkurung ke workspace dan tetap bisa membaca/menulis berkasnya lewat request(). Kalau benar-benar butuh shell (mis. npm install), nyalakan dengan WOLFSPACE_SHELL=1 saat memulai WOLFSPACE." +
+                "\nAlasan teknis: " +
+                adm.alasan,
             };
           }
           cc.catat({
@@ -2078,10 +2078,9 @@ async function runSelfTool(name, args, emit, context = {}) {
             ok: false,
             ..._penegakanLabel.label("penasihat", "admission"),
             output:
-              "CommandChain menolak proc.raw (sandbox_run): " +
-              adm.alasan +
-              ". Sesi ini dikunci tanpa eksekusi proses mentah — pakai " +
-              "capability_exec (terkurung + diaudit) atau tool write/edit.",
+              "Eksekusi proses mentah MATI secara bawaan karena di Windows ia terbukti bisa keluar dari workspace. Pakai capability_exec (terkurung ke workspace + diaudit) atau tool write/edit. Untuk menyalakannya kembali: WOLFSPACE_SHELL=1." +
+              "\nAlasan teknis: " +
+              adm.alasan,
           };
         }
       } catch (_) {
