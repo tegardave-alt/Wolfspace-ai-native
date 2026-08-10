@@ -167,37 +167,15 @@ function sesiRuleset() {
 
       .filter(Boolean);
 
-    // ── proc.raw MATI secara bawaan ──
+    // CATATAN. proc.raw pernah dimatikan secara bawaan di sini, lalu
+    // dikembalikan. Yang diminta bukan mematikan shell, melainkan membatasi
+    // AKSESNYA: PowerShell tetap normal, perintah diblokir hanya bila ia
+    // keluar workspace.
     //
-    // KENAPA DIBALIK. Tugas utama pengurungan adalah "agent tidak keluar dari
-    // workspace". Di Windows itu TIDAK bisa dijamin selama shell mentah ada.
-    // Terukur:
-    //
-    //   bash + path ditulis langsung     ditahan
-    //   bash + path dirakit saat jalan   MENEMBUS — folder dibuat di Desktop
-    //   sandbox_run + path dirakit       MENEMBUS
-    //
-    // Penjaganya memindai TEKS perintah, dan teks tak pernah tahu apa yang
-    // dirakit saat jalan. Memperketat pemindainya hanya memindahkan garis
-    // kalahnya, tak pernah memenangkannya.
-    //
-    // Yang TERBUKTI mengurung ke workspace di Windows hanya capability_exec:
-    //   tulis di DALAM workspace lewat request()   berhasil
-    //   tulis di LUAR lewat request()              ditolak Policy
-    //   fs langsung di luar                        ERR_ACCESS_DENIED
-    //   spawn proses                               ERR_ACCESS_DENIED
-    //
-    // Jadi bawaannya dibalik: tanpa shell. Yang membutuhkannya menyalakan
-    // secara sadar lewat WOLFSPACE_SHELL=1 — bukan mendapatkannya tanpa
-    // pernah memilih.
-    //
-    // Harganya nyata: npm install dan PowerShell hilang dari jangkauan agent
-    // secara bawaan. Itu disebut apa adanya di pesan penolakan, supaya tak
-    // jadi kegagalan misterius.
-    const shellDiminta =
-      process.env.WOLFSPACE_SHELL === "1" ||
-      process.env.WOLFSPACE_SHELL === "true";
-    if (!shellDiminta && !tanpa.includes("proc.raw")) tanpa.push("proc.raw");
+    // Mematikannya memang menutup pelariannya — terukur, keempat kasus
+    // ditolak. Tapi ia juga mencabut npm install dan PowerShell, dan itu
+    // ongkos yang tak diminta. Lockdown tetap tersedia bagi yang memilihnya:
+    // WOLFSPACE_CC_TANPA=proc.raw.
 
     // Kapabilitas plugin yang SUDAH DISETUJUI user ikut dibekukan ke genesis.
     // Dibaca sekali di sini, bersama sisa kosakata, jadi sifatnya sama: menyetujui

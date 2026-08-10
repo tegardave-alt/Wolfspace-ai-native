@@ -1332,7 +1332,7 @@ async function runSelfTool(name, args, emit, context = {}) {
             return {
               ok: false,
               output:
-                "Shell mentah MATI secara bawaan karena di Windows ia terbukti bisa keluar dari workspace. Pakai capability_exec: ia terkurung ke workspace dan tetap bisa membaca/menulis berkasnya lewat request(). Kalau benar-benar butuh shell (mis. npm install), nyalakan dengan WOLFSPACE_SHELL=1 saat memulai WOLFSPACE." +
+                "Sesi ini dikunci tanpa eksekusi shell mentah (WOLFSPACE_CC_TANPA=proc.raw). Pakai capability_exec: ia terkurung ke workspace dan tetap bisa membaca/menulis berkasnya lewat request()." +
                 "\nAlasan teknis: " +
                 adm.alasan,
             };
@@ -2078,7 +2078,7 @@ async function runSelfTool(name, args, emit, context = {}) {
             ok: false,
             ..._penegakanLabel.label("penasihat", "admission"),
             output:
-              "Eksekusi proses mentah MATI secara bawaan karena di Windows ia terbukti bisa keluar dari workspace. Pakai capability_exec (terkurung ke workspace + diaudit) atau tool write/edit. Untuk menyalakannya kembali: WOLFSPACE_SHELL=1." +
+              "Sesi ini dikunci tanpa eksekusi proses mentah (WOLFSPACE_CC_TANPA=proc.raw). Pakai capability_exec (terkurung ke workspace + diaudit) atau tool write/edit." +
               "\nAlasan teknis: " +
               adm.alasan,
           };

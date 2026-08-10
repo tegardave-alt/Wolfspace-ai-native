@@ -217,7 +217,9 @@ describe("Fase 2: bash = proc.raw, on-by-default tapi bisa dikunci", () => {
     // begitu kalimatnya disusun ulang, padahal perilakunya tak berubah.
     // Mengikat uji pada bunyi kalimat membuatnya menghukum penulisan ulang,
     // bukan menjaga perilaku.
-    expect(T).toMatch(/WOLFSPACE_SHELL=1/);
+    //
+    // Yang dijaga sekarang: penolakan menunjuk ke jalur yang MEMANG terkurung,
+    // bukan meninggalkan pemanggil tanpa pilihan.
     expect(T).toMatch(/capability_exec/);
     // Penanda cakupan jujur: advisory di Windows.
     expect(T).toMatch(/advisory — Windows tanpa namespace/);
