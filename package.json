@@ -136,11 +136,7 @@
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "<rootDir>/_agent_backups/",
-      "<rootDir>/tests/_setup-shell.cjs"
-    ],
-    "setupFiles": [
-      "<rootDir>/tests/_setup-shell.cjs"
+      "<rootDir>/_agent_backups/"
     ]
   }
 }
