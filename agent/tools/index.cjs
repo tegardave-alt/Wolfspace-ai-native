@@ -1424,6 +1424,45 @@ async function runSelfTool(name, args, emit, context = {}) {
             ..._penegakanLabel.label("kernel", "namespace"),
           };
         }
+        // ── Jalur WSL: kurungan kernel di Windows, OPT-IN ──
+        //
+        // Windows tak punya padanan namespace, jadi jalur di bawah hanya bisa
+        // memindai teks — dan itu terbukti bisa ditembus. Jalur ini memberi
+        // batas sungguhan: folder tetap di Windows, dibagikan lewat SMB,
+        // di-mount ke distro sebagai /work, lalu dijalankan di dalam bwrap yang
+        // hanya mengikat /work.
+        //
+        // OPT-IN, dan alasannya bukan kehati-hatian: perintah dijalankan `sh`
+        // di Linux, BUKAN PowerShell. `dir`, `Get-ChildItem`, dan `%VAR%` tak
+        // berlaku di sana. Menjadikannya bawaan akan mematahkan setiap perintah
+        // PowerShell yang sudah ditulis model — perubahan semantik yang harus
+        // dipilih sadar, bukan diwarisi.
+        //
+        // Terukur sesudah terpasang: pelarian yang dulu berhasil membuat folder
+        // di Desktop kini mengembalikan ENOENT; /etc tak bisa ditulis; jaringan
+        // terputus; 200 berkas kecil 3 detik (CIFS) vs 1 detik (lokal).
+        if (
+          process.env.WOLFSPACE_BASH_WSL === "1" ||
+          process.env.WOLFSPACE_BASH_WSL === "true"
+        ) {
+          const _wj = require("./wsl-jail.cjs");
+          const siap = _wj.tersedia();
+          if (siap.siap) {
+            return await _wj.jalankan(cmd, {
+              timeout: args.timeout || 120000,
+              jaringan: args.network === true,
+            });
+          }
+          return {
+            ok: false,
+            ..._penegakanLabel.label("penasihat", "wsl-tak-siap"),
+            output:
+              "WOLFSPACE_BASH_WSL=1 diminta, tapi jalur WSL tak siap: " +
+              siap.alasan +
+              "\nSiapkan share + kredensial lebih dulu, atau lepas variabel itu " +
+              "untuk kembali ke jalur Windows (yang batasnya hanya pemeriksaan teks).",
+          };
+        }
         // Cadangan: guard regex (bocor, defense-in-depth) saat namespace tak
         // tersedia — mis. di Windows, yang tak punya padanan di kernelnya.
         //
