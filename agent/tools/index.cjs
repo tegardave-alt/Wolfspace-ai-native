@@ -2045,6 +2045,51 @@ async function runSelfTool(name, args, emit, context = {}) {
       );
     }
     if (name === "sandbox_run") {
+      // ── Admission proc.raw, sama seperti bash ──
+      //
+      // KENAPA ADA. sandbox_run men-spawn proses OS persis seperti bash, tapi
+      // dulu TIDAK melewati CommandChain sama sekali. Akibatnya terukur: dengan
+      // WOLFSPACE_CC_TANPA=proc.raw, bash mati total — termasuk jalur pelarian
+      // yang terbukti — sementara sandbox_run tetap jalan DAN tetap berhasil
+      // membuat folder di luar workspace.
+      //
+      // Lockdown yang menutup satu pintu sambil meninggalkan pintu sebelahnya
+      // terbuka bukan lockdown; ia cuma memindahkan jalannya. Dan itu lebih
+      // buruk daripada tak ada lockdown, karena orang mengira sesi sudah dikunci.
+      try {
+        const cc = require("../broker/commandchain.cjs");
+        const rs = cc.sesiRuleset();
+        const adm = cc.periksa(rs, "proc.raw");
+        if (!adm.allow) {
+          cc.catat({
+            capability: "proc.raw",
+            decision: "DENY",
+            reason: adm.alasan,
+            params: { command: String(args.command || "") },
+          });
+          return {
+            ok: false,
+            ..._penegakanLabel.label("penasihat", "admission"),
+            output:
+              "CommandChain menolak proc.raw (sandbox_run): " +
+              adm.alasan +
+              ". Sesi ini dikunci tanpa eksekusi proses mentah — pakai " +
+              "capability_exec (terkurung + diaudit) atau tool write/edit.",
+          };
+        }
+      } catch (_) {
+        // CommandChain tak termuat: jangan diam-diam jadi izin. Tool ini
+        // men-spawn proses OS, jadi ketiadaan pemeriksa harus menutup, bukan
+        // membuka. Prinsipnya sama dengan flagPermission yang menolak berjalan
+        // di bawah Node 20 alih-alih berjalan tanpa pengurungan.
+        return {
+          ok: false,
+          ..._penegakanLabel.label("penasihat", "admission"),
+          output:
+            "sandbox_run ditolak: CommandChain tak tersedia untuk memeriksa " +
+            "admission proc.raw, dan tool ini men-spawn proses OS.",
+        };
+      }
       // Deskripsi tool ini menyatakan sendiri bahwa proses yang di-spawn punya
       // "normal OS-level filesystem access" — jadi ia bisa menulis berkas kode di
       // mana pun, melewati gerbang kualitas DAN syntax check. Terbukti empiris:
