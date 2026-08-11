@@ -77,7 +77,7 @@ describe("kosakata penegakan seragam", () => {
     expect(r.terkurungOs).toBe(r.penegakan === "kernel");
   }, 90000);
 
-  test("label sandbox_run COCOK dengan capabilities() adapter", async () => {
+  test("label sandbox_run COCOK dengan mekanisme yang BENAR-BENAR dipakai", async () => {
     const sandbox = require("../agent/sandbox.cjs");
     const kap = sandbox.adapterCapabilities();
     const r = await T.runSelfTool(
@@ -89,6 +89,21 @@ describe("kosakata penegakan seragam", () => {
     // Bukan tebakan dari process.platform — tebakan itu akan salah persis di
     // kasus yang paling penting: Linux TANPA bwrap terbaca sama dengan Linux
     // DENGAN bwrap.
-    expect(r.terkurungOs).toBe(kap ? kap.fsIsolation === "enforced" : false);
+    //
+    // Tapi capabilities() adapter BUKAN LAGI satu-satunya sumber kebenaran.
+    // Adapter menjawab untuk mekanismenya sendiri (bwrap, helper JS); ia tak
+    // tahu apa-apa soal AppContainer, yang dipasang di lapisan lain dan hanya
+    // pada eksekusi yang benar-benar berhasil dibungkus. Sesudah sandbox_run
+    // ikut dibungkus, berpegang pada adapter saja membuat label MEREMEHKAN:
+    // "penasihat" untuk proses yang sebenarnya ditolak kernel.
+    const ac = require("../agent/tools/appcontainer-jail.cjs");
+    const pakaiAc =
+      process.platform === "win32" &&
+      process.env.WOLFSPACE_BASH_AC !== "0" &&
+      ac.tersedia().siap;
+    const harusTerkurung =
+      pakaiAc || (kap ? kap.fsIsolation === "enforced" : false);
+    expect(r.terkurungOs).toBe(harusTerkurung);
+    if (pakaiAc) expect(r.mekanisme).toBe("appcontainer");
   }, 90000);
 });

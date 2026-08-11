@@ -212,6 +212,13 @@ class SandboxSession {
       scriptDir: _ac ? path.join(cmdCwd, ".wolfspace-cmd") : undefined,
     });
     if (_ac) [shellCmd, shellArgs] = _ac.bungkus(cmdCwd, shellCmd, shellArgs);
+    // Dicatat supaya HASILNYA bisa melaporkan penegakan yang sebenarnya.
+    // Tanpa ini sandbox_run tetap dilabeli "penasihat/helper-js" dari
+    // capabilities() adapter — jawaban yang benar sebelum ia dibungkus, dan
+    // meremehkan sesudahnya. Label yang salah arah mana pun sama merusaknya:
+    // yang satu membuat orang terlalu percaya, yang lain membuat mereka
+    // membangun penjaga tambahan untuk batas yang sudah ada.
+    this.terkurungAc = !!_ac;
 
     return new Promise((resolve) => {
       let stdout = "",
@@ -396,6 +403,7 @@ async function sandboxRun(command, opts = {}) {
     result.sessionId = session.id;
     result.auditTrail = session.auditTrail();
     result.sandboxDir = session.dir;
+    result.terkurungAc = !!session.terkurungAc;
     return result;
   } finally {
     session.destroy();

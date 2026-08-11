@@ -298,6 +298,30 @@ bila("perilaku nyata di dalam container", () => {
     expect(String(r.output)).toContain("ditolak");
   });
 
+  test("JARINGAN keluar ikut tertutup", async () => {
+    // Ini tidak dirancang, ia DIWARISI: profil container dibuat dengan
+    // capCount = 0, dan di model AppContainer jaringan adalah KAPABILITAS
+    // (internetClient, privateNetworkClientServer). Tanpa kapabilitas itu,
+    // soket menolak di lapisan kernel — bukan lewat firewall, bukan lewat
+    // penyaringan nama.
+    //
+    // Dikunci di sini karena ia hilang TANPA SUARA: menambahkan satu
+    // kapabilitas ke profil saat pemasangan akan membuka jaringan kembali,
+    // dan tak ada satu pun perilaku lain yang berubah untuk menandainya.
+    //
+    // Terukur: DNS gagal, HTTP lewat node timeout, loopback ditolak, dan TCP
+    // ke IP mentah ditolak dengan SocketError AccessDenied.
+    const r = await jalankan(
+      "$c=New-Object Net.Sockets.TcpClient; " +
+        "try{ $a=$c.BeginConnect('93.184.215.14',443,$null,$null); " +
+        "if(-not $a.AsyncWaitHandle.WaitOne(8000)){'timeout'} " +
+        "else { $c.EndConnect($a); if($c.Connected){'TERSAMBUNG'}else{'putus'} } } " +
+        "catch { 'ditolak' }",
+    );
+    expect(String(r.output)).not.toContain("TERSAMBUNG");
+    expect(String(r.output)).toMatch(/ditolak|timeout/);
+  });
+
   test("node tetap bisa dijalankan di dalam kurungan", async () => {
     // Kalau ini patah, kurungannya benar tapi tak berguna: agent tak bisa
     // menjalankan apa pun.

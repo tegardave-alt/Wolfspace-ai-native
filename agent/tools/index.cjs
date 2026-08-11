@@ -2348,7 +2348,12 @@ async function runSelfTool(name, args, emit, context = {}) {
           ok: r.ok,
           output: r.output + (r.error ? "\nError: " + r.error : ""),
           sandboxId: r.sessionId,
-          ..._labelSandbox,
+          // Kalau AppContainer benar-benar terpasang pada eksekusi ini, ITU
+          // yang berlaku — bukan jawaban umum adapter platform, yang menjawab
+          // untuk jalur helper JS dan tak tahu apa-apa soal container.
+          ...(r.terkurungAc
+            ? _penegakanLabel.label("kernel", "appcontainer")
+            : _labelSandbox),
         }),
         (e) => ({ ok: false, output: e.message, ..._labelSandbox }),
       );
