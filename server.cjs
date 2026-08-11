@@ -15,6 +15,88 @@ process.on("uncaughtException", (err) => {
   } catch (_) {}
   throw err;
 });
+
+// ── Jejak KELUAR, bukan hanya jejak CRASH ──
+//
+// KEJADIAN YANG MEMICU INI. Backend mati pukul 10:42 dan tidak meninggalkan
+// APA PUN: _crash.log terakhir ditulis lima hari sebelumnya, tak ada dump
+// Crashpad, tak ada entri Windows Error Reporting. Yang tersisa cuma gejala —
+// cangkang Electron masih berdiri dengan jendela "Wolfspace UI", tak ada yang
+// mendengarkan port 8090, dan baris log terakhir sebuah stop HITL yang normal.
+// Penyebabnya tak bisa ditentukan, dan itu bukan karena kurang dicari.
+//
+// Sebabnya struktural: handler di atas hanya menangkap uncaughtException.
+// Keluar karena sebab LAIN — promise ditolak tanpa penangkap, sinyal, atau
+// process.exit dari mana pun — tidak meninggalkan sebaris pun. Padahal justru
+// itu yang paling sulit didiagnosis belakangan, karena tak ada artefak untuk
+// dibaca.
+//
+// Yang dicatat di sini sengaja termasuk kepergian yang WAJAR. "Keluar normal
+// dengan kode 0" adalah jawaban yang sangat berbeda dari "dibunuh" atau
+// "promise ditolak", dan tanpa catatan ini ketiganya terlihat identik: senyap.
+(function jejakKeluar() {
+  const _fs = require("fs");
+  const _path = require("path");
+  const BERKAS = _path.join(__dirname, "_crash.log");
+  const MULAI = Date.now();
+  let sudah = false;
+
+  const tulis = (sebab, rinci) => {
+    if (sudah) return; // satu baris per kepergian, bukan satu per handler
+    sudah = true;
+    try {
+      _fs.appendFileSync(
+        BERKAS,
+        "\n" +
+          new Date().toISOString() +
+          " KELUAR sebab=" +
+          sebab +
+          " pid=" +
+          process.pid +
+          " hidup=" +
+          Math.round((Date.now() - MULAI) / 1000) +
+          "s" +
+          (rinci
+            ? " " + String(rinci).replace(/\s+/g, " ").slice(0, 400)
+            : "") +
+          "\n",
+      );
+    } catch (_) {}
+  };
+
+  // Sinkron: pada 'exit' event loop sudah berhenti, jadi hanya panggilan
+  // sinkron yang sempat selesai. appendFileSync memang untuk kasus ini.
+  process.on("exit", (kode) => tulis("exit", "kode=" + kode));
+
+  // Promise ditolak tanpa penangkap TIDAK dicatat handler mana pun sebelum ini.
+  // Prosesnya tak dihentikan di sini — perilaku dibiarkan apa adanya, yang
+  // ditambahkan cuma catatannya.
+  process.on("unhandledRejection", (alasan) =>
+    tulis(
+      "unhandledRejection",
+      (alasan && (alasan.stack || alasan.message)) || alasan,
+    ),
+  );
+
+  // Sinyal: dicatat lalu diteruskan dengan keluar. Tanpa handler, sinyal
+  // mematikan proses tanpa sepatah kata; dengan handler, ia harus keluar
+  // sendiri supaya perilakunya tidak berubah jadi "abaikan sinyal".
+  for (const [sinyal, kode] of [
+    ["SIGTERM", 143],
+    ["SIGINT", 130],
+    ["SIGBREAK", 149],
+    ["SIGHUP", 129],
+  ]) {
+    try {
+      process.on(sinyal, () => {
+        tulis("sinyal", sinyal);
+        process.exit(kode);
+      });
+    } catch (_) {
+      // Sebagian sinyal tak ada di semua platform; ketiadaannya bukan galat.
+    }
+  }
+})();
 /**
 /**
  * WOLFSPACE server Ã¢â‚¬â€ serves the chat UI, runs code blocks, and orchestrates the
