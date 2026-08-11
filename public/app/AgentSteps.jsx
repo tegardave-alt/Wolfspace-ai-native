@@ -403,31 +403,83 @@ function GroupedActionRow({ group, expanded, setExpanded }) {
             flexDirection: "column",
           }}
         >
-          {acts.map((a, j) => (
-            <div
-              key={j}
-              style={
-                j > 0 ? { borderTop: "1px solid rgba(175,184,193,0.3)" } : {}
-              }
-            >
+          {acts.map((a, j) => {
+            // Tiap perintah punya lipatannya SENDIRI.
+            //
+            // Sebelum ini hanya grupnya yang bisa dilipat, dan isi setiap
+            // perintah selalu ikut terbuka. Satu grup bisa berisi belasan
+            // perintah dengan keluaran panjang, jadi menggulung untuk mencari
+            // satu hasil berarti melewati semuanya — dan satu-satunya cara
+            // menyembunyikan yang tak dicari adalah melipat grupnya, yang juga
+            // menyembunyikan yang sedang dicari.
+            //
+            // Kuncinya disematkan pada id grup, bukan indeks saja: dua grup
+            // berbeda punya perintah ke-0 masing-masing, dan indeks telanjang
+            // akan membuat keduanya membuka-menutup bersamaan.
+            const kunci = group.id + ":" + j;
+            // BAWAANNYA TERTUTUP, dan itu inti perubahannya: keluaran tak lagi
+            // membuka sendiri saat perintah selesai berjalan. Header-nya tetap
+            // terlihat, jadi apa yang dijalankan dan berhasil/gagalnya tetap
+            // terbaca tanpa membuka apa pun.
+            const isiTerbuka = !!expanded[kunci];
+            const adaIsi = !!(a.output && String(a.output).trim());
+            return (
               <div
-                style={{
-                  background: "#21262d",
-                  padding: "4px 12px",
-                  fontSize: "12px",
-                  color: "#8c959f",
-                  fontFamily: "monospace",
-                  display: "flex",
-                  alignItems: "center",
-                  gap: "8px",
-                }}
+                key={j}
+                style={
+                  j > 0 ? { borderTop: "1px solid rgba(175,184,193,0.3)" } : {}
+                }
               >
-                <span style={{ color: "#3fb950" }}>...\wolfspace &gt;</span>{" "}
-                {a.arg || a.kind}
+                <div
+                  onClick={() =>
+                    adaIsi &&
+                    setExpanded((p) => ({ ...p, [kunci]: !isiTerbuka }))
+                  }
+                  style={{
+                    background: "#21262d",
+                    padding: "4px 12px",
+                    fontSize: "12px",
+                    color: "#8c959f",
+                    fontFamily: "monospace",
+                    display: "flex",
+                    alignItems: "center",
+                    gap: "8px",
+                    // Penunjuk hanya muncul kalau memang ada yang bisa dibuka;
+                    // baris tanpa keluaran tak boleh terlihat bisa diklik.
+                    cursor: adaIsi ? "pointer" : "default",
+                  }}
+                >
+                  <span
+                    className="aal-chevron"
+                    style={{ opacity: adaIsi ? 1 : 0.25, width: "10px" }}
+                  >
+                    {adaIsi ? (isiTerbuka ? "▼" : "▶") : "·"}
+                  </span>
+                  <span style={{ color: "#3fb950" }}>...\wolfspace &gt;</span>{" "}
+                  {a.arg || a.kind}
+                  {!a.ok && (
+                    <span
+                      style={{
+                        marginLeft: "auto",
+                        fontSize: "11px",
+                        color: "#f85149",
+                      }}
+                    >
+                      gagal
+                    </span>
+                  )}
+                </div>
+                {isiTerbuka && (
+                  <ToolOutput
+                    text={a.output}
+                    ok={a.ok}
+                    kind={a.kind}
+                    arg={a.arg}
+                  />
+                )}
               </div>
-              <ToolOutput text={a.output} ok={a.ok} kind={a.kind} arg={a.arg} />
-            </div>
-          ))}
+            );
+          })}
         </div>
       )}
     </React.Fragment>
