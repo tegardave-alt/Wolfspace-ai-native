@@ -59,8 +59,15 @@ describe("penolakan tidak mengklaim pengurungan yang tak ada", () => {
     const blok = def.slice(i, i + 2000);
     // Model yang tak diberi tahu akan menyimpulkan sendiri dari kata "ditolak"
     // bahwa ada penjaga — persis yang terjadi.
-    expect(blok).toMatch(/JANGAN katakan/i);
+    // Maksudnya, bukan frasanya. Larangan lama ("jangan bilang kamu
+    // terkurung") cocok saat batasnya memang cuma pemindaian teks; sesudah
+    // kurungan kernel terpasang ia berbalik jadi meremehkan. Yang harus tetap
+    // ada: larangan MELEBIH-LEBIHKAN, dan perintah membaca medan penegakan.
+    expect(blok).toMatch(/jangan (katakan|bilang|menyatakan)/i);
     expect(blok).toMatch(/terkurungOs|penegakan/);
+    // Dan klaim "semuanya di luar workspace terblokir" harus DITOLAK terang-
+    // terangan, karena C:\Windows memang masih terbaca.
+    expect(blok).toMatch(/BISA DIBACA/);
   });
 
   test("label tetap konsisten dengan pesannya", async () => {

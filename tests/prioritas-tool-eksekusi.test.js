@@ -56,7 +56,18 @@ describe("pembingkaian tool eksekusi", () => {
 
   test("bash tetap memperingatkan batasnya", () => {
     const d = desk("bash");
-    expect(d).toMatch(/JANGAN katakan/i);
+    // Dulu asersinya mengunci frasa "JANGAN katakan", yang cocok untuk
+    // kenyataan lama: batasnya cuma pemindaian teks, jadi larangannya adalah
+    // "jangan bilang kamu terkurung". Sesudah bash benar-benar terkurung
+    // kernel, larangan itu jadi salah arah — dan salah ke arah MEREMEHKAN
+    // sama merusaknya dengan salah ke arah melebih-lebihkan: user membaca
+    // sistemnya jauh lebih lemah daripada kenyataannya lalu memutuskan
+    // berdasarkan itu.
+    //
+    // Yang dikunci sekarang maksudnya, bukan kalimatnya: deskripsi harus
+    // menahan model dari MELEBIH-LEBIHKAN, dan harus menyuruhnya membaca
+    // medan yang menyatakan keadaan sebenarnya.
+    expect(d).toMatch(/jangan (katakan|bilang|menyatakan)/i);
     expect(d).toMatch(/penegakan|terkurungOs/);
   });
 });

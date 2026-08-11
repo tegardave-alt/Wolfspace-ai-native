@@ -452,6 +452,42 @@ function _catatHibah(root) {
   } catch (_) {}
 }
 
+const _sementara = new Set();
+
+/**
+ * Buka SATU folder sementara untuk container, TANPA mencatatnya sebagai folder
+ * kerja.
+ *
+ * Bedanya dengan siapUntuk() menentukan: folder kerja saling menggantikan --
+ * membuka yang baru mencabut yang lama. Direktori scratch sandbox_run bukan
+ * workspace; ia hidup berdampingan dengan workspace dan mati bersama sesinya.
+ * Kalau ia lewat siapUntuk(), setiap panggilan sandbox_run akan MENCABUT hak
+ * workspace, dan perintah bash berikutnya membayar hibah ulang belasan detik.
+ *
+ * ACE-nya ikut terhapus saat foldernya dihapus, jadi tak ada yang menumpuk.
+ *
+ * @param {string} dir
+ * @returns {Promise<boolean>} berhasil atau tidak
+ */
+async function beriSementara(dir) {
+  if (!tersedia().siap) return false;
+  const s = sid();
+  if (!s) return false;
+  const r = path.resolve(dir);
+  const k = r.toLowerCase();
+  if (_sementara.has(k)) return true;
+  try {
+    await _icacls([r, "/grant", "*" + s + ":(OI)(CI)(M)"]);
+    fs.mkdirSync(path.join(_akarAc(r), "Packages", CONTAINER, "AC", "Temp"), {
+      recursive: true,
+    });
+    _sementara.add(k);
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
 /**
  * Cabut hak container dari SEMUA folder kerja kecuali yang sedang dipakai.
  *
@@ -655,6 +691,7 @@ async function jalankan(perintah, opts) {
 module.exports = {
   tersedia,
   siapUntuk,
+  beriSementara,
   cabutSemuaKecuali,
   daftarAkses,
   sid,

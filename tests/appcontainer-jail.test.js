@@ -305,3 +305,68 @@ bila("perilaku nyata di dalam container", () => {
     expect(String(r.output)).toMatch(/^v?\d+\./m);
   });
 });
+
+// PINTU SEBELAH. bash dikurung, sandbox_run tidak — dan itu terukur, bukan
+// dugaan: `echo bocor > C:\Users\dave\Desktop\x.txt` DITOLAK lewat bash,
+// BERHASIL lewat sandbox_run, dan berkasnya benar-benar mendarat di Desktop.
+// Membaca C:\Users\dave\Documents pun berhasil (20 entri).
+//
+// Menutup satu pintu sambil meninggalkan pintu sebelahnya terbuka lebih buruk
+// daripada tak menutup apa pun: orang berhenti waspada karena percaya sesi
+// sudah terkurung. Pola ini sudah pernah muncul di repo ini untuk admission
+// proc.raw, lalu kembali dalam bentuk baru begitu bash dikurung sendirian.
+describe("sandbox_run ikut terkurung, bukan pintu sebelah", () => {
+  const src = fs.readFileSync(path.join(AKAR, "agent", "sandbox.cjs"), "utf8");
+
+  test("spawn-nya dibungkus AppContainer", () => {
+    expect(src).toMatch(/_ac\.bungkus\(cmdCwd, shellCmd, shellArgs\)/);
+    expect(src).toMatch(/beriSementara\(cmdCwd\)/);
+  });
+
+  test("direktori scratch dibuka SEMENTARA, bukan sebagai workspace", () => {
+    // Lewat siapUntuk(), tiap panggilan sandbox_run akan MENCABUT hak
+    // workspace — dan perintah bash berikutnya membayar hibah ulang belasan
+    // detik. beriSementara() hidup berdampingan, dan ACE-nya ikut terhapus
+    // bersama foldernya.
+    // Yang diperiksa PANGGILANNYA, bukan penyebutannya: komentar di sana
+    // memang menjelaskan kenapa siapUntuk() TIDAK dipakai.
+    expect(src).not.toMatch(/\.siapUntuk\(/);
+    const AC = require("../agent/tools/appcontainer-jail.cjs");
+    expect(typeof AC.beriSementara).toBe("function");
+  });
+
+  test("berkas skrip diarahkan ke dalam jangkauan container", () => {
+    expect(src).toMatch(/scriptDir: _ac \? path\.join\(cmdCwd/);
+  });
+});
+
+// Deskripsi tool adalah SATU-SATUNYA hal yang dibaca model soal batasnya.
+// Ketika bash dijadikan terkurung kernel tapi deskripsinya tetap berbunyi
+// "penolakan hanya berasal dari pemindaian TEKS", model dengan patuh
+// meneruskan kalimat itu ke user — dan user membaca sistemnya sebagai jauh
+// lebih lemah daripada kenyataannya. Salah ke arah ini sama merusaknya dengan
+// salah ke arah sebaliknya: keduanya membuat orang tak bisa memutuskan apa pun.
+describe("deskripsi bash menyatakan batas yang SEBENARNYA", () => {
+  const defs = require("../agent/tools/tool-definitions.cjs");
+  const daftar = defs.SELF_TOOLS || defs;
+  const bash = daftar.find((t) => t.function && t.function.name === "bash");
+  const d = bash.function.description;
+
+  test("menyebut kurungan kernel, bukan pemindaian teks sebagai batas", () => {
+    expect(d).toMatch(/AppContainer/);
+    expect(d).toMatch(/KERNEL/);
+  });
+
+  test("MENGAKUI yang masih terbaca, bukan mengklaim semuanya tertutup", () => {
+    // Ini bagian yang paling mudah dilebih-lebihkan. C:\Windows memang bisa
+    // dibaca dari AppContainer mana pun -- folder sistem memberi hak baca ke
+    // semua paket aplikasi supaya DLL sistem bisa dimuat. Menyembunyikannya
+    // akan membuat klaim "semua di luar workspace terblokir" jadi bohong.
+    expect(d).toMatch(/Windows/);
+    expect(d).toMatch(/BISA DIBACA/);
+  });
+
+  test("menyebut perintah yang memang tak jalan di dalam kurungan", () => {
+    for (const k of ["git", "dir", "del"]) expect(d).toContain(k);
+  });
+});

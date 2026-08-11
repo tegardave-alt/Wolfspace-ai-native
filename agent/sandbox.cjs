@@ -175,10 +175,43 @@ class SandboxSession {
       timeout: cmdTimeout,
     });
 
-    const [shellCmd, shellArgs] = this.adapter.shellFor(command, {
+    // ── Kurungan kernel yang SAMA dengan tool bash ──
+    //
+    // KENAPA ADA. Sesudah bash terkurung AppContainer, sandbox_run tetap
+    // men-spawn proses dengan akses filesystem normal — dan itu terukur, bukan
+    // dugaan: `echo bocor > C:\Users\dave\Desktop\x.txt` DITOLAK lewat bash,
+    // BERHASIL lewat sandbox_run, dan berkasnya benar-benar mendarat di
+    // Desktop. Membaca C:\Users\dave\Documents pun berhasil (20 entri).
+    //
+    // Menutup satu pintu sambil meninggalkan pintu sebelahnya terbuka lebih
+    // buruk daripada tak menutup apa pun: orang berhenti waspada karena
+    // percaya sesi sudah terkurung. Pola yang sama pernah ditemukan di repo ini
+    // untuk admission proc.raw, dan ia kembali dalam bentuk baru begitu bash
+    // dikurung sendirian.
+    //
+    // Direktori scratch dibuka lewat beriSementara(), BUKAN siapUntuk(): ia
+    // bukan workspace, jadi ia tak boleh menggantikan workspace yang sedang
+    // dipakai. Berkas skrip perintah juga harus mendarat di dalam jangkauan
+    // container, kalau tidak perintahnya gagal sebelum sempat mulai.
+    let _ac = null;
+    if (process.platform === "win32") {
+      try {
+        const m = require("./tools/appcontainer-jail.cjs");
+        if (
+          process.env.WOLFSPACE_BASH_AC !== "0" &&
+          process.env.WOLFSPACE_BASH_AC !== "false" &&
+          (await m.beriSementara(cmdCwd))
+        )
+          _ac = m;
+      } catch (_) {}
+    }
+
+    let [shellCmd, shellArgs] = this.adapter.shellFor(command, {
       cwd: cmdCwd,
       networkAllowed: this.networkAllowed,
+      scriptDir: _ac ? path.join(cmdCwd, ".wolfspace-cmd") : undefined,
     });
+    if (_ac) [shellCmd, shellArgs] = _ac.bungkus(cmdCwd, shellCmd, shellArgs);
 
     return new Promise((resolve) => {
       let stdout = "",
@@ -194,6 +227,9 @@ class SandboxSession {
           // remapped to the sandbox dir). Home remapping keeps the real home
           // path out of untrusted code — see the adapter for this OS.
           ...this.adapter.sandboxEnv(this.dir),
+          // CreateProcessW menolak membuat proses AppContainer tanpa
+          // LOCALAPPDATA (kode 203, yang tak menyebut variabel apa pun).
+          ...(_ac ? _ac.envTambahan(cmdCwd) : {}),
           // App-level sandbox markers (OS-independent)
           QUANTUM_SANDBOX: "1",
           QUANTUM_SANDBOX_ID: this.id,
