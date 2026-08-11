@@ -722,6 +722,20 @@ function AgentSteps({ run }) {
                 termasuk panggilan model 64 detik dan penyiapan MCP 60 detik.
                 Teks detak yang sudah dikirim backend ("Masih menunggu jawaban
                 model (30s)…") tak pernah sampai ke mata user. */}
+            {/* Loader kotak 3x3. aria-hidden karena ia MURNI hiasan: keadaan
+                sebenarnya sudah dibawa teks di sebelahnya, dan pembaca layar
+                yang membacakan sembilan kotak kosong justru mengaburkannya. */}
+            <span className="wl-muat" aria-hidden="true">
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+              <i />
+            </span>
             <span>
               {run.status || (run.thinking ? "Thinking..." : "Processing...")}
             </span>
