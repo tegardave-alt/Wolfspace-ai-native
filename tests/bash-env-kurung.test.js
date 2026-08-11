@@ -64,7 +64,12 @@ describe("%VAR% tak lagi menembus penjaga path", () => {
     // ("TERKURUNG WORKSPACE") dibuang justru karena terdengar seperti
     // jaminan kernel yang tak dimilikinya.
     expect(r.ok).toBe(false);
-    expect(r.output).toMatch(/menembus keluar workspace/);
+    // Dua penahan yang sah, dan bunyinya memang berbeda:
+    //   pemindai teks  -> "menembus keluar workspace" (perintah tak dijalankan)
+    //   AppContainer   -> "Access is denied" (dijalankan, ditolak KERNEL)
+    // Yang kedua lebih kuat, bukan lebih lemah — penolakannya datang dari
+    // pemeriksaan akses berkas, bukan dari tebakan atas teks perintah.
+    expect(r.output).toMatch(/menembus keluar workspace|Access is denied/i);
   }, 30000);
 
   test.each([
@@ -96,7 +101,20 @@ describe("%VAR% tak lagi menembus penjaga path", () => {
     // kompilator). Diarahkan membuat berkasnya mendarat di dalam cakupan.
     const r = await jalan("echo uji > %TEMP%\\sementara.txt");
     expect(r.ok).toBe(true);
-    expect(fs.existsSync(path.join(WS, "sementara.txt"))).toBe(true);
+    // DI DALAM worktree, tapi tidak selalu tepat di akarnya. AppContainer
+    // menulis ulang TEMP miliknya sendiri jadi
+    // <LOCALAPPDATA>\Packages\<container>\AC\Temp, dan WOLFSPACE mengarahkan
+    // LOCALAPPDATA ke subfolder worktree — jadi berkasnya mendarat satu-dua
+    // tingkat lebih dalam. Yang diuji tetap sama: ia tidak keluar ke pohon host.
+    const ada = (d) =>
+      fs
+        .readdirSync(d, { withFileTypes: true })
+        .some((e) =>
+          e.isDirectory()
+            ? ada(path.join(d, e.name))
+            : e.name === "sementara.txt",
+        );
+    expect(ada(WS)).toBe(true);
   }, 30000);
 });
 
@@ -114,7 +132,16 @@ describe("pekerjaan SAH tidak ikut mati", () => {
 
   test.each([
     ["node lewat PATH", 'node -e "console.log(2+3)"', "5"],
-    ["dir di worktree", "dir", "ada.txt"],
+    // Dulu `dir`. Diganti karena `dir` (dan `vol`) TIDAK bisa jalan di dalam
+    // AppContainer: cmd.exe membaca info volume drive untuk keduanya, dan itu
+    // perangkat yang tertutup untuk container — bahkan `dir /b`, yang tak
+    // mencetak header sama sekali. Foldernya sendiri terbaca normal, jadi yang
+    // diuji di sini tetap sama: melihat isi worktree harus tetap bisa.
+    [
+      "melihat isi worktree",
+      'powershell -NoProfile -Command "(Get-ChildItem -LiteralPath ([Environment]::CurrentDirectory)).Name"',
+      "ada.txt",
+    ],
     ["type berkas dalam worktree", "type ada.txt", "isi berkas"],
     ["mkdir lalu cd", "mkdir baru && cd baru && echo di-dalam", "di-dalam"],
     ["echo", "echo halo dunia", "halo dunia"],
@@ -141,9 +168,15 @@ describe("struktur: allowlist ada, dan jujur soal batasnya", () => {
     .replace(/\r\n/g, "\n");
 
   test("bash TIDAK lagi mewarisi process.env utuh", () => {
-    const i = SRC.indexOf("getPlatformAdapter().shellFor(cmd)");
-    const blok = SRC.slice(i, i + 400);
-    expect(blok).toMatch(/env: _envBash\(cwd\)/);
+    const i = SRC.indexOf("getPlatformAdapter().shellFor(");
+    const blok = SRC.slice(i, i + 1500);
+    // _envBash(cwd) tetap DASARNYA di kedua cabang. Jalur AppContainer
+    // menambahkan satu variabel di atasnya (LOCALAPPDATA, tanpanya
+    // CreateProcessW menolak membuat prosesnya) — menambah, bukan mengganti.
+    expect(blok).toMatch(/:\s*_envBash\(cwd\)/);
+    expect(blok).toMatch(
+      /\{ \.\.\._envBash\(cwd\), \.\.\._bungkusAc\.envTambahan\(cwd\) \}/,
+    );
     expect(blok).not.toMatch(/env: \{ \.\.\.process\.env/);
   });
 

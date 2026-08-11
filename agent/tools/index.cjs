@@ -566,6 +566,33 @@ function _envBash(cwd) {
   return out;
 }
 
+// Tempat berkas skrip perintah saat jalur AppContainer aktif.
+//
+// Harus DI DALAM cakupan container, karena di situlah satu-satunya tempat yang
+// bisa dibacanya. Di dalam workspace, bukan di akarnya: skrip ini sengaja tidak
+// dihapus inline (menghapusnya di baris yang sama menimpa kode keluar cmd.exe),
+// jadi kalau ditaruh di akar ia menumpuk di tengah repo orang.
+const _DIR_SKRIP_AC = ".wolfspace-cmd";
+const _UMUR_SKRIP_MS = 60 * 60 * 1000;
+
+/** @param {string} cwd */
+function _dirSkripAc(cwd) {
+  const dir = path.join(cwd, _DIR_SKRIP_AC);
+  try {
+    fs.mkdirSync(dir, { recursive: true });
+    // Dipangkas di sini, bukan lewat penghapusan inline. Tanpa ini direktorinya
+    // tumbuh tanpa batas sepanjang umur workspace.
+    const batas = Date.now() - _UMUR_SKRIP_MS;
+    for (const n of fs.readdirSync(dir)) {
+      const f = path.join(dir, n);
+      try {
+        if (fs.statSync(f).mtimeMs < batas) fs.unlinkSync(f);
+      } catch (_) {}
+    }
+  } catch (_) {}
+  return dir;
+}
+
 const _HOST_PATH_RE = [
   /\b[A-Za-z]:[\\/]/, //  C:\... atau D:/...
   /(^|\s|['"=(])\/[a-z]\/(Users|Program|Windows)/i, // /c/Users/... (gaya MSYS)
@@ -1350,6 +1377,12 @@ async function runSelfTool(name, args, emit, context = {}) {
       // pemanggil supaya "terkurung" tak lagi jadi satu kata untuk dua hal
       // yang sangat berbeda kekuatannya.
       let _label = _penegakanLabel.label("kernel", "namespace");
+      // Kenapa AppContainer tidak dipakai, kalau memang tidak. Ikut ditempel ke
+      // hasil jalur cadangan supaya turunnya jaminan tak lewat tanpa terbaca.
+      let _catatan_ac = "";
+      // Modul pembungkus AppContainer, kalau jalur itu aktif. Null artinya
+      // shell di-spawn langsung seperti sebelumnya.
+      let _bungkusAc = null;
 
       let cwd = QROOT;
       if (args.cwd) {
@@ -1424,6 +1457,98 @@ async function runSelfTool(name, args, emit, context = {}) {
             ..._penegakanLabel.label("kernel", "namespace"),
           };
         }
+        // ── BAWAAN di Windows: AppContainer ──
+        //
+        // Ini dicoba LEBIH DULU dari semua jalur lain, dan tidak perlu dinyalakan.
+        // Alasannya: jalur cadangan paling bawah hanya MEMINDAI TEKS perintah, dan
+        // itu terbukti bisa ditembus — perintah yang merakit path saat jalan lolos
+        // pemindaian lalu benar-benar membuat folder di Desktop. Selama jalur teks
+        // jadi bawaan, batas yang sebenarnya berlaku adalah "tidak ada".
+        //
+        // AppContainer memberi token dengan SID container. Pemeriksaan akses
+        // berkas jadi WAJIB menyertakan SID itu di DACL objek, jadi seluruh
+        // filesystem tertutup kecuali yang dibuka eksplisit. Deny-by-default, di
+        // kernel, dan TANPA elevasi.
+        //
+        // Terukur lewat jalur ini, pelarian yang sama persis:
+        //   tulis Desktop / baca cloud-keys / baca Documents\oi  -> ditolak
+        //   path DIRAKIT saat jalan ke Desktop                   -> ditolak
+        //   baca + tulis + hapus di workspace, node              -> bisa
+        //
+        // Dipilih ketimbang dua jalur di bawahnya: perintahnya tetap PowerShell
+        // (WSL menggantinya jadi sh POSIX), dan tak menuntut WOLFSPACE berjalan
+        // sebagai Administrator (jalur akun terpisah menuntut itu, yang justru
+        // memperbesar risiko).
+        //
+        // WOLFSPACE_BASH_AC=0 mematikannya. Itu ADA supaya jalan keluarnya
+        // terlihat dan tercatat, bukan supaya dipakai: mematikannya mengembalikan
+        // bash ke pemindaian teks yang sudah terbukti bocor.
+        //
+        // DIBUNGKUS, BUKAN DICABANGKAN. Versi pertama jalur ini memanggil
+        // execFileSync di cabangnya sendiri dan langsung return. Itu tampak
+        // bekerja lalu mematahkan dua hal yang tak kelihatan dari hasilnya:
+        // execFileSync MEMBLOKIR event loop selama perintah jalan (di aplikasi
+        // Electron artinya UI membeku setiap kali agent menjalankan bash), dan
+        // ia melewati seluruh mesin di bawah — AbortController, pembedaan
+        // TIMEOUT vs DIBATALKAN, streaming keluaran, pelacakan proses sesi.
+        // Jadi yang ditukar hanya EXE yang di-spawn: AcLaunch.exe menjalankan
+        // shell yang sama persis, dengan argumen yang sama persis, di dalam
+        // container. Semantik perintah tak berubah sedikit pun.
+        if (
+          process.platform === "win32" &&
+          process.env.WOLFSPACE_BASH_AC !== "0" &&
+          process.env.WOLFSPACE_BASH_AC !== "false" &&
+          // Permintaan eksplisit menang. Tanpa syarat ini, jalur ini membajak
+          // WOLFSPACE_BASH_WSL/ACL yang sengaja dinyalakan orang.
+          !process.env.WOLFSPACE_BASH_ACL &&
+          !process.env.WOLFSPACE_BASH_WSL
+        ) {
+          const _ac = require("./appcontainer-jail.cjs");
+          const siapAc = await _ac.siapUntuk(_confineRoot);
+          if (siapAc.siap) {
+            _bungkusAc = _ac;
+            _label = _penegakanLabel.label("kernel", "appcontainer");
+          } else {
+            // Tak siap bukan alasan diam. Kalau container hilang, batasnya turun
+            // drastis, dan itu harus terbaca — bukan cuma jalan pelan-pelan.
+            _catatan_ac =
+              "\n[AppContainer tak aktif: " +
+              siapAc.alasan +
+              " — jalankan scripts/appcontainer/pasang.ps1]";
+          }
+        }
+        // ── Jalur ACL Windows: kurungan kernel TANPA mengubah semantik ──
+        //
+        // Dicoba SEBELUM jalur WSL karena ia menjawab permintaan lebih tepat:
+        // perintahnya tetap PowerShell. Jalur WSL memberi batas yang sama
+        // kuatnya tapi menggantinya jadi `sh` POSIX, sehingga setiap perintah
+        // yang sudah ditulis model patah.
+        //
+        // Penegaknya NTFS ACL — penolakan terjadi saat panggilan berkas, bukan
+        // saat teks dibaca. Terukur, dijalankan sebagai akun terkurung:
+        //   TULIS Desktop dave / BACA Documents\oi / BACA cloud-keys.json
+        //     -> ketiganya ditolak
+        //   TULIS & BACA di WOLFSPACE -> bisa
+        if (
+          process.env.WOLFSPACE_BASH_ACL === "1" ||
+          process.env.WOLFSPACE_BASH_ACL === "true"
+        ) {
+          const _aj = require("./win-jail.cjs");
+          const siapAcl = _aj.tersedia();
+          if (siapAcl.siap) {
+            return await _aj.jalankan(cmd, {
+              cwd: _confineRoot,
+              timeout: args.timeout || 120000,
+            });
+          }
+          return {
+            ok: false,
+            ..._penegakanLabel.label("penasihat", "acl-tak-siap"),
+            output:
+              "WOLFSPACE_BASH_ACL=1 diminta, tapi jalur ACL tak siap: " +
+              siapAcl.alasan,
+          };
+        }
         // ── Jalur WSL: kurungan kernel di Windows, OPT-IN ──
         //
         // Windows tak punya padanan namespace, jadi jalur di bawah hanya bisa
@@ -1483,34 +1608,48 @@ async function runSelfTool(name, args, emit, context = {}) {
         // Karena itu hasilnya DILABELI. Tanpa label, "TERKURUNG WORKSPACE"
         // terbaca seperti jaminan kernel padahal bukan — persis jenis laporan
         // yang lebih berbahaya daripada tak melaporkan apa pun.
-        _label = _penegakanLabel.label("penasihat", "heuristik-teks");
-        const guard = _confineBash(cmd, args.cwd, _confineRoot);
-        if (!guard.ok)
-          return {
-            ok: false,
-            ..._penegakanLabel.label("penasihat", "heuristik-teks"),
-            // Kalimatnya sengaja TIDAK menyebut "terkurung".
-            //
-            // Sebelum ini bunyinya "TERKURUNG WORKSPACE (regex fallback)", dan
-            // akibatnya terukur: agent meneruskannya ke user sebagai "percobaan
-            // pindah ke C:\Users\dave\Desktop diblokir oleh sistem keamanan".
-            // Kalimat itu benar untuk perintah ITU, tapi terbaca sebagai jaminan
-            // yang berlaku umum — padahal perintah berikutnya, dengan path yang
-            // dirakit saat jalan, berhasil MEMBUAT folder di Desktop.
-            //
-            // Menahan sebagian sambil terdengar seperti menahan semuanya lebih
-            // buruk daripada tak menahan apa pun: orang berhenti waspada. Jadi
-            // yang dibuang klaimnya, bukan pemeriksaannya — pemeriksaan ini
-            // masih berguna untuk menangkap salah ketik, dan hanya untuk itu.
-            output:
-              "DITOLAK oleh pemeriksaan teks (BUKAN batas keamanan): " +
-              guard.reason +
-              "\nPemeriksaan ini hanya memindai teks perintah, jadi ia MELEWATKAN " +
-              "path yang dirakit saat jalan. Jangan perlakukan sebagai jaminan.\n" +
-              "Pengurungan sungguhan: jalankan dengan `npm run app:wsl` (batas " +
-              "kernel), atau pakai capability_exec (akses berpolicy + audit).",
-          };
-        cwd = guard.cwd;
+        //
+        // DILEWATI kalau AppContainer aktif, dan itu bukan penyederhanaan.
+        // Menjalankan pemindai teks di atas batas kernel tidak menambah
+        // keamanan sedikit pun — yang ditolaknya sudah ditolak kernel — tapi ia
+        // MENAMBAH penolakan palsu: perintah sah yang kebetulan menyebut path
+        // absolut di luar workspace (membaca dokumentasi, membandingkan berkas)
+        // akan ditahan padahal kernel akan menanganinya dengan benar. Dan
+        // labelnya akan berbohong ke arah sebaliknya: "penasihat" pada perintah
+        // yang sebenarnya terkurung kernel.
+        if (_bungkusAc) {
+          cwd = _confineRoot;
+        } else {
+          _label = _penegakanLabel.label("penasihat", "heuristik-teks");
+          const guard = _confineBash(cmd, args.cwd, _confineRoot);
+          if (!guard.ok)
+            return {
+              ok: false,
+              ..._penegakanLabel.label("penasihat", "heuristik-teks"),
+              // Kalimatnya sengaja TIDAK menyebut "terkurung".
+              //
+              // Sebelum ini bunyinya "TERKURUNG WORKSPACE (regex fallback)", dan
+              // akibatnya terukur: agent meneruskannya ke user sebagai "percobaan
+              // pindah ke C:\Users\dave\Desktop diblokir oleh sistem keamanan".
+              // Kalimat itu benar untuk perintah ITU, tapi terbaca sebagai jaminan
+              // yang berlaku umum — padahal perintah berikutnya, dengan path yang
+              // dirakit saat jalan, berhasil MEMBUAT folder di Desktop.
+              //
+              // Menahan sebagian sambil terdengar seperti menahan semuanya lebih
+              // buruk daripada tak menahan apa pun: orang berhenti waspada. Jadi
+              // yang dibuang klaimnya, bukan pemeriksaannya — pemeriksaan ini
+              // masih berguna untuk menangkap salah ketik, dan hanya untuk itu.
+              output:
+                "DITOLAK oleh pemeriksaan teks (BUKAN batas keamanan): " +
+                guard.reason +
+                "\nPemeriksaan ini hanya memindai teks perintah, jadi ia MELEWATKAN " +
+                "path yang dirakit saat jalan. Jangan perlakukan sebagai jaminan.\n" +
+                "Pengurungan sungguhan: jalankan dengan `npm run app:wsl` (batas " +
+                "kernel), atau pakai capability_exec (akses berpolicy + audit)." +
+                _catatan_ac,
+            };
+          cwd = guard.cwd;
+        }
       }
       // Resolve session from context (passed by self_agent) or fallback to default
       const sessId = (context && context.sessionId) || "_default";
@@ -1531,11 +1670,26 @@ async function runSelfTool(name, args, emit, context = {}) {
         // (cmd.exe juga punya echo), sehingga kerusakannya hanya muncul pada
         // perintah khas Unix seperti `ls`. Adapter platform sudah ada dan
         // memang untuk ini: posix mengembalikan ['/bin/sh', ['-c', cmd]].
-        const [shBin, shArgs] = getPlatformAdapter().shellFor(cmd);
+        // Berkas skrip perintah harus mendarat di tempat yang TERBACA container.
+        // Bawaannya temp sistem, yang tertutup — dan karena perintah dijalankan
+        // lewat berkas itu, semuanya gagal sebelum mulai.
+        let [shBin, shArgs] = getPlatformAdapter().shellFor(
+          cmd,
+          _bungkusAc ? { scriptDir: _dirSkripAc(cwd) } : {},
+        );
+        // Shell dan argumennya TIDAK diubah — hanya dijalankan di dalam token
+        // AppContainer. Itu sebabnya `dir`, `type`, `%VAR%`, dan seluruh
+        // semantik cmd.exe tetap berlaku persis seperti sebelumnya.
+        if (_bungkusAc)
+          [shBin, shArgs] = _bungkusAc.bungkus(cwd, shBin, shArgs);
         const child = spawn(shBin, shArgs, {
           cwd,
           windowsHide: true,
-          env: _envBash(cwd),
+          // Tambahan AppContainer hanya sampai AcLaunch, tidak diwariskan ke
+          // perintahnya — lihat envTambahan(). Pengerasan env tetap utuh.
+          env: _bungkusAc
+            ? { ..._envBash(cwd), ..._bungkusAc.envTambahan(cwd) }
+            : _envBash(cwd),
           signal,
         });
         trackProcess(sessId, child);
@@ -1603,17 +1757,44 @@ async function runSelfTool(name, args, emit, context = {}) {
                 "TIMEOUT (" + timeoutMs / 1000 + "s): " + cmd.slice(0, 100),
             });
           if (aborted) return; // already resolved above
-          const full = (stdout || stderr || "").trim();
+          // Kegagalan khas kurungan diberi penjelasan sebelum sampai ke model.
+          // Pesan asli git ("Permission denied" saat membuka /dev/null)
+          // mengarahkan orang ke hak berkas repo, yang bukan penyebabnya sama
+          // sekali — dan model akan menghabiskan giliran demi giliran mengejar
+          // dugaan yang salah itu.
+          const _terangkan = (t) =>
+            _bungkusAc ? _bungkusAc.jelaskan(t, cmd) : t;
+          // Kegagalan SENYAP di dalam container: kode keluar bukan-nol tanpa
+          // sepatah keluaran pun. Ditangani sebelum apa pun, karena bentuk
+          // "sukses tanpa hasil"-nya justru yang menyesatkan.
+          const _senyap = _bungkusAc ? _bungkusAc.jelaskanKode(code) : null;
+          if (_senyap) {
+            _unregisterBashProcess(sessId, entry);
+            return resolve({
+              ok: false,
+              ..._label,
+              output: _senyap,
+            });
+          }
+          const full = _terangkan((stdout || stderr || "").trim());
           if (code !== 0 && stderr) {
             resolve({
               ok: false,
+              // Label ikut pada hasil GAGAL juga. Tanpa ini, justru hasil yang
+              // paling mudah dibaca sebagai "diblokir sistem keamanan" adalah
+              // satu-satunya yang tak menyebut batas mana yang berlaku — dan
+              // "Access is denied" dari kernel jadi tak terbedakan dari galat
+              // biasa apa pun.
+              ..._label,
               output:
                 "exit " +
                 code +
                 ":\n" +
-                (stderr.trim() || stdout.trim() || "(no output)").slice(
-                  0,
-                  4000,
+                _terangkan(
+                  (stderr.trim() || stdout.trim() || "(no output)").slice(
+                    0,
+                    4000,
+                  ),
                 ),
             });
           } else {
@@ -2081,6 +2262,24 @@ async function runSelfTool(name, args, emit, context = {}) {
       return skills.installFromNpm(src).then(
         (r) => r,
         (e) => ({ ok: false, output: e.message }),
+      );
+    }
+    if (name === "git") {
+      // git TIDAK BISA jalan di dalam AppContainer -- ia membuka /dev/null
+      // dengan O_RDWR saat start, dan perangkat NUL tak bisa dibaca di sana.
+      // Jadi sesudah bash terkurung kernel, ini satu-satunya jalan git yang
+      // tersisa, dan bentuknya sengaja bukan "jalankan perintah git" melainkan
+      // operasi bernama dengan argv yang dibangun tool itu sendiri.
+      //
+      // Admission-nya ada DI DALAM tool: hanya operasi TULIS yang digerbang,
+      // karena hanya operasi tulis yang bisa menjalankan hook repo di luar
+      // kurungan. Menggerbang `status` dan `log` juga hanya akan membuat
+      // lockdown terasa sewenang-wenang tanpa menutup apa pun.
+      return require("./git-tool.cjs").jalankan(
+        args || {},
+        (context && context.workspaceRoot) ||
+          process.env.WW_WORKSPACE_ROOT ||
+          QROOT,
       );
     }
     if (name === "net_diag") {

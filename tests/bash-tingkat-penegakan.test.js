@@ -32,19 +32,24 @@ const ctx = { workspaceRoot: WS, sessionId: "uji-penegakan" };
 const bash = (command, extra) =>
   T.runSelfTool("bash", { command, cwd: WS, ...extra }, () => {}, ctx);
 
+// "appcontainer" ikut sejak bash di Windows punya pengurungan kernel sungguhan.
+// Ia SETARA dengan "namespace" di Linux, bukan tingkat ketiga: keduanya
+// ditegakkan kernel, keduanya menolak path yang dirakit saat jalan.
+const MEKANISME = ["namespace", "appcontainer", "heuristik-teks"];
+
 describe("bash melaporkan tingkat penegakan", () => {
   test("hasil SUKSES membawa label penegakan", async () => {
     const r = await bash('node -e "console.log(42)"');
     expect(r.ok).toBe(true);
     expect(["kernel", "penasihat"]).toContain(r.penegakan);
-    expect(["namespace", "heuristik-teks"]).toContain(r.mekanisme);
+    expect(MEKANISME).toContain(r.mekanisme);
   }, 60000);
 
   test("hasil DITOLAK juga membawa label yang sama", async () => {
     const r = await bash("ls ../Desktop");
     expect(r.ok).toBe(false);
     expect(["kernel", "penasihat"]).toContain(r.penegakan);
-    expect(["namespace", "heuristik-teks"]).toContain(r.mekanisme);
+    expect(MEKANISME).toContain(r.mekanisme);
   }, 60000);
 
   test("label COCOK dengan mekanisme yang benar-benar dipakai", async () => {
@@ -57,10 +62,27 @@ describe("bash melaporkan tingkat penegakan", () => {
         jail.tersedia(),
         "auto",
       );
+    // Di Windows jalur bawaannya AppContainer, kalau container itu memang siap
+    // untuk workspace ini. Diperiksa dengan menanyakan modulnya, bukan dengan
+    // menebak dari platform — uji ini harus tetap benar di mesin yang belum
+    // memasang profilnya.
+    const ac = require("../agent/tools/appcontainer-jail.cjs");
+    const pakaiAc =
+      !pakaiJail &&
+      process.platform === "win32" &&
+      process.env.WOLFSPACE_BASH_AC !== "0" &&
+      (await ac.siapUntuk(WS)).siap;
+    const harap = pakaiJail
+      ? "namespace"
+      : pakaiAc
+        ? "appcontainer"
+        : "heuristik-teks";
     const r = await bash('node -e "console.log(1)"');
-    expect(r.mekanisme).toBe(pakaiJail ? "namespace" : "heuristik-teks");
-    expect(r.penegakan).toBe(pakaiJail ? "kernel" : "penasihat");
-    expect(r.terkurungOs).toBe(pakaiJail);
+    expect(r.mekanisme).toBe(harap);
+    expect(r.penegakan).toBe(
+      harap === "heuristik-teks" ? "penasihat" : "kernel",
+    );
+    expect(r.terkurungOs).toBe(harap !== "heuristik-teks");
   }, 60000);
 });
 

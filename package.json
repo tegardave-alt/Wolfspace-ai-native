@@ -137,6 +137,9 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "<rootDir>/_agent_backups/"
+    ],
+    "setupFiles": [
+      "<rootDir>/tests/setup-jest.cjs"
     ]
   }
 }

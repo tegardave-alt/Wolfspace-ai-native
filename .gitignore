@@ -57,3 +57,11 @@ agent-leak-report.md
 # Stempel versi yang ditulis peluncur sesudah sinkronisasi ke WSL.
 # Lokal per-mesin dan per-deploy, jangan ikut ter-commit.
 .wolfspace-version.json
+
+# Berkas skrip perintah bash saat jalur AppContainer aktif (lihat _dirSkripAc)
+.wolfspace-cmd/
+
+# Peluncur AppContainer: sumbernya di-commit, binernya tidak.
+# Repo ini publik, dan biner yang tak bisa dibaca orang bukan sesuatu
+# yang pantas dibagikan begitu saja. Bangun dengan scripts/appcontainer/build.cmd
+scripts/appcontainer/AcLaunch.exe

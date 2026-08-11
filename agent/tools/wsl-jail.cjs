@@ -124,6 +124,22 @@ function tersedia() {
       _siapCache = { siap: false, alasan: "bwrap tak ada di distro " + DISTRO };
       return _siapCache;
     }
+    // MOUNT-nya ikut diperiksa, bukan hanya prasyaratnya.
+    //
+    // Sebelum ini tersedia() hanya memastikan kredensial ada dan bwrap
+    // terpasang, lalu melapor "siap". Terukur: ia melapor siap sementara
+    // setiap eksekusi gagal "mount //IP/wolfws on /work failed: Permission
+    // denied" -- aturan firewall SMB-nya hilang. Hasilnya laporan yang lebih
+    // kuat daripada kenyataannya, persis cacat yang dibuang dari jalur bash.
+    //
+    // Yang membuat jalur ini terkurung adalah /work, bukan bwrap-nya. Kalau
+    // /work tak pernah terpasang, tak ada yang terkurung, dan menyebutnya siap
+    // menyesatkan siapa pun yang membacanya.
+    const m = pastikanMount();
+    if (!m.ok) {
+      _siapCache = { siap: false, alasan: "mount /work gagal: " + m.alasan };
+      return _siapCache;
+    }
     _siapCache = { siap: true, alasan: "" };
   } catch (e) {
     _siapCache = {

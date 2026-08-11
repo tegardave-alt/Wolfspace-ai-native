@@ -132,7 +132,15 @@ describe("bypass lewat bash", () => {
   });
 
   test("TIDAK memblokir pembacaan berkas kode", async () => {
-    const r = await runSelfTool("bash", { command: "ls public" }, noop);
+    // Dulu `ls public`. Diganti karena `ls` datang dari Git for Windows, dan
+    // di dalam AppContainer ia mati saat memuat DLL-nya (0xC0000142) selama
+    // C:\Program Files\Git belum diberi hak baca — kegagalan itu soal
+    // toolchain, bukan soal gate yang sedang diuji di sini.
+    const r = await runSelfTool(
+      "bash",
+      { command: "type public\\index.html" },
+      noop,
+    );
     expect(r.ok).toBe(true);
   });
 });

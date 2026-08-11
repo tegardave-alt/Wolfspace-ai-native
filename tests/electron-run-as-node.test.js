@@ -71,7 +71,26 @@ jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
     try {
       const env = { ...process.env, PORT: "8113" };
       delete env.ELECTRON_RUN_AS_NODE; // justru inilah yang sedang diuji
-      keluaran = execFileSync(ELECTRON, [skrip], {
+      // --in-process-gpu, dan alasannya BUKAN tentang kode yang sedang diuji.
+      //
+      // Di mesin ini proses GPU anak Electron gagal memuat DLL-nya
+      // (exit_code=-1073741515, STATUS_DLL_NOT_FOUND). Chromium mencoba ulang
+      // beberapa kali lalu menyerah dengan FATAL "GPU process isn't usable.
+      // Goodbye." dan membunuh SELURUH aplikasi -- termasuk sebelum uji ini
+      // sempat mencetak hasilnya.
+      //
+      // Gejalanya sangat menyesatkan: uji "app.ready saja" (516 ms) dan
+      // "+ require server.cjs" (1,5 detik) LULUS, sementara uji lengkap
+      // (2,3 detik) gagal. Bedanya bukan apa yang dikerjakan, melainkan
+      // berapa lama ia hidup -- cukup lama untuk melewati batas percobaan
+      // ulang GPU. Itu membuatnya terbaca seperti cacat pada runInWorkspace.
+      //
+      // Terukur, keempat lainnya TIDAK menolong: app.disableHardwareAcceleration(),
+      // --disable-gpu (argv maupun appendSwitch), dan --disable-software-rasterizer
+      // semuanya tetap FATAL. Ketiganya mematikan AKSELERASI, bukan kelahiran
+      // proses GPU-nya. --in-process-gpu menjalankannya di dalam proses utama,
+      // jadi tak ada anak yang bisa gagal.
+      keluaran = execFileSync(ELECTRON, ["--in-process-gpu", skrip], {
         encoding: "utf8",
         timeout: 180000,
         env,

@@ -545,6 +545,71 @@ const SELF_TOOLS = [
   // Kalau suatu saat model perlu MENGUSULKAN pemasangan, jalurnya sudah ada:
   // tambahkan namanya ke EXECUTION_TOOLS di agent/self_agent.cjs, seperti bash.
   // Dikunci oleh tests/plugin-pintu-pasang.test.js.
+  // git punya tool sendiri karena ia TIDAK BISA dijalankan lewat bash lagi.
+  //
+  // Sesudah bash terkurung AppContainer, setiap perintah git mati sebelum
+  // mengerjakan apa pun: git membuka /dev/null (baca+tulis) saat start, dan
+  // perangkat NUL tak bisa dibaca di dalam container. Itu bukan sesuatu yang
+  // bisa ditambal dengan izin, jadi git dipindahkan ke bentuk yang tak butuh
+  // shell sama sekali.
+  {
+    type: "function",
+    function: {
+      name: "git",
+      description:
+        "Operasi git BERNAMA di dalam workspace. TIDAK menerima perintah git " +
+        "bebas — argv dibangun tool ini sendiri dari parameter yang sudah " +
+        "divalidasi, setiap path wajib berada di dalam workspace, dan repo lain " +
+        "tak bisa disasar. Pakai ini untuk semua kebutuhan git: menjalankan git " +
+        "lewat bash SELALU gagal, karena bash terkurung AppContainer dan git " +
+        "tak bisa membuka /dev/null di sana. TIDAK ADA operasi jaringan " +
+        "(push/pull/fetch/clone) — itu di luar cakupan tool ini. Operasi baca: " +
+        "status, diff, log, show, berkas, cabang, kepala, blame. Operasi tulis " +
+        "(tambah, commit, pulihkan, cabang_baru, pindah) menjalankan hook milik " +
+        "repo, jadi ia minta persetujuan user dan tercatat di ledger.",
+      parameters: {
+        type: "object",
+        properties: {
+          operasi: {
+            type: "string",
+            enum: [
+              "status",
+              "diff",
+              "log",
+              "show",
+              "berkas",
+              "cabang",
+              "kepala",
+              "blame",
+              "tambah",
+              "commit",
+              "pulihkan",
+              "cabang_baru",
+              "pindah",
+            ],
+          },
+          berkas: {
+            type: "array",
+            items: { type: "string" },
+            description:
+              "path relatif terhadap workspace; di luar workspace ditolak",
+          },
+          ref: {
+            type: "string",
+            description:
+              "nama cabang atau commit; tanpa spasi, tak diawali '-'",
+          },
+          pesan: { type: "string", description: "pesan commit" },
+          bertahap: {
+            type: "boolean",
+            description: "diff: tampilkan yang sudah di-stage",
+          },
+          jumlah: { type: "number", description: "log: jumlah commit (1-200)" },
+        },
+        required: ["operasi"],
+      },
+    },
+  },
   {
     type: "function",
     function: {

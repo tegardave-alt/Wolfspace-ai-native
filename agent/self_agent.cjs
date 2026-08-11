@@ -1837,12 +1837,32 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // sandbox_run only), so it needs user approval. edit/write stay HITL-free:
         // they're covered by auto-snapshot + rollback.
         const EXECUTION_TOOLS = ["bash"];
-        const executionCalls = calls.filter((tc) =>
-          EXECUTION_TOOLS.includes(tc.function.name),
-        );
-        const nonExecutionCalls = calls.filter(
-          (tc) => !EXECUTION_TOOLS.includes(tc.function.name),
-        );
+        // Tool `git` digerbang PER OPERASI, bukan per nama.
+        //
+        // Sebelum tool ini ada, git hanya bisa dipanggil lewat `bash`, jadi ia
+        // otomatis ikut minta persetujuan. Kalau tool baru ini dibiarkan lolos,
+        // model justru mendapat jalan menjalankan `commit` — yang MENJALANKAN
+        // HOOK repo di luar kurungan — tanpa satu pun persetujuan. Menambal itu
+        // dengan menaruh "git" di EXECUTION_TOOLS akan menggerbang `status` dan
+        // `log` juga, dan persetujuan yang diminta untuk hal sepele adalah
+        // persetujuan yang berhenti dibaca orang.
+        //
+        // Jadi yang menentukan bukan nama toolnya, melainkan apakah operasinya
+        // menulis. Argumen yang tak bisa diurai diperlakukan sebagai menulis:
+        // gagal ke arah meminta izin, bukan ke arah melewatinya.
+        const _perluPersetujuan = (tc) => {
+          if (EXECUTION_TOOLS.includes(tc.function.name)) return true;
+          if (tc.function.name !== "git") return false;
+          try {
+            const a = JSON.parse(tc.function.arguments || "{}");
+            const op = require("./tools/git-tool.cjs").OPERASI[a.operasi];
+            return !op || op.tulis === true;
+          } catch (_) {
+            return true;
+          }
+        };
+        const executionCalls = calls.filter(_perluPersetujuan);
+        const nonExecutionCalls = calls.filter((tc) => !_perluPersetujuan(tc));
 
         if (executionCalls.length > 0 && !state.hitlApproved) {
           // Execute non-execution tools (grep, read, etc.) directly so results are available
