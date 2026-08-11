@@ -479,14 +479,34 @@ function listSessions() {
   }));
 }
 
-// Cleanup all sessions on exit
-process.on("exit", () => {
-  for (const [id, session] of activeSessions) {
-    try {
-      session.destroy();
-    } catch {}
-  }
-});
+// Cleanup all sessions on exit.
+//
+// DIPASANG SEKALI PER PROSES, bukan sekali per pemuatan modul. electron/main.js
+// membuang SELURUH require.cache proyek pada tiap perubahan berkas di agent/,
+// dan agent WOLFSPACE menyunting berkasnya sendiri -- jadi modul ini dimuat
+// ulang berkali-kali dalam satu sesi. Tanpa penjaga, tiap pemuatan menambah
+// satu handler 'exit' yang tak pernah dilepas; terukur pada siklus reload
+// tiruan, jumlah listener proses naik terus (2, 3, 4, 5, ...).
+//
+// Handler-nya membaca activeSessions LEWAT REFERENSI modul saat itu, jadi
+// handler lama menunjuk Map yang sudah dibuang: ia tak membersihkan apa pun,
+// hanya menumpuk. Yang bertahan di globalThis adalah penanda pemasangan;
+// pembersihan sesungguhnya tetap dilakukan instans modul yang hidup.
+if (!globalThis.__wolfspaceSandboxExit) {
+  globalThis.__wolfspaceSandboxExit = true;
+  process.on("exit", () => {
+    const aktif = globalThis.__wolfspaceSandboxSesi;
+    if (!aktif) return;
+    for (const [, session] of aktif) {
+      try {
+        session.destroy();
+      } catch {}
+    }
+  });
+}
+// Selalu tunjuk ulang ke Map milik instans yang baru dimuat, supaya handler
+// tunggal di atas membersihkan sesi yang benar-benar hidup.
+globalThis.__wolfspaceSandboxSesi = activeSessions;
 
 // Kapabilitas adapter yang BENAR-BENAR dipakai modul ini, diteruskan apa adanya.
 // Diekspor supaya pemanggil tool bisa melaporkan tingkat penegakan tanpa

@@ -35,6 +35,20 @@ process.on("uncaughtException", (err) => {
 // dengan kode 0" adalah jawaban yang sangat berbeda dari "dibunuh" atau
 // "promise ditolak", dan tanpa catatan ini ketiganya terlihat identik: senyap.
 (function jejakKeluar() {
+  // SEKALI PER PROSES, bukan sekali per pemuatan modul.
+  //
+  // electron/main.js membuang SELURUH require.cache proyek pada tiap perubahan
+  // berkas di agent/, public/, electron/, scripts/ -- dan agent menyunting
+  // berkasnya sendiri, jadi ia memicu itu berkali-kali dalam satu sesi. Tanpa
+  // penjaga ini, tiap muat ulang memasang enam handler baru tanpa melepas yang
+  // lama. Terukur pada siklus reload tiruan: jumlah listener proses naik terus
+  // (2, 3, 4, 5, ...) sampai Node memperingatkan kebocoran.
+  //
+  // Akibatnya bukan cuma boros: satu kepergian akan menulis SATU BARIS PER
+  // PEMUATAN, dan jejak yang seharusnya menjelaskan justru jadi berisik.
+  if (globalThis.__wolfspaceJejakKeluar) return;
+  globalThis.__wolfspaceJejakKeluar = true;
+
   const _fs = require("fs");
   const _path = require("path");
   const BERKAS = _path.join(__dirname, "_crash.log");

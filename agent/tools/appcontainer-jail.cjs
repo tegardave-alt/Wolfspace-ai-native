@@ -59,7 +59,28 @@ const PS = path.join(
   "powershell.exe",
 );
 
-let _cache = null;
+// ── Keadaan yang HARUS bertahan melewati hot-reload ──
+//
+// electron/main.js memantau agent/, public/, electron/, dan scripts/, lalu pada
+// tiap perubahan MEMBUANG SELURUH require.cache proyek dan memuat ulang core.
+// Agent WOLFSPACE menyunting sumbernya sendiri, jadi ia memicu reload itu
+// sendiri, berkali-kali, di tengah kerja.
+//
+// Akibatnya kalau keadaan ini disimpan di lingkup modul: probe ketersediaan
+// yang harganya 976 ms DIBAYAR ULANG setiap kali agent menyentuh satu berkas.
+// Terukur pada siklus reload tiruan: cache dibuang 26 modul per putaran, dan
+// tiap putaran memulai semuanya dari nol.
+//
+// Yang disimpan di sini adalah fakta tingkat PROSES, bukan keadaan modul:
+// apakah container ini bisa dipakai, SID-nya apa, folder mana yang sudah
+// diberi hak. Tak satu pun berubah karena berkas sumber disunting. Jadi ia
+// ditaruh di globalThis, yang tidak ikut dibuang.
+const _G = (globalThis.__wolfspaceAc = globalThis.__wolfspaceAc || {
+  cache: null,
+  sid: null,
+  diberi: new Set(),
+  sementara: new Set(),
+});
 
 /**
  * Pembuka yang menempatkan PowerShell di folder kerja.
@@ -105,20 +126,20 @@ function _pembukaCwd(cwd) {
  * @returns {{siap: boolean, alasan: string}}
  */
 function tersedia() {
-  if (_cache) return _cache;
+  if (_G.cache) return _G.cache;
   if (process.platform !== "win32") {
-    _cache = { siap: false, alasan: "hanya untuk Windows" };
-    return _cache;
+    _G.cache = { siap: false, alasan: "hanya untuk Windows" };
+    return _G.cache;
   }
   if (!fs.existsSync(EXE)) {
-    _cache = {
+    _G.cache = {
       siap: false,
       alasan:
         "AcLaunch.exe belum dikompilasi (" +
         EXE +
         ") — jalankan scripts/appcontainer/build.cmd",
     };
-    return _cache;
+    return _G.cache;
   }
   try {
     // Uji nyata, bukan asumsi: kalau profil container belum dibuat atau ACL
@@ -129,22 +150,22 @@ function tersedia() {
       { encoding: "utf8", timeout: 30000, windowsHide: true },
     );
     if (!String(out).includes("siap")) {
-      _cache = {
+      _G.cache = {
         siap: false,
         alasan: "container menjawab tak terduga: " + String(out).slice(0, 80),
       };
-      return _cache;
+      return _G.cache;
     }
-    _cache = { siap: true, alasan: "" };
+    _G.cache = { siap: true, alasan: "" };
   } catch (e) {
-    _cache = {
+    _G.cache = {
       siap: false,
       alasan: String((e.stderr || "") + " " + e.message)
         .replace(/\s+/g, " ")
         .slice(0, 160),
     };
   }
-  return _cache;
+  return _G.cache;
 }
 
 // Satu-satunya kegagalan yang tersisa, dan ia PERMANEN untuk jalur ini.
@@ -285,18 +306,15 @@ function bungkus(cwd, shBin, shArgs) {
   return [EXE, [CONTAINER, path.resolve(cwd), _jalurPenuh(shBin), ...shArgs]];
 }
 
-let _sid = null;
-const _sudahDiberi = new Set();
-
 /**
  * SID container. Tak punya nama ramah -- icacls hanya menerima bentuk
  * S-1-15-2-..., jadi ia diturunkan lewat peluncur lalu di-cache.
  * @returns {string|null}
  */
 function sid() {
-  if (_sid !== null) return _sid || null;
+  if (_G.sid !== null) return _G.sid || null;
   try {
-    _sid = String(
+    _G.sid = String(
       execFileSync(EXE, ["--sid", CONTAINER], {
         encoding: "utf8",
         timeout: 15000,
@@ -304,9 +322,9 @@ function sid() {
       }),
     ).trim();
   } catch (_) {
-    _sid = "";
+    _G.sid = "";
   }
-  return _sid || null;
+  return _G.sid || null;
 }
 
 /**
@@ -349,7 +367,7 @@ async function siapUntuk(root) {
   if (!s) return { siap: false, alasan: "SID container tak bisa diturunkan" };
   const r = path.resolve(root || process.cwd());
   const kunci = r.toLowerCase();
-  if (_sudahDiberi.has(kunci)) return { siap: true, alasan: "" };
+  if (_G.diberi.has(kunci)) return { siap: true, alasan: "" };
   try {
     const kini = await _icacls([r]);
     if (!kini.includes(s)) {
@@ -361,7 +379,7 @@ async function siapUntuk(root) {
       recursive: true,
     });
     _catatHibah(r);
-    _sudahDiberi.add(kunci);
+    _G.diberi.add(kunci);
     await cabutSemuaKecuali(r);
     return { siap: true, alasan: "" };
   } catch (e) {
@@ -452,8 +470,6 @@ function _catatHibah(root) {
   } catch (_) {}
 }
 
-const _sementara = new Set();
-
 /**
  * Buka SATU folder sementara untuk container, TANPA mencatatnya sebagai folder
  * kerja.
@@ -475,13 +491,13 @@ async function beriSementara(dir) {
   if (!s) return false;
   const r = path.resolve(dir);
   const k = r.toLowerCase();
-  if (_sementara.has(k)) return true;
+  if (_G.sementara.has(k)) return true;
   try {
     await _icacls([r, "/grant", "*" + s + ":(OI)(CI)(M)"]);
     fs.mkdirSync(path.join(_akarAc(r), "Packages", CONTAINER, "AC", "Temp"), {
       recursive: true,
     });
-    _sementara.add(k);
+    _G.sementara.add(k);
     return true;
   } catch (_) {
     return false;
@@ -531,7 +547,7 @@ async function cabutSemuaKecuali(aktif) {
     try {
       await _icacls([r, "/remove:g", "*" + s]);
       dicabut.push(r);
-      _sudahDiberi.delete(k);
+      _G.diberi.delete(k);
     } catch (_) {
       sisa.push(r); // gagal dicabut: TETAP tercatat, supaya dicoba lagi nanti
     }
