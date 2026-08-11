@@ -680,7 +680,7 @@ function buildDevTree(paths, root) {
   walk(rootNode, 0);
   return out;
 }
-function LogicFileTree({ files, root, active }) {
+function LogicFileTree({ files, root, active, penuh }) {
   const [tab, setTab] = React.useState("files");
   const tree = buildDevTree(files, root);
   const icon = (t) => {
@@ -772,10 +772,18 @@ function LogicFileTree({ files, root, active }) {
   return (
     <div
       style={{
-        width: "244px",
-        flexShrink: 0,
+        // `penuh` dipakai saat panel ini SATU-SATUNYA isi view Logic. Dulu ia
+        // selalu sidebar 244px karena berbagi ruang dengan kanvas React Flow;
+        // kanvas itu sudah tak ada, jadi memaksakan lebar tetap hanya
+        // menyisakan ruang kosong di sebelahnya.
+        width: penuh ? "100%" : "244px",
+        flex: penuh ? 1 : "0 0 auto",
+        flexShrink: penuh ? 1 : 0,
+        minWidth: 0,
         background: "#0c1219",
-        borderRight: "1px solid #212a36",
+        // Garis kanan memisahkan dari yang ada DI KANANNYA. Tanpa apa pun di
+        // sana, ia jadi garis menggantung di tepi layar.
+        borderRight: penuh ? "none" : "1px solid #212a36",
         display: "flex",
         flexDirection: "column",
         userSelect: "none",
@@ -1163,53 +1171,6 @@ function App() {
 
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
-  // Sesi chat TERPISAH untuk panel Workflow (kokpit agent) — thread & konteksnya
-  // sendiri, tak tercampur/terduplikasi dengan chat utama.
-  const [wfMessages, setWfMessages] = useState([]);
-  const [wfHistory, setWfHistory] = useState([]);
-  const [wfBusy, setWfBusy] = useState(false);
-  const [wfAgentWidth, setWfAgentWidth] = useState(() => {
-    try {
-      const w = parseInt(
-        localStorage.getItem("wolfspace_wf_agent_width") || "400",
-        10,
-      );
-      return isNaN(w) ? 400 : Math.max(260, Math.min(800, w));
-    } catch (_) {
-      return 400;
-    }
-  });
-  const [wfAgentCollapsed, setWfAgentCollapsed] = useState(false);
-  const [isWfResizing, setIsWfResizing] = useState(false);
-
-  const handleWfResizerMouseDown = (e) => {
-    e.preventDefault();
-    e.stopPropagation();
-    setIsWfResizing(true);
-    const startX = e.clientX;
-    const startWidth = wfAgentWidth;
-
-    const handleMouseMove = (moveEvent) => {
-      const deltaX = moveEvent.clientX - startX;
-      const newWidth = Math.max(260, Math.min(800, startWidth - deltaX));
-      setWfAgentWidth(newWidth);
-    };
-
-    const handleMouseUp = (upEvent) => {
-      const deltaX = upEvent.clientX - startX;
-      const finalWidth = Math.max(260, Math.min(800, startWidth - deltaX));
-      setIsWfResizing(false);
-      try {
-        localStorage.setItem("wolfspace_wf_agent_width", String(finalWidth));
-      } catch (_) {}
-      window.removeEventListener("mousemove", handleMouseMove);
-      window.removeEventListener("mouseup", handleMouseUp);
-    };
-
-    window.addEventListener("mousemove", handleMouseMove);
-    window.addEventListener("mouseup", handleMouseUp);
-  };
-  const wfCtrlRef = useRef(null);
   const [status, setStatus] = useState("Loading models…");
   const [view, setView] = useState("chat");
   const [sbCollapsed, setSbCollapsed] = useState(() => {
@@ -1399,7 +1360,6 @@ function App() {
     run: runTerminalCommand,
   };
   const scrollRef = useRef(null);
-  const wfChatScrollRef = useRef(null); // panel chat di view Workflow (split)
   const ctrlRef = useRef(null);
   const onTerminalDividerDown = (e) => {
     e.preventDefault();
@@ -1524,10 +1484,6 @@ function App() {
     const el = scrollRef.current;
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
-  useEffect(() => {
-    const wf = wfChatScrollRef.current;
-    if (wf) wf.scrollTop = wf.scrollHeight;
-  }, [wfMessages]);
 
   const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
 
@@ -1970,290 +1926,6 @@ function App() {
     setBusy(false);
     setStatus("dibatalkan");
   };
-  // Kirim untuk panel chat Workflow — sesi agent INDEPENDEN (wfMessages/wfHistory),
-  // memakai streamSelfAgent yang sama tapi menulis ke state-nya sendiri. Hanya sesi
-  // inilah yang menggerakkan live agent graph (dispatch event dari sini, bukan chat
-  // utama), sehingga data kedua sisi tak tercampur.
-  const wfSend = async (content) => {
-    if (!content || !content.trim() || wfBusy) return;
-    const newHist = [...wfHistory, { role: "user", content }];
-    setWfHistory(newHist);
-    setWfMessages((m) => [
-      ...m,
-      { role: "user", text: content },
-      { role: "agent", agent: { events: [], busy: true } },
-    ]);
-    setWfBusy(true);
-    const upd = (patch) =>
-      setWfMessages((m) => {
-        const c = m.slice();
-        const last = { ...c[c.length - 1] };
-        last.agent = { ...last.agent, ...patch };
-        c[c.length - 1] = last;
-        return c;
-      });
-    const evlist = [];
-    let think = "",
-      adoneSent = false,
-      hadError = false;
-    try {
-      window.dispatchEvent(
-        new CustomEvent("wolfspace_agent_run", { detail: { phase: "start" } }),
-      );
-    } catch (_) {}
-    const ctrl = new AbortController();
-    wfCtrlRef.current = ctrl;
-    try {
-      const curEffort = readEffort(getCloud());
-      // Kirim pesan terakhir DENGAN hint pembuat-workflow (tampilan chat tetap bersih,
-      // pakai `content` biasa). Riwayat tersimpan tetap versi bersih (newHist).
-      const sendHist = [
-        ...wfHistory,
-        { role: "user", content: content + "\n\n" + WF_GEN_HINT },
-      ];
-      await streamSelfAgent(
-        {
-          history: sendHist,
-          cloud: getCloud(),
-          port: modelVal,
-          effort: curEffort,
-          workspace_root: resolveWorkspaceRoot(selectedProject) || undefined,
-        },
-        (j) => {
-          // Lihat catatan model_wait di penangan pertama — dua salinan penangan
-          // event, dan perbaikan yang hanya menyentuh satu membuat tanda hidup
-          // muncul di satu jalur saja.
-          if (j.t === "model_wait") return upd({ status: j.m, busy: true });
-          // Lihat catatan di penangan pertama — dua salinan, keduanya harus
-          // diperlakukan sama.
-          if (j.t === "force_retry") {
-            evlist.push({
-              type: "act",
-              kind: "retry",
-              arg: j.m,
-              ok: true,
-              output: j.m,
-            });
-            return upd({ events: [...evlist], status: j.m, busy: true });
-          }
-          if (j.t === "todos") return upd({ todos: j.todos });
-          if (j.t === "step") {
-            think = "";
-            upd({ thinking: "" });
-          } else if (j.t === "tok") {
-            think += j.c;
-            upd({ thinking: think });
-          } else if (j.t === "thought") {
-            think = "";
-            evlist.push({
-              type: "thought",
-              kind: j.tool,
-              arg: j.c,
-              ok: j.ok,
-              output: j.c,
-            });
-            upd({ events: [...evlist], thinking: "" });
-          } else if (j.t === "act") {
-            think = "";
-            evlist.push({
-              type: "act",
-              kind: j.kind,
-              arg: j.arg,
-              ok: j.ok,
-              output: j.output,
-            });
-            upd({ events: [...evlist], thinking: "" });
-            try {
-              window.dispatchEvent(
-                new CustomEvent("wolfspace_agent_act", {
-                  detail: {
-                    kind: j.kind,
-                    arg: j.arg,
-                    ok: j.ok,
-                    output: j.output,
-                    path: j.path,
-                  },
-                }),
-              );
-            } catch (_) {}
-          } else if (j.t === "adone") {
-            try {
-              window.dispatchEvent(
-                new CustomEvent("wolfspace_agent_run", {
-                  detail: { phase: "done" },
-                }),
-              );
-            } catch (_) {}
-            adoneSent = true;
-            // CHAT WORKFLOW (decoupled): desain DILEMPAR ke kanvas, TAK ditampilkan
-            // di chat. Terima spec JSON atau (fallback) mermaid; lalu BUANG semua blok
-            // desain (mermaid/JSON) dari teks — walau tak ter-parse, agar diagram
-            // rusak pun tak pernah muncul di chat.
-            const spec =
-              extractWorkflowSpec(j.summary) || mermaidToSpec(j.summary);
-            let disp = stripDesignBlocks(j.summary);
-            if (spec) {
-              try {
-                window.dispatchEvent(
-                  new CustomEvent("wolfspace_workflow_spec", { detail: spec }),
-                );
-              } catch (_) {}
-              disp =
-                (disp ? disp + "\n\n" : "") + "› Workflow dikirim ke kanvas ←";
-            }
-            upd({
-              busy: false,
-              done: true,
-              summary: disp,
-              editCount: j.edits,
-              backup: j.backup,
-            });
-            setWfHistory((h) => [
-              ...h,
-              { role: "assistant", content: j.summary || "" },
-            ]);
-            // RAG ingest: simpan memori run (permintaan → hasil) agar bisa diingat
-            // di sesi mendatang lewat tool `retrieve`. Fire-and-forget, store global.
-            if (j.summary && j.summary.trim().length > 8) {
-              const mem = (
-                "Permintaan: " +
-                content +
-                "\nHasil: " +
-                j.summary
-              ).slice(0, 1200);
-              wwApi("/rag/ingest", {
-                method: "POST",
-                body: {
-                  project: "global",
-                  text: mem,
-                  kind: "memory",
-                  meta: { source: "wf-run" },
-                },
-              }).catch(() => {});
-            }
-          } else if (j.t === "err") {
-            hadError = true;
-            evlist.push({ type: "err", m: j.m });
-            upd({ events: [...evlist], busy: false, error: true });
-          }
-        },
-        ctrl.signal,
-      );
-    } catch (e) {
-      if (e.name !== "AbortError")
-        upd({
-          busy: false,
-          error: true,
-          events: [...evlist, { type: "err", m: e.message }],
-        });
-    }
-    if (!adoneSent && !hadError) {
-      const summary =
-        evlist.length > 0
-          ? `Selesai. ${evlist.length} operasi dieksekusi.`
-          : "Done. No operations.";
-      upd({ busy: false, done: true, summary });
-      setWfHistory((h) => [...h, { role: "assistant", content: summary }]);
-    }
-    setWfBusy(false);
-    wfCtrlRef.current = null;
-  };
-  const wfCancel = () => {
-    if (wfCtrlRef.current) wfCtrlRef.current.abort();
-    setWfBusy(false);
-  };
-  // Fase 2: jalankan SATU tahap graph Workflow (satu giliran agent), log ke panel
-  // chat Workflow, kembalikan { ok, summary }. Sengaja TIDAK memancarkan event live-
-  // graph (biar kanvas Builder yang menyala per-node, bukan pindah ke mode Live).
-  const runWorkflowStage = React.useCallback(
-    (prompt, meta = {}) => {
-      return new Promise((resolve) => {
-        setWfMessages((m) => [
-          ...m,
-          { role: "user", text: "▶ " + (meta.label || meta.kind || "tahap") },
-          { role: "agent", agent: { events: [], busy: true } },
-        ]);
-        const upd = (patch) =>
-          setWfMessages((m) => {
-            const c = m.slice();
-            const last = { ...c[c.length - 1] };
-            last.agent = { ...last.agent, ...patch };
-            c[c.length - 1] = last;
-            return c;
-          });
-        let think = "",
-          evlist = [],
-          summary = "",
-          done = false;
-        const finish = (ok, s) => {
-          if (done) return;
-          done = true;
-          resolve({ ok, summary: s });
-        };
-        const ctrl = new AbortController();
-        const curEffort = readEffort(getCloud());
-        streamSelfAgent(
-          {
-            history: [{ role: "user", content: prompt }],
-            cloud: getCloud(),
-            port: modelVal,
-            effort: curEffort,
-            workspace_root:
-              meta.workspaceRoot ||
-              resolveWorkspaceRoot(selectedProject) ||
-              undefined,
-          },
-          (j) => {
-            if (j.t === "tok") {
-              think += j.c;
-              upd({ thinking: think });
-            } else if (j.t === "thought") {
-              think = "";
-              evlist.push({
-                type: "thought",
-                kind: j.tool,
-                arg: j.c,
-                ok: j.ok,
-                output: j.c,
-              });
-              upd({ events: [...evlist], thinking: "" });
-            } else if (j.t === "act") {
-              think = "";
-              evlist.push({
-                type: "act",
-                kind: j.kind,
-                arg: j.arg,
-                ok: j.ok,
-                output: j.output,
-              });
-              upd({ events: [...evlist], thinking: "" });
-            } else if (j.t === "adone") {
-              summary = j.summary || summary;
-              upd({ busy: false, done: true, summary });
-              finish(true, summary);
-            } else if (j.t === "err") {
-              upd({
-                busy: false,
-                error: true,
-                events: [...evlist, { type: "err", m: j.m }],
-              });
-              finish(false, j.m || "error");
-            }
-          },
-          ctrl.signal,
-        )
-          .then(() => {
-            upd({ busy: false, done: true, summary });
-            finish(true, summary);
-          })
-          .catch((e) => {
-            if (e.name !== "AbortError") upd({ busy: false, error: true });
-            finish(false, e.message);
-          });
-      });
-    },
-    [modelVal, selectedProject],
-  );
   const reset = () => {
     setCurrentChatId(null);
     setMessages([]);
@@ -3006,32 +2678,17 @@ function App() {
                       </svg>
                     </button>
                   </div>
-                  {/* Isi Logic: sidebar file (kiri) + React Flow builder (kanan) */}
+                  {/* Isi Logic: panel berkas SATU-SATUNYA, mengisi penuh.
+                      Dulu ia berbagi ruang dengan kanvas React Flow di kanan;
+                      kanvas itu dihapus, jadi panel ini tak lagi disempitkan
+                      jadi sidebar. */}
                   <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
                     <LogicFileTree
                       files={devFiles}
                       root={webProjectRoot(preview.url, selectedProject)}
                       active={!!preview.url}
+                      penuh
                     />
-                    <div
-                      style={{
-                        flex: 1,
-                        minWidth: 0,
-                        display: "flex",
-                        position: "relative",
-                      }}
-                    >
-                      <WorkflowBuilder
-                        workspaceRoot={webProjectRoot(
-                          preview.url,
-                          resolveWorkspaceRoot(selectedProject) ||
-                            WOLFSPACE_ROOT,
-                        )}
-                        integration
-                        onBack={() => setLogicOpen(false)}
-                        runStage={runWorkflowStage}
-                      />
-                    </div>
                   </div>
                 </div>
               )}
@@ -3085,252 +2742,6 @@ function App() {
     </>
   );
 }
-/* ============================================================
-   Workflow Builder (React Flow) — kanvas node/edge ala workflow: seret node dari
-   palette, sambung antar-titik, export JSON. Memakai React Flow yang di-vendor
-   (window.RFLib.XY) — tanpa bundler runtime, sama pola Monaco/mermaid/cytoscape.
-   ============================================================ */
-const WF_PALETTE = [
-  {
-    type: "prompt",
-    label: "Prompt",
-    accent: "#3fb950",
-    desc: "input / instruksi awal",
-  },
-  {
-    type: "agent",
-    label: "Agent",
-    accent: "#2f81f7",
-    desc: "loop LLM + pemanggilan tool",
-  },
-  {
-    type: "tool",
-    label: "Tool",
-    accent: "#d29922",
-    desc: "bash / edit / grep / dst",
-  },
-  {
-    type: "condition",
-    label: "Condition",
-    accent: "#bc8cff",
-    desc: "if / else branch",
-  },
-  { type: "output", label: "Output", accent: "#f85149", desc: "hasil akhir" },
-];
-
-// Warna node live per-`kind` langkah agent (dari event t:"act" self_agent.cjs).
-const WF_KIND_ACCENT = {
-  workspace: "#8b949e",
-  planner: "#bc8cff",
-  bash: "#d29922",
-  task: "#2f81f7",
-  read: "#3fb950",
-  edit: "#f0883e",
-  write: "#f0883e",
-  grep: "#56d4dd",
-  glob: "#56d4dd",
-  list: "#8fb3ff",
-  hitl_approved: "#3fb950",
-  thought: "#6f7d92",
-};
-const wfKindAccent = (k) => WF_KIND_ACCENT[k] || "#8fb3ff";
-
-// ── Fase 2: kompilasi graph tergambar → urutan eksekusi (topological) ──────────
-// Kahn's algorithm. Kembalikan { ok, order:[node...] } atau { ok:false, error }.
-function compileWorkflow(nodes, edges) {
-  if (!nodes || nodes.length === 0)
-    return { ok: false, error: "Canvas is empty — add a node first." };
-  const indeg = new Map(nodes.map((n) => [n.id, 0]));
-  const adj = new Map(nodes.map((n) => [n.id, []]));
-  for (const e of edges || []) {
-    if (adj.has(e.source) && indeg.has(e.target)) {
-      adj.get(e.source).push(e.target);
-      indeg.set(e.target, indeg.get(e.target) + 1);
-    }
-  }
-  const ind = new Map(indeg);
-  const q = nodes.filter((n) => ind.get(n.id) === 0).map((n) => n.id);
-  const order = [];
-  while (q.length) {
-    const id = q.shift();
-    order.push(id);
-    for (const t of adj.get(id) || []) {
-      ind.set(t, ind.get(t) - 1);
-      if (ind.get(t) === 0) q.push(t);
-    }
-  }
-  if (order.length !== nodes.length)
-    return {
-      ok: false,
-      error: "The graph has a cycle — the flow must run one way.",
-    };
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  return { ok: true, order: order.map((id) => byId.get(id)) };
-}
-// Bingkai prompt per-tahap sesuai jenis node + konteks dari node hulu.
-function buildStagePrompt(kind, label, ctx) {
-  const c = ctx ? "\n\nContext from the previous stage:\n" + ctx : "";
-  const L = label || kind;
-  if (kind === "agent") return `Handle this step as an agent: ${L}.${c}`;
-  if (kind === "tool")
-    return `Gunakan tool yang sesuai untuk: ${L}. Laporkan hasil nyatanya.${c}`;
-  if (kind === "condition")
-    return `Evaluasi kondisi/cabang: ${L}. Jelaskan keputusan berdasarkan konteks.${c}`;
-  if (kind === "output")
-    return `Susun hasil akhir/ringkasan untuk: ${L}, berdasarkan seluruh konteks.${c}`;
-  return `${L}.${c}`;
-}
-
-// Instruksi (digabung ke pesan yang DIKIRIM, bukan yang ditampilkan): bila user
-// minta MEMBUAT workflow, agent mengeluarkan satu blok spec yang bisa dirender.
-const WF_GEN_HINT =
-  "(If this request is about CREATING/designing a workflow/flow/pipeline: " +
-  "output ONLY a single fenced ```wolfspace-workflow block containing valid JSON: " +
-  '{"nodes":[{"id":"n1","kind":"prompt","label":"..."}],"edges":[{"from":"n1","to":"n2","label":"optional"}]} ' +
-  "— kind is one of prompt|agent|tool|condition|output, id unique & short, label CONCISE without \\n. " +
-  'For kind:condition nodes, give >1 outgoing edge and set each edge\'s "label" to a branch name (e.g. yes/no). ' +
-  "DO NOT use mermaid or any other diagram format. One short sentence of explanation outside the block is allowed. " +
-  "If this is NOT a workflow request, ignore this instruction.)";
-
-// Ambil spec workflow dari teks jawaban agent (blok ```wolfspace-workflow / ```json).
-function extractWorkflowSpec(text) {
-  const m = /```(?:wolfspace-workflow|json)\s*([\s\S]*?)```/i.exec(text || "");
-  if (!m) return null;
-  try {
-    const j = JSON.parse(m[1].trim());
-    if (j && Array.isArray(j.nodes) && j.nodes.length) return j;
-  } catch (_) {}
-  return null;
-}
-// Ubah spec {nodes,edges} → node/edge React Flow (type wf) + tata-letak snake.
-function specToFlow(spec) {
-  const nodes = (spec.nodes || []).map((n, i) => ({
-    id: String(n.id || "n" + (i + 1)),
-    type: "wf",
-    position: { x: 0, y: 0 },
-    data: {
-      label: n.label || n.kind || "node",
-      kind: n.kind || "agent",
-      accent: wfKindAccent(n.kind),
-    },
-  }));
-  const edges = (spec.edges || [])
-    .map((e, i) => ({
-      id: "e" + i,
-      source: String(e.from != null ? e.from : e.source),
-      target: String(e.to != null ? e.to : e.target),
-      type: "wf",
-      data: e.label ? { label: String(e.label) } : undefined, // cabang kondisi ("yes"/"no")
-    }))
-    .filter(
-      (e) =>
-        nodes.some((n) => n.id === e.source) &&
-        nodes.some((n) => n.id === e.target),
-    );
-  // Tata-letak: pakai dagre (arah aliran kiri→kanan, per-rank) supaya hasil generate
-  // langsung terstruktur & rapih — sama seperti tombol "⇄ Rapikan". Fallback ke grid
-  // serpentine berbasis urutan topological bila dagre tak tersedia.
-  const dagre = window.RFLib && window.RFLib.dagre;
-  const byId = new Map(nodes.map((n) => [n.id, n]));
-  if (dagre && nodes.length) {
-    const g = new dagre.graphlib.Graph();
-    g.setGraph({ rankdir: "LR", nodesep: 42, ranksep: 96 });
-    g.setDefaultEdgeLabel(() => ({}));
-    const W = 168,
-      H = 62;
-    nodes.forEach((n) => g.setNode(n.id, { width: W, height: H }));
-    edges.forEach((e) => g.setEdge(e.source, e.target));
-    dagre.layout(g);
-    nodes.forEach((n) => {
-      const p = g.node(n.id);
-      if (p) n.position = { x: p.x - W / 2, y: p.y - H / 2 };
-    });
-  } else {
-    const comp = compileWorkflow(nodes, edges);
-    const order = comp.ok ? comp.order : nodes;
-    const COLS = 4,
-      DX = 210,
-      DY = 120;
-    order.forEach((n, i) => {
-      const col = i % COLS,
-        row = Math.floor(i / COLS);
-      const nn = byId.get(n.id);
-      if (nn)
-        nn.position = {
-          x: (row % 2 === 0 ? col : COLS - 1 - col) * DX,
-          y: row * DY,
-        };
-    });
-  }
-  return { nodes, edges };
-}
-
-// Fallback: bila agent memberi mermaid flowchart (bukan JSON), parse best-effort
-// jadi spec {nodes,edges}. Bentuk node → kind: {} kondisi, ([]) prompt, () tool.
-function mermaidToSpec(text) {
-  const body = (/```mermaid\s*([\s\S]*?)```/i.exec(text || "") || [])[1];
-  if (!body) return null;
-  const nodes = new Map(); // id -> {label, kind}
-  const shapeKind = (open) =>
-    open === "{"
-      ? "condition"
-      : open === "(["
-        ? "prompt"
-        : open === "("
-          ? "tool"
-          : "agent";
-  const clean = (s) =>
-    String(s || "")
-      .replace(/["'`]/g, "")
-      .replace(/\\n|<br\s*\/?>/gi, " ")
-      .replace(/\s+/g, " ")
-      .trim();
-  const reNode =
-    /([A-Za-z0-9_]+)\s*(\(\[|\{|\[|\()([^\]}\)]*)(?:\]\)|\}|\]|\))/g;
-  const addNode = (id, open, label) => {
-    if (!id) return;
-    const k = shapeKind(open);
-    const l = clean(label) || id;
-    if (!nodes.has(id) || (open && nodes.get(id).kind === "agent"))
-      nodes.set(id, { label: l, kind: k });
-  };
-  let m;
-  while ((m = reNode.exec(body))) addNode(m[1], m[2], m[3]);
-  const edges = [];
-  const reEdge =
-    /([A-Za-z0-9_]+)[^\n>]*?(?:--+>|-\.->|==+>)(?:\s*\|([^|]*)\|)?\s*([A-Za-z0-9_]+)/g;
-  while ((m = reEdge.exec(body))) {
-    const src = m[1],
-      lbl = m[2],
-      dst = m[3];
-    if (!nodes.has(src)) nodes.set(src, { label: src, kind: "agent" });
-    if (!nodes.has(dst)) nodes.set(dst, { label: dst, kind: "agent" });
-    edges.push({ from: src, to: dst, label: lbl ? lbl.trim() : undefined });
-  }
-  if (!nodes.size) return null;
-  return {
-    nodes: [...nodes.entries()].map(([id, v]) => ({
-      id,
-      label: v.label,
-      kind: v.kind,
-    })),
-    edges,
-  };
-}
-// Buang SEMUA blok desain (mermaid/JSON) dari teks agar tak dirender di chat workflow.
-function stripDesignBlocks(text) {
-  return String(text || "")
-    .replace(/```(?:mermaid|wolfspace-workflow|json)\s*[\s\S]*?```/gi, "")
-    .replace(/\n{3,}/g, "\n\n")
-    .trim();
-}
-
-// Context: memberi node akses untuk MENGUBAH dirinya (label/kind) di state kanvas.
-// editable=false di mode Live (cermin agent tak boleh diedit).
-const WFNodeCtx = React.createContext(null);
-const WF_KINDS = ["prompt", "agent", "tool", "condition", "output"];
-
-/* Workflow dipindah ke public/app/Workflow.jsx (APP_MODULES). */
 
 /* AgentRunner dipindah ke public/app/AgentRunner.jsx (APP_MODULES). */
 

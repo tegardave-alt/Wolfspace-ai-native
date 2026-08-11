@@ -76,7 +76,6 @@
       }
     </style>
     <link rel="stylesheet" href="/vendor/xterm/xterm.css" />
-    <link rel="stylesheet" href="/vendor/reactflow.css" />
   </head>
   <body>
     <div id="root"></div>
@@ -101,10 +100,6 @@
     <!-- React + Babel bundled locally for full offline use -->
     <script src="/vendor/react.production.min.js"></script>
     <script src="/vendor/react-dom.production.min.js"></script>
-    <!-- React Flow (node-editor untuk Graph Canvas) — di-vendor pre-bundle (esbuild,
-       React external -> window.React di atas). Regen: npm run vendor:reactflow.
-       Ekspos window.RFLib.XY (React Flow) + window.RFLib.dagre (auto-layout). -->
-    <script src="/vendor/reactflow.bundle.js"></script>
     <!-- three.js + loader GLB/STL + OrbitControls (viewer 3D attachment).
          Ekspos window.WOLFSPACE3D.{THREE,GLTFLoader,STLLoader,OrbitControls}. -->
     <script src="/vendor/three3d.bundle.js"></script>
@@ -267,7 +262,6 @@
             "/app/Sidebar.jsx",
             "/app/AgentSteps.jsx",
             "/app/usePreviewPanel.jsx",
-            "/app/Workflow.jsx",
           ];
           // Kumpulkan tiap modul sebagai potongan TERPISAH (bukan satu string raksasa).
           const parts = [];

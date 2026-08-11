@@ -153,15 +153,24 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
     .readFileSync(require.resolve("../public/app/AgentSteps.jsx"), "utf8")
     .replace(/\s+/g, " ");
 
-  test("ditangani di KEDUA salinan penangan event", () => {
-    // Dua salinan penangan di app.jsx, keduanya di bawah streamSelfAgent.
-    // Perbaikan yang hanya menyentuh satu membuat tanda hidup muncul di satu
-    // jalur saja — pola yang sudah berulang di repo ini.
-    const n = (UI.match(/j\.t === "model_wait"/g) || []).length;
-    expect(n).toBeGreaterThanOrEqual(2);
+  // Berapa TEMPAT yang memanggil streamSelfAgent, di luar definisinya sendiri.
+  // Dulu ada dua: chat utama dan chat panel Workflow. Panel itu sudah dihapus
+  // bersama kanvas React Flow, jadi tinggal satu.
+  //
+  // Angkanya sengaja DIHITUNG, bukan dipatok. Asersi lama menuntut "minimal 2"
+  // dan langsung merah begitu salinan keduanya hilang — padahal yang hilang
+  // justru duplikasinya, bukan penanganannya. Yang perlu dijaga bukan jumlah
+  // dua, melainkan: SETIAP pemanggil menangani event ini, berapa pun jumlahnya.
+  const PEMANGGIL =
+    (UI.match(/streamSelfAgent\(/g) || []).length -
+    (UI.match(/async function streamSelfAgent\(/g) || []).length;
+
+  test("ditangani di SETIAP pemanggil streamSelfAgent", () => {
+    expect(PEMANGGIL).toBeGreaterThanOrEqual(1);
+    expect((UI.match(/j\.t === "model_wait"/g) || []).length).toBe(PEMANGGIL);
     expect(
       (UI.match(/upd\(\{ status: j\.m, busy: true \}\)/g) || []).length,
-    ).toBeGreaterThanOrEqual(2);
+    ).toBe(PEMANGGIL);
   });
 
   test("status DIRENDER apa adanya, bukan diganti teks generik", () => {
@@ -171,25 +180,26 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
     expect(STEPS).toContain('run.thinking ? "Thinking..." : "Processing..."');
   });
 
-  test("force_retry dan todos ditangani di KEDUA salinan penangan", () => {
-    // Pola dua permukaan lagi. force_retry di-emit dari ENAM titik di backend;
-    // tanpa ini setiap putaran ulang (bisa 4 kali, 60+ detik) tampak sebagai
-    // layar diam dan terbaca seolah run berhenti sendiri.
-    expect(
-      (UI.match(/j\.t === "force_retry"/g) || []).length,
-    ).toBeGreaterThanOrEqual(2);
-    expect((UI.match(/j\.t === "todos"/g) || []).length).toBeGreaterThanOrEqual(
-      2,
-    );
+  test("force_retry dan todos ditangani di SETIAP pemanggil", () => {
+    // force_retry di-emit dari ENAM titik di backend; tanpa penanganan, setiap
+    // putaran ulang (bisa 4 kali, 60+ detik) tampak sebagai layar diam dan
+    // terbaca seolah run berhenti sendiri.
+    //
+    // Sama seperti model_wait di atas: yang dijaga bukan angka dua, melainkan
+    // bahwa TIAP pemanggil menanganinya. Ambang tetap "minimal 2" akan merah
+    // begitu salinan keduanya dihapus — dan itu terjadi saat panel chat
+    // Workflow ikut dibuang bersama kanvas React Flow.
+    expect((UI.match(/j\.t === "force_retry"/g) || []).length).toBe(PEMANGGIL);
+    expect((UI.match(/j\.t === "todos"/g) || []).length).toBe(PEMANGGIL);
     // force_retry masuk timeline sebagai baris, memakai penampil yang sudah ada.
-    expect((UI.match(/kind: "retry"/g) || []).length).toBeGreaterThanOrEqual(2);
+    expect((UI.match(/kind: "retry"/g) || []).length).toBe(PEMANGGIL);
     expect(STEPS).toContain('k === "retry"');
     // todos jadi STATE checklist hidup, bukan baris timeline — isinya sudah
     // muncul lewat keluaran tool todowrite, jadi mendorongnya ke timeline
     // hanya menggandakan.
-    expect(
-      (UI.match(/upd\(\{ todos: j\.todos \}\)/g) || []).length,
-    ).toBeGreaterThanOrEqual(2);
+    expect((UI.match(/upd\(\{ todos: j\.todos \}\)/g) || []).length).toBe(
+      PEMANGGIL,
+    );
     expect(STEPS).toContain("run.todos");
   });
 

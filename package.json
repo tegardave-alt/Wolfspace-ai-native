@@ -18,7 +18,6 @@
     "stress": "node scripts/stress.cjs",
     "test:watch": "jest --watch --verbose",
     "prepare": "husky",
-    "vendor:reactflow": "node scripts/reactflow/build.cjs",
     "vendor:three": "node scripts/three/build.cjs",
     "typecheck": "tsc -p agent/jsconfig.json && tsc -p public/tsconfig.json",
     "profil": "node scripts/profil-beku.cjs"
