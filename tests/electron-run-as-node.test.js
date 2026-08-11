@@ -71,7 +71,7 @@ jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
     try {
       const env = { ...process.env, PORT: "8113" };
       delete env.ELECTRON_RUN_AS_NODE; // justru inilah yang sedang diuji
-      // --in-process-gpu, dan alasannya BUKAN tentang kode yang sedang diuji.
+      // --disable-gpu-sandbox, dan alasannya BUKAN tentang kode yang diuji.
       //
       // Di mesin ini proses GPU anak Electron gagal memuat DLL-nya
       // (exit_code=-1073741515, STATUS_DLL_NOT_FOUND). Chromium mencoba ulang
@@ -85,12 +85,13 @@ jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
       // berapa lama ia hidup -- cukup lama untuk melewati batas percobaan
       // ulang GPU. Itu membuatnya terbaca seperti cacat pada runInWorkspace.
       //
-      // Terukur, keempat lainnya TIDAK menolong: app.disableHardwareAcceleration(),
-      // --disable-gpu (argv maupun appendSwitch), dan --disable-software-rasterizer
-      // semuanya tetap FATAL. Ketiganya mematikan AKSELERASI, bukan kelahiran
-      // proses GPU-nya. --in-process-gpu menjalankannya di dalam proses utama,
-      // jadi tak ada anak yang bisa gagal.
-      keluaran = execFileSync(ELECTRON, ["--in-process-gpu", skrip], {
+      // Terukur, yang lain TIDAK menolong: app.disableHardwareAcceleration(),
+      // --disable-gpu, dan --disable-software-rasterizer semuanya tetap FATAL.
+      // Ketiganya mematikan AKSELERASI, bukan sandbox yang menolak memuat
+      // DLL-nya. Switch yang sama dipasang aplikasi di electron/main.js, jadi
+      // uji ini menjalankan konfigurasi yang SAMA dengan yang dipakai orang --
+      // bukan konfigurasi khusus uji yang kebetulan lolos.
+      keluaran = execFileSync(ELECTRON, ["--disable-gpu-sandbox", skrip], {
         encoding: "utf8",
         timeout: 180000,
         env,
@@ -117,4 +118,30 @@ jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
     // tak bikin merah, tapi tetap jauh di bawah EXEC_TIMEOUT.
     expect(h.ms).toBeLessThan(30000);
   }, 200000);
+});
+
+// Sandbox GPU: kalau switch ini hilang, aplikasi TIDAK JALAN SAMA SEKALI di
+// mesin yang terkena — dan gejalanya cuma deretan baris ERROR gpu_process_host
+// yang terlihat seperti peringatan biasa, diakhiri satu baris FATAL. Tak ada
+// yang menunjuk ke sini. Karena itu keberadaannya dikunci, bukan diserahkan
+// pada ingatan.
+describe("sandbox GPU dimatikan supaya aplikasi bisa jalan", () => {
+  const src = fs.readFileSync(path.join(ROOT, "electron", "main.js"), "utf8");
+
+  test("switch terpasang di main.js", () => {
+    expect(src).toMatch(/appendSwitch\("disable-gpu-sandbox"\)/);
+  });
+
+  test("bisa dikembalikan bagi mesin yang tak terkena", () => {
+    // Yang ditukar adalah lapisan keamanan, jadi harus ada jalan pulang yang
+    // terlihat — bukan keputusan yang terkubur di dalam kode.
+    expect(src).toMatch(/WOLFSPACE_GPU_SANDBOX/);
+  });
+
+  test("alasannya tercatat, termasuk yang TIDAK menolong", () => {
+    // --disable-gpu adalah tebakan pertama siapa pun, dan ia terukur GAGAL.
+    // Tanpa catatan itu, orang berikutnya akan mencobanya lagi.
+    expect(src).toMatch(/STATUS_DLL_NOT_FOUND/);
+    expect(src).toMatch(/--disable-gpu\s+FATAL juga/);
+  });
 });

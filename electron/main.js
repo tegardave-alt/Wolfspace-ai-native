@@ -763,6 +763,36 @@ app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
 // Matikan compositing tile memory cap untuk mengurangi beban VRAM
 app.commandLine.appendSwitch("disable-gpu-memory-buffer-compositor-resources");
 
+// === SANDBOX GPU ===
+// Tanpa ini aplikasi TIDAK JALAN SAMA SEKALI di sebagian mesin Windows.
+//
+// Gejalanya: proses GPU anak mati berulang dengan exit_code=-1073741515
+// (STATUS_DLL_NOT_FOUND), Chromium mencoba lagi delapan-sembilan kali, lalu
+// menyerah dengan FATAL "GPU process isn't usable. Goodbye." dan MEMBUNUH
+// seluruh aplikasi. Jendela tak pernah muncul, dan satu-satunya jejak adalah
+// deretan baris ERROR gpu_process_host yang terlihat seperti peringatan biasa.
+//
+// Penyebabnya bukan Electron yang cacat: seluruh DLL-nya lengkap, dan proses
+// utamanya sehat. STATUS_DLL_NOT_FOUND pada proses anak yang DI-SANDBOX punya
+// sebab yang sudah dikenal — sandbox menolak memuat DLL yang disuntikkan
+// pihak ketiga (antivirus, overlay, utilitas driver) ke dalam proses itu.
+//
+// Terukur, keempatnya pada mesin yang terkena:
+//   apa adanya             FATAL dalam 1 detik, 9 kali crash GPU
+//   --disable-gpu          FATAL juga, 6 kali crash  <- TIDAK menolong
+//   --in-process-gpu       hidup, tapi seluruh GPU ditarik ke proses utama
+//   --disable-gpu-sandbox  hidup, 0 crash, akselerasi & isolasi render UTUH
+//
+// Yang ditukar: lapisan sandbox pada proses GPU saja. Proses render tetap
+// ter-sandbox penuh, dan itu lapisan yang benar-benar menghadapi konten web.
+// WOLFSPACE_GPU_SANDBOX=1 mengembalikannya bagi yang mesinnya tak terkena.
+if (
+  process.env.WOLFSPACE_GPU_SANDBOX !== "1" &&
+  process.env.WOLFSPACE_GPU_SANDBOX !== "true"
+) {
+  app.commandLine.appendSwitch("disable-gpu-sandbox");
+}
+
 // Paksa Node.js (V8 main process) untuk melakukan GC periodik
 const _gcInterval = setInterval(() => {
   if (global.gc) {
