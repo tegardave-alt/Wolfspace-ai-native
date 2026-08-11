@@ -154,3 +154,32 @@ describe("integrasi ke tool bash", () => {
     expect(src).toMatch(/siap\.alasan/);
   });
 });
+
+// Jalan buntu yang sudah diukur, dicatat supaya tak diulang dari nol.
+describe("hubungannya dengan AppContainer", () => {
+  const src = require("fs").readFileSync(
+    require.resolve("../agent/tools/wsl-jail.cjs"),
+    "utf8",
+  );
+
+  test("tercatat bahwa keduanya TIDAK bisa ditumpuk", () => {
+    // wsl.exe ditolak di dalam AppContainer (Access is denied), termasuk
+    // `wsl --list`. Keduanya dua jalur yang saling meniadakan, bukan dua
+    // lapisan yang bisa dipasang bersamaan.
+    expect(src).toMatch(/TIDAK BISA DIGABUNG/);
+    expect(src).toMatch(/Access is denied/);
+  });
+
+  test("tercatat bahwa nilainya BUKAN jaringan, melainkan kernel terpisah", () => {
+    // Klaim "wsl-jail satu-satunya yang mengurung jaringan" sudah terbantah:
+    // AppContainer menutup jaringan keluar tanpa tambahan apa pun.
+    expect(src).toMatch(/KERNEL TERPISAH/);
+    expect(src).toMatch(/BUKAN LAGI SOAL JARINGAN/);
+  });
+
+  test("tercatat kenapa ia tetap opt-in, bukan bawaan", () => {
+    // Alasannya bukan kehati-hatian: ia mengganti BAHASA perintahnya.
+    expect(src).toMatch(/sh` POSIX|sh POSIX/);
+    expect(src).toMatch(/dipilih sadar/);
+  });
+});

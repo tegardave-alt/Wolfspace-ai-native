@@ -31,6 +31,30 @@
 //   2. MOUNT HILANG saat distro menganggur. WSL2 mematikan VM-nya, dan mount
 //      ikut lenyap. Karena itu setiap eksekusi memastikan mount-nya ada lebih
 //      dulu — memasangnya sekali di awal tidak cukup.
+//
+// TIDAK BISA DIGABUNG DENGAN APPCONTAINER, dan itu sudah diukur.
+//
+// "Gabungkan saja keduanya" hanya punya satu arti teknis: menjalankan wsl.exe
+// dari DALAM AppContainer, supaya perintahnya melewati dua batas sekaligus.
+// Terukur:
+//   wsl -d <distro> -- echo hidup   DI LUAR container   ok, 4589 ms
+//   wsl -d <distro> -- echo hidup   DI DALAM container  Access is denied
+//   wsl --list                      DI DALAM container  Access is denied
+// wsl.exe bicara ke utility VM lewat perangkat dan COM, dan AppContainer
+// menutup namespace perangkat. Jadi keduanya BUKAN lapisan yang bisa ditumpuk;
+// mereka dua jalur eksekusi yang saling meniadakan.
+//
+// DAN JALUR INI BUKAN LAGI SOAL JARINGAN. Sempat dinyatakan begitu, lalu
+// terbantah: AppContainer sudah menutup jaringan keluar (DNS gagal, TCP
+// AccessDenied, loopback ditolak) karena profilnya dibuat tanpa kapabilitas
+// jaringan. Yang tersisa sebagai nilai unik jalur ini cuma satu, dan memang
+// yang paling mahal untuk ditiru: KERNEL TERPISAH. WSL2 adalah utility VM
+// Hyper-V dengan kernelnya sendiri, jadi pelarian dari sini menuntut menembus
+// batas VM, bukan sekadar pemeriksaan akses.
+//
+// KENAPA TETAP OPT-IN, bukan bawaan seperti AppContainer: perintah di sini
+// dijalankan `sh` POSIX, bukan cmd/PowerShell. Setiap perintah Windows yang
+// sudah ditulis model patah. Perubahan bahasa perintah harus dipilih sadar.
 "use strict";
 
 const { execFileSync } = require("child_process");

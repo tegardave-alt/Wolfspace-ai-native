@@ -120,24 +120,38 @@ describe("guard bash 'tolak edit' — sempit, bukan cocok nama perintah", () => 
       );
       expect(r.output || "").not.toMatch(/DILARANG edit file via bash/);
     },
+    // Batas EKSPLISIT, bukan bawaan 5 detik jest.
+    //
+    // Uji ini men-spawn proses OS sungguhan, dan sejak bash terkurung
+    // AppContainer panggilan PERTAMA di tiap worker menanggung probe
+    // ketersediaan: terukur 976 ms lawan 148 ms tanpa container (perintah
+    // berikutnya cuma +80 ms). Di bawah jest paralel, 5 detik jadi terlalu
+    // ketat dan uji ini gagal ACAK — bukan karena guard-nya salah, melainkan
+    // karena waktunya habis. Uji yang merah secara acak lebih buruk daripada
+    // uji yang tak ada: orang berhenti mempercayai warnanya.
+    30000,
   );
 
   const KASUS_TOLAK = [
     ["sed -i — in-place, benar-benar menulis", "sed -i 's/a/b/' foo.txt"],
     ["Set-Content — PowerShell write", "Set-Content -Path foo.txt -Value x"],
   ];
-  test.each(KASUS_TOLAK)("%s: TETAP ditolak", async (_label, cmd) => {
-    const r = await runSelfTool(
-      "bash",
-      { command: cmd, timeout: 5000 },
-      noop,
-      {},
-    );
-    expect(r.output || "").toMatch(/DILARANG edit file via bash/);
-    // Dulu ok:true untuk penolakan ini — bug tersendiri: lolos sebagai "bukti"
-    // ke hallucination guard dan tak terhitung gagal oleh gerbang item-macet.
-    expect(r.ok).toBe(false);
-  });
+  test.each(KASUS_TOLAK)(
+    "%s: TETAP ditolak",
+    async (_label, cmd) => {
+      const r = await runSelfTool(
+        "bash",
+        { command: cmd, timeout: 5000 },
+        noop,
+        {},
+      );
+      expect(r.output || "").toMatch(/DILARANG edit file via bash/);
+      // Dulu ok:true untuk penolakan ini — bug tersendiri: lolos sebagai "bukti"
+      // ke hallucination guard dan tak terhitung gagal oleh gerbang item-macet.
+      expect(r.ok).toBe(false);
+    },
+    30000,
+  );
 }, 30000);
 
 describe("timeout bash dibedakan dari pembatalan user", () => {
