@@ -155,6 +155,31 @@ static class AcLaunch
         SetHandleInformation(outRd, HANDLE_FLAG_INHERIT, 0);
         SetHandleInformation(errRd, HANDLE_FLAG_INHERIT, 0);
 
+        // LPAC SUDAH DICOBA, DAN GAGAL DUA KALI. Jangan diulang.
+        //
+        // AppContainer biasa tetap bisa membaca C:\Windows dan C:\Program Files.
+        // Itu bukan celah pemasangan melainkan rancangan: folder sistem punya
+        // ACE untuk SID ALL APPLICATION PACKAGES (S-1-15-2-1) supaya aplikasi
+        // paket bisa memuat DLL sistem, dan tak ada ACL di sisi kita yang bisa
+        // mencabutnya.
+        //
+        // LPAC (Less Privileged AppContainer, atribut 0x0002000F dengan nilai
+        // PROCESS_CREATION_ALL_APPLICATION_PACKAGES_OPT_OUT) seharusnya membalik
+        // aturan itu. Diimplementasikan lalu diukur berdampingan:
+        //
+        //   cmd echo           biasa ok        LPAC ok
+        //   node --version     biasa v24.16.0  LPAC GAGAL  WSAStartup (10107)
+        //   powershell 1+1     biasa 2         LPAC GAGAL  registry PowerShell ditolak
+        //   baca/tulis wspace  biasa ok        LPAC ok
+        //   baca C:\Windows    biasa BISA      LPAC MASIH BISA
+        //
+        // Jadi ia mematikan node dan PowerShell -- dua hal yang paling
+        // dibutuhkan agent -- DAN tetap tidak menutup yang mau ditutup, karena
+        // berkas System32 juga membawa ACE ALL RESTRICTED APPLICATION PACKAGES
+        // (S-1-15-2-2) yang tetap dihormati LPAC. Kurungan yang sempurna tapi
+        // tak bisa menjalankan apa pun bukan perbaikan; ia cuma cara lain
+        // mematikan tool-nya.
+
         IntPtr size = IntPtr.Zero;
         InitializeProcThreadAttributeList(IntPtr.Zero, 1, 0, ref size);
         IntPtr list = LocalAlloc(0x0040, size);

@@ -1499,8 +1499,7 @@ async function runSelfTool(name, args, emit, context = {}) {
           process.env.WOLFSPACE_BASH_AC !== "0" &&
           process.env.WOLFSPACE_BASH_AC !== "false" &&
           // Permintaan eksplisit menang. Tanpa syarat ini, jalur ini membajak
-          // WOLFSPACE_BASH_WSL/ACL yang sengaja dinyalakan orang.
-          !process.env.WOLFSPACE_BASH_ACL &&
+          // WOLFSPACE_BASH_WSL yang sengaja dinyalakan orang.
           !process.env.WOLFSPACE_BASH_WSL
         ) {
           const _ac = require("./appcontainer-jail.cjs");
@@ -1517,38 +1516,16 @@ async function runSelfTool(name, args, emit, context = {}) {
               " — jalankan scripts/appcontainer/pasang.ps1]";
           }
         }
-        // ── Jalur ACL Windows: kurungan kernel TANPA mengubah semantik ──
+        // Jalur akun-terpisah (WOLFSPACE_BASH_ACL) DIHAPUS.
         //
-        // Dicoba SEBELUM jalur WSL karena ia menjawab permintaan lebih tepat:
-        // perintahnya tetap PowerShell. Jalur WSL memberi batas yang sama
-        // kuatnya tapi menggantinya jadi `sh` POSIX, sehingga setiap perintah
-        // yang sudah ditulis model patah.
-        //
-        // Penegaknya NTFS ACL — penolakan terjadi saat panggilan berkas, bukan
-        // saat teks dibaca. Terukur, dijalankan sebagai akun terkurung:
-        //   TULIS Desktop dave / BACA Documents\oi / BACA cloud-keys.json
-        //     -> ketiganya ditolak
-        //   TULIS & BACA di WOLFSPACE -> bisa
-        if (
-          process.env.WOLFSPACE_BASH_ACL === "1" ||
-          process.env.WOLFSPACE_BASH_ACL === "true"
-        ) {
-          const _aj = require("./win-jail.cjs");
-          const siapAcl = _aj.tersedia();
-          if (siapAcl.siap) {
-            return await _aj.jalankan(cmd, {
-              cwd: _confineRoot,
-              timeout: args.timeout || 120000,
-            });
-          }
-          return {
-            ok: false,
-            ..._penegakanLabel.label("penasihat", "acl-tak-siap"),
-            output:
-              "WOLFSPACE_BASH_ACL=1 diminta, tapi jalur ACL tak siap: " +
-              siapAcl.alasan,
-          };
-        }
+        // Ia mengurung lewat NTFS ACL dengan menjalankan shell sebagai akun
+        // lain. Batasnya nyata, tapi Start-Process -Credential menuntut
+        // WOLFSPACE sendiri berjalan sebagai Administrator -- menaikkan hak
+        // seluruh aplikasi demi menurunkan hak satu perintah, yang justru
+        // memperbesar permukaan serangnya. AppContainer memberi batas kernel
+        // yang setara TANPA elevasi apa pun, jadi jalur itu kehilangan
+        // satu-satunya alasan keberadaannya dan ikut membawa akun, kredensial
+        // DPAPI, dan share yang harus dirawat.
         // ── Jalur WSL: kurungan kernel di Windows, OPT-IN ──
         //
         // Windows tak punya padanan namespace, jadi jalur di bawah hanya bisa

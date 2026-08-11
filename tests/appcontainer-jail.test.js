@@ -100,10 +100,10 @@ describe("pesan modul", () => {
     // aktif kecuali dimatikan. Perbedaan itu yang dikunci di sini.
     expect(idx).toMatch(/WOLFSPACE_BASH_AC\s*!==\s*"0"/);
     expect(idx).not.toMatch(/WOLFSPACE_BASH_AC\s*===\s*"1"/);
-    // Dan ia harus dicoba SEBELUM dua jalur opt-in, kalau tidak ia tak pernah
-    // jadi bawaan yang sebenarnya.
+    // Dan ia harus dicoba SEBELUM jalur opt-in yang tersisa, kalau tidak ia
+    // tak pernah jadi bawaan yang sebenarnya.
     expect(idx.indexOf("WOLFSPACE_BASH_AC")).toBeLessThan(
-      idx.indexOf("WOLFSPACE_BASH_ACL ==="),
+      idx.indexOf('WOLFSPACE_BASH_WSL === "1"'),
     );
   });
 });
