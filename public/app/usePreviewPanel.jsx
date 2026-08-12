@@ -36,11 +36,34 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
     return (f && f.contentDocument) || null;
   }, []);
 
-  const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
+  const refresh = useCallback(() => {
+    setGagalLuar(false);
+    setRefreshKey((k) => k + 1);
+  }, []);
+
+  // ── Situs luar dimuat lewat <webview>, bukan <iframe> ──
+  //
+  // <iframe> di renderer ini TIDAK BISA memuat situs luar sama sekali. Diukur
+  // sampai tuntas: permintaan subFrame dikirim lalu net::ERR_ABORTED sebelum
+  // satu pun header respons kembali. Yang sudah disingkirkan sebagai penyebab,
+  // masing-masing diuji terpisah: atribut sandbox iframe, CSP <meta> produksi,
+  // X-Frame-Options situsnya, User-Agent Electron, dan jaringan (net.fetch dari
+  // proses main mengembalikan 200, 473 KB dari Bing).
+  //
+  // Yang memutuskan adalah uji pemakai: wikipedia.org pun kosong, padahal
+  // Wikipedia TERBUKTI bisa di-frame — 3600 karakter ter-render di Chromium
+  // bersih dengan CSP yang sama persis. Jadi ini bukan kebijakan per-situs.
+  //
+  // <webview> bukan subframe: ia WebContents tamu yang bernavigasi sendiri.
+  // Berkas lokal TETAP lewat <iframe>, karena Visual Picker menjangkau
+  // contentDocument dan webview tak mengizinkan itu.
+  const webviewRef = useRef(null);
+  const [gagalLuar, setGagalLuar] = useState("");
 
   const navigate = useCallback((urlOrPath) => {
     const t = tafsirkanAlamat(urlOrPath);
     if (!t) return;
+    setGagalLuar(false);
     setUrl(t.url);
     // Yang ditampilkan di bilah adalah HASIL resolusinya, sama seperti browser:
     // mengetik "github.com" lalu melihatnya berubah jadi "https://github.com"
@@ -79,15 +102,44 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
       window.removeEventListener("wolfspace_agent_act", onActPreview);
   }, [selectedProject]);
 
+  // Alamat luar (http/https) -> <webview>; sisanya (berkas via app://) -> <iframe>.
+  const alamatLuar = /^https?:\/\//i.test(url);
+
+  // Kegagalan webview DILAPORKAN, tak seperti iframe yang diam saja. Pesannya
+  // diambil dari peristiwanya sendiri supaya yang tampil adalah sebab yang
+  // sebenarnya — bukan tebakan "situsnya menolak" yang, saat diuji dengan
+  // wikipedia.org, ternyata keliru menyalahkan situs.
+  useEffect(() => {
+    const w = webviewRef.current;
+    if (!w || !alamatLuar) return;
+    const gagal = (e) => {
+      // -3 = ERR_ABORTED, yang juga muncul pada navigasi yang DIBATALKAN oleh
+      // pengalihan biasa. Melaporkannya akan menandai halaman sehat sebagai
+      // gagal, jadi ia sengaja dilewati.
+      if (e.errorCode === -3 || !e.isMainFrame) return;
+      setGagalLuar(e.errorDescription + " (" + e.errorCode + ")");
+    };
+    const mulai = () => setGagalLuar("");
+    w.addEventListener("did-fail-load", gagal);
+    w.addEventListener("did-start-loading", mulai);
+    return () => {
+      w.removeEventListener("did-fail-load", gagal);
+      w.removeEventListener("did-start-loading", mulai);
+    };
+  }, [alamatLuar, url, refreshKey]);
+
   return {
     url,
     inputUrl,
     setInputUrl,
     refreshKey,
     iframeRef,
+    webviewRef,
+    luar: alamatLuar,
     getDoc,
     navigate,
     refresh,
+    gagalLuar,
   };
 }
 

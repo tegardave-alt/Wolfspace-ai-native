@@ -310,6 +310,28 @@ function createWindow() {
       // gejala "state sudah benar di localStorage, tapi UI baru terlihat setelah
       // reload memaksa repaint baru". Matikan throttling itu di window utama.
       backgroundThrottling: false,
+      // ── <webview> untuk panel preview, dan HANYA untuk itu ──
+      //
+      // KENAPA PERLU. <iframe> di renderer ini TIDAK BISA memuat situs luar.
+      // Diukur sampai tuntas: permintaan subFrame dikirim lalu net::ERR_ABORTED
+      // sebelum satu pun header respons kembali. Yang sudah disingkirkan satu
+      // per satu sebagai penyebab — atribut sandbox iframe, CSP <meta>
+      // produksi, X-Frame-Options situsnya, User-Agent Electron, dan jaringan
+      // (net.fetch dari proses main mengembalikan 200, 473 KB dari Bing).
+      //
+      // Yang menyelesaikannya adalah uji pemakai: wikipedia.org pun kosong,
+      // padahal Wikipedia TERBUKTI bisa di-frame (3600 karakter ter-render di
+      // Chromium bersih dengan CSP yang sama persis). Jadi ini bukan kebijakan
+      // per-situs, melainkan berlaku untuk SEMUA subframe luar di sini.
+      //
+      // <webview> bukan subframe: ia WebContents tamu yang bernavigasi sendiri,
+      // jadi ia tak lewat jalur yang diblokir itu.
+      //
+      // Cakupannya sengaja sempit: hanya panel preview yang memakainya, hanya
+      // untuk alamat http(s), dan tag-nya dipasang tanpa nodeintegration.
+      // Berkas lokal TETAP lewat <iframe> — Visual Picker menjangkau
+      // contentDocument, dan webview tak mengizinkan itu.
+      webviewTag: true,
     },
   });
   win.webContents.setBackgroundThrottling(false); // lapis kedua, beberapa versi Electron butuh ini juga

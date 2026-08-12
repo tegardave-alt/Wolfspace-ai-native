@@ -2816,7 +2816,93 @@ function App() {
                         background: "#ffffff",
                       }}
                     >
-                      {preview.url ? (
+                      {/* Situs luar yang ditolak tampil di dalam frame TIDAK
+                          memicu onerror — iframe-nya cuma tinggal putih. Overlay
+                          ini menggantikan layar putih diam itu dengan sebab dan
+                          satu jalan keluar yang memang bekerja. */}
+                      {preview.gagalLuar && (
+                        <div
+                          style={{
+                            position: "absolute",
+                            inset: 0,
+                            zIndex: 5,
+                            display: "flex",
+                            flexDirection: "column",
+                            alignItems: "center",
+                            justifyContent: "center",
+                            gap: "14px",
+                            padding: "32px",
+                            textAlign: "center",
+                            background: "#0f1318",
+                            color: "#8b98a9",
+                          }}
+                        >
+                          <div style={{ fontSize: "34px" }}>🚫</div>
+                          <h3 style={{ margin: 0, color: "#dce4f0" }}>
+                            Halaman gagal dimuat
+                          </h3>
+                          {/* Sebabnya diambil dari peristiwa did-fail-load
+                              webview, bukan dikarang. Versi sebelumnya menebak
+                              "situsnya menolak di-frame" — dan saat diuji dengan
+                              wikipedia.org tebakan itu terbukti keliru
+                              menyalahkan situs yang baik-baik saja. */}
+                          <p
+                            style={{
+                              margin: 0,
+                              fontSize: "13px",
+                              lineHeight: 1.6,
+                              maxWidth: "420px",
+                            }}
+                          >
+                            {preview.gagalLuar}
+                          </p>
+                          <button
+                            className="btn-reset"
+                            onClick={() => window.open(preview.url, "_blank")}
+                            style={{
+                              background: "#2f81f7",
+                              color: "#fff",
+                              border: "none",
+                              borderRadius: "6px",
+                              padding: "8px 16px",
+                              fontSize: "13px",
+                              fontFamily: "inherit",
+                              cursor: "pointer",
+                            }}
+                          >
+                            Buka di browser sistem
+                          </button>
+                          <code
+                            style={{
+                              fontSize: "11px",
+                              background: "#131922",
+                              border: "1px solid #212a36",
+                              borderRadius: "4px",
+                              padding: "4px 8px",
+                              maxWidth: "420px",
+                              wordBreak: "break-all",
+                            }}
+                          >
+                            {preview.url}
+                          </code>
+                        </div>
+                      )}
+                      {preview.url && preview.luar ? (
+                        /* Alamat LUAR memakai <webview>, bukan <iframe>.
+                           <iframe> di renderer ini tak bisa memuat situs luar
+                           sama sekali: permintaan subFrame dikirim lalu
+                           net::ERR_ABORTED sebelum satu pun header kembali —
+                           termasuk untuk situs yang TERBUKTI boleh di-frame
+                           seperti wikipedia.org. <webview> bukan subframe; ia
+                           WebContents tamu yang bernavigasi sendiri. */
+                        <webview
+                          ref={preview.webviewRef}
+                          key={"wv-" + preview.refreshKey}
+                          src={preview.url}
+                          style={{ flex: 1, width: "100%", height: "100%" }}
+                          allowpopups="true"
+                        />
+                      ) : preview.url ? (
                         <iframe
                           ref={preview.iframeRef}
                           key={preview.refreshKey}
