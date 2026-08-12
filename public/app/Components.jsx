@@ -578,37 +578,61 @@ function LightboxModal({ item, onClose }) {
    PEMILIKNYA — todowrite berikutnya menimpa seluruh daftar, termasuk centang
    manual. Itu perilaku yang benar (agent yang tahu keadaan sebenarnya), dan
    disebut di sini supaya tak dikira bug saat centangnya berubah sendiri. */
-function TodoPanel({ todos, onToggle, onClear }) {
+function TodoPanel({ todos, busy, onToggle, onClear }) {
   if (!Array.isArray(todos) || todos.length === 0) return null;
   const selesai = todos.filter((t) => (t.status || "") === "completed").length;
   const semuaSelesai = selesai === todos.length;
+  // Daftar yang MANDEK: agent sudah berhenti tapi masih ada item terbuka.
+  //
+  // Ini keadaan yang paling sering terjadi dan justru dulu tak punya jalan
+  // keluar. Proses berhenti di tengah — dibatalkan, gagal, atau model berhenti
+  // tanpa jawaban — dan daftarnya tertinggal di atas kotak ketik selamanya:
+  // tombol tutup cuma muncul kalau semua item selesai, dan item yang tak pernah
+  // selesai berarti tombolnya tak pernah datang. Satu-satunya cara membersihkan
+  // adalah menunggu todowrite BERIKUTNYA menimpanya, yang belum tentu ada.
+  const mandek = !busy && !semuaSelesai;
+  const bisaTutup = semuaSelesai || mandek;
   return (
-    <div className="todo-panel">
+    <div className={"todo-panel" + (mandek ? " todo-mandek" : "")}>
       <div className="todo-panel-head">
         <span className="todo-panel-judul">Tugas</span>
-        {/* Slot yang sama berganti peran: selama masih ada yang berjalan ia
-            menunjukkan kemajuan, dan begitu semuanya selesai ia jadi tombol
+        {/* Slot yang sama berganti peran: selama agent MASIH BEKERJA ia
+            menunjukkan kemajuan, dan begitu tak ada lagi yang berjalan — entah
+            karena semua beres atau karena prosesnya terhenti — ia jadi tombol
             untuk menutup daftarnya.
 
-            Tombolnya sengaja BARU MUNCUL saat semua beres. Kalau ia ada sejak
-            awal, satu klik keliru menghapus daftar yang sedang dipakai agent
-            sebagai rencana — dan tak ada cara mengembalikannya selain menunggu
-            todowrite berikutnya. */}
-        {semuaSelesai ? (
-          <button
-            type="button"
-            className="todo-panel-tutup"
-            onClick={() => onClear && onClear()}
-            title="Semua selesai — tutup daftar"
-            aria-label="Tutup daftar tugas"
-          >
-            ✕
-          </button>
-        ) : (
-          <span className="todo-panel-hitung">
-            {selesai}/{todos.length}
-          </span>
-        )}
+            Yang dijaga syarat `!busy`: selama agent jalan, tombolnya tetap
+            tidak ada, karena satu klik keliru di tengah kerja menghapus daftar
+            yang sedang dipakai agent sebagai rencana dan tak ada cara
+            mengembalikannya. Sesudah agent berhenti, risiko itu hilang —
+            yang tersisa cuma daftar basi yang perlu dibuang. */}
+        <span className="todo-panel-slot">
+          {/* Saat MANDEK penghitung tetap ditampilkan di samping tombolnya.
+              Justru di keadaan inilah angkanya paling berarti: "3/7" adalah
+              satu-satunya yang memberi tahu di mana kerjanya putus. Kalau ia
+              diganti tombol seperti pada keadaan "semua selesai", pemakai
+              kehilangan itu tepat ketika ia paling dibutuhkan. */}
+          {!semuaSelesai && (
+            <span className="todo-panel-hitung">
+              {selesai}/{todos.length}
+            </span>
+          )}
+          {bisaTutup && (
+            <button
+              type="button"
+              className="todo-panel-tutup"
+              onClick={() => onClear && onClear()}
+              title={
+                semuaSelesai
+                  ? "Semua selesai — tutup daftar"
+                  : "Proses terhenti — tutup daftar"
+              }
+              aria-label="Tutup daftar tugas"
+            >
+              ✕
+            </button>
+          )}
+        </span>
       </div>
       <div className="todo-panel-daftar">
         {todos.map((t, i) => {
@@ -1114,7 +1138,12 @@ function Composer({
   };
   return (
     <div className="composer-wrap">
-      <TodoPanel todos={todos} onToggle={onToggleTodo} onClear={onClearTodos} />
+      <TodoPanel
+        todos={todos}
+        busy={busy}
+        onToggle={onToggleTodo}
+        onClear={onClearTodos}
+      />
       <div className="composer">
         <input
           type="file"

@@ -39,6 +39,11 @@ const ambil = (nama) => {
 };
 const salvageReasoning = eval(
   "(function(){" +
+    ambil("_tanpaKode") +
+    // Pemisah paragraf yang sadar blok berpagar — dipakai salvageReasoning
+    // supaya baris kosong DI DALAM ``` tak dianggap batas paragraf.
+    // Lihat tests/keluaran-model-utuh.test.js.
+    ambil("_paragrafSadarPagar") +
     ambil("stripThinkBlocks") +
     ambil("_tampakCatatanKerja") +
     ambil("salvageReasoning") +

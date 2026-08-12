@@ -1310,8 +1310,18 @@ select {
   font-variant-numeric: tabular-nums;
   color: var(--text-muted, #8c959f);
 }
-/* Menempati slot yang sama dengan penghitung, jadi kepala panel tak bergeser
-   saat tugas terakhir selesai. */
+/* Penghitung dan tombol tutup berbagi satu slot di kanan kepala panel, jadi
+   kepala tak bergeser saat salah satunya muncul atau hilang. */
+.todo-panel-slot {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+}
+/* Daftar yang mandek: agent berhenti, item masih terbuka. Angkanya diredupkan
+   supaya terbaca sebagai kemajuan yang BERHENTI, bukan yang sedang berjalan. */
+.todo-panel.todo-mandek .todo-panel-hitung {
+  opacity: 0.6;
+}
 .todo-panel-tutup {
   appearance: none;
   background: transparent;

@@ -32,7 +32,8 @@ const BLOK = CSS.slice(
 describe("panel todowrite di atas kotak ketik", () => {
   test("dirender DI ATAS composer, di dalam composer-wrap", () => {
     const i = KOMP.indexOf('<div className="composer-wrap">');
-    const iPanel = KOMP.indexOf("<TodoPanel todos={todos}");
+    // Dicari lewat nama komponennya saja: propnya sudah lebih dari satu baris.
+    const iPanel = KOMP.indexOf("<TodoPanel");
     const iComposer = KOMP.indexOf('<div className="composer">');
     expect(i).toBeGreaterThan(0);
     expect(iPanel).toBeGreaterThan(i);
@@ -81,15 +82,33 @@ describe("panel todowrite di atas kotak ketik", () => {
     );
   });
 
-  test("slot hitung jadi tombol tutup saat SEMUA selesai", () => {
-    // Tombolnya sengaja baru muncul saat semua beres. Kalau ia ada sejak awal,
-    // satu klik keliru menghapus daftar yang sedang dipakai agent sebagai
-    // rencana — dan tak ada cara mengembalikannya selain menunggu todowrite
-    // berikutnya.
+  test("tombol tutup muncul saat semua selesai ATAU saat proses berhenti", () => {
+    // Yang dijaga syarat `!busy`: selama agent masih bekerja tombolnya tetap
+    // tidak ada, karena satu klik keliru menghapus daftar yang sedang dipakai
+    // agent sebagai rencana dan tak ada cara mengembalikannya.
+    //
+    // Tapi dulu syaratnya HANYA "semua selesai", dan itu meninggalkan keadaan
+    // yang paling sering terjadi tanpa jalan keluar: proses berhenti di tengah
+    // — dibatalkan, gagal, atau model berhenti tanpa jawaban — sehingga ada
+    // item yang tak akan pernah selesai. Tombolnya tak pernah datang, dan
+    // daftarnya menetap di atas kotak ketik sampai ada todowrite berikutnya.
     expect(KOMP).toMatch(/const semuaSelesai = selesai === todos\.length;/);
-    expect(KOMP).toMatch(/\{semuaSelesai \? \(/);
+    expect(KOMP).toMatch(/const mandek = !busy && !semuaSelesai;/);
+    expect(KOMP).toMatch(/const bisaTutup = semuaSelesai \|\| mandek;/);
+    expect(KOMP).toMatch(/\{bisaTutup && \(/);
     expect(KOMP).toMatch(/className="todo-panel-tutup"/);
     expect(KOMP).toMatch(/onClick=\{\(\) => onClear && onClear\(\)\}/);
+    // `busy` harus benar-benar sampai ke panel; tanpa itu `mandek` selalu true
+    // dan tombolnya muncul justru saat agent sedang bekerja.
+    expect(KOMP).toMatch(/function TodoPanel\(\{ todos, busy,/);
+    expect(KOMP).toMatch(/<TodoPanel[\s\S]{0,120}busy=\{busy\}/);
+  });
+
+  test("penghitung tetap terlihat saat proses berhenti di tengah", () => {
+    // Justru di keadaan inilah angkanya paling berarti: "3/7" adalah
+    // satu-satunya yang memberi tahu di mana kerjanya putus.
+    expect(KOMP).toMatch(/\{!semuaSelesai && \(/);
+    expect(KOMP).toMatch(/className="todo-panel-hitung"/);
   });
 
   test("tombol tutup benar-benar mengosongkan daftar", () => {
