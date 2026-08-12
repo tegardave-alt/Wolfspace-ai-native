@@ -744,6 +744,18 @@ function LogicCodePane({ root, rel }) {
         fontSize: 12,
         scrollBeyondLastLine: false,
         wordWrap: "off",
+        // Garis yang MASIH terlihat sesudah minimap dimatikan bukan sisa
+        // minimap sama sekali — itu batas atas/bawah kotak highlight "baris
+        // aktif", bawaan Monaco kalau renderLineHighlight tak disetel (default
+        // "all"). Pada baris pertama, batas ATASNYA berimpit dengan tepi
+        // editor, jadi yang terlihat cuma satu garis membentang penuh persis
+        // di bawah header panel — gejala yang sama sekali beda dari minimap,
+        // tapi kelihatan serupa: satu garis solid selebar panel.
+        //
+        // Dua editor Monaco lain (AgentSteps, CodeBlocks) sudah "none". Ini
+        // panel BACA-SAJA — tak ada yang sedang mengedit, jadi menyorot
+        // "baris aktif" tak berarti apa-apa di sini selain artefak visual.
+        renderLineHighlight: "none",
       });
     });
     return () => {

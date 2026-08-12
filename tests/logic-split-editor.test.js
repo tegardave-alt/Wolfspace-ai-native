@@ -41,8 +41,13 @@ describe("split berkas + editor di view Logic", () => {
   test("editor dibuat SEKALI, modelnya yang diganti", () => {
     // Membuat ulang editor tiap klik menumpuk observer Monaco — jalur yang
     // persis sudah pernah meledak di repo ini (monaco-dekat-layar.test.js).
+    // Jendela dihitung sampai fungsi BERIKUTNYA, bukan panjang tebakan — angka
+    // tetap pernah dipakai di sini, dan sudah sekali gagal diam-diam saat
+    // opsi baru ditambahkan di dalam LogicCodePane mendorong kode yang diuji
+    // keluar dari jendela tanpa satu pun baris di badan uji berubah.
     const i = APP.indexOf("function LogicCodePane(");
-    const blok = APP.slice(i, i + 3000);
+    const j = APP.indexOf("\nfunction ", i + 1);
+    const blok = APP.slice(i, j > i ? j : APP.length);
     expect(blok).toMatch(
       /if \(dibuang \|\| !hostRef\.current \|\| edRef\.current\) return;/,
     );
@@ -270,34 +275,50 @@ describe("panel berkas Logic bisa diatur lebarnya", () => {
   });
 });
 
-// Garis biru penuh yang muncul di panel kode Logic.
+// Garis solid di panel kode Logic — DUA SUMBER TERPISAH, ditemukan berurutan.
 //
-// AKAR MASALAHNYA: LogicCodePane satu-satunya dari tiga editor Monaco di
-// aplikasi ini yang mengaktifkan minimap. Minimap punya SLIDER (kotak
-// penunjuk area yang sedang terlihat), dan pada berkas pendek di panel
-// sempit, slider itu memenuhi hampir seluruh tinggi minimap — terlihat
-// persis seperti satu garis solid membentang penuh, bukan seperti minimap.
-describe("minimap tak lagi menimbulkan garis solid di panel kode", () => {
-  test("LogicCodePane samakan dengan dua editor Monaco lainnya: minimap MATI", () => {
+// Laporan pertama ("garis biru membentang") diperbaiki dengan mematikan
+// minimap: LogicCodePane satu-satunya dari tiga editor Monaco di aplikasi ini
+// yang mengaktifkannya, dan slider minimap (kotak penunjuk viewport) pada
+// berkas pendek di panel sempit memenuhi hampir seluruh tingginya — terlihat
+// persis seperti satu garis solid, bukan seperti minimap.
+//
+// Laporan LANJUTAN, dengan screenshot baru, membuktikan itu belum semuanya:
+// garis horizontal masih terlihat tepat di bawah header, pada berkas KOSONG
+// tanpa minimap sama sekali. Penyebab kedua: kotak highlight "baris aktif",
+// bawaan Monaco kalau renderLineHighlight tak disetel (default "all"). Pada
+// baris pertama, batas ATASNYA berimpit dengan tepi editor, jadi yang
+// terlihat cuma satu garis membentang penuh persis di bawah header panel.
+describe("garis solid di panel kode: dua penyebab, dua perbaikan", () => {
+  const LOGIC = (() => {
     const i = APP.indexOf("function LogicCodePane(");
     const j = APP.indexOf("\nfunction ", i + 1);
-    const blok = APP.slice(i, j > i ? j : APP.length);
-    expect(blok).toMatch(/minimap: \{ enabled: false \}/);
-    expect(blok).not.toMatch(/minimap: \{ enabled: true \}/);
+    return APP.slice(i, j > i ? j : APP.length);
+  })();
+  const STEPS = fs.readFileSync(
+    path.join(AKAR, "public", "app", "AgentSteps.jsx"),
+    "utf8",
+  );
+  const BLOKS = fs.readFileSync(
+    path.join(AKAR, "public", "app", "CodeBlocks.jsx"),
+    "utf8",
+  );
+
+  test("penyebab #1 — minimap MATI, sama seperti dua editor lainnya", () => {
+    expect(LOGIC).toMatch(/minimap: \{ enabled: false \}/);
+    expect(LOGIC).not.toMatch(/minimap: \{ enabled: true \}/);
   });
 
-  test("ketiga editor Monaco konsisten soal minimap", () => {
-    const STEPS = fs.readFileSync(
-      path.join(AKAR, "public", "app", "AgentSteps.jsx"),
-      "utf8",
-    );
-    const BLOKS = fs.readFileSync(
-      path.join(AKAR, "public", "app", "CodeBlocks.jsx"),
-      "utf8",
-    );
-    for (const src of [APP, STEPS, BLOKS])
-      expect((src.match(/minimap: \{ enabled: false \}/g) || []).length).toBe(
-        1,
-      );
+  test("penyebab #2 — highlight baris aktif MATI, sama seperti dua editor lainnya", () => {
+    // Panel ini baca-saja; tak ada yang sedang mengedit, jadi menyorot
+    // "baris aktif" tak berarti apa-apa selain artefak visual.
+    expect(LOGIC).toMatch(/renderLineHighlight: "none"/);
+  });
+
+  test("ketiga editor Monaco konsisten pada KEDUA opsi", () => {
+    for (const src of [APP, STEPS, BLOKS]) {
+      expect(src).toMatch(/minimap: \{ enabled: false \}/);
+      expect(src).toMatch(/renderLineHighlight: "none"/);
+    }
   });
 });
