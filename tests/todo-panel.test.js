@@ -54,6 +54,25 @@ describe("panel todowrite di atas kotak ketik", () => {
     expect(STEPS).not.toContain("aal-todos");
   });
 
+  test("baris todowrite tak muncul lagi di timeline", () => {
+    // todowrite mengirim DUA hal untuk satu kejadian: event t:"todos" yang
+    // mengisi panel, DAN string ringkasan sebagai keluaran tool. Tanpa
+    // penyaring, ringkasan itu muncul lagi sebagai baris "✓ [high] ..." di
+    // timeline — satu daftar tampil dua kali, di dua tempat, dengan bentuk
+    // berbeda.
+    expect(STEPS).toMatch(/toLowerCase\(\) !== "todowrite"/);
+  });
+
+  test("yang disembunyikan TAMPILANNYA, bukan tool-nya", () => {
+    // Tool tetap harus berjalan dan hasilnya tetap sampai ke model; kalau
+    // emit-nya ikut dimatikan, panelnya justru kosong.
+    const TOOLS = fs.readFileSync(
+      path.join(AKAR, "agent", "tools", "index.cjs"),
+      "utf8",
+    );
+    expect(TOOLS).toMatch(/emit\(\{ t: "todos", todos \}\)/);
+  });
+
   test("panel disembunyikan saat daftarnya kosong", () => {
     // Kotak kosong di atas kotak ketik hanya memakan ruang dan membuat
     // pemakai mengira ada yang gagal dimuat.

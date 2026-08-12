@@ -559,7 +559,19 @@ function AgentSteps({ run }) {
     (e) => e.type === "act" || e.type === "err" || e.type === "thought",
   );
   const thoughts = allActs.filter((e) => e.type === "thought");
-  const acts = allActs.filter((e) => e.type !== "thought");
+  // Baris todowrite TIDAK ditampilkan di timeline.
+  //
+  // todowrite mengirim DUA hal untuk satu kejadian: event t:"todos" yang
+  // mengisi panel checklist di atas kotak ketik, DAN string ringkasan sebagai
+  // keluaran tool — yang tanpa penyaring ini muncul lagi sebagai baris
+  // "✓ [high] ..." di timeline. Jadi satu daftar tampil dua kali, di dua
+  // tempat, dengan bentuk berbeda.
+  //
+  // Yang disembunyikan cuma TAMPILANNYA. Tool-nya tetap jalan dan hasilnya
+  // tetap sampai ke model apa adanya; yang dibuang hanya penggandaan di layar.
+  const acts = allActs.filter(
+    (e) => e.type !== "thought" && (e.kind || "").toLowerCase() !== "todowrite",
+  );
   const summary = cleanAgentText(run.summary);
 
   // SEMUA hook harus dipanggil TANPA SYARAT sebelum return mana pun. useState +
