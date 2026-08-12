@@ -578,16 +578,37 @@ function LightboxModal({ item, onClose }) {
    PEMILIKNYA — todowrite berikutnya menimpa seluruh daftar, termasuk centang
    manual. Itu perilaku yang benar (agent yang tahu keadaan sebenarnya), dan
    disebut di sini supaya tak dikira bug saat centangnya berubah sendiri. */
-function TodoPanel({ todos, onToggle }) {
+function TodoPanel({ todos, onToggle, onClear }) {
   if (!Array.isArray(todos) || todos.length === 0) return null;
   const selesai = todos.filter((t) => (t.status || "") === "completed").length;
+  const semuaSelesai = selesai === todos.length;
   return (
     <div className="todo-panel">
       <div className="todo-panel-head">
         <span className="todo-panel-judul">Tugas</span>
-        <span className="todo-panel-hitung">
-          {selesai}/{todos.length}
-        </span>
+        {/* Slot yang sama berganti peran: selama masih ada yang berjalan ia
+            menunjukkan kemajuan, dan begitu semuanya selesai ia jadi tombol
+            untuk menutup daftarnya.
+
+            Tombolnya sengaja BARU MUNCUL saat semua beres. Kalau ia ada sejak
+            awal, satu klik keliru menghapus daftar yang sedang dipakai agent
+            sebagai rencana — dan tak ada cara mengembalikannya selain menunggu
+            todowrite berikutnya. */}
+        {semuaSelesai ? (
+          <button
+            type="button"
+            className="todo-panel-tutup"
+            onClick={() => onClear && onClear()}
+            title="Semua selesai — tutup daftar"
+            aria-label="Tutup daftar tugas"
+          >
+            ✕
+          </button>
+        ) : (
+          <span className="todo-panel-hitung">
+            {selesai}/{todos.length}
+          </span>
+        )}
       </div>
       <div className="todo-panel-daftar">
         {todos.map((t, i) => {
@@ -619,6 +640,7 @@ function Composer({
   setModelVal,
   todos = [],
   onToggleTodo,
+  onClearTodos,
 }) {
   const [val, setVal] = useState("");
   const [attachments, setAttachments] = useState([]);
@@ -1092,7 +1114,7 @@ function Composer({
   };
   return (
     <div className="composer-wrap">
-      <TodoPanel todos={todos} onToggle={onToggleTodo} />
+      <TodoPanel todos={todos} onToggle={onToggleTodo} onClear={onClearTodos} />
       <div className="composer">
         <input
           type="file"

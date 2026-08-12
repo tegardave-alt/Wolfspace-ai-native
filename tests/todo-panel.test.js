@@ -81,6 +81,30 @@ describe("panel todowrite di atas kotak ketik", () => {
     );
   });
 
+  test("slot hitung jadi tombol tutup saat SEMUA selesai", () => {
+    // Tombolnya sengaja baru muncul saat semua beres. Kalau ia ada sejak awal,
+    // satu klik keliru menghapus daftar yang sedang dipakai agent sebagai
+    // rencana — dan tak ada cara mengembalikannya selain menunggu todowrite
+    // berikutnya.
+    expect(KOMP).toMatch(/const semuaSelesai = selesai === todos\.length;/);
+    expect(KOMP).toMatch(/\{semuaSelesai \? \(/);
+    expect(KOMP).toMatch(/className="todo-panel-tutup"/);
+    expect(KOMP).toMatch(/onClick=\{\(\) => onClear && onClear\(\)\}/);
+  });
+
+  test("tombol tutup benar-benar mengosongkan daftar", () => {
+    // Tanpa ini ia cuma gambar silang: terlihat bisa diklik, tak melakukan apa
+    // pun, dan itu lebih buruk daripada tak ada tombolnya.
+    expect(APP).toMatch(/onClearTodos=\{\(\) => setTodos\(\[\]\)\}/);
+    expect(KOMP).toMatch(/onClear=\{onClearTodos\}/);
+  });
+
+  test("tombol tutup punya nama untuk pembaca layar", () => {
+    // Isinya cuma karakter "✕" — tanpa label, pembaca layar hanya membacakan
+    // simbolnya.
+    expect(KOMP).toMatch(/aria-label="Tutup daftar tugas"/);
+  });
+
   test("kemajuan terbaca tanpa menghitung sendiri", () => {
     expect(KOMP).toMatch(
       /filter\(\(t\) => \(t\.status \|\| ""\) === "completed"\)/,

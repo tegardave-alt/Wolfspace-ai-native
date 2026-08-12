@@ -1280,6 +1280,23 @@ select {
   font-variant-numeric: tabular-nums;
   color: var(--text-muted, #8c959f);
 }
+/* Menempati slot yang sama dengan penghitung, jadi kepala panel tak bergeser
+   saat tugas terakhir selesai. */
+.todo-panel-tutup {
+  appearance: none;
+  background: transparent;
+  border: 0;
+  padding: 0 2px;
+  font-size: 13px;
+  line-height: 1;
+  cursor: pointer;
+  color: var(--text-muted, #8c959f);
+  transition: color 150ms ease-in-out;
+}
+.todo-panel-tutup:hover,
+.todo-panel-tutup:focus-visible {
+  color: var(--text, #e6edf3);
+}
 .todo-panel-daftar {
   display: flex;
   flex-direction: column;

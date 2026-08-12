@@ -2068,6 +2068,7 @@ function App() {
                   onCancel={cancel}
                   busy={busy}
                   todos={todos}
+                  onClearTodos={() => setTodos([])}
                   onToggleTodo={(i) =>
                     setTodos((d) =>
                       d.map((t, j) =>
