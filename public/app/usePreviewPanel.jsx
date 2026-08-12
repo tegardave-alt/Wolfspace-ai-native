@@ -39,14 +39,14 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
   const refresh = useCallback(() => setRefreshKey((k) => k + 1), []);
 
   const navigate = useCallback((urlOrPath) => {
-    if (!urlOrPath || !urlOrPath.trim()) return;
-    const val = urlOrPath.trim();
-    const isHttp =
-      val.startsWith("http://") ||
-      val.startsWith("https://") ||
-      val.startsWith("app://");
-    setUrl(isHttp ? val : `/preview-file?path=${encodeURIComponent(val)}`);
-    setInputUrl(val);
+    const t = tafsirkanAlamat(urlOrPath);
+    if (!t) return;
+    setUrl(t.url);
+    // Yang ditampilkan di bilah adalah HASIL resolusinya, sama seperti browser:
+    // mengetik "github.com" lalu melihatnya berubah jadi "https://github.com"
+    // adalah umpan balik bahwa tebakannya benar. Untuk berkas, path aslinya yang
+    // dipertahankan — itu yang berguna, bukan /preview-file?path=…
+    setInputUrl(t.tampil);
   }, []);
 
   // Auto-lempar: saat agent MENULIS/MENGUBAH file .html, langsung render di
@@ -88,6 +88,102 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
     getDoc,
     navigate,
     refresh,
+  };
+}
+
+// ── Bilah alamat sebagai OMNIBOX, bukan cuma kotak path ──
+//
+// Dulu cabangnya cuma dua: kalau diawali http/https/app anggap URL, selain itu
+// anggap path berkas. Akibatnya panel ini hanya berguna untuk melihat hasil
+// generate agent — mengetik "github.com" mencoba membuka berkas bernama
+// "github.com" dan gagal, dan mengetik pertanyaan tak melakukan apa pun.
+//
+// Sekarang isinya ditafsirkan seperti bilah alamat browser. Urutannya penting,
+// dan yang paling menentukan adalah EKSTENSI BERKAS DIPERIKSA SEBELUM NAMA
+// DOMAIN: "index.html" harus jadi berkas, padahal ia juga cocok dengan bentuk
+// domain. Sebaliknya "example.com" bukan berkas karena ".com" bukan ekstensi
+// yang kita kenali. Tanpa urutan itu, kasus paling umum di aplikasi ini —
+// membuka berkas .html hasil agent — justru yang rusak.
+//
+// Perhatikan juga ".md" dan ".sh": keduanya TLD sungguhan (Moldova, Saint
+// Helena), tapi di aplikasi ini nyaris selalu berarti berkas. Ambiguitas itu
+// diputus ke arah berkas dengan sengaja.
+const _EKSTENSI_BERKAS =
+  /\.(html?|md|markdown|txt|json|jsx?|tsx?|css|svg|xml|ya?ml|csv|log|sh|ps1|py|rb|go|rs|java|c|h|cpp|cs|php|toml|ini|pdf|png|jpe?g|gif|webp)$/i;
+
+// Host tanpa skema: "github.com", "sub.domain.co.uk/path", "localhost:3000".
+const _BENTUK_HOST =
+  /^(?:[a-z0-9](?:[a-z0-9-]*[a-z0-9])?\.)+[a-z]{2,}(?::\d{1,5})?(?:[/?#].*)?$/i;
+const _BENTUK_LOKAL =
+  /^(?:localhost|127\.0\.0\.1|0\.0\.0\.0|\[::1\]|(?:\d{1,3}\.){3}\d{1,3})(?::\d{1,5})?(?:[/?#].*)?$/i;
+
+// Mesin pencari BAWAAN: Bing.
+//
+// Pilihannya ditentukan pengukuran, bukan selera. Panel ini sebuah <iframe>,
+// dan sebagian besar mesin pencari menolak ditampilkan di dalam frame lewat
+// header mereka sendiri — yang tak bisa dilawan dari sisi kita. Terukur:
+//
+//   Google      X-Frame-Options: SAMEORIGIN     -> TIDAK bisa
+//   Brave       X-Frame-Options: SAMEORIGIN     -> TIDAK bisa
+//   Startpage   X-Frame-Options: SAMEORIGIN     -> TIDAK bisa
+//   Mojeek      frame-ancestors 'none'          -> TIDAK bisa
+//   Bing        (tak ada header pembatas)       -> BISA, hasil nyata ter-render
+//
+// Bisa diganti lewat localStorage `wolfspace_mesin_cari` (pakai %s untuk kueri)
+// bagi yang punya SearXNG sendiri atau menerima hasilnya dibuka di browser luar
+// lewat tombol "Open in an external tab/browser" yang sudah ada di sebelahnya.
+const _MESIN_BAWAAN = "https://www.bing.com/search?q=%s";
+function _mesinCari() {
+  try {
+    const m = localStorage.getItem("wolfspace_mesin_cari");
+    if (m && m.includes("%s")) return m;
+  } catch (_) {}
+  return _MESIN_BAWAAN;
+}
+
+/**
+ * Tafsirkan isi bilah alamat.
+ * @returns {{jenis: "url"|"berkas"|"cari", url: string, tampil: string}|null}
+ */
+function tafsirkanAlamat(teks) {
+  const val = String(teks == null ? "" : teks).trim();
+  if (!val) return null;
+
+  const berkas = (p) => ({
+    jenis: "berkas",
+    url: "/preview-file?path=" + encodeURIComponent(p),
+    tampil: p,
+  });
+  const langsung = (u) => ({ jenis: "url", url: u, tampil: u });
+
+  // 1) Skema eksplisit — pemakai sudah menyatakan maksudnya, jangan ditebak lagi.
+  if (/^(https?|app|file|data|about):/i.test(val)) return langsung(val);
+
+  // 2) Path absolut: "C:\...", "\\server\share", "/usr/...".
+  if (/^[a-zA-Z]:[\\/]/.test(val) || /^\\\\/.test(val) || /^\//.test(val))
+    return berkas(val);
+
+  // 3) Path relatif yang jelas: mengandung pemisah ATAU berekstensi yang dikenal.
+  //    HARUS sebelum pemeriksaan domain (lihat catatan di atas).
+  if (
+    /^\.{1,2}[\\/]/.test(val) ||
+    (/[\\/]/.test(val) && _EKSTENSI_BERKAS.test(val))
+  )
+    return berkas(val);
+  if (_EKSTENSI_BERKAS.test(val) && !/\s/.test(val)) return berkas(val);
+
+  // 4) Host lokal -> http (bukan https: server dev jarang punya sertifikat, dan
+  //    https ke port lokal gagal dengan galat sertifikat yang membingungkan).
+  if (_BENTUK_LOKAL.test(val)) return langsung("http://" + val);
+
+  // 5) Nama domain -> https.
+  if (_BENTUK_HOST.test(val)) return langsung("https://" + val);
+
+  // 6) Sisanya: perlakukan sebagai kueri pencarian.
+  return {
+    jenis: "cari",
+    url: _mesinCari().replace("%s", encodeURIComponent(val)),
+    tampil: val,
   };
 }
 

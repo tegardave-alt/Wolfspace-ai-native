@@ -2640,7 +2640,13 @@ function App() {
                             if (e.key === "Enter")
                               preview.navigate(preview.inputUrl);
                           }}
-                          placeholder="HTML path / URL (e.g. C:\...\index.html or http://localhost:3000)"
+                          placeholder="Cari di web, atau ketik URL / path berkas"
+                          title={
+                            "Bilah ini bekerja seperti bilah alamat browser:\n" +
+                            "  • path berkas   C:\\...\\index.html\n" +
+                            "  • URL / domain  github.com, http://localhost:3000\n" +
+                            "  • selain itu    dicari di web"
+                          }
                           style={{
                             flex: 1,
                             background: "transparent",
