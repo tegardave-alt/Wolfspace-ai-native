@@ -612,6 +612,59 @@ function webProjectRoot(previewUrl, fallback) {
   }
   return fallback;
 }
+// Ikon per BAHASA, ala VS Code — tanpa pustaka ikon.
+//
+// KENAPA TIDAK MEMAKAI PUSTAKA. Tema ikon seperti Seti atau Material berisi
+// ratusan SVG, sementara aplikasi ini mem-vendor SEMUA asetnya sendiri (tak ada
+// CDN, tak ada bundler saat jalan). Menariknya masuk berarti menambah ratusan
+// berkas demi belasan ekstensi yang benar-benar muncul di pohon ini.
+//
+// Yang dipakai VS Code sendiri, dilihat dari jauh, adalah monogram berwarna:
+// warna khas bahasanya + satu-dua huruf. Itu yang ditiru di sini — satu tabel
+// kecil, nol dependensi, dan warnanya memakai warna resmi tiap bahasa supaya
+// tetap terbaca sebagai bahasa yang sama.
+const BAHASA_IKON = {
+  js: { teks: "JS", warna: "#f1e05a" },
+  mjs: { teks: "JS", warna: "#f1e05a" },
+  cjs: { teks: "JS", warna: "#f1e05a" },
+  jsx: { teks: "JSX", warna: "#61dafb" },
+  ts: { teks: "TS", warna: "#3178c6" },
+  tsx: { teks: "TSX", warna: "#3178c6" },
+  py: { teks: "PY", warna: "#3572a5" },
+  rb: { teks: "RB", warna: "#cc342d" },
+  go: { teks: "GO", warna: "#00add8" },
+  rs: { teks: "RS", warna: "#dea584" },
+  java: { teks: "JV", warna: "#b07219" },
+  kt: { teks: "KT", warna: "#a97bff" },
+  swift: { teks: "SW", warna: "#f05138" },
+  c: { teks: "C", warna: "#555555" },
+  h: { teks: "H", warna: "#555555" },
+  cpp: { teks: "C+", warna: "#f34b7d" },
+  cs: { teks: "C#", warna: "#178600" },
+  php: { teks: "PHP", warna: "#4f5d95" },
+  dart: { teks: "DT", warna: "#00b4ab" },
+  html: { teks: "<>", warna: "#e34c26" },
+  htm: { teks: "<>", warna: "#e34c26" },
+  css: { teks: "CSS", warna: "#563d7c" },
+  scss: { teks: "SC", warna: "#c6538c" },
+  json: { teks: "{}", warna: "#cbcb41" },
+  yml: { teks: "YML", warna: "#cb171e" },
+  yaml: { teks: "YML", warna: "#cb171e" },
+  sh: { teks: "SH", warna: "#89e051" },
+  ps1: { teks: "PS", warna: "#012456" },
+  sql: { teks: "SQL", warna: "#e38c00" },
+  xml: { teks: "XML", warna: "#0060ac" },
+  vue: { teks: "VUE", warna: "#41b883" },
+  svelte: { teks: "SV", warna: "#ff3e00" },
+};
+
+function ekstensiDari(name) {
+  const m = String(name || "")
+    .toLowerCase()
+    .match(/\.([a-z0-9]+)$/);
+  return m ? m[1] : "";
+}
+
 function tsjFileType(name, dir) {
   if (dir) return "folder";
   const n = (name || "").toLowerCase();
@@ -626,6 +679,10 @@ function tsjFileType(name, dir) {
     /\.(pem|key|crt|cert|env)$/.test(n)
   )
     return "key";
+  // Bahasa diperiksa SESUDAH kasus khusus di atas: README.md tetap ikon info,
+  // bukan monogram "MD" — namanya lebih memberi tahu daripada ekstensinya.
+  const ext = ekstensiDari(n);
+  if (BAHASA_IKON[ext]) return "lang:" + ext;
   return "file";
 }
 // Bangun pohon HANYA dari file yang SEDANG DIKEMBANGKAN (ditulis/diedit agent),
@@ -659,7 +716,7 @@ function buildDevTree(paths, root) {
     });
   }
   const out = [];
-  const walk = (node, depth) => {
+  const walk = (node, depth, pre) => {
     const kids = Object.values(node.children);
     const cmp = (a, b) =>
       a.name.toLowerCase().localeCompare(b.name.toLowerCase());
@@ -667,23 +724,218 @@ function buildDevTree(paths, root) {
       .filter((k) => !k.isFile)
       .sort(cmp)
       .forEach((d) => {
-        out.push({ name: d.name, depth, type: "folder" });
-        walk(d, depth + 1);
+        out.push({ name: d.name, depth, type: "folder", rel: pre + d.name });
+        walk(d, depth + 1, pre + d.name + "/");
       });
     kids
       .filter((k) => k.isFile)
       .sort(cmp)
       .forEach((f) =>
-        out.push({ name: f.name, depth, type: tsjFileType(f.name, false) }),
+        out.push({
+          name: f.name,
+          depth,
+          type: tsjFileType(f.name, false),
+          // Path RELATIF terhadap root, dirakit saat menyusun pohon. Tanpa ini
+          // node cuma punya nama, dan nama saja tak cukup untuk membuka
+          // berkasnya — dua "index.html" di folder berbeda tak terbedakan.
+          rel: pre + f.name,
+        }),
       );
   };
-  walk(rootNode, 0);
+  walk(rootNode, 0, "");
   return out;
 }
-function LogicFileTree({ files, root, active, penuh }) {
+/* ── Panel kode di sisi kanan view Logic ──
+   Tata letaknya mengikuti VS Code: pohon berkas di kiri, isi berkas di kanan.
+
+   Isinya diambil lewat /preview-file?raw=1 — bukan jalur preview biasa, yang
+   menyuntikkan <base> ke berkas HTML supaya link relatifnya resolve. Suntikan
+   itu benar untuk preview dan salah untuk editor: yang tampil bukan lagi isi
+   berkasnya, dan pemakai membaca satu baris yang tidak ada di disk.
+
+   Editor dibuat SEKALI lalu modelnya diganti tiap berpindah berkas. Membuat
+   ulang editor tiap klik menumpuk observer Monaco, dan itu jalur yang persis
+   sudah pernah meledak di repo ini (lihat tests/monaco-dekat-layar.test.js). */
+function LogicCodePane({ root, rel }) {
+  const hostRef = React.useRef(null);
+  const edRef = React.useRef(null);
+  const [galat, setGalat] = React.useState("");
+  const [muat, setMuat] = React.useState(false);
+
+  React.useEffect(() => {
+    let dibuang = false;
+    if (!window.monacoReady || !hostRef.current) return;
+    window.monacoReady.then((monaco) => {
+      if (dibuang || !hostRef.current || edRef.current) return;
+      edRef.current = monaco.editor.create(hostRef.current, {
+        value: "",
+        language: "plaintext",
+        theme: "vs-dark",
+        automaticLayout: true,
+        readOnly: true,
+        domReadOnly: true,
+        minimap: { enabled: true },
+        fontSize: 12,
+        scrollBeyondLastLine: false,
+        wordWrap: "off",
+      });
+    });
+    return () => {
+      dibuang = true;
+      if (edRef.current) {
+        const m = edRef.current.getModel();
+        if (m) m.dispose();
+        edRef.current.dispose();
+        edRef.current = null;
+      }
+    };
+  }, []);
+
+  React.useEffect(() => {
+    if (!rel) return;
+    let dibatalkan = false;
+    setGalat("");
+    setMuat(true);
+    const abs = String(root || "").replace(/[\/]+$/, "") + "/" + rel;
+    fetch("/preview-file?raw=1&path=" + encodeURIComponent(abs))
+      .then((r) =>
+        r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)),
+      )
+      .then((teks) => {
+        if (dibatalkan) return;
+        setMuat(false);
+        const ed = edRef.current;
+        if (!ed || !window.monaco) return;
+        const lama = ed.getModel();
+        const bahasa = bahasaMonaco(rel);
+        ed.setModel(window.monaco.editor.createModel(teks, bahasa));
+        // Model lama dibuang SESUDAH yang baru dipasang: membuangnya lebih dulu
+        // membuat editor sempat kehilangan model dan melempar.
+        if (lama) lama.dispose();
+      })
+      .catch((e) => {
+        if (dibatalkan) return;
+        setMuat(false);
+        setGalat(String(e.message || e));
+      });
+    return () => {
+      dibatalkan = true;
+    };
+  }, [root, rel]);
+
+  return (
+    <div
+      style={{
+        flex: 1,
+        minWidth: 0,
+        display: "flex",
+        flexDirection: "column",
+        background: "#0b1016",
+      }}
+    >
+      <div
+        style={{
+          height: "38px",
+          flexShrink: 0,
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          padding: "0 12px",
+          borderBottom: "1px solid #212a36",
+          fontSize: "12px",
+          color: "#768390",
+          fontFamily: "ui-monospace, monospace",
+          whiteSpace: "nowrap",
+          overflow: "hidden",
+          textOverflow: "ellipsis",
+        }}
+      >
+        {rel || "Pilih berkas di kiri"}
+        {muat && <span style={{ opacity: 0.6 }}>memuat…</span>}
+        {galat && <span style={{ color: "#f85149" }}>{galat}</span>}
+      </div>
+      <div ref={hostRef} style={{ flex: 1, minHeight: 0 }} />
+    </div>
+  );
+}
+
+// Ekstensi -> bahasa Monaco. Dipisah dari BAHASA_IKON karena keduanya menjawab
+// pertanyaan berbeda: yang satu "ikon apa", yang ini "penyorot mana".
+function bahasaMonaco(nama) {
+  const e = ekstensiDari(nama);
+  const peta = {
+    js: "javascript",
+    mjs: "javascript",
+    cjs: "javascript",
+    jsx: "javascript",
+    ts: "typescript",
+    tsx: "typescript",
+    py: "python",
+    rb: "ruby",
+    go: "go",
+    rs: "rust",
+    java: "java",
+    kt: "kotlin",
+    swift: "swift",
+    c: "c",
+    h: "c",
+    cpp: "cpp",
+    cs: "csharp",
+    php: "php",
+    dart: "dart",
+    html: "html",
+    htm: "html",
+    css: "css",
+    scss: "scss",
+    json: "json",
+    yml: "yaml",
+    yaml: "yaml",
+    sh: "shell",
+    ps1: "powershell",
+    sql: "sql",
+    xml: "xml",
+    md: "markdown",
+  };
+  return peta[e] || "plaintext";
+}
+
+function LogicFileTree({ files, root, active, terpilih, onPilih }) {
   const [tab, setTab] = React.useState("files");
   const tree = buildDevTree(files, root);
   const icon = (t) => {
+    // Monogram bahasa: kotak kecil berwarna khas bahasanya. Dirender sebagai
+    // SVG (bukan <span> ber-CSS) supaya ia sejajar dengan ikon lain yang sudah
+    // SVG, dan ukurannya tak ikut berubah saat font halaman berubah.
+    if (typeof t === "string" && t.startsWith("lang:")) {
+      const b = BAHASA_IKON[t.slice(5)];
+      if (b)
+        return (
+          <svg width="16" height="16" viewBox="0 0 16 16">
+            <rect
+              x="0.5"
+              y="0.5"
+              width="15"
+              height="15"
+              rx="3"
+              fill={b.warna}
+              opacity="0.16"
+              stroke={b.warna}
+              strokeOpacity="0.5"
+            />
+            <text
+              x="8"
+              y="11.5"
+              textAnchor="middle"
+              fill={b.warna}
+              fontSize={b.teks.length > 2 ? "6" : "7.5"}
+              fontWeight="700"
+              fontFamily="ui-monospace, monospace"
+            >
+              {b.teks}
+            </text>
+          </svg>
+        );
+    }
     if (t === "folder")
       return (
         <svg
@@ -772,18 +1024,14 @@ function LogicFileTree({ files, root, active, penuh }) {
   return (
     <div
       style={{
-        // `penuh` dipakai saat panel ini SATU-SATUNYA isi view Logic. Dulu ia
-        // selalu sidebar 244px karena berbagi ruang dengan kanvas React Flow;
-        // kanvas itu sudah tak ada, jadi memaksakan lebar tetap hanya
-        // menyisakan ruang kosong di sebelahnya.
-        width: penuh ? "100%" : "244px",
-        flex: penuh ? 1 : "0 0 auto",
-        flexShrink: penuh ? 1 : 0,
+        // Sidebar tetap 244px: panel kode di kanannya yang menyerap sisa lebar,
+        // sama seperti VS Code.
+        width: "244px",
+        flex: "0 0 auto",
+        flexShrink: 0,
         minWidth: 0,
         background: "#0c1219",
-        // Garis kanan memisahkan dari yang ada DI KANANNYA. Tanpa apa pun di
-        // sana, ia jadi garis menggantung di tepi layar.
-        borderRight: penuh ? "none" : "1px solid #212a36",
+        borderRight: "1px solid #212a36",
         display: "flex",
         flexDirection: "column",
         userSelect: "none",
@@ -953,7 +1201,10 @@ function LogicFileTree({ files, root, active, penuh }) {
           {tree.map((n, i) => (
             <div
               key={i}
-              title={n.name}
+              title={n.rel || n.name}
+              onClick={() =>
+                n.type !== "folder" && onPilih && onPilih(n.rel || n.name)
+              }
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -961,17 +1212,24 @@ function LogicFileTree({ files, root, active, penuh }) {
                 height: "24px",
                 paddingRight: "10px",
                 paddingLeft: 10 + n.depth * 14 + "px",
-                cursor: "pointer",
+                cursor: n.type === "folder" ? "default" : "pointer",
                 color: n.type === "folder" ? "#cdd9e5" : "#adbac7",
                 fontSize: "13px",
                 whiteSpace: "nowrap",
+                // Berkas yang sedang dibuka ditandai TETAP, bukan cuma saat
+                // hover — tanpa itu, begitu tetikus bergerak tak ada lagi yang
+                // memberi tahu isi editor di kanan milik berkas yang mana.
+                background:
+                  n.rel && n.rel === terpilih ? "#1b2431" : "transparent",
               }}
-              onMouseEnter={(e) =>
-                (e.currentTarget.style.background = "#141c26")
-              }
-              onMouseLeave={(e) =>
-                (e.currentTarget.style.background = "transparent")
-              }
+              onMouseEnter={(e) => {
+                if (n.rel !== terpilih)
+                  e.currentTarget.style.background = "#141c26";
+              }}
+              onMouseLeave={(e) => {
+                e.currentTarget.style.background =
+                  n.rel && n.rel === terpilih ? "#1b2431" : "transparent";
+              }}
             >
               {n.type === "folder" ? (
                 <svg
@@ -1179,6 +1437,10 @@ function App() {
   // cepat. Di sini ia satu daftar untuk seluruh sesi, dirender tepat di atas
   // kotak ketik supaya selalu di tempat yang sama.
   const [todos, setTodos] = useState([]);
+  // Berkas yang sedang dibuka di panel kode view Logic (path RELATIF terhadap
+  // root proyek). Disimpan di sini, bukan di dalam LogicFileTree, karena dua
+  // panel memakainya: pohon untuk menandai baris aktif, editor untuk memuat.
+  const [logicBerkas, setLogicBerkas] = useState("");
   const [status, setStatus] = useState("Loading models…");
   const [view, setView] = useState("chat");
   const [sbCollapsed, setSbCollapsed] = useState(() => {
@@ -2708,16 +2970,19 @@ function App() {
                       </svg>
                     </button>
                   </div>
-                  {/* Isi Logic: panel berkas SATU-SATUNYA, mengisi penuh.
-                      Dulu ia berbagi ruang dengan kanvas React Flow di kanan;
-                      kanvas itu dihapus, jadi panel ini tak lagi disempitkan
-                      jadi sidebar. */}
+                  {/* Isi Logic: pohon berkas di kiri, isi berkasnya di kanan
+                      — tata letak yang sama dengan VS Code. */}
                   <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
                     <LogicFileTree
                       files={devFiles}
                       root={webProjectRoot(preview.url, selectedProject)}
                       active={!!preview.url}
-                      penuh
+                      terpilih={logicBerkas}
+                      onPilih={setLogicBerkas}
+                    />
+                    <LogicCodePane
+                      root={webProjectRoot(preview.url, selectedProject)}
+                      rel={logicBerkas}
                     />
                   </div>
                 </div>

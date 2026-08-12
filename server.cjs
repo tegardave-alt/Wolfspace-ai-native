@@ -4763,6 +4763,20 @@ const server = http.createServer(async (req, res) => {
         );
       }
       const ext = path.extname(resolved).toLowerCase();
+      // ?raw=1 — SUMBER apa adanya, untuk editor kode.
+      //
+      // Jalur biasa menyuntikkan <base> ke berkas HTML supaya link relatifnya
+      // resolve saat di-preview. Itu benar untuk preview dan SALAH untuk
+      // editor: yang tampil bukan lagi isi berkasnya, dan pemakai membaca satu
+      // baris yang tidak ada di disk. Mode ini melewati seluruh penulisan ulang
+      // dan mengirimkannya sebagai teks biasa.
+      if (qs.get("raw") === "1") {
+        res.writeHead(200, {
+          "Content-Type": "text/plain; charset=utf-8",
+          "Cache-Control": "no-cache",
+        });
+        return res.end(fs.readFileSync(resolved));
+      }
       const mimeTypes = {
         ".html": "text/html",
         ".htm": "text/html",
