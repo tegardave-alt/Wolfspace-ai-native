@@ -427,6 +427,43 @@ function _lepasReloadTertunda() {
 // so the renderer can drop fetch() in favour of IPC. (Streaming endpoints use
 // WOLFSPACE:stream instead.)
 const { PassThrough, Writable } = require("stream");
+// Menandai "respons sudah ditutup" pada objek res TIRUAN, dengan cara yang
+// benar-benar terbaca oleh handler.
+//
+// KENAPA TIDAK CUKUP `res.writableEnded = true`. `writableEnded` dan
+// `writableFinished` adalah ACCESSOR HANYA-BACA di prototipe Writable — tak
+// punya setter. Menugaskannya dari kode non-strict TIDAK melempar dan TIDAK
+// mengubah apa pun; ia diabaikan dalam diam. Diverifikasi langsung:
+//
+//   const res = new Writable();
+//   res.writableEnded = true;
+//   res.writableEnded            // -> false
+//   hasOwnProperty('writableEnded') -> false
+//
+// Akibatnya seluruh 17 penjaga di server.cjs MATI di jalur desktop, karena
+// di sini res bukan ServerResponse asli melainkan Writable telanjang yang
+// method end()-nya ditimpa — jadi mesin stream aslinya tak pernah jalan dan
+// nilai bawaannya `false` selamanya. Yang ikut mati:
+//
+//   if (!res.writableEnded) res.write(...)   -> menulis SESUDAH respons ditutup
+//   if (!res.writableEnded) res.end()        -> menutup dua kali
+//   if (cancelled || res.writableEnded) ...  -> pemeriksaan batal tak pernah benar
+//
+// Yang terakhir yang paling terasa: itu satu-satunya rem yang menghentikan
+// kerja setelah pemakai membatalkan.
+function _pasangTandaSelesai(res) {
+  res._selesai = false;
+  const baca = () => res._selesai;
+  Object.defineProperty(res, "writableEnded", {
+    get: baca,
+    configurable: true,
+  });
+  Object.defineProperty(res, "writableFinished", {
+    get: baca,
+    configurable: true,
+  });
+}
+
 function apiCall({
   method = "GET",
   path = "/",
@@ -452,8 +489,7 @@ function apiCall({
     res.statusCode = 200;
     res._h = {};
     res._chunks = [];
-    res.writableEnded = false;
-    res.writableFinished = false;
+    _pasangTandaSelesai(res);
     res.setHeader = (k, v) => {
       res._h[String(k).toLowerCase()] = v;
     };
@@ -471,9 +507,9 @@ function apiCall({
       cb();
     };
     res.end = (chunk) => {
+      if (res._selesai) return; // handler yang memanggil end() dua kali tak menjawab dua kali
       if (chunk) res._chunks.push(Buffer.from(chunk));
-      res.writableEnded = true;
-      res.writableFinished = true;
+      res._selesai = true;
       done({
         status: res.statusCode,
         headers: res._h,
@@ -510,8 +546,7 @@ function apiStream(
     const res = new Writable();
     res.statusCode = 200;
     res._h = {};
-    res.writableEnded = false;
-    res.writableFinished = false;
+    _pasangTandaSelesai(res);
     res.setHeader = (k, v) => {
       res._h[String(k).toLowerCase()] = v;
     };
@@ -526,9 +561,9 @@ function apiStream(
       cb();
     };
     res.end = (chunk) => {
+      if (res._selesai) return;
       if (chunk) emit(chunk.toString("utf8"));
-      res.writableEnded = true;
-      res.writableFinished = true;
+      res._selesai = true;
       resolve();
     };
     if (ctl.setCurReq) ctl.setCurReq(res); // cancel â†’ res.destroy() â†’ 'close' â†’ handler aborts

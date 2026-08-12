@@ -125,47 +125,104 @@ function _pembukaCwd(cwd) {
  * Apakah jalur ini siap? Diperiksa SEKALI lalu di-cache.
  * @returns {{siap: boolean, alasan: string}}
  */
-function tersedia() {
-  if (_G.cache) return _G.cache;
-  if (process.platform !== "win32") {
-    _G.cache = { siap: false, alasan: "hanya untuk Windows" };
-    return _G.cache;
-  }
-  if (!fs.existsSync(EXE)) {
-    _G.cache = {
+// Pemeriksaan MURAH yang tak perlu menjalankan apa pun. Dipisah supaya jalur
+// sinkron dan asinkron memakai penilaian yang sama persis.
+function _tersediaMurah() {
+  if (process.platform !== "win32")
+    return { siap: false, alasan: "hanya untuk Windows" };
+  if (!fs.existsSync(EXE))
+    return {
       siap: false,
       alasan:
         "AcLaunch.exe belum dikompilasi (" +
         EXE +
         ") — jalankan scripts/appcontainer/build.cmd",
     };
-    return _G.cache;
-  }
+  return null; // perlu uji nyata
+}
+const _ARGV_UJI = () => [
+  CONTAINER,
+  process.cwd(),
+  PS,
+  "-NoProfile",
+  "-Command",
+  "'siap'",
+];
+function _nilaiUji(out) {
+  if (!String(out).includes("siap"))
+    return {
+      siap: false,
+      alasan: "container menjawab tak terduga: " + String(out).slice(0, 80),
+    };
+  return { siap: true, alasan: "" };
+}
+function _nilaiGagal(e) {
+  return {
+    siap: false,
+    alasan: String((e.stderr || "") + " " + e.message)
+      .replace(/\s+/g, " ")
+      .slice(0, 160),
+  };
+}
+
+function tersedia() {
+  if (_G.cache) return _G.cache;
+  const murah = _tersediaMurah();
+  if (murah) return (_G.cache = murah);
   try {
     // Uji nyata, bukan asumsi: kalau profil container belum dibuat atau ACL
     // belum dipasang, ini gagal di sini alih-alih pada perintah pertama agent.
-    const out = execFileSync(
-      EXE,
-      [CONTAINER, process.cwd(), PS, "-NoProfile", "-Command", "'siap'"],
-      { encoding: "utf8", timeout: 30000, windowsHide: true },
+    _G.cache = _nilaiUji(
+      execFileSync(EXE, _ARGV_UJI(), {
+        encoding: "utf8",
+        timeout: 30000,
+        windowsHide: true,
+      }),
     );
-    if (!String(out).includes("siap")) {
-      _G.cache = {
-        siap: false,
-        alasan: "container menjawab tak terduga: " + String(out).slice(0, 80),
-      };
-      return _G.cache;
-    }
-    _G.cache = { siap: true, alasan: "" };
   } catch (e) {
-    _G.cache = {
-      siap: false,
-      alasan: String((e.stderr || "") + " " + e.message)
-        .replace(/\s+/g, " ")
-        .slice(0, 160),
-    };
+    _G.cache = _nilaiGagal(e);
   }
   return _G.cache;
+}
+
+/**
+ * Versi ASINKRON dari tersedia(), dipakai jalur panas.
+ *
+ * KENAPA HARUS ADA DUA. Agent WOLFSPACE berjalan DI DALAM proses utama
+ * Electron (electron/main.js me-require core.js dan memanggil handler-nya
+ * langsung, tanpa HTTP). Jadi setiap milidetik SINKRON di sini adalah
+ * milidetik jendela membeku — persis gejala "not responding".
+ *
+ * Terukur dengan profil CPU + pemantau detak event loop: uji nyata di bawah
+ * menyalakan AcLaunch.exe + PowerShell, dan lewat execFileSync itu menahan
+ * event loop 2025 ms pada perintah bash PERTAMA setiap sesi. Menunggu proses
+ * anak tak perlu membekukan apa pun — hanya bentuk panggilannya yang salah.
+ *
+ * Versi sinkronnya TETAP ADA, dan sengaja: daftarAkses() dan berkas uji
+ * memanggilnya dari konteks sinkron, dan di sana harganya memang dibayar sekali
+ * di luar jalur yang dilihat pemakai. Keduanya berbagi _G.cache, jadi siapa pun
+ * yang lebih dulu jalan membayar untuk keduanya.
+ */
+function tersediaAsync() {
+  if (_G.cache) return Promise.resolve(_G.cache);
+  const murah = _tersediaMurah();
+  if (murah) return Promise.resolve((_G.cache = murah));
+  return new Promise((res) => {
+    execFile(
+      EXE,
+      _ARGV_UJI(),
+      { encoding: "utf8", timeout: 30000, windowsHide: true },
+      (err, stdout, stderr) => {
+        if (err) {
+          err.stderr = stderr;
+          _G.cache = _nilaiGagal(err);
+        } else {
+          _G.cache = _nilaiUji(stdout);
+        }
+        res(_G.cache);
+      },
+    );
+  });
 }
 
 // Satu-satunya kegagalan yang tersisa, dan ia PERMANEN untuk jalur ini.
@@ -327,6 +384,24 @@ function sid() {
   return _G.sid || null;
 }
 
+/** Versi asinkron dari sid(). Alasannya sama dengan tersediaAsync(): lewat
+ *  execFileSync panggilan ini menahan event loop 106 ms, dan itu dibayar di
+ *  proses utama Electron. */
+function sidAsync() {
+  if (_G.sid !== null) return Promise.resolve(_G.sid || null);
+  return new Promise((res) => {
+    execFile(
+      EXE,
+      ["--sid", CONTAINER],
+      { encoding: "utf8", timeout: 15000, windowsHide: true },
+      (err, stdout) => {
+        _G.sid = err ? "" : String(stdout).trim();
+        res(_G.sid || null);
+      },
+    );
+  });
+}
+
 /**
  * Pastikan container boleh membaca dan menulis SATU folder: workspace yang
  * sedang dipakai.
@@ -361,9 +436,9 @@ function sid() {
  * @returns {Promise<{siap: boolean, alasan: string}>}
  */
 async function siapUntuk(root) {
-  const dasar = tersedia();
+  const dasar = await tersediaAsync();
   if (!dasar.siap) return dasar;
-  const s = sid();
+  const s = await sidAsync();
   if (!s) return { siap: false, alasan: "SID container tak bisa diturunkan" };
   const r = path.resolve(root || process.cwd());
   const kunci = r.toLowerCase();
@@ -486,8 +561,8 @@ function _catatHibah(root) {
  * @returns {Promise<boolean>} berhasil atau tidak
  */
 async function beriSementara(dir) {
-  if (!tersedia().siap) return false;
-  const s = sid();
+  if (!(await tersediaAsync()).siap) return false;
+  const s = await sidAsync();
   if (!s) return false;
   const r = path.resolve(dir);
   const k = r.toLowerCase();
@@ -531,7 +606,7 @@ async function cabutSemuaKecuali(aktif) {
     process.env.WOLFSPACE_AC_CABUT === "false"
   )
     return [];
-  const s = sid();
+  const s = await sidAsync();
   if (!s) return [];
   const a = path.resolve(aktif).toLowerCase();
   const daftar = _bacaHibah();
@@ -643,7 +718,7 @@ function _jalurPenuh(bin) {
  */
 async function jalankan(perintah, opts) {
   const o = opts || {};
-  const siap = tersedia();
+  const siap = await tersediaAsync();
   if (!siap.siap) {
     return {
       ok: false,
@@ -706,6 +781,8 @@ async function jalankan(perintah, opts) {
 
 module.exports = {
   tersedia,
+  tersediaAsync,
+  sidAsync,
   siapUntuk,
   beriSementara,
   cabutSemuaKecuali,
