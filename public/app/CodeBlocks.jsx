@@ -201,6 +201,11 @@ function CodeBlock({ lang, code }) {
         fontSize: 13,
         lineNumbers: "on",
         renderLineHighlight: "none",
+        // Sama seperti AgentSteps.jsx dan LogicCodePane (app.jsx): kanvas
+        // 14px yang Monaco gambar di tepi kanan editor tetap aktif meski
+        // minimap mati, dan bergaris batas yang tak tersentuh CSS `outline`
+        // karena digambar ke piksel, bukan diatur lewat style.
+        overviewRulerLanes: 0,
         tabSize: 4,
         scrollbar: { alwaysConsumeMouseWheel: false },
         padding: { top: 8, bottom: 8 },

@@ -289,7 +289,23 @@ describe("panel berkas Logic bisa diatur lebarnya", () => {
 // bawaan Monaco kalau renderLineHighlight tak disetel (default "all"). Pada
 // baris pertama, batas ATASNYA berimpit dengan tepi editor, jadi yang
 // terlihat cuma satu garis membentang penuh persis di bawah header panel.
-describe("garis solid di panel kode: dua penyebab, dua perbaikan", () => {
+describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => {
+  // Setelah minimap dan renderLineHighlight diperbaiki, screenshot LANJUTAN
+  // (dari halaman uji Monaco TERISOLASI, di luar aplikasi, lewat Playwright --
+  // supaya tak tertipu cache/hot-reload) membuktikan satu garis TETAP
+  // bertahan: di tepi KANAN editor, meski minimap mati DAN highlight baris
+  // mati. Diperiksa elemen apa yang duduk di sana lewat elementFromPoint --
+  // hasilnya `.decorationsOverviewRuler`, kanvas 14px yang Monaco gambar
+  // SENDIRI di sisi kanan untuk menampilkan tanda kesalahan/pencarian, aktif
+  // independen dari opsi minimap. Batasnya digambar ke PIKSEL kanvas, bukan
+  // diatur lewat CSS, sehingga `outline: none` tak menyentuhnya sama sekali
+  // -- perlu opsi Monaco overviewRulerLanes: 0.
+  //
+  // Garis di tepi ATAS + KIRI (dari laporan pertama) sumbernya keempat:
+  // outline fokus bawaan `.monaco-editor.focused`, yang sudah disuplai
+  // penangkalnya di .ar-out-mona-host (AgentSteps) tapi tak pernah diwariskan
+  // ke host LogicCodePane karena host itu tak punya className sama sekali
+  // sebelum ini.
   const LOGIC = (() => {
     const i = APP.indexOf("function LogicCodePane(");
     const j = APP.indexOf("\nfunction ", i + 1);
@@ -319,6 +335,49 @@ describe("garis solid di panel kode: dua penyebab, dua perbaikan", () => {
     for (const src of [APP, STEPS, BLOKS]) {
       expect(src).toMatch(/minimap: \{ enabled: false \}/);
       expect(src).toMatch(/renderLineHighlight: "none"/);
+    }
+  });
+
+  test("penyebab #3 — kanvas overview ruler di tepi kanan DIMATIKAN", () => {
+    // Elemen ini terbukti lewat elementFromPoint pada screenshot terisolasi,
+    // bukan ditebak dari dokumentasi Monaco. Garisnya digambar ke kanvas,
+    // jadi tak ada aturan CSS yang bisa menghapusnya — harus opsi ini.
+    expect(LOGIC).toMatch(/overviewRulerLanes: 0/);
+  });
+
+  test("penyebab #4 — outline fokus DIMATIKAN via className, bukan cuma opsi Monaco", () => {
+    // Host LogicCodePane sebelumnya tak punya className sama sekali, jadi
+    // aturan penangkal outline yang sudah ada untuk editor lain (di bawah)
+    // tak pernah berlaku untuknya.
+    expect(APP).toMatch(/className="logic-code-host"/);
+    const CSS = fs.readFileSync(
+      path.join(AKAR, "public", "styles.css"),
+      "utf8",
+    );
+    expect(CSS).toMatch(/\.logic-code-host \.monaco-editor,/);
+    expect(CSS).toMatch(
+      /\.logic-code-host[\s\S]{0,80}outline: none !important;/,
+    );
+  });
+
+  test("ketiga editor Monaco konsisten pada KEEMPAT opsi/aturan", () => {
+    // Disamakan SEBELUM sempat dilaporkan untuk AgentSteps/CodeBlocks —
+    // penyebab #3 dan #4 sama sekali tak bergantung pada isi berkas atau
+    // panel tempatnya berada, jadi ketiganya pasti kena kalau salah satu kena.
+    const CSS = fs.readFileSync(
+      path.join(AKAR, "public", "styles.css"),
+      "utf8",
+    );
+    for (const src of [APP, STEPS, BLOKS])
+      expect(src).toMatch(/overviewRulerLanes: 0/);
+    for (const kelas of [
+      ".ar-out-mona-host",
+      ".monaco-host",
+      ".logic-code-host",
+    ]) {
+      const i = CSS.indexOf(kelas + " .monaco-editor,");
+      const iAlt = CSS.indexOf(kelas + " .monaco-editor {");
+      expect(Math.max(i, iAlt)).toBeGreaterThan(-1);
     }
   });
 });

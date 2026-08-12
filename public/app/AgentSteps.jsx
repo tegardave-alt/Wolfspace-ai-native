@@ -86,6 +86,15 @@ function ToolOutput({ text, ok, kind, arg }) {
             fontSize: 12,
             lineNumbers: "on",
             renderLineHighlight: "none",
+            // Kanvas 14px yang Monaco gambar sendiri di tepi kanan editor
+            // (tanda kesalahan/hasil pencarian), aktif meski minimap mati —
+            // dan bergaris batas bawaan yang tak tersentuh CSS `outline`
+            // karena digambar ke piksel, bukan diatur lewat style. Ditemukan
+            // saat menelusuri garis serupa di panel kode Logic
+            // (LogicCodePane, app.jsx); disamakan di sini SEBELUM sempat
+            // dilaporkan, karena ketiga editor Monaco aplikasi ini memang
+            // dimaksud terlihat identik.
+            overviewRulerLanes: 0,
             tabSize: 2,
             scrollbar: { alwaysConsumeMouseWheel: false },
             padding: { top: 6, bottom: 6 },

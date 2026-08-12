@@ -1100,6 +1100,15 @@ select {
 .monaco-host .monaco-editor-background {
   background: var(--code-bg);
 }
+/* Sama seperti .ar-out-mona-host dan .logic-code-host: Monaco menggambar
+   garis fokus biru di sekeliling editor begitu ia menerima fokus keyboard.
+   Tanpa ini, blok kode di chat menunjukkan garis yang sama di tepi atas dan
+   kiri begitu diklik atau di-tab ke — belum dilaporkan, tapi sama
+   penyebabnya dengan yang sudah ditemukan di dua editor lain. */
+.monaco-host .monaco-editor,
+.monaco-host .monaco-editor.focused {
+  outline: none !important;
+}
 .code-toolbar {
   display: flex;
   align-items: center;
@@ -2124,6 +2133,19 @@ select {
 }
 .ar-out-mona-host .monaco-editor .view-lines,
 .ar-out-mona-host .monaco-editor .view-line {
+  outline: none !important;
+}
+/* Panel kode Logic — outline sama seperti .ar-out-mona-host di atas.
+   Monaco menggambar garis fokus BIRU di sekeliling editor ("outline" bawaan
+   .monaco-editor.focused) begitu editor menerima fokus keyboard, bahkan pada
+   editor readOnly. Tanpa aturan ini tepi ATAS dan KIRI panel kode Logic
+   menampilkan garis itu; tepi KANAN diselesaikan terpisah lewat opsi
+   overviewRulerLanes: 0 di app.jsx, karena itu digambar ke kanvas — CSS
+   outline tak menyentuh piksel yang sudah dilukis. */
+.logic-code-host .monaco-editor,
+.logic-code-host .monaco-editor.focused,
+.logic-code-host .monaco-editor .view-lines,
+.logic-code-host .monaco-editor .view-line {
   outline: none !important;
 }
 .agent-summary b {

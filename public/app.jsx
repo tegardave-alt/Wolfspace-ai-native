@@ -756,6 +756,16 @@ function LogicCodePane({ root, rel }) {
         // panel BACA-SAJA — tak ada yang sedang mengedit, jadi menyorot
         // "baris aktif" tak berarti apa-apa di sini selain artefak visual.
         renderLineHighlight: "none",
+        // PENYEBAB KETIGA, ditemukan lewat screenshot Playwright dari editor
+        // TERISOLASI (di luar aplikasi) supaya tak ikut tertipu oleh cache
+        // atau reload yang tertunda. Dua perbaikan di atas membersihkan garis
+        // atas dan bawah; garis di TEPI KANAN bertahan sesudah keduanya —
+        // terbukti berasal dari elemen `.decorationsOverviewRuler`, kanvas
+        // 14px yang Monaco gambar sendiri di sisi kanan editor (untuk
+        // menampilkan tanda kesalahan/hasil pencarian, meski minimap mati).
+        // Batasnya DIGAMBAR ke kanvas, bukan diatur lewat CSS — jadi
+        // `outline: none` tak menyentuhnya; harus dimatikan lewat opsi ini.
+        overviewRulerLanes: 0,
       });
     });
     return () => {
@@ -836,7 +846,11 @@ function LogicCodePane({ root, rel }) {
         {muat && <span style={{ opacity: 0.6 }}>memuat…</span>}
         {galat && <span style={{ color: "#f85149" }}>{galat}</span>}
       </div>
-      <div ref={hostRef} style={{ flex: 1, minHeight: 0 }} />
+      <div
+        className="logic-code-host"
+        ref={hostRef}
+        style={{ flex: 1, minHeight: 0 }}
+      />
     </div>
   );
 }
