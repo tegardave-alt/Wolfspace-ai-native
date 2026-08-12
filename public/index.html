@@ -128,6 +128,29 @@
       require.config({ paths: { vs: MB + "/vendor/monaco/vs" } });
       window.monacoReady = new Promise(function (res) {
         require(["vs/editor/editor.main"], function () {
+          // Tema sendiri, dengan latar TRANSPARAN.
+          //
+          // vs-dark memaksa #1e1e1e, dan itu tak sama dengan satu pun permukaan
+          // aplikasi ini — editor jadi kotak abu di atas panel yang warnanya
+          // lain. Tema Monaco bersifat GLOBAL (opsi `theme` saat create
+          // mengubahnya untuk semua editor), jadi mematoknya ke satu warna cuma
+          // memindahkan ketidakcocokan ke editor yang duduk di permukaan lain.
+          //
+          // Latar transparan membuat tiap editor mengambil warna wadahnya
+          // sendiri: keluaran tool ikut .ar-out, blok kode ikut gelembungnya,
+          // dan panel kode ikut warna panel berkas.
+          window.monaco.editor.defineTheme("wolfspace-gelap", {
+            base: "vs-dark",
+            inherit: true,
+            rules: [],
+            colors: {
+              "editor.background": "#00000000",
+              "editorGutter.background": "#00000000",
+              "minimap.background": "#00000000",
+              "editorLineNumber.foreground": "#4b5563",
+              "editorLineNumber.activeForeground": "#8b98a9",
+            },
+          });
           res(window.monaco);
         });
       });

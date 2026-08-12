@@ -194,7 +194,7 @@ function CodeBlock({ lang, code }) {
       const ed = monaco.editor.create(hostRef.current, {
         value: teks, // naskah pemakai bila ada, kalau tidak teks aslinya
         language: mLang(language),
-        theme: "vs-dark",
+        theme: "wolfspace-gelap",
         automaticLayout: true,
         minimap: { enabled: false },
         scrollBeyondLastLine: false,

@@ -79,7 +79,7 @@ function ToolOutput({ text, ok, kind, arg }) {
           const ed = monaco.editor.create(hostRef.current, {
             value: text || "",
             language,
-            theme: "vs-dark",
+            theme: "wolfspace-gelap",
             automaticLayout: true,
             minimap: { enabled: false },
             scrollBeyondLastLine: false,

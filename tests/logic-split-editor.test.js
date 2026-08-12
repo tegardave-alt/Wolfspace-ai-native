@@ -153,3 +153,62 @@ describe("ikon per bahasa di pohon berkas", () => {
     expect(APP).toMatch(/function bahasaMonaco\(nama\)/);
   });
 });
+
+// Latar editor mengikuti wadahnya, bukan dipatok Monaco.
+//
+// vs-dark memaksa #1e1e1e — warna yang tak sama dengan satu pun permukaan
+// aplikasi ini, jadi editornya jadi kotak abu di atas panel yang warnanya lain.
+//
+// Tema Monaco bersifat GLOBAL: opsi `theme` saat create mengubahnya untuk SEMUA
+// editor. Jadi mematoknya ke satu warna cuma memindahkan ketidakcocokan ke
+// editor yang duduk di permukaan lain — keluaran tool, blok kode di chat, dan
+// panel kode ini semuanya berlatar berbeda.
+describe("latar editor mengikuti wadahnya", () => {
+  const HTML = fs.readFileSync(
+    path.join(__dirname, "..", "public", "index.html"),
+    "utf8",
+  );
+  const STEPS = fs.readFileSync(
+    path.join(__dirname, "..", "public", "app", "AgentSteps.jsx"),
+    "utf8",
+  );
+  const BLOKS = fs.readFileSync(
+    path.join(__dirname, "..", "public", "app", "CodeBlocks.jsx"),
+    "utf8",
+  );
+
+  test("tema sendiri didefinisikan sekali, saat Monaco siap", () => {
+    expect(HTML).toMatch(/defineTheme\("wolfspace-gelap"/);
+    expect(HTML).toMatch(/base: "vs-dark"/);
+  });
+
+  test("latarnya TRANSPARAN, bukan warna mati", () => {
+    // Inilah yang membuat satu tema global tetap cocok di tiga permukaan.
+    expect(HTML).toMatch(/"editor\.background": "#00000000"/);
+  });
+
+  test("SEMUA editor memakai tema itu, tak ada yang tertinggal", () => {
+    // Satu editor yang tertinggal di vs-dark akan berlatar #1e1e1e sendirian —
+    // dan karena temanya global, ia juga menyeret yang lain saat dibuat.
+    for (const src of [APP, STEPS, BLOKS]) {
+      expect(src).toMatch(/theme: "wolfspace-gelap"/);
+      expect(src).not.toMatch(/theme: "vs-dark"/);
+    }
+  });
+
+  test("panel kode sewarna dengan panel berkas di sebelahnya", () => {
+    // Keduanya harus terbaca sebagai satu permukaan, bukan dua panel yang
+    // kebetulan bersebelahan.
+    // Jendela dihitung sampai fungsi BERIKUTNYA, bukan panjang tebakan:
+    // gaya akar LogicFileTree ada ~120 baris di dalam badannya, jauh di luar
+    // jendela pendek mana pun.
+    const potong = (nama) => {
+      const i = APP.indexOf("function " + nama + "(");
+      expect(i).toBeGreaterThan(0);
+      const j = APP.indexOf("\nfunction ", i + 1);
+      return APP.slice(i, j > i ? j : APP.length);
+    };
+    expect(potong("LogicFileTree")).toContain('background: "#0c1219"');
+    expect(potong("LogicCodePane")).toContain('background: "#0c1219"');
+  });
+});

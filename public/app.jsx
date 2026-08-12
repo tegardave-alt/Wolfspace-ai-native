@@ -730,7 +730,7 @@ function LogicCodePane({ root, rel }) {
       edRef.current = monaco.editor.create(hostRef.current, {
         value: "",
         language: "plaintext",
-        theme: "vs-dark",
+        theme: "wolfspace-gelap",
         automaticLayout: true,
         readOnly: true,
         domReadOnly: true,
@@ -790,7 +790,11 @@ function LogicCodePane({ root, rel }) {
         minWidth: 0,
         display: "flex",
         flexDirection: "column",
-        background: "#0b1016",
+        // Warna yang SAMA dengan panel berkas di kirinya. Editor Monaco-nya
+        // sendiri berlatar transparan (tema wolfspace-gelap), jadi warna ini
+        // yang benar-benar terlihat — keduanya terbaca sebagai satu permukaan,
+        // bukan dua panel yang kebetulan bersebelahan.
+        background: "#0c1219",
       }}
     >
       <div
