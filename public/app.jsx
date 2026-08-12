@@ -864,7 +864,9 @@ function bahasaMonaco(nama) {
 }
 
 function LogicFileTree({ files, root, active, terpilih, onPilih }) {
-  const [tab, setTab] = React.useState("files");
+  // Tab "Changes" DIHAPUS. Ia selalu berbunyi "Tak ada perubahan." — tak
+  // pernah tersambung ke data nyata sejak awal — jadi bukan fitur yang
+  // dinonaktifkan, melainkan potongan UI yang tak pernah punya isi.
   const tree = buildDevTree(files, root);
   const icon = (t) => {
     // Monogram bahasa: kotak kecil berwarna khas bahasanya. Dirender sebagai
@@ -1000,23 +1002,16 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
         }}
       >
         <div style={{ display: "flex", gap: "16px", flex: 1 }}>
-          {["changes", "files"].map((t) => (
-            <span
-              key={t}
-              onClick={() => setTab(t)}
-              style={{
-                fontSize: "13px",
-                cursor: "pointer",
-                padding: "9px 0",
-                color: tab === t ? "#e6edf3" : "#6f7d92",
-                borderBottom:
-                  tab === t ? "2px solid #4c8bf5" : "2px solid transparent",
-                transition: "color .1s",
-              }}
-            >
-              {t === "changes" ? "Changes" : "Files"}
-            </span>
-          ))}
+          <span
+            style={{
+              fontSize: "13px",
+              padding: "9px 0",
+              color: "#e6edf3",
+              borderBottom: "2px solid #4c8bf5",
+            }}
+          >
+            Files
+          </span>
         </div>
         <div
           style={{
@@ -1083,22 +1078,7 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
           </button>
         </div>
       </div>
-      {tab === "changes" ? (
-        <div
-          style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            color: "#4b5563",
-            fontSize: "12px",
-            padding: "24px",
-            textAlign: "center",
-          }}
-        >
-          Tak ada perubahan.
-        </div>
-      ) : !active ? (
+      {!active ? (
         <div
           style={{
             flex: 1,
