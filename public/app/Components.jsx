@@ -566,6 +566,50 @@ function LightboxModal({ item, onClose }) {
   );
 }
 
+/* ── Checklist todowrite, tepat di atas kotak ketik ──
+   Bentuknya mengikuti todowrite Claude Code: satu daftar yang HIDUP di satu
+   tempat tetap, bukan jejak yang tertinggal di riwayat. Itu sebabnya ia duduk
+   di composer-wrap dan bukan di dalam gelembung agent — gelembung tergulung
+   naik begitu percakapan berlanjut, dan daftar yang gunanya untuk dilihat
+   SELAMA bekerja justru paling cepat hilang dari layar.
+
+   Kotak centangnya bisa diklik, dan itu disengaja: kadang sebuah item sudah
+   beres di kepala pemakai sebelum agent sempat menandainya. Tapi agent tetap
+   PEMILIKNYA — todowrite berikutnya menimpa seluruh daftar, termasuk centang
+   manual. Itu perilaku yang benar (agent yang tahu keadaan sebenarnya), dan
+   disebut di sini supaya tak dikira bug saat centangnya berubah sendiri. */
+function TodoPanel({ todos, onToggle }) {
+  if (!Array.isArray(todos) || todos.length === 0) return null;
+  const selesai = todos.filter((t) => (t.status || "") === "completed").length;
+  return (
+    <div className="todo-panel">
+      <div className="todo-panel-head">
+        <span className="todo-panel-judul">Tugas</span>
+        <span className="todo-panel-hitung">
+          {selesai}/{todos.length}
+        </span>
+      </div>
+      <div className="todo-panel-daftar">
+        {todos.map((t, i) => {
+          const st = t.status || "pending";
+          const id = "todo-" + i;
+          return (
+            <div className={"todo-baris st-" + st} key={i}>
+              <input
+                type="checkbox"
+                id={id}
+                checked={st === "completed"}
+                onChange={() => onToggle && onToggle(i)}
+              />
+              <label htmlFor={id}>{t.content}</label>
+            </div>
+          );
+        })}
+      </div>
+    </div>
+  );
+}
+
 function Composer({
   onSend,
   onCancel,
@@ -573,6 +617,8 @@ function Composer({
   models = [],
   modelVal,
   setModelVal,
+  todos = [],
+  onToggleTodo,
 }) {
   const [val, setVal] = useState("");
   const [attachments, setAttachments] = useState([]);
@@ -1046,6 +1092,7 @@ function Composer({
   };
   return (
     <div className="composer-wrap">
+      <TodoPanel todos={todos} onToggle={onToggleTodo} />
       <div className="composer">
         <input
           type="file"

@@ -1171,6 +1171,14 @@ function App() {
 
   const [history, setHistory] = useState([]);
   const [busy, setBusy] = useState(false);
+  // Checklist todowrite, DI TINGKAT APLIKASI — bukan di dalam state satu pesan.
+  //
+  // Dulu ia hidup sebagai run.todos milik tiap gelembung agent, jadi ia ikut
+  // tergulung naik bersama pesannya begitu percakapan berlanjut: daftar yang
+  // gunanya justru untuk dilihat SELAMA bekerja malah hilang dari layar paling
+  // cepat. Di sini ia satu daftar untuk seluruh sesi, dirender tepat di atas
+  // kotak ketik supaya selalu di tempat yang sama.
+  const [todos, setTodos] = useState([]);
   const [status, setStatus] = useState("Loading models…");
   const [view, setView] = useState("chat");
   const [sbCollapsed, setSbCollapsed] = useState(() => {
@@ -1731,9 +1739,14 @@ function App() {
             }
             // todos: keadaan checklist. Disimpan sebagai STATE, bukan baris
             // timeline — isinya sudah muncul lewat keluaran tool todowrite,
-            // jadi mendorongnya ke timeline hanya menggandakan. Yang belum ada
-            // adalah tampilan checklist yang hidup.
-            else if (j.t === "todos") upd({ todos: j.todos });
+            // jadi mendorongnya ke timeline hanya menggandakan.
+            //
+            // Sekarang masuk ke state TINGKAT APLIKASI, bukan ke state pesan.
+            // Sebagai run.todos ia ikut tergulung naik bersama gelembungnya,
+            // jadi daftar yang gunanya untuk dilihat SELAMA bekerja malah
+            // paling cepat hilang dari layar. Panelnya kini duduk tetap di atas
+            // kotak ketik.
+            else if (j.t === "todos") setTodos(j.todos || []);
             else if (j.t === "step") {
               think = "";
               upd({ step: j.n, thinking: "", status: "" });
@@ -2054,6 +2067,22 @@ function App() {
                   onSend={(t, tampil) => doSend(t, tampil)}
                   onCancel={cancel}
                   busy={busy}
+                  todos={todos}
+                  onToggleTodo={(i) =>
+                    setTodos((d) =>
+                      d.map((t, j) =>
+                        j === i
+                          ? {
+                              ...t,
+                              status:
+                                (t.status || "") === "completed"
+                                  ? "pending"
+                                  : "completed",
+                            }
+                          : t,
+                      ),
+                    )
+                  }
                 />
               </div>
               {terminalOpen && (

@@ -937,43 +937,6 @@ select {
 }
 /* Checklist hidup di timeline agent (event t:"todos").
    Sebelumnya event itu tak punya penanganan maupun gaya sama sekali. */
-.aal-todos {
-  display: flex;
-  flex-direction: column;
-  gap: 3px;
-  margin: 6px 0 8px;
-  padding: 8px 10px;
-  border-radius: 8px;
-  background: var(--surface-3);
-  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
-}
-.aal-todo {
-  display: flex;
-  align-items: flex-start;
-  gap: 8px;
-  font-size: 12px;
-  line-height: 1.45;
-  color: var(--text-dim, #8b949e);
-}
-.aal-todo-ikon {
-  flex: 0 0 12px;
-  text-align: center;
-}
-.aal-todo-teks {
-  flex: 1 1 auto;
-}
-.aal-todo.st-in_progress {
-  color: #fff;
-  font-weight: 500;
-}
-.aal-todo.st-completed .aal-todo-teks {
-  text-decoration: line-through;
-  opacity: 0.65;
-}
-.aal-todo.st-cancelled .aal-todo-teks {
-  text-decoration: line-through;
-  opacity: 0.4;
-}
 .bubble-model {
   font-size: 13px;
   line-height: 1.5;
@@ -1274,6 +1237,132 @@ select {
   padding: 14px 24px 22px;
   background: linear-gradient(to top, var(--bg) 55%, transparent);
 }
+/* ── Checklist todowrite, tepat di atas kotak ketik ──
+   Kotak centangnya diadaptasi dari cuplikan uiverse (MIT). Yang diubah dan
+   alasannya:
+
+   - Warna: pink/biru bawaannya diganti variabel tema, jadi ia ikut tema terang
+     maupun gelap. Hijau untuk selesai mengikuti warna sukses yang sudah dipakai
+     di tempat lain, bukan warna baru.
+   - Ukuran: 1.5rem -> 15px. Aslinya untuk formulir berdiri sendiri; di sini ia
+     sebaris dengan teks 12px di atas kotak ketik.
+   - `.my-form` -> `.todo-panel`. Nama sekelas "my-form" di lembar gaya yang
+     dipakai seluruh aplikasi hampir pasti menabrak sesuatu.
+
+   Lebarnya disamakan dengan .composer (880px, tengah) supaya kedua kotak
+   terbaca sebagai satu tumpukan, bukan dua elemen yang kebetulan bertetangga. */
+.todo-panel {
+  max-width: 880px;
+  margin: 0 auto 8px;
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
+  border-radius: 12px;
+  padding: 10px 14px;
+  --_todo-diam: var(--text-dim, #8b949e);
+  --_todo-sorot: var(--text, #e6edf3);
+  --_todo-selesai: #3fb950;
+}
+.todo-panel-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+.todo-panel-judul {
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8c959f);
+}
+.todo-panel-hitung {
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted, #8c959f);
+}
+.todo-panel-daftar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  /* Daftar panjang tak boleh mendorong kotak ketik keluar layar. */
+  max-height: 190px;
+  overflow-y: auto;
+}
+.todo-baris {
+  --_todo-kini: var(--_todo-diam);
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.todo-baris label {
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1.45;
+  color: var(--_todo-kini);
+  transition: color 150ms ease-in-out;
+}
+
+.todo-baris input[type="checkbox"] {
+  appearance: none;
+  outline: none;
+  width: 15px;
+  height: 15px;
+  flex: 0 0 15px;
+  background: transparent;
+  border: 1px solid var(--_todo-kini);
+  border-radius: 3px;
+  display: grid;
+  place-content: center;
+  cursor: pointer;
+  transition:
+    border-color 150ms ease-in-out,
+    background 150ms ease-in-out;
+}
+.todo-baris input[type="checkbox"]::after {
+  content: "\2714";
+  font-size: 10px;
+  line-height: 1;
+  opacity: 0;
+  color: var(--_todo-selesai);
+  transition: opacity 150ms ease-in-out;
+}
+
+.todo-baris label:hover,
+.todo-baris input[type="checkbox"]:hover,
+.todo-baris input[type="checkbox"]:hover + label,
+.todo-baris input[type="checkbox"]:focus-visible,
+.todo-baris input[type="checkbox"]:focus-visible + label {
+  --_todo-kini: var(--_todo-sorot);
+}
+.todo-baris input[type="checkbox"]:hover::after,
+.todo-baris input[type="checkbox"]:focus-visible::after {
+  opacity: 0.45;
+}
+
+.todo-baris input[type="checkbox"]:checked::after {
+  opacity: 1;
+}
+.todo-baris input[type="checkbox"]:checked:not(:hover),
+.todo-baris input[type="checkbox"]:checked + label:not(:hover) {
+  --_todo-kini: var(--_todo-selesai);
+}
+.todo-baris.st-completed label {
+  text-decoration: line-through;
+  opacity: 0.7;
+}
+/* Yang sedang dikerjakan disorot — tanpa ini seluruh daftar terbaca rata dan
+   pemakai harus menebak agent sedang di mana. */
+.todo-baris.st-in_progress {
+  --_todo-kini: var(--_todo-sorot);
+}
+.todo-baris.st-in_progress label {
+  font-weight: 500;
+}
+.todo-baris.st-cancelled label {
+  text-decoration: line-through;
+  opacity: 0.45;
+}
+
 .composer {
   position: relative;
   max-width: 880px;

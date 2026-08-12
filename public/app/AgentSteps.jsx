@@ -688,32 +688,10 @@ function AgentSteps({ run }) {
             );
           });
         })()}
-        {/* Checklist HIDUP. Event t:"todos" dulu di-emit backend tiap kali
-            todowrite dipanggil, tapi tak ada penanganannya di UI — jadi satu-
-            satunya jejak checklist adalah keluaran tool yang tenggelam di
-            timeline. Di sini ia jadi keadaan yang selalu terlihat, dengan
-            item yang sedang dikerjakan ditandai. */}
-        {Array.isArray(run.todos) && run.todos.length > 0 && (
-          <div className="aal-todos">
-            {run.todos.map((t, i) => {
-              const st = t.status || "pending";
-              const ikon =
-                st === "completed"
-                  ? "✓"
-                  : st === "in_progress"
-                    ? "→"
-                    : st === "cancelled"
-                      ? "✗"
-                      : "○";
-              return (
-                <div className={"aal-todo st-" + st} key={i}>
-                  <span className="aal-todo-ikon">{ikon}</span>
-                  <span className="aal-todo-teks">{t.content}</span>
-                </div>
-              );
-            })}
-          </div>
-        )}
+        {/* Checklist todowrite DIPINDAH ke panel di atas kotak ketik
+            (TodoPanel di Components.jsx). Di sini ia ikut tergulung naik
+            bersama gelembungnya, jadi daftar yang gunanya untuk dilihat SELAMA
+            bekerja justru paling cepat hilang dari layar. */}
         {run.busy && (
           <div className="aal-row aal-thought-header">
             {/* run.status ditampilkan APA ADANYA bila ada.

@@ -197,10 +197,23 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
     // todos jadi STATE checklist hidup, bukan baris timeline — isinya sudah
     // muncul lewat keluaran tool todowrite, jadi mendorongnya ke timeline
     // hanya menggandakan.
-    expect((UI.match(/upd\(\{ todos: j\.todos \}\)/g) || []).length).toBe(
+    //
+    // WADAHNYA BERPINDAH: dulu upd({ todos }) — state milik SATU pesan — jadi
+    // daftarnya ikut tergulung naik bersama gelembungnya, dan daftar yang
+    // gunanya untuk dilihat SELAMA bekerja justru paling cepat hilang dari
+    // layar. Kini setTodos di tingkat aplikasi, dirender TodoPanel tepat di
+    // atas kotak ketik. Yang dijaga tetap sama: tiap pemanggil menanganinya.
+    expect((UI.match(/setTodos\(j\.todos \|\| \[\]\)/g) || []).length).toBe(
       PEMANGGIL,
     );
-    expect(STEPS).toContain("run.todos");
+    expect(UI).not.toMatch(/upd\(\{ todos: j\.todos \}\)/);
+    const KOMP = fs
+      .readFileSync(require.resolve("../public/app/Components.jsx"), "utf8")
+      .replace(/\s+/g, " ");
+    expect(KOMP).toContain("function TodoPanel(");
+    expect(KOMP).toContain("<TodoPanel todos={todos}");
+    // Dan TIDAK dirender dua kali: dipindah, bukan digandakan.
+    expect(STEPS).not.toContain("run.todos");
   });
 
   test("status dibersihkan saat langkah baru — tak menempel sesudah tunggu usai", () => {
