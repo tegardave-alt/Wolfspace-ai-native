@@ -144,6 +144,27 @@ select {
 .sidebar.resizing .sb-resizer {
   background: rgba(96, 165, 250, 0.4);
 }
+
+/* Panel berkas di view Logic — resizer sama persis dengan .sb-resizer di atas,
+   diberi nama sendiri karena kelas induknya beda ("logic-filetree" bukan
+   "sidebar"), tapi perilaku dan warnanya sengaja disamakan: dua panel yang
+   bisa diatur lebarnya dengan cara berbeda akan terasa seperti dua aplikasi
+   berbeda. */
+.logic-filetree-resizer {
+  position: absolute;
+  top: 0;
+  right: -3px;
+  bottom: 0;
+  width: 7px;
+  cursor: col-resize;
+  z-index: 20;
+  background: transparent;
+  transition: background 0.15s ease;
+}
+.logic-filetree-resizer:hover,
+.logic-filetree.resizing .logic-filetree-resizer {
+  background: rgba(96, 165, 250, 0.4);
+}
 .sb-head {
   display: flex;
   align-items: center;

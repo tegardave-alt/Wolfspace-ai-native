@@ -734,7 +734,13 @@ function LogicCodePane({ root, rel }) {
         automaticLayout: true,
         readOnly: true,
         domReadOnly: true,
-        minimap: { enabled: true },
+        // false, sama seperti dua editor Monaco lain di aplikasi ini
+        // (AgentSteps, CodeBlocks). Beda dari keduanya di sini menghasilkan
+        // bug yang nyata: minimap punya SLIDER (kotak penunjuk viewport), dan
+        // pada berkas pendek di panel sempit, slider itu memenuhi hampir
+        // seluruh tinggi minimap — terlihat persis seperti satu garis biru
+        // solid membentang penuh, bukan seperti minimap sama sekali.
+        minimap: { enabled: false },
         fontSize: 12,
         scrollBeyondLastLine: false,
         wordWrap: "off",
@@ -868,6 +874,45 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
   // pernah tersambung ke data nyata sejak awal — jadi bukan fitur yang
   // dinonaktifkan, melainkan potongan UI yang tak pernah punya isi.
   const tree = buildDevTree(files, root);
+  // Lebar bisa diatur, POLA YANG SAMA dengan resizer sidebar (Sidebar.jsx):
+  // localStorage terpisah, batas atas/bawah, kelas "resizing" selama diseret.
+  // Disamakan sengaja — dua panel yang bisa diatur lebarnya dengan cara
+  // berbeda akan terasa seperti dua aplikasi berbeda.
+  const [lfWidth, setLfWidth] = React.useState(() => {
+    try {
+      const w = parseInt(
+        localStorage.getItem("wolfspace_logicfiles_width") || "244",
+        10,
+      );
+      return isNaN(w) ? 244 : Math.max(160, Math.min(500, w));
+    } catch (_) {
+      return 244;
+    }
+  });
+  const [lfResizing, setLfResizing] = React.useState(false);
+  const handleLfResizerMouseDown = (e) => {
+    e.preventDefault();
+    e.stopPropagation();
+    setLfResizing(true);
+    const startX = e.clientX;
+    const startWidth = lfWidth;
+    const onMove = (moveEvent) => {
+      const deltaX = moveEvent.clientX - startX;
+      setLfWidth(Math.max(160, Math.min(500, startWidth + deltaX)));
+    };
+    const onUp = (upEvent) => {
+      const deltaX = upEvent.clientX - startX;
+      const finalWidth = Math.max(160, Math.min(500, startWidth + deltaX));
+      setLfResizing(false);
+      try {
+        localStorage.setItem("wolfspace_logicfiles_width", String(finalWidth));
+      } catch (_) {}
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onUp);
+    };
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onUp);
+  };
   const icon = (t) => {
     // Monogram bahasa: kotak kecil berwarna khas bahasanya. Dirender sebagai
     // SVG (bukan <span> ber-CSS) supaya ia sejajar dengan ikon lain yang sudah
@@ -977,10 +1022,11 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
   };
   return (
     <div
+      className={"logic-filetree" + (lfResizing ? " resizing" : "")}
       style={{
-        // Sidebar tetap 244px: panel kode di kanannya yang menyerap sisa lebar,
-        // sama seperti VS Code.
-        width: "244px",
+        // Lebar diatur pemakai (lfWidth); panel kode di kanannya yang
+        // menyerap sisa lebar, sama seperti VS Code.
+        width: lfWidth + "px",
         flex: "0 0 auto",
         flexShrink: 0,
         minWidth: 0,
@@ -989,8 +1035,14 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
         display: "flex",
         flexDirection: "column",
         userSelect: "none",
+        position: "relative",
       }}
     >
+      <div
+        className="logic-filetree-resizer"
+        onMouseDown={handleLfResizerMouseDown}
+        title="Seret untuk mengubah lebar"
+      />
       <div
         style={{
           display: "flex",

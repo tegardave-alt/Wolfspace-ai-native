@@ -212,3 +212,92 @@ describe("latar editor mengikuti wadahnya", () => {
     expect(potong("LogicCodePane")).toContain('background: "#0c1219"');
   });
 });
+
+// Panel berkas di view Logic bisa DIATUR lebarnya, dengan pola yang sama
+// dengan resizer sidebar (public/app/Sidebar.jsx): state localStorage
+// terpisah, batas atas/bawah, kelas "resizing" selama diseret.
+//
+// Disamakan sengaja, bukan kebetulan sama: dua panel yang bisa diatur
+// lebarnya dengan cara berbeda terasa seperti dua aplikasi berbeda.
+describe("panel berkas Logic bisa diatur lebarnya", () => {
+  test("state lebar disimpan sendiri, terpisah dari sidebar", () => {
+    expect(APP).toMatch(/const \[lfWidth, setLfWidth\] = React\.useState/);
+    expect(APP).toMatch(/wolfspace_logicfiles_width/);
+    expect(APP).not.toMatch(/wolfspace_sidebar_width.*lfWidth/);
+  });
+
+  test("batas lebar wajar: tak bisa hilang, tak bisa menelan layar", () => {
+    expect(APP).toMatch(
+      /Math\.max\(160, Math\.min\(500, startWidth \+ deltaX\)\)/,
+    );
+  });
+
+  test("handle resizer ada dan tersambung ke handler seret", () => {
+    expect(APP).toMatch(/className="logic-filetree-resizer"/);
+    expect(APP).toMatch(/onMouseDown=\{handleLfResizerMouseDown\}/);
+  });
+
+  test("lebar akhir disimpan ke localStorage saat seret berhenti", () => {
+    expect(APP).toMatch(
+      /localStorage\.setItem\("wolfspace_logicfiles_width", String\(finalWidth\)\)/,
+    );
+  });
+
+  test("gaya resizer meniru sidebar: sama posisi, sama warna hover", () => {
+    const CSS = fs.readFileSync(
+      path.join(AKAR, "public", "styles.css"),
+      "utf8",
+    );
+    const iSb = CSS.indexOf(".sb-resizer {");
+    const iLf = CSS.indexOf(".logic-filetree-resizer {");
+    expect(iSb).toBeGreaterThan(0);
+    expect(iLf).toBeGreaterThan(0);
+    // 500 karakter, bukan 300 -- aturan hover ada di RULE TERPISAH, sesudah
+    // penutup "}" yang pertama. Jendela 300 memotong tepat di tengah nilai
+    // rgba() dan membuat asersi merah karena panjang teks, bukan karena
+    // isinya salah.
+    const blokSb = CSS.slice(iSb, iSb + 500);
+    const blokLf = CSS.slice(iLf, iLf + 500);
+    for (const properti of [
+      "right: -3px",
+      "width: 7px",
+      "cursor: col-resize",
+    ]) {
+      expect(blokSb).toContain(properti);
+      expect(blokLf).toContain(properti);
+    }
+    expect(blokLf).toContain("rgba(96, 165, 250, 0.4)");
+  });
+});
+
+// Garis biru penuh yang muncul di panel kode Logic.
+//
+// AKAR MASALAHNYA: LogicCodePane satu-satunya dari tiga editor Monaco di
+// aplikasi ini yang mengaktifkan minimap. Minimap punya SLIDER (kotak
+// penunjuk area yang sedang terlihat), dan pada berkas pendek di panel
+// sempit, slider itu memenuhi hampir seluruh tinggi minimap — terlihat
+// persis seperti satu garis solid membentang penuh, bukan seperti minimap.
+describe("minimap tak lagi menimbulkan garis solid di panel kode", () => {
+  test("LogicCodePane samakan dengan dua editor Monaco lainnya: minimap MATI", () => {
+    const i = APP.indexOf("function LogicCodePane(");
+    const j = APP.indexOf("\nfunction ", i + 1);
+    const blok = APP.slice(i, j > i ? j : APP.length);
+    expect(blok).toMatch(/minimap: \{ enabled: false \}/);
+    expect(blok).not.toMatch(/minimap: \{ enabled: true \}/);
+  });
+
+  test("ketiga editor Monaco konsisten soal minimap", () => {
+    const STEPS = fs.readFileSync(
+      path.join(AKAR, "public", "app", "AgentSteps.jsx"),
+      "utf8",
+    );
+    const BLOKS = fs.readFileSync(
+      path.join(AKAR, "public", "app", "CodeBlocks.jsx"),
+      "utf8",
+    );
+    for (const src of [APP, STEPS, BLOKS])
+      expect((src.match(/minimap: \{ enabled: false \}/g) || []).length).toBe(
+        1,
+      );
+  });
+});
