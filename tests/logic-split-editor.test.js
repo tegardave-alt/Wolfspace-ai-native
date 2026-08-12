@@ -84,23 +84,58 @@ describe("split berkas + editor di view Logic", () => {
 });
 
 describe("ikon per bahasa di pohon berkas", () => {
-  test("tanpa pustaka ikon — tabel kecil, nol dependensi", () => {
-    // Tema ikon seperti Seti/Material berisi ratusan SVG, sementara aplikasi
-    // ini mem-vendor semua asetnya sendiri. Menariknya masuk berarti menambah
-    // ratusan berkas demi belasan ekstensi yang benar-benar muncul.
-    expect(APP).toMatch(/const BAHASA_IKON = \{/);
+  const IKON = fs.readFileSync(
+    path.join(AKAR, "public", "app", "IkonBahasa.jsx"),
+    "utf8",
+  );
+
+  test("SVG asli dari material-icon-theme, DI-VENDOR bukan jadi dependensi", () => {
+    // Paketnya berisi 1250 SVG (1,6 MB) sementara yang muncul di pohon ini
+    // cuma puluhan. Menjadikannya dependensi runtime berarti menanggung
+    // seluruhnya demi sebagian kecil — dan aplikasi ini memuat asetnya tanpa
+    // CDN maupun bundler saat jalan.
+    expect(IKON).toMatch(/const IKON_BAHASA = \{/);
+    expect(IKON).toMatch(/DIHASILKAN OLEH scripts\/ikon-bahasa\/build\.cjs/);
     const pkg = JSON.parse(
       fs.readFileSync(path.join(AKAR, "package.json"), "utf8"),
     );
     const dep = Object.keys({ ...pkg.dependencies, ...pkg.devDependencies });
-    for (const d of dep)
-      expect(d).not.toMatch(/icon-theme|vscode-icons|devicon|file-icons/);
+    expect(dep).not.toContain("material-icon-theme");
+  });
+
+  test("bisa dihasilkan ulang, bukan hasil salin sekali", () => {
+    // Tanpa skripnya, memperbarui satu ikon berarti menyunting berkas hasil
+    // dengan tangan — dan berkas hasil yang disunting tangan berhenti bisa
+    // dipercaya sebagai cerminan sumbernya.
+    expect(
+      fs.existsSync(path.join(AKAR, "scripts", "ikon-bahasa", "build.cjs")),
+    ).toBe(true);
+  });
+
+  test("isinya SVG sungguhan, bukan monogram huruf", () => {
+    expect(IKON).toMatch(/<svg /);
+    expect(IKON).not.toMatch(/teks: "/);
   });
 
   test("bahasa yang lazim dipakai punya ikonnya", () => {
+    // Modulnya DIEVALUASI, bukan dicocokkan sebagai teks. Berkas ini dihasilkan
+    // JSON.stringify lalu dirapikan prettier, yang melepas tanda kutip pada
+    // kunci yang tak membutuhkannya — asersi berbasis regex `"js":` lulus
+    // sebelum dirapikan lalu merah sesudahnya, dan kegagalannya tak ada
+    // hubungannya dengan ikonnya.
+    const tabel = new Function(IKON + "; return IKON_BAHASA;")();
     for (const e of ["js", "ts", "jsx", "py", "html", "css", "json", "md"])
-      if (e !== "md")
-        expect(APP).toMatch(new RegExp("\\b" + e + ": \\{ teks:"));
+      expect(Object.keys(tabel)).toContain(e);
+    for (const [ext, svg] of Object.entries(tabel))
+      expect(String(svg).startsWith("<svg")).toBe(true);
+  });
+
+  test("dimuat SEBELUM app.jsx memakainya", () => {
+    const html = fs.readFileSync(
+      path.join(AKAR, "public", "index.html"),
+      "utf8",
+    );
+    expect(html).toContain('"/app/IkonBahasa.jsx"');
   });
 
   test("nama khusus menang atas ekstensi", () => {

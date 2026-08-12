@@ -612,52 +612,12 @@ function webProjectRoot(previewUrl, fallback) {
   }
   return fallback;
 }
-// Ikon per BAHASA, ala VS Code — tanpa pustaka ikon.
+// Ikon berkas per bahasa. Tabelnya ada di public/app/IkonBahasa.jsx, dihasilkan
+// scripts/ikon-bahasa/build.cjs dari material-icon-theme (MIT) — tema ikon yang
+// sama dengan yang dipakai VS Code, jadi ikonnya memang yang dikenali orang.
 //
-// KENAPA TIDAK MEMAKAI PUSTAKA. Tema ikon seperti Seti atau Material berisi
-// ratusan SVG, sementara aplikasi ini mem-vendor SEMUA asetnya sendiri (tak ada
-// CDN, tak ada bundler saat jalan). Menariknya masuk berarti menambah ratusan
-// berkas demi belasan ekstensi yang benar-benar muncul di pohon ini.
-//
-// Yang dipakai VS Code sendiri, dilihat dari jauh, adalah monogram berwarna:
-// warna khas bahasanya + satu-dua huruf. Itu yang ditiru di sini — satu tabel
-// kecil, nol dependensi, dan warnanya memakai warna resmi tiap bahasa supaya
-// tetap terbaca sebagai bahasa yang sama.
-const BAHASA_IKON = {
-  js: { teks: "JS", warna: "#f1e05a" },
-  mjs: { teks: "JS", warna: "#f1e05a" },
-  cjs: { teks: "JS", warna: "#f1e05a" },
-  jsx: { teks: "JSX", warna: "#61dafb" },
-  ts: { teks: "TS", warna: "#3178c6" },
-  tsx: { teks: "TSX", warna: "#3178c6" },
-  py: { teks: "PY", warna: "#3572a5" },
-  rb: { teks: "RB", warna: "#cc342d" },
-  go: { teks: "GO", warna: "#00add8" },
-  rs: { teks: "RS", warna: "#dea584" },
-  java: { teks: "JV", warna: "#b07219" },
-  kt: { teks: "KT", warna: "#a97bff" },
-  swift: { teks: "SW", warna: "#f05138" },
-  c: { teks: "C", warna: "#555555" },
-  h: { teks: "H", warna: "#555555" },
-  cpp: { teks: "C+", warna: "#f34b7d" },
-  cs: { teks: "C#", warna: "#178600" },
-  php: { teks: "PHP", warna: "#4f5d95" },
-  dart: { teks: "DT", warna: "#00b4ab" },
-  html: { teks: "<>", warna: "#e34c26" },
-  htm: { teks: "<>", warna: "#e34c26" },
-  css: { teks: "CSS", warna: "#563d7c" },
-  scss: { teks: "SC", warna: "#c6538c" },
-  json: { teks: "{}", warna: "#cbcb41" },
-  yml: { teks: "YML", warna: "#cb171e" },
-  yaml: { teks: "YML", warna: "#cb171e" },
-  sh: { teks: "SH", warna: "#89e051" },
-  ps1: { teks: "PS", warna: "#012456" },
-  sql: { teks: "SQL", warna: "#e38c00" },
-  xml: { teks: "XML", warna: "#0060ac" },
-  vue: { teks: "VUE", warna: "#41b883" },
-  svelte: { teks: "SV", warna: "#ff3e00" },
-};
-
+// Di-vendor sebagai satu modul, bukan dijadikan dependensi runtime: paket
+// aslinya 1250 SVG (1,6 MB) sementara yang muncul di pohon ini cuma puluhan.
 function ekstensiDari(name) {
   const m = String(name || "")
     .toLowerCase()
@@ -682,7 +642,7 @@ function tsjFileType(name, dir) {
   // Bahasa diperiksa SESUDAH kasus khusus di atas: README.md tetap ikon info,
   // bukan monogram "MD" — namanya lebih memberi tahu daripada ekstensinya.
   const ext = ekstensiDari(n);
-  if (BAHASA_IKON[ext]) return "lang:" + ext;
+  if (IKON_BAHASA[ext]) return "lang:" + ext;
   return "file";
 }
 // Bangun pohon HANYA dari file yang SEDANG DIKEMBANGKAN (ditulis/diedit agent),
@@ -859,7 +819,7 @@ function LogicCodePane({ root, rel }) {
   );
 }
 
-// Ekstensi -> bahasa Monaco. Dipisah dari BAHASA_IKON karena keduanya menjawab
+// Ekstensi -> bahasa Monaco. Dipisah dari IKON_BAHASA karena keduanya menjawab
 // pertanyaan berbeda: yang satu "ikon apa", yang ini "penyorot mana".
 function bahasaMonaco(nama) {
   const e = ekstensiDari(nama);
@@ -907,33 +867,21 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
     // SVG (bukan <span> ber-CSS) supaya ia sejajar dengan ikon lain yang sudah
     // SVG, dan ukurannya tak ikut berubah saat font halaman berubah.
     if (typeof t === "string" && t.startsWith("lang:")) {
-      const b = BAHASA_IKON[t.slice(5)];
-      if (b)
+      const svg = IKON_BAHASA[t.slice(5)];
+      if (svg)
+        // SVG-nya disuntikkan apa adanya: ia berasal dari berkas tetap yang
+        // ikut di-vendor, bukan dari masukan mana pun, jadi tak ada teks
+        // pemakai yang bisa sampai ke sini.
         return (
-          <svg width="16" height="16" viewBox="0 0 16 16">
-            <rect
-              x="0.5"
-              y="0.5"
-              width="15"
-              height="15"
-              rx="3"
-              fill={b.warna}
-              opacity="0.16"
-              stroke={b.warna}
-              strokeOpacity="0.5"
-            />
-            <text
-              x="8"
-              y="11.5"
-              textAnchor="middle"
-              fill={b.warna}
-              fontSize={b.teks.length > 2 ? "6" : "7.5"}
-              fontWeight="700"
-              fontFamily="ui-monospace, monospace"
-            >
-              {b.teks}
-            </text>
-          </svg>
+          <span
+            style={{
+              width: "16px",
+              height: "16px",
+              display: "inline-flex",
+              flexShrink: 0,
+            }}
+            dangerouslySetInnerHTML={{ __html: svg }}
+          />
         );
     }
     if (t === "folder")
