@@ -2888,19 +2888,21 @@ function App() {
                         </div>
                       )}
                       {preview.url && preview.luar ? (
-                        /* Alamat LUAR memakai <webview>, bukan <iframe>.
-                           <iframe> di renderer ini tak bisa memuat situs luar
-                           sama sekali: permintaan subFrame dikirim lalu
-                           net::ERR_ABORTED sebelum satu pun header kembali —
-                           termasuk untuk situs yang TERBUKTI boleh di-frame
-                           seperti wikipedia.org. <webview> bukan subframe; ia
-                           WebContents tamu yang bernavigasi sendiri. */
-                        <webview
-                          ref={preview.webviewRef}
-                          key={"wv-" + preview.refreshKey}
-                          src={preview.url}
+                        /* Wadah KOSONG — penanda posisi, bukan isi.
+                           Situs luar digambar oleh WebContentsView di proses
+                           main, yang MENGAMBANG di atas jendela. Yang dikirim
+                           ke sana adalah persegi panjang wadah ini.
+
+                           Kenapa bukan <iframe>: renderer ini tak bisa memuat
+                           situs luar lewat subframe sama sekali — permintaan
+                           dikirim lalu net::ERR_ABORTED sebelum satu pun header
+                           kembali, termasuk untuk situs yang TERBUKTI boleh
+                           di-frame seperti wikipedia.org.
+                           Kenapa bukan <webview>: Electron CRASH dengan
+                           FATAL:check.cc NOTREACHED. */
+                        <div
+                          ref={preview.slotRef}
                           style={{ flex: 1, width: "100%", height: "100%" }}
-                          allowpopups="true"
                         />
                       ) : preview.url ? (
                         <iframe

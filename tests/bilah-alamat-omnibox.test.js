@@ -160,67 +160,83 @@ describe("masukan kosong tidak melakukan apa-apa", () => {
   });
 });
 
-describe("situs luar dimuat lewat <webview>, bukan <iframe>", () => {
-  // <iframe> di renderer ini TIDAK BISA memuat situs luar sama sekali.
-  // Permintaan subFrame dikirim lalu net::ERR_ABORTED sebelum satu pun header
-  // respons kembali. Yang disingkirkan satu per satu sebagai penyebab: atribut
-  // sandbox iframe, CSP <meta> produksi, X-Frame-Options situsnya, User-Agent
-  // Electron, dan jaringan (net.fetch dari proses main -> 200, 473 KB).
+describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
+  // TIGA jalur dicoba, dua di antaranya buntu dan itu dicatat supaya tak
+  // diulang:
   //
-  // Yang memutuskan adalah uji pemakai: wikipedia.org pun kosong, padahal
-  // Wikipedia TERBUKTI bisa di-frame (3600 karakter ter-render di Chromium
-  // bersih dengan CSP yang sama). Jadi ini bukan kebijakan per-situs.
+  //   <iframe>  : renderer ini TIDAK BISA memuat situs luar sama sekali.
+  //               Permintaan subFrame dikirim lalu net::ERR_ABORTED sebelum
+  //               satu pun header respons kembali. Yang disingkirkan sebagai
+  //               penyebab, masing-masing diuji terpisah: atribut sandbox, CSP
+  //               <meta> produksi, X-Frame-Options situsnya, User-Agent
+  //               Electron, dan jaringan (net.fetch dari proses main -> 200,
+  //               473 KB dari Bing). Uji pemakai memutuskannya: wikipedia.org
+  //               pun kosong, padahal Wikipedia terbukti boleh di-frame.
+  //
+  //   <webview> : Electron CRASH — FATAL:check.cc(361) Check failed: false,
+  //               NOTREACHED. Tag itu memang jalur yang tak dianjurkan Electron.
+  //
+  //   WebContentsView : WebContents penuh, seperti tab browser, dipasang
+  //               sebagai lapisan di atas jendela. Tak ada pembatasan frame
+  //               yang berlaku padanya.
   const MAIN = baca("electron/main.js");
+  const PRELOAD = baca("electron/preload.js");
   const APP = baca("public/app.jsx");
 
-  test("webviewTag dinyalakan", () => {
-    expect(MAIN).toMatch(/webviewTag: true,/);
+  test("dua jalur buntu itu benar-benar sudah dilepas", () => {
+    // webviewTag menyala = Electron crash lagi begitu panel dipakai.
+    expect(MAIN).not.toMatch(/webviewTag: true/);
+    // Elemennya, bukan penyebutannya di komentar — catatan kenapa jalur itu
+    // ditinggalkan justru harus tetap ada.
+    expect(APP).not.toMatch(/<webview[\s/]/);
+    expect(APP).not.toMatch(/webviewRef/);
   });
 
-  test("hanya alamat http(s) yang dialihkan ke webview", () => {
-    // Berkas lokal HARUS tetap lewat <iframe>: Visual Picker menjangkau
-    // contentDocument, dan webview tak mengizinkan itu.
-    // Pemeriksaannya dijaga longgar dengan sengaja: yang penting alamatLuar
-    // diturunkan dari `url` lewat pola http(s), bukan bentuk persis regexnya.
-    expect(SRC).toMatch(/const alamatLuar = .*https.*test\(url\)/);
-    expect(SRC).toMatch(/^\s*luar: alamatLuar,$/m);
+  test("view dibuat di proses main dan dipasang ke jendela", () => {
+    expect(MAIN).toMatch(/WebContentsView/);
+    expect(MAIN).toMatch(/contentView\.addChildView/);
+    expect(MAIN).toMatch(/function browserAksi\(p\)/);
+    expect(MAIN).toMatch(/channel === "browser"/);
   });
 
-  test("UI bercabang: webview untuk luar, iframe untuk berkas", () => {
-    expect(APP).toMatch(/\{preview\.url && preview\.luar \? \(/);
-    expect(APP).toMatch(/<webview/);
-    expect(APP).toMatch(/ref=\{preview\.webviewRef\}/);
-    // Cabang iframe TIDAK boleh hilang — itu jalur Visual Picker.
+  test("isi web asing dikurung serapat mungkin", () => {
+    // Ini memuat situs sembarang; nodeIntegration menyala di sini akan
+    // memberi halaman asing akses Node.
+    const t = MAIN.slice(MAIN.indexOf("function _brBuat()"));
+    expect(t).toMatch(/nodeIntegration: false/);
+    expect(t).toMatch(/contextIsolation: true/);
+    expect(t).toMatch(/sandbox: true/);
+  });
+
+  test("posisinya disuapi terus, bukan sekali saja", () => {
+    // View MENGAMBANG di atas jendela — ia tak ikut bergerak saat panel
+    // di-resize, sidebar dibuka, atau jendela diubah ukurannya.
+    expect(SRC).toMatch(/new ResizeObserver/);
+    expect(SRC).toMatch(/getBoundingClientRect\(\)/);
+    expect(SRC).toMatch(/aksi: "sembunyi"/);
+  });
+
+  test("disembunyikan saat panel tak lagi menampilkan alamat luar", () => {
+    // Kalau tidak, ia menutupi UI aplikasi — ia bukan bagian dari DOM dan
+    // tak tunduk pada CSS mana pun.
+    const t = SRC.slice(SRC.indexOf("if (!ipc || !alamatLuar)"));
+    expect(t).toMatch(/aksi: "sembunyi"/);
+  });
+
+  test("keadaan datang lewat IPC, bukan dari DOM", () => {
+    // Viewnya hidup di proses lain; panel tak punya cara lain untuk tahu.
+    expect(PRELOAD).toMatch(/onBrowser:/);
+    expect(PRELOAD).toMatch(/"WOLFSPACE:browser"/);
+    expect(MAIN).toMatch(/did-fail-load/);
+    expect(SRC).toMatch(/ipc\.onBrowser\(/);
+    expect(SRC).toMatch(/m\.t === "gagal"/);
+  });
+
+  test("UI memakai wadah penanda posisi, dan iframe TETAP untuk berkas lokal", () => {
+    // Visual Picker menjangkau contentDocument iframe — jalur itu tak boleh
+    // ikut hilang.
+    expect(APP).toMatch(/ref=\{preview\.slotRef\}/);
     expect(APP).toMatch(/ref=\{preview\.iframeRef\}/);
-  });
-
-  test("kegagalan diambil dari peristiwa, bukan ditebak", () => {
-    // Versi sebelumnya menebak "situsnya menolak di-frame" — dan wikipedia.org
-    // membuktikan tebakan itu keliru menyalahkan situs yang baik-baik saja.
-    expect(SRC).toMatch(/addEventListener\("did-fail-load"/);
-    expect(SRC).toMatch(/setGagalLuar\(e\.errorDescription/);
-    expect(APP).toMatch(/\{preview\.gagalLuar\}/);
-    expect(APP).not.toMatch(/Itu keputusan situsnya/);
-  });
-
-  test("ERR_ABORTED (-3) tidak dilaporkan sebagai kegagalan", () => {
-    // Kode itu juga muncul pada navigasi yang dibatalkan oleh pengalihan biasa;
-    // melaporkannya menandai halaman sehat sebagai gagal.
-    expect(SRC).toMatch(/e\.errorCode === -3/);
-  });
-
-  test("keadaan gagal direset saat pindah alamat, refresh, dan mulai memuat", () => {
-    const nav = SRC.slice(
-      SRC.indexOf("const navigate ="),
-      SRC.indexOf("// Auto-lempar"),
-    );
-    expect(nav).toMatch(/setGagalLuar\(false\)/);
-    const ref = SRC.slice(
-      SRC.indexOf("const refresh ="),
-      SRC.indexOf("// ── Situs luar"),
-    );
-    expect(ref).toMatch(/setGagalLuar\(false\)/);
-    expect(SRC).toMatch(/addEventListener\("did-start-loading"/);
   });
 });
 

@@ -310,28 +310,6 @@ function createWindow() {
       // gejala "state sudah benar di localStorage, tapi UI baru terlihat setelah
       // reload memaksa repaint baru". Matikan throttling itu di window utama.
       backgroundThrottling: false,
-      // ── <webview> untuk panel preview, dan HANYA untuk itu ──
-      //
-      // KENAPA PERLU. <iframe> di renderer ini TIDAK BISA memuat situs luar.
-      // Diukur sampai tuntas: permintaan subFrame dikirim lalu net::ERR_ABORTED
-      // sebelum satu pun header respons kembali. Yang sudah disingkirkan satu
-      // per satu sebagai penyebab — atribut sandbox iframe, CSP <meta>
-      // produksi, X-Frame-Options situsnya, User-Agent Electron, dan jaringan
-      // (net.fetch dari proses main mengembalikan 200, 473 KB dari Bing).
-      //
-      // Yang menyelesaikannya adalah uji pemakai: wikipedia.org pun kosong,
-      // padahal Wikipedia TERBUKTI bisa di-frame (3600 karakter ter-render di
-      // Chromium bersih dengan CSP yang sama persis). Jadi ini bukan kebijakan
-      // per-situs, melainkan berlaku untuk SEMUA subframe luar di sini.
-      //
-      // <webview> bukan subframe: ia WebContents tamu yang bernavigasi sendiri,
-      // jadi ia tak lewat jalur yang diblokir itu.
-      //
-      // Cakupannya sengaja sempit: hanya panel preview yang memakainya, hanya
-      // untuk alamat http(s), dan tag-nya dipasang tanpa nodeintegration.
-      // Berkas lokal TETAP lewat <iframe> — Visual Picker menjangkau
-      // contentDocument, dan webview tak mengizinkan itu.
-      webviewTag: true,
     },
   });
   win.webContents.setBackgroundThrottling(false); // lapis kedua, beberapa versi Electron butuh ini juga
@@ -486,6 +464,116 @@ function _pasangTandaSelesai(res) {
   });
 }
 
+// ── Browser sungguhan di dalam panel "Web Dev Live Browser" ──
+//
+// KENAPA BUKAN <iframe>. Renderer ini TIDAK BISA memuat situs luar lewat
+// subframe sama sekali. Diukur sampai tuntas: permintaan subFrame dikirim lalu
+// net::ERR_ABORTED sebelum satu pun header respons kembali. Yang disingkirkan
+// satu per satu sebagai penyebab — atribut sandbox iframe, CSP <meta> produksi,
+// X-Frame-Options situsnya, User-Agent Electron, dan jaringan (net.fetch dari
+// proses main mengembalikan 200, 473 KB dari Bing). Yang memutuskan adalah uji
+// pemakai: wikipedia.org pun kosong, padahal Wikipedia terbukti boleh di-frame.
+//
+// KENAPA BUKAN <webview>. Sudah dicoba, dan Electron CRASH:
+//   FATAL:check.cc(361) Check failed: false. NOTREACHED
+// Tag itu memang jalur yang tak dianjurkan Electron dan dirawat seadanya.
+//
+// WebContentsView adalah cara yang didukung: ia WebContents penuh — persis
+// seperti tab browser — yang dipasang sebagai lapisan di atas jendela. Tak ada
+// pembatasan frame yang berlaku padanya.
+//
+// HARGA YANG DIBAYAR, dan ini disebut supaya tak mengagetkan: ia MENGAMBANG di
+// atas DOM, bukan mengalir di dalamnya. Jadi posisinya harus disuapi dari
+// renderer (bounds panel), dan ia WAJIB disembunyikan saat panel ditutup atau
+// tertutup dialog — kalau tidak, ia menutupi UI. Itu sebabnya renderer memanggil
+// `sembunyi` secara eksplisit, bukan mengandalkan CSS.
+let _br = null; // { tampil: WebContentsView, win }
+function _brWin() {
+  return BrowserWindow.getAllWindows()[0] || null;
+}
+function _brBuat() {
+  if (_br) return _br;
+  const win = _brWin();
+  if (!win) return null;
+  const { WebContentsView } = require("electron");
+  const tampil = new WebContentsView({
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true, // isi web asing: kurung serapat mungkin
+      webSecurity: true,
+    },
+  });
+  const wc = tampil.webContents;
+  // Semua keadaan dikirim balik ke renderer, supaya bilah alamat dan pesan
+  // galat di panel memang mencerminkan apa yang benar-benar terjadi.
+  const kirim = (t, d) => {
+    try {
+      win.webContents.send("WOLFSPACE:browser", { t, ...d });
+    } catch (_) {}
+  };
+  wc.on("did-start-loading", () => kirim("muat", {}));
+  wc.on("did-stop-loading", () =>
+    kirim("selesai", { url: wc.getURL(), judul: wc.getTitle() }),
+  );
+  wc.on("did-fail-load", (_e, kode, desc, url, utama) => {
+    if (!utama) return;
+    kirim("gagal", { kode, desc, url });
+  });
+  wc.on("did-navigate", (_e, url) => kirim("pindah", { url }));
+  wc.on("did-navigate-in-page", (_e, url) => kirim("pindah", { url }));
+  // Tautan yang membuka jendela baru dibuka DI PANEL ini, bukan di browser OS —
+  // itu yang diharapkan dari sebuah browser di dalam aplikasi.
+  wc.setWindowOpenHandler(({ url }) => {
+    wc.loadURL(url);
+    return { action: "deny" };
+  });
+  _br = { tampil, win };
+  return _br;
+}
+function browserAksi(p) {
+  const aksi = (p && p.aksi) || "";
+  if (aksi === "sembunyi") {
+    if (_br) {
+      try {
+        _br.win.contentView.removeChildView(_br.tampil);
+      } catch (_) {}
+    }
+    return { ok: true };
+  }
+  if (aksi === "buang") {
+    if (_br) {
+      try {
+        _br.win.contentView.removeChildView(_br.tampil);
+        _br.tampil.webContents.close();
+      } catch (_) {}
+      _br = null;
+    }
+    return { ok: true };
+  }
+  const b = _brBuat();
+  if (!b) return { ok: false, error: "tak ada jendela" };
+  if (p && p.bounds) {
+    const r = p.bounds;
+    b.tampil.setBounds({
+      x: Math.round(r.x),
+      y: Math.round(r.y),
+      width: Math.max(0, Math.round(r.width)),
+      height: Math.max(0, Math.round(r.height)),
+    });
+  }
+  if (aksi === "tampil" || aksi === "buka") {
+    try {
+      b.win.contentView.addChildView(b.tampil);
+    } catch (_) {}
+  }
+  if (aksi === "buka" && p.url) b.tampil.webContents.loadURL(p.url);
+  if (aksi === "muat-ulang") b.tampil.webContents.reload();
+  if (aksi === "mundur" && b.tampil.webContents.canGoBack())
+    b.tampil.webContents.goBack();
+  return { ok: true, url: b.tampil.webContents.getURL() };
+}
+
 function apiCall({
   method = "GET",
   path = "/",
@@ -634,6 +722,7 @@ function registerIpc() {
         return { ok: false, error: e.message };
       }
     }
+    if (channel === "browser") return browserAksi(payload);
     if (channel === "api") return apiCall(payload); // generic in-process HTTP-handler proxy
     const c = core();
     if (channel === "cloudKeys") return Object.keys(c.getCloudKeys()); // names only, no secrets

@@ -57,7 +57,10 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
   // <webview> bukan subframe: ia WebContents tamu yang bernavigasi sendiri.
   // Berkas lokal TETAP lewat <iframe>, karena Visual Picker menjangkau
   // contentDocument dan webview tak mengizinkan itu.
-  const webviewRef = useRef(null);
+  // Wadah KOSONG yang cuma menandai DI MANA browser harus digambar. Isinya
+  // bukan DOM: WebContentsView hidup di proses main dan mengambang di atas
+  // jendela, jadi yang dikirim ke sana adalah persegi panjang wadah ini.
+  const slotRef = useRef(null);
   const [gagalLuar, setGagalLuar] = useState("");
 
   const navigate = useCallback((urlOrPath) => {
@@ -105,28 +108,58 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
   // Alamat luar (http/https) -> <webview>; sisanya (berkas via app://) -> <iframe>.
   const alamatLuar = /^https?:\/\//i.test(url);
 
-  // Kegagalan webview DILAPORKAN, tak seperti iframe yang diam saja. Pesannya
-  // diambil dari peristiwanya sendiri supaya yang tampil adalah sebab yang
-  // sebenarnya — bukan tebakan "situsnya menolak" yang, saat diuji dengan
-  // wikipedia.org, ternyata keliru menyalahkan situs.
+  const ipc =
+    typeof window !== "undefined" && window.WOLFSPACE && window.WOLFSPACE.ipc
+      ? window.WOLFSPACE
+      : null;
+
+  // Posisi view disuapi dari sini, dan HARUS terus disuapi: ia mengambang di
+  // atas jendela, jadi ia tak ikut bergerak saat panel di-resize, sidebar
+  // dibuka, atau jendela diubah ukurannya. Satu pengamat menutup ketiganya.
   useEffect(() => {
-    const w = webviewRef.current;
-    if (!w || !alamatLuar) return;
-    const gagal = (e) => {
-      // -3 = ERR_ABORTED, yang juga muncul pada navigasi yang DIBATALKAN oleh
-      // pengalihan biasa. Melaporkannya akan menandai halaman sehat sebagai
-      // gagal, jadi ia sengaja dilewati.
-      if (e.errorCode === -3 || !e.isMainFrame) return;
-      setGagalLuar(e.errorDescription + " (" + e.errorCode + ")");
+    if (!ipc || !alamatLuar) {
+      if (ipc) ipc.invoke("browser", { aksi: "sembunyi" });
+      return;
+    }
+    const el = slotRef.current;
+    if (!el) return;
+    let terakhir = "";
+    const suapi = (aksi) => {
+      const r = el.getBoundingClientRect();
+      const kunci = [r.x, r.y, r.width, r.height].join(",");
+      if (aksi === "tampil" && kunci === terakhir) return;
+      terakhir = kunci;
+      ipc.invoke("browser", {
+        aksi,
+        url,
+        bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
+      });
     };
-    const mulai = () => setGagalLuar("");
-    w.addEventListener("did-fail-load", gagal);
-    w.addEventListener("did-start-loading", mulai);
+    suapi("buka");
+    const ro = new ResizeObserver(() => suapi("tampil"));
+    ro.observe(el);
+    window.addEventListener("resize", () => suapi("tampil"));
+    // Panel bisa bergeser tanpa berubah ukuran (sidebar dibuka/ditutup), dan
+    // ResizeObserver tak melihat itu. Denyut pelan menutup celahnya tanpa
+    // membebani apa pun.
+    const nadi = setInterval(() => suapi("tampil"), 400);
     return () => {
-      w.removeEventListener("did-fail-load", gagal);
-      w.removeEventListener("did-start-loading", mulai);
+      clearInterval(nadi);
+      ro.disconnect();
+      ipc.invoke("browser", { aksi: "sembunyi" });
     };
-  }, [alamatLuar, url, refreshKey]);
+  }, [ipc, alamatLuar, url, refreshKey]);
+
+  // Keadaan datang lewat IPC, bukan dari DOM: viewnya hidup di proses lain.
+  useEffect(() => {
+    if (!ipc || !ipc.onBrowser) return;
+    return ipc.onBrowser((m) => {
+      if (m.t === "muat") setGagalLuar("");
+      else if (m.t === "gagal")
+        setGagalLuar((m.desc || "gagal memuat") + " (" + m.kode + ")");
+      else if (m.t === "pindah" && m.url) setInputUrl(m.url);
+    });
+  }, [ipc]);
 
   return {
     url,
@@ -134,7 +167,7 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
     setInputUrl,
     refreshKey,
     iframeRef,
-    webviewRef,
+    slotRef,
     luar: alamatLuar,
     getDoc,
     navigate,

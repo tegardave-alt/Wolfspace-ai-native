@@ -32,6 +32,15 @@ contextBridge.exposeInMainWorld("WOLFSPACE", {
     ipcRenderer.invoke("WOLFSPACE:invoke", { channel, payload }),
 
   // Realtime HMR Listener
+  // Keadaan browser panel (WebContentsView di proses main): mulai memuat,
+  // selesai, gagal, pindah alamat. Tanpa ini panel tak punya cara tahu apa yang
+  // terjadi — viewnya hidup di proses lain, bukan di DOM.
+  onBrowser: (callback) => {
+    const h = (_e, m) => callback(m);
+    ipcRenderer.on("WOLFSPACE:browser", h);
+    return () => ipcRenderer.removeListener("WOLFSPACE:browser", h);
+  },
+
   onHmr: (callback) => {
     ipcRenderer.on("WOLFSPACE:hmr", (_e, filename) => callback(filename));
   },
