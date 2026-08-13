@@ -24,6 +24,16 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
+
+// Dipakai setiap kali asersinya berbentuk "TIDAK boleh ada X". Berkas-berkas
+// ini penuh catatan tentang KENAPA sebuah bentuk ditinggalkan, dan catatan itu
+// mengutip bentuknya — jadi tanpa penyaring ini, komentar yang benar justru
+// menggagalkan ujinya.
+const tanpaKomentar = (t) =>
+  t
+    .split("\n")
+    .filter((b) => !/^\s*(\/\/|\*|\/\*)/.test(b))
+    .join("\n");
 const SRC = baca("public/app/usePreviewPanel.jsx");
 
 // Fungsinya DIAMBIL dari sumber lalu dijalankan — bukan ditulis ulang menurut
@@ -379,5 +389,45 @@ describe("kurungan view browser dilonggarkan seperlunya saja", () => {
   test("alasannya tercatat dengan angkanya, bukan cuma 'tidak jalan'", () => {
     for (const jejak of ["ERR_FAILED", "onErrorOccurred", "site isolation"])
       expect(t).toContain(jejak);
+  });
+});
+
+// ── Suara di panel browser ──
+//
+// Gejala: YouTube hanya mau memutar kalau di-mute. Terukur di WebContentsView:
+//   AudioContext.state    -> "running"  (kebijakan autoplay BUKAN sebabnya;
+//                                        diuji dengan userGesture=true)
+//   isCurrentlyAudible()  -> false      (audio tak mengalir ke keluaran)
+//   audioMuted            -> false      (bukan di-mute juga)
+// Sesudah AudioServiceSandbox dimatikan: isCurrentlyAudible() -> true.
+//
+// Sebabnya sama dengan dua gejala sebelumnya di mesin ini: proses UTILITAS
+// Chromium ber-sandbox tak bisa lahir — GPU (STATUS_DLL_NOT_FOUND), renderer
+// lintas-situs (ERR_FAILED), dan kini audio service.
+describe("audio panel browser", () => {
+  // Komentar dibuang: catatan tentang KENAPA pilihan ini diambil justru harus
+  // tetap ada, dan ia mengutip nama-nama saklarnya.
+  const M = tanpaKomentar(baca("electron/main.js"));
+
+  test("HANYA ADA SATU appendSwitch disable-features", () => {
+    // Ini yang paling mudah salah: panggilan kedua MENIMPA yang pertama, tidak
+    // menggabung. Menambahkan fitur lewat panggilan baru diam-diam membuang
+    // yang lama, dan gejalanya cuma "yang tadi dimatikan hidup lagi".
+    const n = (M.match(/appendSwitch\([\s\S]{0,20}?"disable-features"/g) || [])
+      .length;
+    expect(n).toBe(1);
+  });
+
+  test("daftarnya memuat keduanya", () => {
+    const i = M.indexOf('"disable-features"');
+    const blok = M.slice(i, i + 200);
+    expect(blok).toContain("CalculateNativeWinOcclusion");
+    expect(blok).toContain("AudioServiceSandbox");
+  });
+
+  test("audio tetap di proses terpisah — yang dilepas hanya sandbox-nya", () => {
+    // AudioServiceOutOfProcess juga menyembuhkan, tapi memindahkan audio ke
+    // DALAM proses browser: satu crash audio ikut menjatuhkan aplikasi.
+    expect(M).not.toContain("AudioServiceOutOfProcess");
   });
 });

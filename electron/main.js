@@ -1033,8 +1033,38 @@ process.on("unhandledRejection", (reason, promise) => {
 app.commandLine.appendSwitch("js-flags", "--max-old-space-size=512");
 app.commandLine.appendSwitch("disable-http-cache");
 app.commandLine.appendSwitch("enable-precise-memory-info");
-// Paksa Chromium untuk melakukan GC ketika tekanan memori terdeteksi
-app.commandLine.appendSwitch("disable-features", "CalculateNativeWinOcclusion");
+// ── SATU daftar disable-features, dan itu WAJIB ──
+//
+// appendSwitch("disable-features", ...) MENIMPA nilai sebelumnya, tidak
+// menggabungkannya. Memanggilnya dua kali diam-diam membuang yang pertama, dan
+// gejalanya cuma "fitur yang tadi dimatikan hidup lagi" tanpa satu pun galat.
+// Jadi apa pun yang perlu dimatikan harus masuk daftar ini.
+//
+//   CalculateNativeWinOcclusion — memaksa Chromium GC saat tekanan memori.
+//
+//   AudioServiceSandbox — TANPA INI TIDAK ADA SUARA di panel browser.
+//     Gejalanya: YouTube hanya mau memutar kalau di-mute. Yang terukur:
+//       AudioContext.state    -> "running"   (jadi kebijakan autoplay BUKAN
+//                                             sebabnya; diuji dengan
+//                                             executeJavaScript userGesture=true)
+//       isCurrentlyAudible()  -> false       (audio tak mengalir ke keluaran)
+//       audioMuted            -> false       (bukan di-mute juga)
+//     Sesudah AudioServiceSandbox dimatikan: isCurrentlyAudible() -> true.
+//
+//     Sebabnya sama dengan yang sudah dua kali muncul di mesin ini: proses
+//     UTILITAS Chromium yang ber-sandbox tak bisa lahir. Proses GPU mati
+//     STATUS_DLL_NOT_FOUND (lihat --disable-gpu-sandbox di bawah), renderer
+//     lintas-situs gagal ERR_FAILED (lihat sandbox view browser di _brBuat).
+//     Audio service adalah proses utilitas ber-sandbox yang ketiga.
+//
+//     Dipilih yang PALING SEMPIT: AudioServiceOutOfProcess juga menyembuhkan,
+//     tapi itu memindahkan audio ke DALAM proses browser — satu crash audio
+//     ikut menjatuhkan aplikasi. Mematikan sandbox-nya saja mempertahankan
+//     pemisahan prosesnya.
+app.commandLine.appendSwitch(
+  "disable-features",
+  ["CalculateNativeWinOcclusion", "AudioServiceSandbox"].join(","),
+);
 // Matikan compositing tile memory cap untuk mengurangi beban VRAM
 app.commandLine.appendSwitch("disable-gpu-memory-buffer-compositor-resources");
 
