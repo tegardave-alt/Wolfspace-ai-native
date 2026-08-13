@@ -202,10 +202,12 @@ describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
   test("isi web asing dikurung serapat mungkin", () => {
     // Ini memuat situs sembarang; nodeIntegration menyala di sini akan
     // memberi halaman asing akses Node.
+    // sandbox OS-nya sendiri terpaksa dilepas di mesin ini — alasannya diukur
+    // dan dikunci di describe "kurungan view browser dilonggarkan seperlunya".
+    // Yang TIDAK boleh ikut dilonggarkan adalah dua ini.
     const t = MAIN.slice(MAIN.indexOf("function _brBuat()"));
     expect(t).toMatch(/nodeIntegration: false/);
     expect(t).toMatch(/contextIsolation: true/);
-    expect(t).toMatch(/sandbox: true/);
   });
 
   test("posisinya disuapi terus, bukan sekali saja", () => {
@@ -331,5 +333,51 @@ describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
 
   test("bounds nol dilaporkan ke pemakai, bukan cuma dicatat", () => {
     expect(SRC).toMatch(/Panel berukuran nol/);
+  });
+});
+
+// ── Kenapa view browser TIDAK ber-sandbox ──
+//
+// Terukur berlapis di mesin ini:
+//   net.fetch dari proses main   -> 200            (jaringan sehat)
+//   resolveProxy                 -> DIRECT         (tak ada proxy)
+//   permintaan navigasi          -> TERKIRIM, bahkan mengikuti pengalihan
+//                                   wikipedia.org -> www.wikipedia.org
+//   webRequest.onErrorOccurred   -> TIDAK PERNAH menyala
+//   loadURL                      -> ERR_FAILED (-2)
+//
+// Jaringannya berhasil; yang gagal PEMBUATAN PROSES renderer untuk menampung
+// halamannya. Tiga pilihan diuji, dan hanya yang paling sempit yang dipakai:
+//   --no-sandbox (seluruh aplikasi)   -> berhasil, jauh melebihi kebutuhan
+//   site isolation dimatikan          -> TETAP GAGAL
+//   sandbox: false pada view ini saja -> berhasil, 2022 karakter ter-render
+describe("kurungan view browser dilonggarkan seperlunya saja", () => {
+  const M = baca("electron/main.js");
+  const t = M.slice(
+    M.indexOf("function _brBuat()"),
+    M.indexOf("function browserAksi("),
+  );
+
+  test("sandbox dimatikan HANYA untuk view ini, bukan seluruh aplikasi", () => {
+    expect(t).toMatch(
+      /sandbox: process\.env\.WOLFSPACE_BROWSER_SANDBOX === "1"/,
+    );
+    expect(M).not.toMatch(/appendSwitch\("no-sandbox"\)/);
+  });
+
+  test("yang menahan risikonya TIDAK ikut dilonggarkan", () => {
+    // Tanpa keduanya, halaman asing punya jalan ke Node dan ke konteks preload.
+    expect(t).toMatch(/nodeIntegration: false/);
+    expect(t).toMatch(/contextIsolation: true/);
+    expect(t).toMatch(/webSecurity: true/);
+  });
+
+  test("ada jalan kembali untuk mesin yang sehat", () => {
+    expect(t).toContain("WOLFSPACE_BROWSER_SANDBOX");
+  });
+
+  test("alasannya tercatat dengan angkanya, bukan cuma 'tidak jalan'", () => {
+    for (const jejak of ["ERR_FAILED", "onErrorOccurred", "site isolation"])
+      expect(t).toContain(jejak);
   });
 });

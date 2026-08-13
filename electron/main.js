@@ -496,11 +496,41 @@ function _brBuat() {
   const win = _brWin();
   if (!win) return null;
   const { WebContentsView } = require("electron");
+  // ── sandbox: false, dan ini keputusan yang harus dijelaskan ──
+  //
+  // Di mesin ini Chromium TIDAK BISA melahirkan proses renderer ber-sandbox.
+  // Itu bukan dugaan; ia diukur berlapis:
+  //
+  //   net.fetch dari proses main      -> 200 (jaringan sehat)
+  //   resolveProxy                    -> DIRECT (tak ada proxy)
+  //   permintaan navigasi             -> TERKIRIM, bahkan mengikuti pengalihan
+  //                                      wikipedia.org -> www.wikipedia.org
+  //   webRequest.onErrorOccurred      -> TIDAK PERNAH menyala
+  //   loadURL                         -> ERR_FAILED (-2)
+  //
+  // Jaringannya berhasil; yang gagal PEMBUATAN PROSES untuk menampung halaman
+  // itu. Navigasi lintas-situs menuntut renderer baru, dan renderer baru tak
+  // pernah lahir. Gejala sekeluarga sudah muncul dua kali di mesin ini: proses
+  // GPU mati dengan STATUS_DLL_NOT_FOUND sampai --disable-gpu-sandbox dipasang,
+  // dan <webview> membuat Electron crash NOTREACHED.
+  //
+  // Diuji tiga pilihan; hanya yang PALING SEMPIT ini yang dipakai:
+  //   --no-sandbox (seluruh aplikasi)   -> berhasil, tapi jauh melebihi kebutuhan
+  //   site isolation dimatikan          -> TETAP GAGAL
+  //   sandbox: false pada view ini saja -> berhasil, 2022 karakter ter-render
+  //
+  // Yang TIDAK ikut dilonggarkan, dan itu yang menahan risikonya: nodeIntegration
+  // tetap mati dan contextIsolation tetap hidup, jadi halaman asing tak punya
+  // jalan ke Node maupun ke konteks preload. Yang hilang hanya kurungan OS —
+  // dan di mesin ini kurungan itu memang tak pernah bisa dipakai; pilihannya
+  // bukan "ber-sandbox vs tidak", melainkan "jalan vs tidak jalan sama sekali".
+  //
+  // Bisa dikembalikan dengan WOLFSPACE_BROWSER_SANDBOX=1 di mesin yang sehat.
   const tampil = new WebContentsView({
     webPreferences: {
       contextIsolation: true,
       nodeIntegration: false,
-      sandbox: true, // isi web asing: kurung serapat mungkin
+      sandbox: process.env.WOLFSPACE_BROWSER_SANDBOX === "1",
       webSecurity: true,
     },
   });
