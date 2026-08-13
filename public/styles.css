@@ -1964,6 +1964,12 @@ select {
   min-height: 0;
   display: flex;
   align-items: stretch;
+  /* Panel dipindah lewat PEMBUNGKUSAN, bukan penyusunan ulang markup: panel
+     yang lebarnya 100% otomatis turun ke baris berikutnya (itulah "bawah"),
+     yang lebarnya sebagian tetap di baris pertama (itulah "kanan"). Urutan
+     visualnya diatur `order`, jadi urutan di sumber tak lagi menentukan. */
+  flex-wrap: wrap;
+  align-content: stretch;
 }
 .chat-col {
   display: flex;
@@ -1975,6 +1981,20 @@ select {
   flex: 0 0 6px;
   cursor: col-resize;
   position: relative;
+}
+/* Pembagi untuk panel di BAWAH: membentang mendatar dan digeser naik-turun.
+   Tanpa kursor yang benar, pemakai tak punya petunjuk bahwa ia bisa digeser —
+   dan arah gesernya pun berbeda dari yang di kanan. */
+.split-divider-h {
+  cursor: row-resize;
+}
+.split-divider-h::before {
+  left: 0;
+  right: 0;
+  top: 2px;
+  bottom: auto;
+  width: auto;
+  height: 2px;
 }
 .split-divider::before {
   content: "";

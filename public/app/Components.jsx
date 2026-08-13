@@ -15,10 +15,56 @@ function TopBar({
   setTheme,
   terminalOpen,
   setTerminalOpen,
+  posisi,
+  setPosisi,
 }) {
+  // Memindahkan panel hanya masuk akal untuk panel yang SEDANG TERBUKA —
+  // menawarkan "pindah ke bawah" untuk sesuatu yang tak terlihat cuma membuat
+  // pemakai menebak-nebak apakah kliknya berhasil.
+  const pindah = (apa) =>
+    setPosisi((p) => ({
+      ...p,
+      [apa]: p[apa] === "kanan" ? "bawah" : "kanan",
+    }));
+  const tombolPindah = (apa, terbuka, label) =>
+    terbuka && (
+      <button
+        className="panel-toggle-btn"
+        onClick={() => pindah(apa)}
+        title={
+          label + ": pindah ke " + (posisi[apa] === "kanan" ? "bawah" : "kanan")
+        }
+        aria-label={"Pindahkan " + label}
+      >
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <rect x="3" y="3" width="18" height="18" rx="2" />
+          {posisi[apa] === "kanan" ? (
+            <line x1="15" y1="3" x2="15" y2="21" />
+          ) : (
+            <line x1="3" y1="15" x2="21" y2="15" />
+          )}
+        </svg>
+      </button>
+    );
+
   return (
     <header className="topbar">
       <div className="tb-spacer" />
+      {posisi &&
+        setPosisi &&
+        tombolPindah("preview", panelOpen, "Panel preview")}
+      {posisi &&
+        setPosisi &&
+        tombolPindah("terminal", terminalOpen, "Terminal")}
       <button
         className={`panel-toggle-btn ${panelOpen ? "active" : ""}`}
         onClick={() => setPanelOpen(!panelOpen)}

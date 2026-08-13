@@ -1475,6 +1475,41 @@ function App() {
 
   const [terminalPct, setTerminalPct] = useState(30);
   const [panelPct, setPanelPct] = useState(35);
+
+  // ── Posisi panel bisa dipindah, seperti "Move Panel" di VS Code ──
+  //
+  // Sebelumnya chat, terminal, dan preview adalah TIGA KOLOM SEJAJAR di satu
+  // baris flex — termasuk terminal, yang karena itu duduk di kanan alih-alih di
+  // bawah. Untuk terminal itu pilihan yang buruk: keluaran perintah berbentuk
+  // baris panjang, dan kolom sempit memaksanya membungkus terus-menerus.
+  //
+  // Bawaannya kini mengikuti kebiasaan yang sudah dikenal orang: preview di
+  // KANAN (ia halaman, jadi butuh lebar), terminal di BAWAH (ia baris teks,
+  // jadi butuh panjang). Keduanya tetap bisa ditukar.
+  const [posisi, setPosisi] = useState(() => {
+    const bawaan = { preview: "kanan", terminal: "bawah" };
+    try {
+      const t = JSON.parse(localStorage.getItem("wolfspace_posisi") || "null");
+      // Nilai divalidasi, bukan dipercaya: localStorage bisa membawa isi dari
+      // versi lama atau suntingan tangan, dan posisi yang tak dikenal akan
+      // membuat panelnya tak dirender di mana pun — panel hilang tanpa jejak.
+      const sah = (v, d) => (v === "kanan" || v === "bawah" ? v : d);
+      return t
+        ? {
+            preview: sah(t.preview, bawaan.preview),
+            terminal: sah(t.terminal, bawaan.terminal),
+          }
+        : bawaan;
+    } catch (e) {
+      return bawaan;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("wolfspace_posisi", JSON.stringify(posisi));
+    } catch (e) {}
+  }, [posisi]);
+
   const [terminalOpen, setTerminalOpen] = useState(false);
   const [terminalInput, setTerminalInput] = useState("");
   const [terminalOutput, setTerminalOutput] = useState("");
@@ -1641,12 +1676,16 @@ function App() {
   };
   const scrollRef = useRef(null);
   const ctrlRef = useRef(null);
-  const onTerminalDividerDown = (e) => {
+  // SATU penangan untuk kedua sumbu. Dulu ada dua salinan yang identik kecuali
+  // setter-nya, dan keduanya keras memakai clientX — begitu panel bisa pindah ke
+  // bawah, menggeser pembagi horizontal akan mengubah ukuran memakai koordinat
+  // yang salah sumbu. Sumbunya kini mengikuti POSISI panelnya.
+  const geserPembagi = (sumbu, set) => (e) => {
     e.preventDefault();
     const move = (ev) => {
-      const w = window.innerWidth;
-      const pct = Math.min(60, Math.max(15, ((w - ev.clientX) / w) * 100));
-      setTerminalPct(pct);
+      const total = sumbu === "x" ? window.innerWidth : window.innerHeight;
+      const dari = sumbu === "x" ? ev.clientX : ev.clientY;
+      set(Math.min(75, Math.max(12, ((total - dari) / total) * 100)));
     };
     const up = () => {
       document.removeEventListener("mousemove", move);
@@ -1657,22 +1696,7 @@ function App() {
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   };
-  const onPanelDividerDown = (e) => {
-    e.preventDefault();
-    const move = (ev) => {
-      const w = window.innerWidth;
-      const pct = Math.min(60, Math.max(15, ((w - ev.clientX) / w) * 100));
-      setPanelPct(pct);
-    };
-    const up = () => {
-      document.removeEventListener("mousemove", move);
-      document.removeEventListener("mouseup", up);
-      document.body.style.userSelect = "";
-    };
-    document.body.style.userSelect = "none";
-    document.addEventListener("mousemove", move);
-    document.addEventListener("mouseup", up);
-  };
+
   const startPicker = useVisualPicker(getPreviewDoc);
   const startVisualDraw = useVisualDraw(getPreviewDoc);
   const doSendRef = useRef(void 0);
@@ -2222,6 +2246,49 @@ function App() {
     // Digantikan oleh useEffect auto-save agar tidak duplikat
   };
 
+  // ── Ukuran baris atas, dihitung sekali ──
+  //
+  // Panel di KANAN memakan lebar; panel di BAWAH memakan tinggi. Keduanya
+  // dihitung terpisah justru supaya tak saling potong: memakai satu angka untuk
+  // dua sumbu membuat chat menyusut dua kali padahal cuma satu panel terbuka.
+  const _terminalKanan = terminalOpen && posisi.terminal === "kanan";
+  const _terminalBawah = terminalOpen && posisi.terminal === "bawah";
+  const _previewKanan = panelOpen && posisi.preview === "kanan";
+  const _previewBawah = panelOpen && posisi.preview === "bawah";
+  const lebarAtas = Math.max(
+    20,
+    100 - (_terminalKanan ? terminalPct : 0) - (_previewKanan ? panelPct : 0),
+  );
+  const tinggiAtas = Math.max(
+    20,
+    100 - (_terminalBawah ? terminalPct : 0) - (_previewBawah ? panelPct : 0),
+  );
+  // Gaya sebuah panel + pembaginya, mengikuti sisi tempat ia duduk. Satu tempat
+  // supaya terminal dan preview tak pernah menyimpang perlakuannya.
+  //
+  // TIAP PANEL MENANGGUNG 6px PEMBAGINYA SENDIRI. Tanpa itu jumlahnya melewati
+  // 100% — chat 65% + preview 35% + pembagi 6px = 1006px di layar 1000px — dan
+  // di wadah yang membungkus, kelebihan sekecil apa pun membuat panel yang
+  // seharusnya di KANAN terdorong turun ke baris berikutnya. Terukur di harness
+  // geometri: preview diminta di kanan, hasilnya mendarat di x=0 y=420.
+  const gayaPanel = (sisi, pct) =>
+    sisi === "bawah"
+      ? {
+          flex: "0 0 auto",
+          width: "100%",
+          height: "calc(" + pct + "% - 6px)",
+          order: 2,
+        }
+      : {
+          flex: "0 0 calc(" + pct + "% - 6px)",
+          height: tinggiAtas + "%",
+          order: 1,
+        };
+  const gayaPembagi = (sisi) =>
+    sisi === "bawah"
+      ? { flex: "0 0 auto", width: "100%", height: "6px", order: 2 }
+      : { order: 1, height: tinggiAtas + "%" };
+
   return (
     <>
       <div className={"app has-sidebar" + (sbCollapsed ? " sb-collapsed" : "")}>
@@ -2283,20 +2350,36 @@ function App() {
               setTheme={setTheme}
               terminalOpen={terminalOpen}
               setTerminalOpen={setTerminalOpen}
+              posisi={posisi}
+              setPosisi={setPosisi}
             />
+            {/* Panel dipindah lewat PEMBUNGKUSAN FLEKS, bukan penyusunan ulang
+                markup. .chat-split membungkus (flex-wrap), jadi panel yang
+                lebarnya 100% otomatis turun ke baris berikutnya — itulah
+                "bawah". Yang lebarnya sebagian tetap di baris pertama — itulah
+                "kanan". Urutannya diatur `order` supaya panel bawah selalu
+                jatuh di bawah, apa pun urutannya di sumber.
+
+                Kenapa begini, bukan membungkus chat + panel-bawah dalam satu
+                kolom: blok preview panjangnya ~590 baris, dan memindahkannya
+                berarti memotong-tempel JSX sebesar itu hanya untuk mengubah
+                POSISI. Cara ini mencapai hasil yang sama tanpa memindahkan satu
+                baris pun. */}
             <div className="chat-split" style={{ position: "relative" }}>
               <div
                 className="chat-col"
                 style={{
-                  flex:
-                    "1 1 " +
-                    Math.max(
-                      20,
-                      100 -
-                        (terminalOpen ? terminalPct : 0) -
-                        (panelOpen ? panelPct : 0),
-                    ) +
-                    "%",
+                  // Lebarnya SISA, bukan persentase. Memberi chat basis 65%
+                  // membuat baris pertama diukur sebagai 65% + 35% + pembagi —
+                  // melebihi 100%, sehingga panel kanan terdorong turun. Dengan
+                  // basis 0 dan grow 1, chat mengambil apa pun yang tersisa
+                  // SESUDAH panel kanan mendapat jatahnya, jadi tak pernah ada
+                  // kelebihan. lebarAtas tetap dipakai sebagai lebar MINIMUM
+                  // supaya chat tak bisa diperas habis.
+                  flex: "1 1 0%",
+                  minWidth: lebarAtas + "%",
+                  height: tinggiAtas + "%",
+                  order: 0,
                 }}
               >
                 <div
@@ -2361,13 +2444,20 @@ function App() {
               {terminalOpen && (
                 <>
                   <div
-                    className="split-divider"
-                    onMouseDown={onTerminalDividerDown}
+                    className={
+                      "split-divider" +
+                      (posisi.terminal === "bawah" ? " split-divider-h" : "")
+                    }
+                    style={gayaPembagi(posisi.terminal)}
+                    onMouseDown={geserPembagi(
+                      posisi.terminal === "bawah" ? "y" : "x",
+                      setTerminalPct,
+                    )}
                   />
                   <div
                     className="terminal-col"
                     style={{
-                      flex: "0 0 " + terminalPct + "%",
+                      ...gayaPanel(posisi.terminal, terminalPct),
                       display: "flex",
                       flexDirection: "column",
                       minWidth: 0,
@@ -2387,13 +2477,20 @@ function App() {
               {panelOpen && (
                 <>
                   <div
-                    className="split-divider"
-                    onMouseDown={onPanelDividerDown}
+                    className={
+                      "split-divider" +
+                      (posisi.preview === "bawah" ? " split-divider-h" : "")
+                    }
+                    style={gayaPembagi(posisi.preview)}
+                    onMouseDown={geserPembagi(
+                      posisi.preview === "bawah" ? "y" : "x",
+                      setPanelPct,
+                    )}
                   />
                   <div
                     className="canvas-col"
                     style={{
-                      flex: "0 0 " + panelPct + "%",
+                      ...gayaPanel(posisi.preview, panelPct),
                       background: "var(--surface-1)",
                       display: "flex",
                       flexDirection: "column",
