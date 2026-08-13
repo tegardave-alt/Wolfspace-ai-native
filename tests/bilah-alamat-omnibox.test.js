@@ -268,3 +268,68 @@ describe("navigate() memakai penafsir ini, bukan cabang lamanya", () => {
     expect(SRC).toMatch(/const t = tafsirkanAlamat\(urlOrPath\);/);
   });
 });
+
+// ── Diagnostik: saat panel putih, HARUS bisa dijawab "mesin mana" ──
+//
+// Electron dua mesin: renderer (web) dan main (node). Layar putih di panel bisa
+// berarti lima hal yang di layar tampak persis sama:
+//
+//   1. view tak pernah dibuat            (main)
+//   2. dibuat, gagal dipasang ke jendela (main)
+//   3. terpasang, tapi bounds-nya nol    (renderer mengirim kotak kosong)
+//   4. terpasang & berukuran, halamannya yang gagal dimuat (jaringan/situs)
+//   5. termuat, tapi tertutup lapisan lain (susunan)
+//
+// Versi pertama justru MENELAN pembedanya: addChildView dibungkus
+// `try { } catch (_) {}`, jadi kemungkinan (2) hilang tanpa jejak. Berkas ini
+// mengunci agar tiap kemungkinan meninggalkan catatan yang bisa dibaca.
+describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
+  const MAIN2 = baca("electron/main.js");
+
+  test("tidak ada lagi catch kosong yang menelan sebabnya", () => {
+    // Komentar dibuang dulu: catatan tentang KENAPA bentuk itu ditinggalkan
+    // justru harus tetap ada, dan ia mengutip bentuknya.
+    const t = MAIN2.slice(
+      MAIN2.indexOf("function browserAksi(p)"),
+      MAIN2.indexOf("function apiCall("),
+    )
+      .split("\n")
+      .filter((b) => !/^\s*(\/\/|\*|\/\*)/.test(b))
+      .join("\n");
+    expect(t).not.toMatch(/catch \(_\) \{\}/);
+  });
+
+  test("tiap kegagalan sisi main meninggalkan catatan", () => {
+    for (const jejak of [
+      "addChildView GAGAL",
+      "setBounds GAGAL",
+      "loadURL DITOLAK",
+      "bounds NOL dari renderer",
+    ])
+      expect(MAIN2).toContain(jejak);
+  });
+
+  test("keadaan lengkap bisa diminta kapan saja", () => {
+    expect(MAIN2).toMatch(/function _brKeadaan\(\)/);
+    expect(MAIN2).toMatch(/aksi === "diagnosa"/);
+    // Yang membedakan kelima kemungkinan di atas.
+    for (const medan of ["memuat", "rusak", "bounds", "anakDiJendela"])
+      expect(MAIN2).toContain(medan);
+  });
+
+  test("view dipasang sekali, bukan tiap denyut", () => {
+    // Memanggil addChildView 2,5x per detik memindahkan view ke urutan teratas
+    // berulang kali — kerja sia-sia yang juga bisa mengacaukan lapisan lain.
+    expect(MAIN2).toMatch(/if \(!anak\.includes\(b\.tampil\)\)/);
+  });
+
+  test("kedua sisi mencatat, bukan cuma satu", () => {
+    expect(MAIN2).toMatch(/function _brLog\(/);
+    expect(SRC).toMatch(/\[browser:renderer\]/);
+    expect(SRC).toMatch(/\[browser:peristiwa\]/);
+  });
+
+  test("bounds nol dilaporkan ke pemakai, bukan cuma dicatat", () => {
+    expect(SRC).toMatch(/Panel berukuran nol/);
+  });
+});

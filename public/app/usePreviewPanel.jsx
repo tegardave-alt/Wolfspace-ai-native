@@ -145,6 +145,23 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
           url,
           bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
         })
+        .then((r) => {
+          // Sisi RENDERER mencatat apa yang dijawab sisi MAIN. Electron dua
+          // mesin, dan saat panel putih pertanyaannya selalu "yang mana yang
+          // gagal" — jawabannya cuma bisa dilihat kalau kedua sisi bicara.
+          // console.log renderer diteruskan ke WOLFSPACE-debug.log.
+          if (aksi === "buka") console.warn("[browser:renderer] buka ->", r);
+          if (r && r.ok === false)
+            setGagalLuar("Proses utama menolak: " + r.error);
+          else if (r && r.bounds && (!r.bounds.width || !r.bounds.height))
+            setGagalLuar(
+              "Panel berukuran nol (" +
+                r.bounds.width +
+                "x" +
+                r.bounds.height +
+                ") — browser tak punya tempat untuk digambar.",
+            );
+        })
         .catch((e) => {
           mati = true;
           setGagalLuar(
@@ -176,6 +193,11 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
   useEffect(() => {
     if (!ipc || !ipc.onBrowser) return;
     return ipc.onBrowser((m) => {
+      // Semua peristiwa dicatat, bukan hanya yang dipakai UI. Saat panel putih,
+      // urutan peristiwa inilah yang membedakan "tak pernah mulai memuat" dari
+      // "memuat lalu gagal" dari "selesai memuat tapi tak terlihat" — tiga sebab
+      // yang di layar tampak persis sama.
+      console.warn("[browser:peristiwa]", m.t, m);
       if (m.t === "muat") setGagalLuar("");
       else if (m.t === "gagal")
         setGagalLuar((m.desc || "gagal memuat") + " (" + m.kode + ")");

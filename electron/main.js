@@ -531,13 +531,61 @@ function _brBuat() {
   _br = { tampil, win };
   return _br;
 }
+// Electron adalah DUA mesin: renderer (web) dan main (node). Saat panel putih,
+// pertanyaan pertama selalu "yang mana yang gagal" — dan tanpa catatan dari sisi
+// main, satu-satunya yang terlihat hanyalah putih, yang bisa berarti apa saja:
+// view tak pernah dibuat, dibuat tapi tak dipasang, dipasang tapi bounds-nya
+// nol, terpasang dengan benar tapi halamannya yang tak dimuat, atau termuat
+// tapi tertutup lapisan lain.
+//
+// Versi pertama fungsi ini justru MENELAN jawabannya: addChildView dan
+// removeChildView dibungkus `try { } catch (_) {}`. Kalau pemasangan lapisan
+// itulah yang gagal, galatnya hilang tanpa jejak dan gejalanya tetap "putih".
+//
+// console.log di proses main diteruskan ke WOLFSPACE-debug.log, jadi catatan ini
+// bisa dibaca sesudah kejadian — tak perlu menebak dari layar.
+function _brLog(pesan, data) {
+  try {
+    console.log(
+      "[browser] " + pesan + (data ? " " + JSON.stringify(data) : ""),
+    );
+  } catch (_) {}
+}
+function _brKeadaan() {
+  if (!_br) return { ada: false };
+  const wc = _br.tampil.webContents;
+  let anak = -1;
+  try {
+    anak = _br.win.contentView.children.length;
+  } catch (_) {}
+  let b = null;
+  try {
+    b = _br.tampil.getBounds();
+  } catch (_) {}
+  return {
+    ada: true,
+    url: wc.getURL(),
+    judul: wc.getTitle(),
+    memuat: wc.isLoading(),
+    rusak: wc.isCrashed(),
+    bounds: b,
+    anakDiJendela: anak,
+  };
+}
 function browserAksi(p) {
   const aksi = (p && p.aksi) || "";
+  if (aksi === "diagnosa") {
+    const k = _brKeadaan();
+    _brLog("diagnosa", k);
+    return { ok: true, ...k };
+  }
   if (aksi === "sembunyi") {
     if (_br) {
       try {
         _br.win.contentView.removeChildView(_br.tampil);
-      } catch (_) {}
+      } catch (e) {
+        _brLog("removeChildView GAGAL", { pesan: e.message });
+      }
     }
     return { ok: true };
   }
@@ -546,32 +594,83 @@ function browserAksi(p) {
       try {
         _br.win.contentView.removeChildView(_br.tampil);
         _br.tampil.webContents.close();
-      } catch (_) {}
+      } catch (e) {
+        _brLog("buang GAGAL", { pesan: e.message });
+      }
       _br = null;
     }
     return { ok: true };
   }
-  const b = _brBuat();
-  if (!b) return { ok: false, error: "tak ada jendela" };
+  let b;
+  try {
+    b = _brBuat();
+  } catch (e) {
+    _brLog("_brBuat MELEMPAR", { pesan: e.message });
+    return { ok: false, error: "buat view: " + e.message };
+  }
+  if (!b) {
+    _brLog("_brBuat mengembalikan null — tak ada jendela");
+    return { ok: false, error: "tak ada jendela" };
+  }
+
+  // Bounds NOL adalah salah satu sebab "putih" yang paling mudah terlewat:
+  // viewnya ada, terpasang, halamannya termuat — hanya saja ukurannya 0x0.
+  // Itu sebabnya nilai yang diterima ikut dicatat, bukan cuma dipakai.
   if (p && p.bounds) {
     const r = p.bounds;
-    b.tampil.setBounds({
+    const kotak = {
       x: Math.round(r.x),
       y: Math.round(r.y),
       width: Math.max(0, Math.round(r.width)),
       height: Math.max(0, Math.round(r.height)),
-    });
+    };
+    if (!kotak.width || !kotak.height)
+      _brLog("bounds NOL dari renderer", kotak);
+    try {
+      b.tampil.setBounds(kotak);
+    } catch (e) {
+      _brLog("setBounds GAGAL", { kotak, pesan: e.message });
+      return { ok: false, error: "setBounds: " + e.message };
+    }
   }
+
   if (aksi === "tampil" || aksi === "buka") {
     try {
-      b.win.contentView.addChildView(b.tampil);
-    } catch (_) {}
+      // Dipasang hanya bila BELUM terpasang. Memanggilnya berulang tiap denyut
+      // memindahkan view ke urutan paling atas berkali-kali — kerja sia-sia yang
+      // juga bisa mengacaukan susunan lapisan lain.
+      const anak = b.win.contentView.children || [];
+      if (!anak.includes(b.tampil)) {
+        b.win.contentView.addChildView(b.tampil);
+        _brLog("view dipasang", {
+          anakSekarang: b.win.contentView.children.length,
+        });
+      }
+    } catch (e) {
+      // Dulu ditelan `catch (_) {}` — kalau justru pemasangan lapisan yang
+      // gagal, gejalanya "putih" tanpa satu pun jejak.
+      _brLog("addChildView GAGAL", { pesan: e.message });
+      return { ok: false, error: "addChildView: " + e.message };
+    }
   }
-  if (aksi === "buka" && p.url) b.tampil.webContents.loadURL(p.url);
-  if (aksi === "muat-ulang") b.tampil.webContents.reload();
-  if (aksi === "mundur" && b.tampil.webContents.canGoBack())
-    b.tampil.webContents.goBack();
-  return { ok: true, url: b.tampil.webContents.getURL() };
+
+  try {
+    if (aksi === "buka" && p.url) {
+      _brLog("loadURL", { url: String(p.url).slice(0, 80) });
+      b.tampil.webContents.loadURL(p.url).catch((e) => {
+        _brLog("loadURL DITOLAK", { pesan: e.message });
+      });
+    }
+    if (aksi === "muat-ulang") b.tampil.webContents.reload();
+    if (aksi === "mundur" && b.tampil.webContents.navigationHistory.canGoBack())
+      b.tampil.webContents.navigationHistory.goBack();
+  } catch (e) {
+    _brLog("navigasi GAGAL", { aksi, pesan: e.message });
+    return { ok: false, error: "navigasi: " + e.message };
+  }
+
+  if (aksi === "buka") _brLog("sesudah buka", _brKeadaan());
+  return { ok: true, ..._brKeadaan() };
 }
 
 function apiCall({
