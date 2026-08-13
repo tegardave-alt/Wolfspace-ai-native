@@ -223,6 +223,25 @@ describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
     expect(t).toMatch(/aksi: "sembunyi"/);
   });
 
+  test("proses main yang belum diperbarui gagal dengan ANGGUN", () => {
+    // Denyut memanggil IPC 2,5x per detik. Tanpa .catch, satu proses main yang
+    // belum diperbarui membanjiri konsol dengan
+    //   "unknown invoke channel: browser"
+    // tanpa henti — dan pemakai TETAP tak diberi tahu apa yang harus dilakukan.
+    // WebContentsView dibuat oleh proses main, dan hot-reload tak menjangkau
+    // proses itu; aplikasi memang harus ditutup dan dibuka lagi.
+    expect(SRC).toMatch(/\.catch\(\(e\) => \{/);
+    expect(SRC).toMatch(/mati = true/);
+    expect(SRC).toMatch(/unknown invoke channel/i);
+    expect(SRC).toMatch(/Tutup dan buka lagi WOLFSPACE/);
+  });
+
+  test("pendengar resize dilepas saat panel dibongkar", () => {
+    // Tanpa ini tiap perpindahan alamat menambah satu pendengar yang menembak
+    // IPC selamanya.
+    expect(SRC).toMatch(/window\.removeEventListener\("resize", onResize\)/);
+  });
+
   test("keadaan datang lewat IPC, bukan dari DOM", () => {
     // Viewnya hidup di proses lain; panel tak punya cara lain untuk tahu.
     expect(PRELOAD).toMatch(/onBrowser:/);

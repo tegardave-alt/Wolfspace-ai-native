@@ -105,7 +105,7 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
       window.removeEventListener("wolfspace_agent_act", onActPreview);
   }, [selectedProject]);
 
-  // Alamat luar (http/https) -> <webview>; sisanya (berkas via app://) -> <iframe>.
+  // Alamat luar (http/https) -> WebContentsView; sisanya (berkas) -> <iframe>.
   const alamatLuar = /^https?:\/\//i.test(url);
 
   const ipc =
@@ -118,27 +118,48 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
   // dibuka, atau jendela diubah ukurannya. Satu pengamat menutup ketiganya.
   useEffect(() => {
     if (!ipc || !alamatLuar) {
-      if (ipc) ipc.invoke("browser", { aksi: "sembunyi" });
+      if (ipc) ipc.invoke("browser", { aksi: "sembunyi" }).catch(() => {});
       return;
     }
     const el = slotRef.current;
     if (!el) return;
     let terakhir = "";
+    let mati = false; // proses main belum punya kanal ini -> berhenti mencoba
     const suapi = (aksi) => {
+      if (mati) return;
       const r = el.getBoundingClientRect();
       const kunci = [r.x, r.y, r.width, r.height].join(",");
       if (aksi === "tampil" && kunci === terakhir) return;
       terakhir = kunci;
-      ipc.invoke("browser", {
-        aksi,
-        url,
-        bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
-      });
+      // Kegagalan HARUS ditangkap. Denyut di bawah memanggil ini 2,5x per detik;
+      // tanpa .catch, satu proses main yang belum diperbarui membanjiri konsol
+      // dengan "unknown invoke channel: browser" tanpa henti — dan pemakai tetap
+      // tak diberi tahu apa yang sebenarnya harus dilakukan.
+      //
+      // WebContentsView dibuat oleh proses MAIN, dan hot-reload tak menjangkau
+      // proses itu. Jadi sesudah pembaruan ini, aplikasi memang harus ditutup
+      // dan dibuka lagi — dan itulah yang dikatakan di sini, sekali saja.
+      ipc
+        .invoke("browser", {
+          aksi,
+          url,
+          bounds: { x: r.x, y: r.y, width: r.width, height: r.height },
+        })
+        .catch((e) => {
+          mati = true;
+          setGagalLuar(
+            /unknown invoke channel/i.test(String((e && e.message) || e))
+              ? "Tutup dan buka lagi WOLFSPACE — browser panel dijalankan oleh " +
+                  "proses utama, dan hot-reload tidak menjangkaunya."
+              : "Gagal menyiapkan browser panel: " + ((e && e.message) || e),
+          );
+        });
     };
     suapi("buka");
     const ro = new ResizeObserver(() => suapi("tampil"));
     ro.observe(el);
-    window.addEventListener("resize", () => suapi("tampil"));
+    const onResize = () => suapi("tampil");
+    window.addEventListener("resize", onResize);
     // Panel bisa bergeser tanpa berubah ukuran (sidebar dibuka/ditutup), dan
     // ResizeObserver tak melihat itu. Denyut pelan menutup celahnya tanpa
     // membebani apa pun.
@@ -146,7 +167,8 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
     return () => {
       clearInterval(nadi);
       ro.disconnect();
-      ipc.invoke("browser", { aksi: "sembunyi" });
+      window.removeEventListener("resize", onResize);
+      ipc.invoke("browser", { aksi: "sembunyi" }).catch(() => {});
     };
   }, [ipc, alamatLuar, url, refreshKey]);
 
