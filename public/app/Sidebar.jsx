@@ -1153,7 +1153,7 @@ function WorkspaceGitPanel({ path, onClose }) {
       {committing && (
         <input
           autoFocus
-          placeholder="pesan commit — Enter untuk simpan, Esc batal"
+          placeholder="commit message — Enter to save, Esc to cancel"
           onKeyDown={(e) => {
             if (e.key === "Enter") doCommit(e.currentTarget.value);
             else if (e.key === "Escape") setCommitting(false);
@@ -1193,8 +1193,8 @@ function WorkspaceGitPanel({ path, onClose }) {
 }
 
 function Sidebar({
-  collapsed,
-  setCollapsed,
+  mode = "penuh",
+  putarMode,
   view,
   setView,
   onNewChat,
@@ -1212,7 +1212,19 @@ function Sidebar({
   loadSavedChats,
   selectedProject,
   onOpenPicker,
+  posisi,
+  setPosisi,
+  chatVisible,
+  setChatVisible,
+  panelOpen,
+  logicOpen,
+  setLogicOpen,
 }) {
+  // Diturunkan dari mode, bukan prop terpisah: "ringkas" dan "sembunyi"
+  // sama-sama menyembunyikan label, jadi seluruh kode lama yang bertanya
+  // "sedang ringkas?" tetap benar tanpa diubah satu per satu.
+  const collapsed = mode !== "penuh";
+  const setCollapsed = putarMode;
   const [showTools, setShowTools] = useState(false);
   const [showView, setShowView] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
@@ -1387,6 +1399,7 @@ function Sidebar({
       className={
         "sidebar" +
         (collapsed ? " collapsed" : "") +
+        (mode === "sembunyi" ? " sembunyi" : "") +
         (isResizing ? " resizing" : "")
       }
       style={{ width: collapsed ? undefined : `${sidebarWidth}px` }}
@@ -1421,8 +1434,15 @@ function Sidebar({
         </span>
         <button
           className="sb-toggle"
-          title={collapsed ? "Open panel" : "Close panel"}
-          onClick={() => setCollapsed(!collapsed)}
+          title={
+            mode === "penuh"
+              ? "Compact — icons only"
+              : mode === "ringkas"
+                ? "Hide sidebar"
+                : "Show sidebar"
+          }
+          aria-label={"Sidebar: " + mode}
+          onClick={putarMode}
         >
           {SB.panel({ width: 19, height: 19 })}
         </button>
@@ -2185,6 +2205,25 @@ function Sidebar({
           />
         </div>
       )}
+      {/* ── Menu tata letak, di KAKI sidebar ──
+          `margin-top: auto` mendorongnya ke dasar berapa pun isi di atasnya —
+          jadi tempatnya tetap sama entah bagian Conversation/View/Tools sedang
+          terbuka atau tertutup. Tetap terlihat saat sidebar dilipat: yang
+          hilang saat melipat cuma labelnya, bukan tombolnya. */}
+      <div className="sb-menu-kaki">
+        <MenuTataLetak
+          posisi={posisi}
+          setPosisi={setPosisi}
+          chatVisible={chatVisible}
+          setChatVisible={setChatVisible}
+          panelOpen={panelOpen}
+          terminalOpen={terminalOpen}
+          logicOpen={logicOpen}
+          setLogicOpen={setLogicOpen}
+          arah="atas"
+        />
+        {!collapsed && <span className="sb-menu-kaki-label">Layout</span>}
+      </div>
     </aside>
   );
 }

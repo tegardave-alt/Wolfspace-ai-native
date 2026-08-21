@@ -151,7 +151,7 @@
       window.saveKey = (id) => {
         const input = document.getElementById(`input-${id}`);
         const val = input.value.trim();
-        if (!val) return notify("API key tidak boleh kosong!", "error");
+        if (!val) return notify("API key cannot be empty!", "error");
         const keys = loadKeys();
         keys[id] = val;
         saveKeys(keys);

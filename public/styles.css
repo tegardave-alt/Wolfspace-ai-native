@@ -40,6 +40,28 @@ body {
   background: var(--bg);
   color: var(--text);
   font-family: var(--font);
+  /* ── Ukuran dasar aplikasi ──
+   *
+   * Sebelumnya tak disetel sama sekali, jadi ia mewarisi bawaan peramban:
+   * 16px — ukuran HALAMAN WEB. Hampir semua yang penting sudah di-override ke
+   * 13px, jadi 16px itu jarang terlihat; masalahnya ia jadi bawaan untuk apa
+   * pun yang lupa disetel, dan bilah atas termasuk yang mewarisinya.
+   *
+   * 13px menyamakannya dengan teks pesan, yang memang sudah 13px.
+   *
+   * Aman terhadap rem: `rem` mengacu ke <html>, bukan <body>, dan <html> tak
+   * disetel di lembar gaya ini. Aman terhadap `em` pada letter-spacing: nilai
+   * itu relatif terhadap font-size elemennya sendiri, dan semua pemakainya
+   * punya ukuran px eksplisit.
+   */
+  font-size: 13px;
+  /* `normal` untuk Plus Jakarta Sans TERUKUR 1.26 — leading yang rapat, dan
+   * itulah yang terbaca sebagai "kaku": baris saling menempel. Untuk teks
+   * paragraf rentang nyamannya 1.5–1.65.
+   *
+   * Diwariskan, bukan dipaksakan: elemen padat yang memang butuh rapat
+   * (label, tombol, baris pohon berkas) sudah punya line-height sendiri. */
+  line-height: 1.55;
   -webkit-font-smoothing: antialiased;
   text-rendering: optimizeLegibility;
 }
@@ -199,6 +221,122 @@ select {
   opacity: 1;
 }
 /* Panel kanan — state default: transparan, tidak ada border/outline sama sekali */
+/* ── Menu tata letak (⋮) di ujung kiri bilah atas ── */
+/* Sengaja PUTIH penuh, bukan diredupkan seperti .panel-toggle-btn di
+   sebelahnya: tombol-tombol itu SAKLAR yang keadaannya sudah terbaca dari
+   panel yang muncul, sedangkan ini pintu ke sesuatu yang tersembunyi — kalau
+   ikut diredupkan, ia hilang di antara tetangganya dan menu itu tak akan
+   pernah ditemukan. */
+.tb-menu-bungkus {
+  position: relative;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  /* Membentang setinggi bilah, meski tombolnya sendiri tidak. Tanpa ini,
+     `top: 100%` pada menu mengacu ke tinggi TOMBOL (28px) alih-alih tinggi
+     bilah (46px), dan menunya muncul 4px MENINDIH garis bawah bilah —
+     terukur: menu di y=43 padahal bilah berakhir di 47. */
+  align-self: stretch;
+}
+.tb-menu-btn {
+  background: transparent;
+  border: none;
+  outline: none;
+  cursor: pointer;
+  color: #fff;
+  /* Padding sempit + tinggi penuh: bidang kliknya menjadi strip vertikal,
+     mengikuti bentuk ruang yang memang tersedia di tepi kiri. */
+  padding: 6px 3px;
+  border-radius: 6px;
+  display: flex;
+  align-items: center;
+  transition:
+    background 0.15s ease,
+    opacity 0.15s ease;
+  opacity: 0.85;
+}
+.tb-menu-btn:hover,
+.tb-menu-btn.buka {
+  opacity: 1;
+  background: rgba(255, 255, 255, 0.08);
+}
+.tb-menu {
+  position: absolute;
+  top: calc(100% + 6px);
+  left: 0;
+  z-index: 60;
+  min-width: 190px;
+  padding: 8px;
+  border-radius: 10px;
+  background: var(--surface-2, #161b22);
+  border: 1px solid var(--line, #1f2733);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.tb-menu-kepala {
+  font-size: 10.5px;
+  font-weight: 600;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  color: var(--text-muted, #8b949e);
+  padding: 2px 4px 8px;
+}
+.tb-menu-grup {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px;
+}
+.tb-menu-judul {
+  font-size: 12px;
+  color: var(--text, #e6edf3);
+  white-space: nowrap;
+}
+.tb-menu-pilihan {
+  display: flex;
+  gap: 2px;
+  background: var(--surface-1, #0f1318);
+  border: 1px solid var(--line, #1f2733);
+  border-radius: 6px;
+  padding: 2px;
+}
+.tb-menu-opsi {
+  background: transparent;
+  border: none;
+  cursor: pointer;
+  color: var(--text-muted, #8b949e);
+  font-family: inherit;
+  font-size: 11px;
+  padding: 3px 8px;
+  border-radius: 4px;
+  transition:
+    background 0.15s ease,
+    color 0.15s ease;
+}
+.tb-menu-opsi:hover {
+  color: var(--text, #e6edf3);
+}
+/* Pilihan yang SEDANG berlaku ditandai, bukan sekadar bisa diklik — tanpa itu
+   menu ini tak memberi tahu keadaan sekarang, hanya menawarkan tindakan. */
+.tb-menu-pisah {
+  height: 1px;
+  background: var(--line, #1f2733);
+  margin: 6px 2px;
+}
+/* Pilihan yang MEMBUNTU dimatikan, bukan dibiarkan bisa diklik lalu diam-diam
+   tak melakukan apa-apa — itu membuat pemakai mengira menunya rusak. */
+.tb-menu-opsi.mati {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.tb-menu-opsi.mati:hover {
+  color: var(--text-muted, #8b949e);
+}
+.tb-menu-opsi.aktif {
+  background: var(--brand, #2f81f7);
+  color: #fff;
+}
+
 .panel-toggle-btn {
   flex-shrink: 0;
   background: transparent;
@@ -1441,17 +1579,56 @@ select {
   box-shadow: 0 0 0 3px var(--accent-soft);
 }
 .composer textarea {
-  flex: 1;
+  /* ── Kenapa BUKAN `flex: 1` ──
+   *
+   * Induknya (.composer-input-col) adalah flex KOLOM. Di kolom, sumbu utamanya
+   * TINGGI — dan `flex: 1` berarti `flex-basis: 0%`, yang MENGGANTIKAN `height`
+   * sebagai penentu ukuran. Jadi tinggi yang dihitung grow() memang tertulis di
+   * elemennya, lalu diabaikan tata letak.
+   *
+   * Itu sebabnya kotak ini bisa MENAMPUNG banyak teks (batas dan gulirannya
+   * benar) tapi tak pernah MENGEMBANG: dua hal yang terlihat sama dari luar,
+   * padahal sebabnya beda — yang satu di batas tinggi, yang ini di siapa yang
+   * menentukan tingginya.
+   *
+   * `0 0 auto` mengembalikan penentuan itu ke `height`.
+   */
+  flex: 0 0 auto;
+  width: 100%;
   background: none;
   border: none;
   resize: none;
   color: var(--text);
-  font-size: 15px;
+  /* Sama dengan .bubble-user/.bubble-model (13px). Dulu 15px: pemakai mengetik
+     pada satu ukuran lalu melihat hasilnya muncul 2px lebih kecil — beda yang
+     terasa tiap kali mengirim pesan, tapi sulit ditunjuk sebabnya. */
+  font-size: 13px;
   font-family: var(--font);
-  line-height: 1.5;
+  line-height: 1.55;
   padding: 0;
   min-height: 28px;
-  max-height: 160px;
+  /* ── Tinggi maksimal composer ──
+   *
+   * SATU sumber kebenaran. Sebelumnya ada dua angka yang tak pernah sepakat:
+   * CSS menahan di 160px sementara JS menghitung sampai 180px. Yang menang
+   * selalu yang lebih kecil, jadi 20px hasil hitungan JS itu tak pernah ada
+   * artinya — dan siapa pun yang mengubah salah satunya akan mengira ia sudah
+   * mengubah perilakunya.
+   *
+   * Sekarang JS MEMBACA nilai ini lewat getComputedStyle, jadi keduanya tak
+   * bisa menyimpang lagi.
+   *
+   * Relatif terhadap tinggi layar, bukan angka tetap: 160px hanya memuat ~7
+   * baris, dan pesan beberapa paragraf jadi terkurung di jendela sempit yang
+   * harus digulir sendiri. Dibatasi 50vh supaya kotak ketik tak pernah
+   * mendorong tombol kirim dan riwayat chat keluar dari layar — yang justru
+   * membuatnya tak terpakai.
+   */
+  --composer-maks: min(50vh, 460px);
+  max-height: var(--composer-maks);
+  /* Sesudah menyentuh batas, teksnya digulir DI DALAM kotak. Tanpa ini,
+     baris yang melewati batas terpotong dan tak bisa dijangkau sama sekali. */
+  overflow-y: auto;
   outline: none;
 }
 .composer textarea::placeholder {
@@ -3785,10 +3962,17 @@ Agent
   outline: none;
   resize: none;
   color: var(--text);
-  font-size: 15px;
+  /* Kotak yang sama dengan .composer, jadi ukurannya ikut — dua kotak ketik
+     dengan ukuran berbeda terbaca seperti dua aplikasi. */
+  font-size: 13px;
   font-family: var(--font);
   min-height: 28px;
-  max-height: 160px;
+  /* Batas yang sama dengan .composer, dan alasannya sama: 160px hanya memuat
+     ~7 baris, sementara 50vh membiarkan beberapa paragraf muat tanpa pernah
+     mendorong tombol kirim keluar layar. Nilainya DIBACA JS lewat
+     getComputedStyle, jadi tak ada angka kedua yang bisa menyimpang. */
+  --composer-maks: min(50vh, 460px);
+  max-height: var(--composer-maks);
   overflow-y: auto;
   line-height: 1.5;
 }
@@ -3948,4 +4132,559 @@ Agent
   background: transparent;
   border: none;
   cursor: pointer;
+}
+
+/* ── Tombol aksi editor & debug ──
+ *
+ * Ditulis DENGAN GAYA uiverse (pil, gradasi lembut, tepi bercahaya, terangkat
+ * saat disentuh, tertekan saat diklik), bukan disalin dari satu komponen di
+ * sana: uiverse.io menolak diambil dari sini (HTTP 403), jadi menyebut nomor
+ * komponen tertentu berarti mengaku menyalin sesuatu yang tak pernah dilihat.
+ *
+ * Semua transisi dimatikan lewat prefers-reduced-motion di bawah. Tombol yang
+ * bergerak sendiri bukan sekadar selera: bagi sebagian orang ia memicu mual,
+ * dan tombol Run/Debug adalah hal yang ditekan berkali-kali dalam semenit.
+ */
+.aksi-btn {
+  --aksi-warna: #2f81f7;
+  --aksi-warna2: #58a6ff;
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding: 4px 12px;
+  border: 1px solid color-mix(in srgb, var(--aksi-warna) 55%, transparent);
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--aksi-warna2) 22%, transparent),
+    color-mix(in srgb, var(--aksi-warna) 12%, transparent)
+  );
+  color: var(--aksi-warna2);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  overflow: hidden;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.18s ease,
+    border-color 0.18s ease;
+}
+/* Kilau yang menyapu saat disentuh. Elemen semu, bukan lapisan tambahan di
+ * DOM — tombol ini dirender ulang tiap ketukan tombol di editor. */
+.aksi-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 35%,
+    rgba(255, 255, 255, 0.22) 50%,
+    transparent 65%
+  );
+  transform: translateX(-120%);
+  transition: transform 0.55s ease;
+  pointer-events: none;
+}
+.aksi-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  border-color: var(--aksi-warna);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, var(--aksi-warna) 30%, transparent),
+    0 4px 14px -4px var(--aksi-warna);
+}
+.aksi-btn:hover:not(:disabled)::after {
+  transform: translateX(120%);
+}
+.aksi-btn:active:not(:disabled) {
+  transform: translateY(0);
+  box-shadow: 0 0 0 1px color-mix(in srgb, var(--aksi-warna) 40%, transparent);
+}
+/* Fokus papan ketik TIDAK boleh ikut hilang bersama outline bawaan. */
+.aksi-btn:focus-visible {
+  outline: 2px solid var(--aksi-warna2);
+  outline-offset: 2px;
+}
+.aksi-btn:disabled {
+  cursor: not-allowed;
+  color: #54606d;
+  border-color: #212a36;
+  background: transparent;
+  box-shadow: none;
+}
+.aksi-btn.aksi-run {
+  --aksi-warna: #238636;
+  --aksi-warna2: #3fb950;
+}
+.aksi-btn.aksi-simpan {
+  --aksi-warna: #2f81f7;
+  --aksi-warna2: #79c0ff;
+}
+
+/* Bilah kendali debug: tombol berlabel, bukan ikon telanjang. Ikon panah
+ * "step over/into/out" nyaris tak terbedakan pada 13px, dan menebak-nebak
+ * tombol mana yang mana di tengah sesi debug adalah kerugian nyata. */
+.dbg-bar {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+}
+.dbg-btn {
+  --aksi-warna: #d29922;
+  --aksi-warna2: #e3b341;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 5px 12px;
+  border: 1px solid color-mix(in srgb, var(--aksi-warna) 45%, transparent);
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--aksi-warna) 10%, transparent);
+  color: var(--aksi-warna2);
+  font: inherit;
+  font-size: 11px;
+  font-weight: 600;
+  cursor: pointer;
+  transition:
+    transform 0.12s ease,
+    box-shadow 0.18s ease,
+    background 0.18s ease;
+}
+.dbg-btn:hover:not(:disabled) {
+  transform: translateY(-1px);
+  background: color-mix(in srgb, var(--aksi-warna) 20%, transparent);
+  box-shadow: 0 4px 14px -5px var(--aksi-warna);
+}
+.dbg-btn:active:not(:disabled) {
+  transform: translateY(0);
+}
+.dbg-btn:focus-visible {
+  outline: 2px solid var(--aksi-warna2);
+  outline-offset: 2px;
+}
+.dbg-btn:disabled {
+  cursor: not-allowed;
+  color: #54606d;
+  border-color: #212a36;
+  background: transparent;
+}
+.dbg-btn.dbg-stop {
+  --aksi-warna: #da3633;
+  --aksi-warna2: #f85149;
+}
+.dbg-btn.dbg-mulai {
+  --aksi-warna: #d29922;
+  --aksi-warna2: #e3b341;
+  padding: 6px 14px;
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .aksi-btn,
+  .aksi-btn::after,
+  .dbg-btn {
+    transition: none;
+  }
+  .aksi-btn:hover:not(:disabled),
+  .dbg-btn:hover:not(:disabled) {
+    transform: none;
+  }
+  .aksi-btn:hover:not(:disabled)::after {
+    transform: translateX(-120%);
+  }
+}
+
+/* ── Titik henti di gutter Monaco ──
+ *
+ * Digambar sebagai dekorasi baris, bukan elemen yang ditumpuk di atas editor:
+ * Monaco memindahkan dekorasi sendiri saat baris disisipkan atau dihapus,
+ * sementara elemen bertumpuk harus diposisikan ulang sendiri dan pasti
+ * tertinggal begitu isi berkasnya berubah.
+ */
+.dbg-titik-henti {
+  background: #f85149;
+  border-radius: 50%;
+  width: 10px !important;
+  height: 10px !important;
+  margin-left: 5px;
+  margin-top: 5px;
+}
+/* Baris yang SEDANG dieksekusi debugger. Dipisah dari titik henti karena
+ * keduanya bisa muncul di baris yang sama, dan yang satu tak boleh menutupi
+ * yang lain. */
+.dbg-baris-aktif {
+  background: rgba(227, 179, 65, 0.16);
+}
+.dbg-panah-aktif {
+  background: #e3b341;
+  clip-path: polygon(0 20%, 55% 20%, 55% 0, 100% 50%, 55% 100%, 55% 80%, 0 80%);
+  width: 12px !important;
+  height: 12px !important;
+  margin-left: 4px;
+  margin-top: 4px;
+}
+/* Gutter harus bisa diklik dan terasa bisa diklik. */
+.logic-code-host .margin-view-overlays .cgmr {
+  cursor: pointer;
+}
+
+/* ── Panel Variables & Call Stack di tab DEBUG ── */
+.dbg-kotak {
+  border: 1px solid #212a36;
+  border-radius: 6px;
+  overflow: hidden;
+  min-width: 0;
+}
+.dbg-kotak-judul {
+  padding: 5px 10px;
+  background: #131922;
+  border-bottom: 1px solid #212a36;
+  font-size: 10px;
+  font-weight: 600;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: #8b98a9;
+}
+.dbg-kotak-isi {
+  max-height: 190px;
+  overflow: auto;
+  font-family: ui-monospace, "JetBrains Mono", monospace;
+  font-size: 11px;
+}
+.dbg-baris {
+  display: flex;
+  gap: 8px;
+  padding: 3px 10px;
+  white-space: nowrap;
+}
+.dbg-baris:nth-child(odd) {
+  background: rgba(255, 255, 255, 0.02);
+}
+.dbg-nama {
+  color: #79c0ff;
+  flex-shrink: 0;
+}
+.dbg-tipe {
+  color: #6b7280;
+  flex-shrink: 0;
+}
+.dbg-nilai {
+  color: #e6edf3;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.dbg-bingkai {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 3px 10px;
+  color: #adbac7;
+  font: inherit;
+  background: transparent;
+  border: none;
+  cursor: pointer;
+}
+.dbg-bingkai:hover {
+  background: rgba(255, 255, 255, 0.06);
+}
+.dbg-bingkai.atas {
+  color: #e3b341;
+}
+
+/* ── Menu tata letak saat ia duduk di KAKI sidebar ──
+ *
+ * Di bilah atas menu ini turun ke bawah. Di kaki sidebar, turun berarti keluar
+ * layar — jadi ia naik, dan melebar ke KANAN alih-alih terkurung di dalam
+ * sidebar: lebarnya bisa menyempit sampai 60px saat dilipat, dan panel selebar
+ * itu tak akan terbaca.
+ */
+.tb-menu-bungkus.ke-atas {
+  position: relative;
+  align-self: auto;
+}
+.tb-menu-bungkus.ke-atas .tb-menu {
+  top: auto;
+  bottom: 0;
+  left: calc(100% + 8px);
+  right: auto;
+  /* Menempel di tepi bawah tombol, lalu tumbuh ke atas. Kalau isinya lebih
+     tinggi dari ruang yang ada, ia digulir sendiri alih-alih terpotong. */
+  max-height: calc(100vh - 24px);
+  overflow-y: auto;
+}
+
+/* Kaki sidebar: menu tata letak. Didorong ke dasar dengan margin-top auto
+   supaya posisinya tetap, apa pun yang terbuka di atasnya. */
+.sb-menu-kaki {
+  margin-top: auto;
+  padding-top: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.sidebar.collapsed .sb-menu-kaki {
+  justify-content: center;
+}
+.sb-menu-kaki-label {
+  font-size: 12px;
+  color: var(--text-faint, #6b7a8c);
+  white-space: nowrap;
+}
+
+/* ── Keadaan KETIGA: sidebar disembunyikan ──
+ *
+ * Lebarnya nol, isinya hilang, dan yang tersisa hanya tombol pembukanya.
+ *
+ * `overflow: visible` WAJIB di sini, dan sengaja berbeda dari .collapsed yang
+ * memakai `overflow: hidden`. Aturan itu ada untuk menyembunyikan label selama
+ * animasi lebar — tapi pada lebar nol ia juga memotong tombolnya sendiri, dan
+ * yang tersisa jadi tak ada sama sekali: tak ada jalan kembali.
+ */
+.sidebar.sembunyi {
+  width: 0;
+  min-width: 0;
+  padding: 0;
+  border-right: none;
+  overflow: visible;
+}
+/* Semua anaknya hilang KECUALI kepala, yang memuat tombolnya. */
+.sidebar.sembunyi > *:not(.sb-head) {
+  display: none;
+}
+.sidebar.sembunyi .sb-head {
+  padding: 0;
+  height: auto;
+  border-bottom: none;
+}
+.sidebar.sembunyi .sb-brand {
+  display: none;
+}
+/* Tombolnya mengambang di atas isi halaman. `fixed`, bukan `absolute`: induknya
+   berlebar nol, jadi acuan absolut tak memberi ruang yang bisa dipakai. */
+.sidebar.sembunyi .sb-toggle {
+  position: fixed;
+  left: 10px;
+  /* SEJAJAR dengan tombol panel kanan di bilah atas.
+   *
+   * Diikat ke tinggi bilah (46px) lewat kotak setinggi itu + align-items:
+   * center, bukan dipatok satu angka `top`. Angka tetap akan meleset begitu
+   * tinggi bilahnya berubah — dan melesetnya beberapa piksel, yaitu jenis
+   * ketidaksejajaran yang terlihat tapi sulit ditunjuk sebabnya. */
+  top: 0;
+  height: 46px;
+  display: flex;
+  align-items: center;
+  z-index: 40;
+  /* Transparan seperti tombol bilah atas lainnya: ia mengambang di atas isi
+     halaman, dan kotak berlatar sendiri di pojok kiri justru terbaca seperti
+     elemen asing, bukan seperti bagian bilah. */
+  background: transparent;
+  border: none;
+  padding: 6px;
+  border-radius: 6px;
+}
+/* Pegangan pengubah lebar ikut hilang — menyeret sesuatu yang tak terlihat
+   hanya menghasilkan sidebar berlebar aneh saat ia ditampilkan lagi. */
+.sidebar.sembunyi .sb-resizer {
+  display: none;
+}
+
+/* ── Ruang untuk tombol sidebar yang mengambang ──
+ *
+ * Di keadaan "sembunyi", .sb-toggle memakai position: fixed di x=10..46. Ia
+ * mengambang DI ATAS isi halaman, jadi apa pun yang duduk di pojok kiri-atas
+ * tertimpa olehnya. Terukur di halaman API Settings: tombolnya x=10..46,
+ * lambang kunci x=39..67 — bertabrakan 7px.
+ *
+ * Yang diberi ruang BARIS HEADER-nya saja, bukan seluruh halaman. Menggeser
+ * seluruh isi akan mengambil kembali ruang yang justru jadi alasan pemakai
+ * menyembunyikan sidebar.
+ *
+ * Diterapkan ke SEMUA bilah atas sekaligus (.topbar dan .hub-header), bukan ke
+ * satu halaman yang kebetulan dilaporkan. Bug ini muncul persis karena halaman
+ * baru tak ikut dipikirkan waktu tombolnya dibuat.
+ */
+.app.sb-sembunyi .topbar,
+.app.sb-sembunyi .hub-header {
+  padding-left: 58px;
+}
+
+/* ── Editor tabs ── */
+.tab-strip {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex: 1;
+  min-width: 0;
+  /* Scrolls instead of squeezing: tabs that shrink to fit stop being readable
+     long before they stop fitting. The bar itself is hidden — the strip is
+     28px tall and a scrollbar inside it would eat a third of that. */
+  overflow-x: auto;
+  overflow-y: hidden;
+  scrollbar-width: none;
+}
+.tab-strip::-webkit-scrollbar {
+  display: none;
+}
+.tab {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 0 0 auto;
+  max-width: 190px;
+  height: 28px;
+  padding: 0 6px 0 10px;
+  border-radius: 5px;
+  color: #768390;
+  cursor: pointer;
+  user-select: none;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.tab:hover {
+  background: #141c26;
+  color: #adbac7;
+}
+.tab.aktif {
+  background: #1b2431;
+  color: #e6edf3;
+}
+.tab-nama {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+/* One slot holds both marks. The dot shows while there are unsaved changes and
+   gives way to the × on hover, so the tab never changes width and the row never
+   shifts under the pointer mid-click. */
+.tab-tutup {
+  position: relative;
+  flex-shrink: 0;
+  width: 16px;
+  height: 16px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: none;
+  border-radius: 4px;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+  padding: 0;
+}
+.tab-tutup:hover {
+  background: rgba(255, 255, 255, 0.12);
+  color: #e6edf3;
+}
+.tab-tutup .tab-titik,
+.tab-tutup .tab-silang {
+  position: absolute;
+  transition: opacity 0.12s ease;
+}
+.tab-tutup .tab-titik {
+  color: #e3b341;
+  font-size: 11px;
+  line-height: 1;
+  opacity: 0;
+}
+.tab-tutup.kotor .tab-titik {
+  opacity: 1;
+}
+.tab-tutup.kotor .tab-silang {
+  opacity: 0;
+}
+/* The × is always reachable: hovering the tab or the button itself reveals it,
+   including on a dirty file — otherwise the only way to close unsaved work
+   would be to save it first. */
+.tab:hover .tab-tutup .tab-silang,
+.tab-tutup:hover .tab-silang,
+.tab-tutup:focus-visible .tab-silang {
+  opacity: 1;
+}
+.tab:hover .tab-tutup.kotor .tab-titik,
+.tab-tutup:hover .tab-titik {
+  opacity: 0;
+}
+.tab-tutup:focus-visible {
+  outline: 2px solid var(--brand, #5eead4);
+  outline-offset: 1px;
+}
+@media (prefers-reduced-motion: reduce) {
+  .tab,
+  .tab-tutup .tab-titik,
+  .tab-tutup .tab-silang {
+    transition: none;
+  }
+}
+
+/* ── File-tree context menu ── */
+.pohon-menu {
+  position: fixed;
+  z-index: 60;
+  min-width: 180px;
+  padding: 4px;
+  background: var(--surface-2, #182230);
+  border: 1px solid var(--line, #24313f);
+  border-radius: 8px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.55);
+  font-size: 12px;
+}
+.pohon-menu-berkas {
+  padding: 4px 8px 6px;
+  color: var(--text-faint, #6b7a8c);
+  font-family: ui-monospace, monospace;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line, #24313f);
+  margin-bottom: 4px;
+}
+.pohon-menu-opsi {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 6px 8px;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text, #e6edf3);
+  font: inherit;
+  cursor: pointer;
+}
+.pohon-menu-opsi:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+/* Destructive actions are coloured as such — the only irreversible thing in
+   this menu should not look like the rest of it. */
+.pohon-menu-opsi.bahaya {
+  color: #f85149;
+}
+.pohon-menu-opsi.bahaya:hover {
+  background: rgba(248, 81, 73, 0.14);
+}
+.pohon-menu-opsi:focus-visible {
+  outline: 2px solid var(--brand, #5eead4);
+  outline-offset: -2px;
+}
+
+.pohon-menu-tanya {
+  padding: 4px 8px 8px;
+  color: var(--text-faint, #8b98a9);
+  line-height: 1.5;
+  max-width: 220px;
+  white-space: normal;
+}
+.pohon-menu-galat {
+  padding: 0 8px 8px;
+  color: #f85149;
+  line-height: 1.5;
+  max-width: 220px;
+  white-space: normal;
+}
+.pohon-menu-opsi:disabled {
+  opacity: 0.6;
+  cursor: default;
 }

@@ -16,6 +16,27 @@ const path = require("path");
 // jadi tanpa saklar ini ia tetap tak terpakai.
 const EXTERNAL_BACKEND = !!process.env.WOLFSPACE_BACKEND;
 
+function _probeRendererStop() {
+  const CHECK_MS = 200;
+  let last = performance.now();
+  const tick = () => {
+    const n = performance.now();
+    const overshoot = n - last - CHECK_MS;
+    last = n;
+    if (overshoot > 500) {
+      try {
+        ipcRenderer.send("WOLFSPACE:probe", {
+          t: "renderer-stop",
+          overshoot,
+        });
+      } catch (_) {}
+    }
+    setTimeout(tick, CHECK_MS);
+  };
+  setTimeout(tick, CHECK_MS);
+}
+_probeRendererStop();
+
 let seq = 0;
 contextBridge.exposeInMainWorld("WOLFSPACE", {
   // True only when running inside Electron with this preload (lets app.jsx fall

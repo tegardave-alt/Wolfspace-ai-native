@@ -408,7 +408,7 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
     expect(c).toContain('"msg-att" + (a.ok ? "" : " err")');
     // Dan teks yang dikirim ke model pun menyebutnya, supaya model tak
     // menunggu lampiran yang tak pernah sampai.
-    expect(c).toContain("GAGAL diserahkan");
+    expect(c).toContain("handoff FAILED");
   });
 
   test("gaya kartunya benar-benar ada — kalau tidak, kartunya tampil polos", () => {

@@ -190,7 +190,7 @@
         var _benign =
           /NotAllowedError|Clipboard|writeText|Document is not focused|ResizeObserver loop|AbortError/i;
         if (_benign.test(String(errText || ""))) {
-          console.warn("⚠ Error jinak diabaikan (tanpa rollback):", errText);
+          console.warn("⚠ Benign error ignored (no rollback):", errText);
           return;
         }
         try {

@@ -73,6 +73,45 @@ describe("jalur HTTP/UI memakai pembunuh PTY yang SAMA", () => {
     expect(blok).toMatch(/coreTerminal\.killPty/);
   });
 
+  test("jalur HTTP memakai versi yang TIDAK memblokir", () => {
+    // `taskkill /F /T` lewat execSync terukur mengunci thread utama Electron
+    // 1076 ms (terburuk 1507 ms) tiap panel terminal ditutup — dan seluruh
+    // server.cjs memang berjalan di dalam proses utama, jadi itu jendela yang
+    // benar-benar membeku. Sesudah dipindah ke exec asinkron: 25 ms.
+    expect(blok).toMatch(/coreTerminal\.killPtyAsync\(/);
+    // Kegagalannya dicatat, tidak ditelan promise tanpa .catch.
+    expect(blok).toMatch(/\.catch\(/);
+  });
+
+  test("sesi dihapus dari map SEBELUM menunggu pembunuhannya", () => {
+    // Kalau dibalik, /api/terminal/list masih melaporkan sesi yang sudah tak
+    // bisa disentuh siapa pun selama taskkill berjalan.
+    const iHapus = blok.indexOf("terminalSessions.delete(id)");
+    const iBunuh = blok.indexOf("killPtyAsync");
+    expect(iHapus).toBeGreaterThan(-1);
+    expect(iHapus).toBeLessThan(iBunuh);
+  });
+
+  test("killPtyAsync memakai urutan yang SAMA dengan yang sinkron", () => {
+    // Bedanya cuma menunggu lewat promise. Urutannya tetap wajib: pohon dibunuh
+    // selagi pid masih sah, baru handle node-pty dilepas.
+    const i = SRC.indexOf("async function killPtyAsync");
+    expect(i).toBeGreaterThan(-1);
+    const kp = SRC.slice(i, SRC.indexOf("function destroy"));
+    expect(kp.indexOf("_matikanPohonAsync")).toBeLessThan(
+      kp.indexOf("ptyProcess.kill()"),
+    );
+    expect(kp).not.toMatch(/kill\(\s*["']SIG/);
+    // Adapter Windows-nya memakai exec, bukan execSync.
+    const WIN = fs.readFileSync(
+      require.resolve("../agent/platform/windows.cjs"),
+      "utf8",
+    );
+    const ka = WIN.slice(WIN.indexOf("killTreeAsync(child)"));
+    expect(ka.slice(0, 700)).toMatch(/\bexec\(/);
+    expect(ka.slice(0, 700)).not.toMatch(/execSync\(/);
+  });
+
   test("TIDAK ada lagi kill() dengan argumen sinyal di jalur ini", () => {
     // Inti bugnya. Argumen sinyal apa pun di Windows = lemparan, bukan kematian.
     expect(blok).not.toMatch(/kill\(\s*["']SIG/);

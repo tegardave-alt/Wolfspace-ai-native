@@ -1,5 +1,5 @@
-﻿// API Client - Handles all server communication
-(function() {
+// API Client - Handles all server communication
+(function () {
   const IPC =
     typeof window !== "undefined" && window.WOLFSPACE && window.WOLFSPACE.ipc
       ? window.WOLFSPACE
@@ -108,7 +108,7 @@
     } catch (e) {
       if (e instanceof TypeError && e.message.includes("Failed to fetch")) {
         throw new Error(
-          'Tidak bisa terhubung ke server self-agent.\n\nJika running di browser:\n1. Buka terminal di folder WOLFSPACE\n2. Jalankan: npm start\n3. Tunggu sampai "http://127.0.0.1:8090" muncul\n4. Refresh browser dan coba lagi\n\nAtau gunakan Electron: npm run app',
+          'Cannot reach the self-agent server.\n\nIf you are running in a browser:\n1. Open a terminal in the WOLFSPACE folder\n2. Run: npm start\n3. Wait until "http://127.0.0.1:8090" appears\n4. Refresh the browser and try again\n\nOr use Electron: npm run app',
         );
       }
       throw e;
@@ -116,10 +116,19 @@
   }
 
   function reqFor(modelVal, cloud, history) {
+    let byokKeys = {};
+    try {
+      const raw = localStorage.getItem("wolfspace_byok_keys");
+      if (raw) byokKeys = JSON.parse(raw);
+    } catch (_) {}
+
+    const cloudObj = cloud
+      ? { ...cloud, clientKeys: byokKeys }
+      : { clientKeys: byokKeys };
     const b =
       modelVal === "cloud" && cloud
-        ? { history, cloud }
-        : { history, port: modelVal };
+        ? { history, cloud: cloudObj }
+        : { history, port: modelVal, cloud: cloudObj };
     return b;
   }
 
@@ -171,6 +180,6 @@
     keyish,
     getCloud,
     setCloudLS,
-    IPC
+    IPC,
   };
 })();

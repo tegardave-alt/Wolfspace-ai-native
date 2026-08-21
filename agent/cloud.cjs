@@ -335,12 +335,16 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
         stream: true,
         messages: [{ role: "system", content: sys || "" }, ...workMsgs],
       };
-      if (
-        model.includes("o1") ||
-        model.includes("o3") ||
-        model.includes("reasoner") ||
-        model.includes("thinking")
-      ) {
+      // OPENCODE free models: JANGAN kirim reasoning_effort (tidak supported)
+      const isFreeModel = model.includes("-free");
+      const supportsReasoning =
+        (model.includes("o1") ||
+          model.includes("o3") ||
+          model.includes("reasoner") ||
+          model.includes("thinking")) &&
+        !(provider === "opencode" && isFreeModel);
+
+      if (supportsReasoning) {
         payload.reasoning_effort = effortStr;
       } else {
         payload.max_tokens = effortTokens + 4096;
@@ -542,19 +546,34 @@ function askCloudStream(cloud, work, onToken, reg) {
 
 function fillCloudKey(cloud) {
   if (!cloud) return;
+  if (!cloud.provider && cloud.clientKeys) {
+    const provs = Object.keys(cloud.clientKeys);
+    if (provs.length > 0) cloud.provider = provs[0];
+  }
   cloud.provider =
     cloud.provider || (cloud.key ? detectProvider(cloud.key) : null);
-  if (!cloud.key && cloud.provider && CLOUD_KEYS[cloud.provider]) {
-    cloud.key = CLOUD_KEYS[cloud.provider].key;
-    cloud.model = cloud.model || CLOUD_KEYS[cloud.provider].model;
+  const clientKeyObj =
+    cloud.clientKeys && cloud.provider && cloud.clientKeys[cloud.provider]
+      ? cloud.clientKeys[cloud.provider]
+      : null;
+  const globalKeyObj =
+    cloud.provider && CLOUD_KEYS[cloud.provider]
+      ? CLOUD_KEYS[cloud.provider]
+      : null;
+  const keyObj = clientKeyObj || globalKeyObj;
+
+  if (!cloud.key && keyObj) {
+    cloud.key = typeof keyObj === "string" ? keyObj : keyObj.key;
+    cloud.model =
+      cloud.model || (typeof keyObj === "object" ? keyObj.model : undefined);
   }
   if (
     !cloud.baseUrl &&
-    cloud.provider &&
-    CLOUD_KEYS[cloud.provider] &&
-    CLOUD_KEYS[cloud.provider].baseUrl
+    keyObj &&
+    typeof keyObj === "object" &&
+    keyObj.baseUrl
   ) {
-    cloud.baseUrl = CLOUD_KEYS[cloud.provider].baseUrl;
+    cloud.baseUrl = keyObj.baseUrl;
   }
   if (cloud.baseUrl && /:8085(\/|$)/.test(cloud.baseUrl))
     cloud.baseUrl = undefined;

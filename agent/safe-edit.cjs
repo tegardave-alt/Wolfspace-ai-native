@@ -1,6 +1,6 @@
 // ── WOLFSPACE Safe-Edit Middleware ──
 // Pengganti fs.writeFile yang aman: snapshot → sandbox test → apply/rollback
-// Jika kode crash di sandbox, otomatis rollback & karantina.
+// if code crash in sanbox, automatic rollback & .quarantine
 
 "use strict";
 

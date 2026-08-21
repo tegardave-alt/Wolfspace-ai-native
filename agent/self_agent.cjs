@@ -1250,7 +1250,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   let currentTools = [...SELF_TOOLS];
   try {
     const _mcpT0 = Date.now();
-    emit({ t: "model_wait", m: "Menyiapkan koneksi MCP…" });
+    emit({ t: "model_wait", m: "Preparing MCP connection…" });
     const _mcpHb = setInterval(() => {
       emit({
         t: "model_wait",
@@ -1535,7 +1535,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         });
         emit({
           t: "model_wait",
-          m: "Menunggu jawaban model…",
+          m: "Waiting for the model…",
           ctxChars: _ctxChars,
         });
         const _hbInterval = setInterval(() => {
@@ -2208,7 +2208,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             nonExecMessages.push({
               role: "tool",
               tool_call_id: tc.id,
-              content: "Menunggu persetujuan user...",
+              content: "Waiting for your approval...",
             });
           }
           return {
@@ -2295,7 +2295,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             if (results[i].waitForAnswer) {
               waitForAnswer = true;
               stopReason = "waiting_for_user_answer";
-              // Pertanyaannya saja, TANPA awalan "Menunggu jawaban user: ".
+              // Pertanyaannya saja, TANPA awalan "Waiting for your reply: ".
               // Keadaan menunggu sudah disampaikan UI dua kali — lewat panel
               // "Question from the Agent" (j.question) dan status "Menunggu
               // jawaban Anda...". Awalan ini menempel ke teks pertanyaan lalu

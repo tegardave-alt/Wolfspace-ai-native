@@ -245,7 +245,7 @@ describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
     expect(SRC).toMatch(/\.catch\(\(e\) => \{/);
     expect(SRC).toMatch(/mati = true/);
     expect(SRC).toMatch(/unknown invoke channel/i);
-    expect(SRC).toMatch(/Tutup dan buka lagi WOLFSPACE/);
+    expect(SRC).toMatch(/Quit and reopen WOLFSPACE/);
   });
 
   test("pendengar resize dilepas saat panel dibongkar", () => {
@@ -342,7 +342,7 @@ describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
   });
 
   test("bounds nol dilaporkan ke pemakai, bukan cuma dicatat", () => {
-    expect(SRC).toMatch(/Panel berukuran nol/);
+    expect(SRC).toMatch(/Panel has zero size/);
   });
 });
 

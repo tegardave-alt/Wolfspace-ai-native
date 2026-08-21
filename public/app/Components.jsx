@@ -3,6 +3,225 @@
 // Babel sekali -> satu scope global. Body fungsi (hooks/React/SB) jalan saat render.
 
 /* ----------------------------- Top bar ----------------------------- */
+// ── Menu tata letak (☰) ──
+//
+// Dipisah jadi komponennya sendiri saat ia dipindah dari bilah atas ke sidebar.
+// Alasannya bukan kerapian: isinya ~150 baris, dan memindahkannya dengan cara
+// menyalin berarti dua salinan yang harus tetap sepakat soal posisi panel,
+// tampilan chat, dan Code — tiga hal yang justru paling sering berubah.
+//
+// `arah` menentukan ke mana panelnya membuka. Di bilah atas ia turun; di KAKI
+// sidebar, turun berarti keluar layar — jadi ia naik dan melebar ke kanan.
+// Sidebar bisa menyempit sampai 60px, dan panel yang terkurung di lebar itu
+// tak akan terbaca.
+function MenuTataLetak({
+  posisi,
+  setPosisi,
+  chatVisible,
+  setChatVisible,
+  panelOpen,
+  terminalOpen,
+  logicOpen,
+  setLogicOpen,
+  arah = "bawah",
+}) {
+  const [menuOpen, setMenuOpen] = useState(false);
+  const menuRef = useRef(null);
+  // ── Kenapa panelnya position: fixed saat di sidebar ──
+  //
+  // `.sidebar.collapsed` memakai `overflow: hidden` (untuk menyembunyikan label
+  // selama animasi lebar), dan itu MEMOTONG apa pun yang keluar dari tepinya —
+  // termasuk panel menu ini. Terukur: panelnya terpangkas di x=232, separuh
+  // pilihan "Right/Bottom" hilang.
+  //
+  // `position: fixed` lolos dari pemotongan itu. Tapi ia juga lepas dari
+  // tombolnya, jadi koordinatnya DIUKUR saat menu dibuka — bukan dipatok.
+  // Sidebar bisa diubah lebarnya DAN dilipat, jadi angka tetap apa pun akan
+  // salah di salah satu keadaan.
+  const [kotakMenu, setKotakMenu] = useState(null);
+  React.useLayoutEffect(() => {
+    if (arah !== "atas" || !menuOpen || !menuRef.current)
+      return setKotakMenu(null);
+    const hitung = () => {
+      const el = menuRef.current;
+      if (!el) return;
+      const r = el.getBoundingClientRect();
+      setKotakMenu({
+        position: "fixed",
+        left: Math.round(r.right + 8) + "px",
+        bottom: Math.round(window.innerHeight - r.bottom) + "px",
+        top: "auto",
+        right: "auto",
+        maxHeight: "calc(100vh - 24px)",
+        overflowY: "auto",
+      });
+    };
+    hitung();
+    // Sidebar bisa digeser lebarnya SELAGI menu terbuka.
+    window.addEventListener("resize", hitung);
+    return () => window.removeEventListener("resize", hitung);
+  }, [arah, menuOpen]);
+  useEffect(() => {
+    if (!menuOpen) return;
+    // Ditutup oleh klik di luar DAN oleh Escape. Hanya salah satunya membuat
+    // menu yang terbuka terasa macet — pemakai menekan Escape lalu heran.
+    const klik = (e) => {
+      if (menuRef.current && !menuRef.current.contains(e.target))
+        setMenuOpen(false);
+    };
+    const tombol = (e) => e.key === "Escape" && setMenuOpen(false);
+    document.addEventListener("mousedown", klik);
+    document.addEventListener("keydown", tombol);
+    return () => {
+      document.removeEventListener("mousedown", klik);
+      document.removeEventListener("keydown", tombol);
+    };
+  }, [menuOpen]);
+
+  const pilihPosisi = (apa, ke) => {
+    if (setPosisi) setPosisi((p) => ({ ...p, [apa]: ke }));
+    setMenuOpen(false);
+  };
+  // Pilihannya BEDA per baris, bukan "kanan/bawah" untuk semuanya. Terminal di
+  // kiri/kanan memaksa keluaran perintah — yang berbentuk baris panjang —
+  // membungkus terus, jadi pasangannya kanan/bawah. Preview dan Code adalah
+  // halaman dan editor: keduanya butuh LEBAR, jadi pasangannya kiri/kanan.
+  const _NAMA_SISI = { kanan: "Right", bawah: "Bottom", kiri: "Left" };
+  const barisPosisi = (apa, label, pilihan = ["kanan", "bawah"]) => (
+    <div className="tb-menu-grup" key={apa}>
+      <span className="tb-menu-judul">{label}</span>
+      <div className="tb-menu-pilihan">
+        {pilihan.map((ke) => (
+          <button
+            key={ke}
+            type="button"
+            className={
+              "tb-menu-opsi" + (posisi && posisi[apa] === ke ? " aktif" : "")
+            }
+            onClick={() => pilihPosisi(apa, ke)}
+          >
+            {_NAMA_SISI[ke] || ke}
+          </button>
+        ))}
+      </div>
+    </div>
+  );
+
+  return (
+    <div
+      className={"tb-menu-bungkus" + (arah === "atas" ? " ke-atas" : "")}
+      ref={menuRef}
+    >
+      <button
+        type="button"
+        className={"tb-menu-btn" + (menuOpen ? " buka" : "")}
+        onClick={() => setMenuOpen((b) => !b)}
+        title="Layout"
+        aria-label="Layout"
+        aria-expanded={menuOpen}
+      >
+        {/* Tiga garis mendatar. Sebelumnya tiga titik menurun (⋮), yang di
+              bilah atas lebih lazim berarti "aksi untuk baris ini"; tiga garis
+              (☰) dibaca orang sebagai menu utama — dan itu memang isinya.
+              Digambar dengan garis, bukan teks "☰", supaya tebal dan jaraknya
+              tak berubah mengikuti font yang kebetulan terpasang. */}
+        <svg
+          width="16"
+          height="16"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+        >
+          <line x1="4" y1="7" x2="20" y2="7" />
+          <line x1="4" y1="12" x2="20" y2="12" />
+          <line x1="4" y1="17" x2="20" y2="17" />
+        </svg>
+      </button>
+      {menuOpen && posisi && setPosisi && (
+        <div className="tb-menu" role="menu" style={kotakMenu || undefined}>
+          <div className="tb-menu-kepala">Panel position</div>
+          {barisPosisi("preview", "Preview panel", ["kanan", "kiri"])}
+          {barisPosisi("terminal", "Terminal", ["kanan", "bawah"])}
+          {barisPosisi("logic", "Code", ["kanan", "kiri"])}
+          {barisPosisi("chat", "Chat", ["kanan", "kiri"])}
+          <div className="tb-menu-pisah" />
+          <div className="tb-menu-kepala">Visibility</div>
+          <div className="tb-menu-grup">
+            <span className="tb-menu-judul">Chat</span>
+            <div className="tb-menu-pilihan">
+              {[
+                ["Show", true],
+                ["Hide", false],
+              ].map(([teks, nilai]) => {
+                // Menyembunyikan chat saat tak ada panel lain menghasilkan
+                // layar KOSONG, dan pemakai tak punya petunjuk bahwa jalan
+                // kembalinya ada di menu ini. Jadi pilihannya dimatikan —
+                // dan alasannya dikatakan, bukan cuma diredupkan diam-diam.
+                // Code ikut dihitung sejak ia jadi panel sungguhan: kalau
+                // tidak, menyembunyikan chat saat HANYA Code yang terbuka
+                // akan ditolak padahal layarnya tidak akan kosong.
+                const buntu =
+                  !nilai && !panelOpen && !terminalOpen && !logicOpen;
+                return (
+                  <button
+                    key={teks}
+                    type="button"
+                    disabled={buntu}
+                    className={
+                      "tb-menu-opsi" +
+                      (chatVisible === nilai ? " aktif" : "") +
+                      (buntu ? " mati" : "")
+                    }
+                    title={
+                      buntu
+                        ? "Open the preview, terminal, or Code panel first — hiding chat now would leave nothing on screen."
+                        : ""
+                    }
+                    onClick={() => {
+                      if (buntu) return;
+                      setChatVisible(nilai);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    {teks}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+          {setLogicOpen && (
+            <div className="tb-menu-grup">
+              <span className="tb-menu-judul">Code</span>
+              <div className="tb-menu-pilihan">
+                {[
+                  ["Open", true],
+                  ["Close", false],
+                ].map(([teks, nilai]) => (
+                  <button
+                    key={teks}
+                    type="button"
+                    className={
+                      "tb-menu-opsi" + (!!logicOpen === nilai ? " aktif" : "")
+                    }
+                    onClick={() => {
+                      setLogicOpen(nilai);
+                      setMenuOpen(false);
+                    }}
+                  >
+                    {teks}
+                  </button>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function TopBar({
   models,
   modelVal,
@@ -17,54 +236,24 @@ function TopBar({
   setTerminalOpen,
   posisi,
   setPosisi,
+  chatVisible,
+  setChatVisible,
+  logicOpen,
+  setLogicOpen,
 }) {
-  // Memindahkan panel hanya masuk akal untuk panel yang SEDANG TERBUKA —
-  // menawarkan "pindah ke bawah" untuk sesuatu yang tak terlihat cuma membuat
-  // pemakai menebak-nebak apakah kliknya berhasil.
-  const pindah = (apa) =>
-    setPosisi((p) => ({
-      ...p,
-      [apa]: p[apa] === "kanan" ? "bawah" : "kanan",
-    }));
-  const tombolPindah = (apa, terbuka, label) =>
-    terbuka && (
-      <button
-        className="panel-toggle-btn"
-        onClick={() => pindah(apa)}
-        title={
-          label + ": pindah ke " + (posisi[apa] === "kanan" ? "bawah" : "kanan")
-        }
-        aria-label={"Pindahkan " + label}
-      >
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="1.8"
-          strokeLinecap="round"
-          strokeLinejoin="round"
-        >
-          <rect x="3" y="3" width="18" height="18" rx="2" />
-          {posisi[apa] === "kanan" ? (
-            <line x1="15" y1="3" x2="15" y2="21" />
-          ) : (
-            <line x1="3" y1="15" x2="21" y2="15" />
-          )}
-        </svg>
-      </button>
-    );
-
+  // Menu ⋮ di ujung kiri bilah atas.
+  //
+  // Opsi tata letak sempat dipasang sebagai dua tombol TERPISAH di sini, dan
+  // itu terlalu ramai untuk sesuatu yang jarang disentuh: bilah ini tempat
+  // tindakan sehari-hari, sementara memindahkan panel dilakukan sekali lalu
+  // dilupakan. Menu menyembunyikannya tanpa menghilangkannya.
   return (
     <header className="topbar">
+      {/* Menu ☰ PINDAH ke sidebar (lihat MenuTataLetak dipakai di
+            Sidebar.jsx). Bilah atas tempat tindakan sehari-hari; tata
+            letak diatur sekali lalu dilupakan, jadi tempatnya di kaki
+            sidebar bersama pengaturan lain. */}
       <div className="tb-spacer" />
-      {posisi &&
-        setPosisi &&
-        tombolPindah("preview", panelOpen, "Panel preview")}
-      {posisi &&
-        setPosisi &&
-        tombolPindah("terminal", terminalOpen, "Terminal")}
       <button
         className={`panel-toggle-btn ${panelOpen ? "active" : ""}`}
         onClick={() => setPanelOpen(!panelOpen)}
@@ -308,7 +497,7 @@ function MessageDasar({ msg }) {
               <div
                 className={"msg-att" + (a.ok ? "" : " err")}
                 key={i}
-                title={a.ok ? a.name : a.name + " — gagal diserahkan"}
+                title={a.ok ? a.name : a.name + " — handoff failed"}
               >
                 {a.previewUrl && /^image\//.test(a.type || "") ? (
                   <img className="msg-att-thumb" src={a.previewUrl} alt="" />
@@ -637,7 +826,7 @@ function TodoPanel({ todos, busy, onToggle, onClear }) {
   // selesai berarti tombolnya tak pernah datang. Satu-satunya cara membersihkan
   // adalah menunggu todowrite BERIKUTNYA menimpanya, yang belum tentu ada.
   const mandek = !busy && !semuaSelesai;
-  const bisaTutup = semuaSelesai || mandek;
+  const canClose = semuaSelesai || mandek;
   return (
     <div className={"todo-panel" + (mandek ? " todo-mandek" : "")}>
       <div className="todo-panel-head">
@@ -663,17 +852,17 @@ function TodoPanel({ todos, busy, onToggle, onClear }) {
               {selesai}/{todos.length}
             </span>
           )}
-          {bisaTutup && (
+          {canClose && (
             <button
               type="button"
               className="todo-panel-tutup"
               onClick={() => onClear && onClear()}
               title={
                 semuaSelesai
-                  ? "Semua selesai — tutup daftar"
-                  : "Proses terhenti — tutup daftar"
+                  ? "All done — close the list"
+                  : "Run stopped — close the list"
               }
-              aria-label="Tutup daftar tugas"
+              aria-label="Close task list"
             >
               ✕
             </button>
@@ -940,12 +1129,55 @@ function Composer({
     }
   }, [menu]);
 
-  const grow = () => {
+  // Batasnya DIBACA dari CSS, bukan ditulis ulang di sini. Dulu angkanya ada
+  // dua — 160px di CSS, 180 di sini — dan yang lebih kecil selalu menang, jadi
+  // selisihnya tak pernah berarti apa-apa sementara keduanya terlihat seperti
+  // sama-sama berlaku.
+  const grow = React.useCallback(() => {
     const el = ref.current;
     if (!el) return;
+    // "auto" dulu: tanpa itu scrollHeight tak pernah MENGECIL saat teks
+    // dihapus, jadi kotaknya tumbuh sekali lalu tak mau menyusut lagi.
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 180) + "px";
-  };
+    const maks = parseFloat(getComputedStyle(el).maxHeight);
+    const tinggi = Number.isFinite(maks)
+      ? Math.min(el.scrollHeight, maks)
+      : el.scrollHeight;
+    el.style.height = tinggi + "px";
+  }, []);
+
+  // ── Kapan tinggi harus dihitung ulang ──
+  //
+  // onChange saja tidak cukup, dan itu sebabnya kotaknya terasa "statis":
+  //   - teks yang disetel dari luar (WOLFSPACE:set-composer, tempel, isi ulang
+  //     draf) tak melewati onChange sama sekali;
+  //   - jendela yang diubah lebarnya mengubah PEMBUNGKUSAN baris, jadi jumlah
+  //     baris berubah tanpa satu pun ketikan.
+  React.useEffect(() => {
+    grow();
+  }, [val, grow]);
+  React.useEffect(() => {
+    const el = ref.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    // Diamati elemennya sendiri, bukan window: composer ikut menyempit saat
+    // panel lain dibuka atau pembaginya digeser — dan itu tak menghasilkan
+    // event resize jendela sama sekali.
+    //
+    // HANYA LEBAR yang memicu hitung ulang. grow() mengubah TINGGI elemen yang
+    // sedang diamati, jadi bereaksi pada tinggi berarti mengamati akibat dari
+    // diri sendiri — persis bentuk yang menghasilkan "ResizeObserver loop
+    // completed with undelivered notifications", dan pada kasus terburuk
+    // memutar terus sampai jendela tersendat.
+    let lebarTerakhir = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      const lebar = el.clientWidth;
+      if (lebar === lebarTerakhir) return;
+      lebarTerakhir = lebar;
+      grow();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [grow]);
 
   // Log jalur render DIBUANG. Tiap console.* di renderer Electron diserialisasi
   // dan dikirim lewat IPC ke proses main (main.js meneruskannya ke stdout), jadi
@@ -1034,7 +1266,7 @@ function Composer({
                 parsed = res;
               }
               if (res.status >= 400 || !parsed.ok)
-                throw new Error(parsed.error || "Attach gagal");
+                throw new Error(parsed.error || "Attach failed");
               attHandle = parsed.id;
             } else {
               const r = await fetch("/attach", {
@@ -1043,7 +1275,7 @@ function Composer({
                 body: JSON.stringify(payload),
               });
               const res = await r.json();
-              if (!res.ok) throw new Error(res.error || "Attach gagal");
+              if (!res.ok) throw new Error(res.error || "Attach failed");
               attHandle = res.id;
             }
             setAttachments((prev) =>
@@ -1115,7 +1347,7 @@ function Composer({
         .map(
           (a) =>
             `- [Terlampir] ${a.name} (${Math.round(a.size / 1024)} KB${a.type ? `, ${a.type}` : ""})` +
-            (a.attId ? ` — id: ${a.attId}` : " — GAGAL diserahkan"),
+            (a.attId ? ` — id: ${a.attId}` : " — handoff FAILED"),
         )
         .join("\n");
       fullText = v

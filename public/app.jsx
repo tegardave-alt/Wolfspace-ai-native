@@ -568,7 +568,7 @@ async function runOpenClawChat(message, signal) {
     data = await r.json();
   } catch (_) {}
   if (!r.ok || !data.ok) {
-    throw new Error(data.error || `OpenClaw gagal: HTTP ${r.status}`);
+    throw new Error(data.error || `OpenClaw failed: HTTP ${r.status}`);
   }
   return data;
 }
@@ -650,7 +650,7 @@ function tsjFileType(name, dir) {
 // folder proyek web (untuk memangkas prefix agar path tampil relatif & ringkas).
 // Hasilnya [{ name, depth, type }] — folder perantara ikut ditampilkan supaya
 // struktur terlihat, tapi hanya cabang menuju file yang dikembangkan.
-function buildDevTree(paths, root) {
+function buildDevTree(paths, root, folders) {
   const rootN = String(root || "")
     .replace(/\\/g, "/")
     .replace(/\/+$/, "")
@@ -674,6 +674,27 @@ function buildDevTree(paths, root) {
       if (!isFile) cur.children[part].isFile = false; // punya anak → pasti folder
       cur = cur.children[part];
     });
+  }
+  // Folders created by hand are inserted explicitly. They cannot come from the
+  // path list: that list holds FILES, and a folder with nothing in it leaves no
+  // trace there — it would be created on disk and then never appear.
+  for (const raw of folders || []) {
+    let s = String(raw || "")
+      .split(String.fromCharCode(92))
+      .join("/")
+      .replace(/^[/]+/, "")
+      .replace(/[/]+$/, "");
+    if (!s) continue;
+    let cur = rootNode;
+    for (const part of s.split("/").filter(Boolean)) {
+      cur.children[part] = cur.children[part] || {
+        name: part,
+        isFile: false,
+        children: {},
+      };
+      cur.children[part].isFile = false;
+      cur = cur.children[part];
+    }
   }
   const out = [];
   const walk = (node, depth, pre) => {
@@ -716,24 +737,128 @@ function buildDevTree(paths, root) {
    Editor dibuat SEKALI lalu modelnya diganti tiap berpindah berkas. Membuat
    ulang editor tiap klik menumpuk observer Monaco, dan itu jalur yang persis
    sudah pernah meledak di repo ini (lihat tests/monaco-dekat-layar.test.js). */
-function LogicCodePane({ root, rel }) {
+function LogicCodePane({
+  root,
+  rel,
+  onRun,
+  onDaftarDebug,
+  titikHenti,
+  setTitikHenti,
+  barisAktif,
+  tabs,
+  onPilihTab,
+  onTutupTab,
+  onGeserTab,
+  onKotorBerubah,
+}) {
   const hostRef = React.useRef(null);
   const edRef = React.useRef(null);
   const [galat, setGalat] = React.useState("");
   const [muat, setMuat] = React.useState(false);
+  // ── Panel ini bisa DISUNTING, dan itu menuntut tiga hal ──
+  //
+  // Dulu editornya readOnly, jadi tak ada keadaan yang perlu dijaga. Begitu ia
+  // bisa diketik, tiga hal jadi wajib: menandai bahwa ada perubahan yang belum
+  // saved, mengingat berkas MANA yang sedang disunting, dan mencegah
+  // pergantian berkas menelan ketikan yang belum disimpan.
+  const [kotor, setKotor] = React.useState(false);
+  // Salinan ref dari `kotor`. Run dibungkus useCallback, dan callback yang
+  // membaca state langsung akan memegang nilai dari render saat ia dibuat —
+  // artinya Run yang ditekan sesudah mengetik masih melihat "bersih" dan
+  // melewatkan simpan tanpa satu pun tanda.
+  const kotorRef = React.useRef(false);
+  // Dirty state PER FILE. A single flag only describes the active file, and the
+  // tab strip has to mark every file that has unsaved work.
+  const kotorPerBerkas = React.useRef(new Map());
+  const [saveState, setSaveState] = React.useState("");
+  // relRef menyimpan berkas yang isinya SEDANG ada di editor. Prop `rel` sudah
+  // berubah ke berkas baru sebelum isinya tiba, jadi menyimpan memakai `rel`
+  // akan menulis isi berkas LAMA ke nama berkas BARU.
+  const relRef = React.useRef(rel);
+
+  // ── Titik henti ──
+  //
+  // Disimpan DI ATAS (app.jsx), bukan di sini: ia harus bertahan saat pemakai
+  // berpindah berkas lalu kembali, dan harus terbaca oleh panel debug yang
+  // bukan anak komponen ini.
+  //
+  // ubahTitikRef dipakai karena penangan klik Monaco dipasang SEKALI saat
+  // editor dibuat. Kalau ia menutupi fungsi dari render saat itu, ia akan
+  // selamanya melihat daftar titik henti yang kosong — klik pertama bekerja,
+  // klik kedua "menghapus" titik yang menurutnya tak pernah ada.
+  const ubahTitikRef = React.useRef(() => {});
+  React.useEffect(() => {
+    ubahTitikRef.current = (baris) => {
+      if (!setTitikHenti) return;
+      const berkas = relRef.current;
+      if (!berkas) return;
+      setTitikHenti((sblm) => {
+        const ada = (sblm && sblm[berkas]) || [];
+        const baru = ada.includes(baris)
+          ? ada.filter((l) => l !== baris)
+          : ada.concat(baris).sort((a, b) => a - b);
+        return { ...(sblm || {}), [berkas]: baru };
+      });
+    };
+  }, [setTitikHenti]);
+
+  // Dekorasi digambar ulang tiap titik henti / baris aktif berubah. Koleksinya
+  // dipegang di ref supaya yang lama benar-benar diganti, bukan ditumpuk —
+  // menumpuk membuat titik henti yang dilepas tetap terlihat.
+  const hiasRef = React.useRef(null);
+  React.useEffect(() => {
+    const ed = edRef.current;
+    if (!ed || !window.monaco) return;
+    const garis = (titikHenti && titikHenti[rel]) || [];
+    const R = window.monaco.Range;
+    const daftar = garis.map((l) => ({
+      range: new R(l, 1, l, 1),
+      options: {
+        glyphMarginClassName: "dbg-titik-henti",
+        glyphMarginHoverMessage: { value: "Breakpoint on line " + l },
+        stickiness: 1, // ikut bergeser saat baris di atasnya disisipkan/dihapus
+      },
+    }));
+    if (barisAktif && barisAktif.berkas === rel && barisAktif.baris)
+      daftar.push({
+        range: new R(barisAktif.baris, 1, barisAktif.baris, 1),
+        options: {
+          isWholeLine: true,
+          className: "dbg-baris-aktif",
+          glyphMarginClassName: "dbg-panah-aktif",
+        },
+      });
+    hiasRef.current = ed.deltaDecorations(hiasRef.current || [], daftar);
+  }, [titikHenti, rel, barisAktif, muat]);
+
+  // Baris tempat debugger berhenti DIGULIRKAN ke tengah pandangan. Tanpa ini,
+  // melangkah ke bagian berkas yang sedang tak terlihat tampak seperti tak ada
+  // yang terjadi.
+  React.useEffect(() => {
+    const ed = edRef.current;
+    if (!ed || !barisAktif || barisAktif.berkas !== rel || !barisAktif.baris)
+      return;
+    try {
+      ed.revealLineInCenterIfOutsideViewport(barisAktif.baris);
+    } catch (_) {}
+  }, [barisAktif, rel]);
 
   React.useEffect(() => {
     let dibuang = false;
     if (!window.monacoReady || !hostRef.current) return;
     window.monacoReady.then((monaco) => {
       if (dibuang || !hostRef.current || edRef.current) return;
+      pasangSaranPustaka(monaco);
       edRef.current = monaco.editor.create(hostRef.current, {
         value: "",
         language: "plaintext",
         theme: "wolfspace-gelap",
         automaticLayout: true,
-        readOnly: true,
-        domReadOnly: true,
+        // Bisa disunting. Sebelumnya readOnly, dan itulah yang membuat panel
+        // ini hanya bisa dibaca — melonggarkannya di sini adalah separuh
+        // perbaikan; separuh lainnya adalah rute POST /ww/tulis-berkas.
+        readOnly: false,
+        domReadOnly: false,
         // false, sama seperti dua editor Monaco lain di aplikasi ini
         // (AgentSteps, CodeBlocks). Beda dari keduanya di sini menghasilkan
         // bug yang nyata: minimap punya SLIDER (kotak penunjuk viewport), dan
@@ -752,9 +877,10 @@ function LogicCodePane({ root, rel }) {
         // di bawah header panel — gejala yang sama sekali beda dari minimap,
         // tapi kelihatan serupa: satu garis solid selebar panel.
         //
-        // Dua editor Monaco lain (AgentSteps, CodeBlocks) sudah "none". Ini
-        // panel BACA-SAJA — tak ada yang sedang mengedit, jadi menyorot
-        // "baris aktif" tak berarti apa-apa di sini selain artefak visual.
+        // Dua editor Monaco lain (AgentSteps, CodeBlocks) sudah "none", dan
+        // panel ini tetap ikut sesudah bisa disunting: menyalakannya kembali
+        // mengembalikan garis palsu itu persis, dan penanda kursor Monaco
+        // sendiri sudah cukup menunjukkan baris mana yang sedang diketik.
         renderLineHighlight: "none",
         // PENYEBAB KETIGA, ditemukan lewat screenshot Playwright dari editor
         // TERISOLASI (di luar aplikasi) supaya tak ikut tertipu oleh cache
@@ -766,6 +892,25 @@ function LogicCodePane({ root, rel }) {
         // Batasnya DIGAMBAR ke kanvas, bukan diatur lewat CSS — jadi
         // `outline: none` tak menyentuhnya; harus dimatikan lewat opsi ini.
         overviewRulerLanes: 0,
+        // Jalur gutter tempat titik henti digambar. Tanpa ini, dekorasi
+        // glyphMarginClassName tak punya tempat dan tak pernah terlihat —
+        // kliknya bekerja, titiknya tidak muncul, dan itu tak bisa dibedakan
+        // dari titik henti yang gagal dipasang.
+        glyphMargin: true,
+      });
+      // Klik di gutter = pasang/lepas titik henti, seperti VS Code. Yang
+      // diperiksa JENIS sasarannya, bukan koordinat: nomor baris dan jalur
+      // glyph bersebelahan, dan menebak dari x membuat klik pada nomor baris
+      // ikut memasang titik henti.
+      edRef.current.onMouseDown((e) => {
+        const T = monaco.editor.MouseTargetType;
+        if (
+          e.target.type !== T.GUTTER_GLYPH_MARGIN &&
+          e.target.type !== T.GUTTER_LINE_NUMBERS
+        )
+          return;
+        const baris = e.target.position && e.target.position.lineNumber;
+        if (baris) ubahTitikRef.current(baris);
       });
     });
     return () => {
@@ -779,10 +924,81 @@ function LogicCodePane({ root, rel }) {
     };
   }, []);
 
+  // Akar yang dipakai penyedia saran. Disetel di sini, bukan sekali saat
+  // editor dibuat: pemakai bisa berpindah proyek tanpa editor dibuat ulang, dan
+  // saran yang tertinggal di akar lama menawarkan pustaka proyek yang salah.
+  React.useEffect(() => {
+    _akarPustaka = String(root || "");
+  }, [root]);
+
+  // ── One model per file, kept alive ──
+  //
+  // The old code disposed the previous model on every switch. With a single
+  // file that only cost undo history; with tabs it silently DESTROYS UNSAVED
+  // EDITS, because switching tabs is now the most common action there is.
+  //
+  // So models are cached by path and only disposed when their tab is closed.
+  // That is also what makes undo history, cursor position and scroll offset
+  // survive a switch — the thing that makes tabs feel like tabs.
+  const modelRef = React.useRef(new Map()); // rel -> monaco model
+  React.useEffect(() => {
+    const peta = modelRef.current;
+    return () => {
+      for (const m of peta.values()) {
+        try {
+          m.dispose();
+        } catch (_) {}
+      }
+      peta.clear();
+    };
+  }, []);
+
+  // Models for files whose tab was closed are released here. Doing it inside
+  // the close handler would be wrong: the handler lives in the parent and has
+  // no access to this editor's models.
+  React.useEffect(() => {
+    if (!Array.isArray(tabs)) return;
+    const hidup = new Set(tabs);
+    for (const [k, m] of modelRef.current) {
+      if (hidup.has(k)) continue;
+      try {
+        m.dispose();
+      } catch (_) {}
+      modelRef.current.delete(k);
+    }
+  }, [tabs]);
+
   React.useEffect(() => {
     if (!rel) return;
     let dibatalkan = false;
     setGalat("");
+
+    const pasang = (model) => {
+      const ed = edRef.current;
+      if (!ed) return;
+      ed.setModel(model);
+      // Recorded AFTER the model is attached: from this point the editor's
+      // contents really do belong to this file. Setting it earlier makes a save
+      // mid-load write the old file's contents to the new file's name.
+      relRef.current = rel;
+      const kotorSekarang = !!(kotorPerBerkas.current.get(rel) || false);
+      setKotor(kotorSekarang);
+      kotorRef.current = kotorSekarang;
+      setSaveState("");
+      try {
+        ed.focus();
+      } catch (_) {}
+    };
+
+    const sudahAda = modelRef.current.get(rel);
+    if (sudahAda) {
+      setMuat(false);
+      pasang(sudahAda);
+      return () => {
+        dibatalkan = true;
+      };
+    }
+
     setMuat(true);
     const abs = String(root || "").replace(/[\/]+$/, "") + "/" + rel;
     fetch("/preview-file?raw=1&path=" + encodeURIComponent(abs))
@@ -792,14 +1008,19 @@ function LogicCodePane({ root, rel }) {
       .then((teks) => {
         if (dibatalkan) return;
         setMuat(false);
-        const ed = edRef.current;
-        if (!ed || !window.monaco) return;
-        const lama = ed.getModel();
-        const bahasa = bahasaMonaco(rel);
-        ed.setModel(window.monaco.editor.createModel(teks, bahasa));
-        // Model lama dibuang SESUDAH yang baru dipasang: membuangnya lebih dulu
-        // membuat editor sempat kehilangan model dan melempar.
-        if (lama) lama.dispose();
+        if (!edRef.current || !window.monaco) return;
+        const model = window.monaco.editor.createModel(teks, bahasaMonaco(rel));
+        model.onDidChangeContent(() => {
+          kotorPerBerkas.current.set(rel, true);
+          if (relRef.current === rel) {
+            setKotor(true);
+            kotorRef.current = true;
+            setSaveState("");
+          }
+          if (onKotorBerubah) onKotorBerubah(rel, true);
+        });
+        modelRef.current.set(rel, model);
+        pasang(model);
       })
       .catch((e) => {
         if (dibatalkan) return;
@@ -809,7 +1030,148 @@ function LogicCodePane({ root, rel }) {
     return () => {
       dibatalkan = true;
     };
-  }, [root, rel]);
+  }, [root, rel, onKotorBerubah]);
+
+  // fetch path-relatif biasa — jalur yang SAMA dengan pemuatan isi berkas di
+  // atas. Di desktop, shim di bagian atas berkas ini sudah membelokkan setiap
+  // fetch("/…") ke IPC.invoke("api"), jadi menulis jalur IPC sendiri di sini
+  // bukan cuma mubazir: ia jadi salinan kedua dari transport yang sama, yang
+  // harus ikut diperbaiki tiap kali bentuk balasan IPC berubah.
+  // Mengembalikan true/false, bukan void: Run memakainya untuk memutuskan
+  // apakah boleh lanjut. Menjalankan sesudah simpan GAGAL berarti menjalankan
+  // isi berkas yang lama sementara pesan galatnya lewat tanpa dibaca.
+  const simpan = React.useCallback(async () => {
+    const ed = edRef.current;
+    const target = relRef.current;
+    if (!ed || !target) return false;
+    const abs = String(root || "").replace(/[\/]+$/, "") + "/" + target;
+    const muatan = {
+      root: String(root || ""),
+      path: abs,
+      content: ed.getValue(),
+    };
+    setSaveState("saving…");
+    try {
+      const hasil = await (
+        await fetch("/ww/tulis-berkas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(muatan),
+        })
+      ).json();
+      if (!hasil || !hasil.ok)
+        throw new Error((hasil && hasil.error) || "could not save");
+      setKotor(false);
+      kotorRef.current = false;
+      kotorPerBerkas.current.set(target, false);
+      if (onKotorBerubah) onKotorBerubah(target, false);
+      setSaveState("saved");
+      return true;
+    } catch (e) {
+      // Penanda kotor SENGAJA tidak dibersihkan saat failed: pemakai harus tetap
+      // melihat bahwa perubahannya belum aman di disk.
+      setSaveState("failed: " + String(e.message || e));
+      return false;
+    }
+  }, [root, onKotorBerubah]);
+
+  // ── Jalankan: SIMPAN DULU, baru jalankan ──
+  //
+  // Tanpa itu, menekan Run sesudah mengetik menjalankan isi berkas yang LAMA —
+  // keluarannya tak cocok dengan yang terlihat di editor, dan tak ada satu pun
+  // petunjuk kenapa. Ditunggu sampai simpan selesai (await), bukan dipanggil
+  // berbarengan: perintahnya akan mendahului tulisan ke disk.
+  const abs = React.useCallback(
+    (r) => String(root || "").replace(/[\/]+$/, "") + "/" + r,
+    [root],
+  );
+  const bisaJalan = !!rel && !!perintahJalankan(rel);
+  // Ekstensi saja TIDAK cukup. Tanpa pemeriksaan ini, membuka .rb di mesin
+  // tanpa rdbg membuat tombolnya menyala, perintahnya gagal di terminal, dan
+  // UI tetap menyatakan "Sesi hidup · rdbg" — aplikasi melaporkan keadaan yang
+  // tak sama dengan yang sebenarnya.
+  const [debugAda, setDebugAda] = React.useState(null); // null = belum tahu
+  React.useEffect(() => {
+    let mati = false;
+    ambilDebugTersedia().then((d) => {
+      if (!mati) setDebugAda(d);
+    });
+    return () => {
+      mati = true;
+    };
+  }, []);
+  const jenisDbg = rel ? jenisDebugger(rel) : null;
+  // "Belum tahu" diperlakukan sebagai BOLEH: mematikan tombol karena satu
+  // permintaan gagal lebih membingungkan daripada perintah yang gagal dengan
+  // pesan jelas di terminal.
+  const bisaDebug =
+    !!rel &&
+    !!perintahDebug(rel) &&
+    (debugAda === null || debugAda[jenisDbg] !== false);
+  // `mode` diteruskan apa adanya ke pemanggil: satu jalur untuk Run dan Debug,
+  // supaya syarat "simpan dulu" tak mungkin berlaku di salah satunya saja.
+  const kirimKe = React.useCallback(
+    async (mode) => {
+      const target = relRef.current;
+      if (!target || !onRun) return;
+      if (kotorRef.current) {
+        const ok = await simpan();
+        if (!ok) return; // could not save -> jangan jalankan yang basi
+      }
+      onRun(abs(target), mode, String(root || ""));
+    },
+    [onRun, simpan, abs],
+  );
+  const jalankan = React.useCallback(() => kirimKe("jalan"), [kirimKe]);
+  const debug = React.useCallback(() => kirimKe("debug"), [kirimKe]);
+
+  // Pemicu debug didaftarkan KE ATAS, bukan disalin ke panel terminal. Kalau
+  // panel terminal memanggil perintah debug-nya sendiri, ia melewati
+  // "simpan dulu" yang ada di sini — dan menjalankan isi berkas yang lama di
+  // bawah debugger justru bentuk kebingungan yang paling mahal: baris yang
+  // disorot debugger tak cocok dengan baris yang terlihat di editor.
+  React.useEffect(() => {
+    if (!onDaftarDebug) return;
+    if (!rel) {
+      onDaftarDebug(null);
+      return () => onDaftarDebug(null);
+    }
+    // Alasan ikut dikirim, bukan cuma "tidak bisa". Tombol yang mati tanpa
+    // keterangan tak bisa dibedakan dari aplikasi yang rusak — dan dua sebabnya
+    // menuntut tindakan yang sama sekali berbeda: yang satu ganti berkas, yang
+    // satu pasang debuggernya.
+    let alasan = "";
+    if (!perintahDebug(rel)) alasan = "No known debugger for this file type.";
+    else if (debugAda && debugAda[jenisDbg] === false)
+      alasan =
+        "The debugger for this file (" +
+        String(_PERINTAH_DEBUG[ekstensiDari(rel)] || "").split(" ")[0] +
+        ") is not installed on this machine.";
+    onDaftarDebug({
+      berkas: rel,
+      mulai: bisaDebug ? debug : null,
+      alasan,
+    });
+    return () => onDaftarDebug(null);
+  }, [onDaftarDebug, bisaDebug, debug, rel, debugAda, jenisDbg]);
+
+  // Ctrl+S / Cmd+S di dalam editor. Tanpa ini, pintasan itu diambil alih
+  // browser (Save Page) dan pemakai mengira aplikasinya tak merespons.
+  React.useEffect(() => {
+    const el = hostRef.current;
+    if (!el) return;
+    const tekan = (e) => {
+      if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
+        e.preventDefault();
+        simpan();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
+        e.preventDefault();
+        jalankan();
+      }
+    };
+    el.addEventListener("keydown", tekan);
+    return () => el.removeEventListener("keydown", tekan);
+  }, [simpan, jalankan]);
 
   return (
     <div
@@ -839,12 +1201,152 @@ function LogicCodePane({ root, rel }) {
           fontFamily: "ui-monospace, monospace",
           whiteSpace: "nowrap",
           overflow: "hidden",
-          textOverflow: "ellipsis",
         }}
       >
-        {rel || "Pilih berkas di kiri"}
-        {muat && <span style={{ opacity: 0.6 }}>memuat…</span>}
+        {/* ── Tab strip ──
+            The open files, the way any editor shows them. It replaces the
+            single filename that used to sit here: with several files open, one
+            name only ever tells you where you are — never where else you could
+            go. */}
+        <div className="tab-strip" role="tablist">
+          {(tabs && tabs.length ? tabs : rel ? [rel] : []).map((t) => (
+            <div
+              key={t}
+              role="tab"
+              aria-selected={t === rel}
+              className={"tab" + (t === rel ? " aktif" : "")}
+              title={t}
+              draggable
+              onDragStart={(e) => {
+                e.dataTransfer.setData("text/plain", t);
+                e.dataTransfer.effectAllowed = "move";
+              }}
+              onDragOver={(e) => {
+                // Without preventDefault the browser refuses the drop and the
+                // whole gesture silently does nothing.
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+              }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const dari = e.dataTransfer.getData("text/plain");
+                if (dari && dari !== t && onGeserTab) onGeserTab(dari, t);
+              }}
+              onClick={() => onPilihTab && onPilihTab(t)}
+              onAuxClick={(e) => {
+                // Middle-click closes, as in every editor with tabs.
+                if (e.button === 1 && onTutupTab) {
+                  e.preventDefault();
+                  onTutupTab(t);
+                }
+              }}
+            >
+              <span className="tab-nama">{t.split("/").pop()}</span>
+              {/* One slot for both marks: an unsaved file shows a dot, and it
+                  turns into the close button on hover — so the button never
+                  changes the tab's width and the row never shifts under the
+                  pointer. */}
+              <button
+                type="button"
+                className={
+                  "tab-tutup" +
+                  (kotorPerBerkas.current.get(t) || (t === rel && kotor)
+                    ? " kotor"
+                    : "")
+                }
+                aria-label={"Close " + t}
+                title={"Close " + t}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  if (onTutupTab) onTutupTab(t);
+                }}
+              >
+                <span className="tab-titik" aria-hidden="true">
+                  ●
+                </span>
+                <svg
+                  className="tab-silang"
+                  width="10"
+                  height="10"
+                  viewBox="0 0 24 24"
+                  fill="none"
+                  stroke="currentColor"
+                  strokeWidth="2.4"
+                  strokeLinecap="round"
+                >
+                  <line x1="6" y1="6" x2="18" y2="18" />
+                  <line x1="18" y1="6" x2="6" y2="18" />
+                </svg>
+              </button>
+            </div>
+          ))}
+          {!(tabs && tabs.length) && !rel && (
+            <span style={{ opacity: 0.7, padding: "0 4px" }}>
+              Select a file on the left
+            </span>
+          )}
+        </div>
+        {muat && <span style={{ opacity: 0.6 }}>loading…</span>}
         {galat && <span style={{ color: "#f85149" }}>{galat}</span>}
+        {saveState && (
+          <span
+            style={{
+              opacity: 0.8,
+              color: saveState.startsWith("failed") ? "#f85149" : "#3fb950",
+            }}
+          >
+            {saveState}
+          </span>
+        )}
+        {rel && onRun && (
+          <button
+            type="button"
+            className="aksi-btn aksi-run"
+            onClick={jalankan}
+            disabled={!bisaJalan}
+            title={
+              bisaJalan
+                ? "Run in terminal (Ctrl+Enter) — saves first"
+                : "This file is not run through the terminal"
+            }
+          >
+            {/* Segitiga isi — tanda "jalankan" yang sama di editor mana pun. */}
+            <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor">
+              <path d="M1 0.5v9l8-4.5z" />
+            </svg>
+            Run
+          </button>
+        )}
+        {/* Tombol Debug PINDAH ke kelompok tab terminal. Debug adalah
+            SESI yang hidup di terminal — tempatnya bersama keluaran yang
+            ia hasilkan, bukan di sebelah tombol Save. Yang tetap di
+            sini cuma pemicunya, didaftarkan ke atas lewat onDaftarDebug
+            supaya syarat "simpan dulu" tak hilang saat dipindah. */}
+        {rel && (
+          <button
+            type="button"
+            className="aksi-btn aksi-simpan"
+            onClick={simpan}
+            disabled={!kotor}
+            title="Save (Ctrl+S)"
+          >
+            {/* Disket. Ikon yang sama dipakai editor mana pun untuk "simpan",
+                jadi ia terbaca tanpa perlu tulisannya dibaca dulu. */}
+            <svg
+              width="10"
+              height="10"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinejoin="round"
+            >
+              <path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
+              <path d="M8 4v5h7M8 21v-6h8v6" />
+            </svg>
+            Save
+          </button>
+        )}
       </div>
       <div
         className="logic-code-host"
@@ -853,6 +1355,230 @@ function LogicCodePane({ root, rel }) {
       />
     </div>
   );
+}
+
+// ── Ekstensi -> perintah untuk menjalankannya di terminal ──
+//
+// Dipisah jadi fungsi murni supaya bisa diuji tanpa DOM, terminal, atau PTY:
+// yang mudah salah di sini bukan tombolnya, melainkan pengutipan path. Path
+// absolut Windows penuh spasi ("C:\Users\...\My Project\a.js"), dan tanpa tanda
+// kutip shell memecahnya jadi beberapa argumen — perintahnya gagal dengan pesan
+// yang menunjuk ke berkas yang tak pernah ada.
+//
+// Mengembalikan null untuk yang memang tak dijalankan lewat terminal (.html
+// tempatnya di panel preview, .json/.md bukan program) supaya tombolnya bisa
+// dimatikan dengan alasan yang jelas, bukan menjalankan sesuatu yang keliru.
+const _PERINTAH_JALAN = {
+  js: "node",
+  mjs: "node",
+  cjs: "node",
+  ts: "npx tsx",
+  tsx: "npx tsx",
+  py: "python",
+  rb: "ruby",
+  php: "php",
+  go: "go run",
+  java: "java",
+  sh: "bash",
+  ps1: "powershell -NoProfile -File",
+};
+function perintahJalankan(pathAbsolut) {
+  const nama = String(pathAbsolut || "");
+  const ext = ekstensiDari(nama);
+  const bin = _PERINTAH_JALAN[ext];
+  if (!bin) return null;
+  // Tanda kutip GANDA, bukan tunggal: PowerShell adalah shell bawaan di sini,
+  // dan kutip tunggal di dalamnya tidak melebarkan apa pun — tapi cmd.exe
+  // memperlakukan kutip tunggal sebagai karakter biasa, jadi path-nya rusak.
+  return bin + ' "' + nama.replace(/"/g, '\\"') + '"';
+}
+
+// ── Saran pustaka saat mengetik import/require ──
+//
+// Monaco sudah membawa layanan bahasa JS/TS, jadi anggota objek dan bawaan
+// bahasa sudah tersaran sendiri. Yang TIDAK ia ketahui adalah pustaka apa yang
+// dipakai proyek INI — dan justru itu yang paling sering diketik.
+//
+// Daftarnya diambil dari manifes lewat /ww/pustaka, dan hanya ditawarkan di
+// dalam TANDA KUTIP milik import/require. Tanpa batasan itu, nama paket ikut
+// muncul di tengah kalimat biasa dan menutupi saran yang benar.
+const _POLA_IMPOR = /(?:require\(|import\s*\(|from\s+|import\s+)['"]([^'"]*)$/;
+const _POLA_IMPOR_PY = /^\s*(?:from|import)\s+([\w.]*)$/;
+let _pustakaCache = { akar: null, data: null, janji: null };
+function ambilPustaka(akar) {
+  if (!akar) return Promise.resolve(null);
+  if (_pustakaCache.akar === akar && _pustakaCache.data)
+    return Promise.resolve(_pustakaCache.data);
+  // Satu permintaan per akar, bukan satu per ketukan tombol: penyedia saran
+  // dipanggil ulang tiap karakter, dan tanpa ini tiap huruf jadi satu request.
+  if (_pustakaCache.akar === akar && _pustakaCache.janji)
+    return _pustakaCache.janji;
+  const janji = fetch("/ww/pustaka?path=" + encodeURIComponent(akar))
+    .then((r) => r.json())
+    .then((d) => {
+      _pustakaCache = { akar, data: d, janji: null };
+      return d;
+    })
+    .catch(() => null);
+  _pustakaCache = { akar, data: null, janji };
+  return janji;
+}
+// Akar yang sedang dibuka. Penyedia saran didaftarkan SEKALI secara global
+// (mendaftarkannya per-editor menumpuk penyedia dan menggandakan saran tiap
+// kali berkas diganti), jadi akarnya dititipkan di sini.
+let _akarPustaka = "";
+let _saranTerpasang = false;
+function pasangSaranPustaka(monaco) {
+  if (_saranTerpasang) return;
+  _saranTerpasang = true;
+  const buat = (nama, jenis, rentang) => ({
+    label: nama,
+    kind: monaco.languages.CompletionItemKind.Module,
+    detail: jenis,
+    insertText: nama,
+    range: rentang,
+  });
+  const sediakan = (bahasaPy) => ({
+    triggerCharacters: bahasaPy ? [" ", "."] : ['"', "'", "/"],
+    provideCompletionItems: async (model, position) => {
+      const sampai = model.getValueInRange({
+        startLineNumber: position.lineNumber,
+        startColumn: 1,
+        endLineNumber: position.lineNumber,
+        endColumn: position.column,
+      });
+      const m = bahasaPy
+        ? sampai.match(_POLA_IMPOR_PY)
+        : sampai.match(_POLA_IMPOR);
+      if (!m) return { suggestions: [] };
+      const data = await ambilPustaka(_akarPustaka);
+      if (!data) return { suggestions: [] };
+      const ketikan = m[1] || "";
+      const rentang = {
+        startLineNumber: position.lineNumber,
+        endLineNumber: position.lineNumber,
+        startColumn: position.column - ketikan.length,
+        endColumn: position.column,
+      };
+      const daftar = bahasaPy
+        ? (data.py || []).map((n) => buat(n, "requirements.txt", rentang))
+        : (data.js || [])
+            .map((n) => buat(n, "package.json", rentang))
+            .concat(
+              (data.builtin || []).map((n) =>
+                buat(n, "modul bawaan Node", rentang),
+              ),
+            );
+      return { suggestions: daftar };
+    },
+  });
+  for (const b of ["javascript", "typescript"])
+    monaco.languages.registerCompletionItemProvider(b, sediakan(false));
+  monaco.languages.registerCompletionItemProvider("python", sediakan(true));
+}
+
+// ── Debug: menjalankan berkas DI BAWAH debugger, di terminal yang sama ──
+//
+// Yang dipilih di sini debugger BER-BARIS-PERINTAH, bukan protokol DAP seperti
+// yang dipakai VS Code. Alasannya bukan kemalasan: DAP menuntut adapter per
+// bahasa, proses perantara, dan panel variabel/tumpukan sendiri — sementara
+// `node inspect` dan `python -m pdb` sudah memberi hal yang sama (titik henti,
+// melangkah, memeriksa nilai) DI DALAM PTY yang sudah kita punya.
+//
+// `node inspect`, BUKAN `node --inspect-brk`. Keduanya sering tertukar:
+// --inspect-brk hanya membuka port lalu mencetak alamat ws:// dan menunggu
+// klien dari luar — di terminal ia terlihat seperti menggantung tanpa sebab.
+// `node inspect` menjalankan klien REPL-nya sekalian, dan itulah yang bisa
+// dipakai orang.
+//
+// null berarti "tak ada debugger yang kita tahu untuk berkas ini" — tombolnya
+// dimatikan dengan alasan yang jelas, bukan menjalankan sesuatu yang salah.
+// Ekstensi yang punya adapter DAP. Kuncinya sengaja sama dengan ADAPTER di
+// core/dap-sesi.cjs — kalau keduanya menyimpang, UI mengirim berkas ke jalur
+// DAP yang lalu ditolak server, atau sebaliknya membiarkannya lewat PTY
+// padahal jalur yang lebih baik tersedia.
+const _ADAPTER_DAP = {
+  py: 1,
+  js: 1,
+  mjs: 1,
+  cjs: 1,
+  ts: 1,
+  tsx: 1,
+  jsx: 1,
+};
+
+const _PERINTAH_DEBUG = {
+  js: "node inspect",
+  mjs: "node inspect",
+  cjs: "node inspect",
+  py: "python -m pdb",
+  rb: "rdbg",
+  go: "dlv debug",
+};
+function perintahDebug(pathAbsolut) {
+  const bin = _PERINTAH_DEBUG[ekstensiDari(String(pathAbsolut || ""))];
+  if (!bin) return null;
+  return bin + ' "' + String(pathAbsolut).replace(/"/g, '\\"') + '"';
+}
+
+// Perintah tiap tombol pada bilah debug, PER DEBUGGER. Sengaja tidak disamakan:
+// node memakai kata penuh (next/step/out/cont), pdb memakai singkatan satu
+// huruf (n/s/r/c), dan mengirim kata yang salah ke pdb bukan menghasilkan galat
+// melainkan diam-diam berarti hal lain — "s" di node inspect tak dikenal,
+// sedangkan "next" di pdb dibaca sebagai perintah "n" yang benar hanya karena
+// kebetulan berawalan sama.
+const _AKSI_DEBUG = {
+  node: {
+    lanjut: "cont",
+    lewati: "next",
+    masuk: "step",
+    keluar: "out",
+    berhenti: ".exit",
+  },
+  pdb: { lanjut: "c", lewati: "n", masuk: "s", keluar: "r", berhenti: "q" },
+  rdbg: { lanjut: "c", lewati: "n", masuk: "s", keluar: "fin", berhenti: "q" },
+  dlv: {
+    lanjut: "continue",
+    lewati: "next",
+    masuk: "step",
+    keluar: "stepout",
+    berhenti: "exit",
+  },
+};
+// Debugger mana yang benar-benar terpasang. Diambil SEKALI per sesi — daftarnya
+// tak berubah selagi aplikasi jalan, dan tanpa cache tiap render berkas memicu
+// satu permintaan.
+let _debugTersedia = null;
+let _debugTersediaJanji = null;
+function ambilDebugTersedia() {
+  if (_debugTersedia) return Promise.resolve(_debugTersedia);
+  if (_debugTersediaJanji) return _debugTersediaJanji;
+  _debugTersediaJanji = fetch("/debug/tersedia")
+    .then((r) => r.json())
+    .then((d) => {
+      _debugTersedia = d || {};
+      _debugTersediaJanji = null;
+      return _debugTersedia;
+    })
+    .catch(() => {
+      _debugTersediaJanji = null;
+      // Gagal bertanya BUKAN berarti tak ada. Mengembalikan objek kosong akan
+      // mematikan tombol Debug diam-diam untuk semua bahasa hanya karena satu
+      // permintaan gagal — jadi null, dan pemanggil memperlakukannya sebagai
+      // "belum tahu" alih-alih "tidak ada".
+      return null;
+    });
+  return _debugTersediaJanji;
+}
+
+function jenisDebugger(pathAbsolut) {
+  const bin = _PERINTAH_DEBUG[ekstensiDari(String(pathAbsolut || ""))];
+  if (!bin) return null;
+  if (bin.startsWith("node")) return "node";
+  if (bin.indexOf("pdb") >= 0) return "pdb";
+  if (bin.startsWith("rdbg")) return "rdbg";
+  if (bin.startsWith("dlv")) return "dlv";
+  return null;
 }
 
 // Ekstensi -> bahasa Monaco. Dipisah dari IKON_BAHASA karena keduanya menjawab
@@ -895,22 +1621,47 @@ function bahasaMonaco(nama) {
   return peta[e] || "plaintext";
 }
 
-function LogicFileTree({ files, root, active, terpilih, onPilih }) {
+function LogicFileTree({
+  files,
+  folders,
+  root,
+  active,
+  terpilih,
+  onPilih,
+  onBuat,
+  onBuatFolder,
+  onHapus,
+  onHapusFolder,
+}) {
   // Tab "Changes" DIHAPUS. Ia selalu berbunyi "Tak ada perubahan." — tak
   // pernah tersambung ke data nyata sejak awal — jadi bukan fitur yang
   // dinonaktifkan, melainkan potongan UI yang tak pernah punya isi.
-  const tree = buildDevTree(files, root);
+  const tree = buildDevTree(files, root, folders);
   // Lebar bisa diatur, POLA YANG SAMA dengan resizer sidebar (Sidebar.jsx):
   // localStorage terpisah, batas atas/bawah, kelas "resizing" selama diseret.
   // Disamakan sengaja — dua panel yang bisa diatur lebarnya dengan cara
   // berbeda akan terasa seperti dua aplikasi berbeda.
+  // ── Batas lebar pohon berkas ──
+  //
+  // SATU tempat. Angkanya sempat ditulis tiga kali — saat memuat, saat
+  // menyeret, dan saat melepas — dan tiga salinan batas yang harus sepakat
+  // adalah tiga tempat ia bisa menyimpang tanpa ketahuan.
+  //
+  // Lantainya 96px, bukan 160px. Yang menentukan bukan selera melainkan isi
+  // headernya: label "Files" + jarak + tombol berkas-baru 24px + padding
+  // 12+8 = sekitar 90px. Di bawah itu tombolnya mulai terdorong keluar, dan
+  // yang didapat bukan panel sempit melainkan panel rusak.
+  const LF_MIN = 96;
+  const LF_MAKS = 500;
+  const lfBatas = (w) => Math.max(LF_MIN, Math.min(LF_MAKS, w));
+
   const [lfWidth, setLfWidth] = React.useState(() => {
     try {
       const w = parseInt(
         localStorage.getItem("wolfspace_logicfiles_width") || "244",
         10,
       );
-      return isNaN(w) ? 244 : Math.max(160, Math.min(500, w));
+      return isNaN(w) ? 244 : lfBatas(w);
     } catch (_) {
       return 244;
     }
@@ -924,11 +1675,11 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
     const startWidth = lfWidth;
     const onMove = (moveEvent) => {
       const deltaX = moveEvent.clientX - startX;
-      setLfWidth(Math.max(160, Math.min(500, startWidth + deltaX)));
+      setLfWidth(lfBatas(startWidth + deltaX));
     };
     const onUp = (upEvent) => {
       const deltaX = upEvent.clientX - startX;
-      const finalWidth = Math.max(160, Math.min(500, startWidth + deltaX));
+      const finalWidth = lfBatas(startWidth + deltaX);
       setLfResizing(false);
       try {
         localStorage.setItem("wolfspace_logicfiles_width", String(finalWidth));
@@ -939,6 +1690,165 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
     window.addEventListener("mousemove", onMove);
     window.addEventListener("mouseup", onUp);
   };
+
+  // ── New file, cara VS Code ──
+  //
+  // draf === null berarti tak sedang membuat; string (termasuk "") berarti
+  // baris ketiknya terbuka. Dibedakan begitu, bukan lewat boolean terpisah,
+  // supaya tak mungkin ada keadaan "terbuka tapi tanpa nilai".
+  // ── Right-click menu ──
+  //
+  // Held as coordinates + target, not as a boolean: the menu has to appear
+  // where the pointer is, and it has to know which file it was opened on.
+  const [menuKonteks, setMenuKonteks] = React.useState(null); // {x,y,rel}
+  React.useEffect(() => {
+    if (!menuKonteks) return;
+    const tutup = () => setMenuKonteks(null);
+    const esc = (e) => e.key === "Escape" && setMenuKonteks(null);
+    // Closed by a click anywhere and by Escape. Only one of the two makes a
+    // menu that feels stuck.
+    document.addEventListener("mousedown", tutup);
+    document.addEventListener("keydown", esc);
+    return () => {
+      document.removeEventListener("mousedown", tutup);
+      document.removeEventListener("keydown", esc);
+    };
+  }, [menuKonteks]);
+
+  // ── Deleting, confirmed INSIDE the menu ──
+  //
+  // Not window.confirm(). That call appears nowhere else in this app, so
+  // nothing proves it works in the Electron build — and when a blocked dialog
+  // returns false, this function simply returns and the click looks dead. A
+  // confirmation drawn by the app itself cannot fail that way, and it can be
+  // tested.
+  const [hapusGalat, setHapusGalat] = React.useState("");
+  const [hapusSibuk, setHapusSibuk] = React.useState(false);
+  const hapusBerkas = async (rel, folder) => {
+    if (!rel || !akarAda || hapusSibuk) return;
+    setHapusSibuk(true);
+    setHapusGalat("");
+    const abs = String(root).replace(/[\/]+$/, "") + "/" + rel;
+    try {
+      const hasil = await (
+        await fetch("/ww/hapus-berkas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            folder
+              ? { root: String(root), path: abs, folder: true }
+              : { root: String(root), path: abs },
+          ),
+        })
+      ).json();
+      if (!hasil || hasil.ok === false)
+        throw new Error((hasil && hasil.error) || "could not delete");
+      setMenuKonteks(null);
+      if (folder) {
+        if (onHapusFolder) onHapusFolder(rel);
+      } else if (onHapus) {
+        onHapus(rel);
+      }
+    } catch (e) {
+      // The menu STAYS OPEN on failure, carrying the reason. Closing it would
+      // leave the file still on disk and nothing on screen saying so.
+      setHapusGalat(String((e && e.message) || e));
+    } finally {
+      setHapusSibuk(false);
+    }
+  };
+
+  // How much a folder holds, asked of the DISK. The tree only lists files the
+  // agent has touched, so counting from it would understate the damage — and
+  // the number the user approves has to be the real one.
+  const [jumlahIsi, setJumlahIsi] = React.useState(null);
+  const hitungIsi = async (rel) => {
+    setJumlahIsi(null);
+    const abs = String(root).replace(/[\/]+$/, "") + "/" + rel;
+    try {
+      const r = await (
+        await fetch("/ww/hapus-berkas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            root: String(root),
+            path: abs,
+            folder: true,
+            hitung: true,
+          }),
+        })
+      ).json();
+      if (r && r.ok) setJumlahIsi(r.jumlah);
+    } catch (_) {}
+  };
+
+  const [draf, setDraf] = React.useState(null);
+  const [galatBuat, setGalatBuat] = React.useState("");
+  const [sibuk, setSibuk] = React.useState(false);
+  const akarAda = !!String(root || "").trim();
+  // Which kind is being created. Held next to the draft rather than in the
+  // submit handler: the placeholder, the icon and the error text all have to
+  // agree with it, and deciding at submit time means the row lies until then.
+  const [jenisBaru, setJenisBaru] = React.useState("berkas");
+  const mulaiBuat = (jenis) => {
+    setGalatBuat("");
+    setJenisBaru(jenis === "folder" ? "folder" : "berkas");
+    setDraf("");
+  };
+  const batalBuat = () => {
+    setDraf(null);
+    setGalatBuat("");
+  };
+  const buatBerkas = async () => {
+    // Dinormalkan seperti VS Code: pemisah disamakan, spasi tepi dibuang,
+    // garis miring berlebih diringkas.
+    const nama = String(draf || "")
+      .trim()
+      .replace(/\\/g, "/")
+      .replace(/\/{2,}/g, "/")
+      .replace(/^\/+|\/+$/g, "");
+    if (!nama) return batalBuat();
+    // Ditolak di sini SEBELUM menembak server, semata supaya pesannya cepat
+    // dan jelas — server tetap memeriksa ulang, karena pemeriksaan di
+    // renderer bisa dilewati begitu saja.
+    if (nama.split("/").some((s) => s === "." || s === ".."))
+      return setGalatBuat("invalid name");
+    const abs = String(root).replace(/[\\/]+$/, "") + "/" + nama;
+    setSibuk(true);
+    setGalatBuat("");
+    try {
+      // fetch path-relatif: di desktop shim di atas berkas ini membelokkannya
+      // ke IPC.invoke("api") sendiri, jadi satu jalur cukup untuk keduanya.
+      const hasil = await (
+        await fetch("/ww/buat-berkas", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify(
+            jenisBaru === "folder"
+              ? { root: String(root), path: abs, folder: true }
+              : { root: String(root), path: abs },
+          ),
+        })
+      ).json();
+      if (!hasil || hasil.ok === false)
+        throw new Error((hasil && hasil.error) || "could not create file");
+      setDraf(null);
+      // Recorded in the list AND opened straight away, as VS Code does. A
+      // folder is only recorded — there is nothing to open.
+      if (jenisBaru === "folder") {
+        if (onBuatFolder) onBuatFolder(hasil.path || nama);
+      } else if (onBuat) {
+        onBuat(hasil.path || nama);
+      }
+    } catch (e) {
+      // Baris ketiknya sengaja TIDAK ditutup: nama yang salah masih ada di
+      // sana untuk diperbaiki, bukan hilang bersama pesan galatnya.
+      setGalatBuat(String((e && e.message) || e));
+    } finally {
+      setSibuk(false);
+    }
+  };
+
   const icon = (t) => {
     // Monogram bahasa: kotak kecil berwarna khas bahasanya. Dirender sebagai
     // SVG (bukan <span> ber-CSS) supaya ia sejajar dengan ikon lain yang sudah
@@ -1067,7 +1977,7 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
       <div
         className="logic-filetree-resizer"
         onMouseDown={handleLfResizerMouseDown}
-        title="Seret untuk mengubah lebar"
+        title="Drag to resize"
       />
       <div
         style={{
@@ -1099,9 +2009,19 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
             color: "#6f7d92",
           }}
         >
+          {/* Dua tombol yang dulu ada di sini — "Search" dan "Collapse all" —
+              tak satu pun punya onClick: mereka hiasan sejak awal. Yang
+              tersisa cuma satu, dan yang ini benar-benar bekerja. */}
+          {/* New folder, to the left of New file. Same shape and same size —
+              two buttons that do the same kind of thing should not look like
+              two different kinds of control. */}
           <button
             className="btn-reset"
-            title="Search"
+            title={
+              akarAda ? "New folder" : "No workspace yet — open a project first"
+            }
+            disabled={!akarAda}
+            onClick={() => mulaiBuat("folder")}
             style={{
               color: "inherit",
               width: "24px",
@@ -1110,34 +2030,21 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
               display: "inline-flex",
               alignItems: "center",
               justifyContent: "center",
+              cursor: akarAda ? "pointer" : "not-allowed",
+              opacity: akarAda ? 1 : 0.4,
+            }}
+            onMouseEnter={(e) => {
+              if (!akarAda) return;
+              e.currentTarget.style.background = "#1b2431";
+              e.currentTarget.style.color = "#cdd9e5";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "inherit";
             }}
           >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-            >
-              <circle cx="11" cy="11" r="7" />
-              <line x1="21" y1="21" x2="16.65" y2="16.65" />
-            </svg>
-          </button>
-          <button
-            className="btn-reset"
-            title="Collapse all"
-            style={{
-              color: "inherit",
-              width: "24px",
-              height: "24px",
-              borderRadius: "5px",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-            }}
-          >
+            {/* A folder with a + in the corner, drawn with the same strokes as
+                the file icon beside it (viewBox 24, strokeWidth 2). */}
             <svg
               width="15"
               height="15"
@@ -1148,15 +2055,199 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
               strokeLinecap="round"
               strokeLinejoin="round"
             >
-              <polyline points="4 14 10 14 10 20" />
-              <polyline points="20 10 14 10 14 4" />
-              <line x1="14" y1="10" x2="21" y2="3" />
-              <line x1="3" y1="21" x2="10" y2="14" />
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h5a2 2 0 0 1 2 2v3" />
+              <path d="M3 8v9a2 2 0 0 0 2 2h6" />
+              <line x1="18" y1="14" x2="18" y2="21" />
+              <line x1="14.5" y1="17.5" x2="21.5" y2="17.5" />
+            </svg>
+          </button>
+          <button
+            className="btn-reset"
+            title={
+              akarAda ? "New file" : "No workspace yet — open a project first"
+            }
+            disabled={!akarAda}
+            onClick={() => mulaiBuat("berkas")}
+            style={{
+              color: "inherit",
+              width: "24px",
+              height: "24px",
+              borderRadius: "5px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: akarAda ? "pointer" : "not-allowed",
+              opacity: akarAda ? 1 : 0.4,
+            }}
+            onMouseEnter={(e) => {
+              if (!akarAda) return;
+              e.currentTarget.style.background = "#1b2431";
+              e.currentTarget.style.color = "#cdd9e5";
+            }}
+            onMouseLeave={(e) => {
+              e.currentTarget.style.background = "transparent";
+              e.currentTarget.style.color = "inherit";
+            }}
+          >
+            {/* Lembar dokumen dengan tanda + di sudut — ikon "new file" yang
+                sama bentuknya dengan VS Code, digambar dengan goresan yang
+                sama (viewBox 24, strokeWidth 2) seperti ikon lain di sini. */}
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M13.5 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" />
+              <polyline points="13.5 3 13.5 8 18.5 8" />
+              <line x1="18" y1="14" x2="18" y2="21" />
+              <line x1="14.5" y1="17.5" x2="21.5" y2="17.5" />
             </svg>
           </button>
         </div>
       </div>
-      {!active ? (
+      {/* Baris ketik nama berkas, seperti VS Code: muncul DI DALAM pohon,
+          bukan sebagai dialog. Ditaruh di luar cabang kosong/berisi di bawah
+          supaya ia tetap muncul walau pohonnya masih kosong — di situlah
+          justru berkas pertama dibuat. */}
+      {menuKonteks && (
+        <div
+          className="pohon-menu"
+          style={{ left: menuKonteks.x + "px", top: menuKonteks.y + "px" }}
+          onMouseDown={(e) => e.stopPropagation()}
+          onContextMenu={(e) => e.preventDefault()}
+        >
+          <div className="pohon-menu-berkas">{menuKonteks.rel}</div>
+          {!menuKonteks.konfirmasi ? (
+            <button
+              type="button"
+              className="pohon-menu-opsi bahaya"
+              onClick={() => {
+                if (menuKonteks.folder) hitungIsi(menuKonteks.rel);
+                setMenuKonteks((m) => m && { ...m, konfirmasi: true });
+              }}
+            >
+              {menuKonteks.folder ? "Delete folder" : "Delete file"}
+            </button>
+          ) : (
+            <>
+              <div className="pohon-menu-tanya">
+                {menuKonteks.folder
+                  ? jumlahIsi === null
+                    ? "Delete this folder and everything inside it? This cannot be undone."
+                    : jumlahIsi === 0
+                      ? "Delete this empty folder? This cannot be undone."
+                      : "Delete this folder and the " +
+                        jumlahIsi +
+                        " item" +
+                        (jumlahIsi === 1 ? "" : "s") +
+                        " inside it? This cannot be undone."
+                  : "Delete permanently? This cannot be undone."}
+              </div>
+              {hapusGalat && (
+                <div className="pohon-menu-galat">{hapusGalat}</div>
+              )}
+              <button
+                type="button"
+                className="pohon-menu-opsi bahaya"
+                disabled={hapusSibuk}
+                onClick={() => hapusBerkas(menuKonteks.rel, menuKonteks.folder)}
+              >
+                {hapusSibuk ? "Deleting…" : "Yes, delete"}
+              </button>
+              <button
+                type="button"
+                className="pohon-menu-opsi"
+                onClick={() => {
+                  setHapusGalat("");
+                  setMenuKonteks(null);
+                }}
+              >
+                Cancel
+              </button>
+            </>
+          )}
+        </div>
+      )}
+      {draf !== null && (
+        <div style={{ padding: "4px 8px 6px 10px" }}>
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="#768390"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              style={{ flexShrink: 0 }}
+            >
+              <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z" />
+              <polyline points="14 2 14 8 20 8" />
+            </svg>
+            <input
+              autoFocus
+              value={draf}
+              placeholder={
+                jenisBaru === "folder" ? "folder-name" : "file-name.js"
+              }
+              disabled={sibuk}
+              onChange={(e) => {
+                setDraf(e.target.value);
+                setGalatBuat("");
+              }}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") {
+                  e.preventDefault();
+                  buatBerkas();
+                } else if (e.key === "Escape") {
+                  e.preventDefault();
+                  batalBuat();
+                }
+              }}
+              // VS Code membatalkan begitu fokus lepas. Tapi kalau ada pesan
+              // galat yang belum sempat dibaca, membatalkan justru menelan
+              // pesannya — jadi baris ini bertahan sampai Escape.
+              onBlur={() => {
+                if (!galatBuat && !sibuk) batalBuat();
+              }}
+              style={{
+                flex: 1,
+                minWidth: 0,
+                background: "#0d1117",
+                border: "1px solid " + (galatBuat ? "#f85149" : "#4c8bf5"),
+                borderRadius: "3px",
+                color: "#e6edf3",
+                fontSize: "12px",
+                fontFamily: "inherit",
+                padding: "3px 6px",
+                outline: "none",
+              }}
+            />
+          </div>
+          {galatBuat && (
+            <div
+              style={{
+                color: "#f85149",
+                fontSize: "11px",
+                padding: "4px 0 0 20px",
+              }}
+            >
+              {galatBuat}
+            </div>
+          )}
+        </div>
+      )}
+      {/* Dulu cuma `!active`, yang mengikat isi pohon pada ADA-TIDAKNYA
+          pratinjau. Berkas yang dibuat sendiri lewat tombol + tak butuh
+          pratinjau untuk ada, jadi ia akan dibuat lalu tak terlihat. Yang
+          menentukan sekarang isi pohonnya sendiri. */}
+      {!active && tree.length === 0 ? (
         <div
           style={{
             flex: 1,
@@ -1215,6 +2306,16 @@ function LogicFileTree({ files, root, active, terpilih, onPilih }) {
               onClick={() =>
                 n.type !== "folder" && onPilih && onPilih(n.rel || n.name)
               }
+              onContextMenu={(e) => {
+                e.preventDefault();
+                setHapusGalat("");
+                setMenuKonteks({
+                  x: e.clientX,
+                  y: e.clientY,
+                  rel: n.rel || n.name,
+                  folder: n.type === "folder",
+                });
+              }}
               style={{
                 display: "flex",
                 alignItems: "center",
@@ -1407,8 +2508,13 @@ function App() {
   // Logic. Berbeda dari "semua isi folder": hanya file yang benar-benar disentuh
   // agent di sesi ini. Direset saat ganti workspace.
   const [devFiles, setDevFiles] = useState([]);
+  // Folders created by hand. Kept apart from devFiles because that list is
+  // FILES: a folder with nothing in it would leave no trace there and would
+  // vanish from the tree the moment it was created.
+  const [devFolders, setDevFolders] = useState([]);
   useEffect(() => {
     setDevFiles([]);
+    setDevFolders([]);
   }, [selectedProject]);
   useEffect(() => {
     const onAct = (e) => {
@@ -1451,20 +2557,81 @@ function App() {
   // root proyek). Disimpan di sini, bukan di dalam LogicFileTree, karena dua
   // panel memakainya: pohon untuk menandai baris aktif, editor untuk memuat.
   const [logicBerkas, setLogicBerkas] = useState("");
+  // ── Open editor tabs ──
+  //
+  // Order matters and is the user's, so this is an array, not a Set.
+  const [logicTabs, setLogicTabs] = useState([]);
+  const [logicKotor, setLogicKotor] = useState({}); // rel -> unsaved?
+  const bukaTab = useCallback((rel) => {
+    if (!rel) return;
+    setLogicTabs((t) => (t.includes(rel) ? t : t.concat(rel)));
+    setLogicBerkas(rel);
+  }, []);
+  const tutupTab = useCallback((rel) => {
+    setLogicTabs((t) => {
+      const i = t.indexOf(rel);
+      if (i < 0) return t;
+      const sisa = t.filter((x) => x !== rel);
+      // Closing the ACTIVE tab has to hand focus to a neighbour — the one on
+      // the right, falling back to the left, as every editor does. Leaving the
+      // pane blank instead makes closing feel like losing your place.
+      setLogicBerkas((aktif) =>
+        aktif !== rel ? aktif : sisa[i] || sisa[i - 1] || "",
+      );
+      return sisa;
+    });
+    setLogicKotor((k) => {
+      if (!(rel in k)) return k;
+      const n = { ...k };
+      delete n[rel];
+      return n;
+    });
+  }, []);
+  const geserTab = useCallback((dari, ke) => {
+    setLogicTabs((t) => {
+      const a = t.indexOf(dari);
+      const b = t.indexOf(ke);
+      if (a < 0 || b < 0 || a === b) return t;
+      const n = t.slice();
+      n.splice(b, 0, n.splice(a, 1)[0]);
+      return n;
+    });
+  }, []);
+  const tandaiKotor = useCallback((rel, kotor) => {
+    setLogicKotor((k) => (k[rel] === kotor ? k : { ...k, [rel]: kotor }));
+  }, []);
   const [status, setStatus] = useState("Loading models…");
   const [view, setView] = useState("chat");
-  const [sbCollapsed, setSbCollapsed] = useState(() => {
+  // ── Sidebar punya TIGA keadaan, bukan dua ──
+  //
+  //   "penuh"    232px, label terlihat
+  //   "ringkas"   60px, ikon saja
+  //   "sembunyi"   0px, yang tersisa cuma tombol pembukanya
+  //
+  // Disimpan sebagai KATA, bukan angka atau boolean. Nilai lama di localStorage
+  // masih boolean ("1"/"0") dari versi dua-keadaan, jadi ia diterjemahkan sekali
+  // — tanpa itu, pemakai yang sudah memakai aplikasi ini mendapat sidebar yang
+  // kembali ke bawaan tanpa sebab.
+  const [sbMode, setSbMode] = useState(() => {
     try {
-      return localStorage.getItem("wolfspace_sb") === "1";
+      const v = localStorage.getItem("wolfspace_sb");
+      if (v === "penuh" || v === "ringkas" || v === "sembunyi") return v;
+      return v === "1" ? "ringkas" : "penuh"; // nilai lama
     } catch (e) {
-      return false;
+      return "penuh";
     }
   });
   useEffect(() => {
     try {
-      localStorage.setItem("wolfspace_sb", sbCollapsed ? "1" : "0");
+      localStorage.setItem("wolfspace_sb", sbMode);
     } catch (e) {}
-  }, [sbCollapsed]);
+  }, [sbMode]);
+  // Urutan siklusnya: penuh -> ringkas -> sembunyi -> penuh. Satu tombol, dan
+  // arahnya selalu sama supaya bisa dihafal.
+  const _URUT_SB = ["penuh", "ringkas", "sembunyi"];
+  const putarSidebar = useCallback(() => {
+    setSbMode((m) => _URUT_SB[(_URUT_SB.indexOf(m) + 1) % _URUT_SB.length]);
+  }, []);
   const [theme, setTheme] = useState(() => {
     try {
       return localStorage.getItem("wolfspace_theme") || "dark";
@@ -1475,6 +2642,160 @@ function App() {
 
   const [terminalPct, setTerminalPct] = useState(30);
   const [panelPct, setPanelPct] = useState(35);
+  // Code (view Logic) adalah panel KETIGA, setara terminal dan preview. Ia dulu
+  // lapisan `position:absolute; inset:0` yang menutupi seluruh area — karena itu
+  // ia cuma bisa penuh layar, tak pernah bisa berbagi tempat dengan yang lain.
+  const [logicPct, setLogicPct] = useState(45);
+  // ── Jembatan panel Code -> terminal ──
+  //
+  // Terminal memegang sesi PTY-nya sendiri di dalam VSCodeTerminal, dan panel
+  // Code adalah saudaranya — bukan induknya. Perintah dititipkan lewat state di
+  // sini, lalu diturunkan sebagai prop. Nonce ikut dikirim supaya menjalankan
+  // berkas yang SAMA dua kali tetap terbaca sebagai dua permintaan; tanpa itu
+  // nilainya tak berubah dan effect di terminal tak menyala lagi.
+  const [perintahTerminal, setPerintahTerminal] = useState(null);
+  // Debugger yang SEDANG hidup, atau null. Ini yang menentukan bilah debug
+  // muncul atau tidak, dan kata perintah mana yang dikirim tiap tombolnya.
+  const [debugAktif, setDebugAktif] = useState(null);
+  // { mulai, berkas } dari panel kode, atau null saat berkas yang terbuka tak
+  // punya debugger. Dititipkan ke tab DEBUG supaya tombol mulainya ada di sana
+  // TANPA memotong jalur "simpan dulu" yang dimiliki panel kode.
+  const [pemicuDebug, setPemicuDebug] = useState(null);
+  // (Effect "terminal ditutup -> sesi debug mati" ada DI BAWAH, sesudah
+  // terminalOpen dideklarasikan. Di sini ia melempar ReferenceError: senarai
+  // dependensi dinilai saat render, bukan saat effect-nya berjalan.)
+  // ── Sesi DAP ──
+  //
+  // Python memakai jalur ini; bahasa lain masih lewat PTY. Keduanya sengaja
+  // hidup berdampingan alih-alih menunggu semua bahasa punya adapter: yang
+  // sudah bisa memberi titik henti klik dan panel variabel tak perlu menunggu
+  // yang belum.
+  const [titikHenti, setTitikHenti] = useState({}); // { rel: [baris] }
+  // Salinan ref-nya. jalankanDiTerminal dibungkus useCallback, dan callback
+  // yang membaca state langsung memegang nilai dari render saat ia dibuat —
+  // titik henti yang baru dipasang sesudah itu tak akan ikut terkirim.
+  const titikHentiRef = useRef({});
+  useEffect(() => {
+    titikHentiRef.current = titikHenti;
+  }, [titikHenti]);
+  const [dapId, setDapId] = useState(null);
+  const [dapKeadaan, setDapKeadaan] = useState(null);
+  const dapKeluaranRef = useRef([]);
+  useEffect(() => {
+    if (!dapId) return;
+    let mati = false;
+    let jam = null;
+    const tanya = async () => {
+      try {
+        const r = await fetch(
+          "/dap/keadaan?id=" +
+            encodeURIComponent(dapId) +
+            "&sejak=" +
+            dapKeluaranRef.current.length,
+        );
+        const d = await r.json();
+        if (mati) return;
+        if (!d || d.ok === false) {
+          setDapId(null);
+          return;
+        }
+        // Keluaran DITAMBAHKAN, bukan diganti: server sengaja hanya mengirim
+        // yang belum dipegang renderer supaya muatannya tak tumbuh sepanjang
+        // sesi, jadi menggantinya akan membuang semua yang sudah ada.
+        if (d.keluaran && d.keluaran.length)
+          dapKeluaranRef.current = dapKeluaranRef.current.concat(d.keluaran);
+        setDapKeadaan({ ...d, semuaKeluaran: dapKeluaranRef.current });
+      } catch (_) {}
+      if (!mati) jam = setTimeout(tanya, 300);
+    };
+    tanya();
+    return () => {
+      mati = true;
+      clearTimeout(jam);
+    };
+  }, [dapId]);
+  // Sesi ditutup saat panel Code ditutup — kalau tidak, proses Python-nya
+  // hidup terus tanpa satu pun cara menyentuhnya lagi.
+  useEffect(() => {
+    if (logicOpen || !dapId) return;
+    fetch("/dap/tutup", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: dapId }),
+    }).catch(() => {});
+    setDapId(null);
+  }, [logicOpen, dapId]);
+
+  const mulaiDap = useCallback(async (akar, pathAbsolut, baris) => {
+    dapKeluaranRef.current = [];
+    setDapKeadaan(null);
+    try {
+      const r = await fetch("/dap/mulai", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          root: akar,
+          program: pathAbsolut,
+          titikHenti: baris || [],
+        }),
+      });
+      const d = await r.json();
+      if (!d || !d.ok)
+        throw new Error((d && d.error) || "could not start debugging");
+      setDapId(d.id);
+      return true;
+    } catch (e) {
+      setDapKeadaan({ selesai: true, galat: String((e && e.message) || e) });
+      return false;
+    }
+  }, []);
+  const aksiDap = useCallback(
+    async (aksi) => {
+      if (!dapId) return;
+      await fetch("/dap/aksi", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: dapId, aksi }),
+      }).catch(() => {});
+      if (aksi === "berhenti") setDapId(null);
+    },
+    [dapId],
+  );
+
+  const jalankanDiTerminal = useCallback((pathAbsolut, mode, akar) => {
+    const debugMode = mode === "debug";
+    // Python lewat DAP: itu satu-satunya jalur yang memberi titik henti klik,
+    // panel variabel, dan akhir sesi yang pasti. Bahasa lain masih lewat PTY
+    // sampai adapternya menyusul.
+    if (debugMode && _ADAPTER_DAP[ekstensiDari(pathAbsolut)]) {
+      const rel = String(pathAbsolut)
+        .slice(String(akar || "").length)
+        .replace(/^[\/]+/, "");
+      setTerminalOpen(true);
+      setDebugAktif("dap");
+      mulaiDap(akar, pathAbsolut, (titikHentiRef.current || {})[rel] || []);
+      return;
+    }
+    const cmd = debugMode
+      ? perintahDebug(pathAbsolut)
+      : perintahJalankan(pathAbsolut);
+    if (!cmd) return;
+    // Terminalnya dibuka kalau tertutup — kalau tidak, perintahnya terkirim ke
+    // komponen yang tak dirender dan hilang tanpa jejak.
+    setTerminalOpen(true);
+    setDebugAktif(debugMode ? jenisDebugger(pathAbsolut) : null);
+    setPerintahTerminal({ cmd, n: Date.now() });
+  }, []);
+  // Satu tempat untuk menerjemahkan tombol bilah debug jadi kata perintah.
+  const aksiDebug = useCallback(
+    (aksi) => {
+      const peta = _AKSI_DEBUG[debugAktif];
+      if (!peta || !peta[aksi]) return;
+      setPerintahTerminal({ cmd: peta[aksi], n: Date.now() });
+      if (aksi === "berhenti") setDebugAktif(null);
+    },
+    [debugAktif],
+  );
 
   // ── Posisi panel bisa dipindah, seperti "Move Panel" di VS Code ──
   //
@@ -1487,17 +2808,29 @@ function App() {
   // KANAN (ia halaman, jadi butuh lebar), terminal di BAWAH (ia baris teks,
   // jadi butuh panjang). Keduanya tetap bisa ditukar.
   const [posisi, setPosisi] = useState(() => {
-    const bawaan = { preview: "kanan", terminal: "bawah" };
+    const bawaan = {
+      preview: "kanan",
+      terminal: "bawah",
+      logic: "kanan",
+      chat: "kiri",
+    };
     try {
       const t = JSON.parse(localStorage.getItem("wolfspace_posisi") || "null");
       // Nilai divalidasi, bukan dipercaya: localStorage bisa membawa isi dari
       // versi lama atau suntingan tangan, dan posisi yang tak dikenal akan
       // membuat panelnya tak dirender di mana pun — panel hilang tanpa jejak.
-      const sah = (v, d) => (v === "kanan" || v === "bawah" ? v : d);
+      // "kiri" menyusul sesudah dua yang lain; nilai lama tanpa "kiri" tetap
+      // sah, dan nilai tak dikenal jatuh ke bawaannya.
+      const sah = (v, d) =>
+        v === "kanan" || v === "bawah" || v === "kiri" ? v : d;
       return t
         ? {
             preview: sah(t.preview, bawaan.preview),
             terminal: sah(t.terminal, bawaan.terminal),
+            // Tersimpan dari versi sebelum Code jadi panel — nilainya memang
+            // tak ada di sana, jadi bawaannya yang dipakai.
+            logic: sah(t.logic, bawaan.logic),
+            chat: sah(t.chat, bawaan.chat),
           }
         : bawaan;
     } catch (e) {
@@ -1510,7 +2843,43 @@ function App() {
     } catch (e) {}
   }, [posisi]);
 
+  // ── Chat bisa disembunyikan, dan itu butuh penjagaan ──
+  //
+  // Gunanya: memberi panel preview seluruh layar tanpa harus menutup chat dan
+  // kehilangan tempatnya. Tapi menyembunyikan chat saat tak ada panel lain yang
+  // terbuka menghasilkan layar KOSONG — dan pemakai tak punya satu pun petunjuk
+  // bahwa yang perlu ditekan ada di menu ⋮. Itu jebakan yang dibuat sendiri.
+  //
+  // Dua lapis penjagaan, dan keduanya perlu:
+  //   - menunya MENOLAK menyembunyikan saat tak ada panel lain (lihat TopBar)
+  //   - effect di bawah MENGEMBALIKAN chat kalau panel terakhir ditutup selagi
+  //     chat tersembunyi — jalur yang tak lewat menu sama sekali
+  const [chatVisible, setChatVisible] = useState(() => {
+    try {
+      return localStorage.getItem("wolfspace_chat_tampil") !== "0";
+    } catch (e) {
+      return true;
+    }
+  });
+  useEffect(() => {
+    try {
+      localStorage.setItem("wolfspace_chat_tampil", chatVisible ? "1" : "0");
+    } catch (e) {}
+  }, [chatVisible]);
+
   const [terminalOpen, setTerminalOpen] = useState(false);
+  // Terminal ditutup = sesi debugnya ikut mati. Ini jalur yang PASTI, tak perlu
+  // menebak dari keluaran: PTY-nya sendiri dibunuh saat panelnya dilepas, jadi
+  // tak ada lagi yang bisa menerima perintah debug.
+  //
+  // Letaknya WAJIB sesudah deklarasi terminalOpen. Ditaruh di atasnya — di
+  // dekat state debug lain, tempat ia "terbaca lebih rapi" — ia melempar
+  // ReferenceError yang menjatuhkan seluruh aplikasi: senarai dependensi
+  // dinilai SAAT RENDER, bukan saat effect-nya berjalan, jadi ia menyentuh
+  // binding yang masih di zona mati temporal.
+  useEffect(() => {
+    if (!terminalOpen) setDebugAktif(null);
+  }, [terminalOpen]);
   const [terminalInput, setTerminalInput] = useState("");
   const [terminalOutput, setTerminalOutput] = useState("");
   const [terminalLoading, setTerminalLoading] = useState(false);
@@ -1634,12 +3003,12 @@ function App() {
       }
       if (sub === "close" || sub === "exit" || sub === "quit") {
         setTerminalOpen(false);
-        setStatus("Terminal ditutup.");
+        setStatus("Terminal closed.");
         return true;
       }
       if (sub === "toggle") {
         setTerminalOpen((v) => !v);
-        setStatus("Status terminal diperbarui.");
+        setStatus("Terminal status updated.");
         return true;
       }
       if (sub === "run") {
@@ -1867,7 +3236,7 @@ function App() {
         setStatus("OpenClaw finished");
       } catch (e) {
         if (e.name === "AbortError") {
-          setStatus("dibatalkan");
+          setStatus("cancelled");
         } else {
           const msg = "[OpenClaw error: " + e.message + "]";
           setMessages((m) => {
@@ -1955,7 +3324,7 @@ function App() {
         setBusy(false); // Reset busy state after stream completes
       } catch (e) {
         if (e.name !== "AbortError") setStatus("error: " + e.message);
-        else setStatus("dibatalkan");
+        else setStatus("cancelled");
         console.log("[doSend] Setting busy=false (normal chat error)");
         setBusy(false);
       }
@@ -2123,7 +3492,7 @@ function App() {
                 thread_id: j.thread_id || null,
                 options: (j.choices || []).map((c) => ({ value: c, text: c })),
               });
-              upd({ thinking: "Menunggu jawaban Anda...", busy: true });
+              upd({ thinking: "Waiting for your reply...", busy: true });
             } else if (j.t === "adone") {
               if (j.hitlPending && j.thread_id) {
                 // Agent paused for HITL — keep busy=true, just ensure thread_id is updated
@@ -2143,7 +3512,7 @@ function App() {
                         ],
                       },
                 );
-                upd({ thinking: "Menunggu persetujuan Anda...", busy: true });
+                upd({ thinking: "Waiting for your approval...", busy: true });
                 return; // Don't set done/busy=false
               }
               if (j.continuable && j.thread_id) {
@@ -2233,7 +3602,7 @@ function App() {
     console.log("[cancel] Aborting and setting busy=false");
     if (ctrlRef.current) ctrlRef.current.abort();
     setBusy(false);
-    setStatus("dibatalkan");
+    setStatus("cancelled");
   };
   const reset = () => {
     setCurrentChatId(null);
@@ -2251,18 +3620,79 @@ function App() {
   // Panel di KANAN memakan lebar; panel di BAWAH memakan tinggi. Keduanya
   // dihitung terpisah justru supaya tak saling potong: memakai satu angka untuk
   // dua sumbu membuat chat menyusut dua kali padahal cuma satu panel terbuka.
-  const _terminalKanan = terminalOpen && posisi.terminal === "kanan";
-  const _terminalBawah = terminalOpen && posisi.terminal === "bawah";
-  const _previewKanan = panelOpen && posisi.preview === "kanan";
-  const _previewBawah = panelOpen && posisi.preview === "bawah";
+  // Panel didaftar, bukan dihitung satu per satu. Bentuk lamanya menyebut tiap
+  // panel di empat rumus terpisah (_xKanan, _xBawah, jumlah bawah, lebar atas);
+  // begitu Code jadi panel ketiga, pola itu berarti menyunting keempatnya dan
+  // berharap tak ada yang terlewat.
+  const _panelTerbuka = [
+    terminalOpen && { sisi: posisi.terminal, pct: terminalPct },
+    panelOpen && { sisi: posisi.preview, pct: panelPct },
+    logicOpen && { sisi: posisi.logic, pct: logicPct },
+  ].filter(Boolean);
+  const _adaPanel = _panelTerbuka.length > 0;
+  // Jaring pengaman terakhir: kalau panel terakhir ditutup selagi chat
+  // tersembunyi, layar jadi kosong total dan tak ada jalan kembali yang
+  // terlihat. Menu sudah menolak kasus itu, tapi menutup panel TIDAK lewat menu.
+  useEffect(() => {
+    if (!chatVisible && !_adaPanel) setChatVisible(true);
+  }, [chatVisible, _adaPanel]);
+
+  // ── Sisi dikelompokkan per SUMBU, bukan per nama ──
+  //
+  // "kiri" dan "kanan" sama-sama memakan LEBAR dan sama-sama duduk di baris
+  // pertama; yang membedakan cuma urutan visualnya. Menghitungnya terpisah
+  // berarti panel kiri tak ikut mengurangi lebar chat — chat lalu diminta
+  // selebar sisa yang sudah dipakai orang lain, dan panel terakhir terdorong
+  // turun ke baris berikutnya.
+  const _grup = (sisi) => (sisi === "bawah" ? "bawah" : "mendatar");
+  const _jumlahGrup = (g) =>
+    _panelTerbuka.reduce((n, p) => n + (_grup(p.sisi) === g ? p.pct : 0), 0);
+  const _adaMendatar = _panelTerbuka.some((p) => _grup(p.sisi) === "mendatar");
+  // ── Jatah per sisi, dan kenapa ia WAJIB ada sejak panel ketiga ──
+  //
+  // Tiap pembagi dibatasi 12–75% SENDIRI-SENDIRI. Dengan dua panel itu masih
+  // bisa dianggap aman; dengan tiga, tiga panel di sisi yang sama menjumlah
+  // sampai 225% tanpa satu pun melanggar batasnya. Di wadah yang membungkus,
+  // kelebihan sekecil apa pun mendorong panel terakhir turun ke baris
+  // berikutnya — bug yang persis sama dengan yang dulu tertangkap harness
+  // geometri, hanya sumbernya beda.
+  //
+  // Jadi jumlah per sisi diciutkan proporsional supaya muat. Chat menyisakan
+  // 20% untuk dirinya; tanpa chat, panel boleh mengambil seluruhnya.
+  const _JATAH = chatVisible ? 80 : 100;
+  const _skalaSisi = (sisi) => {
+    const g = _grup(sisi);
+    const jml = _jumlahGrup(g);
+    if (jml <= 0) return 1;
+    if (jml > _JATAH) return _JATAH / jml;
+    // Dinaikkan HANYA saat panel bawah satu-satunya penghuni layar. Kalau chat
+    // masih ada, ruang sisa memang miliknya — bukan lubang yang perlu ditambal.
+    if (g === "bawah" && !chatVisible && !_adaMendatar) return 100 / jml;
+    return 1;
+  };
+  const _jumlahBawah = _jumlahGrup("bawah") * _skalaSisi("bawah");
   const lebarAtas = Math.max(
     20,
-    100 - (_terminalKanan ? terminalPct : 0) - (_previewKanan ? panelPct : 0),
+    100 - _jumlahGrup("mendatar") * _skalaSisi("kanan"),
   );
-  const tinggiAtas = Math.max(
-    20,
-    100 - (_terminalBawah ? terminalPct : 0) - (_previewBawah ? panelPct : 0),
-  );
+  // ── Saat chat disembunyikan, sisanya harus MENGISI, bukan meninggalkan lubang ──
+  //
+  // Persentase panel selama ini dihitung sebagai "bagian dari layar yang tidak
+  // dipakai chat". Begitu chat hilang, angka itu tak lagi berarti apa-apa:
+  // terminal 30% + preview 35% di bawah menyisakan 35% ruang kosong yang tak
+  // ditempati siapa pun, dan pemakai melihat pita hitam tanpa penjelasan.
+  //
+  // Jadi saat chat disembunyikan:
+  //   - masih ada panel di kanan -> baris atas tetap setinggi sisa; panel kanan
+  //     yang melebar mengisi lebarnya (lihat gayaPanel)
+  //   - semua panel di bawah      -> tak ada baris atas sama sekali (0), dan
+  //     tinggi tiap panel dinormalkan supaya jumlahnya tepat 100%
+  const _isiPenuh = !chatVisible;
+  const tinggiAtas = _isiPenuh
+    ? _adaMendatar
+      ? Math.max(20, 100 - _jumlahBawah)
+      : 0
+    : Math.max(20, 100 - _jumlahBawah);
   // Gaya sebuah panel + pembaginya, mengikuti sisi tempat ia duduk. Satu tempat
   // supaya terminal dan preview tak pernah menyimpang perlakuannya.
   //
@@ -2271,27 +3701,60 @@ function App() {
   // di wadah yang membungkus, kelebihan sekecil apa pun membuat panel yang
   // seharusnya di KANAN terdorong turun ke baris berikutnya. Terukur di harness
   // geometri: preview diminta di kanan, hasilnya mendarat di x=0 y=420.
+  // ── Urutan visual: satu tabel, bukan angka yang tersebar ──
+  //
+  // Baris pertama disusun dengan `order`, dan yang menentukan bukan cuma sisi
+  // panelnya — posisi CHAT ikut menggesernya. Kalau chat di kanan, pembagi
+  // milik panel kanan harus pindah ke sisi yang menghadap chat; kalau tidak,
+  // garis pemisahnya nyasar ke tepi luar dan panelnya menempel ke chat tanpa
+  // pemisah sama sekali.
+  //
+  //   chat "kiri"  :  [chat] [div] [kanan…]        kiri…] [div] [chat]
+  //   chat "kanan" :  [kiri…] [div] [kanan…] [div] [chat]
+  //
+  // Angka bawah sengaja jauh (20): ia selalu paling akhir, dan memberi jarak
+  // supaya nilai baris pertama bisa disisipkan tanpa bertabrakan.
+  const _chatKanan = posisi.chat === "kanan";
+  const _ORDER_CHAT = _chatKanan ? 10 : 0;
+  const _orderPanel = (sisi) =>
+    sisi === "bawah" ? 20 : sisi === "kiri" ? -2 : 1;
+  // Pembagi selalu di sisi panel yang MENGHADAP chat.
+  const _orderPembagi = (sisi) =>
+    sisi === "bawah" ? 20 : sisi === "kiri" ? -1 : _chatKanan ? 2 : 0;
+
   const gayaPanel = (sisi, pct) =>
     sisi === "bawah"
       ? {
           flex: "0 0 auto",
           width: "100%",
-          height: "calc(" + pct + "% - 6px)",
-          order: 2,
+          height: "calc(" + pct * _skalaSisi("bawah") + "% - 6px)",
+          order: _orderPanel(sisi),
         }
       : {
-          flex: "0 0 calc(" + pct + "% - 6px)",
+          // Tanpa chat, panel kanan MELEBAR mengisi baris. Grow-nya sebanding
+          // dengan pct, bukan "1 1 0%" rata: dengan satu panel keduanya sama
+          // saja, tapi dengan dua atau tiga panel kanan, grow rata membuat
+          // semuanya selebar sama persis — hasil seretan pembagi hilang tanpa
+          // sebab yang terlihat.
+          flex: _isiPenuh
+            ? pct + " 1 0%"
+            : "0 0 calc(" + pct * _skalaSisi("kanan") + "% - 6px)",
           height: tinggiAtas + "%",
-          order: 1,
+          order: _orderPanel(sisi),
         };
   const gayaPembagi = (sisi) =>
     sisi === "bawah"
-      ? { flex: "0 0 auto", width: "100%", height: "6px", order: 2 }
-      : { order: 1, height: tinggiAtas + "%" };
+      ? {
+          flex: "0 0 auto",
+          width: "100%",
+          height: "6px",
+          order: _orderPembagi(sisi),
+        }
+      : { order: _orderPembagi(sisi), height: tinggiAtas + "%" };
 
   return (
     <>
-      <div className={"app has-sidebar" + (sbCollapsed ? " sb-collapsed" : "")}>
+      <div className={"app has-sidebar sb-" + sbMode}>
         {!pickerDone && (
           <ProjectPickerScreen
             models={models}
@@ -2305,8 +3768,8 @@ function App() {
           />
         )}
         <Sidebar
-          collapsed={sbCollapsed}
-          setCollapsed={setSbCollapsed}
+          mode={sbMode}
+          putarMode={putarSidebar}
           view={view}
           setView={setView}
           onNewChat={() => {
@@ -2331,6 +3794,13 @@ function App() {
           onOpenPicker={() => {
             setPickerDone(false);
           }}
+          posisi={posisi}
+          setPosisi={setPosisi}
+          chatVisible={chatVisible}
+          setChatVisible={setChatVisible}
+          panelOpen={panelOpen}
+          logicOpen={logicOpen}
+          setLogicOpen={setLogicOpen}
         />
         <div className="page-container">
           <div
@@ -2350,8 +3820,6 @@ function App() {
               setTheme={setTheme}
               terminalOpen={terminalOpen}
               setTerminalOpen={setTerminalOpen}
-              posisi={posisi}
-              setPosisi={setPosisi}
             />
             {/* Panel dipindah lewat PEMBUNGKUSAN FLEKS, bukan penyusunan ulang
                 markup. .chat-split membungkus (flex-wrap), jadi panel yang
@@ -2366,81 +3834,83 @@ function App() {
                 POSISI. Cara ini mencapai hasil yang sama tanpa memindahkan satu
                 baris pun. */}
             <div className="chat-split" style={{ position: "relative" }}>
-              <div
-                className="chat-col"
-                style={{
-                  // Lebarnya SISA, bukan persentase. Memberi chat basis 65%
-                  // membuat baris pertama diukur sebagai 65% + 35% + pembagi —
-                  // melebihi 100%, sehingga panel kanan terdorong turun. Dengan
-                  // basis 0 dan grow 1, chat mengambil apa pun yang tersisa
-                  // SESUDAH panel kanan mendapat jatahnya, jadi tak pernah ada
-                  // kelebihan. lebarAtas tetap dipakai sebagai lebar MINIMUM
-                  // supaya chat tak bisa diperas habis.
-                  flex: "1 1 0%",
-                  minWidth: lebarAtas + "%",
-                  height: tinggiAtas + "%",
-                  order: 0,
-                }}
-              >
+              {chatVisible && (
                 <div
-                  className="chat-scroll"
-                  ref={scrollRef}
-                  onClick={(e) => {
-                    if (
-                      e.target.tagName === "IMG" &&
-                      (e.target.src || e.target.getAttribute("src"))
-                    ) {
-                      setGlobalPreviewItem({
-                        url: e.target.src || e.target.getAttribute("src"),
-                        name: e.target.alt || "Preview Gambar / Screenshot",
-                      });
-                    }
+                  className="chat-col"
+                  style={{
+                    // Lebarnya SISA, bukan persentase. Memberi chat basis 65%
+                    // membuat baris pertama diukur sebagai 65% + 35% + pembagi —
+                    // melebihi 100%, sehingga panel kanan terdorong turun. Dengan
+                    // basis 0 dan grow 1, chat mengambil apa pun yang tersisa
+                    // SESUDAH panel kanan mendapat jatahnya, jadi tak pernah ada
+                    // kelebihan. lebarAtas tetap dipakai sebagai lebar MINIMUM
+                    // supaya chat tak bisa diperas habis.
+                    flex: "1 1 0%",
+                    minWidth: lebarAtas + "%",
+                    height: tinggiAtas + "%",
+                    order: _ORDER_CHAT,
                   }}
                 >
-                  {messages.length === 0 ? (
-                    <div className="chat-inner"></div>
-                  ) : (
-                    <div className="chat-inner">
-                      {messages.map((m, i) => (
-                        <Message key={i} msg={m} />
-                      ))}
-                    </div>
-                  )}
+                  <div
+                    className="chat-scroll"
+                    ref={scrollRef}
+                    onClick={(e) => {
+                      if (
+                        e.target.tagName === "IMG" &&
+                        (e.target.src || e.target.getAttribute("src"))
+                      ) {
+                        setGlobalPreviewItem({
+                          url: e.target.src || e.target.getAttribute("src"),
+                          name: e.target.alt || "Preview Gambar / Screenshot",
+                        });
+                      }
+                    }}
+                  >
+                    {messages.length === 0 ? (
+                      <div className="chat-inner"></div>
+                    ) : (
+                      <div className="chat-inner">
+                        {messages.map((m, i) => (
+                          <Message key={i} msg={m} />
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  <HitlModal
+                    request={hitlRequest}
+                    onResolve={handleHitlResolve}
+                  />
+                  <LightboxModal
+                    item={globalPreviewItem}
+                    onClose={() => setGlobalPreviewItem(null)}
+                  />
+                  <Composer
+                    models={models}
+                    modelVal={modelVal}
+                    setModelVal={setModelVal}
+                    onSend={(t, tampil) => doSend(t, tampil)}
+                    onCancel={cancel}
+                    busy={busy}
+                    todos={todos}
+                    onClearTodos={() => setTodos([])}
+                    onToggleTodo={(i) =>
+                      setTodos((d) =>
+                        d.map((t, j) =>
+                          j === i
+                            ? {
+                                ...t,
+                                status:
+                                  (t.status || "") === "completed"
+                                    ? "pending"
+                                    : "completed",
+                              }
+                            : t,
+                        ),
+                      )
+                    }
+                  />
                 </div>
-                <HitlModal
-                  request={hitlRequest}
-                  onResolve={handleHitlResolve}
-                />
-                <LightboxModal
-                  item={globalPreviewItem}
-                  onClose={() => setGlobalPreviewItem(null)}
-                />
-                <Composer
-                  models={models}
-                  modelVal={modelVal}
-                  setModelVal={setModelVal}
-                  onSend={(t, tampil) => doSend(t, tampil)}
-                  onCancel={cancel}
-                  busy={busy}
-                  todos={todos}
-                  onClearTodos={() => setTodos([])}
-                  onToggleTodo={(i) =>
-                    setTodos((d) =>
-                      d.map((t, j) =>
-                        j === i
-                          ? {
-                              ...t,
-                              status:
-                                (t.status || "") === "completed"
-                                  ? "pending"
-                                  : "completed",
-                            }
-                          : t,
-                      ),
-                    )
-                  }
-                />
-              </div>
+              )}
               {terminalOpen && (
                 <>
                   <div
@@ -2470,6 +3940,13 @@ function App() {
                       onClose={() => setTerminalOpen(false)}
                       terminalOutput={terminalOutput}
                       messages={messages}
+                      perintah={perintahTerminal}
+                      debugAktif={debugAktif}
+                      onAksiDebug={aksiDebug}
+                      pemicuDebug={pemicuDebug}
+                      onDebugSelesai={() => setDebugAktif(null)}
+                      dapKeadaan={dapKeadaan}
+                      onAksiDap={aksiDap}
                     />
                   </div>
                 </>
@@ -2524,7 +4001,7 @@ function App() {
                           color: "#ffffff",
                           zIndex: 10,
                         }}
-                        title="Menu panel"
+                        title="Panel menu"
                         onClick={(e) => {
                           e.stopPropagation();
                           setPanelMenuOpen(!panelMenuOpen);
@@ -2737,12 +4214,12 @@ function App() {
                             if (e.key === "Enter")
                               preview.navigate(preview.inputUrl);
                           }}
-                          placeholder="Cari di web, atau ketik URL / path berkas"
+                          placeholder="Search the web, or type a URL / file path"
                           title={
-                            "Bilah ini bekerja seperti bilah alamat browser:\n" +
-                            "  • path berkas   C:\\...\\index.html\n" +
+                            "This bar works like a browser address bar:\n" +
+                            "  • file path     C:\\...\\index.html\n" +
                             "  • URL / domain  github.com, http://localhost:3000\n" +
-                            "  • selain itu    dicari di web"
+                            "  • anything else searches the web"
                           }
                           style={{
                             flex: 1,
@@ -3075,118 +4552,110 @@ function App() {
                 </>
               )}
               {logicOpen && (
-                <div
-                  style={{
-                    position: "absolute",
-                    inset: 0,
-                    zIndex: 60,
-                    background: "var(--surface-1, #0f1318)",
-                    display: "flex",
-                    flexDirection: "column",
-                    animation: "fadeIn 0.15s ease",
-                  }}
-                >
-                  {/* Header panel Logic */}
+                <>
+                  {/* Panel ketiga, diperlakukan PERSIS seperti terminal dan
+                      preview: pembagi yang bisa diseret + gaya dari gayaPanel.
+                      Bentuk lamanya `position:absolute; inset:0; zIndex:60` —
+                      lapisan yang menutupi seluruh area, dan itulah satu-satunya
+                      alasan ia cuma bisa penuh layar. */}
+                  <div
+                    className={
+                      "split-divider" +
+                      (posisi.logic === "bawah" ? " split-divider-h" : "")
+                    }
+                    style={gayaPembagi(posisi.logic)}
+                    onMouseDown={geserPembagi(
+                      posisi.logic === "bawah" ? "y" : "x",
+                      setLogicPct,
+                    )}
+                  />
                   <div
                     style={{
-                      height: "46px",
-                      flexShrink: 0,
-                      borderBottom: "1px solid var(--line, #282e36)",
+                      ...gayaPanel(posisi.logic, logicPct),
+                      background: "var(--surface-1, #0f1318)",
                       display: "flex",
-                      alignItems: "center",
-                      justifyContent: "space-between",
-                      padding: "0 14px",
-                      gap: "10px",
+                      flexDirection: "column",
+                      minWidth: 0,
+                      minHeight: 0,
+                      overflow: "hidden",
                     }}
                   >
-                    <div
-                      style={{
-                        display: "flex",
-                        alignItems: "center",
-                        gap: "8px",
-                        color: "#e2e8f0",
-                        fontSize: "13px",
-                        fontWeight: 600,
-                      }}
-                    >
-                      <svg
-                        width="16"
-                        height="16"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="1.5"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <rect x="3" y="4" width="6" height="5" rx="1"></rect>
-                        <rect x="15" y="9" width="6" height="5" rx="1"></rect>
-                        <rect x="9" y="15" width="6" height="5" rx="1"></rect>
-                        <path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path>
-                      </svg>
-                      <span>Logic</span>
-                      <span
-                        style={{
-                          fontSize: "11px",
-                          fontWeight: 400,
-                          color: "#6b7280",
-                        }}
-                      >
-                        · React Flow canvas for driving a website
-                      </span>
-                    </div>
-                    <button
-                      className="btn-reset"
-                      title="Close Logic"
-                      onClick={() => setLogicOpen(false)}
-                      style={{
-                        color: "#8b98a9",
-                        padding: "4px 6px",
-                        borderRadius: "4px",
-                        display: "flex",
-                        alignItems: "center",
-                      }}
-                      onMouseEnter={(e) => {
-                        e.currentTarget.style.background =
-                          "rgba(248,81,73,0.15)";
-                        e.currentTarget.style.color = "#f85149";
-                      }}
-                      onMouseLeave={(e) => {
-                        e.currentTarget.style.background = "transparent";
-                        e.currentTarget.style.color = "#8b98a9";
-                      }}
-                    >
-                      <svg
-                        width="14"
-                        height="14"
-                        viewBox="0 0 24 24"
-                        fill="none"
-                        stroke="currentColor"
-                        strokeWidth="2"
-                        strokeLinecap="round"
-                        strokeLinejoin="round"
-                      >
-                        <line x1="18" y1="6" x2="6" y2="18" />
-                        <line x1="6" y1="6" x2="18" y2="18" />
-                      </svg>
-                    </button>
-                  </div>
-                  {/* Isi Logic: pohon berkas di kiri, isi berkasnya di kanan
+                    {/* Bilah judul "Logic" DIHAPUS. Panel ini sudah punya dua
+                      header di bawahnya — "Files" di pohon berkas dan nama
+                      berkas di editor — jadi ia baris ketiga yang tak membawa
+                      keterangan baru, hanya memakan tinggi.
+
+                      Tombol tutupnya ikut hilang bersamanya; penggantinya ada di
+                      menu ☰ -> TAMPILAN -> Code -> Tutup. */}
+                    {/* Isi Logic: pohon berkas di kiri, isi berkasnya di kanan
                       — tata letak yang sama dengan VS Code. */}
-                  <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-                    <LogicFileTree
-                      files={devFiles}
-                      root={webProjectRoot(preview.url, selectedProject)}
-                      active={!!preview.url}
-                      terpilih={logicBerkas}
-                      onPilih={setLogicBerkas}
-                    />
-                    <LogicCodePane
-                      root={webProjectRoot(preview.url, selectedProject)}
-                      rel={logicBerkas}
-                    />
+                    <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
+                      <LogicFileTree
+                        files={devFiles}
+                        folders={devFolders}
+                        root={webProjectRoot(preview.url, selectedProject)}
+                        active={!!preview.url}
+                        terpilih={logicBerkas}
+                        onPilih={bukaTab}
+                        onHapus={(rel) => {
+                          // The file is gone from disk, so both the list and its
+                          // tab have to go with it. Leaving either behind means a
+                          // row that opens nothing and a tab that loads a 404.
+                          setDevFiles((prev) => prev.filter((x) => x !== rel));
+                          tutupTab(rel);
+                        }}
+                        onHapusFolder={(rel) => {
+                          // Everything under the folder is gone from disk, so it
+                          // has to go from both lists and from any open tab.
+                          // Leaving a child behind means a row that opens
+                          // nothing and a tab that loads a 404.
+                          const di = (x) =>
+                            x === rel || x.startsWith(rel + "/");
+                          setDevFiles((prev) => {
+                            prev.filter(di).forEach((x) => tutupTab(x));
+                            return prev.filter((x) => !di(x));
+                          });
+                          setDevFolders((prev) => prev.filter((x) => !di(x)));
+                        }}
+                        onBuatFolder={(rel) =>
+                          setDevFolders((prev) =>
+                            prev.includes(rel) ? prev : prev.concat(rel),
+                          )
+                        }
+                        onBuat={(rel) => {
+                          // devFiles adalah daftar berkas yang SEDANG dikerjakan.
+                          // Berkas yang baru dibuat pemakai termasuk di dalamnya,
+                          // persis seperti berkas yang ditulis agent.
+                          setDevFiles((prev) =>
+                            prev.indexOf(rel) >= 0 ? prev : prev.concat(rel),
+                          );
+                          bukaTab(rel);
+                        }}
+                      />
+                      <LogicCodePane
+                        root={webProjectRoot(preview.url, selectedProject)}
+                        rel={logicBerkas}
+                        tabs={logicTabs}
+                        onPilihTab={setLogicBerkas}
+                        onTutupTab={tutupTab}
+                        onGeserTab={geserTab}
+                        onKotorBerubah={tandaiKotor}
+                        onRun={jalankanDiTerminal}
+                        onDaftarDebug={setPemicuDebug}
+                        titikHenti={titikHenti}
+                        setTitikHenti={setTitikHenti}
+                        barisAktif={
+                          dapKeadaan && dapKeadaan.berhenti
+                            ? {
+                                berkas: logicBerkas,
+                                baris: dapKeadaan.berhenti.baris,
+                              }
+                            : null
+                        }
+                      />
+                    </div>
                   </div>
-                </div>
+                </>
               )}
             </div>
           </div>

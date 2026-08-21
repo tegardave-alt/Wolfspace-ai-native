@@ -65,3 +65,12 @@ agent-leak-report.md
 # Repo ini publik, dan biner yang tak bisa dibaca orang bukan sesuatu
 # yang pantas dibagikan begitu saja. Bangun dengan scripts/appcontainer/build.cmd
 scripts/appcontainer/AcLaunch.exe
+
+# Adapter DAP js-debug: diambil scripts/ambil-js-debug.cjs dari rilis GitHub
+# (microsoft/vscode-js-debug, MIT). 2,5 MB hasil unduhan, bukan sumber yang
+# ditulis di sini — jadi ia diambil ulang, bukan disimpan di repo.
+vendor/js-debug/
+
+# Aset pra-kompres, hasil scripts/kompres-aset.cjs — dihasilkan, bukan sumber.
+public/**/*.br
+public/**/*.gz

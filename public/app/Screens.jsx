@@ -415,12 +415,41 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-  const grow = () => {
+  // Batasnya DIBACA dari CSS, bukan ditulis ulang di sini — satu sumber
+  // kebenaran, sama seperti composer di Components.jsx.
+  const grow = React.useCallback(() => {
     const el = taRef.current;
     if (!el) return;
+    // "auto" dulu: tanpa itu scrollHeight tak pernah MENGECIL saat teks
+    // dihapus, jadi kotaknya tumbuh sekali lalu tak mau menyusut lagi.
     el.style.height = "auto";
-    el.style.height = Math.min(el.scrollHeight, 160) + "px";
-  };
+    const maks = parseFloat(getComputedStyle(el).maxHeight);
+    el.style.height =
+      (Number.isFinite(maks)
+        ? Math.min(el.scrollHeight, maks)
+        : el.scrollHeight) + "px";
+  }, []);
+  // onChange saja tak cukup: teks yang ditempel atau disetel dari luar tak
+  // melewatinya, dan jendela yang berubah lebar mengubah pembungkusan baris
+  // tanpa satu pun ketikan.
+  React.useEffect(() => {
+    grow();
+  }, [text, grow]);
+  React.useEffect(() => {
+    const el = taRef.current;
+    if (!el || typeof ResizeObserver === "undefined") return;
+    // HANYA lebar yang memicu hitung ulang — grow() mengubah TINGGI elemen
+    // yang diamati, jadi bereaksi pada tinggi berarti mengamati akibat dari
+    // diri sendiri, dan itu memutar tanpa henti.
+    let lebarTerakhir = el.clientWidth;
+    const ro = new ResizeObserver(() => {
+      if (el.clientWidth === lebarTerakhir) return;
+      lebarTerakhir = el.clientWidth;
+      grow();
+    });
+    ro.observe(el);
+    return () => ro.disconnect();
+  }, [grow]);
   const handleAttachmentSelect = async (e) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
@@ -495,7 +524,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                 parsed = res;
               }
               if (res.status >= 400 || !parsed.ok)
-                throw new Error(parsed.error || "Attach gagal");
+                throw new Error(parsed.error || "Attach failed");
               attHandle = parsed.id;
             } else {
               const r = await fetch("/attach", {
@@ -504,7 +533,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                 body: JSON.stringify(payload),
               });
               const res = await r.json();
-              if (!res.ok) throw new Error(res.error || "Attach gagal");
+              if (!res.ok) throw new Error(res.error || "Attach failed");
               attHandle = res.id;
             }
             setAttachments((prev) =>
@@ -563,7 +592,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         .map(
           (a) =>
             `- [Terlampir] ${a.name} (${Math.round(a.size / 1024)} KB${a.type ? `, ${a.type}` : ""})` +
-            (a.attId ? ` — id: ${a.attId}` : " — GAGAL diserahkan"),
+            (a.attId ? ` — id: ${a.attId}` : " — handoff FAILED"),
         )
         .join("\n");
       fullText = v
@@ -1535,11 +1564,42 @@ function VSCodeTerminal({
   onClose,
   terminalOutput,
   messages = [],
+  perintah,
+  debugAktif,
+  onAksiDebug,
+  pemicuDebug,
+  onDebugSelesai,
+  dapKeadaan,
+  onAksiDap,
 }) {
   const containerRef = useRef(null);
   const termRef = useRef(null);
   const fitRef = useRef(null);
   const sessionIdRef = useRef(null);
+  // ── Perintah yang datang sebelum PTY siap ──
+  //
+  // Menekan Run selagi terminal tertutup membuka terminalnya DAN mengirim
+  // perintah dalam render yang sama. Sesi PTY dibuka lewat fetch, jadi saat
+  // perintahnya tiba sessionIdRef masih null — dan tanpa antrean ini, perintah
+  // itu hilang tanpa jejak: tombolnya terlihat bekerja, terminalnya terbuka,
+  // dan tak ada apa pun yang terjadi.
+  const tertundaRef = useRef(null);
+  const nonceRef = useRef(null);
+  // ── Menyadari sesi debug BERAKHIR ──
+  //
+  // Dulu keadaan debug hanya dibersihkan oleh tombol Stop. Jadi kalau pemakai
+  // mengetik `.exit`/`q` langsung di terminal, atau programnya berhenti
+  // sendiri, tab DEBUG tetap menyala dan tombol-tombolnya mengetik kata
+  // perintah debugger ke SHELL BIASA — aplikasi melaporkan keadaan yang tak
+  // sama dengan yang sebenarnya.
+  //
+  // Yang dipantau prompt di ujung keluaran: selama prompt debugger masih ada,
+  // sesinya hidup; begitu yang muncul prompt shell lagi, ia sudah selesai.
+  // Sengaja butuh prompt debugger terlihat DULU (sudahLihatRef) — tanpa itu,
+  // prompt shell yang muncul sesaat sebelum debugger sempat mulai akan langsung
+  // dibaca sebagai "sudah selesai".
+  const ekorRef = useRef("");
+  const sudahLihatRef = useRef(false);
   const [activeTab, setActiveTab] = useState("TERMINAL");
   const [statusText, setStatusText] = useState("Connecting PTY...");
 
@@ -1586,6 +1646,71 @@ function VSCodeTerminal({
       );
   }, [terminalOutput, messages]);
 
+  // Prompt tiap debugger, dan prompt shell. Dicocokkan di UJUNG keluaran —
+  // kata yang sama bisa muncul di tengah teks biasa (mis. baris kode yang
+  // memuat "debug>"), tapi di ujung ia memang prompt yang sedang menunggu.
+  const POLA_PROMPT_DEBUG = {
+    node: /debug>\s*$/,
+    pdb: /\(Pdb\)\s*$/,
+    rdbg: /\(rdbg\)\s*$/,
+    dlv: /\(dlv\)\s*$/,
+  };
+  // PowerShell "PS C:\x>", cmd "C:\x>", dan sh "$ " / "# ".
+  const POLA_PROMPT_SHELL = /(?:PS )?[A-Za-z]:\\[^\r\n]*>\s*$|[$#]\s*$/;
+  const periksaAkhirDebug = (potongan) => {
+    if (!debugAktif || !onDebugSelesai) return;
+    // ANSI dibuang: warna dan pengatur judul menyisipkan escape TEPAT sebelum
+    // prompt, jadi pencocokan "di ujung" pada teks mentah selalu meleset.
+    const bersih = String(potongan)
+      .replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, "")
+      .replace(/\u001b\][^\u0007]*(\u0007|\u001b\\)/g, "");
+    // Ekor pendek saja — yang menentukan cuma ujungnya.
+    ekorRef.current = (ekorRef.current + bersih).slice(-400);
+    const ekor = ekorRef.current.replace(/[ \t\r\n]+$/, "");
+    const polaDebug = POLA_PROMPT_DEBUG[debugAktif];
+    if (polaDebug && polaDebug.test(ekor)) {
+      sudahLihatRef.current = true;
+      return;
+    }
+    if (sudahLihatRef.current && POLA_PROMPT_SHELL.test(ekor)) {
+      sudahLihatRef.current = false;
+      ekorRef.current = "";
+      onDebugSelesai();
+    }
+  };
+
+  // Ditulis ke PTY seolah pemakai mengetiknya lalu menekan Enter. "\r", bukan
+  // "\n": PTY membaca carriage return sebagai penekanan Enter, sementara "\n"
+  // hanya menyisipkan baris baru dan perintahnya menggantung tak dieksekusi.
+  const kirimPerintah = (cmd) => {
+    if (!sessionIdRef.current) {
+      tertundaRef.current = cmd;
+      return;
+    }
+    fetch("/api/terminal/write", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ id: sessionIdRef.current, data: cmd + "\r" }),
+    }).catch(() => {});
+  };
+
+  // Perintah dari panel Code. Nonce dibandingkan, bukan teksnya: menjalankan
+  // berkas yang SAMA dua kali harus benar-benar berjalan dua kali.
+  useEffect(() => {
+    if (!perintah || !perintah.cmd) return;
+    if (nonceRef.current === perintah.n) return;
+    nonceRef.current = perintah.n;
+    // Penanda direset tiap perintah baru: sisa ekor dari sesi sebelumnya bisa
+    // membuat sesi yang baru saja mulai langsung dibaca sebagai sudah selesai.
+    ekorRef.current = "";
+    sudahLihatRef.current = false;
+    // TERMINAL, bukan DEBUG: yang perlu dilihat orang begitu perintah dikirim
+    // adalah KELUARANNYA. Tab DEBUG hanya berisi kendali, dan melompat ke sana
+    // justru menyembunyikan baris tempat debugger berhenti.
+    setActiveTab("TERMINAL");
+    kirimPerintah(perintah.cmd);
+  }, [perintah]);
+
   const restartSession = async () => {
     if (sessionIdRef.current) {
       try {
@@ -1620,6 +1745,12 @@ function VSCodeTerminal({
         );
         if (termRef.current) {
           termRef.current.focus();
+        }
+        // Perintah yang menunggu sesi ini dilepas sekarang, bukan dibuang.
+        if (tertundaRef.current) {
+          const menunggu = tertundaRef.current;
+          tertundaRef.current = null;
+          kirimPerintah(menunggu);
         }
       } else {
         const err = await res.json().catch(() => ({ error: res.statusText }));
@@ -1726,6 +1857,7 @@ function VSCodeTerminal({
           const data = await res.json();
           if (data.output && termRef.current) {
             termRef.current.write(data.output);
+            periksaAkhirDebug(data.output);
           }
         }
       } catch (_) {}
@@ -1820,6 +1952,44 @@ function VSCodeTerminal({
             >
               local
             </span>
+          </button>
+          {/* DEBUG duduk di kelompok tab ini, bukan di header editor. Debug
+              adalah SESI yang hidup di terminal — tempatnya bersama keluaran
+              yang ia hasilkan, bukan di sebelah tombol Simpan. */}
+          <button
+            className="btn-reset"
+            onClick={() => setActiveTab("DEBUG")}
+            style={{
+              borderBottom:
+                activeTab === "DEBUG"
+                  ? "2px solid #e3b341"
+                  : "2px solid transparent",
+              color: activeTab === "DEBUG" ? "#ffffff" : "#8b949e",
+              fontSize: "11px",
+              fontWeight: 600,
+              letterSpacing: "0.5px",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "0 4px",
+              fontFamily: "inherit",
+            }}
+          >
+            <span>DEBUG</span>
+            {/* Titik kuning = ada sesi debugger hidup. Tanpa ini, satu-satunya
+                cara tahu adalah membuka tabnya. */}
+            {debugAktif && (
+              <span
+                style={{
+                  width: "6px",
+                  height: "6px",
+                  borderRadius: "50%",
+                  background: "#e3b341",
+                  boxShadow: "0 0 6px #e3b341",
+                }}
+              />
+            )}
           </button>
           <button
             className="btn-reset"
@@ -1972,6 +2142,246 @@ function VSCodeTerminal({
             display: activeTab === "TERMINAL" ? "block" : "none",
           }}
         />
+        {/* ── Tab DEBUG ──
+            Kendalinya di sini, keluarannya tetap di tab TERMINAL — sesi
+            debugger memang satu proses dengan shell-nya, jadi memisahkan
+            keluarannya justru akan menyembunyikan sebagian jawaban. */}
+        <div
+          style={{
+            display: activeTab === "DEBUG" ? "flex" : "none",
+            flexDirection: "column",
+            gap: "14px",
+            padding: "16px",
+            height: "100%",
+            boxSizing: "border-box",
+            color: "#c9d1d9",
+            fontSize: "12px",
+          }}
+        >
+          {!debugAktif ? (
+            <>
+              <div
+                style={{ color: "#6b7280", lineHeight: 1.7, maxWidth: "460px" }}
+              >
+                {!pemicuDebug ? (
+                  <>
+                    Open a file in the <b style={{ color: "#adbac7" }}>Code</b>{" "}
+                    panel first.
+                  </>
+                ) : pemicuDebug.mulai ? (
+                  <>
+                    Ready to debug{" "}
+                    <b style={{ color: "#adbac7" }}>{pemicuDebug.berkas}</b>.
+                    The file is saved first, then run under the debugger.
+                  </>
+                ) : (
+                  <>
+                    <b style={{ color: "#adbac7" }}>{pemicuDebug.berkas}</b> —{" "}
+                    {pemicuDebug.alasan}
+                  </>
+                )}
+              </div>
+              <div className="dbg-bar">
+                <button
+                  type="button"
+                  className="dbg-btn dbg-mulai"
+                  disabled={!(pemicuDebug && pemicuDebug.mulai)}
+                  onClick={() =>
+                    pemicuDebug && pemicuDebug.mulai && pemicuDebug.mulai()
+                  }
+                  title={
+                    pemicuDebug && pemicuDebug.mulai
+                      ? "Save, then run under the debugger"
+                      : (pemicuDebug && pemicuDebug.alasan) ||
+                        "No debuggable file"
+                  }
+                >
+                  {/* Kumbang — lambang debug yang sama di editor mana pun. */}
+                  <svg
+                    width="14"
+                    height="14"
+                    viewBox="0 0 24 24"
+                    fill="none"
+                    stroke="currentColor"
+                    strokeWidth="2"
+                    strokeLinecap="round"
+                  >
+                    <rect x="8" y="7" width="8" height="13" rx="4" />
+                    <path d="M9 5.5 11 8M15 5.5 13 8M8 11H4M20 11h-4M8 16H4.5M20 16h-3.5" />
+                  </svg>
+                  <span>Start debugging</span>
+                </button>
+              </div>
+            </>
+          ) : (
+            <>
+              <div
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "8px",
+                  color: "#e3b341",
+                }}
+              >
+                <span
+                  style={{
+                    width: "7px",
+                    height: "7px",
+                    borderRadius: "50%",
+                    background: "#e3b341",
+                    boxShadow: "0 0 8px #e3b341",
+                  }}
+                />
+                <span style={{ letterSpacing: "0.06em" }}>
+                  Session live · {debugAktif}
+                </span>
+              </div>
+              {/* Sesi DAP menyediakan keadaan sebagai DATA; yang lewat PTY
+                  tidak. Jadi panel di bawah hanya dirender untuk yang DAP —
+                  menampilkan kotak kosong untuk sesi PTY akan terbaca seperti
+                  debugger yang tak menemukan apa pun. */}
+              {dapKeadaan && (
+                <div style={{ display: "grid", gap: "12px", minWidth: 0 }}>
+                  {dapKeadaan.galat && (
+                    <div style={{ color: "#f85149" }}>{dapKeadaan.galat}</div>
+                  )}
+                  {dapKeadaan.berhenti ? (
+                    <>
+                      <div style={{ color: "#adbac7" }}>
+                        Stopped at line{" "}
+                        <b style={{ color: "#e3b341" }}>
+                          {dapKeadaan.berhenti.baris}
+                        </b>{" "}
+                        ({dapKeadaan.berhenti.alasan})
+                      </div>
+                      <div className="dbg-kotak">
+                        <div className="dbg-kotak-judul">Variables</div>
+                        <div className="dbg-kotak-isi">
+                          {dapKeadaan.berhenti.variabel.length === 0 ? (
+                            <div
+                              className="dbg-baris"
+                              style={{ color: "#6b7280" }}
+                            >
+                              (no local variables)
+                            </div>
+                          ) : (
+                            dapKeadaan.berhenti.variabel.map((v) => (
+                              <div className="dbg-baris" key={v.nama}>
+                                <span className="dbg-nama">{v.nama}</span>
+                                {v.tipe && (
+                                  <span className="dbg-tipe">{v.tipe}</span>
+                                )}
+                                <span className="dbg-nilai">{v.nilai}</span>
+                              </div>
+                            ))
+                          )}
+                        </div>
+                      </div>
+                      <div className="dbg-kotak">
+                        <div className="dbg-kotak-judul">Call stack</div>
+                        <div className="dbg-kotak-isi">
+                          {dapKeadaan.berhenti.tumpukan.map((f, i) => (
+                            <div
+                              key={f.id}
+                              className={
+                                "dbg-bingkai" + (i === 0 ? " atas" : "")
+                              }
+                            >
+                              {f.nama} — baris {f.baris}
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    </>
+                  ) : !dapKeadaan.selesai ? (
+                    <div style={{ color: "#6b7280" }}>Program running…</div>
+                  ) : (
+                    <div style={{ color: "#6b7280" }}>Session finished.</div>
+                  )}
+                  {dapKeadaan.semuaKeluaran &&
+                    dapKeadaan.semuaKeluaran.length > 0 && (
+                      <div className="dbg-kotak">
+                        <div className="dbg-kotak-judul">Program output</div>
+                        <div className="dbg-kotak-isi">
+                          <pre
+                            style={{
+                              margin: 0,
+                              padding: "6px 10px",
+                              whiteSpace: "pre-wrap",
+                              color: "#c9d1d9",
+                            }}
+                          >
+                            {dapKeadaan.semuaKeluaran.join("")}
+                          </pre>
+                        </div>
+                      </div>
+                    )}
+                </div>
+              )}
+              <div className="dbg-bar">
+                {[
+                  ["lanjut", "Continue", "M4 3l10 7-10 7zM16 3h2v14h-2z"],
+                  [
+                    "lewati",
+                    "Step over",
+                    "M3 10a8 8 0 0 1 14-5M17 3v4h-4M10 17a3 3 0 1 0 0-6 3 3 0 0 0 0 6z",
+                  ],
+                  [
+                    "masuk",
+                    "Step into",
+                    "M10 2v9M6.5 8L10 11.5 13.5 8M10 17a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
+                  ],
+                  [
+                    "keluar",
+                    "Step out",
+                    "M10 11V2M6.5 5.5L10 2l3.5 3.5M10 17a2.5 2.5 0 1 0 0-5 2.5 2.5 0 0 0 0 5z",
+                  ],
+                  ["berhenti", "Stop", "M5 5h10v10H5z"],
+                ].map(([aksi, label, d]) => (
+                  <button
+                    key={aksi}
+                    type="button"
+                    title={label}
+                    aria-label={label}
+                    onClick={() =>
+                      dapKeadaan
+                        ? onAksiDap && onAksiDap(aksi)
+                        : onAksiDebug && onAksiDebug(aksi)
+                    }
+                    className={
+                      "dbg-btn" + (aksi === "berhenti" ? " dbg-stop" : "")
+                    }
+                  >
+                    <svg
+                      width="14"
+                      height="14"
+                      viewBox="0 0 20 20"
+                      fill={
+                        aksi === "lanjut" || aksi === "berhenti"
+                          ? "currentColor"
+                          : "none"
+                      }
+                      stroke="currentColor"
+                      strokeWidth={
+                        aksi === "lanjut" || aksi === "berhenti" ? 0 : 1.6
+                      }
+                      strokeLinecap="round"
+                      strokeLinejoin="round"
+                    >
+                      <path d={d} />
+                    </svg>
+                    <span>{label}</span>
+                  </button>
+                ))}
+              </div>
+              <div style={{ color: "#6b7280", lineHeight: 1.7 }}>
+                Debugger output is in the{" "}
+                <b style={{ color: "#adbac7" }}>TERMINAL</b> tab — this session
+                shares a process with its shell.
+              </div>
+            </>
+          )}
+        </div>
         <div
           style={{
             display: activeTab === "OUTPUT" ? "block" : "none",

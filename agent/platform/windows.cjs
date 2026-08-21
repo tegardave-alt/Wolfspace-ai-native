@@ -5,7 +5,7 @@ const path = require("path");
 const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
-const { execSync } = require("child_process");
+const { execSync, exec } = require("child_process");
 const { PlatformAdapter } = require("./adapter.cjs");
 
 class WindowsAdapter extends PlatformAdapter {
@@ -76,6 +76,38 @@ class WindowsAdapter extends PlatformAdapter {
         child.kill("SIGKILL");
       } catch (__) {}
     }
+  }
+
+  // Versi TAK-MEMBLOKIR dari killTree, untuk pemanggil yang berjalan di thread
+  // utama Electron. taskkill /F /T lewat execSync terukur MENGUNCI thread
+  // 1076 ms (terburuk 1507 ms) tiap kali panel terminal ditutup — dan seluruh
+  // server.cjs memang berjalan di dalam proses utama, jadi angka itu adalah
+  // jendela benar-benar membeku.
+  //
+  // Yang sinkron TETAP ADA dan tetap dipakai sandbox agent: di sana urutan
+  // "mati dulu, baru lanjut" memang dijaminnya, dan ia tidak berjalan di thread
+  // yang menggambar jendela.
+  killTreeAsync(child) {
+    return new Promise((selesai) => {
+      if (!child || !child.pid) {
+        try {
+          child && child.kill("SIGKILL");
+        } catch (_) {}
+        return selesai();
+      }
+      exec(
+        `taskkill /F /T /PID ${child.pid}`,
+        { timeout: 4000, windowsHide: true },
+        (galat) => {
+          if (galat) {
+            try {
+              child.kill("SIGKILL");
+            } catch (_) {}
+          }
+          selesai();
+        },
+      );
+    });
   }
 
   sandboxEnv(sessionDir) {

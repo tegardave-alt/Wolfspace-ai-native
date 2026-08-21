@@ -150,25 +150,26 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
           // mesin, dan saat panel putih pertanyaannya selalu "yang mana yang
           // gagal" — jawabannya cuma bisa dilihat kalau kedua sisi bicara.
           // console.log renderer diteruskan ke WOLFSPACE-debug.log.
-          if (aksi === "buka") console.warn("[browser:renderer] buka ->", r);
+          if (aksi === "buka") console.warn("[browser:renderer] open ->", r);
           if (r && r.ok === false)
             setGagalLuar("Proses utama menolak: " + r.error);
           else if (r && r.bounds && (!r.bounds.width || !r.bounds.height))
             setGagalLuar(
-              "Panel berukuran nol (" +
+              "Panel has zero size (" +
                 r.bounds.width +
                 "x" +
                 r.bounds.height +
-                ") — browser tak punya tempat untuk digambar.",
+                ") — the browser has nowhere to draw.",
             );
         })
         .catch((e) => {
           mati = true;
           setGagalLuar(
             /unknown invoke channel/i.test(String((e && e.message) || e))
-              ? "Tutup dan buka lagi WOLFSPACE — browser panel dijalankan oleh " +
-                  "proses utama, dan hot-reload tidak menjangkaunya."
-              : "Gagal menyiapkan browser panel: " + ((e && e.message) || e),
+              ? "Quit and reopen WOLFSPACE — the browser panel is run by the " +
+                  "main process, which hot-reload does not reach."
+              : "Could not set up the browser panel: " +
+                  ((e && e.message) || e),
           );
         });
     };
@@ -200,7 +201,7 @@ function usePreviewPanel({ selectedProject, onAutoOpen }) {
       console.warn("[browser:peristiwa]", m.t, m);
       if (m.t === "muat") setGagalLuar("");
       else if (m.t === "gagal")
-        setGagalLuar((m.desc || "gagal memuat") + " (" + m.kode + ")");
+        setGagalLuar((m.desc || "failed to load") + " (" + m.kode + ")");
       else if (m.t === "pindah" && m.url) setInputUrl(m.url);
     });
   }, [ipc]);

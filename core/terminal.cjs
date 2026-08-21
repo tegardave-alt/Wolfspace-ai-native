@@ -143,6 +143,12 @@ function _matikanPohon(pid) {
     getPlatformAdapter().killTree({ pid });
   } catch (_) {}
 }
+async function _matikanPohonAsync(pid) {
+  if (!pid) return;
+  try {
+    await getPlatformAdapter().killTreeAsync({ pid });
+  } catch (_) {}
+}
 
 // Menonaktifkan pendaftar konsol HANYA pada sesi yang sedang ditutup. Ini API
 // privat node-pty, jadi dijaga: kalau bentuknya berubah di versi mendatang,
@@ -200,6 +206,26 @@ function killPty(ptyProcess) {
   _tutupPipa(ptyProcess);
 }
 
+// ── Versi yang tidak membekukan thread pemanggil ──
+//
+// Isi dan URUTANNYA sama persis dengan killPty; yang berbeda hanya pembunuhan
+// pohonnya menunggu lewat promise alih-alih menahan thread. taskkill /F /T
+// lewat execSync terukur mengunci thread utama Electron 1076 ms (terburuk
+// 1507 ms) tiap panel terminal ditutup.
+//
+// Yang sinkron tetap ada dan tetap dipakai: pemanggil di luar thread utama
+// (mis. pembersihan saat proses berhenti) justru butuh urutan "mati dulu, baru
+// lanjut", dan di sana tak ada jendela yang bisa membeku.
+async function killPtyAsync(ptyProcess) {
+  if (!ptyProcess) return;
+  await _matikanPohonAsync(ptyProcess.pid);
+  _bungkamPendaftarKonsol(ptyProcess);
+  try {
+    ptyProcess.kill();
+  } catch (_) {}
+  _tutupPipa(ptyProcess);
+}
+
 function destroy(id) {
   const session = sessions.get(id);
   if (!session) return false;
@@ -234,4 +260,5 @@ module.exports = {
   list,
   readBuffer,
   killPty,
+  killPtyAsync,
 };

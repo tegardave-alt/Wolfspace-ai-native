@@ -51,11 +51,18 @@ describe("split berkas + editor di view Logic", () => {
     expect(blok).toMatch(
       /if \(dibuang \|\| !hostRef\.current \|\| edRef\.current\) return;/,
     );
-    expect(blok).toMatch(/ed\.setModel\(window\.monaco\.editor\.createModel\(/);
-    // Model lama dibuang SESUDAH yang baru dipasang.
-    const iSet = blok.indexOf("ed.setModel(");
-    const iDispose = blok.indexOf("lama.dispose()");
-    expect(iDispose).toBeGreaterThan(iSet);
+    // Model baru dibuat lalu DIPASANG ke editor yang sudah ada. Dulu keduanya
+    // satu ekspresi; sesudah panel bisa disunting, model baru perlu dipegang
+    // di variabel supaya listener perubahan bisa dipasang padanya — jadi yang
+    // diuji hubungan buat->pasang, bukan ejaan satu barisnya.
+    const iBuat = blok.indexOf("window.monaco.editor.createModel(");
+    expect(iBuat).toBeGreaterThan(0);
+    expect(blok).toMatch(/ed\.setModel\(model\)/);
+    // Sejak ada tab, model TIDAK lagi dibuang saat berpindah — ia disimpan per
+    // berkas dan baru dilepas saat tabnya ditutup. Membuangnya di sini justru
+    // yang dulu menghancurkan suntingan yang belum tersimpan.
+    expect(blok).not.toMatch(/lama\.dispose\(\)/);
+    expect(blok).toMatch(/modelRef\.current\.set\(rel, model\)/);
   });
 
   test("node pohon membawa path, bukan cuma nama", () => {
@@ -232,9 +239,12 @@ describe("panel berkas Logic bisa diatur lebarnya", () => {
   });
 
   test("batas lebar wajar: tak bisa hilang, tak bisa menelan layar", () => {
-    expect(APP).toMatch(
-      /Math\.max\(160, Math\.min\(500, startWidth \+ deltaX\)\)/,
-    );
+    // Angkanya pindah ke konstanta bernama saat lantainya diturunkan; yang
+    // dikunci di sini INVARIANNYA — ada lantai dan ada langit-langit, dan
+    // seretan melewati keduanya.
+    expect(APP).toMatch(/const lfBatas = \(w\) =>/);
+    expect(APP).toMatch(/Math\.max\(LF_MIN, Math\.min\(LF_MAKS, w\)\)/);
+    expect(APP).toMatch(/setLfWidth\(lfBatas\(startWidth \+ deltaX\)\)/);
   });
 
   test("handle resizer ada dan tersambung ke handler seret", () => {
@@ -379,5 +389,46 @@ describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => 
       const iAlt = CSS.indexOf(kelas + " .monaco-editor {");
       expect(Math.max(i, iAlt)).toBeGreaterThan(-1);
     }
+  });
+});
+
+// ── Lebar pohon berkas bisa dikecilkan jauh ──
+//
+// Batasnya sempat ditulis TIGA kali — saat memuat, saat menyeret, dan saat
+// melepas. Tiga salinan batas yang harus sepakat adalah tiga tempat ia bisa
+// menyimpang tanpa ketahuan.
+//
+// Lantainya 96px, dan angkanya bukan selera: header panel memuat label "Files"
+// (28px) + jarak + tombol berkas-baru (24px) + padding 12+8, yaitu sekitar
+// 90px. Di bawah itu tombolnya mulai terdorong keluar — yang didapat bukan
+// panel sempit melainkan panel rusak.
+//
+// Terukur di peramban sungguhan (1440x900), panel Code terbuka:
+//   diminta  60px -> 96px   judul x12 w28   tombol x63 w24   tak keluar batas
+//   diminta  80px -> 96px   (sama, dijepit lantai)
+//   diminta  96px -> 96px   judul dan tombol tak tumpang tindih
+//   diminta 244px -> 244px  tombol x211
+// Tak ada gulir mendatar di header pada satu ukuran pun.
+describe("batas lebar pohon berkas", () => {
+  const APP2 = fs.readFileSync(path.join(AKAR, "public", "app.jsx"), "utf8");
+
+  test("batasnya SATU tempat, bukan tiga salinan", () => {
+    expect(APP2).toMatch(/const LF_MIN = 96/);
+    expect(APP2).toMatch(/const LF_MAKS = 500/);
+    expect(APP2).toMatch(/const lfBatas = \(w\) =>/);
+  });
+
+  test("ketiga jalur memakai penjepit yang sama", () => {
+    // Memuat, menyeret, dan melepas.
+    const n = (APP2.match(/lfBatas\(/g) || []).length;
+    expect(n).toBeGreaterThanOrEqual(3); // dipakai di ketiga jalur
+    // Bentuk lamanya tak boleh tersisa di mana pun.
+    expect(APP2).not.toMatch(/Math\.max\(160, Math\.min\(500/);
+  });
+
+  test("lantainya benar-benar lebih rendah dari sebelumnya", () => {
+    const m = APP2.match(/const LF_MIN = (\d+)/);
+    expect(m).toBeTruthy();
+    expect(Number(m[1])).toBeLessThan(160);
   });
 });

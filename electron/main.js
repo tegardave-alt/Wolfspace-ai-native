@@ -10,18 +10,45 @@ const path = require("path");
 const ROOT = path.join(__dirname, "..");
 const PORT = 8090;
 const procs = [];
+const probe = require("./probe");
+global.__probe = probe;
 
-// Kunci nama app SEBELUM apa pun lain — menentukan folder userData (localStorage,
-// dsb). Tanpa ini, Electron menebak nama dari package.json terdekat DI ATAS entry
-// script; karena electron/main.js ada di subfolder tanpa package.json sendiri,
-// caranya menemukan root project TAK KONSISTEN antar cara peluncuran (electron
-// binary langsung vs lewat launcher npm run app) — kadang berhasil (userData
-// "quantum", nama lama sebelum rebrand), kadang gagal dan jatuh ke folder DEFAULT
-// generik "Electron" (profil kosong/berbeda). Akibatnya localStorage (project,
-// riwayat chat, hasil migrasi) tampak "hilang" karena sebenarnya tersimpan di
-// profil yang beda tiap kali app dimulai dengan cara berbeda. Nama TETAP di sini
-// menjamin SATU folder userData (%APPDATA%\WOLFSPACE) apa pun cara peluncurannya.
+// Nama app + userData PER FOLDER PROJECT.
+//
+// Dulu: app.setName("WOLFSPACE") saja → SEMUA clone/salinan kode di PC yang sama
+// memakai %APPDATA%\WOLFSPACE (localStorage, chat UI, dsb). Clone GitHub yang
+// "seharusnya polos" terlihat sudah terkonfigurasi karena meminjam profil instalasi
+// asli — sama akar masalahnya dengan API key global di ~/.wolfspace.
+//
+// Sekarang: nama tetap "WOLFSPACE" (untuk taskbar/OS), tapi userData diisolasi
+// per path absolut ROOT (hash pendek). Clone di folder lain = profil kosong.
+// Override: WOLFSPACE_USER_DATA=<path> atau WOLFSPACE_SHARE_USER_DATA=1 (laci lama).
+const crypto = require("crypto");
 app.setName("WOLFSPACE");
+(function _isolasiUserData() {
+  try {
+    if (process.env.WOLFSPACE_USER_DATA) {
+      app.setPath("userData", path.resolve(process.env.WOLFSPACE_USER_DATA));
+      return;
+    }
+    if (
+      process.env.WOLFSPACE_SHARE_USER_DATA === "1" ||
+      process.env.WOLFSPACE_SHARE_USER_DATA === "true"
+    ) {
+      return; // biarkan default Electron dari setName → %APPDATA%\WOLFSPACE
+    }
+    const rootAbs = path.resolve(ROOT).toLowerCase();
+    const tag = crypto
+      .createHash("sha256")
+      .update(rootAbs)
+      .digest("hex")
+      .slice(0, 12);
+    const isolated = path.join(app.getPath("appData"), "WOLFSPACE-" + tag);
+    app.setPath("userData", isolated);
+  } catch (e) {
+    console.warn("[userData] isolasi gagal, pakai default:", e.message);
+  }
+})();
 
 // Custom app:// scheme serves the UI + studio from disk (no HTTP needed to LOAD
 // the app). Must be declared privileged BEFORE app is ready.
@@ -756,7 +783,9 @@ function apiCall({
       });
     };
     try {
-      core().server.emit("request", req, res);
+      probe.timeSync(req.method + " " + req.url, () =>
+        core().server.emit("request", req, res),
+      );
     } catch (e) {
       return done({
         status: 500,
@@ -807,7 +836,9 @@ function apiStream(
     };
     if (ctl.setCurReq) ctl.setCurReq(res); // cancel â†’ res.destroy() â†’ 'close' â†’ handler aborts
     try {
-      core().server.emit("request", req, res);
+      probe.timeSync("STREAM " + req.method + " " + req.url, () =>
+        core().server.emit("request", req, res),
+      );
     } catch (e) {
       emit("data: " + JSON.stringify({ t: "err", m: e.message }) + "\n\n");
       return resolve();
@@ -819,6 +850,10 @@ function apiStream(
 }
 
 function registerIpc() {
+  ipcMain.on("WOLFSPACE:probe", (_e, d) => {
+    if (d && d.t === "renderer-stop")
+      probe.say("RENDERER-STOP ~" + Math.round(d.overshoot) + "ms");
+  });
   ipcMain.handle("WOLFSPACE:invoke", async (_e, { channel, payload }) => {
     if (channel === "ping") return { ok: true, pong: Date.now() };
     // Native folder picker → path absolut ASLI (di C:, D:, Desktop, mana pun).
@@ -839,6 +874,7 @@ function registerIpc() {
     // under the source root and re-require core. Lets edits to server.cjs/core.js
     // take effect live (front-end edits just need a renderer reload).
     if (channel === "reloadCore") {
+      const t0 = performance.now();
       try {
         const root = unpackedRoot();
         for (const k of Object.keys(require.cache)) {
@@ -846,6 +882,8 @@ function registerIpc() {
         }
         _core = null;
         core();
+        const ms = performance.now() - t0;
+        if (ms >= 100) probe.say("reloadCore " + ms.toFixed(0) + "ms");
         return { ok: true, at: Date.now() };
       } catch (e) {
         return { ok: false, error: e.message };
@@ -899,11 +937,19 @@ function registerIpc() {
     const st = { cancelled: false, req: null, channel, mulai: Date.now() };
     _streams.set(id, st);
     const emit = (msg) => {
-      if (!st.cancelled) {
-        try {
-          e.sender.send("WOLFSPACE:chunk", { id, data: msg });
-        } catch (_) {}
-      }
+      if (st.cancelled) return;
+      const t0 = performance.now();
+      try {
+        e.sender.send("WOLFSPACE:chunk", { id, data: msg });
+      } catch (_) {}
+      const ms = performance.now() - t0;
+      if (ms >= 10)
+        probe.say(
+          "SEND chunk " +
+            ms.toFixed(1) +
+            "ms len=" +
+            String(msg && (msg.length || 0)),
+        );
     };
     const finish = () => {
       _streams.delete(id);
@@ -947,10 +993,14 @@ function registerIpc() {
     // SETIAP reload ditunda tanpa batas dan aplikasi berhenti memperbarui diri
     // tanpa satu pun pesan kesalahan.
     try {
+      const t0 = performance.now();
       Promise.resolve(fn(payload, emit, ctl)).then(finish, (err) => {
         emit({ t: "err", m: (err && err.message) || String(err) });
         finish();
       });
+      const ms = performance.now() - t0;
+      if (ms >= 100)
+        probe.say("STREAM " + channel + " init " + ms.toFixed(0) + "ms");
     } catch (err) {
       emit({ t: "err", m: (err && err.message) || String(err) });
       finish();
@@ -981,7 +1031,16 @@ function migrateOldUserDataOnce() {
     const newLS = path.join(newDir, "Local Storage");
     if (fs.existsSync(newLS)) return; // profil baru sudah punya data — jangan timpa
     const roaming = path.dirname(newDir); // %APPDATA%
-    const candidates = ["quantum", "Electron"]
+    // "WOLFSPACE" (laci bersama lama) HANYA diimpor bila project punya penanda
+    // eksplisit — supaya clone GitHub tidak menelan riwayat UI instalasi asli.
+    const claimLegacyUi = path.join(
+      unpackedRoot(),
+      ".wolfspace",
+      "claim-legacy-ui",
+    );
+    const names = ["quantum", "Electron"];
+    if (fs.existsSync(claimLegacyUi)) names.unshift("WOLFSPACE");
+    const candidates = names
       .map((n) => path.join(roaming, n))
       .filter(
         (p) => p !== newDir && fs.existsSync(path.join(p, "Local Storage")),
@@ -1107,6 +1166,8 @@ const _gcInterval = setInterval(() => {
 _gcInterval.unref(); // jangan tahan proses hanya karena interval ini
 
 app.whenReady().then(() => {
+  probe.startStopProbe();
+  probe.startLoopProbe();
   migrateOldUserDataOnce();
   registerAppProtocol();
   registerIpc();
@@ -1278,6 +1339,7 @@ app.whenReady().then(() => {
                   "[hot-reload] backend changed, reloading core in-memory:",
                   filename,
                 );
+                const t0 = performance.now();
                 try {
                   const rootDir = unpackedRoot();
                   for (const k of Object.keys(require.cache)) {
@@ -1285,6 +1347,9 @@ app.whenReady().then(() => {
                   }
                   _core = null;
                   core();
+                  const ms = performance.now() - t0;
+                  if (ms >= 100)
+                    probe.say("hot-reload core " + ms.toFixed(0) + "ms");
                   console.log("[hot-reload] backend reloaded successfully!");
                 } catch (err) {
                   console.error(

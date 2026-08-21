@@ -11,11 +11,13 @@
 // Everything OS-specific (which shell, how to kill a process tree, how to
 // remap the home dir for a contained env) lives behind this contract so the
 // rest of the codebase (sandbox.cjs, agent tools) stays platform-agnostic.
-'use strict';
+"use strict";
 
 class PlatformAdapter {
   // Human-readable id, e.g. 'windows' | 'macos' | 'linux'.
-  get name() { return 'base'; }
+  get name() {
+    return "base";
+  }
 
   // Capability discovery — the MCP-style handshake. Callers read this and adapt.
   //   processTreeKill: can we terminate the whole child tree, not just the shell?
@@ -27,7 +29,12 @@ class PlatformAdapter {
   //   networkIsolation: can we actually block network for a spawned process?
   //   resourceLimits:   can we cap CPU/memory at the OS level?
   capabilities() {
-    return { processTreeKill: false, fsIsolation: 'none', networkIsolation: false, resourceLimits: false };
+    return {
+      processTreeKill: false,
+      fsIsolation: "none",
+      networkIsolation: false,
+      resourceLimits: false,
+    };
   }
 
   // Return [command, argsArray] to run a shell command line on this OS.
@@ -35,19 +42,41 @@ class PlatformAdapter {
   // isolation (e.g. LinuxAdapter via bubblewrap) use these to scope the
   // sandbox to cwd and decide whether to strip network access; adapters
   // that can't (Windows, or Linux without bwrap installed) just ignore them.
-  shellFor(/* command, opts */) { throw new Error(`${this.name}: shellFor() not implemented`); }
+  shellFor(/* command, opts */) {
+    throw new Error(`${this.name}: shellFor() not implemented`);
+  }
 
   // Extra spawn() options this OS needs (e.g. detached process group on POSIX
   // so the whole tree can be signalled). Merged into the caller's spawn opts.
-  spawnOptions() { return {}; }
+  spawnOptions() {
+    return {};
+  }
 
   // Kill the entire process tree rooted at the given child process object.
-  killTree(/* child */) { throw new Error(`${this.name}: killTree() not implemented`); }
+  killTree(/* child */) {
+    throw new Error(`${this.name}: killTree() not implemented`);
+  }
+
+  // Same, but WITHOUT blocking the calling thread. Required by anything that
+  // runs on Electron's main thread: the whole HTTP server lives there, so a
+  // synchronous taskkill is a frozen window for its entire duration (measured:
+  // 1076 ms median, 1507 ms worst, on every terminal close). Falls back to the
+  // synchronous form so an adapter that has not overridden it still works.
+  killTreeAsync(child) {
+    return new Promise((done) => {
+      try {
+        this.killTree(child);
+      } catch (_) {}
+      done();
+    });
+  }
 
   // Build a contained base environment for a sandbox session: PATH + whatever
   // system vars the shell needs, with the home/temp family remapped to
   // sessionDir so untrusted code sees a contained home instead of the real one.
-  sandboxEnv(/* sessionDir */) { throw new Error(`${this.name}: sandboxEnv() not implemented`); }
+  sandboxEnv(/* sessionDir */) {
+    throw new Error(`${this.name}: sandboxEnv() not implemented`);
+  }
 }
 
 module.exports = { PlatformAdapter };

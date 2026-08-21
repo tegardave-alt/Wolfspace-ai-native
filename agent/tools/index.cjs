@@ -768,7 +768,7 @@ async function _brokeredFileOp(name, args, wsRoot) {
 }
 
 // ── Core tool dispatcher ──
-async function runSelfTool(name, args, emit, context = {}) {
+async function _runSelfToolInner(name, args, emit, context = {}) {
   try {
     // Check if required module is available before dispatching
     const toolModMap = {
@@ -2447,6 +2447,17 @@ async function runSelfTool(name, args, emit, context = {}) {
   } catch (e) {
     _circuitFail(name);
     return { ok: false, output: "error: " + e.message };
+  }
+}
+
+async function runSelfTool(name, args, emit, context = {}) {
+  const _t0 = performance.now();
+  try {
+    return await _runSelfToolInner(name, args, emit, context);
+  } finally {
+    const ms = performance.now() - _t0;
+    if (ms >= 300 && global.__probe && global.__probe.say)
+      global.__probe.say("TOOL " + name + " " + ms.toFixed(0) + "ms");
   }
 }
 

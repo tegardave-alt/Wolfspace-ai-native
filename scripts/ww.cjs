@@ -21,7 +21,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { execFileSync } = require("child_process");
+const { execFileSync, execFile } = require("child_process");
 
 const DEFAULT_ROOT = path.join(
   process.env.USERPROFILE || require("os").homedir(),
@@ -400,6 +400,146 @@ function gitRun(args, cwd) {
   }
 }
 
+// ── Versi TAK-MEMBLOKIR dari gitInfo & listBranches ──
+//
+// Keduanya menjalankan tiga perintah git BERUNTUN lewat execFileSync. Diukur di
+// repo ini: rev-parse 56 ms, status --porcelain 220 ms, log -1 67 ms,
+// for-each-ref 64 ms — jadi /ww/git membekukan thread ~291 ms dan /ww/branches
+// ~194 ms. Karena seluruh server.cjs berjalan di dalam proses utama Electron,
+// itu jendela yang benar-benar membeku, bukan sekadar permintaan yang lama.
+//
+// Ketiganya dijalankan BERBARENGAN (Promise.all), bukan beruntun: mereka tidak
+// saling bergantung, dan yang menentukan lamanya jadi perintah paling lambat
+// saja alih-alih jumlah ketiganya.
+//
+// Yang sinkron TETAP ADA — berkas ini juga dipakai sebagai CLI (lihat main() di
+// bawah), dan di sana tak ada jendela yang bisa membeku.
+// ── Satu hasil dipakai bersama, dan disimpan sebentar ──
+//
+// KENAPA. Terukur pada server yang benar-benar berjalan: /ww/git sehat
+// sendirian (40 ms), tapi di bawah beban ia runtuh —
+//
+//     1 serentak  -> p99   322 ms
+//     8 serentak  -> p99  2023 ms
+//    32 serentak  -> p99  8149 ms   (melewati ambang "Not Responding")
+//
+// Sebabnya BUKAN kode sinkron: rute ini sudah asinkron. Yang langka kemampuan
+// sistem melahirkan proses — tiap permintaan melahirkan tiga proses git, jadi
+// 32 permintaan berarti 96 proses. Yang membuktikannya: throughput rata di
+// 6 rps DI SETIAP tingkat serentak. Menambah beban hanya memperpanjang
+// antrean, tak menambah hasil.
+//
+// Karena itu obatnya bukan paralelisme melainkan MENGURANGI pekerjaan:
+//   1. berbagi hasil — permintaan yang datang selagi satu masih berjalan
+//      menunggu hasil yang itu, bukan melahirkan tiga proses lagi;
+//   2. cache pendek — status git jarang berubah dalam hitungan detik, dan UI
+//      memanggilnya saat menu dibuka.
+//
+// Cache berarti data basi, dan itu ditangani serius: setiap operasi yang
+// MENGUBAH git (commit, pindah/buat/hapus branch) membatalkan cache foldernya.
+// Tanpa itu, pemakai melakukan commit lalu panelnya masih melaporkan keadaan
+// sebelum commit — kesalahan yang jauh lebih buruk daripada lambat.
+const CACHE_MS = 1500;
+// Kuncinya "<jenis>|<dir>", tapi FOLDERNYA DISIMPAN TERPISAH di dalam entri —
+// pembatalan membandingkan nilai itu, bukan mencocokkan akhiran teks kuncinya.
+//
+// Bukan kerapian: versi pertama memakai `k.endsWith(" " + dir)`, dan satu spasi
+// di dalamnya diam-diam tertulis sebagai byte NUL. Pencocokannya jadi selalu
+// gagal — cache tak pernah dibatalkan, dan tak ada satu pun galat. Yang
+// menemukannya cuma uji yang memang menguji pembatalannya. Membandingkan nilai
+// menghapus seluruh kelas kesalahan itu.
+const _cacheGit = new Map(); // kunci -> { dir, waktu, nilai }
+const _jalanGit = new Map(); // kunci -> janji yang sedang berjalan
+
+function _bersamaGit(jenis, dir, buat) {
+  const kunci = jenis + "|" + dir;
+  const c = _cacheGit.get(kunci);
+  if (c && Date.now() - c.waktu < CACHE_MS) return Promise.resolve(c.nilai);
+  const berjalan = _jalanGit.get(kunci);
+  if (berjalan) return berjalan;
+  const janji = buat()
+    .then((nilai) => {
+      _cacheGit.set(kunci, { dir, waktu: Date.now(), nilai });
+      _jalanGit.delete(kunci);
+      return nilai;
+    })
+    .catch((e) => {
+      // Kegagalan TIDAK di-cache: satu git yang gagal karena folder sedang
+      // terkunci akan membekukan jawaban salah selama 1,5 detik berikutnya.
+      _jalanGit.delete(kunci);
+      throw e;
+    });
+  _jalanGit.set(kunci, janji);
+  return janji;
+}
+
+/** Membuang cache untuk satu folder. Dipanggil sesudah git DIUBAH. */
+function lupakanGit(dir) {
+  const cari = String(dir || "");
+  for (const [k, v] of [..._cacheGit.entries()])
+    if (v.dir === cari) _cacheGit.delete(k);
+}
+
+function gitTryAsync(args, cwd) {
+  return new Promise((selesai) => {
+    execFile(
+      "git",
+      args,
+      { cwd, encoding: "utf8", windowsHide: true },
+      (galat, keluar) => selesai(galat ? null : String(keluar).trim()),
+    );
+  });
+}
+async function _gitInfoTarik(dir) {
+  if (!dir || !fs.existsSync(dir)) return { repo: false, error: "not-found" };
+  if (!isRepo(dir)) return { repo: false };
+  const [cabang, porcelain, terakhir] = await Promise.all([
+    gitTryAsync(["rev-parse", "--abbrev-ref", "HEAD"], dir),
+    gitTryAsync(["status", "--porcelain"], dir),
+    gitTryAsync(["log", "-1", "--format=%h\x1f%s\x1f%cr"], dir),
+  ]);
+  const dirtyCount =
+    porcelain == null
+      ? 0
+      : porcelain.split("\n").filter((l) => l.trim()).length;
+  let lastCommit = null;
+  if (terakhir) {
+    const [hash, subject, when] = terakhir.split("\x1f");
+    lastCommit = { hash, subject, when };
+  }
+  return {
+    repo: true,
+    branch: cabang || "?",
+    dirtyCount,
+    dirty: dirtyCount > 0,
+    lastCommit,
+  };
+}
+async function _listBranchesTarik(dir) {
+  if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
+  const [current, daftar] = await Promise.all([
+    gitTryAsync(["rev-parse", "--abbrev-ref", "HEAD"], dir),
+    gitTryAsync(
+      ["for-each-ref", "--format=%(refname:short)", "refs/heads"],
+      dir,
+    ),
+  ]);
+  const branches = (daftar || "")
+    .split("\n")
+    .map((s) => s.trim())
+    .filter(Boolean);
+  return { repo: true, current: current || null, branches };
+}
+
+// Pembungkusnya: SATU permintaan git per folder per 1,5 detik, berapa pun
+// jumlah pemanggil yang datang bersamaan.
+function gitInfoAsync(dir) {
+  return _bersamaGit("info", dir, () => _gitInfoTarik(dir));
+}
+function listBranchesAsync(dir) {
+  return _bersamaGit("branches", dir, () => _listBranchesTarik(dir));
+}
+
 // Daftar branch lokal + branch aktif. Tak melempar.
 function listBranches(dir) {
   if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
@@ -520,7 +660,10 @@ module.exports = {
   toBranch,
   isRepo,
   gitInfo,
+  gitInfoAsync,
+  lupakanGit,
   listBranches,
+  listBranchesAsync,
   switchBranch,
   createBranch,
   renameBranch,

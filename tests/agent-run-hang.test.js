@@ -85,7 +85,7 @@ describe("MCP getTools() tak lagi diam tanpa tanda selama sampai 60 detik", () =
     const i = SRC.indexOf("mcpClient.getTools()");
     const before = SRC.slice(Math.max(0, i - 500), i);
     expect(before).toMatch(
-      /emit\(\{\s*t: "model_wait", m: "Menyiapkan koneksi MCP…" \}\)/,
+      /emit\(\{\s*t: "model_wait", m: "Preparing MCP connection…" \}\)/,
     );
     expect(before).toMatch(/setInterval\(\(\) => \{/);
   });

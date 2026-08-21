@@ -94,8 +94,8 @@ describe("panel todowrite di atas kotak ketik", () => {
     // daftarnya menetap di atas kotak ketik sampai ada todowrite berikutnya.
     expect(KOMP).toMatch(/const semuaSelesai = selesai === todos\.length;/);
     expect(KOMP).toMatch(/const mandek = !busy && !semuaSelesai;/);
-    expect(KOMP).toMatch(/const bisaTutup = semuaSelesai \|\| mandek;/);
-    expect(KOMP).toMatch(/\{bisaTutup && \(/);
+    expect(KOMP).toMatch(/const canClose = semuaSelesai \|\| mandek;/);
+    expect(KOMP).toMatch(/\{canClose && \(/);
     expect(KOMP).toMatch(/className="todo-panel-tutup"/);
     expect(KOMP).toMatch(/onClick=\{\(\) => onClear && onClear\(\)\}/);
     // `busy` harus benar-benar sampai ke panel; tanpa itu `mandek` selalu true
@@ -121,7 +121,7 @@ describe("panel todowrite di atas kotak ketik", () => {
   test("tombol tutup punya nama untuk pembaca layar", () => {
     // Isinya cuma karakter "✕" — tanpa label, pembaca layar hanya membacakan
     // simbolnya.
-    expect(KOMP).toMatch(/aria-label="Tutup daftar tugas"/);
+    expect(KOMP).toMatch(/aria-label="Close task list"/);
   });
 
   test("kemajuan terbaca tanpa menghitung sendiri", () => {

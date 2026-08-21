@@ -241,6 +241,7 @@ function qGrep(pattern, options = {}) {
 }
 
 async function qSyntaxOk(absPath) {
+  const _t0 = performance.now();
   const ext = path.extname(absPath).toLowerCase();
   try {
     if (ext === ".cjs" || ext === ".js") {
@@ -267,6 +268,10 @@ async function qSyntaxOk(absPath) {
       ok: false,
       error: (((e.stderr || "") + "").trim() || e.message).slice(0, 500),
     };
+  } finally {
+    const ms = performance.now() - _t0;
+    if (ms >= 100 && global.__probe && global.__probe.say)
+      global.__probe.say("qSyntaxOk " + ext + " " + ms.toFixed(0) + "ms");
   }
 }
 

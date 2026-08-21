@@ -129,7 +129,15 @@ const https = require("https");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { exec, spawn } = require("child_process");
+// execSync IKUT diimpor. Sebelumnya tidak, sementara dua fungsi memakainya
+// tanpa require sendiri — detectShell() dan killPort(). Keduanya melempar
+// ReferenceError yang ditelan `catch` kosong di sekitarnya, jadi tak ada satu
+// pun pesan galat. Akibatnya: detectShell SELALU jatuh ke cmd.exe di mesin mana
+// pun meski PowerShell terpasang, dan killPort tak pernah membunuh apa pun.
+//
+// (_pidPemegangPort TIDAK terkena — ia punya require("child_process") sendiri
+// di dalam badannya.)
+const { exec, spawn, execSync } = require("child_process");
 const util = require("util");
 const execP = util.promisify(exec);
 // node-pty adalah modul NATIVE, jadi ia bisa saja tak tersedia di platform tempat
@@ -1696,12 +1704,34 @@ const Q_ALLOWED =
 // Never touch these even if they match above (secrets / generated / heavy).
 const Q_FORBID =
   /(^|[\\/])(cloud-keys\.json|node_modules|\.git|_agent_backups|dist-app|build|\.dart_tool|workspace)([\\/]|$)/;
+// Berkas rahasia. Dulu pola ini hidup di dalam qWalk saja, yang HANYA menyaring
+// pembacaan — Q_FORBID tak menyebut .env/.pem/.key sama sekali. Begitu ada rute
+// TULIS (/ww/tulis-berkas), selisih itu jadi lubang: berkas yang disembunyikan
+// dari pohon berkas tetap bisa ditimpa. Satu pola dipakai dua sisi supaya
+// keduanya tak bisa menyimpang lagi.
+const Q_RAHASIA =
+  /(cloud-keys\.json|\.env|\.pem$|\.key$|secret|credential|token)/i;
+// Kurungan untuk rute yang MENULIS ke workspace atas perintah renderer. Satu
+// fungsi dipakai semua rute tulis: dua salinan aturan yang sama pasti akan
+// menyimpang, dan yang menyimpang di sini adalah batas keamanan.
+function _kurungDiAkar(root, p) {
+  if (!root || !p) return { kode: 400, galat: "root and path are required" };
+  const akar = path.resolve(String(root));
+  const berkas = path.resolve(String(p));
+  // path.relative lebih dapat dipercaya daripada startsWith: "C:\a-lain"
+  // diawali "C:\a" secara tekstual, tapi bukan di dalamnya.
+  const dalam = path.relative(akar, berkas);
+  if (!dalam || dalam.startsWith("..") || path.isAbsolute(dalam))
+    return { kode: 403, galat: "outside the workspace root" };
+  if (Q_FORBID.test(berkas) || Q_RAHASIA.test(path.basename(berkas)))
+    return { kode: 403, galat: "protected file" };
+  return { akar, berkas, dalam };
+}
 function qWalk(filterRe) {
   const skip =
     /^(node_modules|\.git|_agent_backups|dist-app|workspace|build|\.dart_tool|vendor)$/;
   // NEVER expose secrets via LIST/GREP/GLOB Ã¢â‚¬â€ these read file *contents*.
-  const secret =
-    /(cloud-keys\.json|\.env|\.pem$|\.key$|secret|credential|token)/i;
+  const secret = Q_RAHASIA;
   const out = [];
   (function walk(dir, depth) {
     if (out.length > 600 || depth > 5) return;
@@ -2798,6 +2828,7 @@ const _snapshotRoutes = require("./server/routes/snapshots.cjs");
 const _openclawRoutes = require("./server/routes/openclaw.cjs");
 const _hunkRoutes = require("./server/routes/hunks.cjs");
 const _cloudRoutes = require("./server/routes/cloud.cjs");
+const _dapRoutes = require("./server/routes/dap.cjs");
 
 // Recover tool calls that a model wrote as plain text instead of real tool_calls,
 // e.g. `<function=read={"path":"x"}>` or `<function=list>` (groq/llama quirk).
@@ -2842,20 +2873,107 @@ function generateTerminalId() {
   );
 }
 
+// ── Memilih berkas pra-kompres yang boleh dikirim ──
+//
+// Mengembalikan null bila tak ada yang cocok — pemanggil lalu mengirim aslinya.
+//
+// Kesegaran DIPERIKSA, bukan diasumsikan. Berkas .br yang lebih tua dari
+// sumbernya berarti aset sudah berubah tapi belum dikompres ulang: pemakai akan
+// menerima versi LAMA, dan tak ada satu pun tanda bahwa itu yang terjadi —
+// bentuk kegagalan paling membingungkan yang bisa dibuat lapisan ini.
+function _pilihKompresi(req, berkasAsli) {
+  // HANYA untuk permintaan yang datang lewat soket sungguhan.
+  //
+  // Di aplikasi desktop, electron/main.js membuat req/res SINTETIS dan membaca
+  // balasannya sebagai `Buffer.concat(chunks).toString("utf8")` — teks. Byte
+  // brotli yang dipaksa jadi teks UTF-8 menghasilkan sampah, dan sampah itu
+  // tak akan memberi galat apa pun: aset yang dimuat hanya diam-diam rusak.
+  //
+  // Hari ini jalur itu memang tak pernah mengirim accept-encoding, jadi cabang
+  // ini tak pernah menyala di sana. Tapi itu keselamatan yang kebetulan —
+  // menambahkan satu header di masa depan sudah cukup merusaknya. Adanya
+  // soket adalah pembeda yang tak bisa keliru.
+  if (!req.socket) return null;
+  const terima = String(
+    (req.headers && (req.headers["accept-encoding"] || "")) || "",
+  ).toLowerCase();
+  if (!terima) return null;
+  let stAsli;
+  try {
+    stAsli = fs.statSync(berkasAsli);
+  } catch (_) {
+    return null;
+  }
+  // Brotli lebih dulu: pada aset di sini ia rata-rata 24% lebih kecil dari gzip
+  // (4,75 MB vs 6,23 MB), dan keduanya sama-sama sudah jadi.
+  const calon = [
+    ["br", berkasAsli + ".br"],
+    ["gzip", berkasAsli + ".gz"],
+  ];
+  for (const [encoding, berkas] of calon) {
+    if (terima.indexOf(encoding) < 0) continue;
+    try {
+      const st = fs.statSync(berkas);
+      if (st.mtimeMs < stAsli.mtimeMs) continue; // basi -> jangan dipakai
+      return { encoding, berkas };
+    } catch (_) {}
+  }
+  return null;
+}
+
 // Determine which shell to use based on the platform.
+// ── Mencari program di PATH TANPA menjalankan proses ──
+//
+// Versi sebelumnya memanggil `where "<nama>"` lewat execSync. Begitu execSync
+// benar-benar terikat (dulu ia melempar ReferenceError, jadi ongkosnya nol dan
+// hasilnya selalu salah), ongkos itu muncul utuh: terukur 2008 ms MENGUNCI
+// THREAD pada satu kali /api/terminal/open — hampir seluruhnya dihabiskan
+// `where "pwsh.exe"` yang menunggu sampai batas 2000 ms karena pwsh memang tak
+// terpasang. Seluruh server.cjs berjalan DI DALAM proses utama Electron, jadi
+// dua detik itu adalah dua detik jendela membeku, dan tombol Run membuka
+// terminal — jadi ia terasa persis saat pemakai menekan Run.
+//
+// Yang dikerjakan `where` sebenarnya cuma menelusuri PATH. Itu bisa dilakukan
+// dengan fs.existsSync: tak ada proses yang dilahirkan, terukur di bawah 1 ms.
+function _adaDiPath(nama) {
+  const dirs = String(process.env.PATH || "").split(path.delimiter);
+  // Nama telanjang dicoba DULU, lalu tiap akhiran PATHEXT. Tanpa itu,
+  // memeriksa "python" atau "dlv" di Windows selalu menjawab tidak ada:
+  // yang benar-benar duduk di PATH adalah "python.exe" dan "dlv.exe", dan
+  // pemanggil yang menuliskan akhirannya sendiri (mis. "powershell.exe")
+  // tetap benar karena nama telanjangnya yang dicoba lebih dulu.
+  const akhiran =
+    process.platform === "win32"
+      ? ["", ...String(process.env.PATHEXT || ".EXE;.CMD;.BAT").split(";")]
+      : [""];
+  for (const d of dirs) {
+    if (!d) continue;
+    for (const a of akhiran) {
+      try {
+        if (fs.existsSync(path.join(d, nama + a))) return true;
+      } catch (_) {}
+    }
+  }
+  return false;
+}
+// Debugger yang dikenal panel Code, dan biner yang harus ada agar ia berguna.
+// Kuncinya SAMA dengan jenisDebugger() di public/app.jsx — kalau menyimpang,
+// yang terjadi bukan galat melainkan tombol yang menilai debugger yang salah.
+const _BINER_DEBUG = { node: "node", pdb: "python", rdbg: "rdbg", dlv: "dlv" };
+let _debugTersedia = null;
+
+// Hasilnya di-CACHE: shell yang terpasang tak berubah di tengah sesi, sementara
+// tanpa cache biayanya dibayar ulang tiap kali terminal dibuka.
+let _shellTerpilih = null;
 function detectShell() {
+  if (_shellTerpilih) return _shellTerpilih;
   if (process.platform === "win32") {
     // Prefer PowerShell Core, then Windows PowerShell, then cmd
     const candidates = ["pwsh.exe", "powershell.exe", "cmd.exe"];
-    for (const c of candidates) {
-      try {
-        execSync(`where "${c}"`, { stdio: "ignore", timeout: 2000 });
-        return c;
-      } catch {}
-    }
-    return "cmd.exe";
+    for (const c of candidates) if (_adaDiPath(c)) return (_shellTerpilih = c);
+    return (_shellTerpilih = "cmd.exe");
   }
-  return process.env.SHELL || "/bin/bash";
+  return (_shellTerpilih = process.env.SHELL || "/bin/bash");
 }
 
 // Open a new PTY session rooted at the workspace directory.
@@ -2950,11 +3068,24 @@ function resizeTerminal(id, cols, rows) {
 // argumen sinyal, plus menonaktifkan pendaftar konsol node-pty yang crash.
 // Penghapusan dari map tak perlu ditunda lagi — pembunuhannya sinkron, jadi
 // jendela 200 ms itu hanya menunda tanpa menjamin apa pun.
+// TIDAK memblokir. Ini jalur HTTP/UI, dan seluruh server.cjs berjalan di dalam
+// proses utama Electron — `taskkill /F /T` lewat execSync terukur mengunci
+// thread 1076 ms (terburuk 1507 ms) tiap kali panel terminal ditutup, dan itu
+// jendela yang benar-benar membeku.
+//
+// Sesi dihapus dari map SEKARANG, sebelum pembunuhannya selesai. Bukan
+// kelalaian: begitu ia dihapus, tak ada lagi yang bisa menulis atau membaca
+// PTY itu, jadi /api/terminal/list langsung jujur — sementara menunggu
+// taskkill hanya menahan jawaban tanpa mengubah apa pun yang terlihat.
 function closeTerminalSession(id) {
   const session = terminalSessions.get(id);
   if (!session) return;
-  coreTerminal.killPty(session.pty);
   terminalSessions.delete(id);
+  coreTerminal.killPtyAsync(session.pty).catch((e) =>
+    dlog("terminal", "warn", "gagal menutup PTY " + id, {
+      galat: String((e && e.message) || e),
+    }),
+  );
 }
 
 const server = http.createServer(async (req, res) => {
@@ -3010,6 +3141,9 @@ const server = http.createServer(async (req, res) => {
     })
   )
     return;
+  // Kurungannya DIOPER, bukan disalin: `program` datang dari renderer, dan dua
+  // salinan aturan keamanan yang sama pasti akan menyimpang.
+  if (_dapRoutes.handle(req, res, { kurungDiAkar: _kurungDiAkar })) return;
   if (
     _terminalRoutes.handle(req, res, {
       terminalSessions,
@@ -4034,6 +4168,276 @@ const server = http.createServer(async (req, res) => {
   // Logic saat web-dev). Rata (flattened) jadi [{ name, dir, depth }], folder dulu
   // lalu file (A→Z), lewati folder berat/tak relevan, dibatasi agar tak membeku
   // pada repo besar. Tak pernah 500 karena path tak ada → { entries: [] }.
+  // ── Menyimpan suntingan manual dari panel kode ──
+  //
+  // Panel kode di tampilan Logic sebelumnya BACA-SAJA: `readOnly: true` di
+  // editornya, dan tak ada satu pun rute yang bisa menuliskannya kembali.
+  // Melonggarkan editornya saja tak cukup — tanpa rute ini, ketikan pemakai
+  // hidup di memori lalu hilang begitu berkas lain dibuka.
+  //
+  // KURUNGANNYA DI SINI, BUKAN DI UI. Panel mengirim path apa adanya, dan path
+  // itu datang dari renderer — jadi ia tak boleh dipercaya. Tiga lapis:
+  //   1. harus DI DALAM akar yang dikirim, dibandingkan sesudah path.resolve
+  //      (bukan sesudah pemeriksaan tekstual, yang bisa ditembus "..")
+  //   2. akarnya sendiri harus akar kerja yang sah
+  //   3. Q_FORBID + Q_RAHASIA tetap berlaku — .git, node_modules, build, dan
+  //      berkas rahasia (.env/.pem/.key) yang memang sudah disembunyikan dari
+  //      pohon berkas, jadi ia juga tak boleh bisa ditimpa dari sini
+  if (
+    req.method === "POST" &&
+    (req.url === "/ww/tulis-berkas" || req.url === "/ww/buat-berkas")
+  ) {
+    const membuat = req.url === "/ww/buat-berkas";
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const tolak = (kode, pesan) => {
+        res.writeHead(kode, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: pesan }));
+      };
+      let p;
+      try {
+        p = JSON.parse(body);
+      } catch (e) {
+        return tolak(400, "invalid json");
+      }
+      const kurung = _kurungDiAkar(p.root, p.path);
+      if (kurung.galat) return tolak(kurung.kode, kurung.galat);
+      const { akar, berkas, dalam } = kurung;
+      const isi = String(p.content == null ? "" : p.content);
+      // Creating a FOLDER runs the same confinement and the same "must not
+      // already exist" rule; only the last step differs. Splitting it into its
+      // own route would mean a second copy of the guard, and a security rule
+      // that exists twice is a security rule that will drift.
+      if (membuat && p.folder === true) {
+        if (fs.existsSync(berkas)) return tolak(409, "already exists");
+        try {
+          fs.mkdirSync(berkas, { recursive: true });
+        } catch (e) {
+          return tolak(500, e.message);
+        }
+        dlog("http", "info", "folder baru dibuat dari pohon", { path: dalam });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(
+          JSON.stringify({
+            ok: true,
+            folder: true,
+            path: dalam.split(String.fromCharCode(92)).join("/"),
+          }),
+        );
+      }
+      try {
+        if (membuat) {
+          // Membuat TIDAK BOLEH menimpa. Tanpa ini, mengetik nama berkas yang
+          // sudah ada di kotak "berkas baru" akan mengosongkannya diam-diam.
+          if (fs.existsSync(berkas)) return tolak(409, "file already exists");
+          // Nama bertingkat ("src/util/a.js") membuat foldernya sekalian,
+          // sama seperti VS Code. Tanpa ini writeFileSync gagal ENOENT.
+          const induk = path.dirname(berkas);
+          if (induk !== akar) fs.mkdirSync(induk, { recursive: true });
+          // wx: gagal kalau berkas muncul di antara existsSync dan tulis.
+          fs.writeFileSync(berkas, isi, { encoding: "utf8", flag: "wx" });
+        } else {
+          fs.writeFileSync(berkas, isi, "utf8");
+        }
+      } catch (e) {
+        if (e && e.code === "EEXIST") return tolak(409, "file already exists");
+        return tolak(500, e.message);
+      }
+      dlog(
+        "http",
+        "info",
+        membuat
+          ? "berkas baru dibuat dari pohon"
+          : "berkas disimpan dari panel kode",
+        { path: dalam, bytes: isi.length },
+      );
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, path: dalam.replace(/\\/g, "/") }));
+    });
+    return;
+  }
+
+  // ── POST /ww/hapus-berkas — deleting a file from the tree ──
+  //
+  // Same confinement as writing and creating: _kurungDiAkar, so there is ONE
+  // rule and not three copies that can drift. That matters more here than
+  // anywhere else — a path escape on write corrupts a file, a path escape on
+  // delete removes one.
+  //
+  // FILES ONLY. A directory is refused outright rather than removed
+  // recursively: one mis-click on a folder node would otherwise take the whole
+  // subtree, and nothing in this app can put it back.
+  if (req.method === "POST" && req.url === "/ww/hapus-berkas") {
+    let body = "";
+    req.on("data", (c) => (body += c));
+    req.on("end", () => {
+      const tolak = (kode, pesan) => {
+        res.writeHead(kode, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: pesan }));
+      };
+      let p;
+      try {
+        p = JSON.parse(body || "{}");
+      } catch (e) {
+        return tolak(400, "invalid json");
+      }
+      const kurung = _kurungDiAkar(p.root, p.path);
+      if (kurung.galat) return tolak(kurung.kode, kurung.galat);
+      const { berkas, dalam } = kurung;
+      let st;
+      try {
+        st = fs.statSync(berkas);
+      } catch (e) {
+        return tolak(404, "file not found");
+      }
+      // ── Folders ──
+      //
+      // Deleting one takes everything inside it, so it demands an EXPLICIT
+      // `folder: true`. Without that flag a directory is still refused: a
+      // mis-click on a folder row must never be able to remove a subtree just
+      // because the row happened to be a folder.
+      if (st.isDirectory()) {
+        if (p.folder !== true)
+          return tolak(400, "folders need folder:true to be deleted");
+        // Counting first, and it is not decoration. The file tree only shows
+        // files the agent has touched, so its own count would UNDERSTATE the
+        // damage — the number the user is asked to approve has to come from
+        // the disk.
+        let jumlah = 0;
+        const hitung = (d) => {
+          let isi = [];
+          try {
+            isi = fs.readdirSync(d, { withFileTypes: true });
+          } catch (_) {
+            return;
+          }
+          for (const e of isi) {
+            jumlah++;
+            if (e.isDirectory()) hitung(path.join(d, e.name));
+          }
+        };
+        hitung(berkas);
+        if (p.hitung === true) {
+          res.writeHead(200, { "Content-Type": "application/json" });
+          return res.end(JSON.stringify({ ok: true, folder: true, jumlah }));
+        }
+        try {
+          fs.rmSync(berkas, { recursive: true, force: true });
+        } catch (e) {
+          return tolak(500, e.message);
+        }
+        dlog("http", "info", "folder dihapus dari pohon", {
+          path: dalam,
+          jumlah,
+        });
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(
+          JSON.stringify({
+            ok: true,
+            folder: true,
+            jumlah,
+            path: dalam.split(String.fromCharCode(92)).join("/"),
+          }),
+        );
+      }
+      if (p.hitung === true) {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        return res.end(JSON.stringify({ ok: true, folder: false, jumlah: 0 }));
+      }
+      try {
+        fs.unlinkSync(berkas);
+      } catch (e) {
+        return tolak(500, e.message);
+      }
+      dlog("http", "info", "berkas dihapus dari pohon", { path: dalam });
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ ok: true, path: dalam.replace(/\\/g, "/") }));
+    });
+    return;
+  }
+
+  // ── GET /debug/tersedia — debugger mana yang BENAR-BENAR terpasang ──
+  //
+  // Tanpa ini, tombol Debug menyala hanya berdasarkan EKSTENSI berkas. Buka
+  // .rb di mesin tanpa rdbg, tekan Debug: perintahnya terkirim, gagal di
+  // terminal, tapi UI tetap menyatakan "Sesi hidup · rdbg" — keadaan yang
+  // dilaporkan aplikasi tak sama dengan keadaan yang sebenarnya.
+  //
+  // Memakai _adaDiPath (menelusuri PATH lewat fs), bukan menjalankan
+  // "<debugger> --version": melahirkan empat proses di thread utama Electron
+  // adalah persis kesalahan yang bikin jendela membeku 2 detik dulu.
+  if (req.method === "GET" && req.url.startsWith("/debug/tersedia")) {
+    if (!_debugTersedia) {
+      _debugTersedia = {};
+      for (const [nama, biner] of Object.entries(_BINER_DEBUG))
+        _debugTersedia[nama] = _adaDiPath(biner);
+    }
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(_debugTersedia));
+    return;
+  }
+
+  // ── GET /ww/pustaka?path=<akar> — daftar pustaka untuk saran pengetikan ──
+  //
+  // Yang muncul di editor saat mengetik `require("` atau `import … from "`.
+  // Sumbernya MANIFES proyek (package.json / requirements.txt), bukan isi
+  // node_modules: menelusuri node_modules berarti ribuan folder di thread yang
+  // sama dengan yang menggambar jendela, dan hasilnya pun lebih buruk —
+  // dependensi transitif ikut tersaran padahal bukan milik proyek ini.
+  if (req.method === "GET" && req.url.startsWith("/ww/pustaka")) {
+    const kirim = (isi) => {
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(isi));
+    };
+    let akar;
+    try {
+      akar = new URL(req.url, "http://x").searchParams.get("path") || "";
+    } catch (_) {
+      akar = "";
+    }
+    if (!akar) return kirim({ js: [], py: [], builtin: [] });
+    const bacaAman = (p) => {
+      try {
+        return fs.readFileSync(path.join(akar, p), "utf8");
+      } catch (_) {
+        return null;
+      }
+    };
+    let js = [];
+    const pkg = bacaAman("package.json");
+    if (pkg) {
+      try {
+        const j = JSON.parse(pkg);
+        js = Object.keys({
+          ...(j.dependencies || {}),
+          ...(j.devDependencies || {}),
+          ...(j.peerDependencies || {}),
+        });
+      } catch (_) {}
+    }
+    let py = [];
+    const reqs = bacaAman("requirements.txt");
+    if (reqs)
+      py = reqs
+        .split("\n")
+        .map((b) => b.trim())
+        .filter((b) => b && !b.startsWith("#"))
+        // "paket==1.2.3", "paket[extra]>=2" -> "paket"
+        .map((b) => b.split(/[=<>!~\[; ]/)[0].trim())
+        .filter(Boolean);
+    kirim({
+      js: js.sort(),
+      py: py.sort(),
+      // Modul bawaan Node, diambil dari runtime — bukan daftar yang ditulis
+      // tangan lalu basi diam-diam tiap kali Node naik versi.
+      builtin: require("module")
+        .builtinModules.filter((m) => !m.startsWith("_"))
+        .sort(),
+    });
+    return;
+  }
+
   if (req.method === "GET" && req.url.startsWith("/ww/tree")) {
     try {
       const qp = new URL(req.url, "http://x").searchParams;
@@ -4521,7 +4925,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const q = new URL(req.url, "http://x").searchParams.get("path") || "";
       const ww = require("./scripts/ww.cjs");
-      const info = ww.gitInfo(q);
+      // Versi async: yang sinkron menjalankan TIGA git beruntun dan membekukan
+      // thread utama ~291 ms tiap kali menu git sebuah workspace dibuka.
+      const info = await ww.gitInfoAsync(q);
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify(info));
     } catch (e) {
@@ -4573,8 +4979,9 @@ const server = http.createServer(async (req, res) => {
     try {
       const q = new URL(req.url, "http://x").searchParams.get("path") || "";
       const ww = require("./scripts/ww.cjs");
+      const daftar = await ww.listBranchesAsync(q);
       res.writeHead(200, { "Content-Type": "application/json" });
-      return res.end(JSON.stringify(ww.listBranches(q)));
+      return res.end(JSON.stringify(daftar));
     } catch (e) {
       res.writeHead(500, { "Content-Type": "application/json" });
       return res.end(JSON.stringify({ repo: false, error: e.message }));
@@ -4617,6 +5024,17 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         out = { ok: false, err: e.message };
       }
+      // Cache /ww/git dan /ww/branches DIBATALKAN di sini. Semua yang di atas
+      // MENGUBAH keadaan git, dan tanpa ini pemakai melakukan commit lalu
+      // panelnya masih melaporkan keadaan sebelum commit selama 1,5 detik —
+      // kesalahan yang jauh lebih buruk daripada lambat.
+      //
+      // Dibatalkan apa pun hasilnya, termasuk saat gagal: operasi yang gagal
+      // di tengah jalan tetap bisa meninggalkan keadaan yang berbeda.
+      try {
+        ww.lupakanGit(b.path);
+        if (b.newName) ww.lupakanGit(b.newName);
+      } catch (_) {}
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(out || { ok: false, err: "no-op" }));
     });
@@ -4897,6 +5315,31 @@ const server = http.createServer(async (req, res) => {
       const ct =
         types[path.extname(filePath).toLowerCase()] ||
         "application/octet-stream";
+
+      // ── Menyajikan berkas yang SUDAH dikompres ──
+      //
+      // Hasil scripts/kompres-aset.cjs, bukan dikompres di sini. Bedanya
+      // menentukan: memampatkan per permintaan berarti CPU di proses utama
+      // Electron tiap kali aset diminta — dan brotli kualitas 11 terukur
+      // mengunci thread 913 ms untuk satu berkas 213 KB. Yang sudah jadi cuma
+      // dikirim, jadi ongkos runtime-nya benar-benar nol.
+      //
+      // Aset public/ seluruhnya 26,35 MB mentah -> 4,75 MB brotli (82% lebih
+      // kecil). Yang terbesar Monaco, dan ia diminta setiap kali aplikasi
+      // dibuka di mode browser.
+      const pilih = _pilihKompresi(req, filePath);
+      if (pilih) {
+        res.writeHead(200, {
+          "Content-Type": ct + "; charset=utf-8",
+          "Cache-Control": "no-cache",
+          "Content-Encoding": pilih.encoding,
+          // Tanpa Vary, perantara mana pun boleh menyajikan balasan
+          // ber-brotli kepada klien yang tak menyanggupinya.
+          Vary: "Accept-Encoding",
+        });
+        return fs.createReadStream(pilih.berkas).pipe(res);
+      }
+
       // no-cache: Electron's disk cache otherwise keeps serving stale app.jsx
       // after sync-app.ps1 updates the files
       res.writeHead(200, {

@@ -194,8 +194,13 @@ HTML/CSS still preview live in an iframe, and the agent auto-renders `.html` fil
 
 Configure everything in `config.json`: models/ports and local model dir. (The `runners`
 block is vestigial — see **Languages** above.)
-Cloud keys are stored server-side in `~/.wolfspace/cloud-keys.json` — outside the project
-tree, never in the browser, never committed. MCP servers live in `config/mcp.json`
+Cloud keys are stored server-side in **`<project>/.wolfspace/cloud-keys.json`**
+(gitignored) — **per clone / per folder**, never in the browser, never committed.
+A fresh `git clone` starts with **no** keys and does **not** inherit keys from another
+WOLFSPACE folder on the same PC. (Older builds used one shared `~/.wolfspace/cloud-keys.json`
+for every copy; that is off by default. Opt-in: `WOLFSPACE_SHARE_KEYS=1`, or one-shot
+`WOLFSPACE_IMPORT_HOME_KEYS=1`.) Electron UI profile is isolated per project path under
+`%APPDATA%\WOLFSPACE-<hash>/`. MCP servers live in `config/mcp.json`
 (see `config/mcp.example.json`), which is likewise untracked.
 
 ## Architecture
