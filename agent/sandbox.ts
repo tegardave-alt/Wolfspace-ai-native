@@ -3,14 +3,63 @@
 // Provides capability-based filesystem access, resource limits,
 // workspace mirroring, and execution audit for safe agent code execution.
 
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const { exec, spawn, execSync } = require("child_process");
-const util = require("util");
+// import, not require, so this file is a MODULE. A .ts file with neither
+// import nor export is treated by TypeScript as a global script, which makes
+// `fs`, `path` and friends collide with the same names in other .ts files.
+// The hook in scripts/ts-register.cjs converts the module form at load time —
+// see the note there about which entry points must install it.
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { exec, spawn, execSync } from "child_process";
+import * as util from "util";
+
 const execP = util.promisify(exec);
 const { dlog } = require("./debug.cjs");
 const { getPlatformAdapter } = require("./platform/index.cjs");
+
+/** Read/write permission over specific directory trees. */
+interface OpsiKapabilitas {
+  readRoots?: string[];
+  writeRoots?: string[];
+  denyPaths?: RegExp[];
+}
+
+/** Options for creating a sandbox session; every field has a default. */
+interface OpsiSesi extends OpsiKapabilitas {
+  adapter?: any;
+  timeout?: number;
+  maxOutput?: number;
+  /** false means the network is OFF; anything else allows it. */
+  network?: boolean;
+}
+
+/** One line of the execution audit journal. */
+interface EntriAudit {
+  ts: number;
+  action: string;
+  [k: string]: unknown;
+}
+
+// Result of a single execution inside the sandbox.
+//
+// The shape is READ from the actual finish() payloads rather than invented:
+// output is ONE field (stdout, or stderr when stdout is empty, truncated at
+// maxOutput), and `error` appears only on failure. The first version of this
+// interface guessed stdout/stderr/code and tsc rejected it in five places —
+// the same lesson the agent-events contract taught.
+interface HasilEksekusi {
+  ok: boolean;
+  output: string;
+  error?: string;
+  /** Attached by sandboxRun(), not by exec(). */
+  sessionId?: string;
+  auditTrail?: string;
+  sandboxDir?: string;
+  terkurungAc?: boolean;
+  mirrorErrors?: string[];
+  [k: string]: unknown;
+}
 
 const QROOT = path.resolve(__dirname, "..");
 
@@ -19,7 +68,11 @@ const QROOT = path.resolve(__dirname, "..");
 // Inspired by @openclaw/fs-safe: capability-style filesystem roots.
 
 class CapabilityFS {
-  constructor(opts = {}) {
+  readRoots: string[];
+  writeRoots: string[];
+  denyPaths: RegExp[];
+
+  constructor(opts: OpsiKapabilitas = {}) {
     this.readRoots = (opts.readRoots || []).map((r) => path.resolve(r));
     this.writeRoots = (opts.writeRoots || []).map((r) => path.resolve(r));
     this.denyPaths = opts.denyPaths || [
@@ -91,7 +144,19 @@ class CapabilityFS {
 // ── Sandbox execution session ──
 // Each session is a temporary workspace with mirrored input files.
 class SandboxSession {
-  constructor(opts = {}) {
+  id: string;
+  dir: string;
+  caps: CapabilityFS;
+  adapter: any;
+  timeout: number;
+  maxOutput: number;
+  networkAllowed: boolean;
+  /** Set by exec(): whether the command was actually AppContainer-wrapped. */
+  terkurungAc?: boolean;
+  auditLog: EntriAudit[];
+  _closed: boolean;
+
+  constructor(opts: OpsiSesi = {}) {
     this.id =
       "sbx-" + Date.now() + "-" + Math.random().toString(36).slice(2, 7);
     this.dir = fs.mkdtempSync(path.join(os.tmpdir(), this.id + "-"));
@@ -104,7 +169,7 @@ class SandboxSession {
     this._closed = false;
   }
 
-  _audit(action, detail) {
+  _audit(action: string, detail?: Record<string, unknown>): EntriAudit {
     const entry = { ts: Date.now(), action, ...detail };
     this.auditLog.push(entry);
     dlog("sandbox", "info", action, { session: this.id, ...detail });
@@ -139,17 +204,18 @@ class SandboxSession {
       fs.cpSync(src, absDest, { recursive: true });
     } else {
       fs.mkdirSync(path.dirname(absDest), { recursive: true });
-      // ATOMIK: salin ke berkas sementara di direktori yang SAMA, lalu rename.
+      // ATOMIC: copy to a temp file in the SAME directory, then rename.
       //
-      // copyFileSync membuka tujuan dengan O_TRUNC — ia MEMOTONG berkas user
-      // lebih dulu, baru menulis. Terukur: tujuan 5000 byte menjadi 6 byte
-      // seketika. Kalau proses mati di antara keduanya, yang tersisa berkas
-      // terpotong; dan inilah jalur yang dipakai SETIAP tulis/edit agent.
+      // copyFileSync opens the destination with O_TRUNC — it TRUNCATES the
+      // target file first and writes afterwards. Measured: a 5000-byte
+      // destination became 6 bytes instantly. If the process dies in
+      // between, what remains is a truncated file — and this is the path
+      // EVERY agent write and edit goes through.
       //
-      // rename dalam satu volume bersifat atomik di NTFS maupun POSIX: tujuan
-      // berisi versi lama ATAU versi baru, tak pernah setengah. Temp sengaja
-      // bersebelahan dengan tujuan — beda volume membuat rename jatuh ke
-      // salin-lalu-hapus, dan jaminannya hilang.
+      // A same-volume rename is atomic on NTFS and POSIX alike: the target
+      // holds either the old version or the new one, never half of either.
+      // The temp file sits deliberately beside the target — across volumes
+      // rename degrades to copy-then-delete and the guarantee is lost.
       const tmp = absDest + "." + process.pid + ".atomic";
       try {
         fs.copyFileSync(src, tmp);
@@ -166,7 +232,10 @@ class SandboxSession {
   }
 
   // Execute a command inside the sandbox
-  async exec(command, opts = {}) {
+  async exec(
+    command: string,
+    opts: { timeout?: number; cwd?: string } = {},
+  ): Promise<HasilEksekusi> {
     const cmdTimeout = opts.timeout || this.timeout;
     const cmdCwd = opts.cwd || this.dir;
     this._audit("exec", {
@@ -175,25 +244,25 @@ class SandboxSession {
       timeout: cmdTimeout,
     });
 
-    // ── Kurungan kernel yang SAMA dengan tool bash ──
+    // ── The SAME kernel containment the bash tool uses ──
     //
-    // KENAPA ADA. Sesudah bash terkurung AppContainer, sandbox_run tetap
-    // men-spawn proses dengan akses filesystem normal — dan itu terukur, bukan
-    // dugaan: `echo bocor > C:\Users\dave\Desktop\x.txt` DITOLAK lewat bash,
-    // BERHASIL lewat sandbox_run, dan berkasnya benar-benar mendarat di
-    // Desktop. Membaca C:\Users\dave\Documents pun berhasil (20 entri).
+    // WHY THIS EXISTS. Once bash was contained by AppContainer, sandbox_run
+    // still spawned processes with ordinary filesystem access — measured,
+    // not assumed: `echo bocor > C:\Users\dave\Desktop\x.txt` was DENIED
+    // through bash, SUCCEEDED through sandbox_run, and the file really
+    // landed on the Desktop. Reading C:\Users\dave\Documents worked too.
     //
-    // Menutup satu pintu sambil meninggalkan pintu sebelahnya terbuka lebih
-    // buruk daripada tak menutup apa pun: orang berhenti waspada karena
-    // percaya sesi sudah terkurung. Pola yang sama pernah ditemukan di repo ini
-    // untuk admission proc.raw, dan ia kembali dalam bentuk baru begitu bash
-    // dikurung sendirian.
+    // Closing one door while the one next to it stays open is worse than
+    // closing nothing: people stop being careful because they believe the
+    // session is contained. The same pattern was found in this repo before, for
+    // proc.raw admission, and it came back in a new form as soon as bash was
+    // contained on its own.
     //
-    // Direktori scratch dibuka lewat beriSementara(), BUKAN siapUntuk(): ia
-    // bukan workspace, jadi ia tak boleh menggantikan workspace yang sedang
-    // dipakai. Berkas skrip perintah juga harus mendarat di dalam jangkauan
-    // container, kalau tidak perintahnya gagal sebelum sempat mulai.
-    let _ac = null;
+    // The scratch directory is opened via beriSementara(), NOT siapUntuk():
+    // it is not a workspace, so it must not displace the workspace currently in
+    // use. The command script file also has to land within reach of the
+    // container, otherwise the command fails before it can start.
+    let _ac: any = null;
     if (process.platform === "win32") {
       try {
         const m = require("./tools/appcontainer-jail.cjs");
@@ -212,12 +281,12 @@ class SandboxSession {
       scriptDir: _ac ? path.join(cmdCwd, ".wolfspace-cmd") : undefined,
     });
     if (_ac) [shellCmd, shellArgs] = _ac.bungkus(cmdCwd, shellCmd, shellArgs);
-    // Dicatat supaya HASILNYA bisa melaporkan penegakan yang sebenarnya.
-    // Tanpa ini sandbox_run tetap dilabeli "penasihat/helper-js" dari
-    // capabilities() adapter — jawaban yang benar sebelum ia dibungkus, dan
-    // meremehkan sesudahnya. Label yang salah arah mana pun sama merusaknya:
-    // yang satu membuat orang terlalu percaya, yang lain membuat mereka
-    // membangun penjaga tambahan untuk batas yang sudah ada.
+    // Recorded so the RESULT can report the enforcement that actually
+    // applied. Without this, sandbox_run stays labelled "advisory/helper-js"
+    // from the adapter capabilities() — the right answer before it was
+    // wrapped, and an understatement afterwards. A label wrong in either
+    // direction does equal damage: one makes people trust too much, the
+    // other makes them build extra guards for a boundary that already exists.
     this.terkurungAc = !!_ac;
 
     return new Promise((resolve) => {
@@ -234,8 +303,8 @@ class SandboxSession {
           // remapped to the sandbox dir). Home remapping keeps the real home
           // path out of untrusted code — see the adapter for this OS.
           ...this.adapter.sandboxEnv(this.dir),
-          // CreateProcessW menolak membuat proses AppContainer tanpa
-          // LOCALAPPDATA (kode 203, yang tak menyebut variabel apa pun).
+          // CreateProcessW refuses to create an AppContainer process without
+          // LOCALAPPDATA (code 203, which names no variable at all).
           ...(_ac ? _ac.envTambahan(cmdCwd) : {}),
           // App-level sandbox markers (OS-independent)
           QUANTUM_SANDBOX: "1",
@@ -246,11 +315,11 @@ class SandboxSession {
         },
       });
 
-      const finish = (payload) => {
+      const finish = (payload: HasilEksekusi) => {
         if (settled) return;
         settled = true;
         clearTimeout(timer);
-        clearTimeout(graceTimer);
+        if (graceTimer) clearTimeout(graceTimer);
         resolve(payload);
       };
 
@@ -268,7 +337,7 @@ class SandboxSession {
         }
       };
 
-      let graceTimer = null;
+      let graceTimer: NodeJS.Timeout | null = null;
       const timer = setTimeout(() => {
         timedOut = true;
         killTree();
@@ -373,7 +442,16 @@ class SandboxSession {
 }
 
 // ── Convenience: run a single command in a throwaway sandbox ──
-async function sandboxRun(command, opts = {}) {
+async function sandboxRun(
+  command: string,
+  opts: OpsiSesi & {
+    mirrorIn?: Record<string, string>;
+    files?: Record<string, string>;
+    mirrorOut?: Record<string, string>;
+    timeout?: number;
+    cwd?: string;
+  } = {},
+): Promise<HasilEksekusi> {
   const session = new SandboxSession(opts);
   try {
     // If input files specified, mirror them in
@@ -481,17 +559,18 @@ function listSessions() {
 
 // Cleanup all sessions on exit.
 //
-// DIPASANG SEKALI PER PROSES, bukan sekali per pemuatan modul. electron/main.js
-// membuang SELURUH require.cache proyek pada tiap perubahan berkas di agent/,
-// dan agent WOLFSPACE menyunting berkasnya sendiri -- jadi modul ini dimuat
-// ulang berkali-kali dalam satu sesi. Tanpa penjaga, tiap pemuatan menambah
-// satu handler 'exit' yang tak pernah dilepas; terukur pada siklus reload
-// tiruan, jumlah listener proses naik terus (2, 3, 4, 5, ...).
+// INSTALLED ONCE PER PROCESS, not once per module load. electron/main.js drops
+// the project's ENTIRE require.cache on every file change under agent/, and the
+// WOLFSPACE agent edits its own files -- so this module is reloaded many times
+// within a single session. Without a guard, every load adds another 'exit'
+// handler that is never released; on a simulated reload cycle the process
+// listener count climbed steadily (2, 3, 4, 5, ...).
 //
-// Handler-nya membaca activeSessions LEWAT REFERENSI modul saat itu, jadi
-// handler lama menunjuk Map yang sudah dibuang: ia tak membersihkan apa pun,
-// hanya menumpuk. Yang bertahan di globalThis adalah penanda pemasangan;
-// pembersihan sesungguhnya tetap dilakukan instans modul yang hidup.
+// The handler reads activeSessions THROUGH the module reference it captured,
+// so an old handler points at a Map that has already been discarded: it cleans
+// up nothing and merely accumulates. What survives on globalThis is the
+// installation marker; the real cleanup is still done by the live module
+// instance.
 if (!globalThis.__wolfspaceSandboxExit) {
   globalThis.__wolfspaceSandboxExit = true;
   process.on("exit", () => {
@@ -504,14 +583,14 @@ if (!globalThis.__wolfspaceSandboxExit) {
     }
   });
 }
-// Selalu tunjuk ulang ke Map milik instans yang baru dimuat, supaya handler
-// tunggal di atas membersihkan sesi yang benar-benar hidup.
+// Always re-point at the freshly loaded instance's Map, so the single handler
+// above cleans up the sessions that are actually live.
 globalThis.__wolfspaceSandboxSesi = activeSessions;
 
-// Kapabilitas adapter yang BENAR-BENAR dipakai modul ini, diteruskan apa adanya.
-// Diekspor supaya pemanggil tool bisa melaporkan tingkat penegakan tanpa
-// menebak dari process.platform — tebakan yang akan salah persis di kasus yang
-// paling penting (Linux tanpa bwrap terbaca sama dengan Linux dengan bwrap).
+// The adapter capabilities this module ACTUALLY uses, passed through verbatim.
+// Exported so tool callers can report the enforcement level without guessing
+// from process.platform — a guess that would be wrong in exactly the case that
+// matters most (Linux without bwrap reads the same as Linux with bwrap).
 function adapterCapabilities() {
   try {
     return getPlatformAdapter().capabilities();

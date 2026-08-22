@@ -1,3 +1,7 @@
+// Install the .ts hook FIRST: modules below require TypeScript files, and
+// this file can itself be an entry point — tests require it directly, and
+// `node -e` subprocesses load it without ever going through server.cjs.
+require("../scripts/ts-register.cjs");
 // Self-agent stream implementation (extracted and modularized from server.cjs)
 // Dependencies – same as original server.cjs
 const { dlog } = require("./debug.cjs");
@@ -1241,12 +1245,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   //
   // getTools() menahan LANGKAH PERTAMA run, sebelum satu pun event lain
   // terkirim. Handshake tiap server MCP boleh sampai HANDSHAKE_TIMEOUT_MS
-  // (60s di mcp-client.cjs) sebelum menyerah, dan diukur langsung: satu run
+  // (60s di mcp-client.ts) sebelum menyerah, dan diukur langsung: satu run
   // diam 60,3 detik penuh di sini saat dua server (figma, github) timeout
   // bersamaan — tanpa satu pun tanda ke user bahwa agent masih hidup. Detak
   // di bawah ini menyamai pola model_wait yang sudah ada, supaya frontend
   // tak perlu jenis event baru untuk menampilkannya.
-  const mcpClient = require("./mcp-client.cjs");
+  const mcpClient = require("./mcp-client.ts");
   let currentTools = [...SELF_TOOLS];
   try {
     const _mcpT0 = Date.now();

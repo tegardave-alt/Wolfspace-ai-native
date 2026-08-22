@@ -40,7 +40,7 @@ function siklus(putaran) {
     "const AKAR = " + JSON.stringify(AKAR) + ";",
     "const T = path.join(AKAR, 'agent', 'tools', 'index.cjs');",
     "const AC = path.join(AKAR, 'agent', 'tools', 'appcontainer-jail.cjs');",
-    "const S = path.join(AKAR, 'agent', 'sandbox.cjs');",
+    "const S = path.join(AKAR, 'agent', 'sandbox.ts');",
     "const hasil = [];",
     "for (let i = 0; i < " + putaran + "; i++) {",
     "  const t = Date.now();",
@@ -92,7 +92,7 @@ describe("modul tahan terhadap hot-reload", () => {
       "utf8",
     );
     expect(ac).toMatch(/globalThis\.__wolfspaceAc/);
-    const sb = fs.readFileSync(path.join(AKAR, "agent", "sandbox.cjs"), "utf8");
+    const sb = fs.readFileSync(path.join(AKAR, "agent", "sandbox.ts"), "utf8");
     expect(sb).toMatch(/globalThis\.__wolfspaceSandboxExit/);
     const sv = fs.readFileSync(path.join(AKAR, "server.cjs"), "utf8");
     expect(sv).toMatch(/globalThis\.__wolfspaceJejakKeluar/);

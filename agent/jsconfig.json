@@ -23,6 +23,15 @@
     "allowJs": true,
     "noEmit": true,
 
+    // Berkas .cjs ber-@ts-check kini me-require modul yang sudah bermigrasi ke
+    // TypeScript dengan ekstensi .ts eksplisit (mis. require("./audit-log.ts")).
+    // Ekstensi itu WAJIB ada di runtime: hook di scripts/ts-register.cjs
+    // mendaftarkan .ts pada require.extensions, dan tanpa ekstensinya Node akan
+    // mencari .js yang tak ada. Flag ini membuat tsc menerima bentuk yang memang
+    // dipakai program, bukan memaksa program berubah demi tsc. Aman karena
+    // noEmit: true — tak ada keluaran yang bisa salah menunjuk.
+    "allowImportingTsExtensions": true,
+
     "target": "ES2022",
     "module": "CommonJS",
     "moduleResolution": "node",

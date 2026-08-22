@@ -25,15 +25,27 @@
  * pembacaan `st.alasan` di bawahnya langsung jadi error tipe — bukan `undefined`
  * yang diam-diam tercetak ke peringatan keamanan.
  *
- * @typedef {{ transport: "linux-netns", jaringanTerkurung: true }
- *         | { transport: "wsl-netns", jaringanTerkurung: true,
- *             berkasTerkurung: boolean, pembungkus: "bwrap" | "unshare",
- *             distro: string }
- *         | { transport: "fork", jaringanTerkurung: false, alasan: string }} StatusKurungan
+ * The union is declared below as a real TypeScript type.
  */
 
-const { fork, spawn, execFileSync } = require("child_process");
-const path = require("path");
+// `alasan` exists ONLY on the un-contained branch, and that is the whole
+// point: reading st.alasan without first narrowing on jaringanTerkurung is a
+// type error rather than an `undefined` quietly printed into a security
+// warning. Members are comma-separated to match the shape the ratchet test
+// pins (tests/kontrak-tipe.test.js).
+type StatusKurungan =
+  | { transport: "linux-netns"; jaringanTerkurung: true }
+  | {
+      transport: "wsl-netns";
+      jaringanTerkurung: true;
+      berkasTerkurung: boolean;
+      pembungkus: "bwrap" | "unshare";
+      distro: string;
+    }
+  | { transport: "fork"; jaringanTerkurung: false; alasan: string };
+
+import { fork, spawn, execFileSync } from "child_process";
+import * as path from "path";
 const { getPlatformAdapter } = require("../platform/index.cjs");
 
 const WORKER = path.join(__dirname, "zone-worker.cjs");
@@ -58,7 +70,7 @@ const WORKER = path.join(__dirname, "zone-worker.cjs");
 // "berhasil", tapi tanpa satu pun pembatasan berkas — persis jenis penurunan
 // jaminan diam-diam yang sudah berkali-kali jadi masalah di berkas ini. Lebih
 // baik menolak dengan alasan yang bisa dibaca.
-function flagPermission(major, worker) {
+function flagPermission(major: number, worker?: string): string[] | null {
   if (major >= 23) return ["--permission"];
   if (major >= 20) {
     return [
@@ -145,8 +157,8 @@ const _MAJOR_LOKAL = Number(String(process.versions.node).split(".")[0]);
 // Nama berkasnya memuat sha1 isinya, jadi tak perlu ada pemeriksaan basi sama
 // sekali: isi berbeda = jalur berbeda. Menyalin ulang hanya terjadi saat worker
 // benar-benar berubah, dan hasilnya bertahan lintas proses.
-function siapkanWorker(distro) {
-  const jalankan = (perintah, input) =>
+function siapkanWorker(distro: string) {
+  const jalankan = (perintah: string, input?: string | Buffer) =>
     execFileSync("wsl.exe", ["-d", distro, "--", "sh", "-c", perintah], {
       stdio: input === undefined ? "ignore" : ["pipe", "ignore", "ignore"],
       ...(input === undefined ? {} : { input }),
@@ -198,8 +210,17 @@ function siapkanWorker(distro) {
   return null;
 }
 
-let _wslCache;
-let _wslAlasan = null; // kenapa WSL tak dipakai — dulu dibuang oleh catch(_)
+/** Everything needed to launch a zone inside a WSL distro. */
+interface ZonaWsl {
+  distro: string;
+  nodeWsl: string;
+  workerWsl: string;
+  flag: string[];
+  bwrap: boolean;
+}
+
+let _wslCache: ZonaWsl | null | undefined;
+let _wslAlasan: string | null = null; // why WSL was not used — once swallowed by catch(_)
 function wslZona() {
   if (_wslCache !== undefined) return _wslCache;
   _wslCache = null;
@@ -353,7 +374,7 @@ function wslZona() {
  * @param {{distro:string, bwrap?:boolean}} wsl  zona WSL hasil wslZona()
  * @returns {string[]} argv pembungkus, siap disisipkan sebelum path node
  */
-function pembungkusWsl(wsl) {
+function pembungkusWsl(wsl: ZonaWsl) {
   if (!wsl.bwrap) return ["unshare", "-n"];
   return [
     "bwrap",
@@ -379,7 +400,11 @@ function pembungkusWsl(wsl) {
  * @param {boolean} [matiSengaja] pemanggil mematikannya lewat opts.netns=false
  * @returns {StatusKurungan}
  */
-function statusKurungan(ns, wsl, matiSengaja) {
+function statusKurungan(
+  ns: string | null,
+  wsl: ZonaWsl | null,
+  matiSengaja?: boolean,
+): StatusKurungan {
   if (ns) return { transport: "linux-netns", jaringanTerkurung: true };
   if (wsl)
     return {
@@ -411,7 +436,7 @@ function statusKurungan(ns, wsl, matiSengaja) {
 // jalan, bukan per eksekusi, supaya tak membanjiri keluaran agent.
 let _sudahLapor = false;
 /** @param {StatusKurungan} st */
-function laporSekali(st) {
+function laporSekali(st: StatusKurungan) {
   if (_sudahLapor || st.jaringanTerkurung) return;
   _sudahLapor = true;
   try {
@@ -431,13 +456,13 @@ function laporSekali(st) {
   } catch (_) {}
 }
 
-function winKeWsl(p) {
+function winKeWsl(p: string) {
   const m = /^([A-Za-z]):[\\/](.*)$/.exec(String(p));
   if (!m) return null;
   return "/mnt/" + m[1].toLowerCase() + "/" + m[2].replace(/\\/g, "/");
 }
 
-let _netnsCache;
+let _netnsCache: string | null | undefined;
 function netnsWrapper() {
   if (_netnsCache !== undefined) return _netnsCache;
   _netnsCache = null;
@@ -476,7 +501,7 @@ const MAX_CAPTURE = 256 * 1024;
 //
 // Membatasi yang disimpan TIDAK boleh berarti berhenti membaca — kalau
 // listenernya dilepas setelah penuh, deadlock-nya kembali persis seperti semula.
-function makeSink(limit) {
+function makeSink(limit: number) {
   let kept = "";
   let total = 0;
   return {
@@ -497,7 +522,16 @@ function makeSink(limit) {
   };
 }
 
-function runInCapabilityZone(code, broker, opts = {}) {
+function runInCapabilityZone(
+  code: string,
+  broker: any,
+  opts: {
+    timeout?: number;
+    maxCapture?: number;
+    netns?: boolean;
+    pelapor?: unknown;
+  } = {},
+) {
   const timeoutMs = opts.timeout || 10000;
   const limit = opts.maxCapture || MAX_CAPTURE;
 
@@ -523,7 +557,7 @@ function runInCapabilityZone(code, broker, opts = {}) {
       ? "WSZ" + require("crypto").randomBytes(8).toString("hex") + ""
       : "";
     // Node terlalu tua: tolak, jangan jalankan tanpa pembatasan berkas.
-    const flagLokal = flagPermission(_MAJOR_LOKAL, WORKER);
+    const flagLokal = flagPermission(_MAJOR_LOKAL, WORKER) || [];
     if (!wsl && !flagLokal) {
       return reject(
         Object.assign(
@@ -565,17 +599,10 @@ function runInCapabilityZone(code, broker, opts = {}) {
       // Cast hasil spawn: literal stdio disimpulkan sebagai string[], bukan
       // tuple, jadi TypeScript memilih overload yang stream-nya nullable.
       // "pipe" di posisi 1 dan 2 sudah terbaca jelas di baris berikutnya.
-      child = /** @type {typeof child} */ (
-        spawn(
-          ns,
-          [
-            "-n",
-            process.execPath,
-            .../** @type {string[]} */ (flagLokal),
-            WORKER,
-          ],
-          { stdio: ["ignore", "pipe", "pipe", "ipc"] },
-        )
+      child = /** @type {typeof child} */ spawn(
+        ns,
+        ["-n", process.execPath, .../** @type {string[]} */ flagLokal, WORKER],
+        { stdio: ["ignore", "pipe", "pipe", "ipc"] },
       );
     } else if (wsl) {
       child = spawn(
@@ -600,12 +627,10 @@ function runInCapabilityZone(code, broker, opts = {}) {
       // (`!wsl && !flagLokal` -> reject) sudah memastikan flagLokal bukan null
       // persis di keadaan itu. Cast, bukan nilai default — Node tanpa flag
       // permission harus GAGAL, bukan berjalan tanpa pengurungan berkas.
-      child = /** @type {typeof child} */ (
-        fork(WORKER, [], {
-          execArgv: /** @type {string[]} */ (flagLokal), // tanpa --allow-fs-read/write => fs ditolak se-proses
-          stdio: ["ignore", "pipe", "pipe", "ipc"],
-        })
-      );
+      child = /** @type {typeof child} */ fork(WORKER, [], {
+        execArgv: /** @type {string[]} */ flagLokal, // tanpa --allow-fs-read/write => fs ditolak se-proses
+        stdio: ["ignore", "pipe", "pipe", "ipc"],
+      });
     }
 
     // Satu cara mengirim, apa pun transportnya.
@@ -615,7 +640,7 @@ function runInCapabilityZone(code, broker, opts = {}) {
           // Hanya cabang wsl yang memakai stdio "pipe" di posisi 0; di dua
           // cabang lain stdin memang null. Penjaga `if (wsl)` inilah yang
           // membuatnya aman, dan cast ini menandai ketergantungan itu.
-          /** @type {import("stream").Writable} */ (child.stdin).write(
+          /** @type {import("stream").Writable} */ child.stdin.write(
             JSON.stringify(msg) + "\n",
           );
         } catch (_) {}
@@ -696,7 +721,7 @@ function runInCapabilityZone(code, broker, opts = {}) {
     // adalah process.disconnect() di zone-worker, bukan di sini.
     const DRAIN_MS = 3000;
     let selesai = false;
-    const settle = (fn, mkVal, killNow) => {
+    const settle = (fn: Function, mkVal: () => unknown, killNow?: boolean) => {
       if (settled) return;
       settled = true;
       clearTimeout(timer);
@@ -723,7 +748,7 @@ function runInCapabilityZone(code, broker, opts = {}) {
       child.once("close", tuntas);
     };
 
-    const fail = (e, killNow) =>
+    const fail = (e: Error, killNow?: boolean) =>
       settle(reject, () => Object.assign(e, io()), killNow);
 
     const timer = setTimeout(() => {

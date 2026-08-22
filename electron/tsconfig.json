@@ -1,0 +1,17 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true
+  },
+  // Only the migrated source. preload.js is generated output, and main.js is
+  // still plain CommonJS awaiting its own phase.
+  "include": ["preload.ts"],
+  "exclude": ["node_modules"]
+}

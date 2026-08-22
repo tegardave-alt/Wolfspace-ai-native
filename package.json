@@ -1,7 +1,7 @@
 {
   "name": "WOLFSPACE",
   "version": "0.1.0",
-  "description": "A local, open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
+  "description": "An open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
   "main": "server.cjs",
   "type": "commonjs",
   "bin": {
@@ -10,17 +10,18 @@
   "scripts": {
     "start": "node server.cjs",
     "dev": "nodemon server.cjs",
-    "app": "node scripts/app.cjs",
+    "app": "node scripts/build-preload.cjs && node scripts/app.cjs",
     "app:wsl": "node scripts/wsl-app.cjs",
-    "dist": "electron-builder --win",
+    "dist": "node scripts/build-preload.cjs && electron-builder --win",
     "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles --passWithNoTests",
     "stress": "node scripts/stress.cjs",
     "test:watch": "jest --watch --verbose",
     "prepare": "husky",
     "vendor:three": "node scripts/three/build.cjs",
-    "typecheck": "tsc -p agent/jsconfig.json && tsc -p public/tsconfig.json",
-    "profil": "node scripts/profil-beku.cjs"
+    "typecheck": "tsc -p agent/jsconfig.json && tsc -p public/tsconfig.json && tsc -p packages/contracts/tsconfig.json && tsc -p server/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p agent/tsconfig.json",
+    "profil": "node scripts/profil-beku.cjs",
+    "build:preload": "node scripts/build-preload.cjs"
   },
   "keywords": [
     "ai",
@@ -28,11 +29,7 @@
     "coding-assistant",
     "code-execution",
     "verification",
-    "local-first",
-    "llama.cpp",
     "byok",
-    "gguf",
-    "huggingface",
     "electron"
   ],
   "license": "MIT",
@@ -50,7 +47,6 @@
     "browser-sync": "^3.0.4",
     "electron": "^33.4.11",
     "electron-builder": "25.1.8",
-    "esbuild": "^0.28.1",
     "husky": "^9.1.7",
     "jest": "^29.7.0",
     "lint-staged": "^17.0.8",
@@ -72,6 +68,7 @@
       "agent/**",
       "server/**",
       "scripts/ww.cjs",
+      "scripts/ts-register.cjs",
       "core/**",
       "public/**",
       "config.json",
@@ -83,9 +80,12 @@
       "agent/**",
       "server/**",
       "scripts/ww.cjs",
+      "scripts/ts-register.cjs",
       "core/**",
       "public/**",
-      "config.json"
+      "config.json",
+      "node_modules/esbuild/**",
+      "node_modules/@esbuild/**"
     ],
     "extraMetadata": {
       "main": "electron/main.js"
@@ -112,6 +112,7 @@
     "@xterm/xterm": "^6.0.0",
     "ansi-to-html": "^0.7.2",
     "cytoscape": "^3.34.0",
+    "esbuild": "^0.28.1",
     "mermaid": "^11.16.0",
     "node-pty": "^1.1.0",
     "xterm": "^5.3.0"
@@ -139,6 +140,10 @@
     ],
     "setupFiles": [
       "<rootDir>/tests/setup-jest.cjs"
-    ]
+    ],
+    "transform": {
+      "^.+\\.ts$": "<rootDir>/tests/transformer-ts.cjs",
+      "^.+\\.(js|jsx|cjs|mjs)$": "babel-jest"
+    }
   }
 }

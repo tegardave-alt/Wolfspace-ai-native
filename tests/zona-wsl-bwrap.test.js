@@ -20,7 +20,7 @@
 // ONGKOSNYA NOL. Terukur -3 ms dibanding node telanjang, yaitu di dalam derau.
 // Yang mahal di jalur ini adalah meluncurkan wsl.exe: 183 ms dari total 216 ms.
 
-const { wslZona, statusKurungan } = require("../agent/broker/zone-process.cjs");
+const { wslZona, statusKurungan } = require("../agent/broker/zone-process.ts");
 
 const zona = process.platform === "win32" ? wslZona() : null;
 const jalankan = zona ? describe : describe.skip;

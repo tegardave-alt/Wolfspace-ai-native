@@ -22,6 +22,10 @@
 // Modul ini sengaja tidak pernah memuat kode plugin.
 
 "use strict";
+// Install the .ts hook FIRST: modules below require TypeScript files, and
+// this file can itself be an entry point — tests require it directly, and
+// `node -e` subprocesses load it without ever going through server.cjs.
+require("../scripts/ts-register.cjs");
 
 const fs = require("fs");
 const path = require("path");
@@ -31,7 +35,7 @@ const DIR_PLUGIN = path.join(AKAR, "plugins");
 
 // Kapabilitas yang BOLEH diminta plugin. Sengaja daftar tertutup, bukan string
 // bebas: kosakata ini harus sepadan dengan KOSAKATA_DEFAULT di
-// broker/commandchain.cjs. Izin di luar daftar ditolak saat manifest dibaca,
+// broker/commandchain.ts. Izin di luar daftar ditolak saat manifest dibaca,
 // bukan diam-diam diabaikan lalu jadi kejutan waktu dipanggil.
 const IZIN_DIKENAL = Object.freeze([
   "readFile",
@@ -301,7 +305,7 @@ function copot(nama) {
  * Konfigurasi server MCP untuk plugin yang SUDAH DISETUJUI, dalam bentuk yang
  * sama dengan config/mcp.json.
  *
- * KENAPA BEGINI. mcp-client.cjs sudah menyelesaikan bagian yang sulit: spawn,
+ * KENAPA BEGINI. mcp-client.ts sudah menyelesaikan bagian yang sulit: spawn,
  * framing JSON-RPC, handshake, pembersihan proses yatim, berkas PID, lazy start,
  * dan bertahan melewati hot-reload backend. Menulis ulang semua itu untuk plugin
  * berarti mengulang "pola dua permukaan" yang sudah berkali-kali menggigit repo

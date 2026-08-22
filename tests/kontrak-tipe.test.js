@@ -26,10 +26,15 @@ const CFG = path.join(AKAR, "agent", "jsconfig.json");
 
 // Daftar ratchet: berkas yang sudah masuk pemeriksaan. Boleh BERTAMBAH, tak
 // boleh berkurang.
-const SUDAH_DIPERIKSA = [
-  "agent/broker/commandchain.cjs",
-  "agent/broker/zone-process.cjs",
-  "agent/attachment-bridge.cjs",
+const SUDAH_DIPERIKSA = ["agent/attachment-bridge.cjs"];
+
+// Berkas yang sudah BERMIGRASI ke TypeScript. Ratchet-nya tetap berlaku, hanya
+// syaratnya yang berubah: sebuah .ts SELALU diperiksa tsc, jadi yang dijaga
+// bukan lagi baris `// @ts-check` melainkan bahwa berkasnya masih .ts dan belum
+// diam-diam dikembalikan ke .cjs tanpa pemeriksaan.
+const SUDAH_TYPESCRIPT = [
+  "agent/broker/commandchain.ts",
+  "agent/broker/zone-process.ts",
 ];
 
 describe("kontrak tipe jalur kritis", () => {
@@ -40,54 +45,81 @@ describe("kontrak tipe jalur kritis", () => {
     expect(kepala).toMatch(/^\/\/ @ts-check$/m);
   });
 
+  test.each(SUDAH_TYPESCRIPT)("%s masih berupa TypeScript", (rel) => {
+    // Turun ke .cjs tanpa @ts-check akan mematikan pemeriksaan berkas ini tanpa
+    // jejak — kelas kegagalan yang sama persis dengan menghapus baris @ts-check.
+    expect(fs.existsSync(path.join(AKAR, rel))).toBe(true);
+    expect(rel.endsWith(".ts")).toBe(true);
+  });
+
   test("fungsi vonis memakai UNION, bukan field opsional", () => {
     // Bentuk longgar `{allow:boolean, alasan?:string}` mengizinkan keadaan yang
     // tak boleh ada (izin membawa alasan, tolak tanpa sebab). Union menutupnya
     // di titik deklarasi — itu seluruh gunanya, jadi bentuknya ikut dikunci.
     const cc = fs.readFileSync(
-      path.join(AKAR, "agent/broker/commandchain.cjs"),
+      path.join(AKAR, "agent/broker/commandchain.ts"),
       "utf8",
     );
+    // TypeScript menulis anggota union dengan titik koma dan biasanya memecahnya
+    // per baris, jadi polanya dilonggarkan pada PEMISAHNYA — bukan pada
+    // bentuknya. Yang tetap dikunci sama persis: allow:true berpasangan dengan
+    // alasan:null, allow:false berpasangan dengan alasan bertipe string.
     expect(cc).toMatch(
-      /\{ allow: true, alasan: null \}\s*\|\s*\{ allow: false, alasan: string \}/,
+      /\{ allow: true;? alasan: null \}\s*\|\s*\{ allow: false;? alasan: string \}/,
     );
 
     const zp = fs.readFileSync(
-      path.join(AKAR, "agent/broker/zone-process.cjs"),
+      path.join(AKAR, "agent/broker/zone-process.ts"),
       "utf8",
     );
     // `alasan` HANYA pada cabang tak-terkurung: itu yang membuat penjaga di
     // laporSekali() terverifikasi mesin.
     expect(zp).toMatch(
-      /transport: "fork", jaringanTerkurung: false, alasan: string/,
+      /transport: "fork"[;,] jaringanTerkurung: false[;,] alasan: string/,
     );
-    expect(zp).not.toMatch(/jaringanTerkurung: true, alasan/);
+    expect(zp).not.toMatch(/jaringanTerkurung: true[;,] alasan/);
   });
 
-  test("tsc bersih pada agent/", () => {
-    let keluaran = "";
-    let gagal = false;
-    try {
-      execFileSync(process.execPath, [TSC, "-p", CFG], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-        cwd: AKAR,
-      });
-    } catch (e) {
-      gagal = true;
-      keluaran = String(e.stdout || "") + String(e.stderr || "");
-    }
-    const baris = keluaran.split(/\r?\n/).filter((b) => /error TS/.test(b));
-    if (gagal) {
-      // Tampilkan error aslinya, bukan sekadar "gagal" — supaya yang merah bisa
-      // langsung diperbaiki tanpa menjalankan ulang perkakasnya.
-      throw new Error(
-        "tsc menemukan " +
-          baris.length +
-          " error di agent/:\n  " +
-          baris.slice(0, 15).join("\n  "),
-      );
-    }
-    expect(baris).toEqual([]);
-  }, 120000);
+  // DUA konfigurasi, dan yang kedua bukan tambahan kosmetik.
+  //
+  // jsconfig.json hanya mencakup **/*.cjs dan **/*.js. Begitu sebuah berkas
+  // bermigrasi ke .ts, ia KELUAR dari cakupan itu — dan kalau tes ini hanya
+  // menjalankan jsconfig, berkas yang baru dimigrasi berhenti diperiksa tanpa
+  // satu pun tanda. Itu persis kelas kegagalan yang seluruh berkas uji ini ada
+  // untuk mencegahnya, hanya lewat pintu yang berbeda.
+  const CFG_TS = path.join(AKAR, "agent", "tsconfig.json");
+
+  test.each([
+    ["jsconfig (berkas .cjs/.js ber-@ts-check)", CFG],
+    ["tsconfig (berkas .ts hasil migrasi)", CFG_TS],
+  ])(
+    "tsc bersih pada agent/ — %s",
+    (_label, cfg) => {
+      let keluaran = "";
+      let gagal = false;
+      try {
+        execFileSync(process.execPath, [TSC, "-p", cfg], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          cwd: AKAR,
+        });
+      } catch (e) {
+        gagal = true;
+        keluaran = String(e.stdout || "") + String(e.stderr || "");
+      }
+      const baris = keluaran.split(/\r?\n/).filter((b) => /error TS/.test(b));
+      if (gagal) {
+        // Tampilkan error aslinya, bukan sekadar "gagal" — supaya yang merah bisa
+        // langsung diperbaiki tanpa menjalankan ulang perkakasnya.
+        throw new Error(
+          "tsc menemukan " +
+            baris.length +
+            " error di agent/:\n  " +
+            baris.slice(0, 15).join("\n  "),
+        );
+      }
+      expect(baris).toEqual([]);
+    },
+    120000,
+  );
 });

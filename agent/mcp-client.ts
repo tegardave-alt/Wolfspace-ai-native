@@ -3,28 +3,29 @@ const path = require("path");
 const { spawn, execSync } = require("child_process");
 const { dlog } = require("./debug.cjs");
 
-// Pelacak PID proses MCP, agar sisa sesi sebelumnya bisa dibersihkan.
+// Tracks the PIDs of MCP processes so leftovers from an earlier session can be
+// cleaned up.
 //
-// SATU BERKAS PER PEMILIK: config/.mcp-pids/<pid-pemilik>.json, berisi daftar
-// PID server yang di-spawn proses itu. Pemiliknya ada di NAMA berkas, bukan di
-// isinya.
+// ONE FILE PER OWNER: config/.mcp-pids/<owner-pid>.json, holding the list of
+// server PIDs that process spawned. The owner is in the file NAME, not in its
+// contents.
 //
-// Kenapa begini, bukan satu berkas bersama. Berkas bersama memaksa pola
-// baca-ubah-tulis dari banyak proses sekaligus, dan itu balapan: dua proses
-// yang membaca pada saat yang sama akan saling menimpa, satu catatan hilang,
-// dan server yang tak tercatat itu belakangan dibunuh sebagai "yatim" padahal
-// bertuan. Menguncinya bisa, tapi kunci berkas di Windows membawa masalah baru
-// (kunci basi bila proses mati sambil memegangnya, lalu perlu mekanisme
-// merebut). Dengan satu berkas per pemilik, TAK ADA proses yang pernah menulis
-// berkas milik proses lain — balapannya hilang secara konstruksi, tanpa kunci.
+// Why this way and not one shared file. A shared file forces read-modify-write
+// from many processes at once, and that is a race: two processes reading at the
+// same time overwrite each other, one record is lost, and the unrecorded server
+// is later killed as an "orphan" despite having an owner. Locking would work,
+// but file locks on Windows bring their own problems (a stale lock when the
+// holder dies, then a mechanism to seize it). With one file per owner, NO
+// process ever writes another process's file — the race is gone by
+// construction, without locks.
 //
-// Yatim = berkas yang PEMILIKNYA sudah mati. Sebelum ini, berkasnya dipakai
-// bersama dan isinya cuma [pid, pid] tanpa jejak pemilik, sehingga tiap proses
-// baru membunuh server hidup milik tetangganya. Terukur pada 3 proses serentak:
-// satu proses menunggu 127 detik lalu jalan dengan 26 dari 50 tool — tanpa
-// error apa pun. Sesudah: ketiganya 22 detik, 50 tool.
+// Orphan = a file whose OWNER is dead. Before this, the file was shared and held
+// only [pid, pid] with no trace of ownership, so every new process killed its
+// neighbour's live servers. Measured across 3 concurrent processes: one waited
+// 127 seconds and then ran with 26 of 50 tools — with no error at all.
+// Afterwards: 22 seconds and 50 tools for all three.
 const PID_DIR = path.join(__dirname, "..", "config", ".mcp-pids");
-// Berkas format lama. Hanya dibaca sekali untuk dibersihkan saat upgrade.
+// The old file format. Read once, only to clean it up during the upgrade.
 const LEGACY_PID_FILE = path.join(__dirname, "..", "config", ".mcp-pids.json");
 
 function _alive(pid) {
@@ -40,8 +41,8 @@ function _ownFile(owner = process.pid) {
   return path.join(PID_DIR, owner + ".json");
 }
 
-// Entri disimpan sebagai {pid, ts}. Format lama (angka telanjang) tetap
-// terbaca, tapi entri tanpa ts tak bisa diverifikasi — lihat _bukanMilikKita.
+// Entries are stored as {pid, ts}. The old format (a bare number) is still
+// terbaca, but an entry without ts cannot be verified — see _bukanMilikKita.
 function _readOwn(owner = process.pid) {
   try {
     const raw = JSON.parse(fs.readFileSync(_ownFile(owner), "utf8")) || [];
@@ -63,23 +64,23 @@ function _writeOwn(entries, owner = process.pid) {
   fs.writeFileSync(_ownFile(owner), JSON.stringify(entries), "utf8");
 }
 
-// Hanya pemiliknya sendiri yang memanggil ini untuk berkasnya sendiri, jadi
-// baca-ubah-tulis di sini aman: tak ada penulis lain.
+// Only the owner itself calls this for its own file, so read-modify-write is safe
+// here: there is no other writer.
 function _recordPid(pid) {
   try {
     if (!fs.existsSync(PID_DIR)) fs.mkdirSync(PID_DIR, { recursive: true });
     const mine = _readOwn();
     if (mine.some((e) => e.pid === pid)) return;
-    // ts dipakai untuk membedakan proses kita dari proses lain yang kelak
-    // memakai ulang nomor PID yang sama. Lihat _bukanMilikKita.
+    // ts distinguishes our process from another that later reuses the same PID
+    // number. See _bukanMilikKita.
     mine.push({ pid, ts: Date.now() });
     _writeOwn(mine);
   } catch (_) {}
 }
 
-// Dipanggil saat server berhenti normal. Tanpa ini berkas pemilik hanya
-// bertambah: PID mati menumpuk selamanya, dan tiap satu di antaranya adalah
-// calon korban daur-ulang PID pada pembersihan berikutnya.
+// Called when a server stops normally. Without it an owner file only grows: dead
+// PIDs pile up forever, and every one of them is a candidate victim of PID reuse
+// on the next cleanup.
 function _forgetPid(pid) {
   try {
     const mine = _readOwn();
@@ -88,15 +89,15 @@ function _forgetPid(pid) {
   } catch (_) {}
 }
 
-// Selisih yang ditoleransi antara waktu-mulai proses dan saat kita mencatatnya.
-// Pencatatan terjadi beberapa milidetik sesudah spawn, jadi start <= ts selalu;
-// jendela ini hanya menyerap ketidaktepatan jam. Proses hasil daur-ulang PID
-// mulai jauh belakangan — biasanya berjam-jam — sehingga terjaring dengan mudah.
+// Tolerated gap between a process's start time and the moment we record it.
+// Recording happens a few milliseconds after spawn, so start <= ts always holds;
+// this window only absorbs clock imprecision. A process from PID reuse starts far
+// later — usually hours — and is caught easily.
 const TOLERANSI_MULAI_MS = 15000;
 
-// Waktu-mulai proses dalam milidetik epoch, untuk sekumpulan PID sekaligus.
-// PID yang tak terbaca tidak dimasukkan ke Map. Satu panggilan untuk semua:
-// pembersihan hanya terjadi saat start, dan hanya bila ada berkas yatim.
+// Process start time in epoch milliseconds, for a set of PIDs at once. PIDs that
+// cannot be read are left out of the Map. One call for all of them: cleanup only
+// happens at startup, and only when an orphan file exists.
 function _waktuMulai(pids) {
   const peta = new Map();
   if (!pids.length) return peta;
@@ -119,19 +120,19 @@ function _waktuMulai(pids) {
         if (Number.isFinite(pid) && Number.isFinite(ms)) peta.set(pid, ms);
       }
     } else if (process.platform === "linux") {
-      // starttime = medan ke-22 di /proc/<pid>/stat, dalam clock tick sejak
-      // boot. Medan ke-2 adalah comm yang boleh berisi spasi dan tanda kurung,
-      // jadi pemotongan dilakukan sesudah ')' terakhir.
+      // starttime = field 22 of /proc/<pid>/stat, in clock ticks since boot.
+      // Field 2 is comm, which may contain spaces and parentheses, so the split
+      // is taken after the LAST ')'.
       const btime = (fs
         .readFileSync("/proc/stat", "utf8")
         .match(/^btime (\d+)/m) || [])[1];
       if (!btime) return peta;
-      const HZ = 100; // USER_HZ, tetap 100 pada semua Linux arus utama
+      const HZ = 100; // USER_HZ, fixed at 100 on every mainstream Linux
       for (const pid of pids) {
         try {
           const stat = fs.readFileSync(`/proc/${pid}/stat`, "utf8");
           const medan = stat.slice(stat.lastIndexOf(")") + 2).split(" ");
-          const tick = Number(medan[19]); // ke-22 dikurangi 2 medan pertama
+          const tick = Number(medan[19]); // field 22 minus the first 2 fields
           if (Number.isFinite(tick))
             peta.set(pid, (Number(btime) + tick / HZ) * 1000);
         } catch (_) {}
@@ -141,15 +142,15 @@ function _waktuMulai(pids) {
   return peta;
 }
 
-// Nomor PID tidak menjamin identitas: sistem operasi memakainya ulang. Sebuah
-// PID yang kita catat lalu mati bisa ditempati aplikasi lain, dan membunuhnya
-// berarti membunuh proses milik orang lain — tercatat di log seolah pembersihan
-// yang berhasil. Waktu-mulai memisahkan keduanya: proses kita mulai pada atau
-// sebelum saat kita mencatatnya, penghuni baru selalu jauh sesudahnya.
+// A PID number is not an identity: the operating system reuses them. A PID we
+// recorded and that later died can be taken over by another application, and
+// killing it means killing someone else's process — logged as if cleanup had
+// succeeded. Start time separates the two: our process started at or before the
+// moment we recorded it, a new occupant always well after.
 function _bukanMilikKita(entri, mulai) {
-  if (!entri.ts) return false; // entri format lama: tak ada dasar untuk menolak
+  if (!entri.ts) return false; // old-format entry: no basis on which to refuse
   const t = mulai.get(entri.pid);
-  if (t === undefined) return false; // tak terbaca: jangan mengarang kesimpulan
+  if (t === undefined) return false; // unreadable: do not invent a conclusion
   return t > entri.ts + TOLERANSI_MULAI_MS;
 }
 
@@ -179,8 +180,8 @@ function _killPids(entries, asal) {
 }
 
 function _killOrphans() {
-  // Migrasi berkas format lama: tanpa jejak pemilik, isinya tak bisa
-  // diklaim siapa pun, jadi diperlakukan sebagai yatim lalu berkasnya dibuang.
+  // Migrating the old file format: with no owner recorded, its contents cannot be
+  // claimed by anyone, so they are treated as orphans and the file is discarded.
   try {
     if (fs.existsSync(LEGACY_PID_FILE)) {
       const raw = JSON.parse(fs.readFileSync(LEGACY_PID_FILE, "utf8")) || [];
@@ -196,7 +197,7 @@ function _killOrphans() {
   try {
     files = fs.readdirSync(PID_DIR);
   } catch (_) {
-    return; // direktori belum ada — tak ada apa pun untuk dibersihkan
+    return; // the directory does not exist yet — nothing to clean up
   }
 
   let dibersihkan = 0;
@@ -204,7 +205,7 @@ function _killOrphans() {
   for (const f of files) {
     const owner = parseInt(path.basename(f, ".json"), 10);
     if (!Number.isFinite(owner)) continue;
-    // Pemilik masih hidup (termasuk proses ini sendiri) -> JANGAN sentuh.
+    // The owner is still alive (this process included) -> DO NOT touch.
     if (_alive(owner)) {
       dipertahankan++;
       continue;
@@ -224,17 +225,17 @@ function _killOrphans() {
 
 const CONFIG_PATH = path.join(__dirname, "..", "config", "mcp.json");
 
-// Argumen server MCP membawa kredensial, dan argumen itu DICATAT.
+// MCP server arguments carry credentials, and those arguments ARE LOGGED.
 //
-// Terbukti di berkas debug nyata (%TEMP%/WOLFSPACE-debug.log), tercetak utuh:
+// Proven in a real debug file (%TEMP%/WOLFSPACE-debug.log), printed in full:
 //   Memulai server MCP: figma {"cmd":"npx","args":[...,"--figma-api-key=figd_kQW…"]}
-// dan URL server remote lengkap dengan token di query string. Berkas itu tidak
-// gitignored, tidak dibersihkan, dan dirotasi hanya berdasarkan ukuran — jadi
-// rahasianya tinggal di disk sampai tergeser.
+// along with remote server URLs complete with the token in the query string. That
+// file is not gitignored, is never cleaned, and rotates only by size — so the
+// secret sits on disk until it is pushed out.
 //
-// env sengaja TIDAK ikut dicatat sejak awal; ini menutup celah yang setara pada
-// argv. Yang disunting hanya NILAInya — nama flag tetap terlihat supaya log
-// masih berguna untuk mendiagnosis perintah yang salah.
+// env was deliberately never logged; this closes the equivalent hole on argv.
+// Only the VALUE is redacted — the flag name stays visible so the log remains
+// useful for diagnosing a wrong command.
 const _RAHASIA_ARG =
   /(key|token|secret|password|passwd|auth|credential|api[-_]?key)/i;
 function _argsAman(args) {
@@ -255,7 +256,7 @@ function _argsAman(args) {
         return "***";
       }
     }
-    // Nilai telanjang yang tampak seperti token panjang
+    // A bare value that looks like a long token
     if (s.length > 24 && !s.includes(" ") && _RAHASIA_ARG.test(s)) return "***";
     return s;
   });
@@ -263,19 +264,93 @@ function _argsAman(args) {
 
 // Panggilan tool nyata boleh lama (kueri Notion, dsb).
 const REQUEST_TIMEOUT_MS = 120000;
-// Handshake gagal lebih cepat dari panggilan tool. Yang paling menentukan
-// sebenarnya start PARALEL di atas: dengan `await` berurutan, dua server
-// bermasalah membuat getTools() — yang memblokir langkah PERTAMA agent —
-// menggantung 240 detik. Paralel membuat kasus terburuknya jadi timeout SATU
-// server, bukan jumlahnya.
+// A handshake fails faster than a tool call. What matters most is actually the
+// PARALLEL start above: with sequential `await`, two misbehaving servers made
+// getTools() — which blocks the agent's FIRST step — hang for 240 seconds. In
+// parallel the worst case is ONE server's timeout rather than their sum.
 //
-// 60 detik, bukan lebih pendek. Percobaan dengan 25 detik REGRESI: pada 4 proses
-// dingin serentak, `npx` saling berebut cache npm dan handshake belum selesai
-// dalam 25 detik — hasilnya 24/0/24/24 tool dari 50. Satu proses sendirian butuh
-// 13 detik, jadi marginnya harus cukup lebar untuk kontensi cold start.
+// 60 seconds, not less. A 25-second attempt REGRESSED: across 4 simultaneous
+// cold processes, `npx` instances fought over the npm cache and the handshake
+// did not finish within 25 s — the result was 24/0/24/24 tools out of 50. One
+// process alone needs 13 s, so the margin has to be wide enough for cold-start
+// contention.
 const HANDSHAKE_TIMEOUT_MS = 60000;
 
+/** A configured MCP server as written in config/mcp.json (or by a plugin). */
+interface KonfigServer {
+  command: string;
+  args?: string[];
+  env?: Record<string, string>;
+  cwd?: string;
+  disabled?: boolean;
+  /** Set when the entry came from a plugin manifest rather than the file. */
+  _plugin?: string;
+  [k: string]: unknown;
+}
+
+// A running server: its child process, whether the handshake completed, and the
+// verdict of the most recent real tool call.
+//
+// The last* fields are what make status() honest: a server can start cleanly and
+// then fail every single API call — exactly what happens when a GitHub token is
+// revoked while the UI still reads "Connected". They are assigned by _catat()
+// after the handshake, so they are optional here rather than set in _startServer.
+interface ServerHidup {
+  proc: import("child_process").ChildProcessWithoutNullStreams;
+  ready: boolean;
+  lastCallAt?: number;
+  lastCallOk?: boolean;
+  lastError?: string | null;
+}
+
+/** A tool definition in the SELF_TOOLS shape WOLFSPACE's agent loop consumes. */
+interface DefinisiAlat {
+  type: "function";
+  function: {
+    name: string;
+    description: string;
+    parameters: unknown;
+  };
+}
+
+/** One item of an MCP tools/call content array. */
+interface IsiBalasan {
+  text?: string;
+  [k: string]: unknown;
+}
+
+/** One tool as advertised by a server's tools/list response. */
+interface AlatMCP {
+  name: string;
+  description?: string;
+  inputSchema?: unknown;
+  [k: string]: unknown;
+}
+
+// A JSON-RPC request still awaiting its response, keyed by message id.
+//
+// `resolve` is intentionally (nilai: any): one map holds the pending requests of
+// EVERY method at once, each with a different response type, so there is no
+// single T that fits. The type safety lives at the call sites instead, where
+// _request<T>() names the shape that method actually returns.
+interface ReqTertunda {
+  resolve: (nilai: any) => void;
+  reject: (alasan: Error) => void;
+  timer?: NodeJS.Timeout;
+  [k: string]: unknown;
+}
+
 class MCPClient {
+  // Fields are DECLARED, not merely assigned in the constructor. TypeScript does
+  // not infer class fields from `this.x =` the way JavaScript does, so without
+  // this block 33 of this file's first 41 errors were one and the same cause
+  // repeated over and over.
+  servers: Record<string, ServerHidup>;
+  toolsCache: Record<string, AlatMCP[]>;
+  msgId: number;
+  pendingReqs: Record<number, ReqTertunda>;
+  initialized: boolean;
+
   constructor() {
     this.servers = {}; // serverName -> process info
     this.toolsCache = {}; // serverName -> array of tools
@@ -284,14 +359,13 @@ class MCPClient {
     this.initialized = false;
   }
 
-  // Isi berkas APA ADANYA, tanpa plugin.
+  // The file contents AS THEY ARE, without plugins.
   //
-  // WAJIB dipakai oleh apa pun yang akan MENULIS balik. _loadConfig() di bawah
-  // mengembalikan gabungan berkas + plugin; menyimpan hasil gabungan itu akan
-  // memanggang entri plugin ke dalam config/mcp.json secara permanen — lengkap
-  // dengan penanda _plugin — sehingga plugin punya dua rumah sekaligus dan yang
-  // di config/mcp.json menang. Persis kelas kesalahan yang membuat config mati
-  // bertahan tanpa ada yang tahu.
+  // REQUIRED for anything that will WRITE back. _loadConfig() below returns file
+  // plus plugins merged; saving that merged result would bake plugin entries into
+  // config/mcp.json permanently — complete with the _plugin marker — so a plugin
+  // would have two homes at once and the config/mcp.json one would win. Exactly
+  // the class of mistake that lets dead config survive unnoticed.
   _loadConfigMentah() {
     try {
       if (fs.existsSync(CONFIG_PATH))
@@ -305,13 +379,13 @@ class MCPClient {
   _loadConfig() {
     const dasar = this._loadConfigMentah();
 
-    // Plugin yang sudah DISETUJUI user ikut sebagai server MCP biasa, sehingga
-    // seluruh jalur di bawah (spawn, handshake, proses yatim, hot-reload) tak
-    // perlu digandakan. Yang membedakannya cuma penanda `_plugin`, yang membuat
-    // tools/panggilannya wajib lewat admission CommandChain.
+    // Plugins the user has APPROVED join as ordinary MCP servers, so every path
+    // below (spawn, handshake, orphan processes, hot reload) needs no duplicate.
+    // The only difference is the `_plugin` marker, which forces their tools and
+    // calls through CommandChain admission.
     //
-    // Ditaruh SESUDAH dasar: entri config/mcp.json bernama sama menang, supaya
-    // sebuah plugin tak bisa membajak nama server yang sudah user pakai.
+    // Placed AFTER the base: a config/mcp.json entry of the same name wins, so a
+    // plugin cannot hijack the name of a server the user already uses.
     let plug = {};
     try {
       plug = require("./plugins.cjs").konfigMcp();
@@ -322,13 +396,13 @@ class MCPClient {
     return { ...dasar, mcpServers: gabung };
   }
 
-  // Apakah server ini berasal dari plugin.
+  // Whether this server came from a plugin.
   //
-  // Dibaca dari DISK lewat plugins.adalahPlugin(), bukan dari konfigurasi
-  // gabungan. Konfigurasi hanya memuat plugin yang sudah disetujui, jadi
-  // memakainya di sini membuat pencabutan izin menjawab "bukan plugin" — dan
-  // pemanggil menyimpulkan tak perlu digerbang. Mencabut izin akan MEMBUKA
-  // gerbangnya. Dikunci oleh tes "mencabut izin tidak boleh membuka gerbang".
+  // Read from DISK via plugins.adalahPlugin(), not from the merged config. The
+  // config holds only approved plugins, so using it here would make a revoked
+  // permission answer "not a plugin" — and the caller would conclude no gate is
+  // needed. Revoking would OPEN the gate. Pinned by the test
+  // "mencabut izin tidak boleh membuka gerbang" (test name, kept verbatim).
   _dariPlugin(nama) {
     try {
       return require("./plugins.cjs").adalahPlugin(nama);
@@ -337,30 +411,23 @@ class MCPClient {
     }
   }
 
-  // Gerbang admission untuk server yang berasal dari plugin.
+  // TWO conditions, both required. The asymmetry is deliberate:
   //
-  // Entri lama di config/mcp.json SENGAJA tidak ikut digerbang: mengubah
-  // perilakunya akan mematikan notion/github yang sudah user pakai hari ini,
-  // dan itu di luar cakupan. Asimetri ini bukan lubang — memasang lewat
-  // config/mcp.json adalah tindakan USER, dan user memang pihak yang tepercaya
-  // untuk memasang. Yang digerbang adalah jangkauan AGENT.
-  // DUA syarat, dan keduanya wajib. Asimetrinya disengaja:
+  //   frozen genesis    -> ADDING a permission does not apply until the next session
+  //   approval file     -> REVOKING a permission applies IMMEDIATELY
   //
-  //   genesis beku  -> MENAMBAH izin tak berlaku sampai sesi berikutnya
-  //   berkas setuju -> MENCABUT izin berlaku SEKARANG
+  // The rule in one sentence: narrowing is always allowed, widening is not.
+  // Widening mid-session would mean there is a way to loosen genesis after it was
+  // frozen, and the whole point of freezing is gone. Narrowing has no such
+  // problem — it only takes back something previously allowed.
   //
-  // Aturannya satu kalimat: mempersempit selalu boleh, melebarkan tidak.
-  // Melebarkan di tengah sesi berarti ada jalan melonggarkan genesis sesudah ia
-  // dibekukan, dan seluruh guna pembekuan itu hilang. Mempersempit tak punya
-  // masalah itu — ia hanya mencabut sesuatu yang tadinya diizinkan.
-  //
-  // Tanpa syarat kedua, mencabut izin TIDAK berefek selama proses plugin masih
-  // hidup: kapabilitasnya sudah ada di genesis. Itu terukur — lihat catatan di
-  // tests/plugin-gerbang.test.js.
+  // Without the second condition, revoking a permission has NO effect while the
+  // plugin process is alive: its capabilities are already in genesis. That is
+  // measured — see the note in tests/plugin-gerbang.test.js.
   _izinPlugin(nama) {
     if (!this._dariPlugin(nama)) return { allow: true, alasan: null };
     try {
-      const cc = require("./broker/commandchain.cjs");
+      const cc = require("./broker/commandchain.ts");
       const P = require("./plugins.cjs");
 
       const vonis = cc.periksa(cc.sesiRuleset(), P.kapabilitas(nama));
@@ -371,38 +438,38 @@ class MCPClient {
       }
       return vonis;
     } catch (e) {
-      // Gagal memuat penjaga = TOLAK. Deny-by-default, bukan fail-open.
+      // Failing to load the guard = DENY. Deny-by-default, never fail-open.
       return { allow: false, alasan: "penjaga admission tak dapat dimuat" };
     }
   }
 
-  // Menyalakan server MCP TIDAK lagi terjadi otomatis.
+  // Starting MCP servers NO LONGER happens automatically.
   //
-  // KENAPA BERUBAH. Dulu init() men-spawn SETIAP server yang tak di-disable,
-  // dan ia dipanggil oleh getTools() — yaitu di langkah PERTAMA run agent.
-  // Akibatnya diukur langsung: run diam 60,3 detik tanpa satu pun event, karena
-  // tiap server harus `npx` dulu dan handshake-nya boleh sampai
-  // HANDSHAKE_TIMEOUT_MS. Ongkos itu dibayar SETIAP sesi, untuk server yang
-  // mungkin tak dipakai sama sekali dalam sesi tersebut.
+  // WHY THIS CHANGED. init() used to spawn EVERY server that was not disabled,
+  // and getTools() called it — that is, on the FIRST step of an agent run. The
+  // cost was measured directly: 60.3 seconds of silence with not a single event,
+  // because each server had to `npx` first and its handshake was allowed up to
+  // HANDSHAKE_TIMEOUT_MS. That price was paid EVERY session, for servers that
+  // might not be used in it at all.
   //
-  // Sekarang: init() hanya membereskan proses yatim dari sesi lalu. Server
-  // dinyalakan saat user menekan Connect (addServer / connectServer), dan
-  // TETAP hidup untuk sesi-sesi berikutnya karena instansnya singleton di
-  // globalThis. Jadi agent memakai apa yang sudah tersambung, bukan menunggu
-  // semuanya dinyalakan.
+  // Now: init() only clears orphaned processes from the previous session. Servers
+  // start when the user presses Connect (addServer / connectServer) and STAY up
+  // for later sessions because the instance is a singleton on globalThis. So the
+  // agent uses what is already connected instead of waiting for everything to
+  // start.
   //
-  // Server yang sedang berjalan saat backend hot-reload tidak ikut mati —
-  // this.servers bertahan (lihat mcp-hot-reload.test.js).
+  // Servers running when the backend hot-reloads do not die with it — this.servers
+  // survives (see mcp-hot-reload.test.js).
   async init() {
     if (this.initialized) return;
-    // Proses MCP yatim dari sesi sebelumnya tetap dibersihkan: kalau tidak,
-    // Connect berikutnya menambah duplikat alih-alih menggantikan.
+    // Orphaned MCP processes from earlier sessions are still cleaned up: without
+    // that, the next Connect adds a duplicate instead of replacing.
     _killOrphans();
     this.initialized = true;
   }
 
   // Menyalakan SATU server atas permintaan (tombol Connect di UI).
-  // Idempoten: server yang sudah siap tidak di-spawn ulang.
+  // Idempotent: a server already ready is not respawned.
   async connectServer(name) {
     const cfg = this._loadConfig().mcpServers || {};
     const conf = cfg[name];
@@ -419,17 +486,17 @@ class MCPClient {
     }
   }
 
-  // Menyalakan SEMUA server yang tak di-disable — dipakai tombol "Connect All"
-  // dan jalur lama yang memang ingin semuanya hidup. Paralel, bukan berurutan:
-  // dengan `await` di dalam loop waktu tunggunya adalah JUMLAH semua server,
-  // bukan yang terlama.
+  // Starts EVERY server that is not disabled — used by the "Connect All" button
+  // and by older paths that really do want everything running. In parallel, not
+  // sequentially: with `await` inside the loop the wait is the SUM over all
+  // servers rather than the longest one.
   async connectAll() {
     await this.init();
     const srvs = this._loadConfig().mcpServers || {};
     const hasil = {};
     await Promise.all(
       Object.entries(srvs)
-        .filter(([, conf]) => !conf.disabled)
+        .filter(([, conf]) => !(conf as KonfigServer).disabled)
         .map(async ([name]) => {
           hasil[name] = await this.connectServer(name);
         }),
@@ -437,8 +504,10 @@ class MCPClient {
     return hasil;
   }
 
-  _startServer(name, conf) {
-    return new Promise((resolve, reject) => {
+  _startServer(name: string, conf: KonfigServer) {
+    // Promise<void>: resolve() dipanggil tanpa nilai, dan tanpa parameter tipe
+    // this, TypeScript infers Promise<unknown> and then demands an argument.
+    return new Promise<void>((resolve, reject) => {
       dlog("mcp", "info", `Memulai server MCP: ${name}`, {
         cmd: conf.command,
         args: _argsAman(conf.args),
@@ -449,16 +518,16 @@ class MCPClient {
         process.platform === "win32" && conf.command === "npx"
           ? "npx.cmd"
           : conf.command;
-      // cwd DITERUSKAN. Sebelum ini field itu diam-diam diabaikan: konfigurasi
-      // boleh menuliskannya, spawn tak pernah memakainya.
+      // cwd IS FORWARDED. It used to be silently ignored: the config was allowed
+      // to state it, and spawn never used it.
       //
-      // Akibatnya nyata, bukan teoretis. Server MCP Penpot mencari berkas
-      // konfigurasinya relatif terhadap cwd (`data/initial_instructions.md`),
-      // jadi ia selalu mencarinya di akar WOLFSPACE dan mati saat start dengan
-      // "Configuration file not found" — pesan yang menunjuk ke jalur yang tak
-      // pernah ada di sana. Ini juga membuat `cwd` yang ditulis
-      // plugins.cjs konfigMcp() ikut tak berguna: args relatif di manifest
-      // plugin diselesaikan dari cwd proses induk, bukan dari akar repo.
+      // The consequence was real, not theoretical. The Penpot MCP server looks for
+      // its config file relative to cwd (`data/initial_instructions.md`), so it
+      // always looked in the WOLFSPACE root and died at startup with
+      // "Configuration file not found" — a message pointing at a path that was
+      // never there. It also made the `cwd` written by plugins.cjs konfigMcp()
+      // useless: relative args in a plugin manifest resolved from the parent
+      // process's cwd rather than from the repo root.
       const proc = spawn(cmd, conf.args || [], {
         env,
         shell: process.platform === "win32",
@@ -489,8 +558,8 @@ class MCPClient {
 
       proc.on("close", (code) => {
         dlog("mcp", "info", `MCP server ${name} ditutup dengan kode ${code}`);
-        // Server yang mati sendiri juga harus dicabut catatannya; stopServer
-        // saja tak cukup, karena jalur ini tidak melewatinya.
+        // A server that died on its own must have its record dropped too;
+        // stopServer alone is not enough, because this path does not go through it.
         if (proc.pid) _forgetPid(proc.pid);
         delete this.servers[name];
         delete this.toolsCache[name];
@@ -498,8 +567,9 @@ class MCPClient {
 
       this.servers[name] = { proc, ready: false };
 
-      // Catat ke berkas MILIK PROSES INI. Pemiliknya tersirat dari nama berkas,
-      // jadi proses lain tahu server ini masih bertuan tanpa perlu koordinasi.
+      // Record into THIS PROCESS's own file. Ownership is implied by the file
+      // name, so other processes know this server still has an owner without any
+      // coordination.
       if (proc.pid) _recordPid(proc.pid);
 
       // Lakukan Initialize handshake
@@ -551,8 +621,8 @@ class MCPClient {
       try {
         srv.proc.kill();
       } catch (e) {}
-      // Catatannya dicabut di sini, bukan menunggu pembersihan yatim: PID yang
-      // sudah mati tapi masih tercatat adalah calon korban daur-ulang nomor.
+      // The record is dropped here rather than waiting for orphan cleanup: a PID
+      // already dead but still recorded is a candidate victim of number reuse.
       if (srv.proc.pid) _forgetPid(srv.proc.pid);
       delete this.servers[name];
       delete this.toolsCache[name];
@@ -561,8 +631,8 @@ class MCPClient {
 
   async addServer(name, conf) {
     this.stopServer(name);
-    // MENTAH, bukan gabungan: menyimpan hasil gabungan akan menulis entri plugin
-    // ke config/mcp.json secara permanen.
+    // RAW, not merged: saving the merged result would write plugin entries into
+    // config/mcp.json permanently.
     const config = this._loadConfigMentah();
     if (!config.mcpServers) config.mcpServers = {};
     config.mcpServers[name] = conf;
@@ -577,11 +647,11 @@ class MCPClient {
 
   removeServer(name) {
     this.stopServer(name);
-    // MENTAH: yang boleh dihapus dari berkas hanya yang memang ada di berkas.
-    // Plugin dicopot lewat halaman Plugins, bukan dari sini.
+    // RAW: only what is actually in the file may be deleted from the file.
+    // Plugins are uninstalled from the Plugins page, not from here.
     const config = this._loadConfigMentah();
-    // Bedakan "terhapus" dari "memang tak ada": dulu keduanya membalas {ok:true}
-    // sehingga salah ketik nama tampak berhasil dan UI diam-diam tak berubah.
+    // Tell "deleted" apart from "never existed": both used to answer {ok:true},
+    // so a typo in the name looked like success while the UI silently did nothing.
     const existed = !!(config.mcpServers && config.mcpServers[name]);
     if (existed) {
       delete config.mcpServers[name];
@@ -595,10 +665,10 @@ class MCPClient {
     // memanggang entri plugin ke config/mcp.json.
     const config = this._loadConfigMentah();
     if (!config.mcpServers || !config.mcpServers[name]) {
-      // Plugin memang tak akan ditemukan di sini, dan itu benar: hidup-matinya
-      // ditentukan PERSETUJUAN user di halaman Plugins, bukan sakelar disabled
-      // di config/mcp.json. Dikatakan terus terang supaya user tak mengira
-      // sakelarnya rusak.
+      // A plugin will indeed not be found here, and that is correct: whether it
+      // runs is decided by the user's APPROVAL on the Plugins page, not by a
+      // disabled switch in config/mcp.json. Said plainly so the user does not
+      // conclude the switch is broken.
       if (this._dariPlugin(name)) {
         return {
           ok: false,
@@ -618,10 +688,10 @@ class MCPClient {
     } else {
       delete conf.disabled;
       this._saveConfig(config);
-      // Lewat connectServer, bukan _startServer langsung: ia idempoten
-      // (server yang sudah siap tak di-spawn ulang) dan membersihkan proses
-      // yang setengah jalan. Tanpa itu, menyalakan dua kali meninggalkan
-      // proses yatim yang tak tercatat di this.servers.
+      // Through connectServer rather than _startServer directly: it is idempotent
+      // (a server already ready is not respawned) and it cleans up half-started
+      // processes. Without that, starting twice leaves an orphan that this.servers
+      // never recorded.
       const r = await this.connectServer(name);
       return r.ok ? { ok: true, enabled: true } : { ok: false, error: r.error };
     }
@@ -643,14 +713,18 @@ class MCPClient {
   }
 
   // timeoutMs dapat ditimpa: handshake `initialize` harus gagal CEPAT (server
-  // yang sehat menjawabnya dalam hitungan detik), sedangkan panggilan tool nyata
-  // memang bisa lama dan tetap memakai 120 detik.
-  _request(name, method, params, timeoutMs = REQUEST_TIMEOUT_MS) {
-    return new Promise((resolve, reject) => {
+  // A healthy server answers a handshake in seconds, so its timeout is short;
+  // real tool calls can legitimately take a while and keep the 120 s budget.
+  _request<T = unknown>(
+    name: string,
+    method: string,
+    params?: unknown,
+    timeoutMs = REQUEST_TIMEOUT_MS,
+  ): Promise<T> {
+    return new Promise<T>((resolve, reject) => {
       const id = this.msgId++;
-      // Timer di-clear saat request selesai. Dulu tidak: tiap request menahan
-      // timer 120 detik sampai habis, sehingga proses menolak keluar jauh
-      // setelah pekerjaannya rampung.
+      // Generic: each caller names the response shape it expects, so tools/list and
+      // tools/call get real types instead of `any` on both sides.
       const timer = setTimeout(() => {
         if (this.pendingReqs[id]) {
           delete this.pendingReqs[id];
@@ -675,7 +749,7 @@ class MCPClient {
   _handleMessage(name, line) {
     try {
       const msg = JSON.parse(line);
-      // Jika ini adalah respon (memiliki id dan tidak memiliki method)
+      // A response if it has an id and no method
       if (msg.id !== undefined && !msg.method) {
         const p = this.pendingReqs[msg.id];
         if (p) {
@@ -685,7 +759,7 @@ class MCPClient {
           else p.resolve(msg.result);
         }
       } else if (msg.method) {
-        // Notifikasi atau request dari server (misal ping)
+        // A notification or request from the server (ping, for instance)
         dlog(
           "mcp",
           "info",
@@ -700,23 +774,23 @@ class MCPClient {
     }
   }
 
-  // Mengembalikan tool dari server yang SUDAH tersambung. Ia tidak lagi
-  // menyalakan apa pun: init() kini hanya membersihkan proses yatim, dan
-  // penyalaan adalah tindakan eksplisit user lewat Connect. Ini yang membuat
-  // langkah pertama agent tak lagi menanggung cold start `npx` semua server.
+  // Returns tools from servers that are ALREADY connected. It no longer starts
+  // anything: init() now only cleans up orphaned processes, and starting is an
+  // explicit user action through Connect. This is what keeps the agent's first
+  // step free of the `npx` cold start of every server.
   async getTools() {
     await this.init();
-    const allTools = [];
+    const allTools: DefinisiAlat[] = [];
 
     for (const name of Object.keys(this.servers)) {
       if (!this.servers[name].ready) continue;
 
-      // Plugin yang tak disetujui TIDAK MUNCUL sama sekali di daftar tool.
+      // Unapproved plugins DO NOT APPEAR AT ALL in the tool list.
       //
-      // Ini beda penting dari "ditolak saat dipanggil": model tak pernah melihat
-      // tool-nya, jadi tak ada yang bisa dibujuk untuk memanggilnya. Isi tak
-      // tepercaya yang dibaca model tak bisa menyuruhnya memakai sesuatu yang
-      // tak ada di daftar.
+      // This differs importantly from "refused when called": the model never sees
+      // the tool, so there is nothing it can be talked into calling. Untrusted
+      // content the model reads cannot direct it toward something that is not on
+      // the list.
       const izin = this._izinPlugin(name);
       if (!izin.allow) {
         dlog("mcp", "info", `Plugin ${name} disembunyikan dari daftar tool`, {
@@ -727,14 +801,18 @@ class MCPClient {
 
       try {
         if (!this.toolsCache[name]) {
-          const res = await this._request(name, "tools/list", {});
+          const res = await this._request<{ tools?: AlatMCP[] }>(
+            name,
+            "tools/list",
+            {},
+          );
           this.toolsCache[name] = res.tools || [];
         }
 
-        // Format ulang tool agar sesuai dengan format SELF_TOOLS WOLFSPACE
+        // Reshape the tool into WOLFSPACE's SELF_TOOLS format
         for (const t of this.toolsCache[name]) {
-          const toolName = `mcp_${name}_${t.name}`; // Prefix dengan nama server untuk mencegah tabrakan nama
-          const def = {
+          const toolName = `mcp_${name}_${t.name}`; // Prefix with the server name to avoid name collisions
+          const def: DefinisiAlat = {
             type: "function",
             function: {
               name: toolName,
@@ -769,15 +847,15 @@ class MCPClient {
       return { ok: false, output: `Server MCP ${serverName} is not active.` };
     }
 
-    // Gerbang KEDUA. getTools() sudah menyembunyikan plugin yang tak disetujui,
-    // tapi daftar tool dibangun sekali di awal giliran sementara persetujuan bisa
-    // dicabut, dan nama tool bisa datang dari riwayat percakapan — bukan hanya
-    // dari daftar yang baru saja dikirim. Pemeriksaan di titik pemakaian ini yang
-    // menentukan; yang di getTools() hanya membuat godaannya tak pernah terlihat.
+    // The SECOND gate. getTools() already hides unapproved plugins, but the tool
+    // list is built once at the start of a turn while approval can be revoked,
+    // and a tool name can arrive from conversation history — not only from the
+    // list just sent. This check at the point of use is the decisive one; the one
+    // in getTools() merely keeps the temptation out of sight.
     const izin = this._izinPlugin(serverName);
     if (!izin.allow) {
       try {
-        const cc = require("./broker/commandchain.cjs");
+        const cc = require("./broker/commandchain.ts");
         const P = require("./plugins.cjs");
         cc.catat({
           capability: P.kapabilitas(serverName),
@@ -799,14 +877,14 @@ class MCPClient {
       };
     }
 
-    // BUANG argumen INTERNAL WOLFSPACE sebelum menyeberang ke protokol MCP.
-    // self_agent.cjs menyuntikkan `rencana_tindakan` (chain-of-thought) ke skema
-    // SEMUA tool, termasuk tool MCP. Server MCP memvalidasi argumen terhadap skema
-    // miliknya sendiri yang tak mengenal field itu, lalu MENOLAK panggilannya —
-    // gejalanya: MCP "terhubung" tapi setiap panggilan gagal. Field itu sudah
-    // dipakai di self_agent (emit thought) SEBELUM dispatch, jadi membuangnya di
-    // sini tak menghilangkan apa pun dari UI. Ini batas yang benar: satu tempat,
-    // berlaku untuk semua server MCP.
+    // STRIP WOLFSPACE-INTERNAL arguments before crossing into the MCP protocol.
+    // self_agent.cjs injects `rencana_tindakan` (chain-of-thought) into the schema
+    // of EVERY tool, MCP tools included. An MCP server validates arguments against
+    // its own schema, which knows no such field, and REJECTS the call — the
+    // symptom being MCP "connected" while every call fails. self_agent has already
+    // consumed that field (emit thought) BEFORE dispatch, so dropping it here
+    // removes nothing from the UI. This is the right boundary: one place, applying
+    // to every MCP server.
     const INTERNAL_ARGS = ["rencana_tindakan"];
     let wireArgs = args;
     if (args && typeof args === "object" && !Array.isArray(args)) {
@@ -820,7 +898,10 @@ class MCPClient {
       dlog("mcp", "info", `Memanggil tool MCP: ${toolName} di ${serverName}`, {
         args: wireArgs,
       });
-      const res = await this._request(serverName, "tools/call", {
+      const res = await this._request<{
+        isError?: boolean;
+        content?: IsiBalasan[];
+      }>(serverName, "tools/call", {
         name: toolName,
         arguments: wireArgs,
       });
@@ -847,12 +928,12 @@ class MCPClient {
     }
   }
 
-  // Rekam hasil panggilan TERAKHIR per server. `ready` saja tidak cukup untuk
-  // menyatakan sebuah server "berfungsi": proses bisa start & berjabat tangan
-  // dengan mulus, lalu SETIAP panggilan API gagal — persis yang terjadi ketika
-  // token GitHub dicabut tapi UI tetap menampilkan "Connected". Status jujur
-  // butuh bukti dari panggilan nyata, bukan dari keberhasilan start saja.
-  _catat(name, ok, pesan) {
+  // Record the LAST call result per server. `ready` alone is not enough to call
+  // a server "working": the process can start and handshake cleanly and then
+  // fail EVERY API call — exactly what happens when a GitHub token is revoked
+  // while the UI still shows "Connected". An honest status needs evidence from
+  // a real call, not just from a successful start.
+  _catat(name: string, ok: boolean, pesan?: string) {
     const s = this.servers[name];
     if (!s) return;
     s.lastCallAt = Date.now();
@@ -864,13 +945,13 @@ class MCPClient {
           .slice(0, 200);
   }
 
-  // Status RUNTIME per server (bukan sekadar isi config). Dipakai UI supaya badge
-  // koneksi mencerminkan keadaan sebenarnya alih-alih nilai `active: true` yang
-  // dulu di-hardcode di frontend.
-  //   configured : ada di config/mcp.json
-  //   running    : prosesnya hidup
-  //   ready      : handshake initialize selesai
-  //   lastCallOk : hasil panggilan tool terakhir (null bila belum pernah dipanggil)
+  // RUNTIME status per server (not merely what the config says). The UI uses it
+  // so the connection badge reflects reality instead of the `active: true` that
+  // used to be hardcoded in the frontend.
+  //   configured : present in config/mcp.json
+  //   running    : the process is alive
+  //   ready      : the initialize handshake completed
+  //   lastCallOk : result of the last tool call (null if never called)
   status() {
     const cfg = this._loadConfig().mcpServers || {};
     const out = {};
@@ -893,46 +974,47 @@ class MCPClient {
   }
 }
 
-// Singleton yang BERTAHAN LINTAS HOT-RELOAD.
+// A singleton that SURVIVES HOT RELOAD.
 //
-// GEJALA YANG DIPERBAIKI: koneksi MCP mati di tengah pemakaian lalu hidup lagi
-// sendiri, tanpa ada yang menyentuhnya.
+// SYMPTOM THIS FIXES: MCP connections dying mid-use and then coming back on
+// their own, with nobody touching them.
 //
-// SEBABNYA: watcher backend di electron/main.js membuang SELURUH require.cache
-// di bawah root setiap kali berkas .cjs berubah — kejadian rutin pada aplikasi
-// yang menyunting dirinya sendiri. Modul ini ikut terbuang, sehingga require
-// berikutnya membuat MCPClient BARU dengan initialized=false. init() lalu
-// memanggil _killOrphans(), yang membaca .mcp-pids.json dan MEMBUNUH proses MCP
-// yang masih melayani permintaan — disangka sisa sesi sebelumnya. Sesudah itu ia
-// spawn ulang, sehingga koneksinya "hidup sendiri".
+// CAUSE: the backend watcher in electron/main.js drops the ENTIRE require.cache
+// under the root whenever a .cjs file changes — a routine event in an app that
+// edits its own source. This module went with it, so the next require built a
+// NEW MCPClient with initialized=false. init() then called _killOrphans(),
+// which read .mcp-pids.json and KILLED MCP processes that were still serving
+// requests, mistaking them for leftovers of an earlier session. It respawned
+// afterwards, which is why the connection appeared to revive by itself.
 //
-// Terreproduksi: start MCP -> tiru bust cache watcher -> require ulang -> init()
-// -> 2 dari 2 proses yang hidup terbunuh.
+// Reproduced: start MCP -> simulate the watcher cache bust -> re-require ->
+// init() -> 2 of 2 live processes killed.
 //
-// Menyimpan instance di globalThis membuat require setelah reload mengembalikan
-// objek yang SAMA: initialized tetap true, init() langsung kembali, _killOrphans
-// tak pernah jalan, dan handle proses di this.servers tetap utuh. Pola ini sudah
-// dipakai agent/self_agent.cjs untuk checkpointer HITL dengan alasan persis sama.
+// Keeping the instance on globalThis makes a post-reload require return the
+// SAME object: initialized stays true, init() returns immediately,
+// _killOrphans never runs, and the process handles in this.servers stay
+// intact. agent/self_agent.cjs already uses this pattern for the HITL
+// checkpointer, for exactly the same reason.
 const mcpClient =
   globalThis.__wolfspaceMcpClient ||
   (globalThis.__wolfspaceMcpClient = new MCPClient());
 
 // ── HOT-RELOAD PATCH ──────────────────────────────────────────────────────────
-// Setelah watcher mem-bust require.cache, file ini di-require ulang dengan class
-// MCPClient yang sudah diperbarui. Tapi karena singleton dikembalikan dari
-// globalThis, prototype-nya masih menunjuk ke class LAMA sehingga method baru
-// (seperti toggleServer) tidak tersedia sampai Electron di-restart penuh.
+// After the watcher busts require.cache this file is re-required with an
+// updated MCPClient class. But because the singleton comes back from
+// globalThis, its prototype still points at the OLD class, so new methods
+// (toggleServer, for one) stay unavailable until Electron is fully restarted.
 //
-// Solusi: setiap kali file ini dimuat ulang, perbarui prototype singleton lama
-// agar menunjuk ke class MCPClient baru. Instance-nya tetap sama (koneksi MCP
-// tidak terganggu), tapi method barunya langsung tersedia.
+// Fix: on every reload of this file, re-point the old singleton's prototype at
+// the new MCPClient class. The instance stays the same (MCP connections are
+// undisturbed) while its new methods become available immediately.
 if (Object.getPrototypeOf(mcpClient) !== MCPClient.prototype) {
   Object.setPrototypeOf(mcpClient, MCPClient.prototype);
 }
 
-// Kait uji. Diekspor karena satu-satunya cara lain memicu _killOrphans adalah
-// init(), yang men-spawn server MCP sungguhan lewat `npx` — lambat, butuh
-// jaringan, dan justru mengaburkan yang ingin diuji: keputusan bunuh/pertahankan.
+// Test hook. Exported because the only other way to trigger _killOrphans is
+// init(), which spawns real MCP servers through `npx` — slow, network-bound,
+// and it obscures the very thing under test: the kill/keep decision.
 mcpClient._killOrphans = _killOrphans;
 mcpClient._recordPid = _recordPid;
 mcpClient._forgetPid = _forgetPid;

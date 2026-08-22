@@ -1,0 +1,36 @@
+{
+  // Type checker for agent/ files that have MIGRATED to TypeScript.
+  //
+  // Deliberately NOT as strict as server/ or packages/contracts/. Those were
+  // written as TypeScript from birth, so they carry no debt. Files here are
+  // ports of long-lived CommonJS, and demanding full strictness on arrival
+  // would mean annotating hundreds of parameters in one sitting — the kind of
+  // red wall that ends up ignored rather than fixed.
+  //
+  // The calibration mirrors agent/jsconfig.json, which reasoned this out
+  // already for the @ts-check ratchet: strictNullChecks stays ON because
+  // without it narrowing on discriminated unions does not work at all and the
+  // types stop being worth anything, while noImplicitAny stays OFF as the next
+  // ratchet to tighten once the ported files settle.
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "CommonJS",
+    "moduleResolution": "node",
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "skipLibCheck": true,
+    "maxNodeModuleJsDepth": 0,
+
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+
+    // Ported files still require() untyped .cjs siblings; without this every
+    // one of those is an error before a single line has been reviewed.
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules", "_agent_backups"]
+}

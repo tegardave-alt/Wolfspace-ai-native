@@ -1,3 +1,7 @@
+// Install the .ts hook FIRST: modules below require TypeScript files, and
+// this file can itself be an entry point — tests require it directly, and
+// `node -e` subprocesses load it without ever going through server.cjs.
+require("../../scripts/ts-register.cjs");
 // Tool aggregator - imports all sub-modules and provides runSelfTool dispatcher
 const fs = require("fs");
 const path = require("path");
@@ -104,7 +108,7 @@ let _cc;
 function lazyCC() {
   if (_cc !== undefined) return _cc;
   try {
-    _cc = require("../broker/commandchain.cjs");
+    _cc = require("../broker/commandchain.ts");
   } catch (_) {
     _cc = null;
   }
@@ -169,7 +173,7 @@ const runInWorkspace =
     throw new Error("exec-tools not loaded");
   });
 const term = execTools.term || null;
-const { createSession: createSandboxSession } = require("../sandbox.cjs");
+const { createSession: createSandboxSession } = require("../sandbox.ts");
 // Peripheral exports — lazy, loaded only when their modules are first used
 const resolveDiskPath = (p) => {
   const m = lazyDisk();
@@ -468,7 +472,7 @@ function _workdirDalamJail(root, cwd) {
 // dan dinyalakan — dan justru ketergantungan itu yang membuat pengurungan
 // terkuat jadi paling jarang aktif: saat daemon mati, yang benar-benar berjalan
 // adalah penjaga regex di bawah.
-const _sandboxPolicy = require("../sandbox-policy.cjs");
+const _sandboxPolicy = require("../sandbox-policy.ts");
 const _penegakanLabel = require("../penegakan.cjs");
 
 // PENEGAKAN DI KODE (bukan anjuran prompt): tolak perintah bash yang menyebut
@@ -834,7 +838,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
 
     // -- MCP Router --
     if (name.startsWith("mcp_")) {
-      const mcpClient = require("../mcp-client.cjs");
+      const mcpClient = require("../mcp-client.ts");
       return await mcpClient.callTool(name, args);
     }
 
@@ -1416,7 +1420,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         QROOT;
       if (_confineRoot) {
         // Utama: pengurungan OS lewat namespace Linux — batas nyata, bukan regex.
-        // Gerbangnya lewat kebijakan terpusat (agent/sandbox-policy.cjs) dengan
+        // Gerbangnya lewat kebijakan terpusat (agent/sandbox-policy.ts) dengan
         // fallback "auto"; setelan eksplisit sandbox:false / WOLFSPACE_SANDBOX=off
         // tetap dihormati.
         //
@@ -2148,7 +2152,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       //
       // web_fetch sengaja TIDAK ikut digerbang di sini: mengubahnya akan
       // mematahkan alur yang sudah dipakai, dan itu keputusan tersendiri.
-      const cc = require("../broker/commandchain.cjs");
+      const cc = require("../broker/commandchain.ts");
       const adm = cc.periksa(cc.sesiRuleset(), "network:https");
       if (!adm.allow) {
         cc.catat({
@@ -2279,7 +2283,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       // terbuka bukan lockdown; ia cuma memindahkan jalannya. Dan itu lebih
       // buruk daripada tak ada lockdown, karena orang mengira sesi sudah dikunci.
       try {
-        const cc = require("../broker/commandchain.cjs");
+        const cc = require("../broker/commandchain.ts");
         const rs = cc.sesiRuleset();
         const adm = cc.periksa(rs, "proc.raw");
         if (!adm.allow) {

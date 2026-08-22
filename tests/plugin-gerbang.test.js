@@ -18,7 +18,7 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const P = require("../agent/plugins.cjs");
 const SRC_MCP = fs.readFileSync(
-  require.resolve("../agent/mcp-client.cjs"),
+  require.resolve("../agent/mcp-client.ts"),
   "utf8",
 );
 

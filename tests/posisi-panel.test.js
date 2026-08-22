@@ -350,8 +350,10 @@ describe("menyembunyikan chat", () => {
     // Code ikut dihitung sejak ia jadi panel sungguhan — kalau tidak,
     // menyembunyikan chat saat HANYA Code terbuka ditolak padahal layarnya
     // tidak akan kosong.
+    // \s+ sesudah "=": prettier memecah deklarasi ini ke dua baris. Yang dijaga
+    // KEEMPAT syaratnya, bukan muat-tidaknya dalam satu baris.
     expect(K).toMatch(
-      /const buntu = !nilai && !panelOpen && !terminalOpen && !logicOpen/,
+      /const buntu =\s+!nilai && !panelOpen && !terminalOpen && !logicOpen/,
     );
     expect(K).toMatch(/disabled=\{buntu\}/);
     expect(APP).toMatch(

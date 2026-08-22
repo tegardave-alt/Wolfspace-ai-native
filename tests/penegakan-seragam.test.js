@@ -78,7 +78,7 @@ describe("kosakata penegakan seragam", () => {
   }, 90000);
 
   test("label sandbox_run COCOK dengan mekanisme yang BENAR-BENAR dipakai", async () => {
-    const sandbox = require("../agent/sandbox.cjs");
+    const sandbox = require("../agent/sandbox.ts");
     const kap = sandbox.adapterCapabilities();
     const r = await T.runSelfTool(
       "sandbox_run",

@@ -277,35 +277,6 @@ function startBackend() {
     PATH: toolchainPath() + path.delimiter + (process.env.PATH || ""),
   };
 
-  // Local model servers (llama.cpp) â€” only if present
-  const dir = cfg.modelDir;
-  const exe = dir ? path.join(dir, "llama-server.exe") : null;
-  if (exe && fs.existsSync(exe)) {
-    for (const m of cfg.models || []) {
-      const mp = path.join(dir, m.file || "");
-      if (m.file && fs.existsSync(mp)) {
-        procs.push(
-          spawn(
-            exe,
-            [
-              "-m",
-              mp,
-              "--host",
-              "127.0.0.1",
-              "--port",
-              String(m.port),
-              "--ctx-size",
-              String((cfg.llama && cfg.llama.ctxSize) || 2048),
-              "--threads",
-              String((cfg.llama && cfg.llama.threads) || 2),
-              "--mlock",
-            ],
-            { cwd: dir, stdio: "ignore", env },
-          ),
-        );
-      }
-    }
-  }
   // NO web server anymore: the backend logic runs IN-PROCESS via core.js, reached
   // by the renderer through Electron IPC (see registerIpc). Zero open ports.
 }

@@ -65,7 +65,7 @@ starter: scripts/app.cjs
 electron/main.js
    ├─ protocol app://  →  public/ + preview-file
    ├─ registerIpc()    →  channel WOLFSPACE:*
-   ├─ startBackend()   →  optional child llama-server (dari config)
+   ├─ startBackend()   →  core.js in-process (tanpa child model lokal)
    ├─ createWindow()   →  app://WOLFSPACE/index.html
    ├─ fs.watch(...)    →  HMR UI / reloadCore (ditunda jika agent sibuk)
    └─ first IPC use    →  require(core.js) → require(server.cjs) SEBAGAI MODUL
@@ -96,16 +96,16 @@ http.createServer(handler) → listen
 
 ### 2.5 Kunci kontak (`config` & rahasia)
 
-| Berkas / lokasi                     | Isi                                                               |
-| ----------------------------------- | ----------------------------------------------------------------- |
-| `config.json`                       | host/port, model, llama, runners, `ww.root` / `ww.watch`, verbose |
-| `config/prompts.json`               | system prompt chat + self-agent                                   |
-| `config/mcp.json`                   | definisi server MCP                                               |
-| `config/.mcp-pids/`                 | jejak PID child MCP                                               |
-| `plugins/_disetujui.json`           | capability plugin yang disetujui                                  |
-| keys lewat `agent/keys-path.cjs`    | API key di luar tree proyek                                       |
-| `~/.wolfspace/…`                    | rag, migrasi, data user                                           |
-| `.wolfspace/snapshots` / quarantine | jejak safe-edit                                                   |
+| Berkas / lokasi                     | Isi                                                 |
+| ----------------------------------- | --------------------------------------------------- |
+| `config.json`                       | host/port, runners, `ww.root` / `ww.watch`, verbose |
+| `config/prompts.json`               | system prompt chat + self-agent                     |
+| `config/mcp.json`                   | definisi server MCP                                 |
+| `config/.mcp-pids/`                 | jejak PID child MCP                                 |
+| `plugins/_disetujui.json`           | capability plugin yang disetujui                    |
+| keys lewat `agent/keys-path.cjs`    | API key di luar tree proyek                         |
+| `~/.wolfspace/…`                    | rag, migrasi, data user                             |
+| `.wolfspace/snapshots` / quarantine | jejak safe-edit                                     |
 
 ---
 
@@ -194,13 +194,11 @@ Modul rute terpisah (`server/routes/*`) didaftarkan dulu, sisanya inline di `ser
 | MCP          | `/mcp`, `/mcp/status`, `/mcp/connect`, `/mcp/toggle` | `agent/mcp-client.cjs`                   |
 | Plugin       | `/plugins`, pasang/copot/setujui                     | `agent/plugins.cjs`                      |
 | Cloud keys   | `/cloud-save`, `/detect-key`, `/cloud-providers`     | `server/routes/cloud.cjs`, `keys-path`   |
-| Model        | `/hf/*`, `/ollama/*`, `/models`, …                   | unduh/daftar model                       |
 | Terminal     | `/api/terminal/*`                                    | `server/routes/terminal.cjs` → node-pty  |
 | DAP/debug    | `/dap/*`, `/debug/*`                                 | `server/routes/dap.cjs`, `core/dap*.cjs` |
 | Preview      | `/preview-file`, `/preview-file-assets/*`            | baca HTML/aset dari disk                 |
 | RAG          | `/rag/ingest`, `/rag/retrieve`                       | `agent/rag.cjs`                          |
 | Snapshot     | `/api/snapshots`, `/api/rollback`                    | `agent/snapshot.cjs`                     |
-| Hunk         | `/api/apply-hunk`, `/api/revert-hunk`                | edit parsial                             |
 | Complete     | `/complete`, `/pycomplete`                           | ghost text / Jedi                        |
 | Attach       | `/attach`, `/upload`                                 | `attachment-bridge.cjs`                  |
 | Flow         | `POST /flow/http`                                    | node HTTP di logic canvas                |
@@ -414,7 +412,7 @@ GET /debug/tersedia → debugger apa yang terpasang
         ┌───────────────────────┴────────────────────────┐
         │ ELECTRON                                        │ HTTP
         │  app:// → public/                               │  static public/
-        │  IPC + optional llama child                     │  CORS + listen
+        │  IPC (tanpa child model lokal)                  │  CORS + listen
         │  core.js → server.cjs (tanpa listen)            │  server.cjs listen
         └───────────────────────┬─────────────────────────┘
                                 │
@@ -432,7 +430,7 @@ GET /debug/tersedia → debugger apa yang terpasang
 │  /ww/* → ww.cjs + fs       /mcp/* → mcp-client                            │
 │  /api/terminal/*           /dap/* → dap-sesi → dap                        │
 │  /preview-file             /plugins/*  /rag/*  /cloud-*  /debug*          │
-│  /hf/* /models /attach /complete  + static public/                        │
+│  /cloud-providers /attach + static public/                                │
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼──────────────────────────────────────────┐

@@ -27,7 +27,7 @@ const {
 } = require("../agent/broker/index.cjs");
 
 const SRC = fs.readFileSync(
-  require.resolve("../agent/broker/zone-process.cjs"),
+  require.resolve("../agent/broker/zone-process.ts"),
   "utf8",
 );
 
@@ -64,7 +64,7 @@ describe("struktur penanda pengurungan", () => {
     // sehingga di Node 20 SETIAP zona mati dengan `bad option` (exit 9) — dan
     // CI dipatok Node 20, jadi 7 dari 15 suite merah pada tiap push. Diukur
     // pada Node 20.15.1 asli, bukan disimpulkan dari dokumentasi.
-    const { flagPermission } = require("../agent/broker/zone-process.cjs");
+    const { flagPermission } = require("../agent/broker/zone-process.ts");
     expect(flagPermission(24, "/w.cjs")).toEqual(["--permission"]);
     expect(flagPermission(23, "/w.cjs")).toEqual(["--permission"]);
 

@@ -1,7 +1,7 @@
 // Zona kapabilitas tak boleh menggantung hanya karena kode di dalamnya
 // banyak mencetak.
 //
-// MASALAH YANG DIPERBAIKI. zone-process.cjs membuka child dengan
+// MASALAH YANG DIPERBAIKI. zone-process.ts membuka child dengan
 // stdio: ['ignore', 'pipe', 'pipe', 'ipc'], tapi HANYA stderr yang punya
 // listener — stdout di-pipe dan tak pernah dibaca. Begitu buffer pipa OS penuh
 // (~64 KB), proses zona memblok selamanya di console.log lalu mati kena
@@ -84,7 +84,7 @@ describe("keluaran zona kapabilitas", () => {
 
   test("stdout PUNYA listener (kalau hilang, deadlock-nya kembali)", () => {
     const src = fs.readFileSync(
-      require.resolve("../agent/broker/zone-process.cjs"),
+      require.resolve("../agent/broker/zone-process.ts"),
       "utf8",
     );
     expect(src).toMatch(/child\.stdout\.on\(\s*['"]data['"]/);

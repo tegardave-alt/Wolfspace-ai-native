@@ -90,8 +90,19 @@ jobs:
           # terminal cuma mati diam-diam di aplikasi terpaket dan tak ada yang tahu.
           # Begitu server.cjs me-require-nya di tingkat atas, seluruh backend gagal
           # dimuat dan job ini merah.
-          for f in core.js server.cjs core/terminal.cjs scripts/ww.cjs agent/self_agent.cjs \
-                   agent/mcp-client.cjs agent/sandbox-policy.cjs server/routes/terminal.cjs; do
+          # scripts/ts-register.cjs and the .ts files under server/routes/ are on this
+          # list because server.cjs requires them at top level since the gradual
+          # TypeScript migration started. build.files previously named only
+          # "scripts/ww.cjs", so without the new entries the whole backend fails to
+          # load in the packaged app — exactly the class of bug this job exists to catch.
+          for f in core.js server.cjs core/terminal.cjs scripts/ww.cjs scripts/ts-register.cjs \
+                   agent/self_agent.cjs agent/mcp-client.ts \
+                   agent/sandbox.ts agent/sandbox-policy.ts \
+                   agent/broker/zone-worker.cjs agent/broker/zone-process.ts \
+                   agent/broker/host.ts agent/broker/policy.ts \
+                   agent/broker/audit-log.ts agent/broker/commandchain.ts \
+                   server/routes/terminal.ts server/routes/debug.ts server/routes/snapshots.ts \
+                   server/routes/cloud.ts server/routes/dap.ts; do
             if [ -f "$UNPACKED/$f" ]; then
               echo "  ok      $f"
             else
@@ -99,6 +110,24 @@ jobs:
             fi
           done
           [ "$gagal" = "0" ] || exit 1
+
+          # electron/preload.js diperiksa TERPISAH karena ia ada DI DALAM
+          # app.asar, bukan di app.asar.unpacked: electron/** memang tidak
+          # ikut asarUnpack. Ia berkas hasil generate dari preload.ts dan yang
+          # benar-benar dimuat Electron — kalau hilang, jendela terbuka tanpa
+          # window.WOLFSPACE sama sekali dan renderer tak bisa menjangkau apa pun.
+          echo "--- preload di dalam asar ---"
+          node -e "
+            const asar = require('@electron/asar');
+            const isi = asar.extractFile('dist-app/win-unpacked/resources/app.asar',
+                                         'electron/preload.js').toString('utf8');
+            if (!isi.includes('exposeInMainWorld(\"WOLFSPACE\"')) {
+              console.error('::error::preload.js terpaket tapi tak memasang jembatan');
+              process.exit(1);
+            }
+            console.log('  ok      electron/preload.js (' + isi.length + ' bytes)');
+          "
+
           echo "--- uji rantai require dari hasil paket ---"
           cd "$UNPACKED"
           node -e "

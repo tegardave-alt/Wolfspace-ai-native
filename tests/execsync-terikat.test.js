@@ -57,7 +57,14 @@ describe("execSync terikat sebelum dipakai", () => {
       if (/(^|[^.\w])execSync\s*\(/.test(b)) pakai.push(n + 1);
     });
     // Kalau nol, uji ini tak menguji apa pun — jauh lebih buruk daripada gagal.
-    expect(pakai.length).toBeGreaterThan(2);
+    //
+    // The bound is 0, not a larger number: what makes this test meaningful is
+    // that at least one call site exists to be checked, which is exactly what
+    // the line above says. It used to demand more than 2 only because killPort()
+    // happened to contribute two of them; that function went away with
+    // local-model support, and pinning the old count would have failed on a
+    // deletion that removed no binding at all.
+    expect(pakai.length).toBeGreaterThan(0);
 
     // Impor modulnya ada di baris paling atas, jadi semua pemakaian sesudahnya
     // terjangkau. Yang perlu dipastikan: tak ada pemakaian SEBELUM impor itu.
@@ -99,13 +106,11 @@ describe("execSync terikat sebelum dipakai", () => {
     expect(p).toMatch(/process\.env\.PATH/);
     expect(p).toMatch(/fs\.existsSync/);
   });
-
-  test("killPort memakai netstat lalu taskkill", () => {
-    const i = SRV.indexOf("function killPort(");
-    const blok = SRV.slice(i, SRV.indexOf("\n}", i) + 2);
-    expect(blok).toMatch(/execSync\("netstat -ano"/);
-    expect(blok).toMatch(/execSync\("taskkill \/F \/PID "/);
-  });
+  // The killPort() guard that used to live here is gone with the function itself.
+  // killPort existed only to stop a model's llama-server, and its sole caller was
+  // /model/delete — an endpoint that called an undefined killPortAsync and could
+  // therefore never have worked. Both were removed with local-model support, so
+  // there is no longer any behaviour here to protect.
 });
 
 // ── Git di jalur HTTP tidak boleh sinkron ──

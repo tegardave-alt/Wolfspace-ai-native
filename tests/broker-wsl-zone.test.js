@@ -34,7 +34,7 @@ const {
 } = require("../agent/broker/index.cjs");
 
 const SRC = fs.readFileSync(
-  require.resolve("../agent/broker/zone-process.cjs"),
+  require.resolve("../agent/broker/zone-process.ts"),
   "utf8",
 );
 

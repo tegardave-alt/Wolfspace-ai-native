@@ -8,7 +8,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const http = require("http");
 
-const mcp = require("../agent/mcp-client.cjs");
+const mcp = require("../agent/mcp-client.ts");
 
 describe("rahasia tidak ikut tercatat saat server MCP dinyalakan", () => {
   // KENAPA ADA. Argumen server MCP membawa kredensial, dan argumen itu DICATAT
@@ -48,7 +48,7 @@ describe("rahasia tidak ikut tercatat saat server MCP dinyalakan", () => {
 
   test("dipakai di jalur yang benar-benar mencatat", () => {
     const SRC = fs
-      .readFileSync(require.resolve("../agent/mcp-client.cjs"), "utf8")
+      .readFileSync(require.resolve("../agent/mcp-client.ts"), "utf8")
       .replace(/\r\n/g, "\n");
     expect(SRC).toMatch(
       /Memulai server MCP[\s\S]{0,120}args: _argsAman\(conf\.args\)/,
@@ -245,7 +245,7 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
   // dulu dan handshake boleh sampai HANDSHAKE_TIMEOUT_MS. Ongkos itu dibayar
   // setiap sesi, untuk server yang mungkin tak dipakai sama sekali.
   const SRC = fs
-    .readFileSync(require.resolve("../agent/mcp-client.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/mcp-client.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("init() TIDAK lagi men-spawn apa pun", () => {

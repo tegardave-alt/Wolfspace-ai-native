@@ -340,7 +340,7 @@ bila("perilaku nyata di dalam container", () => {
 // sudah terkurung. Pola ini sudah pernah muncul di repo ini untuk admission
 // proc.raw, lalu kembali dalam bentuk baru begitu bash dikurung sendirian.
 describe("sandbox_run ikut terkurung, bukan pintu sebelah", () => {
-  const src = fs.readFileSync(path.join(AKAR, "agent", "sandbox.cjs"), "utf8");
+  const src = fs.readFileSync(path.join(AKAR, "agent", "sandbox.ts"), "utf8");
 
   test("spawn-nya dibungkus AppContainer", () => {
     expect(src).toMatch(/_ac\.bungkus\(cmdCwd, shellCmd, shellArgs\)/);

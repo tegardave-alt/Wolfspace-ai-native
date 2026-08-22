@@ -54,7 +54,7 @@ describe("bash melaporkan tingkat penegakan", () => {
 
   test("label COCOK dengan mekanisme yang benar-benar dipakai", async () => {
     const jail = require("../agent/tools/bash-jail.cjs");
-    const kebijakan = require("../agent/sandbox-policy.cjs");
+    const kebijakan = require("../agent/sandbox-policy.ts");
     const pakaiJail =
       process.env.WW_BASH_NATIVE !== "1" &&
       kebijakan.shouldSandbox(

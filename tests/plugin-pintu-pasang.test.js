@@ -167,7 +167,7 @@ describe("persetujuan user, bukan deklarasi diri", () => {
 
 describe("kapabilitas plugin masuk genesis, sekali, saat dibekukan", () => {
   const CC = fs.readFileSync(
-    require.resolve("../agent/broker/commandchain.cjs"),
+    require.resolve("../agent/broker/commandchain.ts"),
     "utf8",
   );
 
@@ -181,22 +181,25 @@ describe("kapabilitas plugin masuk genesis, sekali, saat dibekukan", () => {
   });
 
   test("ruleset sesi tetap BEKU", () => {
-    const cc = require("../agent/broker/commandchain.cjs");
+    const cc = require("../agent/broker/commandchain.ts");
     const rs = cc.sesiRuleset();
     expect(Object.isFrozen(rs)).toBe(true);
     expect(Object.isFrozen(rs.kapabilitas)).toBe(true);
   });
 
   test("plugin yang tak disetujui DITOLAK admission", () => {
-    const cc = require("../agent/broker/commandchain.cjs");
+    const cc = require("../agent/broker/commandchain.ts");
     const rs = cc.buatRuleset({ kapabilitas: ["readFile"] });
     const v = cc.periksa(rs, plugins.kapabilitas("kaggle"));
     expect(v.allow).toBe(false);
-    expect(v.alasan).toMatch(/di luar kosakata genesis/);
+    // Wording follows the source: commandchain migrated to TypeScript and its
+    // messages are English now. What is guarded is unchanged — the denial must
+    // say the capability is outside the frozen genesis vocabulary.
+    expect(v.alasan).toMatch(/outside the genesis vocabulary/);
   });
 
   test("plugin yang disetujui DIIZINKAN", () => {
-    const cc = require("../agent/broker/commandchain.cjs");
+    const cc = require("../agent/broker/commandchain.ts");
     const rs = cc.buatRuleset({ kapabilitas: ["plugin.kaggle"] });
     expect(cc.periksa(rs, "plugin.kaggle").allow).toBe(true);
   });

@@ -134,9 +134,15 @@ describe("penjaga writableEnded hidup di jalur Electron", () => {
   test("penjaga di server.cjs memang ADA — kalau tidak, perbaikan ini sia-sia", () => {
     // Nilainya justru bergantung pada ini: accessor-nya dipasang supaya
     // pemeriksaan di sisi handler punya arti.
+    //
+    // The threshold dropped from 10 to 9 when local-model support was removed:
+    // the /complete ghost-text endpoint held one of these checks and went away
+    // with askFIM(). What this guards is that handler-side checks still exist in
+    // numbers, not that any particular endpoint does — so the count follows the
+    // handlers that remain rather than pinning a number the code has outgrown.
     const n = (SERVER.match(/res\.writableEnded|res\.writableFinished/g) || [])
       .length;
-    expect(n).toBeGreaterThanOrEqual(10);
+    expect(n).toBeGreaterThanOrEqual(9);
   });
 });
 

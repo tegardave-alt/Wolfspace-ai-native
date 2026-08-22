@@ -250,11 +250,12 @@ function parseBlocks(text) {
     out.push({ type: "text", html: mdToHtml(tail.trim()) });
   return out;
 }
-function reqFor(modelVal, cloud, history) {
-  const effortVal = readEffort(cloud);
-  return modelVal === "cloud" && cloud
-    ? { history, cloud, effort: effortVal }
-    : { history, port: modelVal, effort: effortVal };
+// Cloud-only since the local llama.cpp/GGUF path was removed with the Model Hub:
+// there is no second kind of model left to choose between, so there is no `port`
+// branch either. A missing cloud key surfaces as a clear backend error rather
+// than as a request pointing at a port that no longer means anything.
+function reqFor(_modelVal, cloud, history) {
+  return { history, cloud, effort: readEffort(cloud) };
 }
 // Verify HTTP server is running (only for browser users, not Electron)
 async function checkServerHealth() {
@@ -481,26 +482,19 @@ if (
 }
 
 async function streamChat(reqBody, onText, signal) {
-  let acc = "",
-    run = null;
+  // Tak ada lagi `run`: cabang "run"/"retry" dulu membawa hasil auto-run, dan
+  // agent/chat.cjs sudah tak memancarkan keduanya — ia hanya mengirim tok, err,
+  // done. Menyimpannya berarti merawat keadaan yang selalu null.
+  let acc = "";
   const handle = (j) => {
     if (j.t === "tok") {
       acc += j.c;
-      onText(acc, run);
-    } else if (j.t === "retry") {
-      acc = "";
-      run = null;
-      onText(acc, run);
-    } // new fix attempt ? drop the previous failed one
-    else if (j.t === "run") {
-      run = j.run;
-      onText(acc, run);
+      onText(acc);
     } else if (j.t === "done") {
-      run = j.run || run;
-      onText(acc, run);
+      onText(acc);
     } else if (j.t === "err") {
       acc += "\n[" + j.m + "]";
-      onText(acc, run);
+      onText(acc);
     }
   };
   if (IPC) {
@@ -513,7 +507,7 @@ async function streamChat(reqBody, onText, signal) {
           resolve();
         });
     });
-    return { text: acc, run };
+    return { text: acc };
   }
   const r = await fetch("/chat", {
     method: "POST",
@@ -522,7 +516,7 @@ async function streamChat(reqBody, onText, signal) {
     signal,
   });
   await pumpSSE(r, signal, handle);
-  return { text: acc, run };
+  return { text: acc };
 }
 // Self-edit agent: stream the READ/GREP/EDIT/� loop (IPC, or /self-agent over HTTP).
 async function streamSelfAgent(reqBody, onEvent, signal) {
@@ -554,23 +548,6 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
     }
     throw e;
   }
-}
-
-async function runOpenClawChat(message, signal) {
-  const r = await fetch("/api/openclaw/chat", {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify({ message }),
-    signal,
-  });
-  let data = {};
-  try {
-    data = await r.json();
-  } catch (_) {}
-  if (!r.ok || !data.ok) {
-    throw new Error(data.error || `OpenClaw failed: HTTP ${r.status}`);
-  }
-  return data;
 }
 
 /* Components dipindah ke public/app/Components.jsx (APP_MODULES). */
@@ -3077,15 +3054,9 @@ function App() {
   }, [theme]);
 
   const loadModels = useCallback(async () => {
-    let list = [];
-    try {
-      list = await (await fetch("/models")).json();
-    } catch (e) {}
-    const opts = list.map((m) => ({
-      value: String(m.port),
-      label: m.name + (m.size ? " � " + fmtSize(m.size) : ""),
-      default: m.default,
-    }));
+    // Cloud-only: the local llama.cpp/GGUF path was removed together with the
+    // Model Hub, so the picker is built purely from configured cloud providers.
+    const opts = [];
     let cloud = getCloud();
     // Hydrate from server-configured providers (key stays server-side) when there is
     // no stored cloud OR the stored provider is no longer configured (e.g. stale key).
@@ -3184,74 +3155,6 @@ function App() {
   const doSend = async (content, display, hitlData = null) => {
     if (!content && !hitlData) return;
     const trimmedContent = content.trim();
-    if (
-      trimmedContent.toLowerCase() === "/openclaw" ||
-      trimmedContent.toLowerCase().startsWith("/openclaw ")
-    ) {
-      if (busy) return;
-      const openclawMessage = trimmedContent
-        .replace(/^\/openclaw\b/i, "")
-        .trim();
-      if (!openclawMessage) {
-        setMessages((m) => [
-          ...m,
-          {
-            role: "user",
-            ..._pesanUser(content, display),
-          },
-          {
-            role: "model",
-            text: "The /openclaw message cannot be empty. Example: /openclaw summarise this project",
-          },
-        ]);
-        setStatus("OpenClaw needs a message");
-        return;
-      }
-      const ctrl = new AbortController();
-      ctrlRef.current = ctrl;
-      setBusy(true);
-      setStatus("Running OpenClaw...");
-      setMessages((m) => [
-        ...m,
-        {
-          role: "user",
-          ..._pesanUser(content, display),
-        },
-        { role: "model", text: "Running OpenClaw..." },
-      ]);
-      try {
-        const res = await runOpenClawChat(openclawMessage, ctrl.signal);
-        const reply =
-          res.text || res.raw || "OpenClaw finished with no output.";
-        setMessages((m) => {
-          const c = m.slice();
-          c[c.length - 1] = { role: "model", text: reply };
-          return c;
-        });
-        setHistory((h) => [
-          ...h,
-          { role: "user", content },
-          { role: "assistant", content: reply },
-        ]);
-        setStatus("OpenClaw finished");
-      } catch (e) {
-        if (e.name === "AbortError") {
-          setStatus("cancelled");
-        } else {
-          const msg = "[OpenClaw error: " + e.message + "]";
-          setMessages((m) => {
-            const c = m.slice();
-            c[c.length - 1] = { role: "model", text: msg };
-            return c;
-          });
-          setStatus("OpenClaw error");
-        }
-      } finally {
-        ctrlRef.current = null;
-        setBusy(false);
-      }
-      return;
-    }
     // /ask: mode tanya EKSPLISIT — dijamin TANPA tool (tidak akan pernah edit atau
     // eksekusi file), bahkan pada model cloud. Ini escape-hatch keamanan, kebalikan
     // dari perilaku default di mana model sendiri yang memutuskan pakai tool atau tidak.
@@ -3304,15 +3207,15 @@ function App() {
           role: "user",
           ..._pesanUser(content, display),
         },
-        { role: "model", text: "", run: null },
+        { role: "model", text: "" },
       ]);
       try {
         const res = await streamChat(
           reqFor(modelVal, getCloud(), newHist),
-          (t, run) => {
+          (t) => {
             setMessages((m) => {
               const c = m.slice();
-              c[c.length - 1] = { role: "model", text: t, run };
+              c[c.length - 1] = { role: "model", text: t };
               return c;
             });
           },
@@ -3358,7 +3261,6 @@ function App() {
           return c;
         });
       const evlist = [];
-      const phaseNodes = [];
       let think = "";
       let adoneSent = false;
       let waitingForInput = false;
@@ -3369,7 +3271,6 @@ function App() {
           {
             history: newHist,
             cloud: getCloud(),
-            port: modelVal,
             effort: curEffort,
             workspace_root: resolveWorkspaceRoot(selectedProject) || undefined,
             // Run yang terputus reload disambung, bukan diulang. hitlData tetap
@@ -3454,18 +3355,6 @@ function App() {
                   }),
                 );
               } catch (_) {}
-            } else if (j.t === "phase") {
-              phaseNodes.push({
-                phase: j.phase,
-                tag: j.tag,
-                status: j.status,
-                time: j.time,
-                attrs: j.attrs,
-                chip: j.chip,
-                evidence: j.evidence,
-                children: j.children,
-              });
-              upd({ phaseNodes: [...phaseNodes] });
             } else if (j.t === "hitl") {
               adoneSent = true;
               waitingForInput = true;
@@ -3546,11 +3435,11 @@ function App() {
                 summary: j.summary,
                 editCount: j.edits,
                 backup: j.backup,
-                // `run` DIHAPUS: self_agent tak lagi memancarkannya. Dulu isinya
-                // {ok:true, info:"auto-run disabled"} dari runReply yang tak
-                // menjalankan apa pun — ok:true tanpa eksekusi di baliknya.
-                phase: j.phase,
-                phaseNodes: [...phaseNodes],
+                // `run`, `phase`, dan `phaseNodes` DIHAPUS: self_agent tak
+                // pernah memancarkan ketiganya. `run` dulu berisi {ok:true,
+                // info:"auto-run disabled"} dari runReply yang tak menjalankan
+                // apa pun, dan phaseNodes menumpuk ke keadaan yang tak dirender
+                // komponen mana pun.
               });
               setHistory((h) => [
                 ...h,

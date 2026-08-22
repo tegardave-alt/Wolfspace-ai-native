@@ -7,8 +7,13 @@ const Icon = {
   // Traced (potrace) from the WOLFSPACE reference mark — a wolf head in profile.
   wolf: (p) => (
     <svg viewBox="0 0 416 416" fill="none" {...p}>
-      <g transform="translate(0,416) scale(0.1,-0.1)" fill="currentColor" stroke="none">
-        <path d="M1704 3358 c6 -26 36 -252 36 -265 0 -2 -24 15 -52 38 -62 49 -152
+      <g
+        transform="translate(0,416) scale(0.1,-0.1)"
+        fill="currentColor"
+        stroke="none"
+      >
+        <path
+          d="M1704 3358 c6 -26 36 -252 36 -265 0 -2 -24 15 -52 38 -62 49 -152
 92 -226 108 -88 18 -88 18 -50 -51 19 -35 52 -111 72 -170 l38 -107 33 24 c47
 37 54 30 13 -12 -49 -51 -196 -278 -210 -325 -8 -28 -8 -55 0 -107 19 -115 16
 -161 -18 -227 -30 -60 -122 -185 -217 -294 -60 -70 -65 -94 -27 -140 26 -30
@@ -40,7 +45,8 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
 6 0 8 5 5 10 -14 23 -63 7 -152 -51 -121 -78 -200 -110 -287 -117 -67 -5 -68
 -4 -57 16 15 29 14 69 -5 118 l-16 43 46 59 c80 105 159 154 276 173 33 5 88
 13 121 19 72 11 91 25 109 81 15 45 67 96 108 105 15 3 32 8 37 10 6 2 42 2
-81 0 54 -2 87 -10 138 -34z"/>
+81 0 54 -2 87 -10 138 -34z"
+        />
       </g>
     </svg>
   ),
@@ -170,14 +176,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
   ),
   square: (p) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
-      <rect
-        x="5"
-        y="5"
-        width="14"
-        height="14"
-        rx="2"
-        fill="currentColor"
-      />
+      <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
     </svg>
   ),
   terminal: (p) => (
@@ -223,11 +222,47 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
   ),
   workflow: (p) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
-      <rect x="3" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
-      <rect x="15" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
-      <rect x="9" y="15" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
-      <path d="M6 10v2c0 1.5 1.5 3 3 3h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M18 10v2c0 1.5-1.5 3-3 3h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <rect
+        x="3"
+        y="4"
+        width="6"
+        height="6"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <rect
+        x="15"
+        y="4"
+        width="6"
+        height="6"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <rect
+        x="9"
+        y="15"
+        width="6"
+        height="6"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M6 10v2c0 1.5 1.5 3 3 3h3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18 10v2c0 1.5-1.5 3-3 3h-3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       <circle cx="12" cy="15" r="1.5" fill="currentColor" />
     </svg>
   ),
@@ -315,17 +350,44 @@ const HubIcon = {
     <svg viewBox="0 0 36 36" fill="none" {...p}>
       <circle cx="18" cy="15.5" r="13.5" fill="#FFAC33" />
       <circle cx="18" cy="15.5" r="11.8" fill="#FFCC4D" />
-      <path d="M11 13C12 11.5 14 11.5 15 13" stroke="#292F33" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-      <path d="M21 13C22 11.5 24 11.5 25 13" stroke="#292F33" strokeWidth="2.2" strokeLinecap="round" fill="none" />
-      <path d="M12.5 16.5C15 17.5 21 17.5 23.5 16.5C23.8 20 20.5 22.2 18 22.2C15.5 22.2 12.2 20 12.5 16.5Z" fill="#292F33" />
-      <path d="M15.5 20.2C16.5 18.8 19.5 18.8 20.5 20.2C20 21.8 16 21.8 15.5 20.2Z" fill="#DD2E44" />
-      <path d="M15 30.5 C17 26 16 21.5 14.5 21.5 C13 21.5 12 23.5 12.5 25 C12.5 23.5 12.5 22 11 22.5 C9.5 23 9.5 25 10 26 C10 24.5 9.5 23 8 23.5 C6.5 24 7 26 7.8 27.2 C7 25.5 6.5 24.5 5 25.5 C3.5 26.5 4.5 28.5 6 29.5 C8.5 31.5 12.5 32 15 30.5 Z" fill="#FFCC4D" stroke="#FFAC33" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
-      <path d="M21 30.5 C19 26 20 21.5 21.5 21.5 C23 21.5 24 23.5 23.5 25 C23.5 23.5 23.5 22 25 22.5 C26.5 23 26.5 25 26 26 C26 24.5 26.5 23 28 23.5 C29.5 24 29 26 28.2 27.2 C29 25.5 29.5 24.5 31 25.5 C32.5 26.5 31.5 28.5 30 29.5 C27.5 31.5 23.5 32 21 30.5 Z" fill="#FFCC4D" stroke="#FFAC33" strokeWidth="1.8" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  ),
-  ollama: (p) => (
-    <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
-      <path d="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm0 18c-4.42 0-8-3.58-8-8s3.58-8 8-8 8 3.58 8 8-3.58 8-8 8zm3-8c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm-6 0c1.1 0 2-.9 2-2s-.9-2-2-2-2 .9-2 2 .9 2 2 2zm0 2c-2.7 0-5.8 1.29-6 2v2h12v-2c-.2-.71-3.3-2-6-2z" />
+      <path
+        d="M11 13C12 11.5 14 11.5 15 13"
+        stroke="#292F33"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M21 13C22 11.5 24 11.5 25 13"
+        stroke="#292F33"
+        strokeWidth="2.2"
+        strokeLinecap="round"
+        fill="none"
+      />
+      <path
+        d="M12.5 16.5C15 17.5 21 17.5 23.5 16.5C23.8 20 20.5 22.2 18 22.2C15.5 22.2 12.2 20 12.5 16.5Z"
+        fill="#292F33"
+      />
+      <path
+        d="M15.5 20.2C16.5 18.8 19.5 18.8 20.5 20.2C20 21.8 16 21.8 15.5 20.2Z"
+        fill="#DD2E44"
+      />
+      <path
+        d="M15 30.5 C17 26 16 21.5 14.5 21.5 C13 21.5 12 23.5 12.5 25 C12.5 23.5 12.5 22 11 22.5 C9.5 23 9.5 25 10 26 C10 24.5 9.5 23 8 23.5 C6.5 24 7 26 7.8 27.2 C7 25.5 6.5 24.5 5 25.5 C3.5 26.5 4.5 28.5 6 29.5 C8.5 31.5 12.5 32 15 30.5 Z"
+        fill="#FFCC4D"
+        stroke="#FFAC33"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
+      <path
+        d="M21 30.5 C19 26 20 21.5 21.5 21.5 C23 21.5 24 23.5 23.5 25 C23.5 23.5 23.5 22 25 22.5 C26.5 23 26.5 25 26 26 C26 24.5 26.5 23 28 23.5 C29.5 24 29 26 28.2 27.2 C29 25.5 29.5 24.5 31 25.5 C32.5 26.5 31.5 28.5 30 29.5 C27.5 31.5 23.5 32 21 30.5 Z"
+        fill="#FFCC4D"
+        stroke="#FFAC33"
+        strokeWidth="1.8"
+        strokeLinejoin="round"
+        strokeLinecap="round"
+      />
     </svg>
   ),
   empty: (p) => (
@@ -349,11 +411,47 @@ const HubIcon = {
   ),
   workflow: (p) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
-      <rect x="3" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
-      <rect x="15" y="4" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
-      <rect x="9" y="15" width="6" height="6" rx="1.5" stroke="currentColor" strokeWidth="2" />
-      <path d="M6 10v2c0 1.5 1.5 3 3 3h3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M18 10v2c0 1.5-1.5 3-3 3h-3" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+      <rect
+        x="3"
+        y="4"
+        width="6"
+        height="6"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <rect
+        x="15"
+        y="4"
+        width="6"
+        height="6"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <rect
+        x="9"
+        y="15"
+        width="6"
+        height="6"
+        rx="1.5"
+        stroke="currentColor"
+        strokeWidth="2"
+      />
+      <path
+        d="M6 10v2c0 1.5 1.5 3 3 3h3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M18 10v2c0 1.5-1.5 3-3 3h-3"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
       <circle cx="12" cy="15" r="1.5" fill="currentColor" />
     </svg>
   ),

@@ -3,13 +3,6 @@
     "host": "127.0.0.1",
     "port": 8090
   },
-  "modelDir": "C:/llama-cpp",
-  "llama": {
-    "threads": 2,
-    "ctxSize": 2048
-  },
-  "ghostPort": 8083,
-  "_ghostPort_note": "model that powers gray inline ghost-text (pakai 3B juga karena hanya 3B yang dipasang)",
   "runners": {
     "c": "C:/langs/mingw64/bin/gcc.exe",
     "cpp": "C:/langs/mingw64/bin/g++.exe",
@@ -20,7 +13,6 @@
     "rust": "C:/Users/dave/.cargo/bin/rustc.exe",
     "kotlinc": "C:/langs/kotlinc/bin/kotlinc.bat"
   },
-  "models": [],
   "ww": {
     "watch": false,
     "root": "C:/Users/dave/Desktop/project",

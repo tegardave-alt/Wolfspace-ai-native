@@ -279,7 +279,7 @@ async function jalankan(args, workspace) {
  */
 function _admission(nama) {
   try {
-    const cc = require("../broker/commandchain.cjs");
+    const cc = require("../broker/commandchain.ts");
     const rs = cc.sesiRuleset();
     const adm = cc.periksa(rs, "proc.raw");
     if (!adm.allow) {

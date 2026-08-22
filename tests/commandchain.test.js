@@ -21,8 +21,8 @@ function muatSegar(dir) {
   process.env.WOLFSPACE_AUDIT_DIR = dir;
   jest.resetModules(); // Jest punya registry sendiri — delete require.cache tak cukup
   return {
-    cc: require("../agent/broker/commandchain.cjs"),
-    audit: require("../agent/broker/audit-log.cjs"),
+    cc: require("../agent/broker/commandchain.ts"),
+    audit: require("../agent/broker/audit-log.ts"),
   };
 }
 

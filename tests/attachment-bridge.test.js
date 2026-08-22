@@ -262,7 +262,7 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
   });
 
   test("attachment.read ada di kosakata CommandChain dan bisa DIKUNCI", () => {
-    const cc = require("../agent/broker/commandchain.cjs");
+    const cc = require("../agent/broker/commandchain.ts");
     const bebas = cc.buatRuleset({});
     expect(cc.periksa(bebas, "attachment.read").allow).toBe(true);
     // Dikunci per sesi tanpa ikut mematikan pembacaan berkas di worktree —
@@ -374,10 +374,16 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
     // berlebih, dan tes yang mengunci bentuknya jadi merah karena pemformatan,
     // bukan karena perilaku berubah. (Sudah terjadi dua kali di sesi ini.)
     expect(app).toContain("_pesanUser(content, display)");
-    // Keempat tempat pembentuk pesan user harus lewat helper yang sama —
+    // Setiap tempat pembentuk pesan user harus lewat helper yang sama —
     // kalau satu terlewat, lampiran tampil sebagai teks mentah hanya pada
     // jalur itu, dan bug seperti itu sangat sulit ditelusuri.
-    expect(app.match(/\.\.\._pesanUser\(content, display\)/g)).toHaveLength(4);
+    //
+    // The count went from 4 to 2 when the /openclaw bridge was deleted: two of
+    // the four sites lived inside that handler (its empty-message path and its
+    // send path), and both went away with it. What is guarded is that every
+    // REMAINING construction site funnels through the helper — not that there
+    // are four of them, so the number follows the call sites that still exist.
+    expect(app.match(/\.\.\._pesanUser\(content, display\)/g)).toHaveLength(2);
   });
 
   test("KEDUA permukaan mengirim tampilan terpisah dari teks model", () => {

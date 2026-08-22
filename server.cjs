@@ -114,29 +114,37 @@ process.on("uncaughtException", (err) => {
 /**
 /**
  * WOLFSPACE server Ã¢â‚¬â€ serves the chat UI, runs code blocks, and orchestrates the
- * generate -> execute -> fix loop against local models.
+ * generate -> execute -> fix loop against cloud models (BYOK).
  *
  *   GET  /             -> chat UI (public/index.html)
- *   GET  /models       -> list of configured models {name, port, default}
+ *   GET  /cloud-providers -> configured providers {provider, name, model}
  *   POST /run          -> execute one code block, return real stdout/stderr
  *   POST /chat (SSE)   -> stream tokens; auto-run generated code; if it fails,
  *                         feed the error back to the model and retry (<=3x)
  *
  * The differentiator: the model only GUESSES code; the CPU is the judge.
  */
+// HARUS PALING ATAS, sebelum require .ts mana pun.
+//
+// Modul yang sudah bermigrasi ke TypeScript (agent/mcp-client.ts, server/routes/*.ts)
+// hanya bisa dimuat setelah hook ini terpasang. Node 24 kebetulan melucuti tipe
+// sendiri, sehingga urutan yang salah tetap jalan di mesin pengembang — tapi CI
+// dan pengguna memakai Node 20, dan di sana SELURUH backend gagal dimuat dengan
+// "Unexpected identifier". Terbukti dengan menjalankan berkas ini memakai
+// --no-experimental-strip-types.
+require("./scripts/ts-register.cjs");
+
 const http = require("http");
 const https = require("https");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-// execSync IKUT diimpor. Sebelumnya tidak, sementara dua fungsi memakainya
-// tanpa require sendiri — detectShell() dan killPort(). Keduanya melempar
-// ReferenceError yang ditelan `catch` kosong di sekitarnya, jadi tak ada satu
-// pun pesan galat. Akibatnya: detectShell SELALU jatuh ke cmd.exe di mesin mana
-// pun meski PowerShell terpasang, dan killPort tak pernah membunuh apa pun.
+// execSync is imported here on purpose. It used to be missing while detectShell()
+// relied on it without requiring it itself, throwing a ReferenceError that the
+// surrounding empty catch swallowed — so there was no error message at all, and
+// detectShell ALWAYS fell back to cmd.exe even where PowerShell was installed.
 //
-// (_pidPemegangPort TIDAK terkena — ia punya require("child_process") sendiri
-// di dalam badannya.)
+// (_pidPemegangPort is unaffected: it has its own require("child_process") inside.)
 const { exec, spawn, execSync } = require("child_process");
 const util = require("util");
 const execP = util.promisify(exec);
@@ -162,34 +170,6 @@ try {
   );
 }
 
-// Strip ANSI escape sequences from CLI output (cursor movements, colors, etc.)
-const stripAnsi = (str) =>
-  str
-    .replace(/\x1b\[[\x20-\x3f]*[\x40-\x7e]/g, "") // CSI: all sequences (colors, cursor, DEC modes)
-    .replace(/\x1bP[^\x1b]*\x1b\\/g, "") // DCS: device control strings
-    .replace(/\x1b\][^\x07]*\x07/g, "") // OSC: operating system commands (BEL terminated)
-    .replace(/\x1b\][^\x1b]*\x1b\\/g, "") // OSC: ST terminated
-    .replace(/\x1b[PX^_\\]/g, "") // Other C1 escape sequences
-    .replace(/\x1b[\[\(\]\)]/g, "") // Escape + bracket/paren
-    // Braille pattern spinners (U+2800..U+28FF) + TUI block/box/geometric chars
-    .replace(
-      /[\u2800-\u28FF\u2580-\u259F\u25A0-\u25FF\u2500-\u257F\u2300-\u23FF]/g,
-      "",
-    )
-    // Status bar artifacts: "esc interrupt", "ctrl+p commands", etc.
-    .replace(/\b(esc|ctrl\+[a-z]|alt\+[a-z]|tab|shift\+[a-z])\s+\w+/gi, "")
-    // Percentage markers: "8.4K (4%)"
-    .replace(/[\d.]+[KM]?\s*\(\d+%\)/g, "")
-    // Timing: "+ Thought: 386ms"
-    .replace(/^\+\s*\w+:\s*\d+ms\s*$/gm, "")
-    .replace(/\r\n/g, "\n")
-    .replace(/\r/g, "")
-    // Collapse 3+ blank lines
-    .replace(/\n{3,}/g, "\n\n")
-    // Dedup: collapse identical consecutive lines (TUI redraw artifact)
-    .replace(/^(.+)\n(\1\n)+/gm, "$1\n")
-    .trim();
-
 const CONFIG_PATH = path.join(__dirname, "config.json");
 const CONFIG = JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
 // HOST dulu hanya dari config, sehingga `ENV HOST=` di Dockerfile tak berpengaruh
@@ -209,163 +189,10 @@ const EXEC_TIMEOUT = CONFIG.execTimeout || 120000;
 const JS_RUNTIME = process.execPath;
 
 // Preload MCP Server to avoid RAM spikes on first request
-const mcpClient = require("./agent/mcp-client.cjs");
+const mcpClient = require("./agent/mcp-client.ts");
 mcpClient
   .init()
   .catch((e) => console.error("Failed to preload MCP:", e.message));
-
-function writeJson(res, statusCode, payload) {
-  res.writeHead(statusCode, { "Content-Type": "application/json" });
-  res.end(JSON.stringify(payload));
-}
-
-function openclawCommand() {
-  return process.platform === "win32" ? "openclaw.cmd" : "openclaw";
-}
-
-function friendlyOpenClawError(stderr, stdout, err) {
-  const raw = [stderr, stdout, err && err.message].filter(Boolean).join("\n");
-  if (err && err.code === "ENOENT") {
-    return "OpenClaw CLI not found. Install it first with: npm.cmd install -g openclaw@latest";
-  }
-  if (/timeout|timed out/i.test(raw)) {
-    return "OpenClaw took too long to respond. Try again, or run: openclaw.cmd status";
-  }
-  if (
-    /gateway|onboard|configure|not configured|auth|api key|credential/i.test(
-      raw,
-    )
-  ) {
-    return "OpenClaw is not configured yet. Run: openclaw.cmd onboard";
-  }
-  return raw.trim() || "OpenClaw failed to run.";
-}
-
-function parseOpenClawText(stdout, stderr) {
-  const out = (stdout || "").trim();
-  if (!out) return stripAnsi(stderr || "").trim();
-  try {
-    const parsed = JSON.parse(out);
-    return (
-      parsed.text ||
-      parsed.message ||
-      parsed.reply ||
-      parsed.output ||
-      parsed.result ||
-      JSON.stringify(parsed, null, 2)
-    );
-  } catch (_) {
-    return stripAnsi(out);
-  }
-}
-
-function runOpenClawAgent(message) {
-  return new Promise((resolve) => {
-    const tempPath = path.join(
-      os.tmpdir(),
-      `WOLFSPACE-openclaw-${process.pid}-${Date.now()}.txt`,
-    );
-    try {
-      fs.writeFileSync(tempPath, message, "utf8");
-    } catch (err) {
-      return resolve({
-        ok: false,
-        text: "",
-        raw: "",
-        error: "Could not create a temporary message file: " + err.message,
-        exitCode: null,
-      });
-    }
-
-    const args = [
-      "agent",
-      "--message-file",
-      tempPath,
-      "--session-key",
-      "WOLFSPACE-openclaw",
-      "--json",
-      "--timeout",
-      "600",
-    ];
-    let child;
-    try {
-      // Node >=20: spawn .cmd tanpa shell melempar EINVAL sinkron (crash server)
-      child = spawn(openclawCommand(), args, {
-        cwd: __dirname,
-        windowsHide: true,
-        shell: process.platform === "win32",
-      });
-    } catch (err) {
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (_) {}
-      return resolve({
-        ok: false,
-        text: "",
-        raw: "",
-        error: friendlyOpenClawError("", "", err),
-        exitCode: null,
-      });
-    }
-    let stdout = "";
-    let stderr = "";
-    let settled = false;
-    const timeout = setTimeout(() => {
-      settled = true;
-      try {
-        child.kill();
-      } catch (_) {}
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (_) {}
-      resolve({
-        ok: false,
-        text: "",
-        raw: stdout,
-        error: friendlyOpenClawError(stderr, stdout, new Error("timeout")),
-        exitCode: null,
-      });
-    }, 610000);
-
-    child.stdout.on("data", (chunk) => {
-      stdout += chunk.toString("utf8");
-    });
-    child.stderr.on("data", (chunk) => {
-      stderr += chunk.toString("utf8");
-    });
-    child.on("error", (err) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (_) {}
-      resolve({
-        ok: false,
-        text: "",
-        raw: stdout,
-        error: friendlyOpenClawError(stderr, stdout, err),
-        exitCode: null,
-      });
-    });
-    child.on("close", (code) => {
-      if (settled) return;
-      settled = true;
-      clearTimeout(timeout);
-      try {
-        fs.unlinkSync(tempPath);
-      } catch (_) {}
-      const text = parseOpenClawText(stdout, stderr);
-      resolve({
-        ok: code === 0,
-        text,
-        raw: stdout,
-        error: code === 0 ? "" : friendlyOpenClawError(stderr, stdout),
-        exitCode: code,
-      });
-    });
-  });
-}
 
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 // Debug bus Ã¢â‚¬â€ a single event log wired through ALL of WOLFSPACE's logic.
@@ -611,7 +438,7 @@ function readsStdin(lang, code) {
 
 // Sandbox eksekusi berbasis Docker DIHAPUS.
 //
-// Gerbangnya default "off" (agent/sandbox-policy.cjs) sehingga tak pernah
+// Gerbangnya default "off" (agent/sandbox-policy.ts) sehingga tak pernah
 // menyala sendiri, dan engine Docker-nya sudah tak ada di mesin ini — jadi
 // jalur ini tak pernah dieksekusi. Menyimpannya hanya menyisakan kode mati yang
 // memberi kesan ada pengurungan padahal tidak.
@@ -991,163 +818,6 @@ function extractCode(text) {
   });
   return { lang: first.lang, code: uniq.map((b) => b.code).join("\n\n") };
 }
-// Fill-in-the-middle completion (for gray ghost-text). Qwen2.5-Coder FIM tokens.
-function askFIM(port, prefix, suffix, reg) {
-  if (
-    !port ||
-    port === "" ||
-    Number(port) < 1 ||
-    !Number.isFinite(Number(port))
-  )
-    return Promise.reject(new Error("FIM: local model is not active"));
-  return new Promise((resolve, reject) => {
-    const prompt = `<|fim_prefix|>${prefix}<|fim_suffix|>${suffix}<|fim_middle|>`;
-    const body = JSON.stringify({
-      prompt,
-      n_predict: 12,
-      temperature: 0.1,
-      top_p: 0.9,
-      stop: [
-        "<|fim_pad|>",
-        "<|endoftext|>",
-        "<|fim_prefix|>",
-        "<|file_sep|>",
-        "<|im_end|>",
-        "\n\n",
-        "```",
-      ],
-      cache_prompt: true,
-    });
-    const r = http.request(
-      {
-        hostname: "127.0.0.1",
-        port,
-        path: "/completion",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-        },
-        timeout: 30000,
-      },
-      (s) => {
-        let d = "";
-        s.on("data", (c) => (d += c));
-        s.on("end", () => {
-          try {
-            resolve(JSON.parse(d).content || "");
-          } catch (e) {
-            reject(e);
-          }
-        });
-      },
-    );
-    r.on("error", reject);
-    r.on("timeout", () => {
-      r.destroy();
-      reject(new Error("timeout"));
-    });
-    if (reg) reg(r);
-    r.write(body);
-    r.end();
-  });
-}
-
-// Streaming local-model call via llama-server's OpenAI-compatible chat endpoint.
-// Using /v1/chat/completions lets llama.cpp apply EACH model's own chat template
-// (from the GGUF), so Qwen/Llama/Phi/Gemma all honor the system prompt correctly.
-// `messages` is [{role, content}, ...]. reg() exposes the request for cancel.
-function askModelStream(port, messages, onToken, reg) {
-  if (
-    !port ||
-    port === "" ||
-    Number(port) < 1 ||
-    !Number.isFinite(Number(port))
-  )
-    return Promise.reject(new Error("local model is not active â€” no port"));
-  return new Promise((resolve, reject) => {
-    const t0 = Date.now();
-    dlog("model", "info", "local model start", {
-      port,
-      messages: messages.length,
-    });
-    if (VERBOSE)
-      dlog("model", "info", "local model request", { port, messages });
-    const body = JSON.stringify({
-      messages,
-      stream: true,
-      temperature: 0.3,
-      top_p: 0.9,
-      max_tokens: 1024,
-      cache_prompt: true,
-    });
-    const r = http.request(
-      {
-        hostname: "127.0.0.1",
-        port,
-        path: "/v1/chat/completions",
-        method: "POST",
-        headers: {
-          "Content-Type": "application/json",
-          "Content-Length": Buffer.byteLength(body),
-        },
-        timeout: 600000,
-      },
-      (s) => {
-        let acc = "",
-          buf = "",
-          errBody = "";
-        s.on("data", (chunk) => {
-          buf += chunk.toString();
-          const lines = buf.split("\n");
-          buf = lines.pop();
-          for (const line of lines) {
-            const m = line.match(/^data:\s*(.*)$/);
-            if (!m) continue;
-            if (m[1] === "[DONE]") continue;
-            try {
-              const j = JSON.parse(m[1]);
-              const t =
-                j.choices &&
-                j.choices[0] &&
-                j.choices[0].delta &&
-                j.choices[0].delta.content;
-              if (t) {
-                acc += t;
-                onToken(t);
-              }
-            } catch {}
-          }
-        });
-        s.on("end", () => {
-          dlog("model", "info", "local model end", {
-            port,
-            ms: Date.now() - t0,
-            chars: acc.length,
-          });
-          if (VERBOSE)
-            dlog("model", "info", "local model full response", {
-              response: acc.slice(0, 5000),
-            });
-          resolve(acc);
-        });
-      },
-    );
-    r.on("error", (e) => {
-      dlog("model", "error", "local model error", { port, error: e.message });
-      reject(e);
-    });
-    r.on("timeout", () => {
-      dlog("model", "error", "local model timeout", { port });
-      r.destroy();
-      reject(new Error("model timeout"));
-    });
-    if (reg) reg(r);
-    r.write(body);
-    r.end();
-  });
-}
-
 // Ã¢â€â‚¬Ã¢â€â‚¬ Cloud models (bring-your-own API key) Ã¢â€â‚¬Ã¢â€â‚¬
 // The provider is auto-detected from the key's prefix; the user pastes any key.
 const CLOUD = {
@@ -1395,7 +1065,7 @@ async function detectKey(key) {
   };
 }
 
-// Streams a cloud model's reply, forwarding tokens via onToken. Same contract as askModelStream.
+// Streams a cloud model's reply, forwarding tokens via onToken.
 function _askCloudStreamOnce(cloud, work, onToken, reg) {
   return new Promise((resolve, reject) => {
     const provider = cloud.provider || detectProvider(cloud.key);
@@ -1590,25 +1260,6 @@ async function askCloudStream(cloud, work, onToken, reg) {
     }
   }
   throw last;
-}
-
-// Kill whatever process is LISTENING on a TCP port (to stop a model's llama-server).
-function killPort(port) {
-  try {
-    const out = execSync("netstat -ano", { encoding: "utf8" });
-    const pids = new Set(
-      out
-        .split("\n")
-        .filter((l) => l.includes(":" + port) && /LISTENING/i.test(l))
-        .map((l) => l.trim().split(/\s+/).pop())
-        .filter((p) => p && p !== "0"),
-    );
-    for (const pid of pids) {
-      try {
-        execSync("taskkill /F /PID " + pid, { stdio: "ignore" });
-      } catch (e) {}
-    }
-  } catch (e) {}
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ Agent mode: multi-step tool loop in a real workspace, model-agnostic Ã¢â€â‚¬Ã¢â€â‚¬
@@ -2822,13 +2473,14 @@ const { safeWriteFile, quarantine } = require("./agent/safe-edit.cjs");
 // ── Modular route handlers (server/routes/*) ──
 // Each exports handle(req, res, deps) → truthy when the request was handled.
 // State stays in server.cjs and is injected via deps; modules hold logic only.
-const _debugRoutes = require("./server/routes/debug.cjs");
-const _terminalRoutes = require("./server/routes/terminal.cjs");
-const _snapshotRoutes = require("./server/routes/snapshots.cjs");
-const _openclawRoutes = require("./server/routes/openclaw.cjs");
-const _hunkRoutes = require("./server/routes/hunks.cjs");
-const _cloudRoutes = require("./server/routes/cloud.cjs");
-const _dapRoutes = require("./server/routes/dap.cjs");
+// Routes ending in .ts are already migrated to TypeScript; the require() hook
+// that transpiles them on the fly is installed at the very top of this file,
+// because agent/mcp-client.ts is required long before this point.
+const _debugRoutes = require("./server/routes/debug.ts");
+const _terminalRoutes = require("./server/routes/terminal.ts");
+const _snapshotRoutes = require("./server/routes/snapshots.ts");
+const _cloudRoutes = require("./server/routes/cloud.ts");
+const _dapRoutes = require("./server/routes/dap.ts");
 
 // Recover tool calls that a model wrote as plain text instead of real tool_calls,
 // e.g. `<function=read={"path":"x"}>` or `<function=list>` (groq/llama quirk).
@@ -3156,26 +2808,12 @@ const server = http.createServer(async (req, res) => {
     return;
   if (_snapshotRoutes.handle(req, res, { listSnapshots, rollback })) return;
   if (
-    _openclawRoutes.handle(req, res, {
-      spawn,
-      __dirname,
-      openclawCommand,
-      friendlyOpenClawError,
-      stripAnsi,
-      runOpenClawAgent,
-      writeJson,
-    })
-  )
-    return;
-  if (_hunkRoutes.handle(req, res, {})) return;
-  if (
     _cloudRoutes.handle(req, res, {
       CLOUD_KEYS,
       CLOUD,
       PROVIDER_NAMES,
       loadCloudKeys,
       detectKey,
-      fillCloudKey,
       dlog,
     })
   )
@@ -3187,7 +2825,7 @@ const server = http.createServer(async (req, res) => {
   // dgn Object.entries(data) — mengubah bentuknya akan mengulang bug lama di mana
   // daftar MCP tak pernah tersegarkan.
   if (_path === "/mcp/status" && req.method === "GET") {
-    const mcpClient = require("./agent/mcp-client.cjs");
+    const mcpClient = require("./agent/mcp-client.ts");
     res.writeHead(200, { "Content-Type": "application/json" });
     return res.end(JSON.stringify(mcpClient.status()));
   }
@@ -3200,7 +2838,7 @@ const server = http.createServer(async (req, res) => {
   // cold start `npx` seluruh server (terukur 60,3 detik diam tanpa satu pun
   // event sebelum perubahan ini).
   if (_path === "/mcp/connect" && req.method === "POST") {
-    const mcpClient = require("./agent/mcp-client.cjs");
+    const mcpClient = require("./agent/mcp-client.ts");
     let body = "";
     req.on("data", (c) => (body += c.toString()));
     req.on("end", async () => {
@@ -3220,7 +2858,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (_path === "/mcp/toggle" && req.method === "POST") {
-    const mcpClient = require("./agent/mcp-client.cjs");
+    const mcpClient = require("./agent/mcp-client.ts");
     let body = "";
     req.on("data", (c) => (body += c.toString()));
     req.on("end", async () => {
@@ -3242,7 +2880,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   if (_path === "/mcp") {
-    const mcpClient = require("./agent/mcp-client.cjs");
+    const mcpClient = require("./agent/mcp-client.ts");
     if (req.method === "GET") {
       res.writeHead(200, { "Content-Type": "application/json" });
       return res.end(JSON.stringify(mcpClient.getServers()));
@@ -3271,515 +2909,6 @@ const server = http.createServer(async (req, res) => {
       });
       return;
     }
-  }
-
-  // HuggingFace: search GGUF models
-  if (req.method === "GET" && (req.url || "").startsWith("/hf/search")) {
-    const q = new URL("http://x" + req.url).searchParams.get("q") || "";
-    try {
-      const data = await hfGetJson(
-        "/api/models?search=" +
-          encodeURIComponent(q) +
-          "&filter=gguf&limit=24&sort=downloads&direction=-1&full=true",
-      );
-      const arr = Array.isArray(data) ? data : [];
-      const authors = [
-        ...new Set(arr.map((m) => (m.id || "").split("/")[0]).filter(Boolean)),
-      ];
-      await Promise.all(authors.map((a) => hfAvatar(a)));
-      const SKIP = new Set([
-        "gguf",
-        "transformers",
-        "text-generation",
-        "conversational",
-        "safetensors",
-        "endpoints_compatible",
-        "autotrain_compatible",
-        "text-generation-inference",
-      ]);
-      const out = arr.map((m) => {
-        const author = (m.id || "").split("/")[0];
-        const tags = (m.tags || [])
-          .filter((t) => !t.includes(":") && !SKIP.has(t))
-          .slice(0, 3);
-        return {
-          id: m.id,
-          author,
-          downloads: m.downloads || 0,
-          likes: m.likes || 0,
-          avatar: AVATAR_CACHE.get(author) || null,
-          pipeline: m.pipeline_tag || "",
-          library: m.library_name || "",
-          updated: m.lastModified || m.createdAt || "",
-          gated: !!m.gated,
-          tags,
-        };
-      });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(out));
-    } catch (e) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
-    }
-    return;
-  }
-  // Ollama: realtime model library (scraped from ollama.com Ã¢â‚¬â€ they have no JSON API).
-  // Returns full info per model: description, capabilities, sizes, pulls, tags, updated.
-  if (req.method === "GET" && (req.url || "").startsWith("/ollama/search")) {
-    const q = (new URL("http://x" + req.url).searchParams.get("q") || "")
-      .toLowerCase()
-      .trim();
-    try {
-      // ollama.com/library is now a JS SPA — scraping HTML no longer works.
-      // Use the community JSON mirror which returns a stable JSON array.
-      const raw = await new Promise((resolve, reject) => {
-        https
-          .get(
-            "https://ollama-models.zwz.workers.dev/",
-            {
-              headers: {
-                "user-agent": "Mozilla/5.0 WOLFSPACE",
-                accept: "application/json",
-              },
-            },
-            (s) => {
-              if (s.statusCode >= 400) {
-                s.resume();
-                return reject(new Error("ollama-models api " + s.statusCode));
-              }
-              let d = "";
-              s.on("data", (c) => (d += c));
-              s.on("end", () => resolve(d));
-            },
-          )
-          .on("error", reject);
-      });
-      let models = JSON.parse(raw);
-      if (!Array.isArray(models)) models = [];
-      // Normalise to the shape the frontend expects.
-      // "tags" from API = all variants (e.g. "1b", "4b", "1b-it-qat", "4b-it-q4_K_M").
-      // "sizes" in frontend = short clean size labels shown as selector buttons.
-      let out = models
-        .map((m) => {
-          const allTags = Array.isArray(m.tags) ? m.tags : [];
-          const sizeTags = allTags.filter((t) => /^\d+\.?\d*[bm]$/i.test(t));
-          return {
-            name: m.name || "",
-            description: m.description || "",
-            sizes: sizeTags.length
-              ? sizeTags
-              : allTags.length
-                ? [allTags[0]]
-                : [],
-            capabilities: Array.isArray(m.capabilities) ? m.capabilities : [],
-            pulls: m.pulls || m.pull_count || "",
-            tags: String(allTags.length || m.tag_count || ""),
-            updated: m.updated || m.last_updated || "",
-          };
-        })
-        .filter((m) => m.name);
-
-      if (q)
-        out = out.filter((m) =>
-          (m.name + " " + m.description).toLowerCase().includes(q),
-        );
-      out = out.slice(0, 60);
-      dlog("http", "info", "ollama search", { q, count: out.length });
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(out));
-    } catch (e) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
-    }
-    return;
-  }
-
-  // HuggingFace: list .gguf files of a repo (with sizes)
-  if (req.method === "GET" && (req.url || "").startsWith("/hf/files")) {
-    const id = new URL("http://x" + req.url).searchParams.get("id") || "";
-    try {
-      const tree = await hfGetJson("/api/models/" + id + "/tree/main");
-      const out = (Array.isArray(tree) ? tree : [])
-        .filter((f) => f.type !== "directory" && /\.gguf$/i.test(f.path || ""))
-        .map((f) => ({ path: f.path, size: f.size || 0 }));
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify(out));
-    } catch (e) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message }));
-    }
-    return;
-  }
-  // HuggingFace: download a GGUF Ã¢â€ â€™ register in config Ã¢â€ â€™ launch llama-server (SSE progress)
-  if (req.method === "POST" && req.url === "/hf/download") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      let id, file, name;
-      try {
-        ({ id, file, name } = JSON.parse(body));
-      } catch (e) {
-        res.writeHead(400);
-        return res.end("bad json");
-      }
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      });
-      const ev = (o) => {
-        if (!res.writableEnded)
-          res.write("data: " + JSON.stringify(o) + "\n\n");
-      };
-      let cancelled = false,
-        dlReq = null,
-        dest = null;
-      res.on("close", () => {
-        if (!res.writableFinished) {
-          cancelled = true;
-          if (dlReq) {
-            try {
-              dlReq.destroy();
-            } catch (e) {}
-          }
-        }
-      });
-      try {
-        const modelDir = CONFIG.modelDir || path.dirname(CONFIG_PATH);
-        const base = path.basename(file);
-        dest = path.join(modelDir, base);
-        const srcUrl =
-          "https://huggingface.co/" +
-          id +
-          "/resolve/main/" +
-          file.split("/").map(encodeURIComponent).join("/");
-        let lastPct = -1,
-          lastT = 0;
-        await hfDownload(
-          srcUrl,
-          dest,
-          (got, total) => {
-            const pct = total ? Math.floor((got / total) * 100) : 0;
-            const now = Date.now();
-            if (pct !== lastPct && now - lastT > 300) {
-              lastPct = pct;
-              lastT = now;
-              ev({ t: "progress", pct, got, total });
-            }
-          },
-          (rq) => {
-            dlReq = rq;
-          },
-        );
-        const used = new Set((CONFIG.models || []).map((m) => m.port));
-        let port = 8085;
-        while (used.has(port)) port++;
-        const entry = {
-          name: name || base.replace(/\.gguf$/i, ""),
-          file: base,
-          url: srcUrl,
-          port,
-        };
-        CONFIG.models.push(entry);
-        try {
-          fs.writeFileSync(CONFIG_PATH, JSON.stringify(CONFIG, null, 2));
-        } catch (e) {}
-        const serverExe = path.join(modelDir, "llama-server.exe");
-        const ctx = (CONFIG.llama && CONFIG.llama.ctxSize) || 2048,
-          threads = (CONFIG.llama && CONFIG.llama.threads) || 2;
-        try {
-          spawn(
-            serverExe,
-            [
-              "-m",
-              dest,
-              "--host",
-              "127.0.0.1",
-              "--port",
-              String(port),
-              "--ctx-size",
-              String(ctx),
-              "--threads",
-              String(threads),
-              "--mlock",
-            ],
-            { detached: true, stdio: "ignore" },
-          ).unref();
-        } catch (e) {}
-        ev({ t: "done", model: { name: entry.name, port } });
-      } catch (e) {
-        // Remove the partial/orphan file on ANY failure (cancel OR error) Ã¢â‚¬â€ not just cancel.
-        try {
-          if (dest) fs.rmSync(dest, { force: true });
-        } catch (e2) {}
-        if (!cancelled) ev({ t: "err", m: e.message });
-      }
-      if (!res.writableEnded) res.end();
-    });
-    return;
-  }
-
-  // Ollama: real download size (bytes) of a model:tag Ã¢â‚¬â€ reads the GGUF layer
-  // size from the OCI manifest. Frontend resolves this per visible card.
-  if (req.method === "GET" && (req.url || "").startsWith("/ollama/size")) {
-    const sp = new URL("http://x" + req.url).searchParams;
-    const name = sp.get("name") || "",
-      tag = sp.get("tag") || "latest";
-    try {
-      const man = await new Promise((resolve, reject) => {
-        https
-          .get(
-            `https://registry.ollama.ai/v2/library/${name}/manifests/${tag}`,
-            {
-              headers: {
-                Accept: "application/vnd.docker.distribution.manifest.v2+json",
-                "User-Agent": "WOLFSPACE",
-              },
-            },
-            (s) => {
-              if (s.statusCode >= 400) {
-                s.resume();
-                return reject(new Error("manifest " + s.statusCode));
-              }
-              let d = "";
-              s.on("data", (c) => (d += c));
-              s.on("end", () => {
-                try {
-                  resolve(JSON.parse(d));
-                } catch (e) {
-                  reject(e);
-                }
-              });
-            },
-          )
-          .on("error", reject);
-      });
-      const layer = (man.layers || []).find(
-        (l) => l.mediaType === "application/vnd.ollama.image.model",
-      );
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ bytes: layer ? layer.size : 0 }));
-    } catch (e) {
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ error: e.message, bytes: 0 }));
-    }
-    return;
-  }
-
-  // Ollama: download the GGUF blob from the OCI registry Ã¢â€ â€™ register Ã¢â€ â€™ launch
-  // llama-server. Same pipeline + SSE progress as /hf/download Ã¢â‚¬â€ no Ollama install.
-  if (req.method === "POST" && req.url === "/ollama/download") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      let name, tag;
-      try {
-        ({ name, tag } = JSON.parse(body));
-      } catch (e) {
-        res.writeHead(400);
-        return res.end("bad json");
-      }
-      tag = tag || "latest";
-      res.writeHead(200, {
-        "Content-Type": "text/event-stream",
-        "Cache-Control": "no-cache",
-        Connection: "keep-alive",
-      });
-      const ev = (o) => {
-        if (!res.writableEnded)
-          res.write("data: " + JSON.stringify(o) + "\n\n");
-      };
-      let cancelled = false,
-        dlReq = null,
-        dest = null;
-      res.on("close", () => {
-        if (!res.writableFinished) {
-          cancelled = true;
-          if (dlReq) {
-            try {
-              dlReq.destroy();
-            } catch (e) {}
-          }
-        }
-      });
-      try {
-        // 1) manifest Ã¢â€ â€™ find the GGUF model layer (vnd.ollama.image.model)
-        const manUrl = `https://registry.ollama.ai/v2/library/${name}/manifests/${tag}`;
-        const man = await new Promise((resolve, reject) => {
-          https
-            .get(
-              manUrl,
-              {
-                headers: {
-                  Accept:
-                    "application/vnd.docker.distribution.manifest.v2+json",
-                  "User-Agent": "WOLFSPACE",
-                },
-              },
-              (s) => {
-                if (s.statusCode >= 400) {
-                  s.resume();
-                  return reject(
-                    new Error(
-                      "manifest " +
-                        s.statusCode +
-                        " Ã¢â‚¬â€ cek nama/tag (mis. qwen2.5:7b)",
-                    ),
-                  );
-                }
-                let d = "";
-                s.on("data", (c) => (d += c));
-                s.on("end", () => {
-                  try {
-                    resolve(JSON.parse(d));
-                  } catch (e) {
-                    reject(new Error("manifest tidak valid"));
-                  }
-                });
-              },
-            )
-            .on("error", reject);
-        });
-        const layer = (man.layers || []).find(
-          (l) => l.mediaType === "application/vnd.ollama.image.model",
-        );
-        if (!layer) throw new Error("layer GGUF not found di manifest");
-
-        // 2) download the blob Ã¢â€ â€™ models dir
-        const modelDir = CONFIG.modelDir || path.dirname(CONFIG_PATH);
-        const safe = (name + "-" + tag).replace(/[^\w.-]+/g, "_");
-        const base = safe + ".gguf";
-        dest = path.join(modelDir, base);
-        const blobUrl = `https://registry.ollama.ai/v2/library/${name}/blobs/${layer.digest}`;
-        let lastPct = -1,
-          lastT = 0;
-        await hfDownload(
-          blobUrl,
-          dest,
-          (got, total) => {
-            const t = total || layer.size || 0;
-            const pct = t ? Math.floor((got / t) * 100) : 0;
-            const now = Date.now();
-            if (pct !== lastPct && now - lastT > 300) {
-              lastPct = pct;
-              lastT = now;
-              ev({ t: "progress", pct, got, total: t });
-            }
-          },
-          (rq) => {
-            dlReq = rq;
-          },
-        );
-
-        // 3) register + launch llama-server (identical to HF path)
-        const used = new Set((CONFIG.models || []).map((m) => m.port));
-        let port = 8085;
-        while (used.has(port)) port++;
-        const entry = {
-          name: name + ":" + tag,
-          file: base,
-          url: blobUrl,
-          port,
-        };
-        CONFIG.models.push(entry);
-        try {
-          fs.writeFileSync(CONFIG_PATH, JSON.stringify(CONFIG, null, 2));
-        } catch (e) {}
-        const serverExe = path.join(modelDir, "llama-server.exe");
-        const ctx = (CONFIG.llama && CONFIG.llama.ctxSize) || 2048,
-          threads = (CONFIG.llama && CONFIG.llama.threads) || 2;
-        try {
-          spawn(
-            serverExe,
-            [
-              "-m",
-              dest,
-              "--host",
-              "127.0.0.1",
-              "--port",
-              String(port),
-              "--ctx-size",
-              String(ctx),
-              "--threads",
-              String(threads),
-              "--mlock",
-            ],
-            { detached: true, stdio: "ignore" },
-          ).unref();
-        } catch (e) {}
-        dlog("http", "info", "ollama download done", {
-          name: entry.name,
-          port,
-        });
-        ev({ t: "done", model: { name: entry.name, port } });
-      } catch (e) {
-        // Remove the partial/orphan file on ANY failure (cancel OR error) Ã¢â‚¬â€ not just cancel.
-        try {
-          if (dest) fs.rmSync(dest, { force: true });
-        } catch (e2) {}
-        if (!cancelled) ev({ t: "err", m: e.message });
-      }
-      if (!res.writableEnded) res.end();
-    });
-    return;
-  }
-
-  // List configured models (UI builds the dropdown from this) Ã¢â‚¬â€ with on-disk size
-  if (req.method === "GET" && req.url === "/models") {
-    const md = CONFIG.modelDir || "";
-    const out = (CONFIG.models || []).map((m) => {
-      let size = 0;
-      try {
-        if (m.file) size = fs.statSync(path.join(md, m.file)).size;
-      } catch (e) {}
-      return {
-        name: m.name,
-        port: m.port,
-        default: !!m.default,
-        file: m.file || "",
-        size,
-      };
-    });
-    res.writeHead(200, { "Content-Type": "application/json" });
-    return res.end(JSON.stringify(out));
-  }
-
-  // Delete a model: stop its llama-server, remove from config, delete the .gguf file
-  if (req.method === "POST" && req.url === "/model/delete") {
-    let body = "";
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      let port;
-      try {
-        ({ port } = JSON.parse(body));
-      } catch (e) {
-        res.writeHead(400);
-        return res.end("bad json");
-      }
-      const idx = (CONFIG.models || []).findIndex(
-        (m) => String(m.port) === String(port),
-      );
-      if (idx < 0) {
-        res.writeHead(404, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "model not found" }));
-      }
-      const m = CONFIG.models[idx];
-      await killPortAsync(m.port);
-      CONFIG.models.splice(idx, 1);
-      try {
-        fs.writeFileSync(CONFIG_PATH, JSON.stringify(CONFIG, null, 2));
-      } catch (e) {}
-      let deleted = false;
-      try {
-        if (m.file) {
-          fs.rmSync(path.join(CONFIG.modelDir || "", m.file), { force: true });
-          deleted = true;
-        }
-      } catch (e) {}
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: true, deleted, name: m.name }));
-    });
-    return;
   }
 
   // Penyerahan lampiran lewat jembatan: barangnya menyeberang, alamatnya tidak.
@@ -3987,13 +3116,12 @@ const server = http.createServer(async (req, res) => {
               },
             );
           } else {
-            reply = await askModelStream(
-              port || (CONFIG.models[0] && CONFIG.models[0].port),
-              [{ role: "system", content: AGENT_SYS }, ...convo],
-              (tok) => ev({ t: "tok", c: tok }),
-              (r) => {
-                curReq = r;
-              },
+            // No local-model fallback exists any more: the llama.cpp/GGUF path
+            // was removed together with the Model Hub. Say what is actually
+            // wrong — a missing cloud key — instead of failing on a port that
+            // no longer means anything. agent/chat.cjs states the same rule.
+            throw new Error(
+              "No cloud API key is configured. WOLFSPACE is cloud-only: add a key in Settings, or write one to ~/.wolfspace/cloud-keys.json.",
             );
           }
           if (cancelled) break;
@@ -4610,7 +3738,7 @@ const server = http.createServer(async (req, res) => {
         // Prosesnya dihentikan DULU, sebelum foldernya hilang: mencopot tanpa
         // mematikan meninggalkan proses yatim yang masih melayani panggilan.
         try {
-          require("./agent/mcp-client.cjs").stopServer(nama);
+          require("./agent/mcp-client.ts").stopServer(nama);
         } catch (_) {}
         const r = P.copot(nama);
         res.writeHead(r.ok ? 200 : 400, {
@@ -4669,7 +3797,7 @@ const server = http.createServer(async (req, res) => {
         let dimatikan = false;
         if (!beri) {
           try {
-            const mcp = require("./agent/mcp-client.cjs");
+            const mcp = require("./agent/mcp-client.ts");
             mcp.stopServer(nama);
             dimatikan = true;
           } catch (_) {}
@@ -5086,58 +4214,6 @@ const server = http.createServer(async (req, res) => {
         },
       });
       if (!res.writableEnded) res.end();
-    });
-    return;
-  }
-
-  // Inline ghost-text completion (FIM) Ã¢â‚¬â€ uses the fast "ghost" model
-  if (req.method === "POST" && req.url === "/complete") {
-    let body = "";
-    let cancelled = false,
-      curReq = null;
-    res.on("close", () => {
-      if (!res.writableFinished) {
-        cancelled = true;
-        if (curReq) {
-          try {
-            curReq.destroy();
-          } catch (_) {}
-        }
-      }
-    });
-    req.on("data", (c) => (body += c));
-    req.on("end", async () => {
-      let prefix = "",
-        suffix = "",
-        port = CONFIG.ghostPort || (CONFIG.models[0] && CONFIG.models[0].port);
-      try {
-        const j = JSON.parse(body);
-        prefix = j.prefix || "";
-        suffix = j.suffix || "";
-        if (j.port) port = j.port;
-      } catch {}
-      let text = "";
-      try {
-        text = await askFIM(
-          port,
-          prefix.slice(-800),
-          (suffix || "").slice(0, 300),
-          (r) => {
-            curReq = r;
-          },
-        );
-      } catch (e) {
-        text = "";
-      }
-      // trim ghost text: drop markdown/prose, keep one block, remove suffix overlap
-      text = (text || "").replace(/```[\s\S]*$/, "").split("\n\n")[0];
-      const sufLine = (suffix || "").split("\n")[0].trim();
-      if (sufLine && sufLine.length > 1 && text.includes(sufLine))
-        text = text.slice(0, text.indexOf(sufLine));
-      text = text.replace(/\s+$/, "").slice(0, 200);
-      if (cancelled || res.writableEnded) return;
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ text }));
     });
     return;
   }
