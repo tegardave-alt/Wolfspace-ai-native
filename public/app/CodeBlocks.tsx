@@ -1,7 +1,8 @@
-// CodeBlocks — diekstrak dari Components.jsx (app.jsx split). Prepend via APP_MODULES.
+// CodeBlocks — extracted from Components.jsx (the app.jsx split). Prepended
+// via APP_MODULES.
 
 /* ----------------------------- Syntax highlight ----------------------------- */
-const KW = {
+const KW: Record<string, string[]> = {
   python:
     "def class return if elif else for while in and or not import from as with try except finally lambda None True False print pass break continue is global nonlocal yield assert raise del self".split(
       " ",
@@ -11,13 +12,13 @@ const KW = {
       " ",
     ),
 };
-KW.typescript = KW.javascript;
+KW.typescript = KW.javascript!;
 KW.go =
   "func return if else for range var const type struct interface package import map chan go defer nil true false switch case break continue".split(
     " ",
   );
-function highlight(code, lang) {
-  const kws = KW[lang] || KW.javascript;
+function highlight(code: string, lang?: string) {
+  const kws = KW[lang || ""] || KW.javascript!;
   const re =
     /(\/\/[^\n]*|#[^\n]*)|("(?:[^"\\]|\\.)*"|'(?:[^'\\]|\\.)*'|`(?:[^`\\]|\\.)*`)|(\b\d+\.?\d*\b)|([A-Za-z_$][\w$]*)(\s*\()?/g;
   let out = "",
@@ -60,7 +61,7 @@ const LANGS = [
   "css",
   "json",
 ];
-const MLANG = {
+const MLANG: Record<string, string> = {
   js: "javascript",
   javascript: "javascript",
   node: "javascript",
@@ -87,12 +88,12 @@ const MLANG = {
   yaml: "yaml",
   markdown: "markdown",
 };
-function mLang(l) {
+function mLang(l?: string) {
   return MLANG[(l || "").toLowerCase()] || "plaintext";
 }
 
 // Per-language monogram badge (color + short symbol) � clean, no heavy logo assets.
-const LANG_META = {
+const LANG_META: Record<string, any> = {
   python: { l: "Python", s: "Py", c: "#3776AB" },
   javascript: { l: "JavaScript", s: "JS", c: "#F7DF1E", d: 1 },
   typescript: { l: "TypeScript", s: "TS", c: "#3178C6" },
@@ -124,7 +125,7 @@ const LANG_LOGOS = new Set([
   "css",
   "json",
 ]);
-function LangIcon({ lang }) {
+function LangIcon({ lang }: any) {
   const m = LANG_META[lang] || {
     l: lang,
     s: (lang || "?").slice(0, 2),
@@ -137,7 +138,7 @@ function LangIcon({ lang }) {
         src={"/vendor/lang/" + lang + ".svg"}
         alt={m.l}
         loading="lazy"
-        onError={(e) => {
+        onError={(e: any) => {
           const sp = document.createElement("span");
           sp.className = "lang-badge";
           sp.style.background = m.c;
@@ -157,23 +158,23 @@ function LangIcon({ lang }) {
   );
 }
 
-function CodeBlock({ lang, code }) {
+function CodeBlock({ lang, code }: any) {
   const [copied, setCopied] = useState(false);
   const [language, setLanguage] = useState((lang || "python").toLowerCase());
   const [runState, setRunState] = useState("idle");
-  const [out, setOut] = useState(null);
+  const [out, setOut] = useState<any>(null);
   const [edReady, setEdReady] = useState(false); // Monaco mounted? else show <pre> fallback
-  const hostRef = useRef(null);
-  const edRef = useRef(null);
+  const hostRef = useRef<any>(null);
+  const edRef = useRef<any>(null);
   const focusedRef = useRef(false);
-  const wrapRef = useRef(null);
-  // Alasan lengkap ada di useDekatLayar (public/app/AgentSteps.tsx).
+  const wrapRef = useRef<any>(null);
+  // The full reasoning lives in useDekatLayar (public/app/AgentSteps.tsx).
   const dekat = useDekatLayar(wrapRef);
-  // Suntingan pemakai yang belum tersimpan. Editor di sini BISA DITULIS, jadi
-  // membuangnya saat blok keluar layar akan menghapus ketikan orang tanpa jejak.
-  // Naskahnya disalin sebelum dibuang dan dipakai lagi saat dipasang kembali —
-  // juga ditampilkan di <pre> supaya yang terlihat tetap versi si pemakai.
-  const draftRef = useRef(null);
+  // Unsaved user edits. The editor here is WRITABLE, so tearing it down when
+  // the block scrolls off screen would discard someone's typing without a
+  // trace. The text is copied out before teardown and restored on remount —
+  // and shown in the <pre> too, so what stays visible is the user's version.
+  const draftRef = useRef<any>(null);
   const teks = draftRef.current != null ? draftRef.current : code;
   const getCode = () => (edRef.current ? edRef.current.getValue() : teks);
 
@@ -181,7 +182,7 @@ function CodeBlock({ lang, code }) {
     let disposed = false;
     if (!dekat) return; // jauh dari layar -> cukup <pre>
     if (!window.monacoReady) return;
-    window.monacoReady.then((monaco) => {
+    window.monacoReady.then((monaco: any) => {
       if (disposed || !hostRef.current) return;
       // One-time fix: kill Monaco's blue outline (always-on via .monaco-editor rule in editor.main.css)
       if (!document.getElementById("monaco-outline-fix")) {
@@ -201,10 +202,10 @@ function CodeBlock({ lang, code }) {
         fontSize: 13,
         lineNumbers: "on",
         renderLineHighlight: "none",
-        // Sama seperti AgentSteps.tsx dan LogicCodePane (app.jsx): kanvas
-        // 14px yang Monaco gambar di tepi kanan editor tetap aktif meski
-        // minimap mati, dan bergaris batas yang tak tersentuh CSS `outline`
-        // karena digambar ke piksel, bukan diatur lewat style.
+        // Same as AgentSteps.tsx and LogicCodePane (app.jsx): the 14px canvas
+        // Monaco paints along the editor's right edge stays active even with
+        // the minimap off, and its border is untouchable by CSS `outline`
+        // because it is drawn to pixels rather than set through style.
         overviewRulerLanes: 0,
         tabSize: 4,
         scrollbar: { alwaysConsumeMouseWheel: false },
@@ -234,7 +235,7 @@ function CodeBlock({ lang, code }) {
     return () => {
       disposed = true;
       if (edRef.current) {
-        // Naskah disalin DULU, sebelum apa pun dibuang.
+        // Copy the text out FIRST, before anything is disposed.
         try {
           const isi = edRef.current.getValue();
           draftRef.current = isi === code ? null : isi;
@@ -250,13 +251,13 @@ function CodeBlock({ lang, code }) {
   // follow streaming text until the user starts editing
   useEffect(() => {
     const ed = edRef.current;
-    // Blok yang sedang disunting tak boleh ditimpa stream — begitu juga blok
-    // yang naskahnya tersimpan karena sempat keluar layar.
+    // A block being edited must not be overwritten by the stream, and neither
+    // must one whose text was preserved because it scrolled off screen.
     if (draftRef.current != null) return;
-    // Menyusul di ujung, bukan menulis ulang seluruh model — lihat
-    // terapkanTeksStream (Viewport.tsx) untuk alasan dan angka ukurannya.
-    // Penjaga di atas memastikan ini hanya jalan saat pemakai TIDAK sedang
-    // menyunting, jadi kursor dan tumpukan undo-nya tak pernah tersenggol.
+    // Append at the end rather than rewriting the whole model — see
+    // terapkanTeksStream (Viewport.tsx) for the reasoning and the sizes.
+    // The guard above ensures this only runs while the user is NOT editing,
+    // so their cursor and undo stack are never disturbed.
     if (ed && !focusedRef.current) terapkanTeksStream(ed, code);
   }, [code]);
   useEffect(() => {
@@ -281,7 +282,7 @@ function CodeBlock({ lang, code }) {
       });
       setOut(await r.json());
     } catch (e) {
-      setOut({ ok: false, error: "Server unreachable: " + e.message });
+      setOut({ ok: false, error: "Server unreachable: " + (e as any).message });
     }
     setRunState("done");
   };
@@ -351,7 +352,7 @@ function CodeBlock({ lang, code }) {
   );
 }
 
-function parseMermaidFlowchart(code) {
+function parseMermaidFlowchart(code: string) {
   const lines = String(code || "")
     .split(/\r?\n/)
     .map((line) => line.trim())
@@ -361,16 +362,16 @@ function parseMermaidFlowchart(code) {
     );
 
   const nodes = new Map();
-  const edges = [];
+  const edges: any[] = [];
 
-  const getNode = (id) => {
+  const getNode = (id: any) => {
     if (!nodes.has(id)) {
       nodes.set(id, { id, label: id, shape: "rect", order: nodes.size });
     }
     return nodes.get(id);
   };
 
-  const parseNode = (token) => {
+  const parseNode = (token: any) => {
     const raw = String(token || "").trim();
     if (!raw) return null;
     const m = raw.match(
@@ -419,7 +420,7 @@ function parseMermaidFlowchart(code) {
   }
 
   const level = new Map();
-  const queue = [];
+  const queue: any[] = [];
   for (const [id, deg] of incoming.entries()) {
     if (deg === 0) {
       level.set(id, 0);
@@ -454,13 +455,13 @@ function parseMermaidFlowchart(code) {
     if (!level.has(id)) level.set(id, 0);
   }
 
-  const layers = [];
+  const layers: any[] = [];
   for (const [id, lv] of level.entries()) {
     if (!layers[lv]) layers[lv] = [];
     layers[lv].push(id);
   }
   layers.forEach((layer) =>
-    layer.sort((a, b) => nodes.get(a).order - nodes.get(b).order),
+    layer.sort((a: any, b: any) => nodes.get(a).order - nodes.get(b).order),
   );
 
   const fontSize = 14;
@@ -469,7 +470,7 @@ function parseMermaidFlowchart(code) {
   const gapX = 42;
   const gapY = 54;
   const layerGap = 86;
-  const measure = (label) =>
+  const measure = (label: any) =>
     Math.max(96, Math.min(260, label.length * 8.5 + padX * 2));
 
   const positioned = new Map();
@@ -478,13 +479,13 @@ function parseMermaidFlowchart(code) {
   for (let ly = 0; ly < layers.length; ly++) {
     const layer = layers[ly] || [];
     let rowWidth = 0;
-    const sizes = layer.map((id) => ({
+    const sizes = layer.map((id: any) => ({
       id,
       w: measure(nodes.get(id).label),
       h: 54,
     }));
     rowWidth =
-      sizes.reduce((sum, item) => sum + item.w, 0) +
+      sizes.reduce((sum: any, item: any) => sum + item.w, 0) +
       Math.max(0, sizes.length - 1) * gapX;
     let x = Math.max(24, Math.max(0, rowWidth) ? 0 : 0);
     const topY = 28 + ly * layerGap;
@@ -517,18 +518,20 @@ function parseMermaidFlowchart(code) {
 }
 
 // ── Jembatan mermaid -> Cytoscape ──
-// mermaid dipakai sebagai BAHASA MASUKAN (mudah bagi model menulisnya); kita ubah jadi
-// elements Cytoscape supaya diagram jadi INTERAKTIF (drag/zoom/ganti-layout), bukan
-// gambar mati. Mendaur ulang parseMermaidFlowchart yang sudah mengekstrak node+edge.
-function mermaidToCytoElements(code) {
+// mermaid is used as the INPUT LANGUAGE (models write it easily); it is turned
+// into Cytoscape elements so the diagram becomes INTERACTIVE (drag, zoom,
+// change layout) rather than a dead image. This reuses parseMermaidFlowchart,
+// which already extracts the nodes and edges.
+function mermaidToCytoElements(code: string) {
   const raw = String(code || "");
-  // Subgraph -> compound node. parseMermaidFlowchart tak paham `subgraph`/`end` dan
-  // malah membuat node sampah, jadi kita pisahkan baris itu dulu sambil merekam node
-  // mana milik grup mana. Node bergrup dapat data.parent; grup jadi compound node.
-  const subs = {}; // subId -> title
-  const parentOf = {}; // nodeId -> subId (grup terdalam yang pertama merujuknya)
-  const stack = [];
-  const clean = [];
+  // Subgraph -> compound node. parseMermaidFlowchart does not understand
+  // `subgraph`/`end` and would invent junk nodes from those lines, so they are
+  // split out first while recording which node belongs to which group. Grouped
+  // nodes get data.parent; the group itself becomes a compound node.
+  const subs: Record<string, string> = {}; // subId -> title
+  const parentOf: Record<string, string> = {}; // nodeId -> subId (innermost group that first refers to it)
+  const stack: any[] = [];
+  const clean: any[] = [];
   for (const rawLine of raw.split(/\r?\n/)) {
     const line = rawLine.trim();
     if (/^subgraph\b/i.test(line)) {
@@ -547,7 +550,7 @@ function mermaidToCytoElements(code) {
         id = "sg" + Object.keys(subs).length;
         title = rest.replace(/["']/g, "").trim();
       }
-      subs[id] = String(title).replace(/^["']|["']$/g, "");
+      subs[id!] = String(title).replace(/^["']|["']$/g, "");
       stack.push(id);
       continue;
     }
@@ -565,18 +568,18 @@ function mermaidToCytoElements(code) {
   const parsed = parseMermaidFlowchart(clean.join("\n"));
   if (!parsed || !parsed.nodes || !parsed.nodes.size) return null;
 
-  const cleanLabel = (l) =>
+  const cleanLabel = (l: any) =>
     String(l || "")
       .replace(/<br\s*\/?>/gi, "\n")
       .replace(/^\s*["']|["']\s*$/g, "");
   const usedSubs = new Set();
   for (const id of parsed.nodes.keys())
     if (parentOf[id] && subs[parentOf[id]]) usedSubs.add(parentOf[id]);
-  const parents = [...usedSubs].map((id) => ({
-    data: { id, label: subs[id], isParent: 1 },
+  const parents = [...usedSubs].map((id: any) => ({
+    data: { id, label: subs[id as string], isParent: 1 },
   }));
 
-  const nodes = [...parsed.nodes.values()].map((n) => ({
+  const nodes = [...parsed.nodes.values()].map((n: any) => ({
     data: {
       id: n.id,
       label: cleanLabel(n.label || n.id),
@@ -588,8 +591,8 @@ function mermaidToCytoElements(code) {
           : undefined,
     },
   }));
-  const byId = new Map(nodes.map((n) => [n.data.id, n]));
-  const edges = (parsed.edges || []).map((e, i) => {
+  const byId = new Map(nodes.map((n: any) => [n.data.id, n]));
+  const edges = (parsed.edges || []).map((e: any, i: number) => {
     if (byId.get(e.from)) byId.get(e.from).data.deg++;
     if (byId.get(e.to)) byId.get(e.to).data.deg++;
     return {
@@ -604,8 +607,13 @@ function mermaidToCytoElements(code) {
   return [...parents, ...nodes, ...edges];
 }
 
-function cyLayoutOpts(name) {
-  const o = { name, padding: 22, animate: true, animationDuration: 350 };
+function cyLayoutOpts(name: string) {
+  const o: Record<string, any> = {
+    name,
+    padding: 22,
+    animate: true,
+    animationDuration: 350,
+  };
   if (name === "breadthfirst") {
     o.directed = true;
     o.spacingFactor = 1.1;
@@ -614,7 +622,7 @@ function cyLayoutOpts(name) {
     o.nodeRepulsion = 8000;
     o.gravity = 0.3;
   } else if (name === "concentric") {
-    o.concentric = (n) => n.degree();
+    o.concentric = (n: any) => n.degree();
     o.levelWidth = () => 3;
   }
   return o;
@@ -648,7 +656,8 @@ const CY_STYLE = [
   { selector: 'node[shape="circle"]', style: { shape: "ellipse" } },
   { selector: 'node[shape="round"]', style: { shape: "round-rectangle" } },
   { selector: 'node[shape="subroutine"]', style: { shape: "cut-rectangle" } },
-  // compound node = grup subgraph: kotak transparan berlabel di atas, anak-anak di dalam
+  // A compound node is a subgraph group: a transparent box labelled at the top,
+  // with its children inside.
   {
     selector: "node[?isParent]",
     style: {
@@ -710,11 +719,12 @@ const CY_STYLE = [
   },
 ];
 
-// Renderer INTERAKTIF: mermaid (teks) -> Cytoscape (kanvas). Dipakai lewat DiagramBlock
-// hanya saat user menekan "interaktif" (default tetap mermaid.js fidelitas-penuh).
-function CytoscapeBlock({ code, onStatic }) {
-  const ref = useRef(null);
-  const cyRef = useRef(null);
+// The INTERACTIVE renderer: mermaid text -> Cytoscape canvas. Reached through
+// DiagramBlock only when the user presses "interactive" (the default stays
+// full-fidelity mermaid.js).
+function CytoscapeBlock({ code, onStatic }: any) {
+  const ref = useRef<any>(null);
+  const cyRef = useRef<any>(null);
   const [failed, setFailed] = useState(false);
   const [layout, setLayout] = useState("breadthfirst");
   const elements = useMemo(() => {
@@ -735,7 +745,7 @@ function CytoscapeBlock({ code, onStatic }) {
       setFailed(true);
       return;
     }
-    let cy;
+    let cy: any;
     try {
       cy = window.cytoscape({
         container: ref.current,
@@ -751,7 +761,7 @@ function CytoscapeBlock({ code, onStatic }) {
       return;
     }
     cyRef.current = cy;
-    cy.on("mouseover", "node", (e) => {
+    cy.on("mouseover", "node", (e: any) => {
       const n = e.target;
       n.addClass("hl");
       n.connectedEdges().addClass("hl").connectedNodes().addClass("hl");
@@ -770,7 +780,7 @@ function CytoscapeBlock({ code, onStatic }) {
   }, [layout]);
 
   if (failed || !elements) return <MermaidBlock code={code} />;
-  const btn = (l) => ({
+  const btn = (l: any) => ({
     fontFamily: "ui-monospace,monospace",
     fontSize: 11,
     color: layout === l ? "#dce4f0" : "#8b98ac",
@@ -791,7 +801,7 @@ function CytoscapeBlock({ code, onStatic }) {
         <span className="code-lang">graph · interaktif</span>
         <span className="lang-spacer" />
         <div style={{ display: "flex", gap: 6, marginLeft: "auto" }}>
-          {["breadthfirst", "cose", "concentric"].map((l) => (
+          {["breadthfirst", "cose", "concentric"].map((l: any) => (
             <button key={l} style={btn(l)} onClick={() => setLayout(l)}>
               {l}
             </button>
@@ -829,18 +839,21 @@ function CytoscapeBlock({ code, onStatic }) {
   );
 }
 
-// Wrapper yang dipakai chat untuk setiap blok ```mermaid. DEFAULT = mermaid.js asli
-// (fidelitas penuh: semua jenis diagram, bentuk, subgraph, warna). Kalau diagram itu
-// flowchart yang bisa dikonversi ke graph, tampilkan tombol "interaktif" -> Cytoscape.
-// Jadi kekayaan mermaid tak pernah dikorbankan; interaktivitas bersifat opt-in.
-function DiagramBlock({ code }) {
+// The wrapper chat uses for every ```mermaid block. The DEFAULT is real
+// mermaid.js (full fidelity: every diagram type, shape, subgraph and colour).
+// When the diagram is a flowchart that can be converted to a graph, an
+// "interactive" button appears and switches to Cytoscape. So mermaid's
+// richness is never sacrificed — interactivity is opt-in.
+function DiagramBlock({ code }: any) {
   const [interactive, setInteractive] = useState(false);
   const canInteractive = useMemo(() => {
     if (typeof window === "undefined" || typeof window.cytoscape !== "function")
       return false;
     try {
       const els = mermaidToCytoElements(code);
-      return !!(els && els.some((e) => !e.data.source && !e.data.isParent));
+      return !!(
+        els && els.some((e: any) => !e.data.source && !e.data.isParent)
+      );
     } catch (e) {
       return false;
     }
@@ -857,12 +870,13 @@ function DiagramBlock({ code }) {
   );
 }
 
-// Renderer utama: mermaid.js ASLI (window.mermaid, di-vendor di index.html). Paham
-// <br/>, subgraph, bentuk node, dan layout dagre yang rapih. Kalau mermaid gagal /
-// belum termuat, jatuh ke MermaidBlockFallback (parser SVG custom) supaya tak pernah
+// The primary renderer: real mermaid.js (window.mermaid, vendored from
+// index.html). It understands <br/>, subgraphs, node shapes and dagre's tidy
+// layout. If mermaid fails or has not loaded yet, this falls back to
+// MermaidBlockFallback (a custom SVG parser) so a diagram is never lost.
 // menampilkan kode mentah.
-function MermaidBlock({ code, onInteractive }) {
-  const ref = useRef(null);
+function MermaidBlock({ code, onInteractive }: any) {
+  const ref = useRef<any>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
     const m = typeof window !== "undefined" ? window.mermaid : null;
@@ -904,7 +918,7 @@ function MermaidBlock({ code, onInteractive }) {
       }
       const id = "mmd-" + Math.random().toString(36).slice(2, 9);
       Promise.resolve(m.render(id, code))
-        .then(({ svg }) => {
+        .then(({ svg }: any) => {
           if (!cancelled && ref.current) ref.current.innerHTML = svg;
         })
         .catch(() => {
@@ -963,7 +977,7 @@ function MermaidBlock({ code, onInteractive }) {
   );
 }
 
-function MermaidBlockFallback({ code }) {
+function MermaidBlockFallback({ code }: any) {
   const diagram = useMemo(() => parseMermaidFlowchart(code), [code]);
   if (!diagram) {
     return (
@@ -987,7 +1001,7 @@ function MermaidBlockFallback({ code }) {
   const { nodes, edges, positioned, width, height, fontSize, padX, padY } =
     diagram;
 
-  const edgePath = (from, to) => {
+  const edgePath = (from: any, to: any) => {
     const a = positioned.get(from);
     const b = positioned.get(to);
     if (!a || !b) return "";
@@ -1042,7 +1056,7 @@ function MermaidBlockFallback({ code }) {
             rx="14"
             fill="#0d1117"
           />
-          {edges.map((e, idx) => {
+          {edges.map((e: any, idx: number) => {
             const a = positioned.get(e.from);
             const b = positioned.get(e.to);
             if (!a || !b) return null;
@@ -1078,7 +1092,7 @@ function MermaidBlockFallback({ code }) {
               </g>
             );
           })}
-          {Array.from(nodes.values()).map((node) => {
+          {Array.from(nodes.values()).map((node: any) => {
             const p = positioned.get(node.id);
             if (!p) return null;
             const cx = p.x + p.w / 2;

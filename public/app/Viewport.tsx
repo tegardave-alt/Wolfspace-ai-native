@@ -1,6 +1,6 @@
 // Viewport — a shared hook that defers heavy work until its element is near the
 // screen. Loaded AFTER Config.tsx and BEFORE the other modules, because
-// CodeBlocks.jsx and AgentSteps.tsx both use it.
+// CodeBlocks.tsx and AgentSteps.tsx both use it.
 //
 // WHY THIS EXISTS. Chat history is rendered in full (app.jsx: messages.map, no
 // windowing), and every code block used to build a COMPLETE Monaco editor right

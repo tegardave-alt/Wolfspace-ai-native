@@ -24,7 +24,7 @@ const path = require("path");
 const baca = (p) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
 const VIEWPORT = baca("public/app/Viewport.tsx");
 const AGENT = baca("public/app/AgentSteps.tsx");
-const BLOCKS = baca("public/app/CodeBlocks.jsx");
+const BLOCKS = baca("public/app/CodeBlocks.tsx");
 const HTML = baca("public/index.html");
 
 describe("gerbang pembuatan editor", () => {
@@ -73,7 +73,7 @@ describe("hook dimuat sebelum pemakainya", () => {
     // persis gejala yang sedang diperbaiki.
     const i = HTML.indexOf('"/app/Viewport.tsx"');
     expect(i).toBeGreaterThan(-1);
-    expect(HTML.indexOf('"/app/CodeBlocks.jsx"')).toBeGreaterThan(i);
+    expect(HTML.indexOf('"/app/CodeBlocks.tsx"')).toBeGreaterThan(i);
     expect(HTML.indexOf('"/app/AgentSteps.tsx"')).toBeGreaterThan(i);
   });
 

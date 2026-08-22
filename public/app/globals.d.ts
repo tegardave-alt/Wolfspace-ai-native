@@ -177,11 +177,11 @@ interface Window {
 // migrates, or it collides (TS2451) — the pattern WOLFSPACE_ROOT and Icon both
 // demonstrated.
 //   AG_SVG, cleanAgentText -> app/Sidebar.jsx
-//   LangIcon               -> app/CodeBlocks.jsx
+//   escHtml                -> app.jsx
 declare function Blocks(props: { text?: string }): JSX.Element;
 declare const AG_SVG: any;
 declare function cleanAgentText(s: unknown): string;
-declare function LangIcon(props: { lang?: string }): JSX.Element;
+declare function escHtml(s: string): string;
 
 // monacoReady is a PROMISE set on window by index.html once the vendored Monaco
 // loader finishes, so modules can await it instead of racing the <script> tag.
@@ -189,4 +189,15 @@ declare function LangIcon(props: { lang?: string }): JSX.Element;
 // to `| boolean` made that call a type error while changing nothing at runtime.
 interface Window {
   monacoReady?: Promise<any>;
+}
+
+// Diagram libraries used by app/CodeBlocks.tsx. Both are vendored under
+// public/vendor and attach themselves to window from their own <script> tag,
+// so they are undefined until that runs — hence optional. Their surfaces are
+// `any`: neither is an npm dependency here, so no types ship with them.
+// __mermaidInit is WOLFSPACE's own once-only init latch, not part of mermaid.
+interface Window {
+  cytoscape?: any;
+  mermaid?: any;
+  __mermaidInit?: boolean;
 }

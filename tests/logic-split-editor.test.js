@@ -185,7 +185,7 @@ describe("latar editor mengikuti wadahnya", () => {
     "utf8",
   );
   const BLOKS = fs.readFileSync(
-    path.join(__dirname, "..", "public", "app", "CodeBlocks.jsx"),
+    path.join(__dirname, "..", "public", "app", "CodeBlocks.tsx"),
     "utf8",
   );
 
@@ -326,7 +326,7 @@ describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => 
     "utf8",
   );
   const BLOKS = fs.readFileSync(
-    path.join(AKAR, "public", "app", "CodeBlocks.jsx"),
+    path.join(AKAR, "public", "app", "CodeBlocks.tsx"),
     "utf8",
   );
 

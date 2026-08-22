@@ -5,10 +5,10 @@
 // AgentSteps — diekstrak dari Sidebar.jsx (app.jsx split): ToolOutput, *ActionRow,
 // ConsolidatedThoughtCard, AgentSteps, HitlModal. Prepend via APP_MODULES.
 
-// useDekatLayar dipindah ke Config.tsx (dimuat PERTAMA) karena CodeBlocks.jsx
-// juga memakainya dan dimuat LEBIH DULU dari berkas ini. Saat ini semua modul
-// digabung jadi satu <script> sehingga hoisting menyelamatkannya, tapi itu
-// jaminan yang bisa hilang diam-diam kalau pemuatannya dipecah nanti.
+// useDekatLayar moved to Config.tsx (loaded FIRST) because CodeBlocks.tsx
+// uses it too and loads BEFORE this file. Today every module is concatenated
+// into one <script>, so hoisting covers it — but that is a guarantee which
+// could disappear silently if loading is ever split up.
 function ToolOutput({ text, ok, kind, arg }: any) {
   const [edReady, setEdReady] = useState(false);
   const hostRef = useRef<any>(null);

@@ -280,7 +280,7 @@ function TopBar({
 
 /* Views dipindah ke public/app/Views.tsx (APP_MODULES). */
 
-/* CodeBlocks dipindah ke public/app/CodeBlocks.jsx (APP_MODULES). */
+/* CodeBlocks dipindah ke public/app/CodeBlocks.tsx (APP_MODULES). */
 
 /* ----------------------------- Message ----------------------------- */
 function Blocks({ text }) {

@@ -33,8 +33,27 @@ const SUDAH_DIPERIKSA = ["agent/attachment-bridge.cjs"];
 // no longer a `// @ts-check` line but that the file is still .ts and has not
 // quietly been reverted to an unchecked .cjs.
 const SUDAH_TYPESCRIPT = [
+  "agent/broker/audit-log.ts",
   "agent/broker/commandchain.ts",
+  "agent/broker/host.ts",
+  "agent/broker/policy.ts",
   "agent/broker/zone-process.ts",
+  "agent/mcp-client.ts",
+  "agent/sandbox-policy.ts",
+  "agent/sandbox.ts",
+  "agent/snapshot.ts",
+  "core/terminal.ts",
+  "electron/preload.ts",
+  "public/app/AgentSteps.tsx",
+  "public/app/CodeBlocks.tsx",
+  "public/app/Config.tsx",
+  "public/app/Icons.tsx",
+  "public/app/Model3DViewer.tsx",
+  "public/app/PluginsView.tsx",
+  "public/app/Viewport.tsx",
+  "public/app/VisualTools.tsx",
+  "public/app/Views.tsx",
+  "public/app/usePreviewPanel.tsx",
 ];
 
 describe("kontrak tipe jalur kritis", () => {
@@ -49,7 +68,7 @@ describe("kontrak tipe jalur kritis", () => {
     // Dropping back to .cjs without @ts-check would disable this file's checking
     // with no trace — the exact failure class as deleting the @ts-check line.
     expect(fs.existsSync(path.join(AKAR, rel))).toBe(true);
-    expect(rel.endsWith(".ts")).toBe(true);
+    expect(/\.tsx?$/.test(rel)).toBe(true);
   });
 
   test("fungsi vonis memakai UNION, bukan field opsional", () => {
