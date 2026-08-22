@@ -160,7 +160,6 @@ declare function setCloudLS(c: KonfigCloud | null): void;
 // noUncheckedIndexedAccess — every SB.x() call would read as possibly undefined.
 // Drop this declaration when Sidebar.jsx migrates, or it will collide (TS2451),
 // exactly as Icon did once Icons.tsx started declaring itself.
-declare const SB: any;
 
 // three.js is vendored offline and exposed on window by public/vendor/three3d
 // (see scripts/three/build.cjs), not installed from npm. Only the handful of
@@ -182,13 +181,15 @@ interface Window {
 // global scope. Each of these declarations must be REMOVED when its own file
 // migrates, or it collides (TS2451) — the pattern WOLFSPACE_ROOT and Icon both
 // demonstrated.
-//   AG_SVG, cleanAgentText -> app/Sidebar.jsx
-//   escHtml, parseBlocks, IPC -> app.jsx
+//   escHtml, parseBlocks, IPC, wwApi, wwListFetch -> app.jsx
 declare function Blocks(props: { text?: string }): JSX.Element;
-declare const AG_SVG: any;
-declare function cleanAgentText(s: unknown): string;
 declare function escHtml(s: string): string;
 declare function parseBlocks(text: string): any[];
+declare function wwApi(
+  path: string,
+  opts?: { method?: string; body?: any },
+): Promise<any>;
+declare function wwListFetch(): Promise<any>;
 // IPC is the Electron bridge, null in a plain browser — hence the union.
 declare const IPC: { ipc?: any; invoke?: (...a: any[]) => Promise<any> } | null;
 

@@ -20,7 +20,7 @@ const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 const APP = baca("public/app.jsx");
-const SB = baca("public/app/Sidebar.jsx");
+const SB = baca("public/app/Sidebar.tsx");
 const CSS = baca("public/styles.css");
 const tanpaKomentar = (t) =>
   t

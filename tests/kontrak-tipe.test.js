@@ -53,6 +53,7 @@ const SUDAH_TYPESCRIPT = [
   "public/app/PluginsView.tsx",
   "public/app/Viewport.tsx",
   "public/app/VisualTools.tsx",
+  "public/app/Sidebar.tsx",
   "public/app/Views.tsx",
   "public/app/usePreviewPanel.tsx",
 ];

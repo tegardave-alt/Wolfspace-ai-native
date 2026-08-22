@@ -106,7 +106,7 @@ describe("jalur HTTP dan UI terpasang", () => {
     // Tombol commit pada working tree bersih tak melakukan apa pun kecuali
     // memberi pesan gagal — lebih baik tak ditampilkan.
     const B = fs.readFileSync(
-      require.resolve("../public/app/Sidebar.jsx"),
+      require.resolve("../public/app/Sidebar.tsx"),
       "utf8",
     );
     expect(B).toMatch(/\{g\.dirty && !committing &&/);
@@ -114,7 +114,7 @@ describe("jalur HTTP dan UI terpasang", () => {
 
   test("pesan kosong di UI = BATAL, bukan commit tanpa pesan", () => {
     const B = fs.readFileSync(
-      require.resolve("../public/app/Sidebar.jsx"),
+      require.resolve("../public/app/Sidebar.tsx"),
       "utf8",
     );
     const i = B.indexOf("const doCommit");

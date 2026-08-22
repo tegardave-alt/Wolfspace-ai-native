@@ -1,10 +1,11 @@
-// Sidebar — diekstrak dari app.jsx (lihat public/app.jsx untuk App orkestrator).
-// Dimuat via APP_MODULES di index.html: di-CONCAT SEBELUM app.jsx (prepend) lalu
-// Babel sekali -> satu scope global. Body fungsi (hooks/React/SB) jalan saat render.
+// Sidebar — extracted from app.jsx (see public/app.jsx for the App
+// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
+// app.jsx (prepended), then Babel once -> a single global scope. Function
+// bodies (hooks/React/SB) run at render time.
 
 /* ----------------------------- Sidebar (Claude-style) ----------------------------- */
 const SB = {
-  panel: (p) => (
+  panel: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect
         x="3"
@@ -25,7 +26,7 @@ const SB = {
       />
     </svg>
   ),
-  plus: (p) => (
+  plus: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <line
         x1="12"
@@ -47,7 +48,7 @@ const SB = {
       />
     </svg>
   ),
-  history: (p) => (
+  history: (p: any) => (
     <svg
       viewBox="0 0 24 24"
       fill="none"
@@ -62,7 +63,7 @@ const SB = {
       <path d="M12 7v5l4 2" />
     </svg>
   ),
-  chat: (p) => (
+  chat: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M4 5h16v11H8l-4 4V5z"
@@ -72,7 +73,7 @@ const SB = {
       />
     </svg>
   ),
-  dev: (p) => (
+  dev: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M8 9l3 3-3 3M13 15h3"
@@ -92,7 +93,7 @@ const SB = {
       />
     </svg>
   ),
-  hub: (p) => (
+  hub: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect
         x="4"
@@ -132,7 +133,7 @@ const SB = {
       />
     </svg>
   ),
-  key: (p) => (
+  key: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <circle cx="8" cy="8" r="4" stroke="currentColor" strokeWidth="1.7" />
       <path
@@ -144,7 +145,7 @@ const SB = {
       />
     </svg>
   ),
-  code: (p) => (
+  code: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M8 7l-5 5 5 5M16 7l5 5-5 5"
@@ -155,7 +156,7 @@ const SB = {
       />
     </svg>
   ),
-  target: (p) => (
+  target: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="1.7" />
       <path
@@ -166,7 +167,7 @@ const SB = {
       />
     </svg>
   ),
-  palette: (p) => (
+  palette: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M12 3a9 9 0 100 18c1.7 0 2-1.3 1.2-2.2-.8-.9-.3-2.3 1-2.3H17a4 4 0 004-4 9 9 0 00-9-9.5z"
@@ -179,7 +180,7 @@ const SB = {
       <circle cx="15" cy="8.5" r="1" fill="currentColor" />
     </svg>
   ),
-  runner: (p) => (
+  runner: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M5 5h14v10H5z"
@@ -203,7 +204,7 @@ const SB = {
     </svg>
   ),
   // -- Agent-specific logos --
-  wolfspaceAgent: (p) => (
+  wolfspaceAgent: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <circle cx="12" cy="12" r="3" fill="currentColor" opacity="0.3" />
       <circle
@@ -256,19 +257,19 @@ const SB = {
       />
     </svg>
   ),
-  opencode: (p) => (
+  opencode: (p: any) => (
     <svg viewBox="0 0 12 15" {...p}>
       <rect width="12" height="15" fill="#131010" />
       <path d="M0 0H12V15H0Z M3 3H9V12H3Z" fill="#FFFFFF" fillRule="evenodd" />
       <rect x="3" y="6" width="6" height="6" fill="#5A5858" />
     </svg>
   ),
-  claude: (p) => (
+  claude: (p: any) => (
     <svg viewBox="0 0 24 24" fill="currentColor" {...p}>
       <path d="m4.7144 15.9555 4.7174-2.6471.079-.2307-.079-.1275h-.2307l-.7893-.0486-2.6956-.0729-2.3375-.0971-2.2646-.1214-.5707-.1215-.5343-.7042.0546-.3522.4797-.3218.686.0608 1.5179.1032 2.2767.1578 1.6514.0972 2.4468.255h.3886l.0546-.1579-.1336-.0971-.1032-.0972L6.973 9.8356l-2.55-1.6879-1.3356-.9714-.7225-.4918-.3643-.4614-.1578-1.0078.6557-.7225.8803.0607.2246.0607.8925.686 1.9064 1.4754 2.4893 1.8336.3643.3035.1457-.1032.0182-.0728-.164-.2733-1.3539-2.4467-1.445-2.4893-.6435-1.032-.17-.6194c-.0607-.255-.1032-.4674-.1032-.7285L6.287.1335 6.6997 0l.9957.1336.419.3642.6192 1.4147 1.0018 2.2282 1.5543 3.0296.4553.8985.2429.8318.091.255h.1579v-.1457l.1275-1.706.2368-2.0947.2307-2.6957.0789-.7589.3764-.9107.7468-.4918.5828.2793.4797.686-.0668.4433-.2853 1.8517-.5586 2.9021-.3643 1.9429h.2125l.2429-.2429.9835-1.3053 1.6514-2.0643.7286-.8196.85-.9046.5464-.4311h1.0321l.759 1.1293-.34 1.1657-1.0625 1.3478-.8804 1.1414-1.2628 1.7-.7893 1.36.0729.1093.1882-.0183 2.8535-.607 1.5421-.2794 1.8396-.3157.8318.3886.091.3946-.3278.8075-1.967.4857-2.3072.4614-3.4364.8136-.0425.0304.0486.0607 1.5482.1457.6618.0364h1.621l3.0175.2247.7892.522.4736.6376-.079.4857-1.2142.6193-1.6393-.3886-3.825-.9107-1.3113-.3279h-.1822v.1093l1.0929 1.0686 2.0035 1.8092 2.5075 2.3314.1275.5768-.3218.4554-.34-.0486-2.2039-1.6575-.85-.7468-1.9246-1.621h-.1275v.17l.4432.6496 2.3436 3.5214.1214 1.0807-.17.3521-.6071.2125-.6679-.1214-1.3721-1.9246L14.38 17.959l-1.1414-1.9428-.1397.079-.674 7.2552-.3156.3703-.7286.2793-.6071-.4614-.3218-.7468.3218-1.4753.3886-1.9246.3157-1.53.2853-1.9004.17-.6314-.0121-.0425-.1397.0182-1.4328 1.9672-2.1796 2.9446-1.7243 1.8456-.4128.164-.7164-.3704.0667-.6618.4008-.5889 2.386-3.0357 1.4389-1.882.929-1.0868-.0062-.1579h-.0546l-6.3385 4.1164-1.1293.1457-.4857-.4554.0608-.7467.2307-.2429 1.9064-1.3114Z" />
     </svg>
   ),
-  workflow: (p) => (
+  workflow: (p: any) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect
         x="3"
@@ -316,33 +317,34 @@ const SB = {
   ),
 };
 
-// Identitas sebuah workspace = PATH-nya yang persis, bukan namanya. Windows tak
-// peka huruf besar/kecil dan mencampur "/" vs "\", jadi normalkan sebelum banding.
-function normDelPath(s) {
+// A workspace's identity is its EXACT path, not its name. Windows is
+// case-insensitive and mixes "/" with "\", so normalise before comparing.
+function normDelPath(s: any) {
   return String(s || "")
     .replace(/\\/g, "/")
     .replace(/\/+$/, "")
     .toLowerCase();
 }
-// Apakah path ada di daftar-hapus? HANYA cocok berdasar path persis (dinormalkan)
-// — TIDAK dengan nama telanjang/suffix. Ini memutus bug lama: menghapus folder
-// bernama "x" tak boleh memblokir folder "x" lain di lokasi berbeda selamanya.
-function isPathDeleted(deletedArr, p) {
+// Is this path on the delete list? Matched ONLY by exact (normalised) path —
+// never by bare name or suffix. That closes an old bug: deleting a folder
+// named "x" must not block a different folder "x" elsewhere forever.
+function isPathDeleted(deletedArr: any, p: any) {
   if (!p) return false;
   const np = normDelPath(p);
   for (const d of deletedArr || []) if (normDelPath(d) === np) return true;
   return false;
 }
-// Sekali-jalan: buang "racun" dari daftar-hapus lama — entri NAMA TELANJANG (bukan
-// path absolut) yang, di bawah pencocokan-nama lama, memblokir folder apa pun yang
-// namanya kebetulan sama. Setelah ini blacklist hanya berisi path (invarian baru).
+// One-shot: strip the "poison" out of an old delete list — BARE NAME entries
+// (rather than absolute paths) which, under the old name-matching, blocked any
+// folder that happened to share a name. After this the blacklist holds only
+// paths (the new invariant).
 function sanitizeDeletedWorkspaces() {
   try {
     const raw = localStorage.getItem("wolfspace_deleted_workspaces");
     if (!raw) return;
     const arr = JSON.parse(raw);
     if (!Array.isArray(arr)) return;
-    const isAbsPath = (s) =>
+    const isAbsPath = (s: any) =>
       /^[a-zA-Z]:[\\/]/.test(String(s || "")) ||
       String(s || "").startsWith("/");
     const cleaned = arr.filter(isAbsPath);
@@ -355,15 +357,16 @@ function sanitizeDeletedWorkspaces() {
   } catch (_) {}
 }
 
-// Bersihkan racun blacklist lama sekali, saat app.jsx dimuat (aman & idempoten).
+// Clean the old blacklist poison once, as app.jsx loads (safe and idempotent).
 try {
   sanitizeDeletedWorkspaces();
 } catch (_) {}
 
-// Ubah project terpilih → PATH folder untuk dikirim sebagai workspace_root ke agent
-// (mengurung agent + operasi file/bash ke folder itu). null = biarkan tak-terkurung:
-// yaitu WOLFSPACE root (mode self-edit, seperti sekarang) atau tak bisa diresolusi.
-function resolveWorkspaceRoot(sel) {
+// Turn the selected project into the folder PATH sent as workspace_root to the
+// agent (confining the agent plus its file/bash operations to that folder).
+// null means leave it unconfined: either the WOLFSPACE root (self-edit mode, as
+// now) or unresolvable.
+function resolveWorkspaceRoot(sel: any) {
   if (!sel) return null;
   let p = /[:\\/]/.test(sel) ? sel : null;
   if (!p) {
@@ -372,7 +375,7 @@ function resolveWorkspaceRoot(sel) {
         localStorage.getItem("wolfspace_projects_list") || "[]",
       );
       const hit = list.find(
-        (x) =>
+        (x: any) =>
           x &&
           (x.name === sel ||
             (x.path &&
@@ -387,17 +390,18 @@ function resolveWorkspaceRoot(sel) {
   return p;
 }
 
-function deleteWorkspaceGlobal(wsToDelete) {
+function deleteWorkspaceGlobal(wsToDelete: any) {
   try {
     if (!wsToDelete) return;
     const stored = JSON.parse(
       localStorage.getItem("wolfspace_projects_list") || "[]",
     );
-    // Cari path FISIK folder ini SEBELUM localStorage diubah — dipakai untuk hapus
-    // nyata di disk. wsToDelete kadang berupa nama, kadang path; cari entri yang
-    // cocok (persis logika filter di bawah) untuk mendapat p.path yang benar.
+    // Find this folder's PHYSICAL path BEFORE localStorage changes — it is what
+    // the real on-disk delete uses. wsToDelete is sometimes a name and sometimes
+    // a path, so look for the matching entry (the same logic as the filter
+    // below) to get the correct p.path.
     const match = stored.find(
-      (p) =>
+      (p: any) =>
         p.path === wsToDelete ||
         p.name === wsToDelete ||
         (p.path &&
@@ -414,7 +418,7 @@ function deleteWorkspaceGlobal(wsToDelete) {
         ? wsToDelete
         : null);
 
-    const updated = stored.filter((p) => {
+    const updated = stored.filter((p: any) => {
       if (p.path === wsToDelete || p.name === wsToDelete) return false;
       if (
         wsToDelete.endsWith(`\\${p.name}`) ||
@@ -431,10 +435,11 @@ function deleteWorkspaceGlobal(wsToDelete) {
     });
     localStorage.setItem("wolfspace_projects_list", JSON.stringify(updated));
 
-    // Blacklist HANYA menyimpan path penuh (identitas). Menyimpan nama telanjang
-    // dulu (p.name / wsToDelete-nama) meracuni daftar: folder baru bernama sama
-    // ikut tersaring selamanya. Bila path tak bisa diresolusi, entri sudah dibuang
-    // dari projects_list di atas — cukup, tak perlu diblacklist by-name.
+    // The blacklist stores full paths ONLY (identity). Storing a bare name, as
+    // it once did (p.name / wsToDelete-as-name), poisoned the list: a new folder
+    // with the same name was filtered out forever. If the path cannot be
+    // resolved the entry was already dropped from projects_list above — that is
+    // enough, and no by-name blacklisting is needed.
     const deleted = JSON.parse(
       localStorage.getItem("wolfspace_deleted_workspaces") || "[]",
     );
@@ -447,8 +452,9 @@ function deleteWorkspaceGlobal(wsToDelete) {
     }
     window.dispatchEvent(new Event("wolfspace_workspaces_changed"));
 
-    // Hapus FISIK folder+repo dari disk (backend menolak kalau bukan workspace ww
-    // yang sah — lihat POST /ww/delete). UI sudah bersih di atas terlepas hasil ini.
+    // PHYSICALLY delete the folder and repo from disk (the backend refuses if it
+    // is not a legitimate ww workspace — see POST /ww/delete). The UI above is
+    // already clean regardless of the outcome.
     if (realPath) {
       wwApi("/ww/delete", { method: "POST", body: { path: realPath } }).catch(
         () => {},
@@ -457,21 +463,23 @@ function deleteWorkspaceGlobal(wsToDelete) {
   } catch (_) {}
 }
 
-// Ambil ringkasan git READ-ONLY untuk satu folder workspace. Pola decoupling:
-// fetch fresh saat mount, tak pernah simpan di state parent — jadi tiap kali
-// baris/popover ter-mount, datanya selalu terkini (bukan snapshot beku).
-function useWwGit(path, refreshKey) {
-  const [info, setInfo] = React.useState(null);
+// Fetch a READ-ONLY git summary for one workspace folder. The decoupling
+// pattern: fetch fresh on mount and never store it in parent state — so every
+// time a row or popover mounts, the data is current rather than a frozen
+// snapshot.
+function useWwGit(path: any, refreshKey?: any) {
+  const [info, setInfo] = React.useState<any>(null);
   React.useEffect(() => {
     let alive = true;
-    // Hanya path absolut yang bermakna sbagai repo di disk; nama telanjang dilewati.
+    // Only an absolute path means anything as a repo on disk; bare names are
+    // skipped.
     const looksAbsolute =
       typeof path === "string" && /^[a-zA-Z]:[\\/]|^\//.test(path);
     if (!looksAbsolute) {
       setInfo({ repo: false });
       return;
     }
-    wwApi("/ww/git?path=" + encodeURIComponent(path)).then((r) => {
+    wwApi("/ww/git?path=" + encodeURIComponent(path)).then((r: any) => {
       if (alive) setInfo(r || { repo: false });
     });
     return () => {
@@ -482,10 +490,10 @@ function useWwGit(path, refreshKey) {
 }
 
 // Perbarui localStorage setelah FOLDER di-rename di disk: ganti path+name di
-// projects_list, lalu umumkan perubahan agar sidebar & picker menyusun ulang.
-function applyFolderRenameLS(oldPath, newPath, newName) {
+// projects_list, then announce the change so the sidebar and picker rebuild.
+function applyFolderRenameLS(oldPath: any, newPath: any, newName: any) {
   try {
-    const norm = (s) =>
+    const norm = (s: any) =>
       String(s || "")
         .replace(/\\/g, "/")
         .replace(/\/+$/, "")
@@ -494,7 +502,7 @@ function applyFolderRenameLS(oldPath, newPath, newName) {
       localStorage.getItem("wolfspace_projects_list") || "[]",
     );
     let changed = false;
-    const upd = list.map((p) => {
+    const upd = list.map((p: any) => {
       if (p && norm(p.path) === norm(oldPath)) {
         changed = true;
         return { ...p, path: newPath, name: newName };
@@ -508,14 +516,15 @@ function applyFolderRenameLS(oldPath, newPath, newName) {
 }
 
 // Pill branch + titik status di baris sidebar (selalu terlihat, "sekilas").
-// Titik: kuning = ada perubahan belum di-commit, hijau-abu = bersih.
-function WorkspaceGitPill({ path }) {
+// The dot: yellow means uncommitted changes, grey-green means clean.
+function WorkspaceGitPill({ path }: any) {
   return null;
 }
 
 // Panel detail git di dalam popover "Folder options". Mount = fetch fresh.
-// Normalkan input jadi nama branch git valid (mirror scripts/ww.cjs toBranch).
-function toBranchName(name) {
+// Normalise input into a valid git branch name (mirrors toBranch in
+// scripts/ww.cjs).
+function toBranchName(name: any) {
   let b = String(name || "")
     .trim()
     .replace(/[^\w.\-/]+/g, "-")
@@ -524,7 +533,7 @@ function toBranchName(name) {
     .replace(/-{2,}/g, "-");
   return b || "work";
 }
-const gitBranchIcon = (sz) => (
+const gitBranchIcon = (sz: any) => (
   <svg
     width={sz}
     height={sz}
@@ -544,10 +553,11 @@ const gitBranchIcon = (sz) => (
 );
 
 // Panel git INTERAKTIF di popover "Folder options": rename folder (disk), ganti/
-// buat/ganti-nama/hapus branch — semua lewat endpoint /ww/* nyata (git asli).
-// Gaya tombol/kolom commit ditaruh di level modul, bukan inline di JSX: gerbang
-// kualitas (agent/code-quality.cjs) menjaga kedalaman indentasi berkas ini, dan
-// objek gaya bersarang di dalam render akan menambahnya tanpa memberi apa pun.
+// create / rename / delete a branch — all through the real /ww/* endpoints
+// (actual git). The button and commit-field styles sit at module level rather
+// than inline in JSX: the quality gate (agent/code-quality.cjs) watches this
+// file's indentation depth, and style objects nested inside render would add to
+// it while giving nothing back.
 const commitInputStyle = {
   width: "100%",
   boxSizing: "border-box",
@@ -559,7 +569,7 @@ const commitInputStyle = {
   padding: "3px 7px",
   outline: "none",
 };
-function commitBtnStyle(busy) {
+function commitBtnStyle(busy: any) {
   return {
     marginLeft: "auto",
     padding: "1px 8px",
@@ -572,17 +582,17 @@ function commitBtnStyle(busy) {
   };
 }
 
-function WorkspaceGitPanel({ path, onClose }) {
+function WorkspaceGitPanel({ path, onClose }: any) {
   const [refreshKey, setRefreshKey] = React.useState(0);
   const g = useWwGit(path, refreshKey);
-  const [br, setBr] = React.useState(null); // { repo, current, branches:[] }
+  const [br, setBr] = React.useState<any>(null); // { repo, current, branches:[] }
   const [pickerOpen, setPickerOpen] = React.useState(false);
   const [query, setQuery] = React.useState("");
-  const [renamingBranch, setRenamingBranch] = React.useState(null);
+  const [renamingBranch, setRenamingBranch] = React.useState<any>(null);
   const [editingFolder, setEditingFolder] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
   const [busy, setBusy] = React.useState(false);
-  const [msg, setMsg] = React.useState(null); // { ok, text }
+  const [msg, setMsg] = React.useState<any>(null); // { ok, text }
 
   React.useEffect(() => {
     let alive = true;
@@ -591,7 +601,7 @@ function WorkspaceGitPanel({ path, onClose }) {
       setBr({ repo: false, current: null, branches: [] });
       return;
     }
-    wwApi("/ww/branches?path=" + encodeURIComponent(path)).then((r) => {
+    wwApi("/ww/branches?path=" + encodeURIComponent(path)).then((r: any) => {
       if (alive) setBr(r || { repo: false, current: null, branches: [] });
     });
     return () => {
@@ -599,12 +609,15 @@ function WorkspaceGitPanel({ path, onClose }) {
     };
   }, [path, refreshKey]);
 
-  const flash = (ok, text) => {
+  const flash = (ok: any, text: any) => {
     setMsg({ ok, text });
-    setTimeout(() => setMsg((m) => (m && m.text === text ? null : m)), 2800);
+    setTimeout(
+      () => setMsg((m: any) => (m && m.text === text ? null : m)),
+      2800,
+    );
   };
-  const refresh = () => setRefreshKey((k) => k + 1);
-  const run = async (url, body, okText, after) => {
+  const refresh = () => setRefreshKey((k: any) => k + 1);
+  const run = async (url: any, body: any, okText: any, after?: any) => {
     setBusy(true);
     const r = await wwApi(url, { method: "POST", body });
     setBusy(false);
@@ -618,56 +631,56 @@ function WorkspaceGitPanel({ path, onClose }) {
     return false;
   };
 
-  const doSwitch = (b) =>
+  const doSwitch = (b: any) =>
     run("/ww/branch/switch", { path, branch: b }, "switched to " + b, () =>
       setPickerOpen(false),
     );
-  const doCreate = (name) => {
+  const doCreate = (name: any) => {
     const nm = toBranchName(name);
     run(
       "/ww/branch/create",
       { path, branch: nm },
-      (r) => "branch created: " + (r.name || nm),
+      (r: any) => "branch created: " + (r.name || nm),
       () => {
         setPickerOpen(false);
         setQuery("");
       },
     );
   };
-  const doRenameBranch = (oldN, newN) => {
+  const doRenameBranch = (oldN: any, newN: any) => {
     setRenamingBranch(null);
     const nn = toBranchName(newN);
     if (nn === oldN) return;
     run(
       "/ww/branch/rename",
       { path, oldName: oldN, newName: nn },
-      (r) => "branch → " + (r.name || nn),
+      (r: any) => "branch → " + (r.name || nn),
     );
   };
-  const doDeleteBranch = (b) =>
+  const doDeleteBranch = (b: any) =>
     run("/ww/branch/delete", { path, branch: b }, "branch deleted: " + b);
-  // Commit SELURUH working tree. Sengaja sepadan dengan angka "N uncommitted
-  // changes" yang ditampilkan tepat di sebelahnya — tombol yang meng-commit lebih
-  // sedikit daripada yang diperlihatkan angkanya akan menyesatkan.
-  const doCommit = (message) => {
+  // Commit the ENTIRE working tree. Deliberately matching the "N uncommitted
+  // changes" figure shown right beside it — a button that commits less than the
+  // number displays would mislead.
+  const doCommit = (message: any) => {
     const m = String(message || "").trim();
     setCommitting(false);
-    if (!m) return; // batal: kosong berarti tak jadi, bukan commit tanpa pesan
+    if (!m) return; // cancel: empty means never mind, not an empty-message commit
     run(
       "/ww/commit",
       { path, message: m },
-      (r) => "commit " + (r.hash || "") + " · " + (r.subject || m),
+      (r: any) => "commit " + (r.hash || "") + " · " + (r.subject || m),
     );
   };
-  const doRenameFolder = (newName) => {
+  const doRenameFolder = (newName: any) => {
     const nm = String(newName || "").trim();
     setEditingFolder(false);
     if (!nm || nm === basename) return;
     run(
       "/ww/rename",
       { path, newName: nm },
-      (r) => "folder → " + (r.name || nm),
-      (r) => {
+      (r: any) => "folder → " + (r.name || nm),
+      (r: any) => {
         applyFolderRenameLS(path, r.path || path, r.name || nm);
         if (onClose) setTimeout(onClose, 500);
       },
@@ -689,7 +702,7 @@ function WorkspaceGitPanel({ path, onClose }) {
   if (!g.repo) {
     return (
       <div style={{ padding: "8px 14px", color: "#6b7280", fontSize: "12px" }}>
-        bukan repo git
+        not a git repo
       </div>
     );
   }
@@ -698,15 +711,15 @@ function WorkspaceGitPanel({ path, onClose }) {
   const branches = (br && br.branches) || [];
   const q = query.trim();
   const norm = q ? toBranchName(q) : "";
-  const filtered = branches.filter((b) =>
+  const filtered = branches.filter((b: any) =>
     b.toLowerCase().includes(q.toLowerCase()),
   );
-  const typedNew = q && !branches.some((b) => b === norm);
+  const typedNew = q && !branches.some((b: any) => b === norm);
 
-  const miniBtn = (onClick, title, color, children) => (
+  const miniBtn = (onClick: any, title: any, color: any, children: any) => (
     <button
       className="btn-reset"
-      onClick={(e) => {
+      onClick={(e: any) => {
         e.stopPropagation();
         onClick();
       }}
@@ -721,10 +734,12 @@ function WorkspaceGitPanel({ path, onClose }) {
         justifyContent: "center",
         flexShrink: 0,
       }}
-      onMouseEnter={(e) =>
+      onMouseEnter={(e: any) =>
         (e.currentTarget.style.background = "rgba(255,255,255,0.09)")
       }
-      onMouseLeave={(e) => (e.currentTarget.style.background = "transparent")}
+      onMouseLeave={(e: any) =>
+        (e.currentTarget.style.background = "transparent")
+      }
     >
       {children}
     </button>
@@ -772,7 +787,7 @@ function WorkspaceGitPanel({ path, onClose }) {
         pointerEvents: busy ? "none" : "auto",
       }}
     >
-      {/* nama folder + rename */}
+      {/* folder name + rename */}
       <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
         <svg
           width="13"
@@ -791,11 +806,11 @@ function WorkspaceGitPanel({ path, onClose }) {
           <input
             autoFocus
             defaultValue={basename}
-            onKeyDown={(e) => {
+            onKeyDown={(e: any) => {
               if (e.key === "Enter") doRenameFolder(e.currentTarget.value);
               else if (e.key === "Escape") setEditingFolder(false);
             }}
-            onBlur={(e) => doRenameFolder(e.currentTarget.value)}
+            onBlur={(e: any) => doRenameFolder(e.currentTarget.value)}
             style={{
               flex: 1,
               minWidth: 0,
@@ -839,7 +854,7 @@ function WorkspaceGitPanel({ path, onClose }) {
       {/* active branch → picker */}
       <div style={{ position: "relative" }}>
         <button
-          onClick={() => setPickerOpen((o) => !o)}
+          onClick={() => setPickerOpen((o: any) => !o)}
           title="Manage branches"
           style={{
             display: "flex",
@@ -902,8 +917,8 @@ function WorkspaceGitPanel({ path, onClose }) {
             <input
               autoFocus
               value={query}
-              onChange={(e) => setQuery(e.target.value)}
-              onKeyDown={(e) => {
+              onChange={(e: any) => setQuery(e.target.value)}
+              onKeyDown={(e: any) => {
                 if (e.key === "Enter" && typedNew) doCreate(q);
                 else if (e.key === "Escape") setPickerOpen(false);
               }}
@@ -941,10 +956,10 @@ function WorkspaceGitPanel({ path, onClose }) {
                     color: "#2f81f7",
                     fontSize: "12px",
                   }}
-                  onMouseEnter={(e) =>
+                  onMouseEnter={(e: any) =>
                     (e.currentTarget.style.background = "#21262d")
                   }
-                  onMouseLeave={(e) =>
+                  onMouseLeave={(e: any) =>
                     (e.currentTarget.style.background = "transparent")
                   }
                 >
@@ -980,10 +995,10 @@ function WorkspaceGitPanel({ path, onClose }) {
                     color: "#6b7280",
                   }}
                 >
-                  Tak ada branch cocok.
+                  No matching branch.
                 </div>
               )}
-              {filtered.map((b) => {
+              {filtered.map((b: any) => {
                 const isCur = b === cur;
                 if (renamingBranch === b) {
                   return (
@@ -1000,12 +1015,14 @@ function WorkspaceGitPanel({ path, onClose }) {
                       <input
                         autoFocus
                         defaultValue={b}
-                        onKeyDown={(e) => {
+                        onKeyDown={(e: any) => {
                           if (e.key === "Enter")
                             doRenameBranch(b, e.currentTarget.value);
                           else if (e.key === "Escape") setRenamingBranch(null);
                         }}
-                        onBlur={(e) => doRenameBranch(b, e.currentTarget.value)}
+                        onBlur={(e: any) =>
+                          doRenameBranch(b, e.currentTarget.value)
+                        }
                         style={{
                           flex: 1,
                           minWidth: 0,
@@ -1038,10 +1055,10 @@ function WorkspaceGitPanel({ path, onClose }) {
                       fontSize: "12px",
                       color: "#e6edf3",
                     }}
-                    onMouseEnter={(e) => {
+                    onMouseEnter={(e: any) => {
                       if (!isCur) e.currentTarget.style.background = "#21262d";
                     }}
-                    onMouseLeave={(e) => {
+                    onMouseLeave={(e: any) => {
                       if (!isCur)
                         e.currentTarget.style.background = "transparent";
                     }}
@@ -1083,7 +1100,7 @@ function WorkspaceGitPanel({ path, onClose }) {
                     </span>
                     <span
                       style={{ display: "flex", gap: "1px", flexShrink: 0 }}
-                      onClick={(e) => e.stopPropagation()}
+                      onClick={(e: any) => e.stopPropagation()}
                     >
                       {miniBtn(
                         () => setRenamingBranch(b),
@@ -1137,7 +1154,7 @@ function WorkspaceGitPanel({ path, onClose }) {
         {g.dirty && !committing && (
           <button
             className="btn-reset vp-hover"
-            title="Commit semua perubahan"
+            title="Commit all changes"
             disabled={busy}
             onClick={() => setCommitting(true)}
             style={commitBtnStyle(busy)}
@@ -1146,19 +1163,20 @@ function WorkspaceGitPanel({ path, onClose }) {
           </button>
         )}
       </div>
-      {/* Kolom pesan muncul HANYA setelah tombol ditekan, mengikuti pola rename
-          branch di panel yang sama: Enter mengirim, Escape/kosong membatalkan.
-          Commit tanpa pesan sengaja tak disediakan — riwayat git yang penuh
-          pesan seragam tak bisa dibaca lagi saat dibutuhkan. */}
+      {/* The message field appears ONLY after the button is pressed, following
+          the branch-rename pattern in the same panel: Enter submits,
+          Escape or empty cancels. A commit with no message is deliberately not
+          offered — a git history full of identical messages cannot be read back
+          when it is needed. */}
       {committing && (
         <input
           autoFocus
           placeholder="commit message — Enter to save, Esc to cancel"
-          onKeyDown={(e) => {
+          onKeyDown={(e: any) => {
             if (e.key === "Enter") doCommit(e.currentTarget.value);
             else if (e.key === "Escape") setCommitting(false);
           }}
-          onBlur={(e) => doCommit(e.currentTarget.value)}
+          onBlur={(e: any) => doCommit(e.currentTarget.value)}
           style={commitInputStyle}
         />
       )}
@@ -1219,36 +1237,39 @@ function Sidebar({
   panelOpen,
   logicOpen,
   setLogicOpen,
-}) {
-  // Diturunkan dari mode, bukan prop terpisah: "ringkas" dan "sembunyi"
-  // sama-sama menyembunyikan label, jadi seluruh kode lama yang bertanya
-  // "sedang ringkas?" tetap benar tanpa diubah satu per satu.
+}: any) {
+  // Derived from mode rather than a separate prop: "collapsed" and "hidden"
+  // both hide the labels, so all the older code that asks "are we collapsed?"
+  // stays correct without being changed one by one.
   const collapsed = mode !== "penuh";
   const setCollapsed = putarMode;
   const [showTools, setShowTools] = useState(false);
   const [showView, setShowView] = useState(false);
   const [showConversation, setShowConversation] = useState(false);
   const [showWorkspaces, setShowWorkspaces] = useState(true);
-  const [hoveredChatId, setHoveredChatId] = useState(null);
-  const [openMenuChatId, setOpenMenuChatId] = useState(null);
-  const [editingChatId, setEditingChatId] = useState(null);
+  const [hoveredChatId, setHoveredChatId] = useState<any>(null);
+  const [openMenuChatId, setOpenMenuChatId] = useState<any>(null);
+  const [editingChatId, setEditingChatId] = useState<any>(null);
   const [editingTitle, setEditingTitle] = useState("");
   const [filterMenuOpen, setFilterMenuOpen] = useState(false);
   const [filterGroupBy, setFilterGroupBy] = useState("Environment");
   const [filterSortBy, setFilterSortBy] = useState("Last Updated");
   const [filterSubtitle, setFilterSubtitle] = useState("Project + Worktree");
   const [filterScheduled, setFilterScheduled] = useState(false);
-  const [openFolderMenuWs, setOpenFolderMenuWs] = useState(null);
+  const [openFolderMenuWs, setOpenFolderMenuWs] = useState<any>(null);
   const [wsRefreshKey, setWsRefreshKey] = useState(0);
-  // Folder ww dari DISK (kebenaran) — bukan localStorage. Diisi dari GET /ww/list.
-  const [wwLive, setWwLive] = useState(null); // null=belum load; {root, paths:[]}
+  // ww folders from DISK (the truth) — not localStorage. Filled from GET /ww/list.
+  const [wwLive, setWwLive] = useState<any>(null); // null = not loaded yet; {root, paths:[]}
   React.useEffect(() => {
     let alive = true;
     const load = () =>
       wwListFetch()
-        .then((d) => {
+        .then((d: any) => {
           if (alive && d && Array.isArray(d.workspaces))
-            setWwLive({ root: d.root, paths: d.workspaces.map((w) => w.path) });
+            setWwLive({
+              root: d.root,
+              paths: d.workspaces.map((w: any) => w.path),
+            });
         })
         .catch(() => {});
     load();
@@ -1273,20 +1294,20 @@ function Sidebar({
   });
   const [isResizing, setIsResizing] = useState(false);
 
-  const handleResizerMouseDown = (e) => {
+  const handleResizerMouseDown = (e: any) => {
     e.preventDefault();
     e.stopPropagation();
     setIsResizing(true);
     const startX = e.clientX;
     const startWidth = sidebarWidth;
 
-    const handleMouseMove = (moveEvent) => {
+    const handleMouseMove = (moveEvent: any) => {
       const deltaX = moveEvent.clientX - startX;
       const newWidth = Math.max(160, Math.min(600, startWidth + deltaX));
       setSidebarWidth(newWidth);
     };
 
-    const handleMouseUp = (upEvent) => {
+    const handleMouseUp = (upEvent: any) => {
       const deltaX = upEvent.clientX - startX;
       const finalWidth = Math.max(160, Math.min(600, startWidth + deltaX));
       setIsResizing(false);
@@ -1308,7 +1329,7 @@ function Sidebar({
       setOpenFolderMenuWs(null);
     };
     const handleWsChanged = () => {
-      setWsRefreshKey((prev) => prev + 1);
+      setWsRefreshKey((prev: any) => prev + 1);
     };
     window.addEventListener("click", handleWindowClick);
     window.addEventListener("wolfspace_workspaces_changed", handleWsChanged);
@@ -1321,19 +1342,19 @@ function Sidebar({
     };
   }, []);
 
-  const handleDeleteFolder = (wsToDelete) => {
+  const handleDeleteFolder = (wsToDelete: any) => {
     deleteWorkspaceGlobal(wsToDelete);
   };
 
   const workspacesList = React.useMemo(() => {
     const set = new Set();
-    let deleted = [];
+    let deleted: any[] = [];
     try {
       deleted = JSON.parse(
         localStorage.getItem("wolfspace_deleted_workspaces") || "[]",
       );
     } catch (_) {}
-    const isDel = (x) => isPathDeleted(deleted, x); // path-exact, bukan nama/suffix
+    const isDel = (x: any) => isPathDeleted(deleted, x); // path-exact, not name/suffix
 
     if (selectedProject && !isDel(selectedProject)) set.add(selectedProject);
     else if (!isDel(WOLFSPACE_ROOT_WIN)) set.add(WOLFSPACE_ROOT_WIN);
@@ -1341,39 +1362,41 @@ function Sidebar({
       const stored = JSON.parse(
         localStorage.getItem("wolfspace_projects_list") || "[]",
       );
-      stored.forEach((p) => {
+      stored.forEach((p: any) => {
         if (p.path && !isDel(p.path)) set.add(p.path);
         else if (p.name && !isDel(p.name)) set.add(p.name);
       });
     } catch (_) {}
     if (savedChats && savedChats.length > 0) {
-      savedChats.forEach((c) => {
+      savedChats.forEach((c: any) => {
         if (c.project && !isDel(c.project)) set.add(c.project);
       });
     }
-    // ── ww = kebenaran disk ── Tambah folder ww yang NYATA ada; buang "hantu"
-    // (entri di bawah root ww yang sudah tak ada di disk, mis. dihapus di Explorer).
+    // ── ww is the disk truth ── Add ww folders that REALLY exist; drop "ghosts"
+    // (entries under the ww root that are no longer on disk, deleted in Explorer
+    // for instance).
     if (wwLive && wwLive.root && Array.isArray(wwLive.paths)) {
-      // Normalisasi separator (\\ vs /) + lowercase supaya prefix-check konsisten,
+      // Normalise separators (\\ vs /) and lowercase so the prefix check is
+      // consistent.
       // apa pun gaya path (config pakai /, path.join pakai \\ di Windows).
-      const norm = (s) =>
+      const norm = (s: any) =>
         String(s).replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase();
       const rootN = norm(wwLive.root);
       const liveN = new Set(wwLive.paths.map(norm));
       for (const p of Array.from(set)) {
         const pn = norm(p);
         if (pn === rootN || pn.startsWith(rootN + "/")) {
-          if (!liveN.has(pn)) set.delete(p); // hantu: di bawah root ww tapi tak ada di disk
+          if (!liveN.has(pn)) set.delete(p); // ghost: under the ww root but not on disk
         }
       }
-      wwLive.paths.forEach((p) => {
+      wwLive.paths.forEach((p: any) => {
         if (!isDel(p)) set.add(p);
       });
     }
     return Array.from(set);
   }, [savedChats, selectedProject, wsRefreshKey, wwLive]);
 
-  const formatWsTimeAgo = (ts) => {
+  const formatWsTimeAgo = (ts: any) => {
     if (!ts) return "8h";
     const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
     if (diff < 60) return "now";
@@ -1383,7 +1406,7 @@ function Sidebar({
     return `${Math.floor(diff / 2592000)}mo`;
   };
 
-  const Item = ({ icon, label, active, onClick, badge }) => (
+  const Item = ({ icon, label, active, onClick, badge }: any) => (
     <button
       className={"sb-item" + (active ? " active" : "")}
       onClick={onClick}
@@ -1403,9 +1426,10 @@ function Sidebar({
         (isResizing ? " resizing" : "")
       }
       style={{ width: collapsed ? undefined : `${sidebarWidth}px` }}
-      onClickCapture={(e) => {
+      onClickCapture={(e: any) => {
         const btn = e.target.closest(".sb-item");
-        // Jika klik pada tombol Visual Draw, Picker, atau Terminal, biarkan onClick mereka yang toggle
+        // If the click landed on the Visual Draw, Picker or Terminal button, let
+        // their own onClick do the toggling.
         if (
           btn &&
           (btn.textContent.includes("Visual Picker") ||
@@ -1414,7 +1438,8 @@ function Sidebar({
         ) {
           return;
         }
-        // Jika klik di tempat lain di sidebar (Chat, Settings, logo, dll), paksa matikan semua mode
+        // A click anywhere else in the sidebar (Chat, Settings, the logo, …)
+        // force-stops every mode.
         if (typeof VP_STOP === "function" && VP_STOP !== null) VP_STOP();
         if (typeof VD_STOP === "function" && VD_STOP !== null) VD_STOP();
       }}
@@ -1498,7 +1523,7 @@ function Sidebar({
           <span
             title="Add Workspace"
             style={{ cursor: "pointer", display: "flex", alignItems: "center" }}
-            onClick={(e) => {
+            onClick={(e: any) => {
               e.stopPropagation();
               if (onOpenPicker) onOpenPicker();
             }}
@@ -1522,11 +1547,11 @@ function Sidebar({
         {filterMenuOpen && (
           <div
             className="filter-sort-menu"
-            onClick={(e) => e.stopPropagation()}
+            onClick={(e: any) => e.stopPropagation()}
           >
             {/* Section 1: Group By */}
             <div className="filter-sort-header">Group By</div>
-            {["Project", "Environment", "Status", "None"].map((opt) => (
+            {["Project", "Environment", "Status", "None"].map((opt: any) => (
               <button
                 key={opt}
                 className={
@@ -1545,26 +1570,28 @@ function Sidebar({
 
             {/* Section 2: Sort Conversations */}
             <div className="filter-sort-header">Sort Conversations</div>
-            {["Last Updated", "Alphabetical (A-Z)", "Date Added"].map((opt) => (
-              <button
-                key={opt}
-                className={
-                  "filter-sort-item" + (filterSortBy === opt ? " active" : "")
-                }
-                onClick={() => {
-                  setFilterSortBy(opt);
-                  setFilterMenuOpen(false);
-                }}
-              >
-                {opt}
-              </button>
-            ))}
+            {["Last Updated", "Alphabetical (A-Z)", "Date Added"].map(
+              (opt: any) => (
+                <button
+                  key={opt}
+                  className={
+                    "filter-sort-item" + (filterSortBy === opt ? " active" : "")
+                  }
+                  onClick={() => {
+                    setFilterSortBy(opt);
+                    setFilterMenuOpen(false);
+                  }}
+                >
+                  {opt}
+                </button>
+              ),
+            )}
 
             <div className="filter-sort-divider" />
 
             {/* Section 3: Subtitles */}
             <div className="filter-sort-header">Subtitles</div>
-            {["Project + Worktree", "No Subtitle"].map((opt) => (
+            {["Project + Worktree", "No Subtitle"].map((opt: any) => (
               <button
                 key={opt}
                 className={
@@ -1631,15 +1658,15 @@ function Sidebar({
           >
             {workspacesList
               .filter(
-                (ws) =>
+                (ws: any) =>
                   ws !== WOLFSPACE_ROOT_WIN &&
                   !ws.toLowerCase().endsWith("wolfspace"),
               )
-              .map((ws) => {
+              .map((ws: any) => {
                 const wsChats = savedChats
                   .slice()
                   .reverse()
-                  .filter((c) => {
+                  .filter((c: any) => {
                     if (c.project)
                       return (
                         c.project === ws ||
@@ -1671,11 +1698,11 @@ function Sidebar({
                         cursor: "pointer",
                         borderRadius: "6px",
                       }}
-                      onMouseEnter={(e) =>
+                      onMouseEnter={(e: any) =>
                         (e.currentTarget.style.background =
                           "rgba(255, 255, 255, 0.03)")
                       }
-                      onMouseLeave={(e) =>
+                      onMouseLeave={(e: any) =>
                         (e.currentTarget.style.background = "transparent")
                       }
                     >
@@ -1733,18 +1760,18 @@ function Sidebar({
                             cursor: "pointer",
                             flexShrink: 0,
                           }}
-                          onClick={(e) => {
+                          onClick={(e: any) => {
                             e.stopPropagation();
                             setOpenFolderMenuWs(
                               openFolderMenuWs === ws ? null : ws,
                             );
                           }}
-                          onMouseEnter={(e) => {
+                          onMouseEnter={(e: any) => {
                             e.currentTarget.style.background =
                               "rgba(255, 255, 255, 0.08)";
                             e.currentTarget.style.color = "#f8fafc";
                           }}
-                          onMouseLeave={(e) => {
+                          onMouseLeave={(e: any) => {
                             e.currentTarget.style.background = "transparent";
                             e.currentTarget.style.color = "#6b7280";
                           }}
@@ -1769,7 +1796,7 @@ function Sidebar({
                     </div>
                     {openFolderMenuWs === ws && (
                       <div
-                        onClick={(e) => e.stopPropagation()}
+                        onClick={(e: any) => e.stopPropagation()}
                         style={{
                           position: "absolute",
                           top: "-4px",
@@ -1803,11 +1830,11 @@ function Sidebar({
                             fontFamily: "inherit",
                             textAlign: "left",
                           }}
-                          onMouseEnter={(e) =>
+                          onMouseEnter={(e: any) =>
                             (e.currentTarget.style.background =
                               "rgba(248, 81, 73, 0.12)")
                           }
-                          onMouseLeave={(e) =>
+                          onMouseLeave={(e: any) =>
                             (e.currentTarget.style.background = "transparent")
                           }
                           onClick={() => {
@@ -1842,7 +1869,7 @@ function Sidebar({
                         gap: "2px",
                       }}
                     >
-                      {wsChats.map((chat, idx) => {
+                      {wsChats.map((chat: any, idx: number) => {
                         const showActions =
                           hoveredChatId === chat.id ||
                           openMenuChatId === chat.id ||
@@ -1853,12 +1880,12 @@ function Sidebar({
                           <div
                             key={chat.id}
                             onClick={() => restoreChat?.(chat)}
-                            onMouseEnter={(e) => {
+                            onMouseEnter={(e: any) => {
                               setHoveredChatId(chat.id);
                               e.currentTarget.style.background =
                                 "rgba(255, 255, 255, 0.04)";
                             }}
-                            onMouseLeave={(e) => {
+                            onMouseLeave={(e: any) => {
                               setHoveredChatId(null);
                               e.currentTarget.style.background = "transparent";
                             }}
@@ -1880,10 +1907,10 @@ function Sidebar({
                                 autoFocus
                                 type="text"
                                 value={editingTitle}
-                                onChange={(e) =>
+                                onChange={(e: any) =>
                                   setEditingTitle(e.target.value)
                                 }
-                                onKeyDown={(e) => {
+                                onKeyDown={(e: any) => {
                                   if (e.key === "Enter") {
                                     renameChat?.(chat.id, editingTitle);
                                     setEditingChatId(null);
@@ -1895,7 +1922,7 @@ function Sidebar({
                                   renameChat?.(chat.id, editingTitle);
                                   setEditingChatId(null);
                                 }}
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e: any) => e.stopPropagation()}
                                 style={{
                                   background: "rgba(0, 0, 0, 0.4)",
                                   border: "1px solid rgba(255, 255, 255, 0.2)",
@@ -1945,7 +1972,7 @@ function Sidebar({
                                       padding: "2px",
                                       display: "flex",
                                     }}
-                                    onClick={(e) => {
+                                    onClick={(e: any) => {
                                       e.stopPropagation();
                                       setOpenMenuChatId(
                                         openMenuChatId === chat.id
@@ -1976,7 +2003,7 @@ function Sidebar({
                                       padding: "2px",
                                       display: "flex",
                                     }}
-                                    onClick={(e) => e.stopPropagation()}
+                                    onClick={(e: any) => e.stopPropagation()}
                                   >
                                     <svg
                                       width="14"
@@ -2004,7 +2031,7 @@ function Sidebar({
                             </div>
                             {openMenuChatId === chat.id && (
                               <div
-                                onClick={(e) => e.stopPropagation()}
+                                onClick={(e: any) => e.stopPropagation()}
                                 style={{
                                   position: "absolute",
                                   top: "100%",
@@ -2022,18 +2049,18 @@ function Sidebar({
                                 }}
                               >
                                 <div
-                                  onClick={(e) => {
+                                  onClick={(e: any) => {
                                     e.stopPropagation();
                                     setOpenMenuChatId(null);
                                     setEditingChatId(chat.id);
                                     setEditingTitle(chat.title || "Chat");
                                   }}
-                                  onMouseEnter={(e) => {
+                                  onMouseEnter={(e: any) => {
                                     e.currentTarget.style.background =
                                       "rgba(255, 255, 255, 0.06)";
                                     e.currentTarget.style.color = "#f8fafc";
                                   }}
-                                  onMouseLeave={(e) => {
+                                  onMouseLeave={(e: any) => {
                                     e.currentTarget.style.background =
                                       "transparent";
                                     e.currentTarget.style.color = "#cbd5e1";
@@ -2065,17 +2092,17 @@ function Sidebar({
                                   <span>Rename</span>
                                 </div>
                                 <div
-                                  onClick={(e) => {
+                                  onClick={(e: any) => {
                                     e.stopPropagation();
                                     setOpenMenuChatId(null);
                                     deleteChat?.(chat.id);
                                   }}
-                                  onMouseEnter={(e) => {
+                                  onMouseEnter={(e: any) => {
                                     e.currentTarget.style.background =
                                       "rgba(255, 255, 255, 0.06)";
                                     e.currentTarget.style.color = "#f8fafc";
                                   }}
-                                  onMouseLeave={(e) => {
+                                  onMouseLeave={(e: any) => {
                                     e.currentTarget.style.background =
                                       "transparent";
                                     e.currentTarget.style.color = "#cbd5e1";
@@ -2156,8 +2183,8 @@ function Sidebar({
       </div>
       {showTools && (
         <div className="sb-group">
-          {/* Visual Picker & Visual Draw dipindah ke tombol menu panel (⋮ vertikal)
-              di header "Web Dev Live Browser" — tak lagi di sidebar. */}
+          {/* Visual Picker & Visual Draw moved to the panel menu button (⋮)
+              in the "Web Dev Live Browser" header — no longer in the sidebar. */}
           <Item
             icon={
               <svg
@@ -2178,9 +2205,9 @@ function Sidebar({
             active={terminalOpen}
             onClick={() => setTerminalOpen(!terminalOpen)}
           />
-          {/* Plugins — halaman penuh (seperti Extensions di VS Code), bukan
-              panel bawah seperti Terminal. Ikon colokan: plugin = server MCP
-              yang dicolok dari luar, bukan modul yang di-require ke dalam. */}
+          {/* Plugins — a full page (like Extensions in VS Code), not a
+              dropdown. The word means what it says: things plugged in from
+              outside, not modules required inward. */}
           <Item
             icon={
               <svg
@@ -2207,9 +2234,9 @@ function Sidebar({
       )}
       {/* ── Menu tata letak, di KAKI sidebar ──
           `margin-top: auto` mendorongnya ke dasar berapa pun isi di atasnya —
-          jadi tempatnya tetap sama entah bagian Conversation/View/Tools sedang
-          terbuka atau tertutup. Tetap terlihat saat sidebar dilipat: yang
-          hilang saat melipat cuma labelnya, bukan tombolnya. */}
+          so its place stays the same whether the Conversation/View/Tools
+          sections are open or closed. It stays visible when the sidebar is
+          collapsed: collapsing hides the label, not the button. */}
       <div className="sb-menu-kaki">
         <MenuTataLetak
           posisi={posisi}
@@ -2231,7 +2258,7 @@ function Sidebar({
 // Live agent process � animated bubbles showing each file/folder being worked on.
 // ─── Agent Step UI v2 ── SVG icons per tool ────────────────────────────────
 const AG_SVG = {
-  list: (p) => (
+  list: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <path
         d="M2 3h3v3H2zM2 7h3v3H2zM2 11h3v3H2z"
@@ -2246,7 +2273,7 @@ const AG_SVG = {
       />
     </svg>
   ),
-  glob: (p) => (
+  glob: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <circle cx="8" cy="8" r="5.5" stroke="currentColor" strokeWidth="1.4" />
       <path
@@ -2257,7 +2284,7 @@ const AG_SVG = {
       />
     </svg>
   ),
-  read: (p) => (
+  read: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <rect
         x="3"
@@ -2276,7 +2303,7 @@ const AG_SVG = {
       />
     </svg>
   ),
-  grep: (p) => (
+  grep: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <circle cx="6.5" cy="6.5" r="4" stroke="currentColor" strokeWidth="1.4" />
       <path
@@ -2293,7 +2320,7 @@ const AG_SVG = {
       />
     </svg>
   ),
-  edit: (p) => (
+  edit: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <path
         d="M10.5 2.5l3 3L5 14H2v-3L10.5 2.5z"
@@ -2304,7 +2331,7 @@ const AG_SVG = {
       <path d="M8.5 4.5l3 3" stroke="currentColor" strokeWidth="1.2" />
     </svg>
   ),
-  write: (p) => (
+  write: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <rect
         x="2"
@@ -2323,12 +2350,12 @@ const AG_SVG = {
       />
     </svg>
   ),
-  run: (p) => (
+  run: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <path d="M4 2.5l10 5.5-10 5.5V2.5z" fill="currentColor" opacity=".9" />
     </svg>
   ),
-  bash: (p) => (
+  bash: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <rect
         x="1.5"
@@ -2348,7 +2375,7 @@ const AG_SVG = {
       />
     </svg>
   ),
-  err: (p) => (
+  err: (p: any) => (
     <svg viewBox="0 0 16 16" fill="none" {...p}>
       <circle cx="8" cy="8" r="6" stroke="currentColor" strokeWidth="1.4" />
       <path
@@ -2400,7 +2427,7 @@ const AG_META = {
   err: { label: "Error", color: "#f87171", bg: "rgba(248,113,113,0.12)" },
 };
 // Strip the DONE protocol marker so the agent's answer reads clean.
-function cleanAgentText(s) {
+function cleanAgentText(s: any) {
   return (s || "")
     .replace(/^\s*```+\s*done\b[^\n]*\n?/i, "") // leading ```DONE fence (old protocol)
     .replace(/^\s*done\b[:\s]*/i, "") // leading "DONE" / "DONE:"
@@ -2408,4 +2435,4 @@ function cleanAgentText(s) {
     .trim();
 }
 
-/* Agent-steps (ToolOutput..HitlModal) dipindah ke public/app/AgentSteps.tsx (APP_MODULES). */
+/* Agent-steps (ToolOutput..HitlModal) moved to public/app/AgentSteps.tsx (APP_MODULES). */

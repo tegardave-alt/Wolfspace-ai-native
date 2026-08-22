@@ -2,7 +2,7 @@
 // built in public/app.jsx, which has not migrated yet. Writing a made-up shape
 // here would be a lie that typechecks; these narrow once app.jsx follows.
 
-// AgentSteps — diekstrak dari Sidebar.jsx (app.jsx split): ToolOutput, *ActionRow,
+// AgentSteps — diekstrak dari Sidebar.tsx (app.jsx split): ToolOutput, *ActionRow,
 // ConsolidatedThoughtCard, AgentSteps, HitlModal. Prepend via APP_MODULES.
 
 // useDekatLayar moved to Config.tsx (loaded FIRST) because CodeBlocks.tsx

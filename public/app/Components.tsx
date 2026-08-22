@@ -257,7 +257,7 @@ function TopBar({
   return (
     <header className="topbar">
       {/* The ☰ menu MOVED to the sidebar (see MenuTataLetak used in
-            Sidebar.jsx). The top bar is for everyday actions; layout is set
+            Sidebar.tsx). The top bar is for everyday actions; layout is set
             once and then forgotten, so it belongs at the foot of the sidebar
             with the other settings. */}
       <div className="tb-spacer" />

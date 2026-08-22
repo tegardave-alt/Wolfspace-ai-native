@@ -226,7 +226,7 @@ describe("latar editor mengikuti wadahnya", () => {
 });
 
 // Panel berkas di view Logic bisa DIATUR lebarnya, dengan pola yang sama
-// dengan resizer sidebar (public/app/Sidebar.jsx): state localStorage
+// dengan resizer sidebar (public/app/Sidebar.tsx): state localStorage
 // terpisah, batas atas/bawah, kelas "resizing" selama diseret.
 //
 // Disamakan sengaja, bukan kebetulan sama: dua panel yang bisa diatur

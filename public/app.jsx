@@ -552,7 +552,7 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
 
 /* Components dipindah ke public/app/Components.tsx (APP_MODULES). */
 
-/* Sidebar dipindah ke public/app/Sidebar.jsx (APP_MODULES). */
+/* Sidebar dipindah ke public/app/Sidebar.tsx (APP_MODULES). */
 
 /* ----------------------------- App ----------------------------- */
 const SUGGESTIONS = [];
@@ -1614,7 +1614,7 @@ function LogicFileTree({
   // pernah tersambung ke data nyata sejak awal — jadi bukan fitur yang
   // dinonaktifkan, melainkan potongan UI yang tak pernah punya isi.
   const tree = buildDevTree(files, root, folders);
-  // Lebar bisa diatur, POLA YANG SAMA dengan resizer sidebar (Sidebar.jsx):
+  // Lebar bisa diatur, POLA YANG SAMA dengan resizer sidebar (Sidebar.tsx):
   // localStorage terpisah, batas atas/bawah, kelas "resizing" selama diseret.
   // Disamakan sengaja — dua panel yang bisa diatur lebarnya dengan cara
   // berbeda akan terasa seperti dua aplikasi berbeda.
