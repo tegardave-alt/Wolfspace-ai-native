@@ -69,7 +69,7 @@ function hasAnyBYOKKey() {
 
 // ── Resolving an MCP server command from what the user typed ──
 //
-// ONE source. This logic used to be duplicated in Components.jsx and
+// ONE source. This logic used to be duplicated in Components.tsx and
 // Screens.jsx, and had already drifted: one of them used the old sse-bridge.cjs
 // (which speaks SSE only, so a server offering just /mcp failed silently) while
 // the other had moved to mcp-http-bridge.cjs; figma existed in only one file.

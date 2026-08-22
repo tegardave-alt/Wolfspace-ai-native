@@ -1,4 +1,4 @@
-// CodeBlocks — extracted from Components.jsx (the app.jsx split). Prepended
+// CodeBlocks — extracted from Components.tsx (the app.jsx split). Prepended
 // via APP_MODULES.
 
 /* ----------------------------- Syntax highlight ----------------------------- */

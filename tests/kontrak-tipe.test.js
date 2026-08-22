@@ -46,6 +46,7 @@ const SUDAH_TYPESCRIPT = [
   "electron/preload.ts",
   "public/app/AgentSteps.tsx",
   "public/app/CodeBlocks.tsx",
+  "public/app/Components.tsx",
   "public/app/Config.tsx",
   "public/app/Icons.tsx",
   "public/app/Model3DViewer.tsx",

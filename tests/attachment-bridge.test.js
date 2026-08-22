@@ -273,11 +273,11 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
   });
 
   test("UI mengirim HANDLE ke agent, bukan path — di KEDUA permukaan", () => {
-    // Dua permukaan lagi (Components.jsx + Screens.jsx). Perbaikan yang hanya
+    // Dua permukaan lagi (Components.tsx + Screens.jsx). Perbaikan yang hanya
     // menyentuh satu membuat format lampiran berbeda tergantung layar mana yang
     // dipakai — persis kesalahan yang terjadi pada daftar MCP.
     for (const m of [
-      "../public/app/Components.jsx",
+      "../public/app/Components.tsx",
       "../public/app/Screens.jsx",
     ]) {
       const mentah = require("fs").readFileSync(require.resolve(m), "utf8");
@@ -389,7 +389,7 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
   test("KEDUA permukaan mengirim tampilan terpisah dari teks model", () => {
     // Dua permukaan lagi. Yang pertama Composer, yang kedua layar pemilih
     // proyek — dan pesan PERTAMA sebuah sesi justru lewat yang kedua.
-    expect(baca("../public/app/Components.jsx")).toContain(
+    expect(baca("../public/app/Components.tsx")).toContain(
       "onSend(fullText, { text: v, attachments:",
     );
     expect(baca("../public/app/Screens.jsx")).toContain(
@@ -398,7 +398,7 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
   });
 
   test("gelembung hanya memuat teks user; lampiran dirender terpisah", () => {
-    const c = baca("../public/app/Components.jsx");
+    const c = baca("../public/app/Components.tsx");
     expect(c).toContain('className="msg-attachments"');
     expect(c).toContain("msg.attachments && msg.attachments.length > 0");
     // Gelembung tak dirender sama sekali bila user hanya melampirkan tanpa
@@ -409,7 +409,7 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
   });
 
   test("lampiran yang GAGAL diserahkan terlihat gagal, bukan diam-diam hilang", () => {
-    const c = baca("../public/app/Components.jsx");
+    const c = baca("../public/app/Components.tsx");
     expect(c).toContain("ok: !!a.attId");
     expect(c).toContain('"msg-att" + (a.ok ? "" : " err")');
     // Dan teks yang dikirim ke model pun menyebutnya, supaya model tak

@@ -234,7 +234,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   const loadPickerMcp = React.useCallback(async () => {
     if (!window.WOLFSPACE) return;
     try {
-      // Sama dgn Components.jsx: `active` dulu di-hardcode true sehingga badge
+      // Sama dgn Components.tsx: `active` dulu di-hardcode true sehingga badge
       // selalu "Connected" walau prosesnya belum jalan atau tiap panggilannya
       // gagal (mis. token dicabut). Status runtime diambil dari /mcp/status.
       const [resCfg, resSt] = await Promise.all([
@@ -372,7 +372,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     };
 
     setPickerMcp((prev) => [...prev.filter((p) => p.id !== name), entry]);
-    // Entri optimistis (lihat catatan di Components.jsx): segarkan dgn status
+    // Entri optimistis (lihat catatan di Components.tsx): segarkan dgn status
     // runtime supaya server yang gagal tak terus tampil "Connected".
     setTimeout(() => loadPickerMcp(), 2500);
     setPickerMcpInputSuccess("✓ MCP server added.");
@@ -416,7 +416,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     return () => document.removeEventListener("mousedown", h);
   }, []);
   // Batasnya DIBACA dari CSS, bukan ditulis ulang di sini — satu sumber
-  // kebenaran, sama seperti composer di Components.jsx.
+  // kebenaran, sama seperti composer di Components.tsx.
   const grow = React.useCallback(() => {
     const el = taRef.current;
     if (!el) return;
@@ -499,7 +499,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         reader.onload = async () => {
           try {
             const base64 = reader.result.split(",")[1] || reader.result;
-            // JEMBATAN, bukan unggahan — alasan lengkapnya di Components.jsx.
+            // JEMBATAN, bukan unggahan — alasan lengkapnya di Components.tsx.
             // Permukaan KEDUA: logika attach terduplikasi di dua berkas ini,
             // dan perbaikan yang hanya menyentuh satu membuat perilaku aplikasi
             // bergantung pada layar mana yang kebetulan dipakai. Itu persis
@@ -585,7 +585,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     if (!v && attachments.length === 0) return;
     let fullText = v;
     if (attachments.length > 0) {
-      // HANDLE, bukan path — alasan lengkapnya di Components.jsx. Bentuknya
+      // HANDLE, bukan path — alasan lengkapnya di Components.tsx. Bentuknya
       // harus IDENTIK di kedua permukaan; kalau berbeda, agent menerima format
       // lampiran yang berbeda tergantung layar mana yang dipakai user.
       const attSummary = attachments
@@ -938,7 +938,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                     e.stopPropagation();
                     setShowModelMenu(false);
                     setShowMcpMenu(!showMcpMenu);
-                    // Pakai pemuat TUNGGAL (lihat catatan di Components.jsx):
+                    // Pakai pemuat TUNGGAL (lihat catatan di Components.tsx):
                     // salinan inline dulu memetakan `active: true` dan menimpa
                     // status runtime yang benar tiap kali menu dibuka.
                     if (!showMcpMenu) loadPickerMcp();
@@ -973,7 +973,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                           onClick={async (e) => {
                             e.stopPropagation();
                             // Daftar MCP KEDUA. Yang pertama ada di Composer
-                            // (Components.jsx) dan sudah memisahkan CONNECT
+                            // (Components.tsx) dan sudah memisahkan CONNECT
                             // dari toggle; yang ini terlewat pada perubahan itu.
                             //
                             // Terbukti dari log run nyata: klik di layar ini
@@ -1084,7 +1084,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                   </span>
                                 ) : (
                                   // Bedakan sebabnya (lihat catatan di
-                                  // Components.jsx): "gagal" != "belum jalan".
+                                  // Components.tsx): "gagal" != "belum jalan".
                                   <span
                                     title={
                                       (srv.status && srv.status.lastError) ||
@@ -1133,7 +1133,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                   onClick={(e) => {
                                     e.stopPropagation();
                                     // Daftar MCP dipegang DUA komponen dgn state terpisah
-                                    // (pickerMcp di sini, mcpServers di Components.jsx).
+                                    // (pickerMcp di sini, mcpServers di Components.tsx).
                                     // Tanpa siaran, hapus di satu layar tak terlihat di layar
                                     // lain sampai ia memuat ulang. Siarkan supaya keduanya sinkron.
                                     const _bcast = () => {

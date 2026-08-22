@@ -20,7 +20,7 @@ const baca = (p) =>
 const APP = baca("public/app.jsx");
 const SRV = baca("server.cjs");
 const SCR = baca("public/app/Screens.jsx");
-const KOMP = baca("public/app/Components.jsx");
+const KOMP = baca("public/app/Components.tsx");
 const tanpaKomentar = (t) =>
   t
     .split("\n")

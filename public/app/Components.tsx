@@ -1,19 +1,20 @@
-// Components — diekstrak dari app.jsx (lihat public/app.jsx untuk App orkestrator).
-// Dimuat via APP_MODULES di index.html: di-CONCAT SEBELUM app.jsx (prepend) lalu
-// Babel sekali -> satu scope global. Body fungsi (hooks/React/SB) jalan saat render.
+// Components — extracted from app.jsx (see public/app.jsx for the App
+// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
+// app.jsx (prepended), then Babel once -> a single global scope. Function
+// bodies (hooks/React/SB) run at render time.
 
 /* ----------------------------- Top bar ----------------------------- */
 // ── Menu tata letak (☰) ──
 //
-// Dipisah jadi komponennya sendiri saat ia dipindah dari bilah atas ke sidebar.
-// Alasannya bukan kerapian: isinya ~150 baris, dan memindahkannya dengan cara
-// menyalin berarti dua salinan yang harus tetap sepakat soal posisi panel,
-// tampilan chat, dan Code — tiga hal yang justru paling sering berubah.
+// Split into its own component when it moved from the top bar into the
+// sidebar. The reason is not tidiness: it is ~150 lines, and moving it by
+// copying would mean two copies that have to keep agreeing about panel
+// position, chat visibility and Code — the three things that change most.
 //
-// `arah` menentukan ke mana panelnya membuka. Di bilah atas ia turun; di KAKI
-// sidebar, turun berarti keluar layar — jadi ia naik dan melebar ke kanan.
-// Sidebar bisa menyempit sampai 60px, dan panel yang terkurung di lebar itu
-// tak akan terbaca.
+// `arah` decides which way the panel opens. In the top bar it drops down; at
+// the FOOT of the sidebar, dropping down means going off screen, so it rises
+// and widens to the right instead. The sidebar can narrow to 60px, and a
+// panel trapped in that width would be unreadable.
 function MenuTataLetak({
   posisi,
   setPosisi,
@@ -24,21 +25,21 @@ function MenuTataLetak({
   logicOpen,
   setLogicOpen,
   arah = "bawah",
-}) {
+}: any) {
   const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef(null);
-  // ── Kenapa panelnya position: fixed saat di sidebar ──
+  const menuRef = useRef<any>(null);
+  // ── Why the panel is position: fixed while in the sidebar ──
   //
-  // `.sidebar.collapsed` memakai `overflow: hidden` (untuk menyembunyikan label
-  // selama animasi lebar), dan itu MEMOTONG apa pun yang keluar dari tepinya —
-  // termasuk panel menu ini. Terukur: panelnya terpangkas di x=232, separuh
-  // pilihan "Right/Bottom" hilang.
+  // `.sidebar.collapsed` uses `overflow: hidden` (to hide the labels during
+  // the width animation), and that CLIPS anything crossing its edge —
+  // including this menu panel. Measured: the panel was cut off at x=232,
+  // losing half of the "Right/Bottom" choice.
   //
-  // `position: fixed` lolos dari pemotongan itu. Tapi ia juga lepas dari
-  // tombolnya, jadi koordinatnya DIUKUR saat menu dibuka — bukan dipatok.
-  // Sidebar bisa diubah lebarnya DAN dilipat, jadi angka tetap apa pun akan
-  // salah di salah satu keadaan.
-  const [kotakMenu, setKotakMenu] = useState(null);
+  // `position: fixed` escapes that clipping. But it also escapes the button,
+  // so the coordinates are MEASURED when the menu opens rather than hardcoded.
+  // The sidebar can be resized AND collapsed, so any fixed number would be
+  // wrong in one of those states.
+  const [kotakMenu, setKotakMenu] = useState<any>(null);
   React.useLayoutEffect(() => {
     if (arah !== "atas" || !menuOpen || !menuRef.current)
       return setKotakMenu(null);
@@ -57,19 +58,19 @@ function MenuTataLetak({
       });
     };
     hitung();
-    // Sidebar bisa digeser lebarnya SELAGI menu terbuka.
+    // The sidebar can be resized WHILE the menu is open.
     window.addEventListener("resize", hitung);
     return () => window.removeEventListener("resize", hitung);
   }, [arah, menuOpen]);
   useEffect(() => {
     if (!menuOpen) return;
-    // Ditutup oleh klik di luar DAN oleh Escape. Hanya salah satunya membuat
-    // menu yang terbuka terasa macet — pemakai menekan Escape lalu heran.
-    const klik = (e) => {
+    // Closed by an outside click AND by Escape. Only one of the two makes an
+    // open menu feel stuck — the user presses Escape and wonders why.
+    const klik = (e: any) => {
       if (menuRef.current && !menuRef.current.contains(e.target))
         setMenuOpen(false);
     };
-    const tombol = (e) => e.key === "Escape" && setMenuOpen(false);
+    const tombol = (e: any) => e.key === "Escape" && setMenuOpen(false);
     document.addEventListener("mousedown", klik);
     document.addEventListener("keydown", tombol);
     return () => {
@@ -78,16 +79,21 @@ function MenuTataLetak({
     };
   }, [menuOpen]);
 
-  const pilihPosisi = (apa, ke) => {
-    if (setPosisi) setPosisi((p) => ({ ...p, [apa]: ke }));
+  const pilihPosisi = (apa: any, ke: any) => {
+    if (setPosisi) setPosisi((p: any) => ({ ...p, [apa]: ke }));
     setMenuOpen(false);
   };
-  // Pilihannya BEDA per baris, bukan "kanan/bawah" untuk semuanya. Terminal di
-  // kiri/kanan memaksa keluaran perintah — yang berbentuk baris panjang —
-  // membungkus terus, jadi pasangannya kanan/bawah. Preview dan Code adalah
-  // halaman dan editor: keduanya butuh LEBAR, jadi pasangannya kiri/kanan.
-  const _NAMA_SISI = { kanan: "Right", bawah: "Bottom", kiri: "Left" };
-  const barisPosisi = (apa, label, pilihan = ["kanan", "bawah"]) => (
+  // The choices DIFFER per row rather than being "right/bottom" for all of
+  // them. A terminal on the left or right forces command output — which comes
+  // as long lines — to wrap constantly, so its pair is right/bottom. Preview
+  // and Code are a page and an editor: both need WIDTH, so their pair is
+  // left/right.
+  const _NAMA_SISI: Record<string, string> = {
+    kanan: "Right",
+    bawah: "Bottom",
+    kiri: "Left",
+  };
+  const barisPosisi = (apa: any, label: any, pilihan = ["kanan", "bawah"]) => (
     <div className="tb-menu-grup" key={apa}>
       <span className="tb-menu-judul">{label}</span>
       <div className="tb-menu-pilihan">
@@ -115,16 +121,17 @@ function MenuTataLetak({
       <button
         type="button"
         className={"tb-menu-btn" + (menuOpen ? " buka" : "")}
-        onClick={() => setMenuOpen((b) => !b)}
+        onClick={() => setMenuOpen((b: any) => !b)}
         title="Layout"
         aria-label="Layout"
         aria-expanded={menuOpen}
       >
-        {/* Tiga garis mendatar. Sebelumnya tiga titik menurun (⋮), yang di
-              bilah atas lebih lazim berarti "aksi untuk baris ini"; tiga garis
-              (☰) dibaca orang sebagai menu utama — dan itu memang isinya.
-              Digambar dengan garis, bukan teks "☰", supaya tebal dan jaraknya
-              tak berubah mengikuti font yang kebetulan terpasang. */}
+        {/* Three horizontal lines. Previously three descending dots (⋮),
+              which in a top bar more commonly means "actions for this row";
+              three lines (☰) read as a main menu — and that is what this is.
+              Drawn with lines rather than the text "☰", so its weight and
+              spacing do not shift with whichever font happens to be
+              installed. */}
         <svg
           width="16"
           height="16"
@@ -155,13 +162,13 @@ function MenuTataLetak({
                 ["Show", true],
                 ["Hide", false],
               ].map(([teks, nilai]) => {
-                // Menyembunyikan chat saat tak ada panel lain menghasilkan
-                // layar KOSONG, dan pemakai tak punya petunjuk bahwa jalan
-                // kembalinya ada di menu ini. Jadi pilihannya dimatikan —
-                // dan alasannya dikatakan, bukan cuma diredupkan diam-diam.
-                // Code ikut dihitung sejak ia jadi panel sungguhan: kalau
-                // tidak, menyembunyikan chat saat HANYA Code yang terbuka
-                // akan ditolak padahal layarnya tidak akan kosong.
+                // Hiding chat when no other panel is open leaves an EMPTY
+                // screen, and the user has no hint that the way back is in
+                // this menu. So the option is disabled — and the reason is
+                // stated, not just silently greyed out. Code counts too, now
+                // that it is a real panel: without that, hiding chat while
+                // ONLY Code is open would be refused even though the screen
+                // would not be empty.
                 const buntu =
                   !nilai && !panelOpen && !terminalOpen && !logicOpen;
                 return (
@@ -240,19 +247,19 @@ function TopBar({
   setChatVisible,
   logicOpen,
   setLogicOpen,
-}) {
-  // Menu ⋮ di ujung kiri bilah atas.
+}: any) {
+  // The ⋮ menu at the far left of the top bar.
   //
-  // Opsi tata letak sempat dipasang sebagai dua tombol TERPISAH di sini, dan
-  // itu terlalu ramai untuk sesuatu yang jarang disentuh: bilah ini tempat
-  // tindakan sehari-hari, sementara memindahkan panel dilakukan sekali lalu
-  // dilupakan. Menu menyembunyikannya tanpa menghilangkannya.
+  // The layout options were once mounted as two SEPARATE buttons here, and
+  // that was too busy for something rarely touched: this bar is for everyday
+  // actions, while moving a panel is done once and then forgotten. The menu
+  // hides them without removing them.
   return (
     <header className="topbar">
-      {/* Menu ☰ PINDAH ke sidebar (lihat MenuTataLetak dipakai di
-            Sidebar.jsx). Bilah atas tempat tindakan sehari-hari; tata
-            letak diatur sekali lalu dilupakan, jadi tempatnya di kaki
-            sidebar bersama pengaturan lain. */}
+      {/* The ☰ menu MOVED to the sidebar (see MenuTataLetak used in
+            Sidebar.jsx). The top bar is for everyday actions; layout is set
+            once and then forgotten, so it belongs at the foot of the sidebar
+            with the other settings. */}
       <div className="tb-spacer" />
       <button
         className={`panel-toggle-btn ${panelOpen ? "active" : ""}`}
@@ -278,12 +285,12 @@ function TopBar({
   );
 }
 
-/* Views dipindah ke public/app/Views.tsx (APP_MODULES). */
+/* Views moved to public/app/Views.tsx (APP_MODULES). */
 
-/* CodeBlocks dipindah ke public/app/CodeBlocks.tsx (APP_MODULES). */
+/* CodeBlocks moved to public/app/CodeBlocks.tsx (APP_MODULES). */
 
 /* ----------------------------- Message ----------------------------- */
-function Blocks({ text }) {
+function Blocks({ text }: any) {
   const blocks = parseBlocks(text);
   if (!blocks.length)
     return (
@@ -293,7 +300,7 @@ function Blocks({ text }) {
         <span />
       </div>
     );
-  return blocks.map((b, i) =>
+  return blocks.map((b: any, i: number) =>
     b.type === "code" ? (
       b.lang && /^(mermaid|mmd)$/i.test(b.lang) ? (
         <MermaidBlock key={i} code={b.code} />
@@ -305,36 +312,36 @@ function Blocks({ text }) {
     ),
   );
 }
-// DIBUNGKUS React.memo di bawah — jangan pakai MessageDasar langsung.
+// WRAPPED in React.memo below — do not use MessageDasar directly.
 //
-// KENAPA. app.jsx merender riwayat utuh: {messages.map((m,i) => <Message .../>)}.
-// Selama agent bekerja, handler stream memanggil upd() pada SETIAP token, dan
-// upd() melakukan setMessages(m => ...) yang menyalin array. Tanpa memo, tiap
-// token merekonsiliasi ULANG seluruh daftar — termasuk setiap ToolOutput dan
-// CodeBlock yang punya editor Monaco hidup di dalamnya.
+// WHY. app.jsx renders the whole history: {messages.map((m,i) => <Message/>)}.
+// While the agent works, the stream handler calls upd() on EVERY token, and
+// upd() does setMessages(m => ...), which copies the array. Without memo,
+// each token reconciles the entire list AGAIN — including every ToolOutput
+// and CodeBlock with a live Monaco editor inside it.
 //
-// Biayanya berbanding lurus dengan (jumlah editor hidup x jumlah token), dan
-// itulah kenapa gejalanya muncul "saat Monaco muncul" dan makin parah makin
-// panjang riwayatnya. Diukur di aplikasi nyata lewat CDP: tugas pemblokir
-// sampai 358ms dan total ~2,4 detik beku dalam satu run 123 detik — padahal
-// baru 3 editor hidup.
+// The cost scales with (live editors x tokens), which is why the symptom
+// showed up "when Monaco appeared" and got worse the longer the history got.
+// Measured in the real app over CDP: blocking tasks up to 358ms and ~2.4
+// seconds of freeze in a single 123-second run — with only 3 live editors.
 //
-// upd() hanya mengganti objek pesan TERAKHIR, jadi dengan memo hanya satu
-// Message yang benar-benar dirender ulang per token. Message murni fungsi dari
-// prop `msg` (tak menyentuh context maupun closure yang berubah), sehingga
-// pembandingan referensi bawaan React.memo sudah tepat — tak perlu komparator.
-function MessageDasar({ msg }) {
+// upd() only replaces the LAST message object, so with memo exactly one
+// Message actually re-renders per token. Message is a pure function of its
+// `msg` prop (it touches neither context nor a changing closure), so
+// React.memo's default reference comparison is already correct — no custom
+// comparator needed.
+function MessageDasar({ msg }: any) {
   if (msg.role === "user")
     return (
       <div className="msg user">
         <span className="msg-role">You</span>
-        {/* Lampiran dirender sebagai KARTU, bukan baris teks di dalam
-            gelembung. Handle att_… tetap dikirim ke model lewat argumen
-            pertama onSend — ia perlu itu untuk membaca lampiran — tapi tak
-            ada gunanya dibaca manusia. */}
+        {/* Attachments render as CARDS, not as text lines inside the bubble.
+            The att_… handle is still sent to the model through onSend's first
+            argument — it needs that to read the attachment — but there is no
+            point in a human reading it. */}
         {msg.attachments && msg.attachments.length > 0 && (
           <div className="msg-attachments">
-            {msg.attachments.map((a, i) => (
+            {msg.attachments.map((a: any, i: number) => (
               <div
                 className={"msg-att" + (a.ok ? "" : " err")}
                 key={i}
@@ -379,9 +386,9 @@ function MessageDasar({ msg }) {
           </div>
         )}
       </div>
-      {/* <Verdict> DIHAPUS bersama analyzeCode di server.cjs — satu-satunya
-          sumber `quality` yang dirender komponen itu. Tanpanya ia hanya
-          menghasilkan <div class="verdict-wrap"> kosong pada setiap pesan. */}
+      {/* <Verdict> was REMOVED along with analyzeCode in server.cjs — the only
+          source of the `quality` that component rendered. Without it, all it
+          produced was an empty <div class="verdict-wrap"> on every message. */}
     </div>
   );
 }
@@ -389,7 +396,7 @@ const Message = React.memo(MessageDasar);
 
 /* ----------------------------- Composer ----------------------------- */
 // Line icons for the composer "+" menu (match the reference design).
-const svg = (p) => (
+const svg = (p: any) => (
   <svg
     viewBox="0 0 24 24"
     width="19"
@@ -452,12 +459,13 @@ const MI = {
   ),
 };
 
-// Deteksi file 3D (GLB/GLTF/STL) dari nama/path.
-const is3DFile = (nameOrPath) => /\.(glb|gltf|stl)$/i.test(nameOrPath || "");
+// Detect a 3D file (GLB/GLTF/STL) from a name or path.
+const is3DFile = (nameOrPath?: string) =>
+  /\.(glb|gltf|stl)$/i.test(nameOrPath || "");
 
-/* Model3DViewer dipindah ke public/app/Model3DViewer.tsx (dimuat via APP_MODULES di index.html). */
+/* Model3DViewer moved to public/app/Model3DViewer.tsx (loaded via APP_MODULES in index.html). */
 
-function LightboxModal({ item, onClose }) {
+function LightboxModal({ item, onClose }: any) {
   if (!item) return null;
   const is3D = is3DFile(item.name || item.path || "");
   const isImg =
@@ -494,7 +502,7 @@ function LightboxModal({ item, onClose }) {
     >
       <div
         className="attachment-modal-content"
-        onClick={(e) => e.stopPropagation()}
+        onClick={(e: any) => e.stopPropagation()}
         style={{
           position: "relative",
           maxWidth: "92vw",
@@ -642,52 +650,54 @@ function LightboxModal({ item, onClose }) {
   );
 }
 
-/* ── Checklist todowrite, tepat di atas kotak ketik ──
-   Bentuknya mengikuti todowrite Claude Code: satu daftar yang HIDUP di satu
-   tempat tetap, bukan jejak yang tertinggal di riwayat. Itu sebabnya ia duduk
-   di composer-wrap dan bukan di dalam gelembung agent — gelembung tergulung
-   naik begitu percakapan berlanjut, dan daftar yang gunanya untuk dilihat
-   SELAMA bekerja justru paling cepat hilang dari layar.
+/* ── The todowrite checklist, directly above the input box ──
+   Its shape follows Claude Code's todowrite: one list that LIVES in a fixed
+   place, rather than a trail left behind in the history. That is why it sits
+   in composer-wrap and not inside an agent bubble — bubbles scroll away as
+   the conversation continues, and a list whose whole purpose is to be seen
+   WHILE working is exactly the one that would vanish first.
 
-   Kotak centangnya bisa diklik, dan itu disengaja: kadang sebuah item sudah
-   beres di kepala pemakai sebelum agent sempat menandainya. Tapi agent tetap
-   PEMILIKNYA — todowrite berikutnya menimpa seluruh daftar, termasuk centang
-   manual. Itu perilaku yang benar (agent yang tahu keadaan sebenarnya), dan
-   disebut di sini supaya tak dikira bug saat centangnya berubah sendiri. */
-function TodoPanel({ todos, busy, onToggle, onClear }) {
+   The checkboxes are clickable, and that is deliberate: sometimes an item is
+   already done in the user's head before the agent marks it. But the agent
+   still OWNS the list — the next todowrite overwrites all of it, manual ticks
+   included. That is the correct behaviour (the agent knows the real state),
+   and it is said here so nobody reads a self-changing tick as a bug. */
+function TodoPanel({ todos, busy, onToggle, onClear }: any) {
   if (!Array.isArray(todos) || todos.length === 0) return null;
-  const selesai = todos.filter((t) => (t.status || "") === "completed").length;
+  const selesai = todos.filter(
+    (t: any) => (t.status || "") === "completed",
+  ).length;
   const semuaSelesai = selesai === todos.length;
-  // Daftar yang MANDEK: agent sudah berhenti tapi masih ada item terbuka.
+  // A STALLED list: the agent has stopped but items are still open.
   //
-  // Ini keadaan yang paling sering terjadi dan justru dulu tak punya jalan
-  // keluar. Proses berhenti di tengah — dibatalkan, gagal, atau model berhenti
-  // tanpa jawaban — dan daftarnya tertinggal di atas kotak ketik selamanya:
-  // tombol tutup cuma muncul kalau semua item selesai, dan item yang tak pernah
-  // selesai berarti tombolnya tak pernah datang. Satu-satunya cara membersihkan
-  // adalah menunggu todowrite BERIKUTNYA menimpanya, yang belum tentu ada.
+  // This is the most common state and the one that used to have no way out.
+  // The run stops midway — cancelled, failed, or the model stopped without
+  // answering — and the list stays above the input box forever: the close
+  // button only appeared once every item was done, and items that never
+  // complete mean the button never arrives. The only way to clear it was to
+  // wait for the NEXT todowrite to overwrite it, which may never come.
   const mandek = !busy && !semuaSelesai;
   const canClose = semuaSelesai || mandek;
   return (
     <div className={"todo-panel" + (mandek ? " todo-mandek" : "")}>
       <div className="todo-panel-head">
         <span className="todo-panel-judul">Tugas</span>
-        {/* Slot yang sama berganti peran: selama agent MASIH BEKERJA ia
-            menunjukkan kemajuan, dan begitu tak ada lagi yang berjalan — entah
-            karena semua beres atau karena prosesnya terhenti — ia jadi tombol
-            untuk menutup daftarnya.
+        {/* The same slot changes role: while the agent is STILL WORKING it
+            shows progress, and as soon as nothing is running — whether
+            because everything finished or because the run stopped — it
+            becomes the button that closes the list.
 
-            Yang dijaga syarat `!busy`: selama agent jalan, tombolnya tetap
-            tidak ada, karena satu klik keliru di tengah kerja menghapus daftar
-            yang sedang dipakai agent sebagai rencana dan tak ada cara
-            mengembalikannya. Sesudah agent berhenti, risiko itu hilang —
-            yang tersisa cuma daftar basi yang perlu dibuang. */}
+            What the `!busy` condition protects: while the agent runs, the
+            button stays absent, because one stray click mid-run would delete
+            the list the agent is using as its plan, with no way to bring it
+            back. Once the agent stops, that risk is gone — all that is left
+            is a stale list that needs clearing. */}
         <span className="todo-panel-slot">
-          {/* Saat MANDEK penghitung tetap ditampilkan di samping tombolnya.
-              Justru di keadaan inilah angkanya paling berarti: "3/7" adalah
-              satu-satunya yang memberi tahu di mana kerjanya putus. Kalau ia
-              diganti tombol seperti pada keadaan "semua selesai", pemakai
-              kehilangan itu tepat ketika ia paling dibutuhkan. */}
+          {/* When STALLED, the counter stays next to the button. This is
+              exactly the state where the number matters most: "3/7" is the
+              only thing that says where the work broke off. Replacing it
+              with a button, as in the "all done" state, would take that away
+              precisely when it is most needed. */}
           {!semuaSelesai && (
             <span className="todo-panel-hitung">
               {selesai}/{todos.length}
@@ -711,7 +721,7 @@ function TodoPanel({ todos, busy, onToggle, onClear }) {
         </span>
       </div>
       <div className="todo-panel-daftar">
-        {todos.map((t, i) => {
+        {todos.map((t: any, i: number) => {
           const st = t.status || "pending";
           const id = "todo-" + i;
           return (
@@ -741,29 +751,30 @@ function Composer({
   todos = [],
   onToggleTodo,
   onClearTodos,
-}) {
+}: any) {
   const [val, setVal] = useState("");
-  const [attachments, setAttachments] = useState([]);
-  const [previewAttachment, setPreviewAttachment] = useState(null);
+  const [attachments, setAttachments] = useState<any[]>([]);
+  const [previewAttachment, setPreviewAttachment] = useState<any>(null);
   const [menu, setMenu] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMcpMenu, setShowMcpMenu] = useState(false);
-  const [mcpServers, setMcpServers] = useState([]);
+  const [mcpServers, setMcpServers] = useState<any[]>([]);
 
-  // Satu pemuat dipakai ulang: saat mount DAN saat ada siaran perubahan MCP dari
-  // layar lain, supaya kedua tampilan tak pernah menampilkan server yang sudah dihapus.
+  // One loader, reused: on mount AND when another screen broadcasts an MCP
+  // change, so the two views never show a server that has been deleted.
   const loadMcpServers = React.useCallback(async () => {
     if (!window.WOLFSPACE) return;
     try {
-      // Daftar server (config) + status RUNTIME. Dulu `active` di-hardcode true,
-      // sehingga badge selalu "Connected" — bahkan untuk server yang prosesnya
-      // belum jalan ATAU yang panggilannya selalu gagal (mis. token dicabut:
-      // proses start & handshake mulus, tapi tiap panggilan API ditolak 401).
+      // The server list (config) plus RUNTIME status. `active` used to be
+      // hardcoded true, so the badge always read "Connected" — even for a
+      // server whose process had not started OR whose every call failed (a
+      // revoked token, say: start and handshake go fine, but each API call
+      // comes back 401).
       const [resCfg, resSt] = await Promise.all([
         window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }),
         window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp/status" }),
       ]);
-      const parse = (r) => {
+      const parse = (r: any) => {
         if (!r || !r.body) return {};
         try {
           return typeof r.body === "string" ? JSON.parse(r.body) : r.body;
@@ -773,16 +784,18 @@ function Composer({
       };
       const data = parse(resCfg);
       const st = parse(resSt);
-      const arr = Object.entries(data || {}).map(([name, conf]) => {
+      const arr = Object.entries<any>(data || {}).map(([name, conf]) => {
         const s = st[name] || {};
         return {
           id: name,
           name: name,
           desc:
-            (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
-          // Jika server di-disabled di backend, paksa active = false.
-          // Tanpa ini polling status akan menimpa hasil toggle dan server
-          // terkesan "hidup kembali" sendiri walaupun sudah dinonaktifkan.
+            ((conf as any).command || "") +
+            " " +
+            ((conf as any).args ? (conf as any).args.join(" ") : ""),
+          // If the server is disabled in the backend, force active = false.
+          // Without this, status polling overwrites the toggle's result and
+          // the server appears to "come back to life" on its own.
           active: !s.disabled && !!s.ready && s.lastCallOk !== false,
           status: s,
           conf: conf,
@@ -807,7 +820,7 @@ function Composer({
   const [mcpInputError, setMcpInputError] = useState("");
   const [mcpInputSuccess, setMcpInputSuccess] = useState("");
 
-  const handleMcpCodeConnect = async (e) => {
+  const handleMcpCodeConnect = async (e: any) => {
     if (e && e.stopPropagation) e.stopPropagation();
     const type = mcpInputUrl.trim();
     const envVars = mcpInputToken.trim();
@@ -820,26 +833,26 @@ function Composer({
     setMcpInputError("");
     setMcpInputSuccess("");
 
-    // Satu sumber: lihat mcpResolvePerintah() di app/Config.tsx. Digandakan
-    // di sini dulu, dan dua salinannya sempat melenceng.
+    // Single source: see mcpResolvePerintah() in app/Config.tsx. This was
+    // duplicated here once, and the two copies drifted apart.
     const _r = mcpResolvePerintah(type);
     let command = _r.command;
     let args = _r.args;
-    // Masih dipakai di bawah untuk memetakan env var per layanan.
+    // Still used below to map per-service env vars.
     const cleanType = String(type || "").toLowerCase();
 
-    // Nama server TIDAK BOLEH diturunkan dari URL mentah.
+    // A server name MUST NOT be derived from a raw URL.
     //
-    // Rumus lama: type.split("/").pop().replace(/[^a-zA-Z0-9-]/g,"").
-    // Untuk URL remote yang membawa kredensial di query string, potongan
-    // terakhirnya adalah "stream?user=...&token=eyJhbGci...", dan pembuangan
-    // karakter non-alfanumerik justru MERAPATKAN token itu menjadi satu kata
-    // yang lolos sebagai nama. Terbukti di log nyata: beberapa entri bernama
-    // "streamuserTokeneyJhbGciOiJBMjU2S1ciLCJlbmMi..." — JWT utuh, tersimpan
-    // ke config/mcp.json DAN tercetak berulang kali ke berkas debug.
+    // The old formula: type.split("/").pop().replace(/[^a-zA-Z0-9-]/g,"").
+    // For a remote URL carrying credentials in the query string, the last
+    // segment is "stream?user=...&token=eyJhbGci...", and stripping the
+    // non-alphanumerics COMPACTS that token into a single word which passes
+    // as a name. Confirmed in real logs: entries named
+    // "streamuserTokeneyJhbGciOiJBMjU2S1ciLCJlbmMi..." — a whole JWT, saved
+    // into config/mcp.json AND printed repeatedly to the debug file.
     //
-    // Untuk URL, yang dipakai sekarang hanya HOST-nya (tak pernah membawa
-    // rahasia). Untuk selain URL, perilaku lama dipertahankan.
+    // For URLs only the HOST is used now (it never carries a secret). For
+    // anything that is not a URL, the old behaviour is kept.
     let name;
     if (/^https?:/i.test(type)) {
       let host = "";
@@ -852,7 +865,7 @@ function Composer({
     } else {
       name = type
         .split("/")
-        .pop()
+        .pop()!
         .replace("server-", "")
         .replace(/[^a-zA-Z0-9-]/g, "");
     }
@@ -873,7 +886,8 @@ function Composer({
         else if (cleanType.includes("penpot"))
           env = { PENPOT_ACCESS_TOKEN: envVars };
         else if (cleanType === "figma") {
-          // figma-developer-mcp butuh token via --figma-api-key dan stdout pipe via --stdio
+          // figma-developer-mcp needs its token via --figma-api-key and a
+          // stdout pipe via --stdio.
           args = [
             "-y",
             "figma-developer-mcp",
@@ -881,13 +895,14 @@ function Composer({
             `--figma-api-key=${envVars}`,
           ];
         } else if (cleanType.startsWith("http")) {
-          // Server remote: kredensial dikirim sebagai HEADER lewat env, BUKAN
-          // ditempel ke URL di argv. argv terlihat di daftar proses mana pun
-          // dan ikut tercatat; env tidak pernah dicatat oleh mcp-client.
-          // Ini jalur untuk token TELANJANG (gagal di-JSON.parse di atas), yang
-          // diperlakukan sebagai bearer. Kalau user memasukkan JSON, cabang
-          // JSON.parse di atas sudah memakainya sebagai env apa adanya — di
-          // situ ia bisa menulis MCP_HEADERS sendiri untuk header non-standar.
+          // Remote server: credentials go as HEADERS through env, NOT pasted
+          // into the URL in argv. argv is visible in any process listing and
+          // gets recorded with it; env is never logged by mcp-client.
+          // This is the path for a BARE token (one that failed JSON.parse
+          // above), treated as a bearer. If the user entered JSON, the
+          // JSON.parse branch above already used it as env verbatim — and
+          // there they can set MCP_HEADERS themselves for non-standard
+          // headers.
           env = {
             MCP_HEADERS: JSON.stringify({ Authorization: "Bearer " + envVars }),
           };
@@ -914,7 +929,7 @@ function Composer({
           return;
         }
       } catch (err) {
-        setMcpInputError(err.message);
+        setMcpInputError((err as any).message);
         return;
       }
     }
@@ -922,15 +937,22 @@ function Composer({
     const entry = {
       id: name,
       name: name,
-      desc: (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
+      desc:
+        ((conf as any).command || "") +
+        " " +
+        ((conf as any).args ? (conf as any).args.join(" ") : ""),
       active: true,
       conf,
     };
 
-    setMcpServers((prev) => [...prev.filter((p) => p.id !== name), entry]);
-    // Entri di atas OPTIMISTIS (langsung hijau). Segarkan dari status runtime
-    // sesaat kemudian supaya server yang ternyata gagal tidak terus tampil
-    // "Connected" — beri jeda agar proses MCP sempat handshake.
+    setMcpServers((prev: any) => [
+      ...prev.filter((p: any) => p.id !== name),
+      entry,
+    ]);
+    // The entry above is OPTIMISTIC (green immediately). Refresh from runtime
+    // status a moment later so a server that turns out to have failed does not
+    // keep showing "Connected" — with enough delay for the MCP process to
+    // finish its handshake.
     setTimeout(() => loadMcpServers(), 2500);
     setMcpInputSuccess("✓ MCP server connected and running.");
     setMcpInputUrl("");
@@ -960,8 +982,8 @@ function Composer({
   }, [effort]);
   const [switchFlagged, setSwitchFlagged] = useState(false);
   const [soon, setSoon] = useState("");
-  const ref = useRef(null);
-  const wrapRef = useRef(null);
+  const ref = useRef<any>(null);
+  const wrapRef = useRef<any>(null);
 
   useEffect(() => {
     if (!menu) {
@@ -970,15 +992,14 @@ function Composer({
     }
   }, [menu]);
 
-  // Batasnya DIBACA dari CSS, bukan ditulis ulang di sini. Dulu angkanya ada
-  // dua — 160px di CSS, 180 di sini — dan yang lebih kecil selalu menang, jadi
-  // selisihnya tak pernah berarti apa-apa sementara keduanya terlihat seperti
-  // sama-sama berlaku.
+  // The limit is READ from CSS rather than restated here. There used to be two
+  // numbers — 160px in CSS, 180 here — and the smaller always won, so the
+  // difference never meant anything while both looked equally in force.
   const grow = React.useCallback(() => {
     const el = ref.current;
     if (!el) return;
-    // "auto" dulu: tanpa itu scrollHeight tak pernah MENGECIL saat teks
-    // dihapus, jadi kotaknya tumbuh sekali lalu tak mau menyusut lagi.
+    // "auto" first: without it scrollHeight never SHRINKS when text is
+    // deleted, so the box grows once and then refuses to come back down.
     el.style.height = "auto";
     const maks = parseFloat(getComputedStyle(el).maxHeight);
     const tinggi = Number.isFinite(maks)
@@ -987,28 +1008,28 @@ function Composer({
     el.style.height = tinggi + "px";
   }, []);
 
-  // ── Kapan tinggi harus dihitung ulang ──
+  // ── When the height has to be recomputed ──
   //
-  // onChange saja tidak cukup, dan itu sebabnya kotaknya terasa "statis":
-  //   - teks yang disetel dari luar (WOLFSPACE:set-composer, tempel, isi ulang
-  //     draf) tak melewati onChange sama sekali;
-  //   - jendela yang diubah lebarnya mengubah PEMBUNGKUSAN baris, jadi jumlah
-  //     baris berubah tanpa satu pun ketikan.
+  // onChange alone is not enough, and that is why the box felt "static":
+  //   - text set from outside (WOLFSPACE:set-composer, a paste, restoring a
+  //     draft) never passes through onChange at all;
+  //   - resizing the window changes line WRAPPING, so the line count changes
+  //     without a single keystroke.
   React.useEffect(() => {
     grow();
   }, [val, grow]);
   React.useEffect(() => {
     const el = ref.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    // Diamati elemennya sendiri, bukan window: composer ikut menyempit saat
-    // panel lain dibuka atau pembaginya digeser — dan itu tak menghasilkan
-    // event resize jendela sama sekali.
+    // The element itself is observed, not the window: the composer also
+    // narrows when another panel opens or its splitter is dragged — and that
+    // produces no window resize event whatsoever.
     //
-    // HANYA LEBAR yang memicu hitung ulang. grow() mengubah TINGGI elemen yang
-    // sedang diamati, jadi bereaksi pada tinggi berarti mengamati akibat dari
-    // diri sendiri — persis bentuk yang menghasilkan "ResizeObserver loop
-    // completed with undelivered notifications", dan pada kasus terburuk
-    // memutar terus sampai jendela tersendat.
+    // Only the WIDTH triggers a recompute. grow() changes the HEIGHT of the
+    // very element being observed, so reacting to height would mean watching
+    // its own effect — exactly the shape that produces "ResizeObserver loop
+    // completed with undelivered notifications", and in the worst case spins
+    // until the window stutters.
     let lebarTerakhir = el.clientWidth;
     const ro = new ResizeObserver(() => {
       const lebar = el.clientWidth;
@@ -1020,15 +1041,16 @@ function Composer({
     return () => ro.disconnect();
   }, [grow]);
 
-  // Log jalur render DIBUANG. Tiap console.* di renderer Electron diserialisasi
-  // dan dikirim lewat IPC ke proses main (main.js meneruskannya ke stdout), jadi
-  // ongkosnya bukan cuma "nulis teks". Composer ikut dirender ulang setiap kali
-  // induknya render — yaitu setiap token selama agent bekerja. Terpantau di app
-  // nyata: 7 baris ini keluar hanya dari startup diam, sebelum satu tugas pun
-  // dijalankan. Debug seperti ini tak boleh tinggal di jalur yang panas.
+  // Render-path logging REMOVED. Every console.* in an Electron renderer is
+  // serialised and sent over IPC to the main process (main.js forwards it to
+  // stdout), so the cost is not merely "writing text". The composer also
+  // re-renders every time its parent does — which is every token while the
+  // agent works. Observed in the real app: 7 of these lines came out of an
+  // idle startup alone, before a single task ran. Debug output like this must
+  // not live on a hot path.
 
-  const handleAttachmentSelect = async (e) => {
-    const files = Array.from(e.target.files || []);
+  const handleAttachmentSelect = async (e: any) => {
+    const files = Array.from<any>(e.target.files || []);
     if (!files.length) return;
     const target = e.target;
     for (const file of files) {
@@ -1041,11 +1063,11 @@ function Composer({
         /\.(mp4|webm|mov|mkv)$/i.test(file.name) ||
         (file.type && file.type.startsWith("video/"));
       const is3D = is3DFile(file.name);
-      // File 3D butuh blob URL agar Model3DViewer bisa memuatnya (three.js loader
-      // menerima URL, bukan File). Sama seperti img/vid — object URL lokal.
+      // A 3D file needs a blob URL for Model3DViewer to load it (three.js
+      // loaders take a URL, not a File). Same as img/vid — a local object URL.
       let previewUrl =
         isImg || isVid || is3D ? URL.createObjectURL(file) : null;
-      let snippet = null;
+      let snippet: any = null;
       if (
         !isImg &&
         !isVid &&
@@ -1058,7 +1080,7 @@ function Composer({
           snippet = await file.slice(0, 300).text();
         } catch (_) {}
       }
-      setAttachments((prev) => [
+      setAttachments((prev: any) => [
         ...prev,
         {
           id: attId,
@@ -1075,18 +1097,20 @@ function Composer({
         const reader = new FileReader();
         reader.onload = async () => {
           try {
-            const base64 = reader.result.split(",")[1] || reader.result;
-            // JEMBATAN, bukan unggahan. Yang kembali HANDLE (att_...), bukan
-            // path. Dulu berkas ditulis ke <WOLFSPACE>/public/uploads/ lalu
-            // PATH-nya diserahkan ke agent — dan saat agent dikurung ke satu
-            // worktree, path itu di luar cakupan sehingga broker menolaknya.
-            // Pengurungan yang benar justru mematikan attach. Dengan handle,
-            // pengurungan tak perlu dilonggarkan sedikit pun.
+            const base64 =
+              String(reader.result || "").split(",")[1] || reader.result;
+            // A BRIDGE, not an upload. What comes back is a HANDLE (att_...),
+            // not a path. Files used to be written to <WOLFSPACE>/public/
+            // uploads/ and their PATH handed to the agent — and once the agent
+            // was confined to a single worktree, that path fell outside its
+            // scope and the broker refused it. Correct confinement was killing
+            // attachments. With a handle, confinement need not be loosened at
+            // all.
             //
-            // file.name dipakai, BUKAN webkitRelativePath: yang terakhir
-            // membawa struktur direktori saat user memilih FOLDER, dan alamat
-            // tak boleh ikut menyeberang. (Jembatan tetap memotongnya lagi di
-            // sisi server — pertahanan berlapis, bukan pengganti.)
+            // file.name is used, NOT webkitRelativePath: the latter carries
+            // directory structure when the user picks a FOLDER, and an address
+            // must not cross over. (The bridge trims it again server-side —
+            // defence in depth, not a replacement.)
             const payload = {
               name: file.name,
               data: base64,
@@ -1119,15 +1143,15 @@ function Composer({
               if (!res.ok) throw new Error(res.error || "Attach failed");
               attHandle = res.id;
             }
-            setAttachments((prev) =>
-              prev.map((a) =>
+            setAttachments((prev: any) =>
+              prev.map((a: any) =>
                 a.id === attId
                   ? {
                       ...a,
                       status: "ready",
-                      // Handle, bukan url. previewUrl tetap object URL lokal
-                      // yang sudah dibuat dari File — jadi tak ada berkas yang
-                      // perlu mendarat di disk hanya demi pratinjau.
+                      // A handle, not a url. previewUrl stays the local object
+                      // URL already made from the File — so no file has to land
+                      // on disk merely for a preview.
                       attId: attHandle,
                     }
                   : a,
@@ -1135,18 +1159,18 @@ function Composer({
             );
           } catch (err) {
             console.error("[Attachment upload error]", err);
-            setAttachments((prev) =>
-              prev.map((a) =>
+            setAttachments((prev: any) =>
+              prev.map((a: any) =>
                 a.id === attId
-                  ? { ...a, status: "error", error: err.message }
+                  ? { ...a, status: "error", error: (err as any).message }
                   : a,
               ),
             );
           }
         };
         reader.onerror = () => {
-          setAttachments((prev) =>
-            prev.map((a) =>
+          setAttachments((prev: any) =>
+            prev.map((a: any) =>
               a.id === attId
                 ? { ...a, status: "error", error: "Failed reading file" }
                 : a,
@@ -1155,9 +1179,11 @@ function Composer({
         };
         reader.readAsDataURL(file);
       } catch (err) {
-        setAttachments((prev) =>
-          prev.map((a) =>
-            a.id === attId ? { ...a, status: "error", error: err.message } : a,
+        setAttachments((prev: any) =>
+          prev.map((a: any) =>
+            a.id === attId
+              ? { ...a, status: "error", error: (err as any).message }
+              : a,
           ),
         );
       }
@@ -1178,15 +1204,16 @@ function Composer({
     if ((!v && attachments.length === 0) || busy) return;
     let fullText = v;
     if (attachments.length > 0) {
-      // HANDLE, bukan path. Baris ini dulu berbunyi
+      // A HANDLE, not a path. This line used to read
       //   "- [Attached]: <path> (… , url: /uploads/…)"
-      // dan itulah yang membenturkan attach ke pengurungan: agent disuruh
-      // membaca sebuah lokasi, lalu broker menolaknya karena di luar worktree.
-      // Sekarang yang diberikan id lampiran; agent membacanya lewat
-      // attachment_read, dan alamat berkasnya tak pernah ada untuk ditolak.
+      // and that is what collided attachments with confinement: the agent was
+      // told to read a location, and the broker then refused it for being
+      // outside the worktree. Now it is given the attachment id; the agent
+      // reads it through attachment_read, and there is no file address left
+      // to refuse.
       const attSummary = attachments
         .map(
-          (a) =>
+          (a: any) =>
             `- [Terlampir] ${a.name} (${Math.round(a.size / 1024)} KB${a.type ? `, ${a.type}` : ""})` +
             (a.attId ? ` — id: ${a.attId}` : " — handoff FAILED"),
         )
@@ -1195,13 +1222,13 @@ function Composer({
         ? `${v}\n\nAttachments:\n${attSummary}`
         : `Attachments:\n${attSummary}`;
     }
-    // Dua argumen: yang PERTAMA untuk model (memuat handle lampiran), yang
-    // KEDUA untuk mata user. Dulu hanya satu yang dikirim, sehingga baris
-    // lampiran — termasuk handle att_… yang tak ada gunanya dibaca manusia —
-    // mendarat mentah di gelembung chat.
+    // Two arguments: the FIRST for the model (carrying the attachment
+    // handles), the SECOND for the user's eyes. Only one used to be sent, so
+    // the attachment lines — including att_… handles, which are of no use to a
+    // human — landed raw in the chat bubble.
     onSend(fullText, {
       text: v,
-      attachments: attachments.map((a) => ({
+      attachments: attachments.map((a: any) => ({
         name: a.name,
         size: a.size,
         type: a.type,
@@ -1224,7 +1251,7 @@ function Composer({
     console.log("[Composer] val changed to:", val);
   }, [val]);
   useEffect(() => {
-    const h = (e) => {
+    const h = (e: any) => {
       const next = String(e.detail || "");
       setVal(next);
       requestAnimationFrame(() => {
@@ -1237,7 +1264,7 @@ function Composer({
   }, []);
   useEffect(() => {
     if (!menu) return;
-    const h = (e) => {
+    const h = (e: any) => {
       // Keep menu open when clicking sidebar controls (e.g. Visual Picker button)
       // or when the visual picker overlay is active, so the user can select
       // elements inside the + menu with the picker.
@@ -1250,7 +1277,7 @@ function Composer({
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, [menu]);
-  const notYet = (name) => {
+  const notYet = (name: any) => {
     setMenu(false);
     setSoon(name + " segera hadir.");
     setTimeout(() => setSoon(""), 2600);
@@ -1283,7 +1310,7 @@ function Composer({
         <div className="composer-input-col">
           {attachments.length > 0 && (
             <div className="composer-attachments">
-              {attachments.map((att) => {
+              {attachments.map((att: any) => {
                 const isImg =
                   /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(
                     att.name || att.path,
@@ -1435,9 +1462,11 @@ function Composer({
                     <button
                       type="button"
                       className="composer-attachment-remove"
-                      onClick={(e) => {
+                      onClick={(e: any) => {
                         e.stopPropagation();
-                        setAttachments((p) => p.filter((x) => x.id !== att.id));
+                        setAttachments((p: any) =>
+                          p.filter((x: any) => x.id !== att.id),
+                        );
                       }}
                       title={att.status === "error" ? att.error : "Remove"}
                     >
@@ -1459,12 +1488,12 @@ function Composer({
                   ? "Keep typing commands…"
                   : "What would you like to build today?"
             }
-            onChange={(e) => {
+            onChange={(e: any) => {
               console.log("[Textarea] value changed:", e.target.value);
               setVal(e.target.value);
               grow();
             }}
-            onKeyDown={(e) => {
+            onKeyDown={(e: any) => {
               if (e.key === "Enter" && !e.shiftKey) {
                 e.preventDefault();
                 console.log("[Textarea] Enter pressed, calling submit");
@@ -1499,7 +1528,7 @@ function Composer({
                 className={"composer-add" + (menu ? " open" : "")}
                 title="Add"
                 onClick={() => {
-                  setMenu((m) => !m);
+                  setMenu((m: any) => !m);
                   setShowModelMenu(false);
                   setShowMcpMenu(false);
                 }}
@@ -1508,7 +1537,10 @@ function Composer({
               </button>
             </div>
             {menu && (
-              <div className="am-menu" onMouseDown={(e) => e.stopPropagation()}>
+              <div
+                className="am-menu"
+                onMouseDown={(e: any) => e.stopPropagation()}
+              >
                 <div className="am-section-label">Context</div>
                 <button
                   className="am-item"
@@ -1526,7 +1558,7 @@ function Composer({
                 <div style={{ position: "relative" }}>
                   <button
                     className={"am-item" + (showModelMenu ? " active" : "")}
-                    onClick={(e) => {
+                    onClick={(e: any) => {
                       e.stopPropagation();
                       setShowMcpMenu(false);
                       setShowModelMenu(!showModelMenu);
@@ -1542,7 +1574,7 @@ function Composer({
                       Switch model...
                     </span>
                     <span className="am-item-right">
-                      {models.find((m) => m.value === modelVal)?.label ||
+                      {models.find((m: any) => m.value === modelVal)?.label ||
                         "Sonnet"}
                     </span>
                   </button>
@@ -1554,12 +1586,12 @@ function Composer({
                       >
                         Select a model
                       </div>
-                      {models.map((m) => (
+                      {models.map((m: any) => (
                         <button
                           key={m.value}
                           className="am-item"
                           style={{ padding: "8px 12px" }}
-                          onClick={(e) => {
+                          onClick={(e: any) => {
                             e.stopPropagation();
                             if (setModelVal) setModelVal(m.value);
                             setShowModelMenu(false);
@@ -1594,7 +1626,7 @@ function Composer({
                 </div>
                 <button
                   className="am-item"
-                  onClick={(e) => {
+                  onClick={(e: any) => {
                     e.stopPropagation();
                     setEffort((effort + 1) % 3);
                   }}
@@ -1630,14 +1662,15 @@ function Composer({
                 <div style={{ position: "relative" }}>
                   <button
                     className={"am-item" + (showMcpMenu ? " active" : "")}
-                    onClick={(e) => {
+                    onClick={(e: any) => {
                       e.stopPropagation();
                       setShowModelMenu(false);
                       setShowMcpMenu(!showMcpMenu);
-                      // Pakai pemuat TUNGGAL, jangan menyalin ulang logikanya.
-                      // Salinan inline di sini dulu memetakan `active: true` dan
-                      // MENIMPA status runtime yang benar setiap kali menu dibuka —
-                      // duplikasi itulah yang membuat bug tampilan MCP terus kembali.
+                      // Use the SINGLE loader; do not re-implement it. An
+                      // inline copy here used to map `active: true` and
+                      // OVERWRITE the correct runtime status every time the
+                      // menu opened — that duplication is what kept bringing
+                      // the MCP display bug back.
                       if (!showMcpMenu) loadMcpServers();
                     }}
                   >
@@ -1667,19 +1700,20 @@ function Composer({
                           <button
                             className="am-item"
                             style={{ padding: "8px 12px", flex: 1 }}
-                            onClick={async (e) => {
+                            onClick={async (e: any) => {
                               e.stopPropagation();
-                              // Server MCP tidak lagi dinyalakan saat WOLFSPACE
-                              // start — penyalaannya tindakan eksplisit di sini.
+                              // MCP servers are no longer started when
+                              // WOLFSPACE starts — starting one is an explicit
+                              // action here.
                               //
-                              // Dua maksud yang BERBEDA dibedakan, karena dulu
-                              // keduanya jatuh ke /mcp/toggle:
-                              //   - belum jalan & tidak di-disable -> CONNECT
-                              //     (nyalakan saja; jangan sentuh konfigurasi)
-                              //   - selain itu -> TOGGLE enable/disable, yang
-                              //     memang menulis `disabled` ke mcp.json
-                              // Tanpa pemisahan ini, sekadar menyambungkan
-                              // server ikut mengubah berkas konfigurasi.
+                              // Two DIFFERENT intents are separated, because
+                              // both used to fall through to /mcp/toggle:
+                              //   - not running & not disabled -> CONNECT
+                              //     (just start it; leave config alone)
+                              //   - otherwise -> TOGGLE enable/disable, which
+                              //     does write `disabled` into mcp.json
+                              // Without that split, merely connecting to a
+                              // server also edited the config file.
                               const perluConnect =
                                 !srv.active &&
                                 !(srv.status && srv.status.disabled);
@@ -1689,27 +1723,28 @@ function Composer({
                               const muatan = perluConnect
                                 ? { name: srv.id }
                                 : { name: srv.id, enabled: !srv.active };
-                              // Optimistis HANYA saat menyambung; hasil
-                              // sebenarnya disegarkan dari status runtime.
-                              setMcpServers((prev) =>
-                                prev.map((item) =>
+                              // Optimistic ONLY while connecting; the real
+                              // result is refreshed from runtime status.
+                              setMcpServers((prev: any) =>
+                                prev.map((item: any) =>
                                   item.id === srv.id
                                     ? {
                                         ...item,
                                         active: !srv.active,
-                                        // Menyambung BUKAN "sudah tersambung".
+                                        // Connecting is not "connected".
                                         //
-                                        // Diukur di jalur nyata: connect makan
-                                        // 4302ms (npx + handshake), dan bisa
-                                        // sampai HANDSHAKE_TIMEOUT_MS 60 detik
-                                        // untuk server bermasalah. Selama itu
-                                        // event loop TIDAK terblokir sama
-                                        // sekali (lag-puncak 55ms, 276 tick) —
-                                        // jadi ini bukan hang, tapi dulu badge
-                                        // langsung hijau "✓ Connected" padahal
-                                        // handshake belum selesai. User melihat
-                                        // "tersambung" lalu diam lama, dan itu
-                                        // yang terbaca sebagai macet.
+                                        // Measured on the real path: connect
+                                        // took 4302ms (npx + handshake), and
+                                        // can reach HANDSHAKE_TIMEOUT_MS of 60
+                                        // seconds for a troubled server. The
+                                        // event loop is NOT blocked during any
+                                        // of it (peak lag 55ms over 276 ticks)
+                                        // — so this is not a hang. But the
+                                        // badge used to go green "✓ Connected"
+                                        // straight away while the handshake
+                                        // was still running. The user saw
+                                        // "connected" then a long silence, and
+                                        // that is what read as a freeze.
                                         connecting: perluConnect,
                                       }
                                     : item,
@@ -1737,12 +1772,12 @@ function Composer({
                               } catch (err) {
                                 console.error("Error toggling MCP server", err);
                               } finally {
-                                // Di finally, BUKAN di jalur sukses saja.
-                                // Kalau permintaannya gagal, badge "⟳
-                                // Connecting…" akan menempel selamanya karena
-                                // tak ada yang menyegarkannya dari status
-                                // runtime — dan server yang gagal justru
-                                // paling perlu terlihat gagal.
+                                // In finally, NOT only on the success path.
+                                // If the request fails, the "⟳ Connecting…"
+                                // badge would stick forever because nothing
+                                // refreshes it from runtime status — and a
+                                // server that failed is precisely the one that
+                                // needs to look failed.
                                 window.dispatchEvent(
                                   new CustomEvent("wolfspace_mcp_changed"),
                                 );
@@ -1803,10 +1838,11 @@ function Composer({
                                       ✓ Connected
                                     </span>
                                   ) : (
-                                    // Bedakan SEBABNYA, jangan samaratakan jadi
-                                    // "Disabled": server yang panggilannya gagal
-                                    // (mis. token dicabut) beda dari yang belum
-                                    // dijalankan. Dulu keduanya tampil hijau.
+                                    // Distinguish the CAUSE; do not flatten it
+                                    // into "Disabled". A server whose calls
+                                    // fail (a revoked token, say) is not the
+                                    // same as one that was never started. Both
+                                    // used to show green.
                                     <span
                                       title={
                                         (srv.status && srv.status.lastError) ||
@@ -1852,9 +1888,9 @@ function Composer({
                                       alignItems: "center",
                                       justifyContent: "center",
                                     }}
-                                    onClick={(e) => {
+                                    onClick={(e: any) => {
                                       e.stopPropagation();
-                                      // Siarkan agar layar lain (Screens.jsx/pickerMcp) ikut sinkron.
+                                      // Broadcast so other screens (Screens.jsx / pickerMcp) stay in sync.
                                       const _bcast = () => {
                                         try {
                                           window.dispatchEvent(
@@ -1871,34 +1907,35 @@ function Composer({
                                           body: { name: srv.id },
                                         })
                                           .then(() => {
-                                            setMcpServers((prev) =>
+                                            setMcpServers((prev: any) =>
                                               prev.filter(
-                                                (item) => item.id !== srv.id,
+                                                (item: any) =>
+                                                  item.id !== srv.id,
                                               ),
                                             );
                                             _bcast();
                                           })
-                                          .catch((err) =>
+                                          .catch((err: any) =>
                                             alert(
                                               "Failed to remove MCP: " +
-                                                err.message,
+                                                (err as any).message,
                                             ),
                                           );
                                       } else {
-                                        setMcpServers((prev) =>
+                                        setMcpServers((prev: any) =>
                                           prev.filter(
-                                            (item) => item.id !== srv.id,
+                                            (item: any) => item.id !== srv.id,
                                           ),
                                         );
                                         _bcast();
                                       }
                                     }}
-                                    onMouseEnter={(e) => {
+                                    onMouseEnter={(e: any) => {
                                       e.currentTarget.style.color = "#f85149";
                                       e.currentTarget.style.background =
                                         "rgba(248,81,73,0.15)";
                                     }}
-                                    onMouseLeave={(e) => {
+                                    onMouseLeave={(e: any) => {
                                       e.currentTarget.style.color = "#858585";
                                       e.currentTarget.style.background =
                                         "transparent";
@@ -1928,7 +1965,7 @@ function Composer({
                               alignItems: "center",
                               gap: "6px",
                             }}
-                            onClick={(e) => {
+                            onClick={(e: any) => {
                               e.stopPropagation();
                               setShowMcpInput(true);
                               setMcpInputError("");
@@ -1966,7 +2003,7 @@ function Composer({
                               flexDirection: "column",
                               gap: "7px",
                             }}
-                            onClick={(e) => e.stopPropagation()}
+                            onClick={(e: any) => e.stopPropagation()}
                           >
                             <div
                               style={{
@@ -1989,12 +2026,12 @@ function Composer({
                                 autoFocus
                                 type="text"
                                 value={mcpInputUrl}
-                                onChange={(e) => {
+                                onChange={(e: any) => {
                                   setMcpInputUrl(e.target.value);
                                   setMcpInputError("");
                                   setMcpInputSuccess("");
                                 }}
-                                onKeyDown={(e) => {
+                                onKeyDown={(e: any) => {
                                   if (e.key === "Escape") {
                                     setShowMcpInput(false);
                                     setMcpInputUrl("");
@@ -2022,12 +2059,12 @@ function Composer({
                               <input
                                 type="password"
                                 value={mcpInputToken}
-                                onChange={(e) => {
+                                onChange={(e: any) => {
                                   setMcpInputToken(e.target.value);
                                   setMcpInputError("");
                                   setMcpInputSuccess("");
                                 }}
-                                onKeyDown={(e) => {
+                                onKeyDown={(e: any) => {
                                   if (e.key === "Enter") {
                                     e.preventDefault();
                                     handleMcpCodeConnect(e);
@@ -2110,7 +2147,7 @@ function Composer({
                               }}
                             >
                               <button
-                                onClick={(e) => {
+                                onClick={(e: any) => {
                                   e.stopPropagation();
                                   setShowMcpInput(false);
                                   setMcpInputUrl("");
@@ -2162,7 +2199,7 @@ function Composer({
             className={"send-btn" + (busy ? " cancel" : "")}
             onClick={busy ? onCancel : submit}
             disabled={!busy && !val.trim() && attachments.length === 0}
-            onClickCapture={(e) => {
+            onClickCapture={(e: any) => {
               console.log(
                 "[Send button] clicked, busy:",
                 busy,
@@ -2202,4 +2239,4 @@ function Composer({
   );
 }
 
-/* Visual Picker & Visual Draw dipindah ke public/app/VisualTools.tsx (APP_MODULES). */
+/* Visual Picker & Visual Draw moved to public/app/VisualTools.tsx (APP_MODULES). */

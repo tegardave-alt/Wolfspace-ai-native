@@ -37,7 +37,7 @@ const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 const APP = baca("public/app.jsx");
 const CSS = baca("public/styles.css");
-const KOMP = baca("public/app/Components.jsx");
+const KOMP = baca("public/app/Components.tsx");
 
 // Dipakai setiap kali asersinya berbentuk "TIDAK boleh ada X". Berkas-berkas
 // ini penuh catatan tentang KENAPA sebuah bentuk ditinggalkan, dan catatan itu
@@ -204,7 +204,7 @@ describe("pilihannya bertahan dan divalidasi", () => {
 // sendiri (state `posisi`, penyimpanan, gaya per-sisi, penggeser dua sumbu)
 // TETAP UTUH dan tetap diuji di atas; yang hilang hanya kontrol yang terlihat.
 //
-// Untuk mengembalikannya: pasang lagi tombol di TopBar (Components.jsx) yang
+// Untuk mengembalikannya: pasang lagi tombol di TopBar (Components.tsx) yang
 // memanggil setPosisi, lalu oper prop `posisi`/`setPosisi` dari app.jsx.
 // Sementara ini posisinya bisa diubah lewat:
 //   localStorage.setItem("wolfspace_posisi",
@@ -224,7 +224,7 @@ describe("pilihannya bertahan dan divalidasi", () => {
 // Sebelum `align-self: stretch`, menu muncul di y=43 — MENINDIH garis bawah
 // bilah, karena `top: 100%` mengacu ke tinggi TOMBOL (28px), bukan tinggi bilah.
 describe("menu tata letak di bilah atas", () => {
-  const K = baca("public/app/Components.jsx");
+  const K = baca("public/app/Components.tsx");
   const C = baca("public/styles.css");
 
   test("tombolnya putih, tidak diredupkan seperti tetangganya", () => {
@@ -297,7 +297,7 @@ describe("menu tata letak di bilah atas", () => {
 //    layar hampa, dan pemakai tak punya petunjuk bahwa jalan kembalinya ada di
 //    menu ⋮. Itu jebakan yang dibuat sendiri.
 describe("menyembunyikan chat", () => {
-  const K = baca("public/app/Components.jsx");
+  const K = baca("public/app/Components.tsx");
   const C = baca("public/styles.css");
 
   test("chat-col hanya dirender saat tampil", () => {
@@ -377,7 +377,7 @@ describe("menyembunyikan chat", () => {
 describe("panel kode bisa disunting dan disimpan", () => {
   const APP2 = baca("public/app.jsx");
   const SRV = baca("server.cjs");
-  const K = baca("public/app/Components.jsx");
+  const K = baca("public/app/Components.tsx");
   const PANE = APP2.slice(
     APP2.indexOf("function LogicCodePane("),
     APP2.indexOf("function bahasaMonaco("),
@@ -567,7 +567,7 @@ describe("berkas baru di pohon Logic", () => {
 // layar dan tak pernah bisa berbagi tempat dengan terminal atau preview.
 describe("Code bisa dibagi tempat dengan panel lain", () => {
   const A = baca("public/app.jsx");
-  const K2 = baca("public/app/Components.jsx");
+  const K2 = baca("public/app/Components.tsx");
   const bersih2 = tanpaKomentar(A);
 
   test("bukan lagi lapisan absolut yang menutupi split", () => {

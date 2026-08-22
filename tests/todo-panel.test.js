@@ -21,7 +21,7 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) => fs.readFileSync(path.join(AKAR, p), "utf8");
 const APP = baca("public/app.jsx");
-const KOMP = baca("public/app/Components.jsx");
+const KOMP = baca("public/app/Components.tsx");
 const STEPS = baca("public/app/AgentSteps.tsx");
 const CSS = baca("public/styles.css");
 const BLOK = CSS.slice(
@@ -126,7 +126,7 @@ describe("panel todowrite di atas kotak ketik", () => {
 
   test("kemajuan terbaca tanpa menghitung sendiri", () => {
     expect(KOMP).toMatch(
-      /filter\(\(t\) => \(t\.status \|\| ""\) === "completed"\)/,
+      /filter\(\s*\(t(: \w+)?\) => \(t\.status \|\| ""\) === "completed",?\s*\)/,
     );
     expect(KOMP).toMatch(/\{selesai\}\/\{todos\.length\}/);
   });

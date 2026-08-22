@@ -722,7 +722,7 @@ function AgentSteps({ run }: any) {
           });
         })()}
         {/* Checklist todowrite DIPINDAH ke panel di atas kotak ketik
-            (TodoPanel di Components.jsx). Di sini ia ikut tergulung naik
+            (TodoPanel di Components.tsx). Di sini ia ikut tergulung naik
             bersama gelembungnya, jadi daftar yang gunanya untuk dilihat SELAMA
             bekerja justru paling cepat hilang dari layar. */}
         {run.busy && (

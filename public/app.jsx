@@ -550,7 +550,7 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
   }
 }
 
-/* Components dipindah ke public/app/Components.jsx (APP_MODULES). */
+/* Components dipindah ke public/app/Components.tsx (APP_MODULES). */
 
 /* Sidebar dipindah ke public/app/Sidebar.jsx (APP_MODULES). */
 

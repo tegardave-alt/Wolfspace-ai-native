@@ -67,7 +67,7 @@ describe("nama server MCP tidak diturunkan dari URL mentah", () => {
   // log nyata: entri bernama "streamuserTokeneyJhbGciOiJBMjU2S1ci..." — JWT
   // utuh, tersimpan ke config/mcp.json dan tercetak berulang ke berkas debug.
   const SRC = fs
-    .readFileSync(require.resolve("../public/app/Components.jsx"), "utf8")
+    .readFileSync(require.resolve("../public/app/Components.tsx"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("URL -> hanya HOSTNAME yang dipakai", () => {
@@ -102,7 +102,7 @@ describe("jembatan remote bicara Streamable HTTP, bukan cuma SSE lama", () => {
   test("berkasnya ada dan dipakai oleh UI", () => {
     expect(fs.existsSync(BRIDGE)).toBe(true);
     // Resolusi perintah MCP sekarang SATU sumber di Config.tsx. Sebelumnya ia
-    // digandakan di Components.jsx dan Screens.jsx, dan dua salinan itu sudah
+    // digandakan di Components.tsx dan Screens.jsx, dan dua salinan itu sudah
     // melenceng — satu masih memakai sse-bridge.cjs lama. Tes ini dulu menunjuk
     // salah satu salinan; sekarang menunjuk sumbernya.
     const CFG = fs.readFileSync(
@@ -113,7 +113,7 @@ describe("jembatan remote bicara Streamable HTTP, bukan cuma SSE lama", () => {
 
     // Dan permukaannya benar-benar memakai resolver itu, bukan menyusun sendiri.
     for (const f of [
-      "../public/app/Components.jsx",
+      "../public/app/Components.tsx",
       "../public/app/Screens.jsx",
     ]) {
       const UI = fs.readFileSync(require.resolve(f), "utf8");
@@ -291,13 +291,13 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
     expect(S).toMatch(/await mcpClient\.connectAll\(\)/);
   });
 
-  // DUA daftar MCP, bukan satu: panel di Composer (Components.jsx) dan layar
+  // DUA daftar MCP, bukan satu: panel di Composer (Components.tsx) dan layar
   // pemilih (Screens.jsx). Perubahan pertama hanya menyentuh yang pertama, dan
   // log run nyata membuktikannya — klik di layar kedua menghasilkan
   // `POST /mcp/toggle`, bukan `POST /mcp/connect`. Keduanya diuji di sini
   // supaya perilaku aplikasi tak bergantung pada layar mana yang dipakai.
   test.each([
-    ["Components.jsx", "../public/app/Components.jsx"],
+    ["Components.tsx", "../public/app/Components.tsx"],
     ["Screens.jsx", "../public/app/Screens.jsx"],
   ])("%s memisahkan CONNECT dari toggle enable/disable", (_nama, modul) => {
     const UI = fs

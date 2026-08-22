@@ -23,7 +23,7 @@ const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 const APP = baca("public/app.jsx");
-const KOMP = baca("public/app/Components.jsx");
+const KOMP = baca("public/app/Components.tsx");
 const tanpaKomentar = (t) =>
   t
     .split("\n")
@@ -103,7 +103,7 @@ describe("pilihan di menu sesuai sifat panelnya", () => {
     // Bentuk lamanya `ke === "kanan" ? "Kanan" : "Bawah"` — dengan tiga sisi ia
     // akan menamai "kiri" sebagai "Bawah".
     expect(KOMP).toMatch(
-      /const _NAMA_SISI = \{ kanan: "Right", bawah: "Bottom", kiri: "Left" \}/,
+      /const _NAMA_SISI(: [\w<>, ]+)? = \{\s*kanan: "Right",\s*bawah: "Bottom",\s*kiri: "Left",?\s*\}/,
     );
     expect(tanpaKomentar(KOMP)).not.toMatch(
       /ke === "kanan" \? "Kanan" : "Bawah"/,

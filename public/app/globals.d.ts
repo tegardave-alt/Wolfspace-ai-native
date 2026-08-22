@@ -39,6 +39,12 @@ declare var React: {
   useEffect: typeof useEffect;
   useCallback: typeof useCallback;
   useMemo: typeof useMemo;
+  // Not destructured in app.jsx, so these exist only as members.
+  useLayoutEffect: (
+    effect: () => void | (() => void),
+    deps?: readonly any[],
+  ) => void;
+  memo: <F>(component: F, areEqual?: (a: any, b: any) => boolean) => F;
 };
 
 // Destructured at the head of app.jsx:
@@ -177,11 +183,14 @@ interface Window {
 // migrates, or it collides (TS2451) — the pattern WOLFSPACE_ROOT and Icon both
 // demonstrated.
 //   AG_SVG, cleanAgentText -> app/Sidebar.jsx
-//   escHtml                -> app.jsx
+//   escHtml, parseBlocks, IPC -> app.jsx
 declare function Blocks(props: { text?: string }): JSX.Element;
 declare const AG_SVG: any;
 declare function cleanAgentText(s: unknown): string;
 declare function escHtml(s: string): string;
+declare function parseBlocks(text: string): any[];
+// IPC is the Electron bridge, null in a plain browser — hence the union.
+declare const IPC: { ipc?: any; invoke?: (...a: any[]) => Promise<any> } | null;
 
 // monacoReady is a PROMISE set on window by index.html once the vendored Monaco
 // loader finishes, so modules can await it instead of racing the <script> tag.

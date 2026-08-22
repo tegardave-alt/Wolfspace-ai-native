@@ -208,7 +208,7 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
     );
     expect(UI).not.toMatch(/upd\(\{ todos: j\.todos \}\)/);
     const KOMP = fs
-      .readFileSync(require.resolve("../public/app/Components.jsx"), "utf8")
+      .readFileSync(require.resolve("../public/app/Components.tsx"), "utf8")
       .replace(/\s+/g, " ");
     expect(KOMP).toContain("function TodoPanel(");
     expect(KOMP).toContain("<TodoPanel todos={todos}");
