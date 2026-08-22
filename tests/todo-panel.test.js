@@ -22,7 +22,7 @@ const AKAR = path.resolve(__dirname, "..");
 const baca = (p) => fs.readFileSync(path.join(AKAR, p), "utf8");
 const APP = baca("public/app.jsx");
 const KOMP = baca("public/app/Components.jsx");
-const STEPS = baca("public/app/AgentSteps.jsx");
+const STEPS = baca("public/app/AgentSteps.tsx");
 const CSS = baca("public/styles.css");
 const BLOK = CSS.slice(
   CSS.indexOf(".todo-panel {"),

@@ -455,7 +455,7 @@ const MI = {
 // Deteksi file 3D (GLB/GLTF/STL) dari nama/path.
 const is3DFile = (nameOrPath) => /\.(glb|gltf|stl)$/i.test(nameOrPath || "");
 
-/* Model3DViewer dipindah ke public/app/Model3DViewer.jsx (dimuat via APP_MODULES di index.html). */
+/* Model3DViewer dipindah ke public/app/Model3DViewer.tsx (dimuat via APP_MODULES di index.html). */
 
 function LightboxModal({ item, onClose }) {
   if (!item) return null;
@@ -2202,4 +2202,4 @@ function Composer({
   );
 }
 
-/* Visual Picker & Visual Draw dipindah ke public/app/VisualTools.jsx (APP_MODULES). */
+/* Visual Picker & Visual Draw dipindah ke public/app/VisualTools.tsx (APP_MODULES). */

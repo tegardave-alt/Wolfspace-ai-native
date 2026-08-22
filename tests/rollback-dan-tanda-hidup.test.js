@@ -150,7 +150,7 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
     .readFileSync(require.resolve("../public/app.jsx"), "utf8")
     .replace(/\r\n/g, "\n");
   const STEPS = fs
-    .readFileSync(require.resolve("../public/app/AgentSteps.jsx"), "utf8")
+    .readFileSync(require.resolve("../public/app/AgentSteps.tsx"), "utf8")
     .replace(/\s+/g, " ");
 
   // Berapa TEMPAT yang memanggil streamSelfAgent, di luar definisinya sendiri.

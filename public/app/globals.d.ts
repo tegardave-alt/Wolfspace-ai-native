@@ -28,9 +28,17 @@ declare namespace JSX {
   }
 }
 
+// The hooks are declared standalone below because app.jsx destructures them, but
+// some modules still reach for React.useState directly — so the object carries
+// them too rather than forcing a rewrite of those call sites.
 declare var React: {
   createElement(...args: any[]): JSX.Element;
   Fragment: any;
+  useState: typeof useState;
+  useRef: typeof useRef;
+  useEffect: typeof useEffect;
+  useCallback: typeof useCallback;
+  useMemo: typeof useMemo;
 };
 
 // Destructured at the head of app.jsx:
@@ -147,3 +155,38 @@ declare function setCloudLS(c: KonfigCloud | null): void;
 // Drop this declaration when Sidebar.jsx migrates, or it will collide (TS2451),
 // exactly as Icon did once Icons.tsx started declaring itself.
 declare const SB: any;
+
+// three.js is vendored offline and exposed on window by public/vendor/three3d
+// (see scripts/three/build.cjs), not installed from npm. Only the handful of
+// entry points Model3DViewer actually reaches for are named; everything below
+// them is `any`, because typing three's full surface would mean shipping
+// @types/three for a library that is not an npm dependency here.
+interface Window {
+  WOLFSPACE3D?: {
+    THREE?: any;
+    GLTFLoader?: any;
+    STLLoader?: any;
+    OrbitControls?: any;
+    RoomEnvironment?: any;
+    [k: string]: any;
+  };
+}
+
+// Defined in files that have not migrated yet and reached through the shared
+// global scope. Each of these declarations must be REMOVED when its own file
+// migrates, or it collides (TS2451) — the pattern WOLFSPACE_ROOT and Icon both
+// demonstrated.
+//   AG_SVG, cleanAgentText -> app/Sidebar.jsx
+//   LangIcon               -> app/CodeBlocks.jsx
+declare function Blocks(props: { text?: string }): JSX.Element;
+declare const AG_SVG: any;
+declare function cleanAgentText(s: unknown): string;
+declare function LangIcon(props: { lang?: string }): JSX.Element;
+
+// monacoReady is a PROMISE set on window by index.html once the vendored Monaco
+// loader finishes, so modules can await it instead of racing the <script> tag.
+// Typed as a promise only — the callers all call .then() on it, and widening it
+// to `| boolean` made that call a type error while changing nothing at runtime.
+interface Window {
+  monacoReady?: Promise<any>;
+}

@@ -1,18 +1,19 @@
-// VisualTools — diekstrak dari app.jsx: useVisualPicker & useVisualDraw + guard
-// module-level (VP_STOP/VD_STOP). Dimuat via APP_MODULES (di-concat setelah app.jsx,
-// satu scope). Function-decl ter-hoist; guard `let` hanya disentuh saat interaksi
-// (klik), jadi pasti sudah terinisialisasi. Dipakai App: startPicker/startVisualDraw.
+// VisualTools — extracted from app.jsx: useVisualPicker and useVisualDraw, plus
+// their module-level guards (VP_STOP/VD_STOP). Loaded via APP_MODULES,
+// concatenated after app.jsx into one scope. Function declarations hoist; the
+// `let` guards are only touched during interaction (a click), so they are always
+// initialised by then. Used by App via startPicker / startVisualDraw.
 
 /* ----------------------------- Visual Picker ----------------------------- */
 // Module-level guard: only ONE picker can ever be active, so re-clicking the
 // sidebar item toggles it off instead of stacking capture-listeners that would
-// keep swallowing clicks (the "chat jadi tak bisa diklik" bug).
-let VP_STOP = null;
-// getFrameDoc (opsional): fungsi yang mengembalikan contentDocument iframe preview
-// (Web Dev Live Browser) bila sedang terbuka & same-origin. Tanpa ini, picker HANYA
-// memantau document WOLFSPACE sendiri — hover di atas iframe cuma "mengenali" elemen
-// <iframe>-nya, bukan apa pun di DALAM halaman yang di-render.
-function useVisualPicker(getFrameDoc) {
+// keep swallowing clicks (the "chat becomes unclickable" bug).
+let VP_STOP: (() => void) | null = null;
+// getFrameDoc (optional): returns the preview iframe's contentDocument (the Web
+// Dev Live Browser) when it is open and same-origin. Without it the picker only
+// watches WOLFSPACE own document — hovering over the iframe only identifies the
+// <iframe> element itself, not anything INSIDE the page it renders.
+function useVisualPicker(getFrameDoc?: () => Document | null) {
   return useCallback(() => {
     if (VP_STOP) {
       VP_STOP();
@@ -21,35 +22,36 @@ function useVisualPicker(getFrameDoc) {
     const docs = [document];
     try {
       const frameDoc = getFrameDoc && getFrameDoc();
-      // .defaultView null bila dokumen cross-origin (akses ditolak browser sebelum
-      // sampai sini pun sudah throw) — cek ini jaga-jaga untuk dokumen "mati"/lepas.
-      if (frameDoc && frameDoc.defaultView) docs.push(frameDoc);
+      // .defaultView is null for a cross-origin document (the browser refuses
+      // access before we even get here) — this check also covers a "dead" or
+      // detached document.
     } catch (_) {
-      // Cross-origin (preview arah ke URL eksternal, bukan file lokal same-origin):
+      // Cross-origin (the preview points at an external URL rather than a
+      // same-origin local file):
       // picker tetap jalan di WOLFSPACE saja, tanpa melempar error ke pengguna.
     }
-    let hover = null;
+    let hover: Element | null = null;
     const cleanHovers = () =>
-      docs.forEach((d) =>
+      docs.forEach((d: any) =>
         d
           .querySelectorAll(".vp-hover")
-          .forEach((el) => el.classList.remove("vp-hover")),
+          .forEach((el: any) => el.classList.remove("vp-hover")),
       );
-    const move = (e) => {
+    const move = (e: any) => {
       const el = e.target;
       if (hover && hover !== el) hover.classList.remove("vp-hover");
       hover = el;
       el.classList.add("vp-hover");
     };
     // real classes only (drop the picker's own vp-* runtime classes)
-    const realCls = (el) =>
+    const realCls = (el: any) =>
       typeof el.className === "string"
         ? el.className
             .trim()
             .split(/\s+/)
-            .filter((c) => c && !/^vp-/.test(c))
+            .filter((c: any) => c && !/^vp-/.test(c))
         : [];
-    const seg = (el) => {
+    const seg = (el: any) => {
       if (el.id) return "#" + el.id;
       let s = el.tagName.toLowerCase();
       const cls = realCls(el);
@@ -57,7 +59,7 @@ function useVisualPicker(getFrameDoc) {
       const p = el.parentElement; // disambiguate same-tag siblings
       if (p) {
         const same = Array.from(p.children).filter(
-          (c) => c.tagName === el.tagName,
+          (c: any) => c.tagName === el.tagName,
         );
         if (same.length > 1)
           s += ":nth-of-type(" + (same.indexOf(el) + 1) + ")";
@@ -66,7 +68,7 @@ function useVisualPicker(getFrameDoc) {
     };
     // Build a selector that actually identifies the element: if it has no id/class,
     // walk up to the nearest classed/ided ancestor so "p" becomes ".composer-hint > p".
-    const sel = (el) => {
+    const sel = (el: any) => {
       const parts = [];
       let cur = el,
         depth = 0;
@@ -78,7 +80,7 @@ function useVisualPicker(getFrameDoc) {
       }
       return parts.join(" > ");
     };
-    const click = (e) => {
+    const click = (e: any) => {
       e.preventDefault();
       e.stopPropagation();
       const el = e.target,
@@ -86,7 +88,7 @@ function useVisualPicker(getFrameDoc) {
 
       let d = "";
 
-      // Tambahkan struktur DOM agar agent lebih mudah mencari di source code
+      // Include the DOM structure so the agent can find it in the source.
       let htmlSnippet = el.outerHTML || "";
       if (htmlSnippet) {
         // Potong htmlSnippet jika terlalu panjang, tapi tetap pertahankan strukturnya
@@ -98,29 +100,31 @@ function useVisualPicker(getFrameDoc) {
 
       try {
         // writeText() mengembalikan Promise — try/catch TAK menangkap penolakan async
-        // (mis. "Document is not focused"). .catch mencegahnya jadi unhandledrejection
-        // yang dulu memicu auto-rollback (app reload sendiri saat proses jalan).
+        // ("Document is not focused", for one). The .catch keeps it from
+        // becoming an unhandledrejection, which used to trigger auto-rollback
+        // (the app reloading itself mid-run).
         navigator.clipboard &&
           navigator.clipboard.writeText(d).catch(function () {});
       } catch (_) {}
       stop();
-      // Gunakan alert yang rapi
+      // Use the tidy alert.
       setTimeout(
         () => alert("Element details copied to clipboard!\n\n" + selector),
         0,
       );
     };
-    const key = (e) => {
+    const key = (e: any) => {
       if (e.key === "Escape") {
         e.preventDefault();
         stop();
       }
     };
-    // Halaman di dalam iframe punya <head> sendiri — tak kebagian styles.css
-    // WOLFSPACE — jadi cursor crosshair & outline hover diinjeksi langsung ke situ
-    // (nilai polos, bukan var() CSS, karena var itu tak terdefinisi di dokumen lain).
-    const frameStyleEls = [];
-    docs.forEach((d) => {
+    // A page inside the iframe has its own <head> and never receives
+    // WOLFSPACE's styles.css, so the crosshair cursor and hover outline are
+    // injected straight into it — as plain values rather than CSS var(), since
+    // those vars are undefined in another document.
+    const frameStyleEls: any[] = [];
+    docs.forEach((d: any) => {
       if (d === document) return;
       try {
         const st = d.createElement("style");
@@ -134,7 +138,7 @@ function useVisualPicker(getFrameDoc) {
     function stop() {
       VP_STOP = null;
       cleanHovers();
-      docs.forEach((d) => {
+      docs.forEach((d: any) => {
         if (d.body) d.body.classList.remove("vp-on");
         d.removeEventListener("mouseover", move, true);
         d.removeEventListener("click", click, true);
@@ -147,7 +151,7 @@ function useVisualPicker(getFrameDoc) {
       });
     }
     VP_STOP = stop;
-    docs.forEach((d) => {
+    docs.forEach((d: any) => {
       if (d.body) d.body.classList.add("vp-on");
       d.addEventListener("mouseover", move, true);
       d.addEventListener("click", click, true);
@@ -157,12 +161,12 @@ function useVisualPicker(getFrameDoc) {
 }
 
 /* ----------------------------- Visual Draw ----------------------------- */
-let VD_STOP = null;
+let VD_STOP: (() => void) | null = null;
 // getFrameDoc (opsional): sama seperti Visual Picker — dokumen iframe preview
-// (Web Dev Live Browser) bila terbuka & same-origin, agar menggambar kotak DI ATAS
-// halaman yang di-render ikut berfungsi (event mouse di atas iframe jatuh ke
-// dokumen iframe, bukan ke document WOLFSPACE).
-function useVisualDraw(getFrameDoc) {
+// (the Web Dev Live Browser) when it is open and same-origin, so drawing a box
+// OVER the rendered page also works — a mouse event above the iframe lands in
+// the iframe's document, not in WOLFSPACE's.
+function useVisualDraw(getFrameDoc?: () => Document | null) {
   return useCallback(() => {
     if (VD_STOP) {
       VD_STOP();
@@ -177,9 +181,10 @@ function useVisualDraw(getFrameDoc) {
       /* cross-origin: draw tetap jalan di WOLFSPACE saja */
     }
     // Konversi koordinat event → koordinat viewport WOLFSPACE (parent). Event dari
-    // dalam iframe ber-clientX/Y relatif ke viewport IFRAME, jadi digeser sebesar
+    // inside the iframe carry clientX/Y relative to the IFRAME viewport, so they
+    // are offset by
     // posisi elemen <iframe> di parent.
-    const toParentXY = (ev) => {
+    const toParentXY = (ev: any) => {
       try {
         if (ev.view && ev.view !== window && ev.view.frameElement) {
           const fr = ev.view.frameElement.getBoundingClientRect();
@@ -189,11 +194,11 @@ function useVisualDraw(getFrameDoc) {
       return { x: ev.clientX, y: ev.clientY };
     };
 
-    // Ubah kursor global menjadi crosshair untuk indikasi mode aktif
+    // Switch the global cursor to a crosshair to signal the active mode.
     document.body.classList.add("vp-on");
     // Iframe punya <head>/<body> sendiri: inject cursor + tandai body-nya juga.
-    const frameStyleEls = [];
-    docs.forEach((d) => {
+    const frameStyleEls: any[] = [];
+    docs.forEach((d: any) => {
       if (d === document) return;
       try {
         const st = d.createElement("style");
@@ -226,11 +231,12 @@ function useVisualDraw(getFrameDoc) {
 
     document.body.appendChild(cWrap);
 
-    // Dulu snap ke grid 24px — kotak final "melompat" sampai ±12px dari yang
-    // digambar (keluhan: posisi tak sesuai koordinat). Sekarang presisi 1px.
-    const snap = (v) => Math.round(v);
+    // This used to snap to a 24px grid, so the final box "jumped" up to ±12px
+    // from what was drawn (the reported complaint: the position did not match
+    // the coordinates). Now it is 1px precise.
+    const snap = (v: any) => Math.round(v);
 
-    const copyToClipboard = (domString, btnElement) => {
+    const copyToClipboard = (domString: string, btnElement: any) => {
       const showSuccess = () => {
         const oldHTML = btnElement.innerHTML;
         const oldBg = btnElement.style.background;
@@ -242,7 +248,7 @@ function useVisualDraw(getFrameDoc) {
         }, 2000);
       };
 
-      const fallbackCopy = (text) => {
+      const fallbackCopy = (text: string) => {
         const textArea = document.createElement("textarea");
         textArea.value = text;
         textArea.style.position = "fixed";
@@ -269,7 +275,7 @@ function useVisualDraw(getFrameDoc) {
       }
     };
 
-    const checkSidebarClick = (e) => {
+    const checkSidebarClick = (e: any) => {
       const btn = e.target.closest(".sb-item");
       if (
         btn &&
@@ -282,14 +288,14 @@ function useVisualDraw(getFrameDoc) {
     };
 
     // Cegah semua klik di aplikasi (kecuali sidebar & UI draw)
-    const blockClick = (e) => {
+    const blockClick = (e: any) => {
       if (checkSidebarClick(e)) return;
       if (e.target.closest(".ui-panel")) return;
       e.preventDefault();
       e.stopPropagation();
     };
 
-    const handleRightClick = (e) => {
+    const handleRightClick = (e: any) => {
       if (checkSidebarClick(e)) return;
       if (e.target.closest(".ui-panel")) return;
 
@@ -300,7 +306,7 @@ function useVisualDraw(getFrameDoc) {
       }
     };
 
-    const cvsMD = (e) => {
+    const cvsMD = (e: any) => {
       if (checkSidebarClick(e)) return;
       if (e.target.closest(".ui-panel")) return;
       if (e.button !== 0) return;
@@ -329,7 +335,7 @@ function useVisualDraw(getFrameDoc) {
       });
       activeSelections.appendChild(selBox);
 
-      const mm = (ev) => {
+      const mm = (ev: any) => {
         ev.preventDefault();
         ev.stopPropagation();
 
@@ -342,10 +348,10 @@ function useVisualDraw(getFrameDoc) {
         selBox.style.height = Math.abs(currY - startY) + "px";
       };
 
-      const mu = (ev) => {
+      const mu = (ev: any) => {
         ev.preventDefault();
         ev.stopPropagation();
-        docs.forEach((d) => {
+        docs.forEach((d: any) => {
           d.removeEventListener("mousemove", mm, true);
           d.removeEventListener("mouseup", mu, true);
         });
@@ -378,17 +384,17 @@ function useVisualDraw(getFrameDoc) {
         });
 
         // --- DOM Context Detection ---
-        // Titik uji = TENGAH KOTAK final (bukan titik lepas mouse): merepresentasikan
-        // area yang digambar, dan tak meleset saat mouse dilepas sedikit di luar kotak.
-        // Bila titik tengah jatuh di dalam iframe preview -> elementFromPoint milik
-        // dokumen IFRAME dengan koordinat lokal frame (elemen halaman yang di-render).
+        // The probe point is the CENTRE of the final box, not where the mouse
+        // was released: it represents the drawn area and does not miss when the
+        // mouse is let go slightly outside the box. For the IFRAME document,
+        // frame-local coordinates are used (the rendered page's elements).
         const cx = finalX + r.left + finalW / 2;
         const cy = finalY + r.top + finalH / 2;
         let targetEl = null,
           targetDoc = document,
           frRect = null;
         try {
-          const fd = docs.find((d) => d !== document);
+          const fd = docs.find((d: any) => d !== document);
           if (fd && fd.defaultView && fd.defaultView.frameElement) {
             const fr = fd.defaultView.frameElement.getBoundingClientRect();
             if (
@@ -413,14 +419,14 @@ function useVisualDraw(getFrameDoc) {
         }
 
         // Generate selector (same logic as Picker)
-        const realCls = (el) =>
+        const realCls = (el: any) =>
           typeof el.className === "string"
             ? el.className
                 .trim()
                 .split(/\s+/)
-                .filter((c) => c && !/^vp-/.test(c))
+                .filter((c: any) => c && !/^vp-/.test(c))
             : [];
-        const seg = (el) => {
+        const seg = (el: any) => {
           if (el.id) return "#" + el.id;
           let s = el.tagName.toLowerCase();
           const cls = realCls(el);
@@ -428,14 +434,14 @@ function useVisualDraw(getFrameDoc) {
           const p = el.parentElement;
           if (p) {
             const same = Array.from(p.children).filter(
-              (c) => c.tagName === el.tagName,
+              (c: any) => c.tagName === el.tagName,
             );
             if (same.length > 1)
               s += ":nth-of-type(" + (same.indexOf(el) + 1) + ")";
           }
           return s;
         };
-        const sel = (el) => {
+        const sel = (el: any) => {
           const parts = [];
           let cur = el,
             depth = 0;
@@ -451,7 +457,7 @@ function useVisualDraw(getFrameDoc) {
         const targetSelector = sel(targetEl);
         const tr = targetEl.getBoundingClientRect();
         // Rect elemen di dalam iframe berkoordinat viewport FRAME — geser ke
-        // koordinat parent agar konsisten dengan finalX/finalY (koordinat overlay).
+        // parent coordinates, to stay consistent with finalX/finalY (the overlay's).
         let trLeft = tr.left,
           trTop = tr.top;
         if (frRect) {
@@ -480,23 +486,25 @@ function useVisualDraw(getFrameDoc) {
           </div>
         `;
 
-        const btn = selBox.querySelector(".vd-copy-btn");
-        btn.onclick = () => copyToClipboard(domString, btn);
+        // querySelector returns Element | null, and Element has no onclick.
+        // Narrowed to HTMLElement so the assignment is real rather than assumed.
+        const btn = selBox.querySelector(".vd-copy-btn") as HTMLElement | null;
+        if (btn) btn.onclick = () => copyToClipboard(domString, btn);
       };
 
-      docs.forEach((d) => {
+      docs.forEach((d: any) => {
         d.addEventListener("mousemove", mm, true);
         d.addEventListener("mouseup", mu, true);
       });
     };
 
-    docs.forEach((d) => {
+    docs.forEach((d: any) => {
       d.addEventListener("mousedown", cvsMD, true);
       d.addEventListener("click", blockClick, true);
       d.addEventListener("contextmenu", handleRightClick, true);
     });
 
-    const key = (e) => {
+    const key = (e: any) => {
       if (e.key === "Escape") {
         e.preventDefault();
         stop();
@@ -507,7 +515,7 @@ function useVisualDraw(getFrameDoc) {
       VD_STOP = null;
       document.body.classList.remove("vp-on");
       cWrap.remove();
-      docs.forEach((d) => {
+      docs.forEach((d: any) => {
         d.removeEventListener("keydown", key, true);
         d.removeEventListener("mousedown", cvsMD, true);
         d.removeEventListener("click", blockClick, true);
@@ -526,6 +534,6 @@ function useVisualDraw(getFrameDoc) {
     }
 
     VD_STOP = stop;
-    docs.forEach((d) => d.addEventListener("keydown", key, true));
+    docs.forEach((d: any) => d.addEventListener("keydown", key, true));
   }, [getFrameDoc]);
 }

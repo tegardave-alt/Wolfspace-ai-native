@@ -1,23 +1,25 @@
-// Model3DViewer — diekstrak dari app.jsx (viewer 3D GLB/STL interaktif).
-// Dimuat lewat APP_MODULES di index.html: di-CONCAT dengan app.jsx SEBELUM Babel,
-// jadi berbagi satu scope global yang sama (akses React/hooks dari app.jsx +
-// window.WOLFSPACE3D). Function declaration -> ter-hoist, aman di-append.
+// Model3DViewer — extracted from app.jsx (an interactive GLB/STL 3D viewer).
+// Loaded via APP_MODULES in index.html: CONCATenated with app.jsx BEFORE Babel,
+// so it shares one global scope (React/hooks from app.jsx plus
+// window.WOLFSPACE3D). A function declaration, so it hoists and is safe to append.
 
 /* ----------------------------- Viewer 3D (GLB/STL) ----------------------------- */
-// Viewer interaktif berbasis three.js (di-vendor offline via window.WOLFSPACE3D).
-// Memutar orbit + zoom + auto-frame ke bounding box model. Membersihkan seluruh
-// resource WebGL (renderer, geometry, material, RAF, ResizeObserver) saat unmount —
-// tanpa itu, membuka-tutup beberapa model membocorkan konteks WebGL sampai browser
-// menolak membuat yang baru ("Too many active WebGL contexts").
-function Model3DViewer({ url, name }) {
-  const mountRef = useRef(null);
+// An interactive three.js viewer (vendored offline via window.WOLFSPACE3D).
+// Orbit, zoom, and auto-frame to the model's bounding box. It disposes every
+// WebGL resource (renderer, geometry, material, RAF, ResizeObserver) on unmount —
+// without that, opening and closing a few models leaks WebGL contexts until the
+// browser refuses to create another ("Too many active WebGL contexts").
+function Model3DViewer({ url, name }: { url?: string; name?: string }) {
+  const mountRef = useRef<HTMLDivElement | null>(null);
   const [status, setStatus] = useState("loading"); // loading | ready | error
   const [errMsg, setErrMsg] = useState("");
-  // Animasi glTF: mixer & actions hidup di dalam effect (butuh objek three), tapi
-  // kontrol UI (play/pause, pilih klip) ada di JSX luar — jembatani lewat ref.
-  const mixerRef = useRef(null);
-  const actionsRef = useRef([]);
-  const [clips, setClips] = useState([]); // nama klip animasi (kosong = model statis)
+  // glTF animation: the mixer and actions live inside the effect (they need three
+  // objects), while the UI controls (play/pause, clip picker) sit in the JSX
+  // outside — bridged through a ref.
+  const mixerRef = useRef<any>(null);
+  const actionsRef = useRef<any[]>([]);
+  // Animation clip names; empty means a static model.
+  const [clips, setClips] = useState<string[]>([]);
   const [playing, setPlaying] = useState(true);
   const [activeClip, setActiveClip] = useState(0);
 
@@ -34,8 +36,9 @@ function Model3DViewer({ url, name }) {
       lib;
     let raf = 0;
     let disposed = false;
-    const disposables = [];
-    // Reset state animasi tiap model baru (effect re-run saat url/name berubah).
+    const disposables: any[] = [];
+    // Reset animation state for each new model (the effect re-runs when url/name
+    // changes).
     mixerRef.current = null;
     actionsRef.current = [];
     setClips([]);
@@ -88,8 +91,8 @@ function Model3DViewer({ url, name }) {
     // Bingkai kamera ke bounding box objek + pasang contact-shadow ground + atur
     // frustum shadow camera. Auto-frame agar model pas di layar berapa pun skala
     // aslinya (mm vs meter, dll).
-    const frameObject = (obj) => {
-      obj.traverse((o) => {
+    const frameObject = (obj: any) => {
+      obj.traverse((o: any) => {
         if (o.isMesh) {
           o.castShadow = true;
           o.receiveShadow = true;
@@ -140,23 +143,25 @@ function Model3DViewer({ url, name }) {
       controls.update();
     };
 
-    const onReady = (obj) => {
+    const onReady = (obj: any) => {
       if (disposed) return;
       scene.add(obj);
       frameObject(obj);
       setStatus("ready");
     };
-    const onErr = (e) => {
+    const onErr = (e: any) => {
       if (disposed) return;
       setStatus("error");
       setErrMsg((e && e.message) || "Failed to load the 3D model.");
     };
 
     try {
-      if (/\.stl$/i.test(name || url)) {
+      // Both props are optional; the effect returned earlier when neither was
+      // usable, but that narrowing does not reach this far.
+      if (/\.stl$/i.test(name || url || "")) {
         new STLLoader().load(
           url,
-          (geometry) => {
+          (geometry: any) => {
             geometry.computeVertexNormals();
             const material = new THREE.MeshStandardMaterial({
               color: 0x9aa4b2,
@@ -173,20 +178,22 @@ function Model3DViewer({ url, name }) {
       } else {
         new GLTFLoader().load(
           url,
-          (gltf) => {
+          (gltf: any) => {
             onReady(gltf.scene);
             // Animasi glTF (skeletal/morph/keyframe) — inilah "animasi ala Unity":
             // GLB bisa membawa beberapa klip, diputar native lewat AnimationMixer.
             if (!disposed && gltf.animations && gltf.animations.length) {
               const mixer = new THREE.AnimationMixer(gltf.scene);
-              const actions = gltf.animations.map((clip) =>
+              const actions = gltf.animations.map((clip: any) =>
                 mixer.clipAction(clip),
               );
               actions[0].play(); // auto-play klip pertama
               mixerRef.current = mixer;
               actionsRef.current = actions;
               setClips(
-                gltf.animations.map((c, i) => c.name || "Klip " + (i + 1)),
+                gltf.animations.map(
+                  (c: any, i: number) => c.name || "Klip " + (i + 1),
+                ),
               );
             }
           },
@@ -235,7 +242,7 @@ function Model3DViewer({ url, name }) {
         } catch (_) {}
       });
       // Buang geometry/material sisa di scene (mis. GLB multi-mesh) lalu konteks WebGL.
-      scene.traverse((o) => {
+      scene.traverse((o: any) => {
         if (o.geometry) {
           try {
             o.geometry.dispose();
@@ -243,7 +250,7 @@ function Model3DViewer({ url, name }) {
         }
         if (o.material) {
           const mats = Array.isArray(o.material) ? o.material : [o.material];
-          mats.forEach((m) => {
+          mats.forEach((m: any) => {
             try {
               m.dispose && m.dispose();
             } catch (_) {}
@@ -270,8 +277,8 @@ function Model3DViewer({ url, name }) {
     m.timeScale = nx ? 1 : 0;
     setPlaying(nx);
   };
-  // Ganti klip aktif: mainkan yang dipilih, hentikan sisanya.
-  const selectClip = (i) => {
+  // Switch the active clip: play the chosen one, stop the rest.
+  const selectClip = (i: number) => {
     const acts = actionsRef.current;
     if (!acts[i]) return;
     acts.forEach((a, idx) => (idx === i ? a.reset().play() : a.stop()));
@@ -350,10 +357,10 @@ function Model3DViewer({ url, name }) {
               alignItems: "center",
               justifyContent: "center",
             }}
-            onMouseEnter={(e) =>
+            onMouseEnter={(e: any) =>
               (e.currentTarget.style.background = "rgba(255,255,255,0.12)")
             }
-            onMouseLeave={(e) =>
+            onMouseLeave={(e: any) =>
               (e.currentTarget.style.background = "transparent")
             }
           >
@@ -362,7 +369,7 @@ function Model3DViewer({ url, name }) {
           {clips.length > 1 ? (
             <select
               value={activeClip}
-              onChange={(e) => selectClip(Number(e.target.value))}
+              onChange={(e: any) => selectClip(Number(e.target.value))}
               style={{
                 background: "#1c222b",
                 color: "#c9d1d9",

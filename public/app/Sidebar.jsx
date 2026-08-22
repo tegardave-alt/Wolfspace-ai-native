@@ -2408,4 +2408,4 @@ function cleanAgentText(s) {
     .trim();
 }
 
-/* Agent-steps (ToolOutput..HitlModal) dipindah ke public/app/AgentSteps.jsx (APP_MODULES). */
+/* Agent-steps (ToolOutput..HitlModal) dipindah ke public/app/AgentSteps.tsx (APP_MODULES). */

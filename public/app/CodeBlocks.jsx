@@ -167,7 +167,7 @@ function CodeBlock({ lang, code }) {
   const edRef = useRef(null);
   const focusedRef = useRef(false);
   const wrapRef = useRef(null);
-  // Alasan lengkap ada di useDekatLayar (public/app/AgentSteps.jsx).
+  // Alasan lengkap ada di useDekatLayar (public/app/AgentSteps.tsx).
   const dekat = useDekatLayar(wrapRef);
   // Suntingan pemakai yang belum tersimpan. Editor di sini BISA DITULIS, jadi
   // membuangnya saat blok keluar layar akan menghapus ketikan orang tanpa jejak.
@@ -201,7 +201,7 @@ function CodeBlock({ lang, code }) {
         fontSize: 13,
         lineNumbers: "on",
         renderLineHighlight: "none",
-        // Sama seperti AgentSteps.jsx dan LogicCodePane (app.jsx): kanvas
+        // Sama seperti AgentSteps.tsx dan LogicCodePane (app.jsx): kanvas
         // 14px yang Monaco gambar di tepi kanan editor tetap aktif meski
         // minimap mati, dan bergaris batas yang tak tersentuh CSS `outline`
         // karena digambar ke piksel, bukan diatur lewat style.

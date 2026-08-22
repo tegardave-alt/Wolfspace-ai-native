@@ -181,7 +181,7 @@ describe("latar editor mengikuti wadahnya", () => {
     "utf8",
   );
   const STEPS = fs.readFileSync(
-    path.join(__dirname, "..", "public", "app", "AgentSteps.jsx"),
+    path.join(__dirname, "..", "public", "app", "AgentSteps.tsx"),
     "utf8",
   );
   const BLOKS = fs.readFileSync(
@@ -322,7 +322,7 @@ describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => 
     return APP.slice(i, j > i ? j : APP.length);
   })();
   const STEPS = fs.readFileSync(
-    path.join(AKAR, "public", "app", "AgentSteps.jsx"),
+    path.join(AKAR, "public", "app", "AgentSteps.tsx"),
     "utf8",
   );
   const BLOKS = fs.readFileSync(

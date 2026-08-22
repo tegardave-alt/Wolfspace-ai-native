@@ -1,3 +1,7 @@
+// NOTE on the `: any` props below. Their shape comes from the agent run state
+// built in public/app.jsx, which has not migrated yet. Writing a made-up shape
+// here would be a lie that typechecks; these narrow once app.jsx follows.
+
 // AgentSteps — diekstrak dari Sidebar.jsx (app.jsx split): ToolOutput, *ActionRow,
 // ConsolidatedThoughtCard, AgentSteps, HitlModal. Prepend via APP_MODULES.
 
@@ -5,11 +9,11 @@
 // juga memakainya dan dimuat LEBIH DULU dari berkas ini. Saat ini semua modul
 // digabung jadi satu <script> sehingga hoisting menyelamatkannya, tapi itu
 // jaminan yang bisa hilang diam-diam kalau pemuatannya dipecah nanti.
-function ToolOutput({ text, ok, kind, arg }) {
+function ToolOutput({ text, ok, kind, arg }: any) {
   const [edReady, setEdReady] = useState(false);
-  const hostRef = useRef(null);
-  const edRef = useRef(null);
-  const wrapRef = useRef(null);
+  const hostRef = useRef<any>(null);
+  const edRef = useRef<any>(null);
+  const wrapRef = useRef<any>(null);
   const dekat = useDekatLayar(wrapRef);
   // detect language from tool kind + file extension + content
   const language = useMemo(() => {
@@ -45,7 +49,9 @@ function ToolOutput({ text, ok, kind, arg }) {
         kt: "kotlin",
         swift: "swift",
       };
-      return langMap[ext] || "plaintext";
+      // ext comes from a filename, so it is an arbitrary string rather than one of
+      // the literal keys; read through an index-typed view.
+      return (langMap as Record<string, string>)[ext] || "plaintext";
     }
     if (text) {
       if (
@@ -71,7 +77,7 @@ function ToolOutput({ text, ok, kind, arg }) {
     let retries = 0;
     if (!dekat) return; // jauh dari layar -> cukup <pre>, jangan buat editor
     if (!window.monacoReady) return;
-    window.monacoReady.then((monaco) => {
+    window.monacoReady.then((monaco: any) => {
       if (disposed || !hostRef.current) return;
       const tryCreate = () => {
         if (disposed || !hostRef.current) return;
@@ -174,14 +180,14 @@ function ToolOutput({ text, ok, kind, arg }) {
 }
 
 /* ── Agent Action Log (IDE Style) ── */
-function AgentActionLogRow({ e, i, expanded, setExpanded }) {
+function AgentActionLogRow({ e, i, expanded, setExpanded }: any) {
   const isOpen = !!expanded[i];
 
   if (e.type === "thought") {
     const text = e.output || e.arg || "Thinking...";
-    const sections = [];
+    const sections: any[] = [];
     const lines = text.split("\n");
-    let current = null;
+    let current: any = null;
     for (const line of lines) {
       const headingMatch = line.match(/^##\s+(.+)$/);
       if (headingMatch) {
@@ -200,7 +206,7 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
       <React.Fragment>
         <div
           className="aal-row aal-thought-header"
-          onClick={() => setExpanded((p) => ({ ...p, [i]: !isOpen }))}
+          onClick={() => setExpanded((p: any) => ({ ...p, [i]: !isOpen }))}
         >
           <span>Thought Process</span>
           <span className={"aal-chevron" + (isOpen ? " open" : "")}>
@@ -217,7 +223,7 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
         </div>
         {isOpen && (
           <div className="aal-thought-content">
-            {displaySections.map((s, idx) => (
+            {displaySections.map((s: any, idx: number) => (
               <div key={idx} className="aal-thought-section">
                 <div className="aal-thought-heading">{s.heading}</div>
                 <div className="aal-thought-body">{s.body.trim()}</div>
@@ -233,7 +239,7 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
   let target = e.arg || "";
   let icon = AG_SVG.bash;
   let color = "var(--text-muted, #8c959f)";
-  let fileLang = null;
+  let fileLang: any = null;
 
   if (e.kind) {
     const k = e.kind.toLowerCase();
@@ -299,7 +305,8 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
       kt: "kotlin",
       swift: "swift",
     };
-    if (lMap[ext]) fileLang = lMap[ext];
+    const lm = lMap as Record<string, string>;
+    if (lm[ext]) fileLang = lm[ext];
   }
 
   let added = 0;
@@ -307,10 +314,10 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
   if (verb === "Edited" && e.output && e.output.includes("@@")) {
     const lines = e.output.split("\n");
     added = lines.filter(
-      (l) => l.startsWith("+") && !l.startsWith("+++"),
+      (l: any) => l.startsWith("+") && !l.startsWith("+++"),
     ).length;
     removed = lines.filter(
-      (l) => l.startsWith("-") && !l.startsWith("---"),
+      (l: any) => l.startsWith("-") && !l.startsWith("---"),
     ).length;
   }
 
@@ -322,7 +329,7 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
         className={"aal-row" + (e.output ? "" : " no-hover")}
         onClick={
           e.output
-            ? () => setExpanded((p) => ({ ...p, [i]: !isOpen }))
+            ? () => setExpanded((p: any) => ({ ...p, [i]: !isOpen }))
             : undefined
         }
       >
@@ -383,15 +390,15 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }) {
   );
 }
 
-function GroupedActionRow({ group, expanded, setExpanded }) {
+function GroupedActionRow({ group, expanded, setExpanded }: any) {
   const acts = group.acts;
-  const isError = acts.some((a) => !a.ok);
+  const isError = acts.some((a: any) => !a.ok);
   const isOpen = expanded[group.id] !== false;
   return (
     <React.Fragment>
       <div
         className={"aal-row aal-group " + (isError ? "aal-error" : "")}
-        onClick={() => setExpanded((p) => ({ ...p, [group.id]: !isOpen }))}
+        onClick={() => setExpanded((p: any) => ({ ...p, [group.id]: !isOpen }))}
       >
         <span className="aal-chevron" style={{ marginRight: "6px" }}>
           {isOpen ? "▼" : "▶"}
@@ -412,7 +419,7 @@ function GroupedActionRow({ group, expanded, setExpanded }) {
             flexDirection: "column",
           }}
         >
-          {acts.map((a, j) => {
+          {acts.map((a: any, j: number) => {
             // Tiap perintah punya lipatannya SENDIRI.
             //
             // Sebelum ini hanya grupnya yang bisa dilipat, dan isi setiap
@@ -442,7 +449,7 @@ function GroupedActionRow({ group, expanded, setExpanded }) {
                 <div
                   onClick={() =>
                     adaIsi &&
-                    setExpanded((p) => ({ ...p, [kunci]: !isiTerbuka }))
+                    setExpanded((p: any) => ({ ...p, [kunci]: !isiTerbuka }))
                   }
                   style={{
                     background: "#21262d",
@@ -495,17 +502,17 @@ function GroupedActionRow({ group, expanded, setExpanded }) {
   );
 }
 
-function ConsolidatedThoughtCard({ thoughts, expanded, setExpanded }) {
+function ConsolidatedThoughtCard({ thoughts, expanded, setExpanded }: any) {
   const isOpen = expanded["thought_card"] === true;
-  const allSections = [];
-  const bullets = [];
-  thoughts.forEach((thought) => {
+  const allSections: any[] = [];
+  const bullets: any[] = [];
+  thoughts.forEach((thought: any) => {
     const text = (thought.output || thought.arg || "").trim();
     if (!text) return;
     const hasHeadings = /^##\s+/m.test(text);
     if (hasHeadings) {
       const lines = text.split("\n");
-      let current = null;
+      let current: any = null;
       for (const line of lines) {
         const headingMatch = line.match(/^##\s+(.+)$/);
         if (headingMatch) {
@@ -526,7 +533,9 @@ function ConsolidatedThoughtCard({ thoughts, expanded, setExpanded }) {
     <React.Fragment>
       <div
         className="aal-row aal-thought-header"
-        onClick={() => setExpanded((p) => ({ ...p, thought_card: !isOpen }))}
+        onClick={() =>
+          setExpanded((p: any) => ({ ...p, thought_card: !isOpen }))
+        }
       >
         <span>
           Thought Process ({totalSteps} step{totalSteps > 1 ? "s" : ""})
@@ -545,12 +554,12 @@ function ConsolidatedThoughtCard({ thoughts, expanded, setExpanded }) {
       </div>
       {isOpen && (
         <div className="aal-thought-content">
-          {bullets.map((b, idx) => (
+          {bullets.map((b: any, idx: number) => (
             <div key={"b" + idx} className="aal-thought-bullet">
               • {b}
             </div>
           ))}
-          {allSections.map((s, idx) => (
+          {allSections.map((s: any, idx: number) => (
             <div key={"s" + idx} className="aal-thought-section">
               <div className="aal-thought-heading">{s.heading}</div>
               <div className="aal-thought-body">{s.body.trim()}</div>
@@ -562,12 +571,12 @@ function ConsolidatedThoughtCard({ thoughts, expanded, setExpanded }) {
   );
 }
 
-function AgentSteps({ run }) {
+function AgentSteps({ run }: any) {
   const [expanded, setExpanded] = React.useState({});
   const allActs = (run.events || []).filter(
-    (e) => e.type === "act" || e.type === "err" || e.type === "thought",
+    (e: any) => e.type === "act" || e.type === "err" || e.type === "thought",
   );
-  const thoughts = allActs.filter((e) => e.type === "thought");
+  const thoughts = allActs.filter((e: any) => e.type === "thought");
   // Baris todowrite TIDAK ditampilkan di timeline.
   //
   // todowrite mengirim DUA hal untuk satu kejadian: event t:"todos" yang
@@ -579,7 +588,8 @@ function AgentSteps({ run }) {
   // Yang disembunyikan cuma TAMPILANNYA. Tool-nya tetap jalan dan hasilnya
   // tetap sampai ke model apa adanya; yang dibuang hanya penggandaan di layar.
   const acts = allActs.filter(
-    (e) => e.type !== "thought" && (e.kind || "").toLowerCase() !== "todowrite",
+    (e: any) =>
+      e.type !== "thought" && (e.kind || "").toLowerCase() !== "todowrite",
   );
   const summary = cleanAgentText(run.summary);
 
@@ -589,7 +599,7 @@ function AgentSteps({ run }) {
   // fewer hooks than expected") dan crash lewat ErrorBoundary. Jaga tetap di atas.
   const [elapsed, setElapsed] = React.useState(0);
   React.useEffect(() => {
-    let timer;
+    let timer: any;
     if (run.busy) {
       // Record actual start time for this mount so intervals are accurate
       const start = Date.now() - elapsed * 1000;
@@ -615,9 +625,11 @@ function AgentSteps({ run }) {
       </div>
     );
 
-  const isTopOpen = expanded.top !== false;
+  // `expanded` is a per-section open/closed map keyed by section id, and the
+  // ids are computed rather than literal — so it is read through an index type.
+  const isTopOpen = (expanded as Record<string, unknown>).top !== false;
 
-  const formatTime = (sec) => {
+  const formatTime = (sec: any) => {
     if (sec === 0 && !run.busy) return "a moment";
     if (sec < 60) return sec + "s";
     const m = Math.floor(sec / 60);
@@ -629,7 +641,7 @@ function AgentSteps({ run }) {
     <div className="aal-container">
       <div
         className="aal-row"
-        onClick={() => setExpanded((p) => ({ ...p, top: !isTopOpen }))}
+        onClick={() => setExpanded((p: any) => ({ ...p, top: !isTopOpen }))}
       >
         <span className="aal-code-highlight">
           Worked for{" "}
@@ -666,9 +678,9 @@ function AgentSteps({ run }) {
           />
         )}
         {(() => {
-          const groupedActs = [];
-          let currentGroup = null;
-          acts.forEach((e, idx) => {
+          const groupedActs: any[] = [];
+          let currentGroup: any = null;
+          acts.forEach((e: any, idx: number) => {
             if (e.type === "act") {
               if (!currentGroup) {
                 currentGroup = [];
@@ -688,7 +700,7 @@ function AgentSteps({ run }) {
               });
             }
           });
-          return groupedActs.map((item, idx) => {
+          return groupedActs.map((item: any, idx: number) => {
             if (item.type === "group")
               return (
                 <GroupedActionRow
@@ -756,7 +768,7 @@ function AgentSteps({ run }) {
   );
 }
 
-function HitlModal({ request, onResolve }) {
+function HitlModal({ request, onResolve }: any) {
   const [selected, setSelected] = React.useState(0);
   if (!request) return null;
 
@@ -776,7 +788,7 @@ function HitlModal({ request, onResolve }) {
               { value: "allow_always", text: "Yes, and always allow" },
               { value: "deny", text: "No (tell the agent what to do instead)" },
             ]
-          ).map((opt, i) => (
+          ).map((opt: any, i: number) => (
             <div
               key={i}
               className={"hitl-option " + (selected === i ? "selected" : "")}
