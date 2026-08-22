@@ -54,28 +54,32 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
     const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: false });
     renderer.setPixelRatio(Math.min(window.devicePixelRatio || 1, 2));
     renderer.setSize(w, h);
-    // three r160: default output sudah sRGB; set eksplisit untuk konsistensi warna GLB.
+    // three r160: the default output is already sRGB; set explicitly so GLB
+    // colours stay consistent.
     if ("outputColorSpace" in renderer)
       renderer.outputColorSpace = THREE.SRGBColorSpace;
-    // ACES filmic tone mapping — kunci look "filmic" Blender (EEVEE/Cycles default);
-    // tanpa ini warna PBR terlihat datar & mudah over-bright.
+    // ACES filmic tone mapping — the key to Blender's "filmic" look
+    // (the EEVEE/Cycles default); without it PBR colours look flat and
+    // over-brighten easily.
     renderer.toneMapping = THREE.ACESFilmicToneMapping;
     renderer.toneMappingExposure = 1.0;
-    // Bayangan lembut (PCF) untuk contact shadow di bawah model.
+    // Soft (PCF) shadows for the contact shadow beneath the model.
     renderer.shadowMap.enabled = true;
     renderer.shadowMap.type = THREE.PCFSoftShadowMap;
     mount.appendChild(renderer.domElement);
 
-    // IBL: environment studio prosedural (RoomEnvironment) -> PMREM. Inilah sumber
-    // cahaya & refleksi utama untuk material PBR (GLB) yang memberi kesan "render
-    // studio Blender". Dibangkitkan di runtime — tanpa file HDR eksternal, tetap offline.
+    // IBL: a procedural studio environment (RoomEnvironment) -> PMREM. This is
+    // the main source of light and reflection for PBR (GLB) materials, and what
+    // gives the "Blender studio render" impression. Generated at run time — no
+    // external HDR file, so it stays offline.
     const pmrem = new THREE.PMREMGenerator(renderer);
     const envTex = pmrem.fromScene(new RoomEnvironment(), 0.04).texture;
     scene.environment = envTex;
     disposables.push(envTex, pmrem);
 
-    // Satu key light directional untuk highlight + PENCETAK bayangan (IBL tak mencetak
-    // bayangan tajam). Ambient tipis hanya mengangkat area paling gelap sedikit.
+    // One directional key light for highlights and to CAST the shadow (IBL does
+    // not cast a sharp one). The thin ambient only lifts the darkest areas a
+    // little.
     scene.add(new THREE.AmbientLight(0xffffff, 0.25));
     const key = new THREE.DirectionalLight(0xffffff, 2.2);
     key.castShadow = true;
@@ -88,9 +92,9 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
     controls.enableDamping = true;
     controls.dampingFactor = 0.08;
 
-    // Bingkai kamera ke bounding box objek + pasang contact-shadow ground + atur
-    // frustum shadow camera. Auto-frame agar model pas di layar berapa pun skala
-    // aslinya (mm vs meter, dll).
+    // Frame the camera to the object's bounding box, add the contact-shadow
+    // ground, and set the shadow camera frustum. Auto-framing keeps the model
+    // on screen whatever its original scale (mm vs metres, and so on).
     const frameObject = (obj: any) => {
       obj.traverse((o: any) => {
         if (o.isMesh) {
@@ -101,12 +105,13 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
       const box = new THREE.Box3().setFromObject(obj);
       const size = box.getSize(new THREE.Vector3());
       const center = box.getCenter(new THREE.Vector3());
-      obj.position.sub(center); // pusatkan model ke origin
+      obj.position.sub(center); // centre the model on the origin
       const maxDim = Math.max(size.x, size.y, size.z) || 1;
-      const minY = -size.y / 2; // dasar model setelah dipusatkan
+      const minY = -size.y / 2; // the model's base once centred
 
-      // Contact shadow: lantai netral halus (sedikit lebih terang dari background)
-      // yang menerima bayangan — memberi kesan model "menapak", bukan melayang.
+      // Contact shadow: a soft neutral floor (slightly lighter than the
+      // background) that receives the shadow — giving the model a "planted"
+      // look rather than a floating one.
       const gmat = new THREE.MeshStandardMaterial({
         color: 0x1c222b,
         roughness: 0.95,
@@ -121,7 +126,7 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
       ground.receiveShadow = true;
       scene.add(ground);
 
-      // Frustum shadow camera key light harus menutupi model.
+      // The key light's shadow camera frustum has to cover the model.
       const sh = maxDim * 1.3;
       key.shadow.camera.left = -sh;
       key.shadow.camera.right = sh;
@@ -180,8 +185,9 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
           url,
           (gltf: any) => {
             onReady(gltf.scene);
-            // Animasi glTF (skeletal/morph/keyframe) — inilah "animasi ala Unity":
-            // GLB bisa membawa beberapa klip, diputar native lewat AnimationMixer.
+            // glTF animation (skeletal/morph/keyframe) — the Unity-style
+            // animation: a GLB can carry several clips, played natively
+            // through AnimationMixer.
             if (!disposed && gltf.animations && gltf.animations.length) {
               const mixer = new THREE.AnimationMixer(gltf.scene);
               const actions = gltf.animations.map((clip: any) =>
@@ -241,7 +247,8 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
           d.dispose && d.dispose();
         } catch (_) {}
       });
-      // Buang geometry/material sisa di scene (mis. GLB multi-mesh) lalu konteks WebGL.
+      // Dispose any geometry/material left in the scene (a multi-mesh GLB, for
+      // instance), then the WebGL context.
       scene.traverse((o: any) => {
         if (o.geometry) {
           try {
@@ -269,7 +276,7 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
     };
   }, [url, name]);
 
-  // Jeda/putar dengan membekukan timeScale mixer (0 = beku, 1 = normal).
+  // Pause/play by freezing the mixer's timeScale (0 = frozen, 1 = normal).
   const togglePlay = () => {
     const m = mixerRef.current;
     if (!m) return;

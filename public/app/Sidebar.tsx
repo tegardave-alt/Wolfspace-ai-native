@@ -2233,7 +2233,7 @@ function Sidebar({
         </div>
       )}
       {/* ── Menu tata letak, di KAKI sidebar ──
-          `margin-top: auto` mendorongnya ke dasar berapa pun isi di atasnya —
+          `margin-top: auto` pushes it to the bottom whatever sits above it,
           so its place stays the same whether the Conversation/View/Tools
           sections are open or closed. It stays visible when the sidebar is
           collapsed: collapsing hides the label, not the button. */}

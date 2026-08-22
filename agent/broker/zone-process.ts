@@ -12,18 +12,18 @@
 "use strict";
 
 /**
- * Status pengurungan jaringan zona.
+ * The zone's network containment status.
  *
- * UNION, dan di sini bentuknya menegakkan sesuatu yang nyata: `alasan` HANYA ada
- * pada cabang yang TIDAK terkurung. Artinya tak mungkin ada "terkurung, tapi ini
- * alasan kenapa tidak" — dan tak mungkin pula "tidak terkurung" tanpa
- * menyebutkan sebabnya. Padahal justru sebab itulah satu-satunya hal yang
- * membedakan pengaman yang memang tak tersedia dari pengaman yang mati diam-diam.
+ * A UNION, and its shape here enforces something real: `alasan` exists ONLY
+ * on the branch that is NOT contained. So there can be no "contained, but
+ * here is why it is not" — and no "not contained" without saying why. That
+ * reason is the only thing separating a safeguard that was unavailable from
+ * one that died quietly.
  *
- * Efek keduanya ada di laporSekali(): penjaga `if (... || st.jaringanTerkurung)
- * return;` sekarang DIPERIKSA mesin. Kalau seseorang menghapus penjaga itu,
- * pembacaan `st.alasan` di bawahnya langsung jadi error tipe — bukan `undefined`
- * yang diam-diam tercetak ke peringatan keamanan.
+ * The second effect is in laporSekali(): the guard
+ * `if (... || st.jaringanTerkurung) return;` is now MACHINE-CHECKED. Delete
+ * that guard and the `st.alasan` read below becomes a type error, rather
+ * than an `undefined` printed silently into a security warning.
  *
  * The union is declared below as a real TypeScript type.
  */
@@ -50,44 +50,45 @@ const { getPlatformAdapter } = require("../platform/index.cjs");
 
 const WORKER = path.join(__dirname, "zone-worker.cjs");
 
-// ── Nama flag permission berbeda menurut versi Node ──
+// ── The permission flag is named differently across Node versions ──
 //
-// KENAPA ADA. Model permission Node stabil di v23 sebagai `--permission`; di
-// v20-v22 namanya `--experimental-permission`. Kode ini dulu memakai
-// `--permission` tanpa syarat, jadi di Node 20 SETIAP zona mati seketika:
+// WHY THIS EXISTS. Node's permission model stabilised in v23 as
+// `--permission`; in v20-v22 it was `--experimental-permission`. This code
+// used `--permission` unconditionally, so on Node 20 EVERY zone died
+// instantly:
 //     $ node --permission -e 0
 //     node: bad option: --permission        (exit 9)
-// Diukur pada Node 20.15.1 asli. Akibatnya berlapis dan tak terlihat dari mesin
-// pengembangan yang memakai Node 24:
-//   - CI dipatok Node 20, jadi 7 dari 15 suite merah pada tiap push;
-//   - Dockerfile memakai node:20-bookworm-slim, jadi deployment hosted punya
-//     capability_exec yang mati total;
-//   - package.json menjanjikan engines ">=18", janji yang tak pernah benar.
-// Yang muncul ke pemakai hanya "zone process exited with code 9" — tanpa
-// petunjuk bahwa penyebabnya nama flag.
+// Measured on a real Node 20.15.1. The consequences layered up and were
+// invisible from a dev machine running Node 24:
+//   - CI is pinned to Node 20, so 7 of 15 suites went red on every push;
+//   - the Dockerfile uses node:20-bookworm-slim, so hosted deployments had a
+//     completely dead capability_exec;
+//   - package.json promised engines ">=18", a promise that was never true.
+// All the user ever saw was "zone process exited with code 9" — with no hint
+// that a flag name was the cause.
 //
-// GAGAL TERTUTUP di bawah v20. Menjalankan zona tanpa flag apa pun akan tetap
-// "berhasil", tapi tanpa satu pun pembatasan berkas — persis jenis penurunan
-// jaminan diam-diam yang sudah berkali-kali jadi masalah di berkas ini. Lebih
-// baik menolak dengan alasan yang bisa dibaca.
+// FAILS CLOSED below v20. Running a zone with no flag at all would still
+// "succeed", but with no file restriction whatsoever — exactly the kind of
+// silent guarantee downgrade that has caused trouble in this file before.
+// Better to refuse with a readable reason.
 function flagPermission(major: number, worker?: string): string[] | null {
   if (major >= 23) return ["--permission"];
   if (major >= 20) {
     return [
       "--experimental-permission",
-      // --no-warnings menemani flag eksperimental: tanpa itu tiap zona mencetak
-      // ExperimentalWarning ke stderr, dan stderr zona ikut dilaporkan ke
-      // pemanggil (_withIo di agent/tools/index.cjs), sehingga setiap hasil
-      // capability_exec jadi kotor.
+      // --no-warnings accompanies the experimental flag: without it every
+      // zone prints an ExperimentalWarning to stderr, and zone stderr is
+      // reported back to the caller (_withIo in agent/tools/index.cjs), so
+      // every capability_exec result would come back dirty.
       "--no-warnings",
-      // v20 menuntut izin baca EKSPLISIT untuk skrip masuknya sendiri; v23+
-      // mengizinkannya implisit. Tanpa baris ini zona mati sebelum sempat
-      // berjalan:
+      // v20 demands an EXPLICIT read permission for its own entry script;
+      // v23+ allows it implicitly. Without this line the zone dies before it
+      // can run at all:
       //     Error: Access to this API has been restricted
       //     at internalModuleStat (node:internal/modules/cjs/loader)
-      // Diukur langsung di Node 20.15.1. Grant-nya sesempit mungkin — satu
-      // berkas, yaitu sumber worker itu sendiri, yang bukan rahasia. Semua
-      // akses berkas lain tetap ditolak.
+      // Measured directly on Node 20.15.1. The grant is as narrow as it can
+      // be — a single file, the worker's own source, which is not a secret.
+      // Every other file access stays denied.
       "--allow-fs-read=" + worker,
     ];
   }
@@ -96,67 +97,73 @@ function flagPermission(major: number, worker?: string): string[] | null {
 
 const _MAJOR_LOKAL = Number(String(process.versions.node).split(".")[0]);
 
-// ── Pengurungan jaringan (opsional, hanya Linux) ──
+// ── Network containment (optional, Linux only) ──
 //
-// `--permission` menutup berkas tapi TIDAK menyentuh jaringan sama sekali —
-// model permission Node memang tak punya dimensi itu, jadi tak ada flag yang
-// bisa ditambahkan. Karena itu kode zona bisa memanggil https.get() langsung dan
-// berhasil; di README itu satu-satunya baris tabel serangan yang lolos.
+// `--permission` closes off files but does NOT touch the network at all —
+// Node's permission model simply has no such dimension, so there is no flag
+// to add. Which means zone code can call https.get() directly and succeed;
+// in the README that is the one row of the attack table that gets through.
 //
-// Menambalnya DARI DALAM zona tidak bisa dijadikan batas. Diuji dengan mengganti
-// http/https/net/tls/dgram di require.cache lalu diserang: `require('node:https')`
-// tembus (kunci cache berbeda) dan `process.binding('tcp_wrap')` tembus (berada
-// di BAWAH lapisan modul) — 2 dari 5 percobaan, tanpa usaha berarti. Itu
-// kesalahan yang sama persis dengan versi vm.createContext dulu: menyembunyikan
-// referensi, bukan mencabut kemampuan.
+// Patching it FROM INSIDE the zone cannot be a boundary. Tested by replacing
+// http/https/net/tls/dgram in require.cache and then attacking it:
+// `require('node:https')` got through (different cache key) and
+// `process.binding('tcp_wrap')` got through (it sits BELOW the module layer)
+// — 2 of 5 attempts, with no real effort. That is precisely the mistake the
+// old vm.createContext version made: hiding references rather than removing
+// the capability.
 //
-// Batas yang benar ada di kernel. `unshare -n` memberi proses network namespace
-// kosong (hanya loopback, tanpa rute). Yang menentukan bagi arsitektur ini:
-// kanal IPC SELAMAT, karena socketpair-nya sudah terbuka sebelum proses masuk
-// namespace. Jadi request() tetap bekerja seperti sebelumnya — broker di host
-// yang punya jaringan, zona tidak.
+// The real boundary is in the kernel. `unshare -n` gives a process an empty
+// network namespace (loopback only, no routes). What matters for this
+// architecture: the IPC channel SURVIVES, because its socketpair was already
+// open before the process entered the namespace. So request() keeps working
+// exactly as before — the broker on the host has the network, the zone does
+// not.
 //
-// Terukur di WSL2 (kernel 6.18, node v24.16.0):
-//     tanpa netns   -> https.get berhasil, status 403 (sampai ke server)
-//     dengan netns  -> EAI_AGAIN, dan IPC tetap HIDUP
-//     ongkos spawn  -> 78,3 ms vs 95,0 ms median; rentang tumpang tindih
-// Tak ada overhead terukur, tanpa daemon, tanpa pool kontainer.
+// Measured on WSL2 (kernel 6.18, node v24.16.0):
+//     without netns -> https.get succeeded, status 403 (it reached the server)
+//     with netns    -> EAI_AGAIN, and IPC stayed ALIVE
+//     spawn cost    -> 78.3 ms vs 95.0 ms median; the ranges overlap
+// No measurable overhead, no daemon, no container pool.
 //
-// Windows tak punya padanannya: aturan firewall bersifat per-executable dan
-// proses zona adalah node.exe yang SAMA dengan host, jadi tak bisa dibedakan.
-// Di sana nilainya null dan perilakunya tetap seperti semula (fork biasa).
-// ── Zona di WSL, broker tetap di Windows ──
+// Windows has no equivalent: firewall rules are per-executable and the zone
+// process is the SAME node.exe as the host, so they cannot be told apart.
+// There the value is null and behaviour stays as it was (a plain fork).
+// ── The zone in WSL, the broker still on Windows ──
 //
-// Pengurungan jaringan hanya ada di kernel Linux. Sebelum ini, memakainya di
-// Windows menuntut SELURUH backend pindah ke WSL — dan itu terlalu banyak untuk
-// sesuatu yang cuma dibutuhkan zona. Jalur ini membundel fungsinya saja: broker
-// tetap di proses server Windows, hanya worker zona yang dijalankan di WSL.
+// Network containment only exists in the Linux kernel. Until now, using it on
+// Windows would have meant moving the ENTIRE backend into WSL — far too much
+// for something only the zone needs. This path bundles just the part that
+// needs it: the broker stays in the Windows server process, and only the zone
+// worker runs in WSL.
 //
-// Bisa karena dua hal yang diuji lebih dulu:
-//   1. zone-worker.cjs hanya me-require modul BUILTIN (vm, module), jadi bisa
-//      dijalankan langsung dari /mnt/c tanpa perlu repo disinkronkan ke WSL.
-//   2. pipa stdio diteruskan wsl.exe DAN selamat di dalam `unshare -n` — karena
-//      pipa bukan jaringan. Jembatan TCP mustahil di sini: zona tanpa rute
-//      jaringan tak bisa menelepon balik brokernya. Diuji: ping/pong lewat,
-//      sementara https di dalam zona tetap EAI_AGAIN.
-// Menyediakan zone-worker.cjs DI DALAM distro, tanpa bergantung pada /mnt.
+// It works because of two things that were tested first:
+//   1. zone-worker.cjs only requires BUILTIN modules (vm, module), so it can
+//      run straight from /mnt/c without the repo being synced into WSL.
+//   2. stdio pipes are forwarded by wsl.exe AND survive inside `unshare -n`
+//      — because a pipe is not the network. A TCP bridge would be impossible
+//      here: a zone with no network routes cannot call its broker back.
+//      Tested: ping/pong got through while https inside the zone still
+//      returned EAI_AGAIN.
+// Provide zone-worker.cjs INSIDE the distro, without depending on /mnt.
 //
-// KENAPA. Semula worker dijalankan langsung dari /mnt/c — enak, karena ia hanya
-// me-require modul builtin sehingga repo tak perlu disinkronkan. Tapi /mnt itu
-// milik konfigurasi distro, bukan milik kita: satu baris `[automount] enabled =
-// false` di /etc/wsl.conf membuatnya kosong, dan seluruh jalur WSL mati diam-
-// diam ke fork tanpa pengurungan. Itu bukan hipotesis — terjadi di mesin ini
-// begitu distro dikeraskan, dan justru pengerasan itu yang BENAR: distro yang
-// tak bisa melihat berkas Windows adalah postur yang lebih kuat, bukan lebih
-// lemah. Jadi yang harus menyesuaikan adalah kita.
+// WHY. Originally the worker ran straight from /mnt/c — convenient, since it
+// only requires builtins and so needs no repo sync. But /mnt belongs to the
+// distro's configuration, not to us: a single `[automount] enabled = false`
+// line in /etc/wsl.conf empties it, and the whole WSL path degrades silently
+// to an uncontained fork. That is not hypothetical — it happened on this
+// machine as soon as the distro was hardened, and that hardening was the
+// RIGHT call: a distro that cannot see Windows files is the stronger posture,
+// not the weaker one. So we are the ones who have to adapt.
 //
-// CARANYA. Isi worker dialirkan lewat stdin wsl.exe ke dalam distro. Arah ini
-// tetap bekerja meski `[interop] enabled = false`, karena yang dimatikan interop
-// adalah memanggil biner Windows DARI DALAM WSL — bukan sebaliknya.
+// HOW. The worker's contents are streamed through wsl.exe's stdin into the
+// distro. This direction keeps working even with `[interop] enabled = false`,
+// because what interop disables is calling Windows binaries FROM INSIDE WSL —
+// not the reverse.
 //
-// Nama berkasnya memuat sha1 isinya, jadi tak perlu ada pemeriksaan basi sama
-// sekali: isi berbeda = jalur berbeda. Menyalin ulang hanya terjadi saat worker
-// benar-benar berubah, dan hasilnya bertahan lintas proses.
+// The filename carries a sha1 of the contents, so no staleness check is
+// needed at all: different contents means a different path. Re-copying only
+// happens when the worker actually changes, and the result survives across
+// processes.
 function siapkanWorker(distro: string) {
   const jalankan = (perintah: string, input?: string | Buffer) =>
     execFileSync("wsl.exe", ["-d", distro, "--", "sh", "-c", perintah], {
@@ -165,15 +172,15 @@ function siapkanWorker(distro: string) {
       timeout: 20000,
     });
 
-  // Jalur /mnt tetap dicoba lebih dulu bila memang terpasang: nol penyalinan,
-  // dan selalu mengikuti berkas di disk tanpa perantara.
+  // The /mnt path is still tried first when it is mounted: zero copying, and
+  // it always follows the file on disk with nothing in between.
   const viaMnt = winKeWsl(WORKER);
   if (viaMnt) {
     try {
       jalankan(`test -f ${viaMnt}`);
       return viaMnt;
     } catch (_) {
-      /* /mnt tak terpasang — lanjut ke penyalinan */
+      /* /mnt not mounted — fall through to copying */
     }
   }
 
@@ -186,15 +193,15 @@ function siapkanWorker(distro: string) {
   }
   const sha = require("crypto").createHash("sha1").update(isi).digest("hex");
 
-  // /opt bila bisa ditulis, kalau tidak /tmp (hilang saat distro mati, dan itu
-  // tak apa — penyalinannya cuma beberapa puluh KB dan hanya sekali per proses).
+  // /opt when writable, otherwise /tmp (lost when the distro stops, which is
+  // fine — the copy is a few tens of KB and happens once per process).
   for (const dir of ["/opt/wolfspace", "/tmp/wolfspace"]) {
     const tujuan = `${dir}/zone-worker-${sha}.cjs`;
     try {
       jalankan(`test -f ${tujuan}`);
-      return tujuan; // sudah ada dari proses sebelumnya
+      return tujuan; // already there from an earlier process
     } catch (_) {
-      /* belum ada — salin */
+      /* not there yet — copy it */
     }
     try {
       jalankan(
@@ -203,7 +210,7 @@ function siapkanWorker(distro: string) {
       );
       return tujuan;
     } catch (_) {
-      /* tak bisa menulis di sini — coba lokasi berikutnya */
+      /* cannot write here — try the next location */
     }
   }
   _wslAlasan = `worker tak bisa disalin ke dalam distro "${distro}" — /opt dan /tmp keduanya tak bisa ditulis`;
@@ -235,11 +242,11 @@ function wslZona() {
   const distro = process.env.WOLFSPACE_WSL_DISTRO || "WolfspaceTest";
   const nodeWsl = process.env.WOLFSPACE_WSL_NODE || "/opt/node24/bin/node";
   const workerWsl = siapkanWorker(distro);
-  if (!workerWsl) return _wslCache; // alasannya sudah diisi siapkanWorker
-  // Empat syarat, diuji NYATA dan dibedakan SATU PER SATU lewat kode keluar.
-  // Rangkaian `a && b && c` yang lama cuma bisa bilang "gagal" — padahal "distro
-  // tak ada" dan "Node di dalamnya terlalu tua" menuntut tindakan yang sama
-  // sekali berbeda. Tetap satu panggilan wsl.exe, jadi tak menambah ongkos.
+  if (!workerWsl) return _wslCache; // siapkanWorker already set the reason
+  // Four conditions, REALLY tested and distinguished ONE BY ONE through exit
+  // codes. The old `a && b && c` chain could only say "failed" — but "distro
+  // missing" and "the Node inside it is too old" call for completely
+  // different actions. Still a single wsl.exe call, so it costs no more.
   const SEBAB = {
     11: () =>
       `Node tak ada / tak bisa dieksekusi di ${nodeWsl} (di dalam distro "${distro}")`,
@@ -250,16 +257,16 @@ function wslZona() {
     14: () =>
       `unshare tak bisa membuat network namespace di distro "${distro}"`,
   };
-  // Tak ada kode 15: pemeriksaan versi pindah ke sisi JS setelah probe, karena
-  // shell tak lagi menghitungnya sendiri. Entri mati di tabel ini akan jadi
-  // keterangan yang tak pernah muncul — persis jenis dokumentasi yang menyesatkan
-  // pembacanya.
+  // There is no code 15: the version check moved to the JS side after the
+  // probe, because the shell no longer computes it. A dead entry in this table
+  // would be an explanation that never appears — exactly the kind of
+  // documentation that misleads its reader.
   try {
-    // Kode keluar 0 SAJA tak cukup untuk tahap Node: sebuah biner yang
-    // mengabaikan flag tak dikenal (mis. /bin/echo) juga keluar 0, dan probe
-    // akan menyatakan pengurungan aktif padahal tidak. Terbukti saat menguji ini.
-    // Karena itu Node diminta MENCETAK versinya — hanya Node yang bisa — dan
-    // angkanya sekalian menentukan flag mana yang dipakai nanti.
+    // Exit code 0 ALONE is not enough for the Node stage: a binary that
+    // ignores unknown flags (/bin/echo, say) also exits 0, and the probe would
+    // then declare containment active when it is not. Proven while testing
+    // this. So Node is asked to PRINT its version — only Node can — and that
+    // number also decides which flag is used later.
     const keluar = execFileSync(
       "wsl.exe",
       [
@@ -268,20 +275,20 @@ function wslZona() {
         "--",
         "sh",
         "-c",
-        // Versi diambil DULU tanpa flag apa pun; flag yang sesuai baru diuji di
-        // panggilan kedua. Urutan sebaliknya mustahil — memakai --permission
-        // untuk mendeteksi versi akan gagal di Node 20 justru pada distro yang
-        // sebenarnya didukung.
+        // The version is read FIRST with no flags at all; the matching flag is
+        // only tried on the second call. The reverse order is impossible —
+        // using --permission to detect the version would fail on Node 20,
+        // precisely on the distros that are actually supported.
         //
-        // TANPA `$(...)`: substitusi perintah TIDAK selamat menyeberang wsl.exe
-        // (terukur: `sh: syntax error: unexpected "("`). Karena itu versinya
-        // dicetak langsung oleh Node dan diurai di sisi JS.
+        // NO `$(...)`: command substitution does not survive the trip through
+        // wsl.exe (measured: `sh: syntax error: unexpected "("`). So the
+        // version is printed directly by Node and parsed on the JS side.
         `test -x ${nodeWsl} || exit 11; test -f ${workerWsl} || exit 12; ` +
           `unshare -n true || exit 14; ` +
-          // bwrap DIPERIKSA, bukan diasumsikan — persis pola _hasBwrap() di
-          // LinuxAdapter. Ketiadaannya bukan kegagalan: zona tetap jalan dengan
-          // unshare -n saja, hanya tanpa pengurungan berkas. Penandanya dicetak
-          // supaya sisi JS tahu jaminan mana yang benar-benar didapat.
+          // bwrap is CHECKED, not assumed — the same pattern as _hasBwrap() in
+          // LinuxAdapter. Its absence is not a failure: the zone still runs
+          // with unshare -n alone, just without file containment. The marker
+          // is printed so the JS side knows which guarantee it actually got.
           `if bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp ` +
           `--tmpfs /mnt --unshare-net --die-with-parent true 2>/dev/null; ` +
           `then printf BWRAPYA; else printf BWRAPTIDAK; fi; ` +
@@ -301,9 +308,9 @@ function wslZona() {
         `(v20-v22: --experimental-permission, v23+: --permission)`;
       return _wslCache;
     }
-    // Flag TIDAK diasumsikan bekerja hanya karena angka versinya cocok. Ini
-    // pemeriksaan yang dulu menangkap /bin/echo lolos sebagai "Node"; menghapusnya
-    // berarti kembali percaya pada tebakan.
+    // The flag is NOT assumed to work just because the version number matches.
+    // This is the check that once caught /bin/echo passing as "Node"; removing
+    // it means going back to trusting a guess.
     try {
       execFileSync(
         "wsl.exe",
@@ -322,22 +329,23 @@ function wslZona() {
       bwrap: /BWRAPYA/.test(keluar),
     };
   } catch (e) {
-    // WSL tak siap — jatuh ke fork biasa. Alasannya DISIMPAN, tidak dibuang.
+    // WSL is not ready — fall back to a plain fork. The reason is KEPT, not
+    // discarded.
     _wslCache = null;
     if (e.code === "ETIMEDOUT" || /timed? ?out/i.test(String(e.message))) {
       _wslAlasan = `distro "${distro}" tak menjawab dalam 20 detik`;
     } else if (SEBAB[e.status]) {
       _wslAlasan = SEBAB[e.status]();
     } else {
-      // Kode keluar di luar 11-14 berarti wsl.exe sendiri yang gagal — distro
-      // tak terdaftar, WSL tak terpasang. Pesannya ada di stderr wsl.exe, yang
-      // UTF-16; tanpa penyaringan NUL hasilnya terbaca sebagai "D.i.s.t.r.o".
+      // An exit code outside 11-14 means wsl.exe itself failed — distro not
+      // registered, WSL not installed. The message is in wsl.exe's stderr,
+      // which is UTF-16; without stripping NULs it reads as "D.i.s.t.r.o".
       const se = String(e.stderr || "")
         .replace(/ /g, "")
         .trim()
         .split("\n")[0];
-      // status -1 datang sebagai 4294967295 (unsigned). Angka itu tak berarti
-      // apa-apa bagi yang membacanya, jadi dinormalkan.
+      // status -1 arrives as 4294967295 (unsigned). That number means nothing
+      // to whoever reads it, so it is normalised.
       const kode = e.status === 4294967295 ? -1 : e.status;
       _wslAlasan =
         `wsl.exe gagal menjalankan distro "${distro}" (kode ${kode}) — ` +
@@ -347,32 +355,32 @@ function wslZona() {
   return _wslCache;
 }
 
-// Status pengurungan untuk SATU eksekusi zona, dalam bentuk yang bisa
-// dilampirkan ke hasil.
+// Containment status for ONE zone execution, in a form that can be attached
+// to the result.
 //
-// KENAPA ADA. Sebelum ini, gagalnya WSL berarti zona diam-diam berjalan tanpa
-// pengurungan jaringan: tak ada log, tak ada penanda di hasil, dan `--permission`
-// yang masih menahan berkas membuat semuanya TERLIHAT normal. Itu pola yang sama
-// dengan gerbang Docker lama yang sudah dibuang — pengaman yang bisa mati
-// sendiri tanpa memberi tahu. Yang berbahaya bukan tak adanya pengurungan
-// (kadang memang tak tersedia), tapi tak adanya cara membedakan keduanya.
-// Pembungkus yang menjalankan worker DI DALAM distro.
+// WHY THIS EXISTS. Before it, a WSL failure meant the zone quietly ran with no
+// network containment: no log, no marker in the result, and `--permission`
+// still holding files back made everything LOOK normal. That is the same
+// pattern as the old Docker gate that was removed — a safeguard that can die
+// on its own without saying so. The danger is not the missing containment
+// (sometimes it genuinely is unavailable) but having no way to tell which.
+// The wrapper that runs the worker INSIDE the distro.
 //
-// `unshare -n` hanya mengurung JARINGAN. Berkas dijaga --permission milik Node,
-// dan itu berlaku pada proses Node saja — apa pun yang di-spawn dari dalam zona
-// kembali punya akses penuh ke rootfs distro.
+// `unshare -n` contains the NETWORK only. Files are held by Node's
+// --permission, and that applies to the Node process alone — anything spawned
+// from inside the zone gets full access to the distro rootfs again.
 //
-// bwrap menutup celah itu di kernel, dan ongkosnya NOL: terukur -3 ms dibanding
-// menjalankan node telanjang, yaitu di dalam derau. Yang mahal di jalur ini
-// adalah meluncurkan wsl.exe (183 ms dari total 216 ms), bukan pengurungannya.
+// bwrap closes that gap in the kernel, and it costs NOTHING: measured at -3 ms
+// against running node bare, i.e. inside the noise. What is expensive on this
+// path is launching wsl.exe (183 ms of 216 ms total), not the containment.
 //
-// --tmpfs /mnt adalah bagian terpenting dan bukan sekadar kerapian. Distro WSL
-// biasa me-mount SELURUH drive Windows di /mnt/c. Tanpa masker itu, pengurungan
-// zona bergantung pada bagaimana distro dikonfigurasi — sesuatu yang tak bisa
-// dijamin kode ini. Dengan masker, jaminannya milik kode.
+// --tmpfs /mnt is the most important part, not mere tidiness. An ordinary WSL
+// distro mounts the ENTIRE Windows drive at /mnt/c. Without that mask, the
+// zone's containment depends on how the distro was configured — something
+// this code cannot guarantee. With the mask, the guarantee belongs to the code.
 /**
  * @param {{distro:string, bwrap?:boolean}} wsl  zona WSL hasil wslZona()
- * @returns {string[]} argv pembungkus, siap disisipkan sebelum path node
+ * @returns {string[]} wrapper argv, ready to insert before the node path
  */
 function pembungkusWsl(wsl: ZonaWsl) {
   if (!wsl.bwrap) return ["unshare", "-n"];
@@ -380,24 +388,24 @@ function pembungkusWsl(wsl: ZonaWsl) {
     "bwrap",
     "--ro-bind",
     "/",
-    "/", // rootfs baca-saja: node + worker + pustaka tetap terbaca
+    "/", // read-only rootfs: node, worker and libraries stay readable
     "--dev",
     "/dev",
     "--proc",
     "/proc",
     "--tmpfs",
-    "/tmp", // satu-satunya tempat tulis, dan ia hilang saat zona mati
+    "/tmp", // the only writable place, and it vanishes when the zone dies
     "--tmpfs",
     "/mnt", // tutup drive Windows apa pun konfigurasi distronya
-    "--unshare-net", // menggantikan unshare -n
-    "--die-with-parent", // tak ada yatim bila sisi Windows mati mendadak
+    "--unshare-net", // replaces unshare -n
+    "--die-with-parent", // no orphans if the Windows side dies suddenly
   ];
 }
 
 /**
- * @param {unknown} ns  hasil netnsWrapper() — truthy bila namespace Linux dipakai
- * @param {{distro:string, bwrap?:boolean}|null|undefined} wsl  zona WSL bila dipakai
- * @param {boolean} [matiSengaja] pemanggil mematikannya lewat opts.netns=false
+ * @param {unknown} ns  netnsWrapper() result — truthy when a Linux namespace is used
+ * @param {{distro:string, bwrap?:boolean}|null|undefined} wsl  the WSL zone, when used
+ * @param {boolean} [matiSengaja] caller disabled it via opts.netns=false
  * @returns {StatusKurungan}
  */
 function statusKurungan(
@@ -410,10 +418,10 @@ function statusKurungan(
     return {
       transport: "wsl-netns",
       jaringanTerkurung: true,
-      // Jaminan BERKAS dilaporkan terpisah dari jaminan jaringan, karena
-      // keduanya memang bisa berbeda: tanpa bwrap zona tetap kehilangan
-      // jaringan tapi rootfs distro terbuka penuh untuk proses yang di-spawn
-      // dari dalamnya. Satu bendera "terkurung" akan menyembunyikan selisih itu.
+      // The FILE guarantee is reported separately from the network guarantee,
+      // because the two really can differ: without bwrap the zone still loses
+      // the network, but the distro rootfs is wide open to anything spawned
+      // from inside it. A single "contained" flag would hide that gap.
       berkasTerkurung: !!wsl.bwrap,
       pembungkus: wsl.bwrap ? "bwrap" : "unshare",
       distro: wsl.distro,
@@ -428,12 +436,13 @@ function statusKurungan(
   return { transport: "fork", jaringanTerkurung: false, alasan };
 }
 
-// Peringatan SEKALI JALAN, langsung ke stderr.
+// A ONE-SHOT warning, straight to stderr.
 //
-// Sengaja TIDAK lewat agent/debug.cjs: logger itu digerbang VERBOSE/DEBUG_ON,
-// yang keduanya mati secara default — peringatan turunnya jaminan keamanan
-// justru paling perlu terlihat pada orang yang tak menyalakan apa pun. Sekali
-// jalan, bukan per eksekusi, supaya tak membanjiri keluaran agent.
+// Deliberately NOT through agent/debug.cjs: that logger is gated on
+// VERBOSE/DEBUG_ON, both off by default — and a warning that a security
+// guarantee has been downgraded is exactly what someone who turned nothing on
+// most needs to see. Once per process rather than per execution, so it does
+// not flood the agent's output.
 let _sudahLapor = false;
 /** @param {StatusKurungan} st */
 function laporSekali(st: StatusKurungan) {
@@ -480,27 +489,26 @@ function netnsWrapper() {
   return _netnsCache;
 }
 
-// Berapa banyak keluaran zona yang DISIMPAN. Ini BUKAN batas berapa yang
-// dibaca: pipa harus terus dikuras apa pun isinya (lihat makeSink).
+// How much zone output is KEPT. This is NOT a limit on how much is read: the
+// pipe must be drained continuously whatever it holds (see makeSink).
 const MAX_CAPTURE = 256 * 1024;
 
-// Penampung yang SELALU mengonsumsi, tapi hanya menyimpan sampai `limit`.
+// A sink that ALWAYS consumes but only keeps up to `limit`.
 //
-// Ini inti perbaikannya. Sebelumnya stdout dibuka sebagai 'pipe' tapi tak
-// pernah dibaca sama sekali — hanya stderr yang punya listener. Begitu buffer
-// pipa OS penuh (~64 KB), proses zona MEMBLOK selamanya di console.log lalu
-// mati kena timeout. Terukur pada kode yang sama persis, hanya beda volume:
-//     tanpa cetak        -> 42 dalam 167 ms
-//     cetak ~2 KB        -> 42 dalam 185 ms
-//     cetak ~200 KB      -> TIMEOUT 8 detik
-// Kegagalannya senyap: pesannya cuma "zone timeout", tanpa petunjuk bahwa
-// penyebabnya adalah mencetak terlalu banyak — orang akan menyalahkan kodenya
-// sendiri, bukan sandbox-nya. Untuk sandbox yang tugasnya menjalankan kode
-// asing, "program yang banyak mencetak akan menggantung" adalah cacat yang
-// pasti ketemu di pemakaian pertama.
+// This is the heart of the fix. stdout used to be opened as 'pipe' and then
+// never read at all — only stderr had a listener. Once the OS pipe buffer
+// filled (~64 KB), the zone process BLOCKED forever in console.log and then
+// died on timeout. Measured on identical code, varying only the volume:
+//     no printing        -> 42 in 167 ms
+//     printing ~2 KB     -> 42 in 185 ms
+//     printing ~200 KB   -> TIMEOUT after 8 seconds
+// The failure was silent: the message was just "zone timeout", with no hint
+// that printing too much caused it — people would blame their own code rather
+// than the sandbox. For a sandbox whose whole job is running foreign code,
+// "a program that prints a lot will hang" is a defect you hit on first use.
 //
-// Membatasi yang disimpan TIDAK boleh berarti berhenti membaca — kalau
-// listenernya dilepas setelah penuh, deadlock-nya kembali persis seperti semula.
+// Limiting what is KEPT must never mean stopping READING — drop the listener
+// once it is full and the deadlock comes straight back.
 function makeSink(limit: number) {
   let kept = "";
   let total = 0;
@@ -536,27 +544,28 @@ function runInCapabilityZone(
   const limit = opts.maxCapture || MAX_CAPTURE;
 
   return new Promise((resolve, reject) => {
-    // Dengan netns dipakai spawn, bukan fork: fork tak bisa disisipi pembungkus
-    // perintah. `stdio: [..., 'ipc']` tetap memberi kanal child.send/on('message')
-    // yang sama, karena Node anak membacanya dari NODE_CHANNEL_FD.
-    // Tiga transport, dipilih otomatis. Urutannya bukan preferensi estetika:
-    // yang di atas memberi jaminan lebih kuat.
-    //   1. Linux    -> unshare -n + fork/spawn, IPC fd. Paling murah.
-    //   2. Windows  -> wsl.exe + unshare -n, protokol stdio. Menambah ongkos
-    //                  startup wsl.exe, tapi ini SATU-SATUNYA cara mendapat
-    //                  pengurungan jaringan di Windows.
-    //   3. lainnya  -> fork biasa. Berkas tetap dijaga --permission; jaringan
-    //                  tidak. Perilaku lama, apa adanya.
+    // With netns, spawn is used rather than fork: fork cannot have a wrapper
+    // command inserted in front of it. `stdio: [..., 'ipc']` still provides the
+    // same child.send/on('message') channel, because the child Node reads it
+    // from NODE_CHANNEL_FD.
+    // Three transports, chosen automatically. The order is not an aesthetic
+    // preference: the ones above give stronger guarantees.
+    //   1. Linux    -> unshare -n + fork/spawn, IPC fd. The cheapest.
+    //   2. Windows  -> wsl.exe + unshare -n, stdio protocol. Adds wsl.exe
+    //                  startup cost, but it is the ONLY way to get network
+    //                  containment on Windows.
+    //   3. other    -> a plain fork. Files are still held by --permission; the
+    //                  network is not. The old behaviour, as it was.
     const ns = opts.netns === false ? null : netnsWrapper();
     const wsl = ns || opts.netns === false ? null : wslZona();
     const kurungan = statusKurungan(ns, wsl, opts.netns === false);
     laporSekali(kurungan);
-    // Token framing: acak per eksekusi supaya kode zona tak bisa memalsukan baris
-    // protokol dengan mencetak prefiks yang ditebak.
+    // Frame token: random per execution so zone code cannot forge a protocol
+    // line by printing a guessable prefix.
     const token = wsl
       ? "WSZ" + require("crypto").randomBytes(8).toString("hex") + ""
       : "";
-    // Node terlalu tua: tolak, jangan jalankan tanpa pembatasan berkas.
+    // Node too old: refuse, rather than running with no file restriction.
     const flagLokal = flagPermission(_MAJOR_LOKAL, WORKER) || [];
     if (!wsl && !flagLokal) {
       return reject(
@@ -572,33 +581,34 @@ function runInCapabilityZone(
       );
     }
 
-    // INVARIAN yang menjaga `...flagLokal` di bawah tetap aman, dan yang sampai
-    // sekarang tak tertulis di mana pun: `ns` hanya pernah terisi di Linux
-    // (netnsWrapper), `wsl` hanya di win32 (wslZona). Keduanya TAK PERNAH
-    // bersamaan. Karena itu cabang `if (ns)` hanya tercapai di Linux, di mana
-    // `wsl` pasti null, sehingga penjaga `!wsl && !flagLokal` di atas sudah
-    // memastikan flagLokal bukan null.
+    // The INVARIANT that keeps `...flagLokal` below safe, and which until now
+    // was written down nowhere: `ns` is only ever set on Linux (netnsWrapper),
+    // `wsl` only on win32 (wslZona). They are NEVER both set. So the `if (ns)`
+    // branch is only reachable on Linux, where `wsl` must be null, which means
+    // the `!wsl && !flagLokal` guard above has already ensured flagLokal is not
+    // null.
     //
-    // Ditulis karena TypeScript menandainya dan invariannya ternyata hidup di
-    // DUA fungsi lain — pembaca tak punya cara tahu tanpa membuka keduanya.
-    // Kalau suatu saat wslZona() dibuat jalan di Linux (mis. untuk pengujian),
-    // cabang ini jadi tercapai dengan flagLokal null dan `...null` melempar.
-    // stdout/stderr ditegaskan non-null karena KETIGA cabang di bawah memakai
-    // "pipe" untuk keduanya. stdin sengaja TIDAK ditegaskan: dua dari tiga
-    // cabang memakai "ignore", jadi di sana ia memang null — dan itu tercermin
-    // di satu-satunya tempat yang menyentuhnya (cabang wsl).
+    // Written down because TypeScript flagged it and the invariant turned out
+    // to live in TWO other functions — a reader has no way to know without
+    // opening both. If wslZona() is ever made to run on Linux (for testing,
+    // say), this branch becomes reachable with flagLokal null and `...null`
+    // throws.
+    // stdout/stderr are asserted non-null because ALL THREE branches below use
+    // "pipe" for both. stdin is deliberately NOT asserted: two of the three
+    // branches use "ignore", so there it really is null — and that is reflected
+    // at the one place that touches it (the wsl branch).
     /** @type {import("child_process").ChildProcess & {
      *    stdout: import("stream").Readable,
      *    stderr: import("stream").Readable }} */
     let child;
     if (ns) {
-      // Cast, BUKAN `|| []`. Bila invarian di atas suatu saat patah, `...null`
-      // melempar dan zona tak jadi berjalan — itu perilaku yang benar. `|| []`
-      // akan menjalankannya TANPA flag permission, yaitu diam-diam tanpa
-      // pengurungan berkas: persis kegagalan senyap yang dihindari modul ini.
-      // Cast hasil spawn: literal stdio disimpulkan sebagai string[], bukan
-      // tuple, jadi TypeScript memilih overload yang stream-nya nullable.
-      // "pipe" di posisi 1 dan 2 sudah terbaca jelas di baris berikutnya.
+      // A cast, NOT `|| []`. If the invariant above ever breaks, `...null`
+      // throws and the zone does not run — which is the correct behaviour.
+      // `|| []` would run it WITHOUT the permission flag, i.e. silently with no
+      // file containment: exactly the quiet failure this module exists to avoid.
+      // Casting the spawn result: the stdio literal is inferred as string[]
+      // rather than a tuple, so TypeScript picks the overload whose streams are
+      // nullable. "pipe" in positions 1 and 2 is plain to see on the next line.
       child = /** @type {typeof child} */ spawn(
         ns,
         ["-n", process.execPath, .../** @type {string[]} */ flagLokal, WORKER],
@@ -615,18 +625,18 @@ function runInCapabilityZone(
           "WOLFSPACE_ZONE_TOKEN=" + token,
           ...pembungkusWsl(wsl),
           wsl.nodeWsl,
-          // Flag ditentukan dari versi Node DI DALAM distro, bukan versi lokal —
-          // keduanya bisa berbeda jauh.
+          // The flag comes from the Node version INSIDE the distro, not the
+          // local one — the two can differ considerably.
           ...wsl.flag,
           wsl.workerWsl,
         ],
         { stdio: ["pipe", "pipe", "pipe"] },
       );
     } else {
-      // Cabang ini hanya tercapai saat !ns && !wsl, dan penjaga di atas
-      // (`!wsl && !flagLokal` -> reject) sudah memastikan flagLokal bukan null
-      // persis di keadaan itu. Cast, bukan nilai default — Node tanpa flag
-      // permission harus GAGAL, bukan berjalan tanpa pengurungan berkas.
+      // This branch is only reachable when !ns && !wsl, and the guard above
+      // (`!wsl && !flagLokal` -> reject) has already ensured flagLokal is not
+      // null in exactly that state. A cast, not a default value — Node without
+      // the permission flag must FAIL, not run with no file containment.
       child = /** @type {typeof child} */ fork(WORKER, [], {
         execArgv: /** @type {string[]} */ flagLokal, // tanpa --allow-fs-read/write => fs ditolak se-proses
         stdio: ["ignore", "pipe", "pipe", "ipc"],
@@ -637,9 +647,9 @@ function runInCapabilityZone(
     const kirimKeZona = (msg) => {
       if (wsl) {
         try {
-          // Hanya cabang wsl yang memakai stdio "pipe" di posisi 0; di dua
-          // cabang lain stdin memang null. Penjaga `if (wsl)` inilah yang
-          // membuatnya aman, dan cast ini menandai ketergantungan itu.
+          // Only the wsl branch uses stdio "pipe" at position 0; in the other
+          // two branches stdin really is null. The `if (wsl)` guard is what
+          // makes this safe, and this cast marks that dependency.
           /** @type {import("stream").Writable} */ child.stdin.write(
             JSON.stringify(msg) + "\n",
           );
@@ -654,10 +664,11 @@ function runInCapabilityZone(
     let settled = false;
     const out = makeSink(limit);
     const err = makeSink(limit);
-    // Di transport WSL, stdout membawa DUA hal: baris protokol (berprefiks token)
-    // dan keluaran cetak kode zona. Dipisahkan di sini — baris protokol diambil,
-    // sisanya masuk ke penampung keluaran seperti biasa, jadi jaminan "keluaran
-    // zona kembali utuh" tetap berlaku di kedua transport.
+    // On the WSL transport, stdout carries TWO things: protocol lines (token-
+    // prefixed) and whatever the zone code printed. They are separated here —
+    // protocol lines are taken out, the rest goes into the output sink as
+    // usual, so the "zone output comes back whole" guarantee holds on both
+    // transports.
     if (wsl) {
       let sisa = "";
       child.stdout.on("data", (c) => {
@@ -675,7 +686,7 @@ function runInCapabilityZone(
           }
         }
       });
-      // Ekor tanpa newline saat proses berakhir — tetap keluaran user.
+      // A trailing chunk with no newline when the process ends — still user output.
       child.stdout.on("end", () => {
         if (sisa) out.push(sisa);
       });
@@ -684,12 +695,11 @@ function runInCapabilityZone(
     }
     child.stderr.on("data", (c) => err.push(c));
 
-    // Keluaran ikut dilampirkan ke KEGAGALAN juga, bukan cuma keberhasilan —
-    // saat zona timeout atau melempar, apa yang sempat dicetaknya justru satu-
-    // satunya petunjuk yang tersisa.
-    // `kurungan` ikut di io(), bukan hanya di jalur sukses: kalau zona timeout
-    // atau melempar, pertanyaan "tadi itu terkurung atau tidak" justru makin
-    // penting, bukan makin tak relevan.
+    // Output is attached to FAILURES too, not just successes — when the zone
+    // times out or throws, whatever it managed to print is the only clue left.
+    // `kurungan` is in io() rather than only on the success path: if the zone
+    // times out or throws, the question "was that contained or not" becomes
+    // more important, not less.
     const io = () => ({
       stdout: out.text,
       stderr: err.text,
@@ -699,26 +709,27 @@ function runInCapabilityZone(
       kurungan,
     });
 
-    // Selesaikan SETELAH stdio terkuras, bukan seketika.
+    // Settle AFTER stdio has drained, not immediately.
     //
-    // Dulu `done` dari IPC langsung diikuti SIGKILL. Pesan IPC bisa tiba
-    // mendahului data yang masih mengantre di pipa stdout, jadi membunuh anak
-    // saat itu juga MEMBUANG keluaran yang belum terbaca. Terukur pada zona yang
-    // mencetak ~5 MB: hanya 530.452 byte yang sampai. Di Windows kebetulan tak
-    // terlihat karena urutannya berbeda — tersingkap begitu jalur netns memakai
-    // spawn. Kehilangan diam-diam seperti ini persis yang harus dihindari.
+    // `done` from IPC used to be followed straight by SIGKILL. An IPC message
+    // can arrive ahead of data still queued in the stdout pipe, so killing the
+    // child right then DISCARDS output that has not been read. Measured on a
+    // zone printing ~5 MB: only 530,452 bytes arrived. On Windows it happened
+    // not to show because the ordering differs — it surfaced as soon as the
+    // netns path started using spawn. Silent loss like this is exactly what
+    // must be avoided.
     //
-    // Yang ditunggu adalah 'close' — peristiwa yang menyala setelah proses
-    // keluar DAN kedua pipa stdio habis. Terukur pada zona pencetak 5 MB:
-    //     +605 ms  pesan done (baru 327.240 B terbaca)
-    //     +875 ms  stdout END (5.050.000 B — utuh)
+    // What is awaited is 'close' — the event that fires after the process exits
+    // AND both stdio pipes are exhausted. Measured on the 5 MB printer:
+    //     +605 ms  done message (only 327,240 B read so far)
+    //     +875 ms  stdout END (5,050,000 B — whole)
     //     +878 ms  close
     //
-    // JANGAN memanggil child.disconnect() di sini. Diukur: dengan disconnect
-    // sisi induk, 'exit' tetap menyala (~240 ms) tapi 'close' TIDAK PERNAH
-    // menyala, sehingga jaring pengaman DRAIN_MS selalu habis dan setiap
-    // eksekusi zona menanggung tambahan ~3 detik. Yang melepas event loop anak
-    // adalah process.disconnect() di zone-worker, bukan di sini.
+    // DO NOT call child.disconnect() here. Measured: with a parent-side
+    // disconnect, 'exit' still fires (~240 ms) but 'close' NEVER does, so the
+    // DRAIN_MS safety net always expires and every zone execution carries an
+    // extra ~3 seconds. What releases the child's event loop is
+    // process.disconnect() in zone-worker, not here.
     const DRAIN_MS = 3000;
     let selesai = false;
     const settle = (fn: Function, mkVal: () => unknown, killNow?: boolean) => {
@@ -755,14 +766,14 @@ function runInCapabilityZone(
       fail(new Error(`zone timeout (${timeoutMs}ms)`), true);
     }, timeoutMs);
 
-    // SATU penangan untuk kedua transport. Sebelumnya logika ini menempel di
-    // child.on("message"), yang hanya ada di kanal IPC — jadi transport stdio
-    // akan mengabaikan permintaan kapabilitas sama sekali, dan zona di WSL tak
-    // bisa memakai request() untuk apa pun.
+    // ONE handler for both transports. This logic used to hang off
+    // child.on("message"), which only exists on the IPC channel — so the stdio
+    // transport would ignore capability requests entirely, and a zone in WSL
+    // could not use request() for anything.
     async function tanganiPesanZona(msg) {
-      // Laporan percobaan jaringan langsung dari zona. Bukan permintaan — tak
-      // ada yang perlu dijawab, cukup dicatat supaya percobaannya terlihat di
-      // jejak audit alih-alih gagal dalam diam.
+      // A report of a direct network attempt from the zone. Not a request —
+      // there is nothing to answer, it just needs recording so the attempt is
+      // visible in the audit trail instead of failing in silence.
       if (msg.type === "net-attempt") {
         try {
           broker.catatPercobaanLangsung(msg.modul, {
@@ -788,8 +799,8 @@ function runInCapabilityZone(
         }
         return;
       }
-      // io() dipanggil BELAKANGAN (di dalam thunk), setelah stdio terkuras —
-      // kalau dievaluasi di sini, isinya kembali terpotong.
+      // io() is called LATER (inside the thunk), after stdio has drained — if
+      // it were evaluated here, the contents would be truncated again.
       if (msg.type === "done")
         settle(resolve, () => ({ result: msg.result, ...io() }));
       else if (msg.type === "error")
@@ -808,10 +819,10 @@ function runInCapabilityZone(
         );
     });
 
-    // opts.pelapor === false mematikan stub pelapor jaringan di dalam zona.
-    // Dipakai uji netns: dengan pelapor aktif, stub melempar sebelum soket
-    // dibuat, jadi ujinya akan lulus meski namespace-nya mati. Mematikannya
-    // membuat percobaan benar-benar diuji terhadap kernel.
+    // opts.pelapor === false disables the network-reporter stub inside the zone.
+    // Used by the netns test: with the reporter active, the stub throws before a
+    // socket is created, so the test would pass even with a dead namespace.
+    // Disabling it makes the attempt genuinely tested against the kernel.
     kirimKeZona({ type: "run", code, pelapor: opts.pelapor !== false });
   });
 }

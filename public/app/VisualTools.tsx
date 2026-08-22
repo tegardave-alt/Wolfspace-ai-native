@@ -28,7 +28,8 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
     } catch (_) {
       // Cross-origin (the preview points at an external URL rather than a
       // same-origin local file):
-      // picker tetap jalan di WOLFSPACE saja, tanpa melempar error ke pengguna.
+      // the picker keeps working within WOLFSPACE alone, without throwing an
+      // error at the user.
     }
     let hover: Element | null = null;
     const cleanHovers = () =>
@@ -91,7 +92,7 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
       // Include the DOM structure so the agent can find it in the source.
       let htmlSnippet = el.outerHTML || "";
       if (htmlSnippet) {
-        // Potong htmlSnippet jika terlalu panjang, tapi tetap pertahankan strukturnya
+        // Truncate htmlSnippet when it is too long, while keeping its structure
         if (htmlSnippet.length > 300) {
           htmlSnippet = htmlSnippet.slice(0, 300) + "...";
         }
@@ -99,7 +100,8 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
       }
 
       try {
-        // writeText() mengembalikan Promise — try/catch TAK menangkap penolakan async
+        // writeText() returns a Promise — try/catch does NOT catch an async
+        // rejection
         // ("Document is not focused", for one). The .catch keeps it from
         // becoming an unhandledrejection, which used to trigger auto-rollback
         // (the app reloading itself mid-run).
@@ -162,7 +164,7 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
 
 /* ----------------------------- Visual Draw ----------------------------- */
 let VD_STOP: (() => void) | null = null;
-// getFrameDoc (opsional): sama seperti Visual Picker — dokumen iframe preview
+// getFrameDoc (optional): as with Visual Picker, the preview iframe document
 // (the Web Dev Live Browser) when it is open and same-origin, so drawing a box
 // OVER the rendered page also works — a mouse event above the iframe lands in
 // the iframe's document, not in WOLFSPACE's.
@@ -178,9 +180,9 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
       const frameDoc = getFrameDoc && getFrameDoc();
       if (frameDoc && frameDoc.defaultView) docs.push(frameDoc);
     } catch (_) {
-      /* cross-origin: draw tetap jalan di WOLFSPACE saja */
+      /* cross-origin: draw keeps working within WOLFSPACE alone */
     }
-    // Konversi koordinat event → koordinat viewport WOLFSPACE (parent). Event dari
+    // Convert event coordinates to WOLFSPACE viewport (parent) coordinates. Events
     // inside the iframe carry clientX/Y relative to the IFRAME viewport, so they
     // are offset by
     // posisi elemen <iframe> di parent.
@@ -196,7 +198,7 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
 
     // Switch the global cursor to a crosshair to signal the active mode.
     document.body.classList.add("vp-on");
-    // Iframe punya <head>/<body> sendiri: inject cursor + tandai body-nya juga.
+    // An iframe has its own <head>/<body>: inject the cursor and mark its body too.
     const frameStyleEls: any[] = [];
     docs.forEach((d: any) => {
       if (d === document) return;
@@ -218,7 +220,7 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
       overflow: "hidden",
       background: "transparent",
       zIndex: "999999",
-      pointerEvents: "none", // Biarkan event jatuh ke document agar bisa dicegat dengan useCapture
+      pointerEvents: "none", // let events reach the document so useCapture can intercept them
     });
 
     const activeSelections = document.createElement("div");
@@ -287,7 +289,7 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
       return false;
     };
 
-    // Cegah semua klik di aplikasi (kecuali sidebar & UI draw)
+    // Block every click in the app (except the sidebar and the draw UI)
     const blockClick = (e: any) => {
       if (checkSidebarClick(e)) return;
       if (e.target.closest(".ui-panel")) return;
@@ -456,7 +458,7 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
 
         const targetSelector = sel(targetEl);
         const tr = targetEl.getBoundingClientRect();
-        // Rect elemen di dalam iframe berkoordinat viewport FRAME — geser ke
+        // An element rect inside the iframe is in FRAME viewport coordinates — shift to
         // parent coordinates, to stay consistent with finalX/finalY (the overlay's).
         let trLeft = tr.left,
           trTop = tr.top;

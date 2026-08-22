@@ -2,8 +2,9 @@
 // built in public/app.jsx, which has not migrated yet. Writing a made-up shape
 // here would be a lie that typechecks; these narrow once app.jsx follows.
 
-// AgentSteps — diekstrak dari Sidebar.tsx (app.jsx split): ToolOutput, *ActionRow,
-// ConsolidatedThoughtCard, AgentSteps, HitlModal. Prepend via APP_MODULES.
+// AgentSteps — extracted from Sidebar.tsx (the app.jsx split): ToolOutput,
+// *ActionRow, ConsolidatedThoughtCard, AgentSteps, HitlModal. Prepended via
+// APP_MODULES.
 
 // useDekatLayar moved to Config.tsx (loaded FIRST) because CodeBlocks.tsx
 // uses it too and loads BEFORE this file. Today every module is concatenated
@@ -75,7 +76,7 @@ function ToolOutput({ text, ok, kind, arg }: any) {
   useEffect(() => {
     let disposed = false;
     let retries = 0;
-    if (!dekat) return; // jauh dari layar -> cukup <pre>, jangan buat editor
+    if (!dekat) return; // far off screen -> a <pre> is enough, skip the editor
     if (!window.monacoReady) return;
     window.monacoReady.then((monaco: any) => {
       if (disposed || !hostRef.current) return;
@@ -92,14 +93,14 @@ function ToolOutput({ text, ok, kind, arg }: any) {
             fontSize: 12,
             lineNumbers: "on",
             renderLineHighlight: "none",
-            // Kanvas 14px yang Monaco gambar sendiri di tepi kanan editor
-            // (tanda kesalahan/hasil pencarian), aktif meski minimap mati —
-            // dan bergaris batas bawaan yang tak tersentuh CSS `outline`
-            // karena digambar ke piksel, bukan diatur lewat style. Ditemukan
-            // saat menelusuri garis serupa di panel kode Logic
-            // (LogicCodePane, app.jsx); disamakan di sini SEBELUM sempat
-            // dilaporkan, karena ketiga editor Monaco aplikasi ini memang
-            // dimaksud terlihat identik.
+            // The 14px canvas Monaco paints itself along the editor's right
+            // edge (error marks, search hits), active even with the minimap
+            // off — and with a built-in border that CSS `outline` cannot
+            // touch, because it is drawn to pixels rather than set through
+            // style. Found while tracing a similar line in the Logic code
+            // panel (LogicCodePane, app.jsx); matched here BEFORE anyone
+            // reported it, because this app's three Monaco editors are meant
+            // to look identical.
             overviewRulerLanes: 0,
             tabSize: 2,
             scrollbar: { alwaysConsumeMouseWheel: false },
@@ -142,12 +143,12 @@ function ToolOutput({ text, ok, kind, arg }: any) {
         if (model) model.dispose();
         edRef.current.dispose();
         edRef.current = null;
-        setEdReady(false); // turun lagi ke <pre>, kalau tidak host kosong tersisa
+        setEdReady(false); // drop back to <pre>, else an empty host is left behind
       }
     };
   }, [language, dekat]);
-  // follow text changes — menyusul di ujung, bukan menulis ulang seluruh model.
-  // Alasan + angka ukurannya ada di terapkanTeksStream (Viewport.tsx).
+  // follow text changes — append at the end rather than rewriting the whole
+  // model. The reasoning and the sizes are in terapkanTeksStream (Viewport.tsx).
   useEffect(() => {
     const ed = edRef.current;
     if (ed) terapkanTeksStream(ed, text);
@@ -262,11 +263,11 @@ function AgentActionLogRow({ e, i, expanded, setExpanded }: any) {
       verb = "Explored";
       icon = AG_SVG.glob;
     } else if (k === "retry") {
-      // Pengulangan agent. Dulu di-emit backend sebagai force_retry dari ENAM
-      // tempat, tapi UI tak punya penanganannya dan tak ada cabang penampung —
-      // jadi hilang senyap. Akibatnya setiap putaran ulang (bisa 4 kali, 60+
-      // detik) tampak sebagai layar diam, dan itu ikut terbaca sebagai "run
-      // berhenti sendiri". Sekarang ia baris timeline, dengan sebabnya.
+      // An agent retry. The backend used to emit this as force_retry from SIX
+      // places, but the UI had no handler and no catch-all branch — so it
+      // vanished silently. Every retry loop (up to 4 times, 60+ seconds) then
+      // looked like a frozen screen, which itself read as "the run stopped on
+      // its own". Now it is a timeline row, with its reason.
       verb = "Retried";
       icon = AG_SVG.grep;
       color = "#d7ba7d";
@@ -420,23 +421,22 @@ function GroupedActionRow({ group, expanded, setExpanded }: any) {
           }}
         >
           {acts.map((a: any, j: number) => {
-            // Tiap perintah punya lipatannya SENDIRI.
+            // Each command has its OWN fold.
             //
-            // Sebelum ini hanya grupnya yang bisa dilipat, dan isi setiap
-            // perintah selalu ikut terbuka. Satu grup bisa berisi belasan
-            // perintah dengan keluaran panjang, jadi menggulung untuk mencari
-            // satu hasil berarti melewati semuanya — dan satu-satunya cara
-            // menyembunyikan yang tak dicari adalah melipat grupnya, yang juga
-            // menyembunyikan yang sedang dicari.
+            // Before this only the group could be folded, and every command's
+            // body was always open. One group can hold a dozen commands with
+            // long output, so scrolling to find a single result meant passing
+            // all of them — and the only way to hide what you were not looking
+            // for was folding the group, which hid what you were.
             //
-            // Kuncinya disematkan pada id grup, bukan indeks saja: dua grup
-            // berbeda punya perintah ke-0 masing-masing, dan indeks telanjang
-            // akan membuat keduanya membuka-menutup bersamaan.
+            // The key is tied to the group id, not just the index: two
+            // different groups each have their own command 0, and a bare index
+            // would make both open and close together.
             const kunci = group.id + ":" + j;
-            // BAWAANNYA TERTUTUP, dan itu inti perubahannya: keluaran tak lagi
-            // membuka sendiri saat perintah selesai berjalan. Header-nya tetap
-            // terlihat, jadi apa yang dijalankan dan berhasil/gagalnya tetap
-            // terbaca tanpa membuka apa pun.
+            // CLOSED BY DEFAULT, which is the point of the change: output no
+            // longer opens itself when a command finishes. The header stays
+            // visible, so what ran and whether it succeeded is still readable
+            // without opening anything.
             const isiTerbuka = !!expanded[kunci];
             const adaIsi = !!(a.output && String(a.output).trim());
             return (
@@ -460,8 +460,8 @@ function GroupedActionRow({ group, expanded, setExpanded }: any) {
                     display: "flex",
                     alignItems: "center",
                     gap: "8px",
-                    // Penunjuk hanya muncul kalau memang ada yang bisa dibuka;
-                    // baris tanpa keluaran tak boleh terlihat bisa diklik.
+                    // The pointer only appears when there is something to open;
+                    // a row with no output must not look clickable.
                     cursor: adaIsi ? "pointer" : "default",
                   }}
                 >
@@ -577,26 +577,26 @@ function AgentSteps({ run }: any) {
     (e: any) => e.type === "act" || e.type === "err" || e.type === "thought",
   );
   const thoughts = allActs.filter((e: any) => e.type === "thought");
-  // Baris todowrite TIDAK ditampilkan di timeline.
+  // todowrite rows are NOT shown in the timeline.
   //
-  // todowrite mengirim DUA hal untuk satu kejadian: event t:"todos" yang
-  // mengisi panel checklist di atas kotak ketik, DAN string ringkasan sebagai
-  // keluaran tool — yang tanpa penyaring ini muncul lagi sebagai baris
-  // "✓ [high] ..." di timeline. Jadi satu daftar tampil dua kali, di dua
-  // tempat, dengan bentuk berbeda.
+  // todowrite sends TWO things for one event: a t:"todos" event that fills the
+  // checklist panel above the input box, AND a summary string as tool output —
+  // which without this filter reappears as a "✓ [high] ..." row in the
+  // timeline. So one list would show twice, in two places, in two shapes.
   //
-  // Yang disembunyikan cuma TAMPILANNYA. Tool-nya tetap jalan dan hasilnya
-  // tetap sampai ke model apa adanya; yang dibuang hanya penggandaan di layar.
+  // Only the DISPLAY is hidden. The tool still runs and its result still
+  // reaches the model unchanged; what is dropped is the on-screen duplicate.
   const acts = allActs.filter(
     (e: any) =>
       e.type !== "thought" && (e.kind || "").toLowerCase() !== "todowrite",
   );
   const summary = cleanAgentText(run.summary);
 
-  // SEMUA hook harus dipanggil TANPA SYARAT sebelum return mana pun. useState +
-  // useEffect di bawah ini dulu berada SETELAH early-return "run.done && tak ada
-  // langkah" → jumlah hook berubah antar render → React error #300 ("Rendered
-  // fewer hooks than expected") dan crash lewat ErrorBoundary. Jaga tetap di atas.
+  // EVERY hook must be called UNCONDITIONALLY before any return. The useState
+  // and useEffect below used to sit AFTER the early return for
+  // "run.done && no steps" -> the hook count changed between renders -> React
+  // error #300 ("Rendered fewer hooks than expected") and a crash through
+  // ErrorBoundary. Keep them above.
   const [elapsed, setElapsed] = React.useState(0);
   React.useEffect(() => {
     let timer: any;
@@ -721,21 +721,21 @@ function AgentSteps({ run }: any) {
             );
           });
         })()}
-        {/* Checklist todowrite DIPINDAH ke panel di atas kotak ketik
-            (TodoPanel di Components.tsx). Di sini ia ikut tergulung naik
-            bersama gelembungnya, jadi daftar yang gunanya untuk dilihat SELAMA
-            bekerja justru paling cepat hilang dari layar. */}
+        {/* The todowrite checklist MOVED to the panel above the input box
+            (TodoPanel in Components.tsx). Here it scrolled away with its own
+            bubble, so a list whose whole purpose is to be seen WHILE working
+            was the first thing to leave the screen. */}
         {run.busy && (
           <div className="aal-row aal-thought-header">
-            {/* run.status ditampilkan APA ADANYA bila ada.
-                Dulu baris ini hanya bisa berbunyi "Thinking..." atau
-                "Processing...", sehingga seluruh masa tunggu tampak sama —
-                termasuk panggilan model 64 detik dan penyiapan MCP 60 detik.
-                Teks detak yang sudah dikirim backend ("Masih menunggu jawaban
-                model (30s)…") tak pernah sampai ke mata user. */}
-            {/* Loader kotak 3x3. aria-hidden karena ia MURNI hiasan: keadaan
-                sebenarnya sudah dibawa teks di sebelahnya, dan pembaca layar
-                yang membacakan sembilan kotak kosong justru mengaburkannya. */}
+            {/* run.status is shown AS IS when present.
+                This line could once only read "Thinking..." or
+                "Processing...", so every wait looked the same — including a
+                64-second model call and a 60-second MCP startup. The
+                heartbeat text the backend already sent ("Still waiting for
+                the model (30s)…") never reached the user's eyes. */}
+            {/* A 3x3 box loader. aria-hidden because it is PURE decoration:
+                the real state is carried by the text beside it, and a screen
+                reader announcing nine empty boxes only obscures that. */}
             <span className="wl-muat" aria-hidden="true">
               <i />
               <i />
@@ -754,9 +754,10 @@ function AgentSteps({ run }: any) {
         )}
       </div>
 
-      {/* Dulu syaratnya `summary || run.run`. run.run SELALU truthy — isinya
-          objek stub dari runReply — jadi blok ini ikut dirender walau summary
-          kosong, menghasilkan panel hampa. Kini murni bergantung pada summary. */}
+      {/* The condition used to be `summary || run.run`. run.run is ALWAYS
+          truthy — it holds a stub object from runReply — so this block
+          rendered even with an empty summary, producing a hollow panel. It now
+          depends on summary alone. */}
       {run.done && summary ? (
         <div style={{ marginTop: "8px" }}>
           <div className="bubble-model av2-result-bubble">

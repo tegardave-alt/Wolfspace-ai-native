@@ -180,7 +180,7 @@ function CodeBlock({ lang, code }: any) {
 
   useEffect(() => {
     let disposed = false;
-    if (!dekat) return; // jauh dari layar -> cukup <pre>
+    if (!dekat) return; // far off screen -> a <pre> is enough
     if (!window.monacoReady) return;
     window.monacoReady.then((monaco: any) => {
       if (disposed || !hostRef.current) return;
@@ -193,7 +193,7 @@ function CodeBlock({ lang, code }: any) {
         document.head.appendChild(s);
       }
       const ed = monaco.editor.create(hostRef.current, {
-        value: teks, // naskah pemakai bila ada, kalau tidak teks aslinya
+        value: teks, // the user's text when there is one, otherwise the original
         language: mLang(language),
         theme: "wolfspace-gelap",
         automaticLayout: true,

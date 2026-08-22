@@ -1,24 +1,27 @@
-// Plugins — halaman penuh, tersambung ke GET /plugins.
+// Plugins — a full page, wired to GET /plugins.
 //
-// Dua keputusan sengaja TERLIHAT di permukaan ini, bukan hanya di kode:
+// Two decisions are deliberately VISIBLE on this surface, not only in code:
 //
-//   1. Tombol Install milik USER. Di VS Code tak ada agent yang bisa memasang
-//      extension sendiri; WOLFSPACE punya, jadi pemisahan "siapa memasang" vs
-//      "apa yang boleh dijangkau agent" harus kelihatan di UI juga.
-//   2. Tiap plugin memajang IZIN yang dimintanya. Izin itu jadi kosakata genesis
-//      CommandChain — plugin yang izinnya tak disetujui tetap terpasang dan
-//      tetap terlihat di sini, tapi tool-nya tak pernah muncul di mata model.
-//   3. `disetujui` dan `aktifSesi` ditampilkan TERPISAH. Memberi izin baru
-//      berlaku sesi berikutnya (genesis sudah beku); mencabut berlaku seketika.
-//      Menyamarkan bedanya membuat user mengira plugin sudah hidup.
+//   1. The Install button belongs to the USER. In VS Code no agent can
+//      install an extension by itself; WOLFSPACE's can, so the split between
+//      "who installs" and "what the agent may reach" has to show in the UI
+//      too.
+//   2. Every plugin displays the PERMISSIONS it asks for. Those permissions
+//      become the CommandChain genesis vocabulary — a plugin whose
+//      permissions were not approved stays installed and stays visible here,
+//      but its tools never appear to the model.
+//   3. `disetujui` and `aktifSesi` are shown SEPARATELY. Granting takes
+//      effect next session (genesis is already frozen); revoking takes effect
+//      immediately. Blurring the difference makes the user think a plugin is
+//      already live.
 //
-// Berkas .tsx pertama di repo. Babel yang di-vendor membuang tipenya saat jalan;
-// `npm run typecheck` yang memeriksanya. Lihat public/tsconfig.json.
+// The first .tsx file in the repo. The vendored Babel strips its types at
+// run time; `npm run typecheck` is what checks them. See public/tsconfig.json.
 
-/** Kapabilitas yang boleh diminta plugin. Sengaja union, bukan string bebas:
- *  daftar ini harus sepadan dengan KOSAKATA_DEFAULT di
- *  agent/broker/commandchain.cjs, dan mengetiknya salah harus jadi error di
- *  sini — bukan penolakan diam-diam saat dijalankan nanti. */
+/** Capabilities a plugin may request. Deliberately a union rather than a free
+ *  string: this list has to match KOSAKATA_DEFAULT in
+ *  agent/broker/commandchain.cjs, and mistyping one must be an error HERE —
+ *  not a silent refusal later at run time. */
 type IzinPlugin =
   | "readFile"
   | "writeFile"
@@ -32,18 +35,18 @@ interface PluginTerpasang {
   nama: string;
   versi: string;
   ket: string;
-  /** Perintah yang dijalankan sebagai server MCP — bukan berkas yang di-require. */
+  /** The command run as an MCP server — not a file that gets required. */
   sumber: string;
   izin: readonly IzinPlugin[];
-  /** User sudah memberi izin. Ditulis ke plugins/_disetujui.json. */
+  /** The user has granted permission. Written to plugins/_disetujui.json. */
   disetujui: boolean;
   /**
-   * Kapabilitasnya sudah masuk genesis SESI INI.
+   * Its capabilities made it into THIS SESSION's genesis.
    *
-   * Beda dari `disetujui`, dan perbedaannya HARUS terlihat: genesis dibekukan
-   * sekali saat sesi mulai, jadi yang baru disetujui akan `disetujui:true`
-   * tapi `aktifSesi:false`. Tanpa menampilkan itu, user mengira plugin sudah
-   * hidup padahal agent belum bisa memanggilnya sampai restart.
+   * Different from `disetujui`, and the difference MUST be visible: genesis is
+   * frozen once when the session starts, so something just approved will be
+   * `disetujui:true` but `aktifSesi:false`. Without showing that, the user
+   * thinks the plugin is live when the agent cannot call it until a restart.
    */
   aktifSesi: boolean;
 }
@@ -222,10 +225,10 @@ function BarisPlugin({
           {p.disetujui ? "Cabut izin" : "Beri izin"}
         </button>
 
-        {/* disetujui != aktif di sesi ini. Perbedaan itu sengaja ditampilkan:
-            genesis dibekukan saat sesi mulai, jadi izin yang baru diberi belum
-            bisa dipakai agent sampai restart. Menyembunyikannya membuat user
-            mengira plugin sudah hidup. */}
+        {/* disetujui is not the same as active this session. The difference is
+            shown on purpose: genesis freezes when the session starts, so a
+            newly granted permission cannot be used by the agent until a
+            restart. Hiding that makes the user think the plugin is live. */}
         <span
           style={{ fontSize: "10.5px", color: p.aktifSesi ? HIJAU : REDUP }}
         >
@@ -258,15 +261,16 @@ function BarisPlugin({
 }
 
 /**
- * Dialog pasang.
+ * The install dialog.
  *
- * Sengaja meminta PERINTAH, bukan berkas atau URL. Plugin dijalankan sebagai
- * server MCP di proses terpisah, jadi yang perlu diketahui WOLFSPACE cuma cara
- * menjalankannya — tak ada kode yang diunduh atau disalin ke sini. Jalur "ambil
- * dari URL lalu simpan" yang dulu ada di skill_install tidak dihidupkan lagi.
+ * It deliberately asks for a COMMAND, not a file or a URL. A plugin runs as an
+ * MCP server in a separate process, so all WOLFSPACE needs to know is how to
+ * run it — no code is downloaded or copied in here. The "fetch from a URL and
+ * save it" path that skill_install once had has not been revived.
  *
- * Izin diminta DI SINI, saat memasang, seperti memasang aplikasi ponsel. Itu
- * satu-satunya saat user benar-benar memperhatikan apa yang ia berikan.
+ * Permissions are requested HERE, at install time, like installing a phone
+ * app. That is the only moment the user is really paying attention to what
+ * they are granting.
  */
 function DialogPasang({
   izinDikenal,
@@ -301,9 +305,9 @@ function DialogPasang({
     outline: "none",
   } as const;
 
-  // Perintah dipecah dengan spasi sederhana. Cukup untuk bentuk yang dipakai
-  // server MCP ("npx -y paket", "node skrip.cjs"); yang butuh tanda kutip bisa
-  // menyunting manifest.json langsung.
+  // The command is split on plain whitespace. That is enough for the shapes MCP
+  // servers use ("npx -y package", "node script.cjs"); anything needing quotes
+  // can be edited directly in manifest.json.
   const potong = perintah.trim().split(/\s+/).filter(Boolean);
 
   return (
@@ -435,8 +439,8 @@ function PluginsView(): JSX.Element {
       setIzinDikenal(j.izinDikenal || []);
       setGalat("");
     } catch (e) {
-      // Kegagalan muat DITAMPILKAN, tak diganti daftar kosong. Daftar kosong
-      // terbaca sebagai "belum ada plugin" — dua keadaan yang sangat berbeda.
+      // A load failure is SHOWN, not replaced by an empty list. An empty list
+      // reads as "no plugins yet" — a very different state.
       setGalat(e instanceof Error ? e.message : String(e));
     } finally {
       setMemuat(false);
@@ -645,9 +649,9 @@ function PluginsView(): JSX.Element {
         </div>
       ) : null}
 
-      {/* Manifest rusak DITAMPILKAN, tidak dibuang diam-diam. Plugin yang hilang
-          tanpa jejak adalah persis cara skills.cjs jadi terlupakan sampai
-          akhirnya jadi celah keamanan. */}
+      {/* A broken manifest is SHOWN, not dropped silently. A plugin vanishing
+          without a trace is exactly how skills.cjs came to be forgotten until
+          it eventually became a security hole. */}
       {rusak.map((r) => (
         <div
           key={r.dir}

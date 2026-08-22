@@ -247,7 +247,7 @@ function _argsAman(args) {
       /^(--?[\w-]*(?:key|token|secret|password|auth)[\w-]*)=(.+)$/i,
     );
     if (m) return m[1] + "=***";
-    // URL: buang query string dan userinfo, sisakan origin + path
+    // URL: drop the query string and userinfo, keep origin + path
     if (/^https?:\/\//i.test(s)) {
       try {
         const u = new URL(s);
@@ -505,7 +505,7 @@ class MCPClient {
   }
 
   _startServer(name: string, conf: KonfigServer) {
-    // Promise<void>: resolve() dipanggil tanpa nilai, dan tanpa parameter tipe
+    // Promise<void>: resolve() is called with no value, and without the type
     // this, TypeScript infers Promise<unknown> and then demands an argument.
     return new Promise<void>((resolve, reject) => {
       dlog("mcp", "info", `Memulai server MCP: ${name}`, {
@@ -661,8 +661,8 @@ class MCPClient {
   }
 
   async toggleServer(name, enabled) {
-    // MENTAH, seperti addServer/removeServer: menulis hasil gabungan akan
-    // memanggang entri plugin ke config/mcp.json.
+    // RAW, like addServer/removeServer: writing the merged result would bake
+    // plugin entries into config/mcp.json.
     const config = this._loadConfigMentah();
     if (!config.mcpServers || !config.mcpServers[name]) {
       // A plugin will indeed not be found here, and that is correct: whether it
@@ -712,7 +712,7 @@ class MCPClient {
     this._send(name, { jsonrpc: "2.0", method, params });
   }
 
-  // timeoutMs dapat ditimpa: handshake `initialize` harus gagal CEPAT (server
+  // timeoutMs is overridable: an `initialize` handshake must fail FAST.
   // A healthy server answers a handshake in seconds, so its timeout is short;
   // real tool calls can legitimately take a while and keep the 120 s budget.
   _request<T = unknown>(

@@ -39,7 +39,7 @@ function readEffort(cloudCfg?: { effort?: unknown } | null): number {
     // Number.isFinite, NOT `|| 1` — the latter is what used to swallow 0.
     if (Number.isFinite(n)) return n;
   } catch (_) {}
-  return 1; // Medium bila belum pernah disetel
+  return 1; // Medium when it has never been set
 }
 
 // ── BYOK (Bring Your Own Key) helpers for web client deployment ──

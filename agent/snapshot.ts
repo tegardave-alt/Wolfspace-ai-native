@@ -90,7 +90,7 @@ function createSnapshot(filePaths: string[], label = ""): HasilSnapshot {
 }
 
 /**
- * Rollback semua file dalam snapshot ke kondisi semula.
+ * Roll every file in the snapshot back to its original state.
  * @param {string} snapshotId
  * @returns {{ ok: boolean, restored: string[], error?: string }}
  */

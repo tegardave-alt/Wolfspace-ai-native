@@ -213,8 +213,8 @@ function _tutupPipa(ptyProcess) {
 
 function killPty(ptyProcess) {
   if (!ptyProcess) return;
-  // Urutannya penting: pohon dibunuh SELAGI pid-nya masih sah, baru handle
-  // node-pty dilepas, baru pipanya ditutup.
+  // The order matters: the tree is killed WHILE its pid is still valid, then
+  // the node-pty handle is released, then its pipes are closed.
   _matikanPohon(ptyProcess.pid);
   _bungkamPendaftarKonsol(ptyProcess);
   try {

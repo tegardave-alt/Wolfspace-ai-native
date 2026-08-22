@@ -132,7 +132,7 @@ function usePreviewPanel({
     const el = slotRef.current;
     if (!el) return;
     let terakhir = "";
-    let mati = false; // proses main belum punya kanal ini -> berhenti mencoba
+    let mati = false; // main process lacks this channel -> stop trying
     const suapi = (aksi: string) => {
       if (mati) return;
       const r = el.getBoundingClientRect();
