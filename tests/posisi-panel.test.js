@@ -350,8 +350,8 @@ describe("menyembunyikan chat", () => {
     // Code ikut dihitung sejak ia jadi panel sungguhan — kalau tidak,
     // menyembunyikan chat saat HANYA Code terbuka ditolak padahal layarnya
     // tidak akan kosong.
-    // \s+ sesudah "=": prettier memecah deklarasi ini ke dua baris. Yang dijaga
-    // KEEMPAT syaratnya, bukan muat-tidaknya dalam satu baris.
+    // \s+ after "=": prettier splits this declaration across two lines. What is
+    // guarded is all FOUR conditions, not whether they fit on one line.
     expect(K).toMatch(
       /const buntu =\s+!nilai && !panelOpen && !terminalOpen && !logicOpen/,
     );

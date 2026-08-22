@@ -36,7 +36,7 @@ function ambilThreadTerputus() {
   }
 }
 
-/* Icons dipindah ke public/app/Icons.jsx (APP_MODULES). */
+/* Icons dipindah ke public/app/Icons.tsx (APP_MODULES). */
 
 /* ----------------------------- Backend glue ----------------------------- */
 const PREFIXES = [
@@ -2513,7 +2513,7 @@ function App() {
     return () => window.removeEventListener("wolfspace_agent_act", onAct);
   }, []);
   // Web Dev Live Browser: state, auto-preview saat agent menulis .html, dan
-  // ref iframe kini satu hook di public/app/usePreviewPanel.jsx.
+  // ref iframe kini satu hook di public/app/usePreviewPanel.tsx.
   const preview = usePreviewPanel({
     selectedProject,
     onAutoOpen: () => setPanelOpen(true),

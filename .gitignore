@@ -74,3 +74,8 @@ vendor/js-debug/
 # Aset pra-kompres, hasil scripts/kompres-aset.cjs — dihasilkan, bukan sumber.
 public/**/*.br
 public/**/*.gz
+
+# Python worker artefacts (services/agent-python).
+__pycache__/
+*.pyc
+.pytest_cache/

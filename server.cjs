@@ -2467,7 +2467,7 @@ const {
   createSnapshot,
   rollback,
   listSnapshots,
-} = require("./agent/snapshot.cjs");
+} = require("./agent/snapshot.ts");
 const { safeWriteFile, quarantine } = require("./agent/safe-edit.cjs");
 
 // ── Modular route handlers (server/routes/*) ──
@@ -2511,10 +2511,10 @@ const { selfAgentStream } = require("./agent/self_agent.cjs");
 // Designed for AI agents to run interactive commands without losing context.
 const terminalSessions = new Map(); // id â†’ { pty, shell, cwd, createdAt, listeners, outputBuffer }
 const TERM_OUTPUT_MAX = 4096; // max chars kept per session for late joiners
-// Manajer sesinya berbeda dari core/terminal.cjs (yang dipakai tool agent), tapi
+// Manajer sesinya berbeda dari core/terminal.ts (yang dipakai tool agent), tapi
 // cara MEMBUNUH PTY diambil dari sana — satu implementasi saja. Alasannya
 // panjang dan ada di closeTerminalSession() di bawah.
-const coreTerminal = require("./core/terminal.cjs");
+const coreTerminal = require("./core/terminal.ts");
 
 function generateTerminalId() {
   return (
@@ -2716,7 +2716,7 @@ function resizeTerminal(id, cols, rows) {
 // /api/terminal/list sudah melaporkan kosong.
 //
 // Sekarang memakai satu-satunya jalur pembunuh PTY di basis kode ini
-// (core/terminal.cjs killPty): taskkill /F /T untuk seluruh pohon, tanpa
+// (core/terminal.ts killPty): taskkill /F /T untuk seluruh pohon, tanpa
 // argumen sinyal, plus menonaktifkan pendaftar konsol node-pty yang crash.
 // Penghapusan dari map tak perlu ditunda lagi — pembunuhannya sinkron, jadi
 // jendela 200 ms itu hanya menunda tanpa menjamin apa pun.

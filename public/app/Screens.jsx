@@ -298,7 +298,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     setPickerMcpInputError("");
     setPickerMcpInputSuccess("");
 
-    // Satu sumber: lihat mcpResolvePerintah() di app/Config.jsx. Digandakan
+    // Satu sumber: lihat mcpResolvePerintah() di app/Config.tsx. Digandakan
     // di sini dulu, dan dua salinannya sempat melenceng.
     const _r = mcpResolvePerintah(type);
     let command = _r.command;

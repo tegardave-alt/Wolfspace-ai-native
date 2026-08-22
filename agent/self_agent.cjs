@@ -1101,7 +1101,7 @@ async function selfAgentStream(payload, emit, ctl = {}) {
   }
 
   let sessionSnapshotId = null;
-  const { rollback } = require("./snapshot.cjs");
+  const { rollback } = require("./snapshot.ts");
   // ASINKRON, dan itu disengaja. Di mode Electron seluruh run agent berjalan di
   // dalam proses MAIN — pemilik BrowserWindow dan pemompa antrean pesan Windows.
   // qBackup() sinkron menyalin ~112 berkas dengan copyFileSync (terukur 285-365ms

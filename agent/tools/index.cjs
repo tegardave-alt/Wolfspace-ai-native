@@ -28,7 +28,7 @@ const { dlog } = require("../debug.cjs");
 // hanya dipanggil server.cjs yang jalur agent-nya sudah tak terpakai. Gerbang di
 // sana tak pernah menyentuh agent sama sekali.
 const codeQuality = require("../code-quality.cjs");
-const { createSnapshot } = require("../snapshot.cjs");
+const { createSnapshot } = require("../snapshot.ts");
 
 // ── Hybrid module loading (eager core + lazy peripheral) ──
 // Core modules (file-tools, exec-tools) are loaded eagerly — needed on

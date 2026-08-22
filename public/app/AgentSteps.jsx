@@ -1,7 +1,7 @@
 // AgentSteps — diekstrak dari Sidebar.jsx (app.jsx split): ToolOutput, *ActionRow,
 // ConsolidatedThoughtCard, AgentSteps, HitlModal. Prepend via APP_MODULES.
 
-// useDekatLayar dipindah ke Config.jsx (dimuat PERTAMA) karena CodeBlocks.jsx
+// useDekatLayar dipindah ke Config.tsx (dimuat PERTAMA) karena CodeBlocks.jsx
 // juga memakainya dan dimuat LEBIH DULU dari berkas ini. Saat ini semua modul
 // digabung jadi satu <script> sehingga hoisting menyelamatkannya, tapi itu
 // jaminan yang bisa hilang diam-diam kalau pemuatannya dipecah nanti.
@@ -141,7 +141,7 @@ function ToolOutput({ text, ok, kind, arg }) {
     };
   }, [language, dekat]);
   // follow text changes — menyusul di ujung, bukan menulis ulang seluruh model.
-  // Alasan + angka ukurannya ada di terapkanTeksStream (Viewport.jsx).
+  // Alasan + angka ukurannya ada di terapkanTeksStream (Viewport.tsx).
   useEffect(() => {
     const ed = edRef.current;
     if (ed) terapkanTeksStream(ed, text);

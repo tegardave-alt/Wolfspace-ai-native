@@ -8,7 +8,7 @@ const fs = require("fs");
 const path = require("path");
 const os = require("os");
 const { execSync } = require("child_process");
-const { createSnapshot, rollback } = require("./snapshot.cjs");
+const { createSnapshot, rollback } = require("./snapshot.ts");
 const codeQuality = require("./code-quality.cjs");
 
 const QROOT = path.resolve(__dirname, "..");

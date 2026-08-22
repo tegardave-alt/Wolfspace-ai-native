@@ -22,7 +22,7 @@ const fs = require("fs");
 const path = require("path");
 
 const baca = (p) => fs.readFileSync(path.join(__dirname, "..", p), "utf8");
-const VIEWPORT = baca("public/app/Viewport.jsx");
+const VIEWPORT = baca("public/app/Viewport.tsx");
 const AGENT = baca("public/app/AgentSteps.jsx");
 const BLOCKS = baca("public/app/CodeBlocks.jsx");
 const HTML = baca("public/index.html");
@@ -61,8 +61,8 @@ describe("gerbang pembuatan editor", () => {
 });
 
 describe("hook dimuat sebelum pemakainya", () => {
-  test("Viewport.jsx terdaftar di APP_MODULES", () => {
-    expect(HTML).toMatch(/"\/app\/Viewport\.jsx"/);
+  test("Viewport.tsx terdaftar di APP_MODULES", () => {
+    expect(HTML).toMatch(/"\/app\/Viewport\.tsx"/);
   });
 
   test("urutannya SEBELUM CodeBlocks dan AgentSteps", () => {
@@ -71,7 +71,7 @@ describe("hook dimuat sebelum pemakainya", () => {
     // kalau pemuatannya dipecah nanti, dan kalau hilang akibatnya berat:
     // useDekatLayar undefined -> TypeError saat render -> rollback -> reload,
     // persis gejala yang sedang diperbaiki.
-    const i = HTML.indexOf('"/app/Viewport.jsx"');
+    const i = HTML.indexOf('"/app/Viewport.tsx"');
     expect(i).toBeGreaterThan(-1);
     expect(HTML.indexOf('"/app/CodeBlocks.jsx"')).toBeGreaterThan(i);
     expect(HTML.indexOf('"/app/AgentSteps.jsx"')).toBeGreaterThan(i);

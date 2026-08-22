@@ -200,9 +200,9 @@ describe("folder baru", () => {
     expect(B).toMatch(
       /const \[jenisBaru, setJenisBaru\] = React\.useState\("berkas"\)/,
     );
-    // \s* di tiap sela: prettier memecah atribut panjang ke beberapa baris, dan
-    // pola satu-baris ini merah karena PEMFORMATAN, bukan karena perilaku
-    // berubah. Yang dijaga tetap sama: placeholder MENGIKUTI jenisBaru.
+    // \s* at every gap: prettier splits long attributes across lines, and a
+    // one-line pattern goes red over FORMATTING rather than changed behaviour.
+    // What is guarded stays the same: the placeholder FOLLOWS jenisBaru.
     expect(B).toMatch(
       /placeholder=\{\s*jenisBaru === "folder"\s*\? "folder-name"\s*: "file-name\.js"\s*\}/,
     );

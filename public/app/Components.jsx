@@ -278,7 +278,7 @@ function TopBar({
   );
 }
 
-/* Views dipindah ke public/app/Views.jsx (APP_MODULES). */
+/* Views dipindah ke public/app/Views.tsx (APP_MODULES). */
 
 /* CodeBlocks dipindah ke public/app/CodeBlocks.jsx (APP_MODULES). */
 
@@ -820,7 +820,7 @@ function Composer({
     setMcpInputError("");
     setMcpInputSuccess("");
 
-    // Satu sumber: lihat mcpResolvePerintah() di app/Config.jsx. Digandakan
+    // Satu sumber: lihat mcpResolvePerintah() di app/Config.tsx. Digandakan
     // di sini dulu, dan dua salinannya sempat melenceng.
     const _r = mcpResolvePerintah(type);
     let command = _r.command;

@@ -83,7 +83,7 @@ jobs:
           UNPACKED="dist-app/win-unpacked/resources/app.asar.unpacked"
           test -d "$UNPACKED" || { echo "::error::$UNPACKED tidak ada"; exit 1; }
           gagal=0
-          # core/terminal.cjs ada di daftar ini karena PERNAH hilang: build.files
+          # core/terminal.ts ada di daftar ini karena PERNAH hilang: build.files
           # menyebut "terminal.cjs" di akar — berkas yang tak pernah ada — sisa dari
           # masa berkas itu belum dipindah ke core/. Selama satu-satunya pemakainya
           # (agent/tools/exec-tools.cjs) membungkus require dalam try/catch, tool
@@ -95,7 +95,7 @@ jobs:
           # TypeScript migration started. build.files previously named only
           # "scripts/ww.cjs", so without the new entries the whole backend fails to
           # load in the packaged app — exactly the class of bug this job exists to catch.
-          for f in core.js server.cjs core/terminal.cjs scripts/ww.cjs scripts/ts-register.cjs \
+          for f in core.js server.cjs core/terminal.ts scripts/ww.cjs scripts/ts-register.cjs \
                    agent/self_agent.cjs agent/mcp-client.ts \
                    agent/sandbox.ts agent/sandbox-policy.ts \
                    agent/broker/zone-worker.cjs agent/broker/zone-process.ts \

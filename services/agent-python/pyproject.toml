@@ -1,0 +1,21 @@
+[project]
+name = "wolfspace-agent"
+version = "0.1.0"
+description = "LangGraph agent worker for WOLFSPACE — owns the state machine, never the tools"
+requires-python = ">=3.11"
+
+# Deliberately short. This worker owns the graph and nothing else: no HTTP
+# client, no filesystem helpers, no shell. Everything it might reach for already
+# exists on the TypeScript side behind the sandbox, and it asks for that over the
+# line protocol instead. A dependency appearing here that touches the outside
+# world is a sign the boundary in README.md has been crossed.
+dependencies = ["langgraph>=1.2,<2"]
+
+[project.optional-dependencies]
+dev = ["pytest>=8"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+# Quiet by default: this suite is also run from the repo-level jest guard, and
+# pytest's own summary noise makes that output hard to read.
+addopts = "-q"

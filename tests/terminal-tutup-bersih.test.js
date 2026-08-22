@@ -19,9 +19,9 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const term = require("../core/terminal.cjs");
+const term = require("../core/terminal.ts");
 
-const SRC = fs.readFileSync(require.resolve("../core/terminal.cjs"), "utf8");
+const SRC = fs.readFileSync(require.resolve("../core/terminal.ts"), "utf8");
 
 describe("struktur penutupan terminal", () => {
   test("killPty membunuh POHON, bukan cuma proses shell", () => {
@@ -56,7 +56,7 @@ describe("struktur penutupan terminal", () => {
 
 describe("jalur HTTP/UI memakai pembunuh PTY yang SAMA", () => {
   // server.cjs punya manajer sesi terminal sendiri untuk UI, terpisah dari
-  // core/terminal.cjs. Dulu penutupannya memanggil pty.kill("SIGTERM") — dan
+  // core/terminal.ts. Dulu penutupannya memanggil pty.kill("SIGTERM") — dan
   // node-pty di Windows MELEMPAR begitu diberi argumen sinyal
   // (windowsTerminal.js:150), lemparannya ditelan `catch {}`, sesinya dihapus
   // dari map, jadi PTY-nya hidup terus DAN tak terjangkau. Terukur pada proses

@@ -34,7 +34,7 @@ const tanpaKomentar = (t) =>
     .split("\n")
     .filter((b) => !/^\s*(\/\/|\*|\/\*)/.test(b))
     .join("\n");
-const SRC = baca("public/app/usePreviewPanel.jsx");
+const SRC = baca("public/app/usePreviewPanel.tsx");
 
 // Fungsinya DIAMBIL dari sumber lalu dijalankan — bukan ditulis ulang menurut
 // tafsiran, supaya yang diuji memang jalur produksi.
@@ -49,16 +49,29 @@ const ambilConst = (nama) => {
   return SRC.slice(i, SRC.indexOf(";\n", i) + 1);
 };
 
-const tafsirkanAlamat = eval(
+// The extracted source is TRANSPILED first, exactly as index.html loads a .tsx
+// file. Since usePreviewPanel migrated, that source carries type annotations —
+// and a raw eval() stops at the first colon. Transpiling here preserves this
+// file's claim: what runs is the production path, not a reinterpretation.
+globalThis.self = globalThis;
+const Babel = require(
+  require("path").join(__dirname, "..", "public/vendor/babel.min.js"),
+);
+const _sumberGabungan =
   "(function(){" +
-    "const localStorage = undefined;" + // paksa jalur bawaan mesin cari
-    ambilConst("_EKSTENSI_BERKAS") +
-    ambilConst("_BENTUK_HOST") +
-    ambilConst("_BENTUK_LOKAL") +
-    ambilConst("_MESIN_BAWAAN") +
-    ambil("_mesinCari") +
-    ambil("tafsirkanAlamat") +
-    "return tafsirkanAlamat;})()",
+  "const localStorage = undefined;" + // paksa jalur bawaan mesin cari
+  ambilConst("_EKSTENSI_BERKAS") +
+  ambilConst("_BENTUK_HOST") +
+  ambilConst("_BENTUK_LOKAL") +
+  ambilConst("_MESIN_BAWAAN") +
+  ambil("_mesinCari") +
+  ambil("tafsirkanAlamat") +
+  "return tafsirkanAlamat;})()";
+const tafsirkanAlamat = eval(
+  Babel.transform(_sumberGabungan, {
+    presets: ["typescript"],
+    filename: "omnibox.ts",
+  }).code,
 );
 
 describe("berkas tetap menang — fungsi asli panel tak boleh rusak", () => {

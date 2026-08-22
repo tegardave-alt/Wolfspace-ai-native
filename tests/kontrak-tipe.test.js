@@ -28,10 +28,10 @@ const CFG = path.join(AKAR, "agent", "jsconfig.json");
 // boleh berkurang.
 const SUDAH_DIPERIKSA = ["agent/attachment-bridge.cjs"];
 
-// Berkas yang sudah BERMIGRASI ke TypeScript. Ratchet-nya tetap berlaku, hanya
-// syaratnya yang berubah: sebuah .ts SELALU diperiksa tsc, jadi yang dijaga
-// bukan lagi baris `// @ts-check` melainkan bahwa berkasnya masih .ts dan belum
-// diam-diam dikembalikan ke .cjs tanpa pemeriksaan.
+// Files that have MIGRATED to TypeScript. The ratchet still applies; only its
+// condition changes: a .ts file is ALWAYS checked by tsc, so what is guarded is
+// no longer a `// @ts-check` line but that the file is still .ts and has not
+// quietly been reverted to an unchecked .cjs.
 const SUDAH_TYPESCRIPT = [
   "agent/broker/commandchain.ts",
   "agent/broker/zone-process.ts",
@@ -46,8 +46,8 @@ describe("kontrak tipe jalur kritis", () => {
   });
 
   test.each(SUDAH_TYPESCRIPT)("%s masih berupa TypeScript", (rel) => {
-    // Turun ke .cjs tanpa @ts-check akan mematikan pemeriksaan berkas ini tanpa
-    // jejak — kelas kegagalan yang sama persis dengan menghapus baris @ts-check.
+    // Dropping back to .cjs without @ts-check would disable this file's checking
+    // with no trace — the exact failure class as deleting the @ts-check line.
     expect(fs.existsSync(path.join(AKAR, rel))).toBe(true);
     expect(rel.endsWith(".ts")).toBe(true);
   });
@@ -60,10 +60,10 @@ describe("kontrak tipe jalur kritis", () => {
       path.join(AKAR, "agent/broker/commandchain.ts"),
       "utf8",
     );
-    // TypeScript menulis anggota union dengan titik koma dan biasanya memecahnya
-    // per baris, jadi polanya dilonggarkan pada PEMISAHNYA — bukan pada
-    // bentuknya. Yang tetap dikunci sama persis: allow:true berpasangan dengan
-    // alasan:null, allow:false berpasangan dengan alasan bertipe string.
+    // TypeScript writes union members with semicolons and usually breaks them
+    // across lines, so the pattern is loosened on the SEPARATOR — never on the
+    // shape. What stays pinned is identical: allow:true pairs with alasan:null,
+    // allow:false pairs with alasan of type string.
     expect(cc).toMatch(
       /\{ allow: true;? alasan: null \}\s*\|\s*\{ allow: false;? alasan: string \}/,
     );
@@ -80,13 +80,13 @@ describe("kontrak tipe jalur kritis", () => {
     expect(zp).not.toMatch(/jaringanTerkurung: true[;,] alasan/);
   });
 
-  // DUA konfigurasi, dan yang kedua bukan tambahan kosmetik.
+  // TWO configs, and the second is not cosmetic.
   //
-  // jsconfig.json hanya mencakup **/*.cjs dan **/*.js. Begitu sebuah berkas
-  // bermigrasi ke .ts, ia KELUAR dari cakupan itu — dan kalau tes ini hanya
-  // menjalankan jsconfig, berkas yang baru dimigrasi berhenti diperiksa tanpa
-  // satu pun tanda. Itu persis kelas kegagalan yang seluruh berkas uji ini ada
-  // untuk mencegahnya, hanya lewat pintu yang berbeda.
+  // jsconfig.json only covers **/*.cjs and **/*.js. The moment a file migrates
+  // to .ts it leaves that scope — and if this test ran jsconfig alone, a newly
+  // migrated file would stop being checked with no signal at all. That is
+  // precisely the failure class this whole test file exists to prevent, just
+  // through a different door.
   const CFG_TS = path.join(AKAR, "agent", "tsconfig.json");
 
   test.each([

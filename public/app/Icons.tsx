@@ -1,11 +1,22 @@
-// Icons — diekstrak dari app.jsx (lihat public/app.jsx untuk App orkestrator).
-// Dimuat via APP_MODULES di index.html: di-CONCAT SEBELUM app.jsx (prepend) lalu
-// Babel sekali -> satu scope global. Body fungsi (hooks/React/SB) jalan saat render.
+// Icons — extracted from app.jsx (see public/app.jsx for the App orchestrator).
+// Loaded via APP_MODULES in index.html: CONCATenated BEFORE app.jsx (prepended),
+// then run through Babel once into a single global scope. Function bodies
+// (hooks/React/SB) execute at render time.
 
 /* ----------------------------- Icons ----------------------------- */
+// Props are whatever the caller spreads onto the <svg>: width, height, style,
+// Props are whatever the caller spreads onto the <svg>: width, height, style,
+// className, and so on.
+//
+// The TABLE itself is deliberately NOT annotated. Record<string, fn> would make
+// every key possibly-undefined under noUncheckedIndexedAccess, and <Icon.chev />
+// would stop being a callable JSX element. Letting the object literal be
+// inferred keeps the exact key set, so a typo like Icon.chevv is an error.
+type PropsIkon = Record<string, unknown>;
+
 const Icon = {
   // Traced (potrace) from the WOLFSPACE reference mark — a wolf head in profile.
-  wolf: (p) => (
+  wolf: (p: PropsIkon) => (
     <svg viewBox="0 0 416 416" fill="none" {...p}>
       <g
         transform="translate(0,416) scale(0.1,-0.1)"
@@ -50,7 +61,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       </g>
     </svg>
   ),
-  spark: (p) => (
+  spark: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M12 2.5l1.9 5.1 5.1 1.9-5.1 1.9L12 16.5l-1.9-5.1L5 9.5l5.1-1.9L12 2.5z"
@@ -63,7 +74,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  caret: (p) => (
+  caret: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M6 9l6 6 6-6"
@@ -74,7 +85,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  chev: (p) => (
+  chev: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M6 9l6 6 6-6"
@@ -85,7 +96,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  reset: (p) => (
+  reset: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M3 12a9 9 0 109-9 9 9 0 00-7 3.3M3 4v3.3h3.3"
@@ -96,7 +107,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  copy: (p) => (
+  copy: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect
         x="9"
@@ -115,7 +126,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  check: (p) => (
+  check: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M5 13l4 4L19 7"
@@ -126,18 +137,18 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  send: (p) => (
+  send: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path d="M4 12l16-8-5 16-3.5-6L4 12z" fill="currentColor" />
     </svg>
   ),
-  target: (p) => (
+  target: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <circle cx="12" cy="12" r="8" stroke="currentColor" strokeWidth="2" />
       <circle cx="12" cy="12" r="3.2" fill="currentColor" />
     </svg>
   ),
-  arrow: (p) => (
+  arrow: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M9 6l6 6-6 6"
@@ -148,12 +159,12 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  play: (p) => (
+  play: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path d="M7 5l12 7-12 7V5z" fill="currentColor" />
     </svg>
   ),
-  pencil: (p) => (
+  pencil: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M14.5 5.5l4 4M4 20l1-4L16.5 4.5a2.1 2.1 0 013 3L8 19l-4 1z"
@@ -164,7 +175,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  loader: (p) => (
+  loader: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M12 3a9 9 0 109 9"
@@ -174,12 +185,12 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  square: (p) => (
+  square: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect x="5" y="5" width="14" height="14" rx="2" fill="currentColor" />
     </svg>
   ),
-  terminal: (p) => (
+  terminal: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect
         x="3"
@@ -199,7 +210,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  sun: (p) => (
+  sun: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <circle cx="12" cy="12" r="4" stroke="currentColor" strokeWidth="2" />
       <path
@@ -210,7 +221,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  moon: (p) => (
+  moon: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M21 12.8A9 9 0 1111.2 3a7 7 0 009.8 9.8z"
@@ -220,7 +231,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
-  workflow: (p) => (
+  workflow: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect
         x="3"
@@ -268,7 +279,7 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
   ),
 };
 const HubIcon = {
-  back: (p) => (
+  back: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M15 6l-6 6 6 6"
@@ -279,7 +290,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  search: (p) => (
+  search: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <circle
         cx="10.5"
@@ -296,7 +307,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  download: (p) => (
+  download: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M12 3v12m0 0l-4-4m4 4l4-4M5 17v2a2 2 0 002 2h10a2 2 0 002-2v-2"
@@ -307,7 +318,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  check: (p) => (
+  check: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M5 13l4 4L19 7"
@@ -318,7 +329,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  loader: (p) => (
+  loader: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M12 3a9 9 0 109 9"
@@ -328,7 +339,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  star: (p) => (
+  star: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M12 2l2.9 6.3L22 9.2l-5 4.6 1.3 6.9L12 17.5l-6.3 3.2L7 13.8 2 9.2l7.1-.9L12 2z"
@@ -336,7 +347,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  dl: (p) => (
+  dl: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <path
         d="M12 5v10m0 0l-3-3m3 3l3-3M6 17h12"
@@ -346,7 +357,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  hf: (p) => (
+  hf: (p: PropsIkon) => (
     <svg viewBox="0 0 36 36" fill="none" {...p}>
       <circle cx="18" cy="15.5" r="13.5" fill="#FFAC33" />
       <circle cx="18" cy="15.5" r="11.8" fill="#FFCC4D" />
@@ -390,7 +401,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  empty: (p) => (
+  empty: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect
         x="3"
@@ -409,7 +420,7 @@ const HubIcon = {
       />
     </svg>
   ),
-  workflow: (p) => (
+  workflow: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
       <rect
         x="3"
@@ -456,7 +467,7 @@ const HubIcon = {
     </svg>
   ),
 };
-function BrandMark({ className }) {
+function BrandMark({ className }: { className?: string }) {
   return (
     <span className={"brand-mark " + (className || "")}>
       <Icon.wolf />

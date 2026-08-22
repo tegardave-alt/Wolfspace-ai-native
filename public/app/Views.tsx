@@ -1,10 +1,28 @@
-// Views — diekstrak dari Components.jsx (app.jsx split). Prepend via APP_MODULES.
+// Views — extracted from Components.jsx (the app.jsx split). Prepended via
+// APP_MODULES.
+
+/** One saved conversation as kept in the chat history. */
+interface ObrolanTersimpan {
+  id?: string | number;
+  title?: string;
+  project?: string;
+  savedAt?: string | number;
+  [k: string]: unknown;
+}
 
 /* ----------------------------- History (full page) ----------------------------- */
-function HistoryView({ savedChats = [], onSelect, onDelete }) {
+function HistoryView({
+  savedChats = [],
+  onSelect,
+  onDelete,
+}: {
+  savedChats?: ObrolanTersimpan[];
+  onSelect: (chat: ObrolanTersimpan) => void;
+  onDelete: (id: unknown) => void;
+}) {
   const [searchQuery, setSearchQuery] = useState("");
 
-  const formatTimeAgo = (ts) => {
+  const formatTimeAgo = (ts?: string | number) => {
     if (!ts) return "now";
     const diff = Math.floor((Date.now() - new Date(ts).getTime()) / 1000);
     if (diff < 60) return "now";
@@ -83,7 +101,7 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
             type="text"
             placeholder="Search conversations..."
             value={searchQuery}
-            onChange={(e) => setSearchQuery(e.target.value)}
+            onChange={(e: any) => setSearchQuery(e.target.value)}
             style={{
               background: "transparent",
               border: "none",
@@ -137,10 +155,10 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
                 borderRadius: "8px",
                 transition: "background 0.15s",
               }}
-              onMouseEnter={(e) =>
+              onMouseEnter={(e: any) =>
                 (e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)")
               }
-              onMouseLeave={(e) =>
+              onMouseLeave={(e: any) =>
                 (e.currentTarget.style.background = "transparent")
               }
             >
@@ -169,7 +187,7 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
                 <button
                   className="btn-reset"
                   title="Delete"
-                  onClick={(e) => {
+                  onClick={(e: any) => {
                     e.stopPropagation();
                     onDelete(chat.id);
                   }}
@@ -179,11 +197,11 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
                     padding: "4px 8px",
                     borderRadius: "4px",
                   }}
-                  onMouseEnter={(e) => {
+                  onMouseEnter={(e: any) => {
                     e.currentTarget.style.color = "#ef4444";
                     e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)";
                   }}
-                  onMouseLeave={(e) => {
+                  onMouseLeave={(e: any) => {
                     e.currentTarget.style.color = "#6b7280";
                     e.currentTarget.style.background = "transparent";
                   }}
@@ -200,7 +218,15 @@ function HistoryView({ savedChats = [], onSelect, onDelete }) {
 }
 
 /* ----------------------------- Settings (full page) ----------------------------- */
-function SettingsView({ onBack, onSaved, onCloudChanged }) {
+function SettingsView({
+  onBack,
+  onSaved,
+  onCloudChanged,
+}: {
+  onBack: () => void;
+  onSaved: () => void;
+  onCloudChanged: () => void;
+}) {
   const stored = getCloud();
   const [key, setKey] = useState("");
   const [provider, setProvider] = useState(
@@ -242,7 +268,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
           : "Guess: " + d.name + " (unverified)",
       );
     } catch (e) {
-      setHint("Detection failed: " + e.message);
+      setHint("Detection failed: " + (e as Error).message);
     }
   };
   const save = () => {
@@ -251,14 +277,21 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
       setHint("Paste an API key first.");
       return;
     }
-    let prov, name, bu;
+    let prov: string;
+    let name: string | undefined;
+    let bu: string | undefined;
     if (provider === "auto") {
       const d = detectPrefix(k);
-      prov = d.provider;
-      name = d.name;
+      // detectPrefix returns null only for an empty key, and k is non-empty by
+      // the guard above. Stated explicitly so the narrowing is visible.
+      prov = d ? d.provider : "openai";
+      name = d ? d.name : "OpenAI";
     } else if (provider === "custom" || provider === "cloudflare") {
-      prov = provider;
-      name = PROVIDER_LABELS[provider];
+      // provider comes from a <select> whose options are PROVIDER_OPTS, so it is
+      // always a string here; useState typed it as string | undefined because its
+      // initialiser reads stored.provider.
+      prov = provider ?? "openai";
+      name = PROVIDER_LABELS[prov];
       bu = baseUrl.trim();
       if (!bu) {
         setHint(
@@ -271,10 +304,10 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
         return;
       }
     } else {
-      prov = provider;
-      name = PROVIDER_LABELS[provider];
+      prov = provider ?? "openai";
+      name = PROVIDER_LABELS[prov];
     }
-    let mdl = model.trim();
+    let mdl = (model ?? "").trim();
     if (stored && stored.provider !== prov) mdl = "";
     if (!mdl || keyish(mdl)) mdl = CLOUD_DEFAULT[prov] || "gpt-4o";
     setCloudLS({ key: k, provider: prov, name, model: mdl, baseUrl: bu });
@@ -339,7 +372,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                 type="password"
                 autoComplete="new-password"
                 value={key}
-                onChange={(e) => setKey(e.target.value)}
+                onChange={(e: any) => setKey(e.target.value)}
                 placeholder={
                   stored
                     ? "Key saved (… " +
@@ -357,7 +390,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
               <div className="select-wrap">
                 <select
                   value={provider}
-                  onChange={(e) => setProvider(e.target.value)}
+                  onChange={(e: any) => setProvider(e.target.value)}
                 >
                   <option value="auto">Auto-detect</option>
                   {PROVIDER_OPTS.filter((p) => p !== "auto").map((p) => (
@@ -377,7 +410,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
                 <input
                   className="input"
                   value={baseUrl}
-                  onChange={(e) => setBaseUrl(e.target.value)}
+                  onChange={(e: any) => setBaseUrl(e.target.value)}
                   placeholder={
                     provider === "cloudflare"
                       ? "https://api.cloudflare.com/client/v4/accounts/ACCOUNT_ID/ai/v1"
@@ -391,7 +424,7 @@ function SettingsView({ onBack, onSaved, onCloudChanged }) {
               <input
                 className="input"
                 value={model}
-                onChange={(e) => setModelName(e.target.value)}
+                onChange={(e: any) => setModelName(e.target.value)}
                 placeholder="Optional, e.g. qwen, coder, gpt-4o"
               />
             </div>

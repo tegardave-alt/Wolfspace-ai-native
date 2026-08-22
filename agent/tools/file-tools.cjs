@@ -275,7 +275,7 @@ async function qSyntaxOk(absPath) {
   }
 }
 
-const { createSnapshot } = require("../snapshot.cjs");
+const { createSnapshot } = require("../snapshot.ts");
 
 function qBackup() {
   const filesToBackup = [];
@@ -509,7 +509,7 @@ async function qBackupAsync() {
     n++;
   }
   if (filesToBackup.length === 0) return null;
-  const { createSnapshotAsync } = require("../snapshot.cjs");
+  const { createSnapshotAsync } = require("../snapshot.ts");
   const snap = await createSnapshotAsync(filesToBackup, "session-backup");
   return snap.id;
 }

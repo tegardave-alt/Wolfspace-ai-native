@@ -8,7 +8,7 @@ const path = require("path");
 const os = require("os");
 
 const AKAR = path.resolve(__dirname, "..");
-const { rollback, createSnapshot } = require("../agent/snapshot.cjs");
+const { rollback, createSnapshot } = require("../agent/snapshot.ts");
 
 describe("rollback melaporkan kegagalan, bukan menyamarkannya", () => {
   // KENAPA ADA. rollback() dipanggil dari dalam blok catch self_agent.cjs, di

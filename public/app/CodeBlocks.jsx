@@ -254,7 +254,7 @@ function CodeBlock({ lang, code }) {
     // yang naskahnya tersimpan karena sempat keluar layar.
     if (draftRef.current != null) return;
     // Menyusul di ujung, bukan menulis ulang seluruh model — lihat
-    // terapkanTeksStream (Viewport.jsx) untuk alasan dan angka ukurannya.
+    // terapkanTeksStream (Viewport.tsx) untuk alasan dan angka ukurannya.
     // Penjaga di atas memastikan ini hanya jalan saat pemakai TIDAK sedang
     // menyunting, jadi kursor dan tumpukan undo-nya tak pernah tersenggol.
     if (ed && !focusedRef.current) terapkanTeksStream(ed, code);

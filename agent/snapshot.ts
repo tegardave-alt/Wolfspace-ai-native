@@ -1,31 +1,57 @@
 // ── WOLFSPACE Snapshot Engine ──
-// Bekerja seperti "git commit otomatis" sebelum agent mengedit file.
-// Menyimpan snapshot file ke .wolfspace/snapshots/<timestamp>/
-// dan menyediakan rollback ke snapshot manapun.
+// Works like an automatic "git commit" taken before the agent edits a file.
+// Stores file snapshots under .wolfspace/snapshots/<timestamp>/
+// and provides a rollback to any of them.
 
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const crypto = require("crypto");
+import * as fs from "fs";
+import * as path from "path";
+import * as crypto from "crypto";
+
+/** Metadata written as _meta.json inside every snapshot directory. */
+interface MetaSnapshot {
+  id: string;
+  ts: number;
+  label: string;
+  /** Paths relative to QROOT, so a snapshot stays valid if the repo moves. */
+  files: string[];
+}
+
+/** What createSnapshot()/createSnapshotAsync() hand back to the caller. */
+interface HasilSnapshot {
+  id: string;
+  dir: string;
+  files: string[];
+  ts: number;
+}
+
+// A rollback either restored files or explains why it could not.
+//
+// Written as a union because the caller in agent/self_agent.cjs sits inside a
+// catch block above three emits, and an `ok:false` that lost its reason would
+// tell the user the project was restored when it was not.
+type HasilRollback =
+  | { ok: true; restored: string[]; snapshotId: string }
+  | { ok: false; error: string };
 
 const QROOT = path.resolve(__dirname, "..");
 const SNAP_DIR = path.join(QROOT, ".wolfspace", "snapshots");
-const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 hari
-const MAX_SNAPS = 50; // max snapshot yang disimpan
+const MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000; // 7 days
+const MAX_SNAPS = 50; // most snapshots kept
 
-// Pastikan direktori snapshot ada
-function _ensureDir(dir) {
+// Make sure the snapshot directory exists
+function _ensureDir(dir: string): void {
   if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
 }
 
 /**
- * Buat snapshot dari daftar file sebelum diedit.
- * @param {string[]} filePaths - array path absolut file yang akan diedit
- * @param {string} [label] - label opsional untuk snapshot ini
+ * Snapshot a list of files before they are edited.
+ * @param filePaths absolute paths of the files about to be edited
+ * @param label optional label for this snapshot
  * @returns {{ id: string, dir: string, files: string[], ts: number }}
  */
-function createSnapshot(filePaths, label = "") {
+function createSnapshot(filePaths: string[], label = ""): HasilSnapshot {
   _ensureDir(SNAP_DIR);
 
   const ts = Date.now();
@@ -33,14 +59,14 @@ function createSnapshot(filePaths, label = "") {
   const dir = path.join(SNAP_DIR, id);
   _ensureDir(dir);
 
-  const savedFiles = [];
-  const meta = { id, ts, label, files: [] };
+  const savedFiles: string[] = [];
+  const meta: MetaSnapshot = { id, ts, label, files: [] };
 
   for (const fp of filePaths) {
     const abs = path.resolve(fp);
-    if (!fs.existsSync(abs)) continue; // file baru, tidak perlu di-snapshot
+    if (!fs.existsSync(abs)) continue; // brand-new file, nothing to snapshot
 
-    // Simpan dengan struktur direktori relatif terhadap QROOT
+    // Stored with a directory structure relative to QROOT
     const rel = path.relative(QROOT, abs);
     const dest = path.join(dir, rel);
     _ensureDir(path.dirname(dest));
@@ -68,7 +94,7 @@ function createSnapshot(filePaths, label = "") {
  * @param {string} snapshotId
  * @returns {{ ok: boolean, restored: string[], error?: string }}
  */
-function rollback(snapshotId) {
+function rollback(snapshotId: string): HasilRollback {
   const dir = path.join(SNAP_DIR, snapshotId);
   if (!fs.existsSync(dir)) {
     return { ok: false, error: `Snapshot '${snapshotId}' tidak ditemukan.` };
@@ -80,15 +106,15 @@ function rollback(snapshotId) {
   }
 
   // JSON.parse DIBUNGKUS. Cabang di atas mengaku menangani metadata "rusak",
-  // padahal ia hanya memeriksa KEBERADAAN berkas — isi yang rusak lolos ke sini
-  // lalu melempar.
+  // even though it only checked that the file EXISTS — corrupt contents fell
+  // straight through to here and threw.
   //
-  // Lemparannya tak berhenti di sini. rollback() dipanggil dari dalam blok
-  // catch self_agent.cjs, di ATAS tiga emit — termasuk yang komentarnya sendiri
-  // berbunyi "ALWAYS emit adone so frontend knows the agent is done". Terbukti
-  // dengan mengeksekusi blok itu apa adanya: metadata rusak -> NOL pesan sampai
-  // ke UI, dan UI menggantung selamanya karena tak pernah tahu run berakhir.
-  // Jadi kegagalan pemulihan berubah jadi UI beku permanen.
+  // That throw did not stop here. rollback() is called from inside the catch
+  // block in self_agent.cjs, ABOVE three emits — including the one whose own
+  // comment reads "ALWAYS emit adone so frontend knows the agent is done".
+  // Proven by executing that block as-is: corrupt metadata -> ZERO messages
+  // reach the UI, and the UI hangs forever because it never learns the run
+  // ended. A failed recovery turned into a permanently frozen UI.
   let meta;
   try {
     meta = JSON.parse(fs.readFileSync(metaPath, "utf8"));
@@ -104,7 +130,7 @@ function rollback(snapshotId) {
       error: `Metadata snapshot '${snapshotId}' tidak memuat daftar berkas.`,
     };
   }
-  const restored = [];
+  const restored: string[] = [];
 
   for (const rel of meta.files) {
     const src = path.join(dir, rel);
@@ -122,10 +148,10 @@ function rollback(snapshotId) {
 }
 
 /**
- * Ambil daftar semua snapshot, diurutkan dari yang paling baru.
+ * List every snapshot, newest first.
  * @returns {Array<{ id, ts, label, files }>}
  */
-function listSnapshots() {
+function listSnapshots(): MetaSnapshot[] {
   if (!fs.existsSync(SNAP_DIR)) return [];
 
   return fs
@@ -145,7 +171,7 @@ function listSnapshots() {
 }
 
 /**
- * Hapus snapshot yang sudah lebih dari MAX_AGE_MS atau melebihi MAX_SNAPS.
+ * Drop snapshots older than MAX_AGE_MS or beyond the MAX_SNAPS limit.
  */
 function _pruneOldSnapshots() {
   if (!fs.existsSync(SNAP_DIR)) return;
@@ -170,21 +196,25 @@ function _pruneOldSnapshots() {
   });
 }
 
-// ── Versi asinkron dari createSnapshot ──
+// ── Asynchronous version of createSnapshot ──
 //
-// Dipanggil pada edit PERTAMA tiap sesi agent, dan di mode Electron itu terjadi
-// DI DALAM proses main — pemilik BrowserWindow dan pemompa antrean pesan
-// Windows. Versi sinkronnya menyalin sampai 500 berkas dengan copyFileSync lalu
-// menjalankan _pruneOldSnapshots(), yang membaca _meta.json tiap snapshot
-// (sampai 50) dan bisa rmSync rekursif. Terukur 285-365ms memblokir penuh
-// dengan cache panas, ~1,8 detik saat dingin — semuanya waktu jendela tidak
-// memompa pesan.
+// Called on the FIRST edit of every agent session, and under Electron that
+// happens INSIDE the main process — the owner of the BrowserWindow and the
+// pump of the Windows message queue. The synchronous version copies up to 500
+// files with copyFileSync and then runs _pruneOldSnapshots(), which reads the
+// _meta.json of every snapshot (up to 50) and may rmSync recursively. Measured
+// at 285-365 ms of full blocking with a warm cache, ~1.8 s cold — all of it
+// time the window is not pumping messages.
 //
-// Versi sinkron dipertahankan: rollback dan pemanggil lain memakainya, dan
-// perilakunya sengaja dibuat identik supaya snapshot dari kedua jalur sama.
+// The synchronous version is kept: rollback and other callers use it, and its
+// behaviour is deliberately identical so snapshots from either path match.
 const fsp = fs.promises;
 
-async function _petaBatas(items, batas, fn) {
+async function _petaBatas<T>(
+  items: T[],
+  batas: number,
+  fn: (item: T) => Promise<void>,
+): Promise<void> {
   let i = 0;
   const pekerja = Array.from(
     { length: Math.min(batas, items.length) },
@@ -195,7 +225,10 @@ async function _petaBatas(items, batas, fn) {
   await Promise.all(pekerja);
 }
 
-async function createSnapshotAsync(filePaths, label = "") {
+async function createSnapshotAsync(
+  filePaths: string[],
+  label = "",
+): Promise<HasilSnapshot> {
   await fsp.mkdir(SNAP_DIR, { recursive: true });
 
   const ts = Date.now();
@@ -203,8 +236,8 @@ async function createSnapshotAsync(filePaths, label = "") {
   const dir = path.join(SNAP_DIR, id);
   await fsp.mkdir(dir, { recursive: true });
 
-  const savedFiles = [];
-  const meta = { id, ts, label, files: [] };
+  const savedFiles: string[] = [];
+  const meta: MetaSnapshot = { id, ts, label, files: [] };
 
   await _petaBatas(filePaths, 12, async (fp) => {
     const abs = path.resolve(fp);
@@ -212,7 +245,7 @@ async function createSnapshotAsync(filePaths, label = "") {
     const dest = path.join(dir, rel);
     try {
       await fsp.mkdir(path.dirname(dest), { recursive: true });
-      await fsp.copyFile(abs, dest); // file baru/hilang -> ENOENT, dilewati
+      await fsp.copyFile(abs, dest); // new or missing file -> ENOENT, skipped
     } catch {
       return;
     }
@@ -225,8 +258,8 @@ async function createSnapshotAsync(filePaths, label = "") {
     JSON.stringify(meta, null, 2),
     "utf8",
   );
-  // Prune tetap sinkron: ia hanya menyentuh direktori snapshot (bukan pohon
-  // source), dan biayanya kecil dibanding penyalinan di atas.
+  // Pruning stays synchronous: it only touches the snapshot directory (not the
+  // source tree), and its cost is small next to the copying above.
   _pruneOldSnapshots();
 
   console.log(

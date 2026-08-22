@@ -15,11 +15,11 @@ const { QROOT } = require("./file-tools.cjs");
 // unavailable (node-pty is not installed)" — pesan yang menyesatkan, sebab
 // node-pty terpasang baik-baik saja.
 //
-// SEKARANG: langsung ke core/terminal.cjs, yang mengekspor persis API yang
+// SEKARANG: langsung ke core/terminal.ts, yang mengekspor persis API yang
 // dipakai di sini (create/write/readBuffer/destroy) dan termuat tanpa efek samping.
 let term;
 try {
-  term = require("../../core/terminal.cjs");
+  term = require("../../core/terminal.ts");
 } catch (_) {
   term = null;
 }
