@@ -567,7 +567,7 @@ const PICKER_WORKSPACES = [
   { name: "peaceful-maxwell" },
   { name: "eager-hertz" },
 ];
-/* Screens dipindah ke public/app/Screens.jsx (APP_MODULES). */
+/* Screens dipindah ke public/app/Screens.tsx (APP_MODULES). */
 
 /* ── Logic: sidebar file (tab Changes/Files) — desain mengikuti prototipe/screenshot.
    Terhubung ke daftar file workspace NYATA lewat GET /ww/tree, tapi hanya AKTIF

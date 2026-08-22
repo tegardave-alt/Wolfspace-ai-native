@@ -1,8 +1,9 @@
-// Screens — diekstrak dari app.jsx (lihat public/app.jsx untuk App orkestrator).
-// Dimuat via APP_MODULES di index.html: di-CONCAT SEBELUM app.jsx (prepend) lalu
-// Babel sekali -> satu scope global. Body fungsi (hooks/React/SB) jalan saat render.
+// Screens — extracted from app.jsx (see public/app.jsx for the App
+// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
+// app.jsx (prepended), then Babel once -> a single global scope. Function
+// bodies (hooks/React/SB) run at render time.
 
-function PickerFolderIcon({ size = 15 }) {
+function PickerFolderIcon({ size = 15 }: any) {
   return React.createElement(
     "svg",
     {
@@ -18,7 +19,7 @@ function PickerFolderIcon({ size = 15 }) {
     }),
   );
 }
-function PickerChevIcon({ size = 12 }) {
+function PickerChevIcon({ size = 12 }: any) {
   return React.createElement(
     "svg",
     {
@@ -67,7 +68,7 @@ function getPickerProjectsList() {
   const defaultDefaults = [
     { name: "project", path: "c:\\Users\\dave\\project" },
   ];
-  const isWolfspace = (p) =>
+  const isWolfspace = (p: any) =>
     p &&
     ((p.path && p.path.toLowerCase().includes("wolfspace")) ||
       (p.name && p.name.toLowerCase().includes("wolfspace")));
@@ -75,33 +76,35 @@ function getPickerProjectsList() {
     const deleted = JSON.parse(
       localStorage.getItem("wolfspace_deleted_workspaces") || "[]",
     );
-    // Cocok HANYA berdasar path persis — bukan nama/suffix (lihat isPathDeleted).
-    const isDel = (p) => isPathDeleted(deleted, p && p.path) || isWolfspace(p);
+    // Matched ONLY on exact path — not name or suffix (see isPathDeleted).
+    const isDel = (p: any) =>
+      isPathDeleted(deleted, p && p.path) || isWolfspace(p);
     const stored = JSON.parse(
       localStorage.getItem("wolfspace_projects_list") || "[]",
     );
     if (stored && stored.length > 0) {
-      const filtered = stored.filter((p) => !isDel(p));
+      const filtered = stored.filter((p: any) => !isDel(p));
       if (filtered.length > 0) return filtered;
     }
-    return defaultDefaults.filter((p) => !isDel(p));
+    return defaultDefaults.filter((p: any) => !isDel(p));
   } catch (_) {}
   return defaultDefaults;
 }
 
-// Isi dropdown project — DIPISAH dari ProjectPickerScreen supaya "hidup" hanya
-// selama dropdown terbuka: setiap kali di-mount (dropdown dibuka), ia MEMBACA
-// ULANG localStorage dari nol (bukan mewarisi state induk yang di-patch). Ini
-// men-decouple "tulis data" (attachFolder, sudah selalu benar — terbukti lewat
-// reload) dari "tampilkan data": render di sini tidak pernah bergantung pada
-// apakah patch state sebelumnya sempat ter-commit+ter-paint saat window
-// kehilangan/mendapat fokus OS (dialog folder native) — ia selalu mulai fresh,
-// persis seperti reload manual, tanpa reload sungguhan dan tanpa reset layar lain.
+// The project dropdown's contents — SPLIT OUT of ProjectPickerScreen so it is
+// only "alive" while the dropdown is open: every time it mounts (the dropdown
+// opens) it RE-READS localStorage from scratch, rather than inheriting patched
+// parent state. That decouples "writing the data" (attachFolder, which has
+// always been correct — proven by reloading) from "displaying the data":
+// rendering here never depends on whether an earlier state patch managed to
+// commit and paint while the window lost or regained OS focus (the native
+// folder dialog). It always starts fresh, exactly like a manual reload, with
+// no actual reload and without resetting any other screen.
 function ProjectDropdownMenu({
   currentProject,
   onSelectProject,
   onNewProject,
-}) {
+}: any) {
   const [projectsList] = useState(() => getPickerProjectsList());
   return (
     <div className="picker-ws-dropdown">
@@ -110,7 +113,7 @@ function ProjectDropdownMenu({
       </button>
       {projectsList.length > 0 && <div className="picker-ws-divider" />}
       <div className="picker-ws-scroll-area">
-        {projectsList.map((p, idx) => (
+        {projectsList.map((p: any, idx: number) => (
           <button
             key={idx}
             className={
@@ -155,11 +158,17 @@ function ProjectDropdownMenu({
   );
 }
 
-function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
-  // CATATAN: daftar project TIDAK disimpan sebagai state di sini lagi — sengaja.
-  // ProjectDropdownMenu membaca localStorage sendiri, fresh, tiap kali di-mount
-  // (dropdown dibuka). Ini memutus ketergantungan pada patch state yang rentan
-  // gagal ter-paint saat window kehilangan/mendapat fokus OS (dialog native).
+function ProjectPickerScreen({
+  onStart,
+  models = [],
+  modelVal,
+  setModelVal,
+}: any) {
+  // NOTE: the project list is deliberately NO LONGER held as state here.
+  // ProjectDropdownMenu reads localStorage itself, fresh, each time it mounts
+  // (when the dropdown opens). That breaks the dependency on a state patch
+  // which can fail to paint when the window loses or regains OS focus (a
+  // native dialog).
   const [project, setProject] = useState(() => {
     const list = getPickerProjectsList();
     return list.length > 0 ? list[0].name : "project";
@@ -167,8 +176,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   React.useEffect(() => {
     const reloadProjects = () => {
       const list = getPickerProjectsList();
-      setProject((cur) => {
-        if (list.some((p) => p.name === cur)) return cur;
+      setProject((cur: any) => {
+        if (list.some((p: any) => p.name === cur)) return cur;
         return list.length > 0 ? list[0].name : "";
       });
     };
@@ -179,14 +188,14 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         reloadProjects,
       );
   }, []);
-  // Rekonsiliasi disk: buang "hantu" dari wolfspace_projects_list — project yang
-  // FOLDERNYA sudah tak ada di disk, DI MANA PUN lokasinya (bukan cuma di bawah root
-  // ww). Verifikasi keberadaan tiap path ke backend (/ww/verify); hanya yang
-  // dipastikan TIDAK ADA yang dibuang (konservatif). Membersihkan localStorage
-  // permanen → picker & sidebar sama-sama bersih.
+  // Disk reconciliation: drop "ghosts" from wolfspace_projects_list — projects
+  // whose FOLDER is gone from disk, WHEREVER it lived (not only under the ww
+  // root). Each path's existence is verified against the backend (/ww/verify);
+  // only those confirmed ABSENT are dropped (deliberately conservative).
+  // Cleaning localStorage permanently leaves both picker and sidebar clean.
   React.useEffect(() => {
     (async () => {
-      let stored;
+      let stored: any;
       try {
         stored = JSON.parse(
           localStorage.getItem("wolfspace_projects_list") || "[]",
@@ -195,7 +204,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         return;
       }
       if (!Array.isArray(stored) || !stored.length) return;
-      const paths = stored.map((p) => p && p.path).filter(Boolean);
+      const paths = stored.map((p: any) => p && p.path).filter(Boolean);
       if (!paths.length) return;
       const res = await wwApi("/ww/verify", {
         method: "POST",
@@ -208,7 +217,9 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
           .map(([p]) => p),
       );
       if (!gone.size) return;
-      const kept = stored.filter((p) => !(p && p.path && gone.has(p.path)));
+      const kept = stored.filter(
+        (p: any) => !(p && p.path && gone.has(p.path)),
+      );
       if (kept.length !== stored.length) {
         localStorage.setItem("wolfspace_projects_list", JSON.stringify(kept));
         window.dispatchEvent(new Event("wolfspace_workspaces_changed"));
@@ -218,7 +229,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   const [dropOpen, setDropOpen] = useState(false);
   const [menu, setMenu] = useState(false);
   const [text, setText] = useState("");
-  const [attachments, setAttachments] = useState([]);
+  const [attachments, setAttachments] = useState<any[]>([]);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMcpMenu, setShowMcpMenu] = useState(false);
   const [pickerEffort, setPickerEffort] = useState(() => {
@@ -228,20 +239,21 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       return 1;
     }
   });
-  const [pickerMcp, setPickerMcp] = useState([]);
+  const [pickerMcp, setPickerMcp] = useState<any[]>([]);
 
-  // Pemuat tunggal: dipakai saat mount DAN saat layar lain menyiarkan perubahan MCP.
+  // One loader: used on mount AND when another screen broadcasts an MCP change.
   const loadPickerMcp = React.useCallback(async () => {
     if (!window.WOLFSPACE) return;
     try {
-      // Sama dgn Components.tsx: `active` dulu di-hardcode true sehingga badge
-      // selalu "Connected" walau prosesnya belum jalan atau tiap panggilannya
-      // gagal (mis. token dicabut). Status runtime diambil dari /mcp/status.
+      // Same as Components.tsx: `active` used to be hardcoded true, so the
+      // badge always read "Connected" even when the process had not started or
+      // every call failed (a revoked token, say). Runtime status now comes from
+      // /mcp/status.
       const [resCfg, resSt] = await Promise.all([
         window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }),
         window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp/status" }),
       ]);
-      const parse = (r) => {
+      const parse = (r: any) => {
         if (!r || !r.body) return {};
         try {
           return typeof r.body === "string" ? JSON.parse(r.body) : r.body;
@@ -251,16 +263,16 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       };
       const data = parse(resCfg);
       const st = parse(resSt);
-      const arr = Object.entries(data || {}).map(([name, conf]) => {
+      const arr = Object.entries<any>(data || {}).map(([name, conf]) => {
         const s = st[name] || {};
         return {
           id: name,
           name: name,
           desc:
             (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
-          // Jika server di-disabled di backend, paksa active = false.
-          // Tanpa ini polling status akan menimpa hasil toggle dan server
-          // terkesan "hidup kembali" sendiri walaupun sudah dinonaktifkan.
+          // If the server is disabled in the backend, force active = false.
+          // Without this, status polling overwrites the toggle's result and
+          // the server appears to "come back to life" on its own.
           active: !s.disabled && !!s.ready && s.lastCallOk !== false,
           status: s,
           conf: conf,
@@ -285,7 +297,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   const [pickerMcpInputError, setPickerMcpInputError] = useState("");
   const [pickerMcpInputSuccess, setPickerMcpInputSuccess] = useState("");
 
-  const handlePickerMcpCodeConnect = async (e) => {
+  const handlePickerMcpCodeConnect = async (e: any) => {
     if (e && e.stopPropagation) e.stopPropagation();
     const type = pickerMcpInputUrl.trim();
     const envVars = pickerMcpInputToken.trim();
@@ -298,17 +310,17 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     setPickerMcpInputError("");
     setPickerMcpInputSuccess("");
 
-    // Satu sumber: lihat mcpResolvePerintah() di app/Config.tsx. Digandakan
-    // di sini dulu, dan dua salinannya sempat melenceng.
+    // Single source: see mcpResolvePerintah() in app/Config.tsx. This was
+    // duplicated here once, and the two copies drifted apart.
     const _r = mcpResolvePerintah(type);
     let command = _r.command;
     let args = _r.args;
-    // Masih dipakai di bawah untuk memetakan env var per layanan.
+    // Still used below to map per-service env vars.
     const cleanType = String(type || "").toLowerCase();
 
-    let name = type
+    let name = type!
       .split("/")
-      .pop()
+      .pop()!
       .replace("server-", "")
       .replace(/[^a-zA-Z0-9-]/g, "");
 
@@ -328,7 +340,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         else if (cleanType.includes("penpot"))
           env = { PENPOT_ACCESS_TOKEN: envVars };
         else if (cleanType === "figma") {
-          // figma-developer-mcp menerima token via --figma-api-key arg, bukan env, dan butuh --stdio
+          // figma-developer-mcp takes its token via the --figma-api-key arg
+          // rather than env, and needs --stdio.
           args = [
             "-y",
             "figma-developer-mcp",
@@ -358,7 +371,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
           return;
         }
       } catch (err) {
-        setPickerMcpInputError(err.message);
+        setPickerMcpInputError((err as any).message);
         return;
       }
     }
@@ -371,9 +384,12 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       conf,
     };
 
-    setPickerMcp((prev) => [...prev.filter((p) => p.id !== name), entry]);
-    // Entri optimistis (lihat catatan di Components.tsx): segarkan dgn status
-    // runtime supaya server yang gagal tak terus tampil "Connected".
+    setPickerMcp((prev: any) => [
+      ...prev.filter((p: any) => p.id !== name),
+      entry,
+    ]);
+    // An optimistic entry (see the note in Components.tsx): refresh from runtime
+    // status so a failed server does not keep showing "Connected".
     setTimeout(() => loadPickerMcp(), 2500);
     setPickerMcpInputSuccess("✓ MCP server added.");
     setPickerMcpInputUrl("");
@@ -394,17 +410,18 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       }
     } catch (_) {}
   }, [pickerEffort]);
-  const wrapRef = useRef(null);
-  const taRef = useRef(null);
-  // Penjaga anti-tutup BERBASIS STATUS (bukan tebakan durasi — terbukti rapuh,
-  // penutupan pernah terjadi >500ms setelah attachFolder selesai). Aktif TERUS
-  // sepanjang: dialog native dibuka → attach selesai → dropdown reopen dirender.
-  // Root cause TERKONFIRMASI via trace: dropdown reopen (dropOpen=true, item baru
-  // ADA di daftar) tapi tertutup lagi oleh mousedown pada DIV.project-picker-screen
-  // (BUKAN item spesifik) — event "sisa" saat fokus jendela kembali dari dialog OS.
+  const wrapRef = useRef<any>(null);
+  const taRef = useRef<any>(null);
+  // A STATUS-BASED anti-close guard, not a duration guess — that proved
+  // fragile, with closes happening >500ms after attachFolder finished. It stays
+  // active throughout: native dialog opens -> attach completes -> the dropdown
+  // reopen renders. Root cause CONFIRMED by trace: the dropdown reopened
+  // (dropOpen=true, the new item present in the list) but was closed again by a
+  // mousedown on DIV.project-picker-screen — NOT on any specific item — a
+  // "leftover" event as window focus returned from the OS dialog.
   const nativeDialogActiveRef = useRef(false);
   useEffect(() => {
-    const h = (e) => {
+    const h = (e: any) => {
       const outside = wrapRef.current && !wrapRef.current.contains(e.target);
       if (!outside) return;
       if (nativeDialogActiveRef.current) {
@@ -415,13 +432,13 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     document.addEventListener("mousedown", h);
     return () => document.removeEventListener("mousedown", h);
   }, []);
-  // Batasnya DIBACA dari CSS, bukan ditulis ulang di sini — satu sumber
-  // kebenaran, sama seperti composer di Components.tsx.
+  // The limit is READ from CSS rather than restated here — one source of truth,
+  // the same as the composer in Components.tsx.
   const grow = React.useCallback(() => {
     const el = taRef.current;
     if (!el) return;
-    // "auto" dulu: tanpa itu scrollHeight tak pernah MENGECIL saat teks
-    // dihapus, jadi kotaknya tumbuh sekali lalu tak mau menyusut lagi.
+    // "auto" first: without it scrollHeight never SHRINKS when text is
+    // deleted, so the box grows once and then refuses to come back down.
     el.style.height = "auto";
     const maks = parseFloat(getComputedStyle(el).maxHeight);
     el.style.height =
@@ -429,18 +446,18 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         ? Math.min(el.scrollHeight, maks)
         : el.scrollHeight) + "px";
   }, []);
-  // onChange saja tak cukup: teks yang ditempel atau disetel dari luar tak
-  // melewatinya, dan jendela yang berubah lebar mengubah pembungkusan baris
-  // tanpa satu pun ketikan.
+  // onChange alone is not enough: pasted or externally set text never passes
+  // through it, and resizing the window changes line wrapping without a single
+  // keystroke.
   React.useEffect(() => {
     grow();
   }, [text, grow]);
   React.useEffect(() => {
     const el = taRef.current;
     if (!el || typeof ResizeObserver === "undefined") return;
-    // HANYA lebar yang memicu hitung ulang — grow() mengubah TINGGI elemen
-    // yang diamati, jadi bereaksi pada tinggi berarti mengamati akibat dari
-    // diri sendiri, dan itu memutar tanpa henti.
+    // Only the WIDTH triggers a recompute — grow() changes the HEIGHT of the
+    // very element being observed, so reacting to height would mean watching
+    // its own effect, and that spins without end.
     let lebarTerakhir = el.clientWidth;
     const ro = new ResizeObserver(() => {
       if (el.clientWidth === lebarTerakhir) return;
@@ -450,8 +467,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     ro.observe(el);
     return () => ro.disconnect();
   }, [grow]);
-  const handleAttachmentSelect = async (e) => {
-    const files = Array.from(e.target.files || []);
+  const handleAttachmentSelect = async (e: any) => {
+    const files = Array.from<any>(e.target.files || []);
     if (!files.length) return;
     const target = e.target;
     for (const file of files) {
@@ -464,11 +481,11 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         /\.(mp4|webm|mov|mkv)$/i.test(file.name) ||
         (file.type && file.type.startsWith("video/"));
       const is3D = is3DFile(file.name);
-      // File 3D butuh blob URL agar Model3DViewer bisa memuatnya (three.js loader
-      // menerima URL, bukan File). Sama seperti img/vid — object URL lokal.
+      // A 3D file needs a blob URL for Model3DViewer to load it (three.js
+      // loaders take a URL, not a File). Same as img/vid — a local object URL.
       let previewUrl =
         isImg || isVid || is3D ? URL.createObjectURL(file) : null;
-      let snippet = null;
+      let snippet: any = null;
       if (
         !isImg &&
         !isVid &&
@@ -481,7 +498,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
           snippet = await file.slice(0, 300).text();
         } catch (_) {}
       }
-      setAttachments((prev) => [
+      setAttachments((prev: any) => [
         ...prev,
         {
           id: attId,
@@ -498,12 +515,13 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         const reader = new FileReader();
         reader.onload = async () => {
           try {
-            const base64 = reader.result.split(",")[1] || reader.result;
-            // JEMBATAN, bukan unggahan — alasan lengkapnya di Components.tsx.
-            // Permukaan KEDUA: logika attach terduplikasi di dua berkas ini,
-            // dan perbaikan yang hanya menyentuh satu membuat perilaku aplikasi
-            // bergantung pada layar mana yang kebetulan dipakai. Itu persis
-            // yang terjadi pada daftar MCP sebelumnya.
+            const base64 =
+              String(reader.result || "").split(",")[1] || reader.result;
+            // A BRIDGE, not an upload — the full reasoning is in Components.tsx.
+            // The SECOND surface: the attach logic is duplicated across these
+            // two files, and a fix that touches only one makes the app's
+            // behaviour depend on which screen you happen to be using. That is
+            // exactly what happened to the MCP list before.
             const payload = {
               name: file.name,
               data: base64,
@@ -516,7 +534,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                 path: "/attach",
                 body: payload,
               });
-              let parsed;
+              let parsed: any;
               try {
                 parsed =
                   typeof res.body === "string" ? JSON.parse(res.body) : res;
@@ -536,8 +554,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               if (!res.ok) throw new Error(res.error || "Attach failed");
               attHandle = res.id;
             }
-            setAttachments((prev) =>
-              prev.map((a) =>
+            setAttachments((prev: any) =>
+              prev.map((a: any) =>
                 a.id === attId
                   ? {
                       ...a,
@@ -549,18 +567,18 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
             );
           } catch (err) {
             console.error("[Attachment upload error]", err);
-            setAttachments((prev) =>
-              prev.map((a) =>
+            setAttachments((prev: any) =>
+              prev.map((a: any) =>
                 a.id === attId
-                  ? { ...a, status: "error", error: err.message }
+                  ? { ...a, status: "error", error: (err as any).message }
                   : a,
               ),
             );
           }
         };
         reader.onerror = () => {
-          setAttachments((prev) =>
-            prev.map((a) =>
+          setAttachments((prev: any) =>
+            prev.map((a: any) =>
               a.id === attId
                 ? { ...a, status: "error", error: "Failed reading file" }
                 : a,
@@ -569,28 +587,30 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         };
         reader.readAsDataURL(file);
       } catch (err) {
-        setAttachments((prev) =>
-          prev.map((a) =>
-            a.id === attId ? { ...a, status: "error", error: err.message } : a,
+        setAttachments((prev: any) =>
+          prev.map((a: any) =>
+            a.id === attId
+              ? { ...a, status: "error", error: (err as any).message }
+              : a,
           ),
         );
       }
     }
     target.value = "";
   };
-  const onRemoveAttachment = (id) =>
-    setAttachments((prev) => prev.filter((a) => a.id !== id));
+  const onRemoveAttachment = (id: any) =>
+    setAttachments((prev: any) => prev.filter((a: any) => a.id !== id));
   const submit = () => {
     const v = text.trim();
     if (!v && attachments.length === 0) return;
     let fullText = v;
     if (attachments.length > 0) {
-      // HANDLE, bukan path — alasan lengkapnya di Components.tsx. Bentuknya
-      // harus IDENTIK di kedua permukaan; kalau berbeda, agent menerima format
-      // lampiran yang berbeda tergantung layar mana yang dipakai user.
+      // A HANDLE, not a path — the full reasoning is in Components.tsx. The
+      // shape must be IDENTICAL on both surfaces; if it differs, the agent gets
+      // a different attachment format depending on which screen was used.
       const attSummary = attachments
         .map(
-          (a) =>
+          (a: any) =>
             `- [Terlampir] ${a.name} (${Math.round(a.size / 1024)} KB${a.type ? `, ${a.type}` : ""})` +
             (a.attId ? ` — id: ${a.attId}` : " — handoff FAILED"),
         )
@@ -599,20 +619,23 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         ? `${v}\n\nAttachments:\n${attSummary}`
         : `Attachments:\n${attSummary}`;
     }
-    // Baca fresh (bukan dari state) — path yang benar butuh nilai TERBARU, bukan
-    // salinan yang mungkin belum ter-patch akibat masalah render yang sama.
-    const selectedObj = getPickerProjectsList().find((p) => p.name === project);
+    // Read fresh rather than from state — the correct path needs the LATEST
+    // value, not a copy that may not have been patched yet for the same render
+    // reason.
+    const selectedObj = getPickerProjectsList().find(
+      (p: any) => p.name === project,
+    );
     const chosenPath = selectedObj
       ? selectedObj.path
       : project.includes(":") || project.includes("/") || project.includes("\\")
         ? project
         : `c:\\Users\\dave\\${project}`;
-    // Argumen KETIGA memisahkan yang dilihat user dari yang dikirim ke model —
-    // sama seperti Composer. Tanpa ini, baris lampiran beserta handle att_…
-    // mendarat mentah di gelembung chat pertama.
+    // The THIRD argument separates what the user sees from what is sent to the
+    // model — the same as Composer. Without it, the attachment lines and their
+    // att_… handles land raw in the first chat bubble.
     onStart(fullText, chosenPath, {
       text: v,
-      attachments: attachments.map((a) => ({
+      attachments: attachments.map((a: any) => ({
         name: a.name,
         size: a.size,
         type: a.type,
@@ -621,19 +644,20 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
       })),
     });
   };
-  // Pasang folder ke WOLFSPACE = beri worktree+branch terikat ke alamat aslinya
-  // (lewat /ww/attach). Idempoten & non-destruktif. Simpan dgn path yang benar.
-  // Guard anti-dobel: cegah 2 panggilan attach untuk path yang sama nyaris bersamaan
-  // (mis. double-fire dari native dialog / event) — bukan berbahaya (backend
-  // idempoten), tapi tak perlu 2x panggilan untuk 1 aksi user.
+  // Attaching a folder to WOLFSPACE gives it a worktree and branch bound to its
+  // original address (via /ww/attach). Idempotent and non-destructive, stored
+  // with the correct path. The anti-double guard stops two attach calls for the
+  // same path arriving almost together (a double-fire from the native dialog or
+  // an event) — not dangerous, since the backend is idempotent, but there is no
+  // reason to make two calls for one user action.
   const attachInFlightRef = useRef(new Set());
-  const attachFolder = async (folderPath, folderName) => {
+  const attachFolder = async (folderPath: any, folderName?: any) => {
     const key = folderPath.toLowerCase();
     if (attachInFlightRef.current.has(key)) {
       return;
     }
     attachInFlightRef.current.add(key);
-    let att;
+    let att: any;
     try {
       att = await wwApi("/ww/attach", {
         method: "POST",
@@ -644,26 +668,27 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     }
     const finalPath = (att && att.path) || folderPath;
     const finalName = (att && att.name) || folderName;
-    // Tulis LANGSUNG ke localStorage (sumber kebenaran) — tanpa lewat state React.
-    // ProjectDropdownMenu akan membaca ini FRESH begitu ia mount (lihat setDropOpen
-    // di bawah), jadi urutan "tulis dulu, baru render" terjamin oleh urutan
-    // eksekusi JS itu sendiri, bukan oleh timing commit/paint React yang rentan.
+    // Write DIRECTLY to localStorage (the source of truth), bypassing React
+    // state. ProjectDropdownMenu reads this FRESH as soon as it mounts (see
+    // setDropOpen below), so the "write first, then render" order is guaranteed
+    // by JS execution order itself rather than by React's fragile commit/paint
+    // timing.
     const rest = getPickerProjectsList().filter(
-      (p) => (p.path || "") !== finalPath,
+      (p: any) => (p.path || "") !== finalPath,
     );
     const updated = [
       { name: finalName, path: finalPath, branch: att && att.branch },
       ...rest,
     ];
     localStorage.setItem("wolfspace_projects_list", JSON.stringify(updated));
-    // Memasang ulang sebuah folder = MENCORETNYA dari daftar-hapus. Tanpa ini,
-    // folder yang pernah dihapus lalu ditambах lagi akan tetap tersaring isDel.
+    // Re-attaching a folder REMOVES it from the delete list. Without this, a
+    // folder once deleted and then added again stays filtered out by isDel.
     try {
       const del = JSON.parse(
         localStorage.getItem("wolfspace_deleted_workspaces") || "[]",
       );
       const pruned = del.filter(
-        (d) => normDelPath(d) !== normDelPath(finalPath),
+        (d: any) => normDelPath(d) !== normDelPath(finalPath),
       );
       if (pruned.length !== del.length) {
         localStorage.setItem(
@@ -674,14 +699,16 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     } catch (_) {}
     setProject(finalName);
     window.dispatchEvent(new Event("wolfspace_workspaces_changed"));
-    // Dropdown tertutup sejak dialog native dibuka (handleOpenFolderPicker). Set
-    // true di sini MEMBANGUN ProjectDropdownMenu dari NOL (mount baru, bukan
-    // patch instance lama) — ia membaca localStorage yang BARU SAJA ditulis di
-    // atas, sehingga folder baru LANGSUNG terlihat tanpa bergantung pada apakah
-    // render sebelumnya sempat ter-paint saat window kehilangan fokus OS.
+    // The dropdown has been closed since the native dialog opened
+    // (handleOpenFolderPicker). Setting true here BUILDS ProjectDropdownMenu
+    // FROM SCRATCH (a fresh mount, not a patch of the old instance) — it reads
+    // the localStorage just written above, so the new folder appears IMMEDIATELY
+    // without depending on whether the previous render managed to paint while
+    // the window had lost OS focus.
     setDropOpen(true);
-    // Lepas penjaga SESAAT setelah render (2 frame) — bukan langsung, supaya mousedown
-    // "sisa" yang tiba tepat bersamaan dengan render dropdown ini juga masih tertekan.
+    // Release the guard SHORTLY after the render (2 frames) rather than at once,
+    // so a "leftover" mousedown arriving exactly as this dropdown renders is
+    // still suppressed.
     requestAnimationFrame(() =>
       requestAnimationFrame(() => {
         nativeDialogActiveRef.current = false;
@@ -690,9 +717,10 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
   };
   const handleOpenFolderPicker = async () => {
     setDropOpen(false);
-    nativeDialogActiveRef.current = true; // aktif dari SEBELUM dialog dibuka
+    nativeDialogActiveRef.current = true; // active from BEFORE the dialog opens
     try {
-      // Electron: dialog native → path absolut ASLI (folder di C:, D:, Desktop, mana pun).
+      // Electron: a native dialog -> the REAL absolute path (a folder on C:, D:,
+      // the Desktop, anywhere).
       if (IPC && IPC.invoke) {
         const r = await IPC.invoke("selectFolder");
         if (!r || r.canceled || !r.path) {
@@ -707,7 +735,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         return;
       }
       nativeDialogActiveRef.current = false;
-      // Browser: File System Access API (path tak asli — ditebak di home).
+      // Browser: the File System Access API (the path is not real — guessed
+      // under home).
       if (window.showDirectoryPicker) {
         const dirHandle = await window.showDirectoryPicker();
         if (dirHandle && dirHandle.name) {
@@ -719,18 +748,18 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
         }
       }
     } catch (err) {
-      nativeDialogActiveRef.current = false; // jangan macet permanen kalau error
-      if (err && err.name === "AbortError") return;
+      nativeDialogActiveRef.current = false; // do not stay stuck on an error
+      if (err && (err as any).name === "AbortError") return;
       console.error("[FolderPicker]", err);
     }
     document.getElementById("picker-workspace-folder-input")?.click();
   };
-  const handleWorkspaceFolderSelect = (e) => {
+  const handleWorkspaceFolderSelect = (e: any) => {
     const files = Array.from(e.target.files || []);
     if (!files.length) return;
     let folderName = "New Project";
     let folderPath = "";
-    const first = files[0];
+    const first: any = files[0];
     const relPath = first.webkitRelativePath || first.name || "";
     if (relPath.includes("/")) {
       folderName = relPath.split("/")[0];
@@ -751,7 +780,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
     }
     if (!folderPath) folderPath = `c:\\Users\\dave\\${folderName}`;
     e.target.value = "";
-    attachFolder(folderPath, folderName); // pasang = isolasi terikat ke path
+    attachFolder(folderPath, folderName); // attaching = isolation bound to the path
   };
   return (
     <div
@@ -806,7 +835,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                 right: 0,
                 zIndex: 200,
               }}
-              onMouseDown={(e) => e.stopPropagation()}
+              onMouseDown={(e: any) => e.stopPropagation()}
             >
               <div className="am-section-label">Context</div>
               <button
@@ -825,7 +854,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               <div style={{ position: "relative" }}>
                 <button
                   className={"am-item" + (showModelMenu ? " active" : "")}
-                  onClick={(e) => {
+                  onClick={(e: any) => {
                     e.stopPropagation();
                     setShowMcpMenu(false);
                     setShowModelMenu(!showModelMenu);
@@ -841,7 +870,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                     Switch model...
                   </span>
                   <span className="am-item-right">
-                    {models.find((m) => m.value === modelVal)?.label ||
+                    {models.find((m: any) => m.value === modelVal)?.label ||
                       "Sonnet"}
                   </span>
                 </button>
@@ -854,13 +883,13 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                       Select a model
                     </div>
                     {models
-                      .filter((m) => !m.disabled)
-                      .map((m) => (
+                      .filter((m: any) => !m.disabled)
+                      .map((m: any) => (
                         <button
                           key={m.value}
                           className="am-item"
                           style={{ padding: "8px 12px" }}
-                          onClick={(e) => {
+                          onClick={(e: any) => {
                             e.stopPropagation();
                             if (setModelVal) setModelVal(m.value);
                             setShowModelMenu(false);
@@ -893,7 +922,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               </div>
               <button
                 className="am-item"
-                onClick={(e) => {
+                onClick={(e: any) => {
                   e.stopPropagation();
                   setPickerEffort((pickerEffort + 1) % 3);
                 }}
@@ -934,13 +963,13 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               <div style={{ position: "relative" }}>
                 <button
                   className={"am-item" + (showMcpMenu ? " active" : "")}
-                  onClick={(e) => {
+                  onClick={(e: any) => {
                     e.stopPropagation();
                     setShowModelMenu(false);
                     setShowMcpMenu(!showMcpMenu);
-                    // Pakai pemuat TUNGGAL (lihat catatan di Components.tsx):
-                    // salinan inline dulu memetakan `active: true` dan menimpa
-                    // status runtime yang benar tiap kali menu dibuka.
+                    // Use the SINGLE loader (see the note in Components.tsx):
+                    // an inline copy used to map `active: true` and overwrite
+                    // the correct runtime status every time the menu opened.
                     if (!showMcpMenu) loadPickerMcp();
                   }}
                 >
@@ -958,7 +987,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                     >
                       Select an MCP connection
                     </div>
-                    {pickerMcp.map((srv) => (
+                    {pickerMcp.map((srv: any) => (
                       <div
                         key={srv.id}
                         style={{
@@ -970,19 +999,19 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                         <button
                           className="am-item"
                           style={{ padding: "8px 12px", flex: 1 }}
-                          onClick={async (e) => {
+                          onClick={async (e: any) => {
                             e.stopPropagation();
-                            // Daftar MCP KEDUA. Yang pertama ada di Composer
-                            // (Components.tsx) dan sudah memisahkan CONNECT
-                            // dari toggle; yang ini terlewat pada perubahan itu.
+                            // The SECOND MCP list. The first is in Composer
+                            // (Components.tsx) and already separates CONNECT
+                            // from toggle; this one was missed by that change.
                             //
-                            // Terbukti dari log run nyata: klik di layar ini
-                            // menghasilkan `POST /mcp/toggle`, bukan
-                            // `POST /mcp/connect` — jadi sekadar menyambungkan
-                            // server ikut menulis `disabled` ke mcp.json.
-                            // Logikanya harus SAMA di kedua tempat, kalau tidak
-                            // perilaku aplikasi bergantung pada layar mana yang
-                            // kebetulan dipakai.
+                            // Proven from a real run log: clicking on this
+                            // screen produced `POST /mcp/toggle` rather than
+                            // `POST /mcp/connect` — so merely connecting a
+                            // server also wrote `disabled` into mcp.json.
+                            // The logic must be THE SAME in both places, or the
+                            // app's behaviour depends on which screen you
+                            // happen to be using.
                             const perluConnect =
                               !srv.active &&
                               !(srv.status && srv.status.disabled);
@@ -992,8 +1021,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                             const muatan = perluConnect
                               ? { name: srv.id }
                               : { name: srv.id, enabled: !srv.active };
-                            setPickerMcp((prev) =>
-                              prev.map((item) =>
+                            setPickerMcp((prev: any) =>
+                              prev.map((item: any) =>
                                 item.id === srv.id
                                   ? {
                                       ...item,
@@ -1022,9 +1051,9 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                             } catch (err) {
                               console.error("Error toggling MCP server", err);
                             } finally {
-                              // finally, bukan hanya jalur sukses: kalau gagal,
-                              // badge "⟳ Connecting…" menempel selamanya karena
-                              // tak ada yang menyegarkannya dari status runtime.
+                              // In finally, not only on success: on failure the
+                              // "⟳ Connecting…" badge would stick forever
+                              // because nothing refreshes it from runtime status.
                               window.dispatchEvent(
                                 new CustomEvent("wolfspace_mcp_changed"),
                               );
@@ -1083,8 +1112,8 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                     ✓ Connected
                                   </span>
                                 ) : (
-                                  // Bedakan sebabnya (lihat catatan di
-                                  // Components.tsx): "gagal" != "belum jalan".
+                                  // Distinguish the cause (see the note in
+                                  // Components.tsx): "failed" is not "not started".
                                   <span
                                     title={
                                       (srv.status && srv.status.lastError) ||
@@ -1130,12 +1159,14 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                     alignItems: "center",
                                     justifyContent: "center",
                                   }}
-                                  onClick={(e) => {
+                                  onClick={(e: any) => {
                                     e.stopPropagation();
-                                    // Daftar MCP dipegang DUA komponen dgn state terpisah
-                                    // (pickerMcp di sini, mcpServers di Components.tsx).
-                                    // Tanpa siaran, hapus di satu layar tak terlihat di layar
-                                    // lain sampai ia memuat ulang. Siarkan supaya keduanya sinkron.
+                                    // TWO components hold the MCP list with
+                                    // separate state (pickerMcp here,
+                                    // mcpServers in Components.tsx). Without a
+                                    // broadcast, a delete on one screen stays
+                                    // invisible on the other until it reloads.
+                                    // Broadcast so both stay in sync.
                                     const _bcast = () => {
                                       try {
                                         window.dispatchEvent(
@@ -1152,34 +1183,34 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                                         body: { name: srv.id },
                                       })
                                         .then(() => {
-                                          setPickerMcp((prev) =>
+                                          setPickerMcp((prev: any) =>
                                             prev.filter(
-                                              (item) => item.id !== srv.id,
+                                              (item: any) => item.id !== srv.id,
                                             ),
                                           );
                                           _bcast();
                                         })
-                                        .catch((err) =>
+                                        .catch((err: any) =>
                                           alert(
                                             "Failed to remove MCP: " +
-                                              err.message,
+                                              (err as any).message,
                                           ),
                                         );
                                     } else {
-                                      setPickerMcp((prev) =>
+                                      setPickerMcp((prev: any) =>
                                         prev.filter(
-                                          (item) => item.id !== srv.id,
+                                          (item: any) => item.id !== srv.id,
                                         ),
                                       );
                                       _bcast();
                                     }
                                   }}
-                                  onMouseEnter={(e) => {
+                                  onMouseEnter={(e: any) => {
                                     e.currentTarget.style.color = "#f85149";
                                     e.currentTarget.style.background =
                                       "rgba(248,81,73,0.15)";
                                   }}
-                                  onMouseLeave={(e) => {
+                                  onMouseLeave={(e: any) => {
                                     e.currentTarget.style.color = "#858585";
                                     e.currentTarget.style.background =
                                       "transparent";
@@ -1209,7 +1240,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                             alignItems: "center",
                             gap: "6px",
                           }}
-                          onClick={(e) => {
+                          onClick={(e: any) => {
                             e.stopPropagation();
                             setShowPickerMcpInput(true);
                             setPickerMcpInputError("");
@@ -1247,7 +1278,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                             flexDirection: "column",
                             gap: "7px",
                           }}
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e: any) => e.stopPropagation()}
                         >
                           <div
                             style={{
@@ -1270,12 +1301,12 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                               autoFocus
                               type="text"
                               value={pickerMcpInputUrl}
-                              onChange={(e) => {
+                              onChange={(e: any) => {
                                 setPickerMcpInputUrl(e.target.value);
                                 setPickerMcpInputError("");
                                 setPickerMcpInputSuccess("");
                               }}
-                              onKeyDown={(e) => {
+                              onKeyDown={(e: any) => {
                                 if (e.key === "Escape") {
                                   setShowPickerMcpInput(false);
                                   setPickerMcpInputUrl("");
@@ -1304,12 +1335,12 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                             <input
                               type="password"
                               value={pickerMcpInputToken}
-                              onChange={(e) => {
+                              onChange={(e: any) => {
                                 setPickerMcpInputToken(e.target.value);
                                 setPickerMcpInputError("");
                                 setPickerMcpInputSuccess("");
                               }}
-                              onKeyDown={(e) => {
+                              onKeyDown={(e: any) => {
                                 if (e.key === "Enter") {
                                   e.preventDefault();
                                   handlePickerMcpCodeConnect(e);
@@ -1392,7 +1423,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                             }}
                           >
                             <button
-                              onClick={(e) => {
+                              onClick={(e: any) => {
                                 e.stopPropagation();
                                 setShowPickerMcpInput(false);
                                 setPickerMcpInputUrl("");
@@ -1445,7 +1476,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                 className="composer-attachments"
                 style={{ paddingBottom: "10px" }}
               >
-                {attachments.map((a) => (
+                {attachments.map((a: any) => (
                   <div key={a.id} className="composer-attachment-item">
                     {a.previewUrl ? (
                       <img
@@ -1487,11 +1518,11 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
               rows={1}
               placeholder="What would you like to build today?"
               value={text}
-              onChange={(e) => {
+              onChange={(e: any) => {
                 setText(e.target.value);
                 grow();
               }}
-              onKeyDown={(e) => {
+              onKeyDown={(e: any) => {
                 if (e.key === "Enter" && !e.shiftKey) {
                   e.preventDefault();
                   submit();
@@ -1501,7 +1532,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
             <div className="picker-toolbar">
               <button
                 className={"picker-plus-btn" + (menu ? " open" : "")}
-                onClick={() => setMenu((m) => !m)}
+                onClick={() => setMenu((m: any) => !m)}
               >
                 <PickerPlusIcon />
               </button>
@@ -1519,7 +1550,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
             <div className="picker-ws-wrap" ref={wrapRef}>
               <button
                 className="picker-workspace-btn"
-                onClick={() => setDropOpen((o) => !o)}
+                onClick={() => setDropOpen((o: any) => !o)}
               >
                 {project === "Quick Start" ? (
                   <svg
@@ -1544,7 +1575,7 @@ function ProjectPickerScreen({ onStart, models = [], modelVal, setModelVal }) {
                 <ProjectDropdownMenu
                   currentProject={project}
                   onNewProject={handleOpenFolderPicker}
-                  onSelectProject={(name) => {
+                  onSelectProject={(name: any) => {
                     setProject(name);
                     setDropOpen(false);
                   }}
@@ -1571,33 +1602,33 @@ function VSCodeTerminal({
   onDebugSelesai,
   dapKeadaan,
   onAksiDap,
-}) {
-  const containerRef = useRef(null);
-  const termRef = useRef(null);
-  const fitRef = useRef(null);
-  const sessionIdRef = useRef(null);
-  // ── Perintah yang datang sebelum PTY siap ──
+}: any) {
+  const containerRef = useRef<any>(null);
+  const termRef = useRef<any>(null);
+  const fitRef = useRef<any>(null);
+  const sessionIdRef = useRef<any>(null);
+  // ── Commands that arrive before the PTY is ready ──
   //
-  // Menekan Run selagi terminal tertutup membuka terminalnya DAN mengirim
-  // perintah dalam render yang sama. Sesi PTY dibuka lewat fetch, jadi saat
-  // perintahnya tiba sessionIdRef masih null — dan tanpa antrean ini, perintah
-  // itu hilang tanpa jejak: tombolnya terlihat bekerja, terminalnya terbuka,
-  // dan tak ada apa pun yang terjadi.
-  const tertundaRef = useRef(null);
-  const nonceRef = useRef(null);
-  // ── Menyadari sesi debug BERAKHIR ──
+  // Pressing Run while the terminal is closed opens the terminal AND sends the
+  // command in the same render. The PTY session is opened over fetch, so when
+  // the command arrives sessionIdRef is still null — and without this queue the
+  // command vanishes without a trace: the button looks like it worked, the
+  // terminal opens, and nothing happens.
+  const tertundaRef = useRef<any>(null);
+  const nonceRef = useRef<any>(null);
+  // ── Noticing that a debug session has ENDED ──
   //
-  // Dulu keadaan debug hanya dibersihkan oleh tombol Stop. Jadi kalau pemakai
-  // mengetik `.exit`/`q` langsung di terminal, atau programnya berhenti
-  // sendiri, tab DEBUG tetap menyala dan tombol-tombolnya mengetik kata
-  // perintah debugger ke SHELL BIASA — aplikasi melaporkan keadaan yang tak
-  // sama dengan yang sebenarnya.
+  // Debug state used to be cleared only by the Stop button. So if the user
+  // typed `.exit`/`q` straight into the terminal, or the program stopped by
+  // itself, the DEBUG tab stayed lit and its buttons typed debugger command
+  // words into an ORDINARY SHELL — the app reporting a state that did not
+  // match reality.
   //
-  // Yang dipantau prompt di ujung keluaran: selama prompt debugger masih ada,
-  // sesinya hidup; begitu yang muncul prompt shell lagi, ia sudah selesai.
-  // Sengaja butuh prompt debugger terlihat DULU (sudahLihatRef) — tanpa itu,
-  // prompt shell yang muncul sesaat sebelum debugger sempat mulai akan langsung
-  // dibaca sebagai "sudah selesai".
+  // What is watched is the prompt at the end of the output: while a debugger
+  // prompt is still there the session is alive; once a shell prompt appears
+  // again it has finished. A debugger prompt must deliberately be seen FIRST
+  // (sudahLihatRef) — without that, a shell prompt appearing moments before
+  // the debugger starts would immediately read as "already finished".
   const ekorRef = useRef("");
   const sudahLihatRef = useRef(false);
   const [activeTab, setActiveTab] = useState("TERMINAL");
@@ -1609,7 +1640,7 @@ function VSCodeTerminal({
 
     // Filter for model / agent / assistant messages from main chat UI
     const aiMsgs = messages.filter(
-      (m) =>
+      (m: any) =>
         m &&
         (m.role === "model" ||
           m.role === "agent" ||
@@ -1620,14 +1651,14 @@ function VSCodeTerminal({
     if (aiMsgs.length === 0) return null;
 
     return aiMsgs
-      .map((m, idx) => {
+      .map((m: any, idx: number) => {
         if (m.role === "agent" && m.agent) {
           const ag = m.agent;
           let log = `[Main UI AI Agent Phase #${idx + 1}]`;
           if (ag.thinking) log += `\nThinking:\n${ag.thinking}`;
           if (ag.events && ag.events.length > 0) {
             log += `\nActions Executed (${ag.events.length}):`;
-            ag.events.forEach((ev) => {
+            ag.events.forEach((ev: any) => {
               if (ev.type === "thought")
                 log += `\n  - Tool ${ev.kind || ""}: ${ev.arg || ev.output || ""}`;
               else if (ev.type === "act")
@@ -1646,28 +1677,28 @@ function VSCodeTerminal({
       );
   }, [terminalOutput, messages]);
 
-  // Prompt tiap debugger, dan prompt shell. Dicocokkan di UJUNG keluaran —
-  // kata yang sama bisa muncul di tengah teks biasa (mis. baris kode yang
-  // memuat "debug>"), tapi di ujung ia memang prompt yang sedang menunggu.
+  // Each debugger's prompt, plus the shell prompt. Matched at the END of the
+  // output — the same word can appear mid-text (a line of code containing
+  // "debug>", say), but at the end it really is a prompt that is waiting.
   const POLA_PROMPT_DEBUG = {
     node: /debug>\s*$/,
     pdb: /\(Pdb\)\s*$/,
     rdbg: /\(rdbg\)\s*$/,
     dlv: /\(dlv\)\s*$/,
   };
-  // PowerShell "PS C:\x>", cmd "C:\x>", dan sh "$ " / "# ".
+  // PowerShell "PS C:\x>", cmd "C:\x>", and sh "$ " / "# ".
   const POLA_PROMPT_SHELL = /(?:PS )?[A-Za-z]:\\[^\r\n]*>\s*$|[$#]\s*$/;
-  const periksaAkhirDebug = (potongan) => {
+  const periksaAkhirDebug = (potongan: any) => {
     if (!debugAktif || !onDebugSelesai) return;
-    // ANSI dibuang: warna dan pengatur judul menyisipkan escape TEPAT sebelum
-    // prompt, jadi pencocokan "di ujung" pada teks mentah selalu meleset.
+    // ANSI is stripped: colours and title setters insert escapes RIGHT before
+    // the prompt, so an "at the end" match on raw text always misses.
     const bersih = String(potongan)
       .replace(/\u001b\[[0-9;?]*[a-zA-Z]/g, "")
       .replace(/\u001b\][^\u0007]*(\u0007|\u001b\\)/g, "");
-    // Ekor pendek saja — yang menentukan cuma ujungnya.
+    // A short tail is enough — only the very end decides.
     ekorRef.current = (ekorRef.current + bersih).slice(-400);
     const ekor = ekorRef.current.replace(/[ \t\r\n]+$/, "");
-    const polaDebug = POLA_PROMPT_DEBUG[debugAktif];
+    const polaDebug = (POLA_PROMPT_DEBUG as Record<string, any>)[debugAktif];
     if (polaDebug && polaDebug.test(ekor)) {
       sudahLihatRef.current = true;
       return;
@@ -1679,10 +1710,10 @@ function VSCodeTerminal({
     }
   };
 
-  // Ditulis ke PTY seolah pemakai mengetiknya lalu menekan Enter. "\r", bukan
-  // "\n": PTY membaca carriage return sebagai penekanan Enter, sementara "\n"
-  // hanya menyisipkan baris baru dan perintahnya menggantung tak dieksekusi.
-  const kirimPerintah = (cmd) => {
+  // Written to the PTY as if the user typed it and pressed Enter. "\r", not
+  // "\n": a PTY reads a carriage return as an Enter keypress, while "\n" only
+  // inserts a newline and leaves the command hanging, unexecuted.
+  const kirimPerintah = (cmd: any) => {
     if (!sessionIdRef.current) {
       tertundaRef.current = cmd;
       return;
@@ -1694,19 +1725,19 @@ function VSCodeTerminal({
     }).catch(() => {});
   };
 
-  // Perintah dari panel Code. Nonce dibandingkan, bukan teksnya: menjalankan
-  // berkas yang SAMA dua kali harus benar-benar berjalan dua kali.
+  // A command from the Code panel. The nonce is compared rather than the text:
+  // running the SAME file twice must genuinely run twice.
   useEffect(() => {
     if (!perintah || !perintah.cmd) return;
     if (nonceRef.current === perintah.n) return;
     nonceRef.current = perintah.n;
-    // Penanda direset tiap perintah baru: sisa ekor dari sesi sebelumnya bisa
-    // membuat sesi yang baru saja mulai langsung dibaca sebagai sudah selesai.
+    // The markers reset on each new command: a leftover tail from the previous
+    // session could make a session that just started read as already finished.
     ekorRef.current = "";
     sudahLihatRef.current = false;
-    // TERMINAL, bukan DEBUG: yang perlu dilihat orang begitu perintah dikirim
-    // adalah KELUARANNYA. Tab DEBUG hanya berisi kendali, dan melompat ke sana
-    // justru menyembunyikan baris tempat debugger berhenti.
+    // TERMINAL, not DEBUG: what someone needs to see the moment a command is
+    // sent is its OUTPUT. The DEBUG tab holds only controls, and jumping there
+    // would hide the very line the debugger stopped on.
     setActiveTab("TERMINAL");
     kirimPerintah(perintah.cmd);
   }, [perintah]);
@@ -1746,7 +1777,7 @@ function VSCodeTerminal({
         if (termRef.current) {
           termRef.current.focus();
         }
-        // Perintah yang menunggu sesi ini dilepas sekarang, bukan dibuang.
+        // A command waiting on this session is released now, not discarded.
         if (tertundaRef.current) {
           const menunggu = tertundaRef.current;
           tertundaRef.current = null;
@@ -1764,7 +1795,7 @@ function VSCodeTerminal({
       setStatusText("Offline / No PTY");
       if (termRef.current)
         termRef.current.write(
-          `\r\n\x1b[31m[Error] Cannot connect to /api/terminal/open (${e.message}). Ensure server is running.\x1b[0m\r\n`,
+          `\r\n\x1b[31m[Error] Cannot connect to /api/terminal/open (${(e as any).message}). Ensure server is running.\x1b[0m\r\n`,
         );
     }
   };
@@ -1794,7 +1825,7 @@ function VSCodeTerminal({
       window.FitAddon ||
       window.fitAddon?.FitAddon ||
       window.xterm?.FitAddon;
-    let fit = null;
+    let fit: any = null;
     if (FitAddonCtor) {
       fit = new FitAddonCtor();
       term.loadAddon(fit);
@@ -1810,7 +1841,7 @@ function VSCodeTerminal({
     fitRef.current = fit;
     term.focus();
 
-    term.onData((data) => {
+    term.onData((data: any) => {
       if (!sessionIdRef.current) return;
       fetch("/api/terminal/write", {
         method: "POST",
@@ -1819,7 +1850,7 @@ function VSCodeTerminal({
       }).catch(() => {});
     });
 
-    term.onResize(({ cols, rows }) => {
+    term.onResize(({ cols, rows }: any) => {
       if (!sessionIdRef.current) return;
       fetch("/api/terminal/resize", {
         method: "POST",
@@ -1828,7 +1859,7 @@ function VSCodeTerminal({
       }).catch(() => {});
     });
 
-    let resizeDebounce = null;
+    let resizeDebounce: any = null;
     const doFit = () => {
       clearTimeout(resizeDebounce);
       resizeDebounce = setTimeout(() => {
@@ -1953,9 +1984,9 @@ function VSCodeTerminal({
               local
             </span>
           </button>
-          {/* DEBUG duduk di kelompok tab ini, bukan di header editor. Debug
-              adalah SESI yang hidup di terminal — tempatnya bersama keluaran
-              yang ia hasilkan, bukan di sebelah tombol Simpan. */}
+          {/* DEBUG sits in this tab group rather than in the editor header.
+              Debug is a SESSION that lives in the terminal — it belongs beside
+              the output it produces, not next to the Save button. */}
           <button
             className="btn-reset"
             onClick={() => setActiveTab("DEBUG")}
@@ -1977,8 +2008,8 @@ function VSCodeTerminal({
             }}
           >
             <span>DEBUG</span>
-            {/* Titik kuning = ada sesi debugger hidup. Tanpa ini, satu-satunya
-                cara tahu adalah membuka tabnya. */}
+            {/* A yellow dot means a debugger session is alive. Without it, the
+                only way to know is to open the tab. */}
             {debugAktif && (
               <span
                 style={{
@@ -2031,10 +2062,10 @@ function VSCodeTerminal({
               padding: "4px",
               borderRadius: "4px",
             }}
-            onMouseEnter={(e) =>
+            onMouseEnter={(e: any) =>
               (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
             }
-            onMouseLeave={(e) =>
+            onMouseLeave={(e: any) =>
               (e.currentTarget.style.background = "transparent")
             }
           >
@@ -2066,10 +2097,10 @@ function VSCodeTerminal({
               padding: "4px",
               borderRadius: "4px",
             }}
-            onMouseEnter={(e) =>
+            onMouseEnter={(e: any) =>
               (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
             }
-            onMouseLeave={(e) =>
+            onMouseLeave={(e: any) =>
               (e.currentTarget.style.background = "transparent")
             }
           >
@@ -2100,10 +2131,10 @@ function VSCodeTerminal({
               padding: "4px",
               borderRadius: "4px",
             }}
-            onMouseEnter={(e) =>
+            onMouseEnter={(e: any) =>
               (e.currentTarget.style.background = "rgba(255,255,255,0.08)")
             }
-            onMouseLeave={(e) =>
+            onMouseLeave={(e: any) =>
               (e.currentTarget.style.background = "transparent")
             }
           >
@@ -2142,10 +2173,10 @@ function VSCodeTerminal({
             display: activeTab === "TERMINAL" ? "block" : "none",
           }}
         />
-        {/* ── Tab DEBUG ──
-            Kendalinya di sini, keluarannya tetap di tab TERMINAL — sesi
-            debugger memang satu proses dengan shell-nya, jadi memisahkan
-            keluarannya justru akan menyembunyikan sebagian jawaban. */}
+        {/* ── The DEBUG tab ──
+            Its controls live here while its output stays in the TERMINAL tab —
+            a debugger session really is one process with its shell, so
+            separating the output would hide part of the answer. */}
         <div
           style={{
             display: activeTab === "DEBUG" ? "flex" : "none",
@@ -2196,7 +2227,7 @@ function VSCodeTerminal({
                         "No debuggable file"
                   }
                 >
-                  {/* Kumbang — lambang debug yang sama di editor mana pun. */}
+                  {/* A bug — the same debug symbol as in any other editor. */}
                   <svg
                     width="14"
                     height="14"
@@ -2236,10 +2267,9 @@ function VSCodeTerminal({
                   Session live · {debugAktif}
                 </span>
               </div>
-              {/* Sesi DAP menyediakan keadaan sebagai DATA; yang lewat PTY
-                  tidak. Jadi panel di bawah hanya dirender untuk yang DAP —
-                  menampilkan kotak kosong untuk sesi PTY akan terbaca seperti
-                  debugger yang tak menemukan apa pun. */}
+              {/* A DAP session exposes state as DATA; a PTY one does not. So the
+                  panel below is rendered only for DAP — showing empty boxes for
+                  a PTY session would read like a debugger that found nothing. */}
               {dapKeadaan && (
                 <div style={{ display: "grid", gap: "12px", minWidth: 0 }}>
                   {dapKeadaan.galat && (
@@ -2265,7 +2295,7 @@ function VSCodeTerminal({
                               (no local variables)
                             </div>
                           ) : (
-                            dapKeadaan.berhenti.variabel.map((v) => (
+                            dapKeadaan.berhenti.variabel.map((v: any) => (
                               <div className="dbg-baris" key={v.nama}>
                                 <span className="dbg-nama">{v.nama}</span>
                                 {v.tipe && (
@@ -2280,16 +2310,18 @@ function VSCodeTerminal({
                       <div className="dbg-kotak">
                         <div className="dbg-kotak-judul">Call stack</div>
                         <div className="dbg-kotak-isi">
-                          {dapKeadaan.berhenti.tumpukan.map((f, i) => (
-                            <div
-                              key={f.id}
-                              className={
-                                "dbg-bingkai" + (i === 0 ? " atas" : "")
-                              }
-                            >
-                              {f.nama} — baris {f.baris}
-                            </div>
-                          ))}
+                          {dapKeadaan.berhenti.tumpukan.map(
+                            (f: any, i: number) => (
+                              <div
+                                key={f.id}
+                                className={
+                                  "dbg-bingkai" + (i === 0 ? " atas" : "")
+                                }
+                              >
+                                {f.nama} — baris {f.baris}
+                              </div>
+                            ),
+                          )}
                         </div>
                       </div>
                     </>

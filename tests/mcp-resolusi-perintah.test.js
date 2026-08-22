@@ -14,7 +14,7 @@
 // Dan karena UI yang melahirkannya, memperbaiki config/mcp.json dari luar tak
 // pernah bertahan: begitu user menambahkannya lagi, nama rusak itu lahir kembali.
 //
-// Logikanya juga DIGANDAKAN di Components.tsx dan Screens.jsx, dan dua salinan
+// Logikanya juga DIGANDAKAN di Components.tsx dan Screens.tsx, dan dua salinan
 // itu sudah melenceng — satu memakai sse-bridge.cjs lama (hanya bicara SSE,
 // server yang cuma menyediakan /mcp gagal senyap), satunya sudah pindah ke
 // mcp-http-bridge.cjs; figma cuma ada di salah satu. Pola dua permukaan yang
@@ -110,7 +110,7 @@ describe("bentuk masukan lain", () => {
 });
 
 describe("satu sumber, bukan dua permukaan", () => {
-  const S = fs.readFileSync(path.join(AKAR, "public/app/Screens.jsx"), "utf8");
+  const S = fs.readFileSync(path.join(AKAR, "public/app/Screens.tsx"), "utf8");
   const C = fs.readFileSync(
     path.join(AKAR, "public/app/Components.tsx"),
     "utf8",

@@ -102,7 +102,7 @@ describe("jembatan remote bicara Streamable HTTP, bukan cuma SSE lama", () => {
   test("berkasnya ada dan dipakai oleh UI", () => {
     expect(fs.existsSync(BRIDGE)).toBe(true);
     // Resolusi perintah MCP sekarang SATU sumber di Config.tsx. Sebelumnya ia
-    // digandakan di Components.tsx dan Screens.jsx, dan dua salinan itu sudah
+    // digandakan di Components.tsx dan Screens.tsx, dan dua salinan itu sudah
     // melenceng — satu masih memakai sse-bridge.cjs lama. Tes ini dulu menunjuk
     // salah satu salinan; sekarang menunjuk sumbernya.
     const CFG = fs.readFileSync(
@@ -114,7 +114,7 @@ describe("jembatan remote bicara Streamable HTTP, bukan cuma SSE lama", () => {
     // Dan permukaannya benar-benar memakai resolver itu, bukan menyusun sendiri.
     for (const f of [
       "../public/app/Components.tsx",
-      "../public/app/Screens.jsx",
+      "../public/app/Screens.tsx",
     ]) {
       const UI = fs.readFileSync(require.resolve(f), "utf8");
       expect(UI).toMatch(/mcpResolvePerintah\(type\)/);
@@ -292,13 +292,13 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
   });
 
   // DUA daftar MCP, bukan satu: panel di Composer (Components.tsx) dan layar
-  // pemilih (Screens.jsx). Perubahan pertama hanya menyentuh yang pertama, dan
+  // pemilih (Screens.tsx). Perubahan pertama hanya menyentuh yang pertama, dan
   // log run nyata membuktikannya — klik di layar kedua menghasilkan
   // `POST /mcp/toggle`, bukan `POST /mcp/connect`. Keduanya diuji di sini
   // supaya perilaku aplikasi tak bergantung pada layar mana yang dipakai.
   test.each([
     ["Components.tsx", "../public/app/Components.tsx"],
-    ["Screens.jsx", "../public/app/Screens.jsx"],
+    ["Screens.tsx", "../public/app/Screens.tsx"],
   ])("%s memisahkan CONNECT dari toggle enable/disable", (_nama, modul) => {
     const UI = fs
       .readFileSync(require.resolve(modul), "utf8")

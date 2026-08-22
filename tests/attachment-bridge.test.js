@@ -273,12 +273,12 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
   });
 
   test("UI mengirim HANDLE ke agent, bukan path — di KEDUA permukaan", () => {
-    // Dua permukaan lagi (Components.tsx + Screens.jsx). Perbaikan yang hanya
+    // Dua permukaan lagi (Components.tsx + Screens.tsx). Perbaikan yang hanya
     // menyentuh satu membuat format lampiran berbeda tergantung layar mana yang
     // dipakai — persis kesalahan yang terjadi pada daftar MCP.
     for (const m of [
       "../public/app/Components.tsx",
-      "../public/app/Screens.jsx",
+      "../public/app/Screens.tsx",
     ]) {
       const mentah = require("fs").readFileSync(require.resolve(m), "utf8");
       // Komentar DIBUANG sebelum diperiksa. Catatan "kenapa" di kedua berkas
@@ -392,7 +392,7 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
     expect(baca("../public/app/Components.tsx")).toContain(
       "onSend(fullText, { text: v, attachments:",
     );
-    expect(baca("../public/app/Screens.jsx")).toContain(
+    expect(baca("../public/app/Screens.tsx")).toContain(
       "onStart(fullText, chosenPath, { text: v, attachments:",
     );
   });

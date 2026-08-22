@@ -1890,7 +1890,7 @@ function Composer({
                                     }}
                                     onClick={(e: any) => {
                                       e.stopPropagation();
-                                      // Broadcast so other screens (Screens.jsx / pickerMcp) stay in sync.
+                                      // Broadcast so other screens (Screens.tsx / pickerMcp) stay in sync.
                                       const _bcast = () => {
                                         try {
                                           window.dispatchEvent(

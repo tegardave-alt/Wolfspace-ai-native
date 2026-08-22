@@ -211,3 +211,20 @@ interface Window {
   mermaid?: any;
   __mermaidInit?: boolean;
 }
+
+// Reached through window by app/Screens.tsx.
+//
+// IPC is also declared standalone above (app.jsx defines it as a const in the
+// shared scope); Screens reads it off window instead, so both spellings have
+// to exist. xterm and its fit addon come from vendored <script> tags rather
+// than npm, so they are optional and untyped — as with monaco and three.
+// showDirectoryPicker is the File System Access API, which TypeScript's DOM
+// lib does not declare and which only Chromium-based browsers implement.
+interface Window {
+  IPC?: any;
+  Terminal?: any;
+  FitAddon?: any;
+  fitAddon?: any;
+  xterm?: any;
+  showDirectoryPicker?: (opts?: any) => Promise<any>;
+}

@@ -620,7 +620,7 @@ describe("Code bisa dibagi tempat dengan panel lain", () => {
 // /api/terminal/read berisi teks yang dicetak skripnya.
 describe("Run menjalankan berkas di terminal", () => {
   const A = baca("public/app.jsx");
-  const SC = baca("public/app/Screens.jsx");
+  const SC = baca("public/app/Screens.tsx");
   const bersihA = tanpaKomentar(A);
   const bersihSC = tanpaKomentar(SC);
 
