@@ -9,7 +9,7 @@
 // pernah masuk". Bedanya menentukan: yang disembunyikan masih bisa bocor lewat
 // bug; yang tak pernah ada tidak bisa.
 
-const bridge = require("../agent/attachment-bridge.cjs");
+const bridge = require("../agent/attachment-bridge.ts");
 
 beforeEach(() => bridge.bersihkan());
 
@@ -18,9 +18,9 @@ describe("alamat tak pernah masuk, apa pun yang dikirim pemanggil", () => {
     // Penjaga arah, bukan sekadar gaya: begitu ada parameter path, seluruh
     // jaminan modul ini runtuh — dan runtuhnya tak terlihat dari luar.
     const src = require("fs")
-      .readFileSync(require.resolve("../agent/attachment-bridge.cjs"), "utf8")
+      .readFileSync(require.resolve("../agent/attachment-bridge.ts"), "utf8")
       .replace(/\r\n/g, "\n");
-    expect(src).toMatch(/TIDAK ADA parameter path/);
+    expect(src).toMatch(/There is NO path parameter/);
     // Tak ada fs sama sekali: modul ini tak pernah menyentuh disk, jadi tak ada
     // yang bisa dibaca ulang dari lokasi asal.
     expect(src).not.toMatch(/require\("fs"\)/);
@@ -178,7 +178,7 @@ describe("bertahan melewati hot-reload backend", () => {
     // tersentuh — pola yang sama sudah pernah menggigit mcp-client.
     const r = bridge.serahkan({ nama: "a.txt", isi: "bertahan" });
     jest.resetModules();
-    const lagi = require("../agent/attachment-bridge.cjs");
+    const lagi = require("../agent/attachment-bridge.ts");
     expect(lagi.ambil(r.id).isi).toBe("bertahan");
   });
 });

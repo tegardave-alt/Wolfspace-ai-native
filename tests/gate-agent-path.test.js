@@ -1,7 +1,7 @@
 // Gerbang kualitas diuji lewat DISPATCHER YANG BENAR-BENAR DIPAKAI AGENT.
 //
 // KENAPA BERKAS INI ADA, TERPISAH DARI code-quality.test.js.
-// Versi pertama gerbang ini dipasang di agent/safe-edit.cjs, diuji lewat
+// Versi pertama gerbang ini dipasang di agent/safe-edit.ts, diuji lewat
 // safeWriteFile langsung, lulus, dan saya nyatakan bekerja. Padahal
 // self_agent.cjs memakai ./tools.cjs -> agent/tools/index.ts, yang punya
 // implementasi edit/write SENDIRI dan tak pernah menyentuh safeWriteFile.

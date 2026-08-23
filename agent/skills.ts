@@ -3,18 +3,20 @@
 // Each skill is a self-contained .cjs module in the skills/ directory.
 // Skills are auto-discovered, can be hot-reloaded, and installed from npm/local/URL.
 
-const fs   = require('fs');
-const path = require('path');
-const { exec, spawn } = require('child_process');
-const util = require('util');
+const fs = require("fs");
+import * as path from "path";
+import { exec, spawn } from "child_process";
+import * as util from "util";
 const execP = util.promisify(exec);
-const { dlog } = require('./debug.cjs');
+const { dlog } = require("./debug.cjs");
 
-const QROOT = path.resolve(__dirname, '..');
-const SKILLS_DIR = path.join(QROOT, 'skills');
+const QROOT = path.resolve(__dirname, "..");
+const SKILLS_DIR = path.join(QROOT, "skills");
 
 // Ensure skills directory exists
-try { fs.mkdirSync(SKILLS_DIR, { recursive: true }); } catch {}
+try {
+  fs.mkdirSync(SKILLS_DIR, { recursive: true });
+} catch {}
 
 // ── Skill registry ──
 // Map of name → { name, version, description, parameters, run, file, loadedAt }
@@ -26,30 +28,45 @@ function makeContext(sandboxRunner) {
   return {
     // Read a file (relative to QROOT or absolute, with guardrails)
     readFile: (filePath) => {
-      const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(QROOT, filePath);
-      if (!resolved.startsWith(QROOT) && !resolved.startsWith(require('os').homedir()))
-        throw new Error('Skill read denied: ' + filePath);
-      return fs.readFileSync(resolved, 'utf8');
+      const resolved = path.isAbsolute(filePath)
+        ? filePath
+        : path.resolve(QROOT, filePath);
+      if (
+        !resolved.startsWith(QROOT) &&
+        !resolved.startsWith(require("os").homedir())
+      )
+        throw new Error("Skill read denied: " + filePath);
+      return fs.readFileSync(resolved, "utf8");
     },
     // Write a file (only within workspace or QROOT)
     writeFile: (filePath, content) => {
-      const resolved = path.isAbsolute(filePath) ? filePath : path.resolve(QROOT, 'workspace', filePath);
-      const ws = path.resolve(QROOT, 'workspace');
-      if (!resolved.startsWith(ws) && !resolved.startsWith(QROOT + path.sep + 'skills'))
-        throw new Error('Skill write denied: ' + filePath);
+      const resolved = path.isAbsolute(filePath)
+        ? filePath
+        : path.resolve(QROOT, "workspace", filePath);
+      const ws = path.resolve(QROOT, "workspace");
+      if (
+        !resolved.startsWith(ws) &&
+        !resolved.startsWith(QROOT + path.sep + "skills")
+      )
+        throw new Error("Skill write denied: " + filePath);
       fs.mkdirSync(path.dirname(resolved), { recursive: true });
-      fs.writeFileSync(resolved, content, 'utf8');
+      fs.writeFileSync(resolved, content, "utf8");
       return resolved;
     },
     // Run a command in sandbox (if available) or directly
-    exec: async (cmd, opts = {}) => {
+    exec: async (cmd, opts: any = {}) => {
       if (sandboxRunner) return sandboxRunner(cmd, opts);
       // Fallback: direct exec with guardrails
       const cwd = opts.cwd || QROOT;
-      return execP(cmd, { cwd, timeout: opts.timeout || 30000, encoding: 'utf8', windowsHide: true });
+      return execP(cmd, {
+        cwd,
+        timeout: opts.timeout || 30000,
+        encoding: "utf8",
+        windowsHide: true,
+      });
     },
     // Log through WOLFSPACE's debug bus
-    log: (msg, data) => dlog('skill', 'info', msg, data),
+    log: (msg, data) => dlog("skill", "info", msg, data),
     // Project root
     root: QROOT,
     // Skills directory
@@ -59,29 +76,39 @@ function makeContext(sandboxRunner) {
 
 // ── Load a single skill from file ──
 function loadSkill(filePath) {
-  const name = path.basename(filePath, '.cjs');
+  const name = path.basename(filePath, ".cjs");
   try {
     // Clear require cache for hot-reload
     delete require.cache[require.resolve(filePath)];
     const mod = require(filePath);
     const skill = {
       name: mod.name || name,
-      version: mod.version || '0.1.0',
-      description: mod.description || 'No description',
-      parameters: mod.parameters || { type: 'object', properties: {}, required: [] },
+      version: mod.version || "0.1.0",
+      description: mod.description || "No description",
+      parameters: mod.parameters || {
+        type: "object",
+        properties: {},
+        required: [],
+      },
       run: mod.run,
       file: filePath,
       loadedAt: new Date().toISOString(),
     };
-    if (typeof skill.run !== 'function') {
-      dlog('skill', 'warn', 'Skill missing run()', { file: filePath });
+    if (typeof skill.run !== "function") {
+      dlog("skill", "warn", "Skill missing run()", { file: filePath });
       return null;
     }
     registry.set(skill.name, skill);
-    dlog('skill', 'info', 'Skill loaded', { name: skill.name, version: skill.version });
+    dlog("skill", "info", "Skill loaded", {
+      name: skill.name,
+      version: skill.version,
+    });
     return skill;
   } catch (e) {
-    dlog('skill', 'error', 'Failed to load skill', { file: filePath, error: e.message });
+    dlog("skill", "error", "Failed to load skill", {
+      file: filePath,
+      error: e.message,
+    });
     return null;
   }
 }
@@ -89,16 +116,16 @@ function loadSkill(filePath) {
 // ── Discover and load all skills ──
 function discoverSkills() {
   registry.clear();
-  const loaded = [];
+  const loaded: any[] = [];
   try {
     const entries = fs.readdirSync(SKILLS_DIR, { withFileTypes: true });
     for (const e of entries) {
-      if (e.isFile() && e.name.endsWith('.cjs')) {
+      if (e.isFile() && e.name.endsWith(".cjs")) {
         const skill = loadSkill(path.join(SKILLS_DIR, e.name));
         if (skill) loaded.push(skill);
       } else if (e.isDirectory()) {
         // Check for index.cjs inside subdirectory
-        const idx = path.join(SKILLS_DIR, e.name, 'index.cjs');
+        const idx = path.join(SKILLS_DIR, e.name, "index.cjs");
         if (fs.existsSync(idx)) {
           const skill = loadSkill(idx);
           if (skill) loaded.push(skill);
@@ -106,14 +133,14 @@ function discoverSkills() {
       }
     }
   } catch (e) {
-    dlog('skill', 'error', 'Skills discovery failed', { error: e.message });
+    dlog("skill", "error", "Skills discovery failed", { error: e.message });
   }
   return loaded;
 }
 
 // ── List installed skills ──
 function listSkills() {
-  return Array.from(registry.values()).map(s => ({
+  return Array.from(registry.values()).map((s) => ({
     name: s.name,
     version: s.version,
     description: s.description,
@@ -130,11 +157,19 @@ function getSkill(name) {
 // ── Run a skill ──
 async function runSkill(name, args, sandboxRunner) {
   const skill = registry.get(name);
-  if (!skill) return { ok: false, output: `Skill '${name}' tidak ditemukan. Gunakan skill_list untuk lihat yang tersedia.` };
+  if (!skill)
+    return {
+      ok: false,
+      output: `Skill '${name}' tidak ditemukan. Gunakan skill_list untuk lihat yang tersedia.`,
+    };
   const ctx = makeContext(sandboxRunner);
   try {
     const result = await skill.run(args || {}, ctx);
-    return { ok: true, output: typeof result === 'string' ? result : JSON.stringify(result, null, 2) };
+    return {
+      ok: true,
+      output:
+        typeof result === "string" ? result : JSON.stringify(result, null, 2),
+    };
   } catch (e) {
     return { ok: false, output: `Skill '${name}' error: ${e.message}` };
   }
@@ -143,12 +178,22 @@ async function runSkill(name, args, sandboxRunner) {
 // ── Install a skill from npm ──
 async function installFromNpm(packageName) {
   try {
-    dlog('skill', 'info', 'Installing skill from npm', { package: packageName });
-    const { stdout } = await execP(`npm install ${packageName} --prefix "${SKILLS_DIR}" --no-save`, {
-      timeout: 60000, encoding: 'utf8', windowsHide: true
+    dlog("skill", "info", "Installing skill from npm", {
+      package: packageName,
     });
+    const { stdout } = await execP(
+      `npm install ${packageName} --prefix "${SKILLS_DIR}" --no-save`,
+      {
+        timeout: 60000,
+        encoding: "utf8",
+        windowsHide: true,
+      },
+    );
     // Try to discover the installed skill
-    return { ok: true, output: `npm install ${packageName} selesai.\n${stdout.slice(-500)}` };
+    return {
+      ok: true,
+      output: `npm install ${packageName} selesai.\n${stdout.slice(-500)}`,
+    };
   } catch (e) {
     return { ok: false, output: `npm install gagal: ${e.message}` };
   }
@@ -157,14 +202,20 @@ async function installFromNpm(packageName) {
 // ── Install a skill from a local .cjs file ──
 function installFromFile(sourcePath) {
   try {
-    const name = path.basename(sourcePath, '.cjs');
-    const dest = path.join(SKILLS_DIR, name + '.cjs');
+    const name = path.basename(sourcePath, ".cjs");
+    const dest = path.join(SKILLS_DIR, name + ".cjs");
     fs.copyFileSync(sourcePath, dest);
     const skill = loadSkill(dest);
     if (skill) {
-      return { ok: true, output: `Skill '${skill.name}' v${skill.version} terinstall dari ${sourcePath}` };
+      return {
+        ok: true,
+        output: `Skill '${skill.name}' v${skill.version} terinstall dari ${sourcePath}`,
+      };
     }
-    return { ok: false, output: `File disalin ke ${dest} tapi gagal load sebagai skill.` };
+    return {
+      ok: false,
+      output: `File disalin ke ${dest} tapi gagal load sebagai skill.`,
+    };
   } catch (e) {
     return { ok: false, output: `Install dari file gagal: ${e.message}` };
   }
@@ -177,7 +228,7 @@ function uninstallSkill(name) {
   try {
     fs.unlinkSync(skill.file);
     registry.delete(name);
-    dlog('skill', 'info', 'Skill uninstalled', { name });
+    dlog("skill", "info", "Skill uninstalled", { name });
     return { ok: true, output: `Skill '${name}' dihapus.` };
   } catch (e) {
     return { ok: false, output: `Gagal hapus skill: ${e.message}` };
@@ -191,13 +242,13 @@ function reloadSkills() {
 
 // ── Generate OpenAI function-calling tool definitions for all installed skills ──
 function skillToolDefinitions() {
-  return Array.from(registry.values()).map(s => ({
-    type: 'function',
+  return Array.from(registry.values()).map((s) => ({
+    type: "function",
     function: {
-      name: 'skill_' + s.name,
+      name: "skill_" + s.name,
       description: `[SKILL] ${s.description}`,
       parameters: s.parameters,
-    }
+    },
   }));
 }
 
@@ -217,4 +268,3 @@ module.exports = {
   skillToolDefinitions,
   registry,
 };
-

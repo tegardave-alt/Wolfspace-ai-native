@@ -23,7 +23,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const T = require("../agent/temuan.cjs");
+const T = require("../agent/temuan.ts");
 
 const WS = path.join(os.tmpdir(), "wolf-tes-temuan");
 const jurnal = () =>
@@ -142,7 +142,7 @@ describe("biayanya tak boleh mengulang kesalahan rag.ingest", () => {
     // Terukur: ke-1 4,3 ms, ke-100 27,2 ms, ke-400 55,6 ms — 13,2 detik untuk
     // 400 ingest, tumbuh linear. Di jalur panas itu jauh lebih buruk daripada
     // blokir 10,8 detik yang sudah diperbaiki di repo ini.
-    const SRC = fs.readFileSync(require.resolve("../agent/temuan.cjs"), "utf8");
+    const SRC = fs.readFileSync(require.resolve("../agent/temuan.ts"), "utf8");
     expect(SRC).toMatch(/appendFileSync/);
     expect(SRC).not.toMatch(/writeFileSync\(\s*_berkasJurnal/);
   });

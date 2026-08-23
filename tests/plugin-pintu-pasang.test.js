@@ -20,7 +20,7 @@ const os = require("os");
 const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
-const plugins = require("../agent/plugins.cjs");
+const plugins = require("../agent/plugins.ts");
 
 describe("pintu pemasangan bukan milik model", () => {
   const DEF = fs.readFileSync(
@@ -127,11 +127,8 @@ describe("manifest divalidasi, bukan dipercaya", () => {
   });
 
   test("modul ini tak pernah memuat kode plugin", () => {
-    // Inti bedanya dengan skills.cjs, yang me-require plugin ke proses main.
-    const SRC = fs.readFileSync(
-      require.resolve("../agent/plugins.cjs"),
-      "utf8",
-    );
+    // Inti bedanya dengan skills.ts, yang me-require plugin ke proses main.
+    const SRC = fs.readFileSync(require.resolve("../agent/plugins.ts"), "utf8");
     expect(SRC).not.toMatch(/require\(\s*(dir|filePath|entry|p\.dir)/);
     expect(SRC).not.toMatch(/\bnew Function\b|\beval\(/);
   });
@@ -157,10 +154,7 @@ describe("persetujuan user, bukan deklarasi diri", () => {
   test("persetujuan basi tak menghidupkan apa pun", () => {
     // Nama yang disetujui tapi plugin-nya sudah dihapus dari disk harus
     // menghasilkan NOL kapabilitas — syaratnya dua, dan keduanya wajib.
-    const SRC = fs.readFileSync(
-      require.resolve("../agent/plugins.cjs"),
-      "utf8",
-    );
+    const SRC = fs.readFileSync(require.resolve("../agent/plugins.ts"), "utf8");
     expect(SRC).toMatch(/ada\.has\(n\)/);
   });
 });
@@ -176,7 +170,7 @@ describe("kapabilitas plugin masuk genesis, sekali, saat dibekukan", () => {
     expect(CC).toMatch(/KOSAKATA_DEFAULT\.concat\(kapPlugin\)/);
   });
 
-  test("kegagalan memuat plugins.cjs -> nol kapabilitas, bukan crash", () => {
+  test("kegagalan memuat plugins.ts -> nol kapabilitas, bukan crash", () => {
     expect(CC).toMatch(/kapPlugin = \[\];/);
   });
 
@@ -297,10 +291,7 @@ describe("pasang & copot: pintu user, dengan penjaga jalur", () => {
   test("pemasangan tak pernah mengunduh atau menyalin kode", () => {
     // skill_install dulu menerima URL. Jalur itu sengaja tak dihidupkan lagi:
     // yang ditulis hanya manifest, yaitu CARA MENJALANKAN sesuatu yang sudah ada.
-    const SRC = fs.readFileSync(
-      require.resolve("../agent/plugins.cjs"),
-      "utf8",
-    );
+    const SRC = fs.readFileSync(require.resolve("../agent/plugins.ts"), "utf8");
     expect(SRC).not.toMatch(/https?:\/\/|fetch\(|https\.get|copyFileSync/);
   });
 });

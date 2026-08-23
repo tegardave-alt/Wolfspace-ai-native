@@ -72,7 +72,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // One turn: the model asks to read a file, then answers without tool calls.
     let giliran = 0;
     const cloudPalsu = {};
-    const cloudMod = require(path.join(AKAR, "agent", "cloud.cjs"));
+    const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const askAsli = cloudMod.askCloudTools;
     cloudMod.askCloudTools = async () => {
       giliran++;
@@ -133,7 +133,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // the one difference that must never exist.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
     const T = require(path.join(AKAR, "agent", "tools.cjs"));
-    const cloudMod = require(path.join(AKAR, "agent", "cloud.cjs"));
+    const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const asli = T.runSelfTool;
     const askAsli = cloudMod.askCloudTools;
 
@@ -180,7 +180,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // agent — it would be a removed boundary.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
     const T = require(path.join(AKAR, "agent", "tools.cjs"));
-    const cloudMod = require(path.join(AKAR, "agent", "cloud.cjs"));
+    const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const asli = T.runSelfTool;
     const askAsli = cloudMod.askCloudTools;
 
@@ -233,7 +233,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // throwing away work that was mostly right helps nobody.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
     const T = require(path.join(AKAR, "agent", "tools.cjs"));
-    const cloudMod = require(path.join(AKAR, "agent", "cloud.cjs"));
+    const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const asli = T.runSelfTool;
     const askAsli = cloudMod.askCloudTools;
 
@@ -296,7 +296,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // threshold is the same one the JS loop uses.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
     const T = require(path.join(AKAR, "agent", "tools.cjs"));
-    const cloudMod = require(path.join(AKAR, "agent", "cloud.cjs"));
+    const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const asli = T.runSelfTool;
     const askAsli = cloudMod.askCloudTools;
 

@@ -24,7 +24,7 @@ import { spawn } from "child_process";
 const { getPlatformAdapter } = require("../platform/index.cjs");
 const { dlog } = require("../debug.cjs");
 // The structural quality gate. REQUIRED in THIS module, not only in
-// safe-edit.cjs: self_agent.cjs uses ./tools.cjs -> tools/index.ts, while
+// safe-edit.ts: self_agent.cjs uses ./tools.cjs -> tools/index.ts, while
 // safeWriteFile is only called by server.cjs, whose agent path is no longer in
 // use. A gate there never touches the agent at all.
 const codeQuality = require("../code-quality.cjs");
@@ -674,7 +674,7 @@ async function _brokeredFileOp(name, args, wsRoot) {
       // repeatedly. wsRoot is used as is: it is already a validated confined
       // root, and it is the same key the prompt side reads.
       try {
-        const _t = require("../temuan.cjs");
+        const _t = require("../temuan.ts");
         _t.catat(_t.kunciWs(wsRoot), args.path, content, { alat: "read" });
       } catch (_) {}
       return { ok: true, output: content, auditTrail: broker.auditTrail() };
@@ -956,7 +956,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             // The workspace key is computed by temuan.kunciWs() — ONE place. If
             // its fallback chain differed between the write side and the read
             // side, the "ALREADY READ" block would always be empty with no error.
-            const _t = require("../temuan.cjs");
+            const _t = require("../temuan.ts");
             _t.catat(
               _t.kunciWs(context && context.workspaceRoot),
               args.path,
@@ -1947,7 +1947,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
     // ── Attachments: the thing crossed over, its address never did ──
     //
     // There is no path check here, and that is NOT an oversight: the bridge
-    // (agent/attachment-bridge.cjs) never receives a path, so there is no address
+    // (agent/attachment-bridge.ts) never receives a path, so there is no address
     // to check or to break through. What the agent holds is a random handle;
     // holding it grants exactly one thing — the contents of that one file. It
     // says nothing about where the file is, cannot be used to read its siblings,
@@ -1959,7 +1959,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
     if (name === "attachment_list" || name === "attachment_read") {
       let bridge: any;
       try {
-        bridge = require("../attachment-bridge.cjs");
+        bridge = require("../attachment-bridge.ts");
       } catch (e) {
         return {
           ok: false,
@@ -2413,7 +2413,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
       } catch (_) {}
       let cloudHosts: any[] = [];
       try {
-        cloudHosts = Object.values<any>(require("../cloud.cjs").CLOUD || {})
+        cloudHosts = Object.values<any>(require("../cloud.ts").CLOUD || {})
           .map((c) => c.host)
           .filter(Boolean);
       } catch (_) {}

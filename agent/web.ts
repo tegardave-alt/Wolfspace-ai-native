@@ -1,9 +1,9 @@
 // Web search + fetch for WOLFSPACE agent
-const https = require("https");
-const http = require("http");
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+import * as https from "https";
+import * as http from "http";
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 function _get(opts) {
   return new Promise((resolve, reject) => {
@@ -11,8 +11,8 @@ function _get(opts) {
       let body = "";
       res.on("data", (c) => (body += c));
       res.on("end", () => {
-        if (res.statusCode >= 400)
-          return reject(new Error("HTTP " + res.statusCode));
+        if (res.statusCode! >= 400)
+          return reject(new Error("HTTP " + res.statusCode!));
         try {
           resolve(JSON.parse(body));
         } catch (e) {
@@ -34,22 +34,23 @@ function trunc(s, n) {
   return s.length <= n ? s : s.slice(0, n) + "…";
 }
 
-// ── Penjaga tujuan: web keluar, jaringan dalam TIDAK ──
+// ── The destination guard: the outward web yes, the inward network NO ──
 //
-// KENAPA ADA. Tanpa ini, web_fetch adalah lubang SSRF yang melewati seluruh
-// pengurungan yang dibangun repo ini. Broker menjaga berkas dan proses; tujuan
-// jaringan tak dijaga siapa pun. Terbukti dengan uji nyata: server lokal di
-// 127.0.0.1:8399 dibaca utuh isinya oleh webFetch. Yang paling mahal bukan
-// server buatan itu, melainkan backend WOLFSPACE SENDIRI di 8090 — di sana ada
-// /plugins, /debug, dan konfigurasi.
+// WHY IT EXISTS. Without it, web_fetch is an SSRF hole that bypasses every
+// containment this repo has built. The broker guards files and processes;
+// nothing guarded a network destination. Proven by a real test: a local server
+// on 127.0.0.1:8399 had its contents read whole by webFetch. The expensive one
+// was not that test server but WOLFSPACE'S OWN backend on 8090 — where
+// /plugins, /debug and the configuration live.
 //
-// Yang dijaga TUJUANNYA, bukan string URL-nya. Nama host diresolusi lebih dulu
-// lalu ALAMAT HASILNYA yang diperiksa; kalau tidak, "localtest.me" atau domain
-// apa pun yang diarahkan ke 127.0.0.1 akan lolos begitu saja.
+// What is guarded is the DESTINATION, not the URL string. The hostname is
+// resolved first and the RESULTING ADDRESS is checked; otherwise "localtest.me"
+// — or any domain pointed at 127.0.0.1 — would walk straight through.
 const dns = require("dns").promises;
 
-// 169.254.x.x sengaja ikut: di penyedia cloud, 169.254.169.254 adalah endpoint
-// metadata instance — sumber kredensial, dan sasaran SSRF paling klasik.
+// 169.254.x.x is included deliberately: at cloud providers 169.254.169.254 is
+// the instance metadata endpoint — a source of credentials, and the most
+// classic SSRF target there is.
 function _ipPrivat(ip) {
   const s = String(ip);
   if (s.includes(":")) {
@@ -64,7 +65,7 @@ function _ipPrivat(ip) {
     );
   }
   const p = s.split(".").map(Number);
-  if (p.length !== 4 || p.some((n) => !Number.isInteger(n))) return true; // tak terbaca = tolak
+  if (p.length !== 4 || p.some((n) => !Number.isInteger(n))) return true; // unreadable = refuse
   const [a, b] = p;
   return (
     a === 0 ||
@@ -83,34 +84,34 @@ function _ipPrivat(ip) {
  * @returns {Promise<{ok: true, url: URL} | {ok: false, error: string}>}
  */
 async function urlAman(urlStr) {
-  let u;
+  let u: any;
   try {
     u = new URL(String(urlStr));
   } catch (_) {
     return { ok: false, error: "URL tidak valid: " + urlStr };
   }
 
-  // Skema lain (file:, data:, chrome:) bukan "web" dan sebagian membaca disk.
+  // Other schemes (file:, data:, chrome:) are not "the web", and some read disk.
   if (u.protocol !== "http:" && u.protocol !== "https:") {
     return {
       ok: false,
       error: "skema tidak diizinkan: " + u.protocol + " (hanya http/https)",
     };
   }
-  // Jalan keluar untuk pengujian lokal yang memang disengaja. Mati secara bawaan.
+  // An escape hatch for deliberately local testing. Off by default.
   if (process.env.WOLFSPACE_WEB_IZINKAN_LOKAL === "1")
     return { ok: true, url: u };
 
-  let alamat;
+  let alamat: any;
   try {
     alamat = await dns.lookup(u.hostname, { all: true });
   } catch (e) {
     return { ok: false, error: "host tak dapat diresolusi: " + u.hostname };
   }
 
-  // SEMUA hasil resolusi harus publik. Satu saja yang privat sudah cukup untuk
-  // menolak: host yang mengembalikan dua alamat bisa memilih yang privat saat
-  // koneksi sungguhan dibuat.
+  // EVERY resolved address must be public. One private answer is enough to
+  // refuse: a host returning two addresses could pick the private one when the
+  // real connection is made.
   for (const a of alamat) {
     if (_ipPrivat(a.address)) {
       return {
@@ -127,11 +128,12 @@ async function urlAman(urlStr) {
   return { ok: true, url: u };
 }
 
-// ── Tavily search API (sumber utama bila key tersedia) ──
-// Purpose-built untuk agent AI: 1 request HTTP, hasil bersih + jawaban tersintesis,
-// tanpa scraping/CAPTCHA/locale. Key dibaca dari ~/.wolfspace/cloud-keys.json (di luar
-// repo, konsisten dengan kunci cloud lain). Di-cache setelah pembacaan pertama.
-let _tavilyKey; // undefined = belum dibaca, null = tak ada
+// ── The Tavily search API (the primary source when a key is available) ──
+// Purpose-built for AI agents: one HTTP request, clean results plus a
+// synthesised answer, with no scraping, CAPTCHA or locale handling. The key is
+// read from ~/.wolfspace/cloud-keys.json (outside the repo, consistent with the
+// other cloud keys). Cached after the first read.
+let _tavilyKey; // undefined = not read yet, null = absent
 function _getTavilyKey() {
   if (_tavilyKey !== undefined) return _tavilyKey;
   try {
@@ -172,15 +174,15 @@ function _tavilySearch(query) {
         let d = "";
         res.on("data", (c) => (d += c));
         res.on("end", () => {
-          if (res.statusCode >= 400)
-            return reject(new Error("tavily HTTP " + res.statusCode));
-          let j;
+          if (res.statusCode! >= 400)
+            return reject(new Error("tavily HTTP " + res.statusCode!));
+          let j: any;
           try {
             j = JSON.parse(d);
           } catch (e) {
             return reject(new Error("tavily bad JSON"));
           }
-          const out = [];
+          const out: any[] = [];
           if (j.answer) out.push(`**Ringkasan:** ${trunc(j.answer, 500)}`);
           for (const r of (j.results || []).slice(0, 5)) {
             out.push(
@@ -201,18 +203,19 @@ function _tavilySearch(query) {
   });
 }
 
-// ── Playwright headless (mesin scraping utama) ──
-// Lebih andal dari Edge `--dump-dom`: menunggu konten ter-render, ekstrak via selector
-// DOM sungguhan, dan pakai browser Chromium bundel Playwright sendiri (bukan Edge user,
-// jadi tak menyentuh profil/cookie/login mereka). Browser di-launch sekali lalu dipakai
-// ulang (singleton), dan ditutup otomatis setelah idle agar tak membocorkan proses.
+// ── Playwright headless (the primary scraping engine) ──
+// More reliable than Edge `--dump-dom`: it waits for content to render,
+// extracts through real DOM selectors, and uses Playwright's own bundled
+// Chromium rather than the user's Edge — so it never touches their profile,
+// cookies or logins. The browser is launched once and reused (a singleton), and
+// closed automatically after idling so it does not leak a process.
 const BROWSER_UA =
   "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36";
 const BROWSER_IDLE_MS = 3 * 60 * 1000;
-let _pw = null,
-  _browser = null,
-  _browserPromise = null,
-  _idleTimer = null;
+let _pw: any = null,
+  _browser: any = null,
+  _browserPromise: any = null,
+  _idleTimer: any = null;
 
 function _loadPw() {
   if (_pw !== null) return _pw;
@@ -231,7 +234,7 @@ function _touchIdle() {
     _browserPromise = null;
     if (b) b.close().catch(() => {});
   }, BROWSER_IDLE_MS);
-  if (_idleTimer.unref) _idleTimer.unref(); // jangan menahan proses tetap hidup
+  if (_idleTimer.unref) _idleTimer.unref(); // do not hold the process alive
 }
 async function _getBrowser() {
   const pw = _loadPw();
@@ -260,8 +263,8 @@ async function _getBrowser() {
   _touchIdle();
   return b;
 }
-// Jalankan fn dengan satu context+page terisolasi, selalu dibersihkan.
-async function _withPage(fn, contextOpts) {
+// Run fn with one isolated context and page, always cleaned up.
+async function _withPage(fn: any, contextOpts?: any) {
   const browser = await _getBrowser();
   const ctx = await browser.newContext({
     userAgent: BROWSER_UA,
@@ -275,14 +278,17 @@ async function _withPage(fn, contextOpts) {
   }
 }
 
-// ── Real web search via Bing SERP (Playwright — tunggu render, ekstrak via selector) ──
-// Ini yang sebelumnya HILANG: tanpa sumber web umum, satu-satunya sumber yang selalu
-// mengembalikan sesuatu adalah npm (fuzzy-match) — jadi query non-teknis seperti
-// "gaji AI engineer" dijawab dengan paket npm acak. Bing memberi hasil web sungguhan.
+// ── Real web search through the Bing SERP (Playwright: wait for render, extract
+// by selector) ──
+// This is what used to be MISSING: with no general web source, the only one that
+// always returned something was npm (fuzzy-matched) — so a non-technical query
+// like "AI engineer salary" was answered with random npm packages. Bing gives
+// real web results.
 async function _bingSearch(query) {
-  // mkt + Accept-Language WAJIB: tanpa penanda locale yang jelas, Bing menebak lokasi
-  // klien datacenter dan menyajikan hasil region acak (mis. Korea/China) untuk query
-  // Indonesia. Dengan id-ID hasilnya relevan & konsisten.
+  // mkt plus Accept-Language are REQUIRED: with no clear locale marker, Bing
+  // guesses the datacenter client's location and serves results from a random
+  // region (Korea or China, say) for an Indonesian query. With id-ID the results
+  // are relevant and consistent.
   return _withPage(
     async (page) => {
       await page.goto(
@@ -323,25 +329,28 @@ async function _bingSearch(query) {
 // ── Web Search (multi-source) ──
 async function webSearch(query) {
   const q = encodeURIComponent(query);
-  const results = [];
+  const results: any[] = [];
 
-  // 0a) TAVILY — sumber utama bila key tersedia (API andal, hasil relevan + ringkasan,
-  //     tanpa scraping). Kalau berhasil, cukup ini (+ SO/GH teknis) — Bing tak perlu.
+  // 0a) TAVILY — the primary source when a key is available (a reliable API,
+  //     relevant results plus a summary, no scraping). If it works, this is
+  //     enough (plus SO/GH for technical queries) and Bing is not needed.
   let tavilyOk = false;
   try {
-    const tv = await _tavilySearch(query);
+    const tv: any = await _tavilySearch(query);
     if (tv.length) {
       results.push(...tv);
       tavilyOk = true;
     }
   } catch (_) {}
 
-  // Tavily sudah memberi jawaban + 5 hasil relevan; jangan tambah latensi dengan
-  // sumber lain (DDG-instant sering timeout ~10s). Langsung kembalikan (~3s).
+  // Tavily already gave an answer plus 5 relevant results; do not add latency
+  // with other sources (DDG-instant often times out around 10s). Return straight
+  // away (~3s).
   if (tavilyOk) return results.join("\n\n");
 
-  // 0b) Fallback: Bing via Playwright HANYA jika Tavily tak tersedia/gagal (scraping
-  //     lebih lambat & kadang salah-parse; dipakai kalau tak ada API).
+  // 0b) Fallback: Bing through Playwright ONLY when Tavily is unavailable or
+  //     failed (scraping is slower and sometimes mis-parses; used when there is
+  //     no API).
   try {
     const web = await _bingSearch(query);
     results.push(...web);
@@ -349,7 +358,7 @@ async function webSearch(query) {
 
   // 1) StackExchange
   try {
-    const se = await _get({
+    const se: any = await _get({
       hostname: "api.stackexchange.com",
       path:
         "/2.3/search?order=desc&sort=relevance&intitle=" +
@@ -376,7 +385,7 @@ async function webSearch(query) {
 
   // 2) GitHub
   try {
-    const gh = await _get({
+    const gh: any = await _get({
       hostname: "api.github.com",
       path: "/search/repositories?q=" + q + "&sort=stars&per_page=3",
       headers: { "User-Agent": UA, Accept: "application/vnd.github+json" },
@@ -390,15 +399,16 @@ async function webSearch(query) {
       }
   } catch (_) {}
 
-  // 3) npm — HANYA jika query jelas tentang paket/library (dulu selalu jalan dan
-  // mengembalikan paket acak untuk query apa pun, mencemari hasil web nyata).
+  // 3) npm — ONLY when the query is clearly about a package or library (it used
+  // to always run and return random packages for any query, polluting the real
+  // web results).
   if (
     /\b(npm|package|paket|library|pustaka|module|modul|dependency|dependensi|install)\b/i.test(
       query,
     )
   ) {
     try {
-      const npm = await _get({
+      const npm: any = await _get({
         hostname: "registry.npmjs.org",
         path: "/-/v1/search?text=" + q + "&size=3",
         headers: { "User-Agent": UA },
@@ -416,7 +426,7 @@ async function webSearch(query) {
 
   // 4) DuckDuckGo Instant Answer
   try {
-    const ddg = await _get({
+    const ddg: any = await _get({
       hostname: "api.duckduckgo.com",
       path: "/?q=" + q + "&format=json&no_html=1&t=WOLFSPACE",
       headers: { "User-Agent": UA },
@@ -436,8 +446,9 @@ async function webSearch(query) {
 }
 
 // ── Web Fetch ──
-// Playwright headless sebagai mesin utama (menunggu render, ambil innerText bersih).
-// Fallback ke HTTPS mentah kalau Playwright/Chromium tak tersedia atau gagal.
+// Playwright headless as the primary engine (waits for render, takes clean
+// innerText). Falls back to raw HTTPS when Playwright/Chromium is unavailable or
+// fails.
 let activeFetches = 0;
 let lastFetchTime = 0;
 async function webFetch(urlStr) {
@@ -449,7 +460,7 @@ async function webFetch(urlStr) {
     return Promise.reject(
       new Error("RATE_LIMIT: Terlalu banyak request (max 3)"),
     );
-  // Diperiksa SEBELUM koneksi apa pun dibuat, dan sebelum penghitung dinaikkan.
+  // Checked BEFORE any connection is made, and before the counter is raised.
   const aman = await urlAman(urlStr);
   if (!aman.ok) throw new Error(aman.error);
   activeFetches++;
@@ -487,7 +498,7 @@ async function _fetchWithPlaywright(urlStr) {
 
 function _fetchWithHttp(urlStr) {
   return new Promise((resolve, reject) => {
-    let u;
+    let u: any;
     try {
       u = new URL(urlStr);
     } catch (e) {
@@ -507,22 +518,22 @@ function _fetchWithHttp(urlStr) {
       },
       (res) => {
         if (
-          res.statusCode >= 300 &&
-          res.statusCode < 400 &&
+          res.statusCode! >= 300 &&
+          res.statusCode! < 400 &&
           res.headers.location
         ) {
           res.resume();
           const loc = res.headers.location;
-          // Lewat webFetch lagi, BUKAN request langsung: dengan begitu tujuan
-          // baru ikut diperiksa urlAman(). Redirect ke 127.0.0.1 adalah cara
-          // paling umum melewati penjaga yang hanya memeriksa URL pertama.
+          // Through webFetch again, NOT a direct request: that way the new
+          // destination is checked by urlAman() too. A redirect to 127.0.0.1 is
+          // the most common way past a guard that only checks the first URL.
           return webFetch(
             loc.startsWith("http") ? loc : u.protocol + "//" + u.hostname + loc,
           ).then(resolve, reject);
         }
-        if (res.statusCode >= 400) {
+        if (res.statusCode! >= 400) {
           res.resume();
-          return reject(new Error("HTTP " + res.statusCode));
+          return reject(new Error("HTTP " + res.statusCode!));
         }
         let body = "";
         res.on("data", (c) => (body += c));
@@ -557,22 +568,22 @@ function _fetchWithHttp(urlStr) {
   });
 }
 
-// ── webExtract: ambil BAGIAN halaman, bukan seluruh teksnya ────────────────
+// ── webExtract: take PART of a page, not all of its text ──
 //
-// KENAPA TERPISAH dari webFetch. webFetch mengembalikan innerText seluruh
-// halaman lalu memotongnya di 8000 karakter. Untuk membaca artikel itu cukup;
-// untuk MENGAMBIL DATA ia gagal dengan tiga cara sekaligus:
+// WHY IT IS SEPARATE from webFetch. webFetch returns the whole page's innerText
+// and then cuts it at 8000 characters. For reading an article that is fine; for
+// EXTRACTING DATA it fails in three ways at once:
 //
-//   1. tabel, daftar, dan atribut (href, data-*) rata jadi prosa — strukturnya
-//      hilang justru saat strukturnya yang dicari
-//   2. waitForTimeout(400) adalah tebakan. Halaman yang mengisi kontennya lewat
-//      JS setelah 400 ms akan terbaca KOSONG, dan kosong itu tak terbedakan dari
-//      "memang tak ada datanya"
-//   3. yang dicari sering ada di luar 8000 karakter pertama
+//   1. tables, lists and attributes (href, data-*) flatten into prose — the
+//      structure is lost exactly when the structure is what was wanted
+//   2. waitForTimeout(400) is a guess. A page that fills its content through JS
+//      after 400 ms reads as EMPTY, and that emptiness is indistinguishable
+//      from "there is genuinely no data"
+//   3. what is wanted is often past the first 8000 characters
 //
-// Jadi tool ini menerima SELECTOR (bagian mana), TUNGGU (sampai apa muncul), dan
-// MODE (bentuk apa yang dikembalikan). Bedanya bukan kenyamanan: tanpa itu,
-// jawaban "tidak ada data" tidak bisa dipercaya.
+// So this tool takes a SELECTOR (which part), a WAIT (until what appears), and a
+// MODE (what shape to return). The difference is not convenience: without it, an
+// answer of "no data" cannot be trusted.
 const MODE_EKSTRAK = ["teks", "tabel", "tautan", "atribut", "html"];
 
 async function webExtract(opts) {
@@ -599,8 +610,9 @@ async function webExtract(opts) {
   const batas = Math.min(Math.max(Number(o.batas || 200), 1), 2000);
 
   return _withPage(async (page) => {
-    // Penjaga kedua, di lapisan jaringan browser. goto() saja tak cukup: redirect
-    // dan subresource bisa menuju alamat internal tanpa pernah lewat urlAman().
+    // A second guard, at the browser's network layer. goto() alone is not enough:
+    // redirects and subresources can reach an internal address without ever
+    // passing through urlAman().
     await page.route("**/*", async (route) => {
       const cek = await urlAman(route.request().url());
       if (cek.ok) return route.continue();
@@ -609,23 +621,24 @@ async function webExtract(opts) {
 
     await page.goto(urlStr, { waitUntil: "domcontentloaded", timeout: 25000 });
 
-    // Menunggu SELECTOR, bukan menunggu waktu. Ini bedanya antara "belum sempat
-    // dimuat" dan "memang tidak ada" — dua hal yang tampak sama pada tebakan waktu.
+    // Waiting for a SELECTOR, not for a duration. That is the difference between
+    // "it had not loaded yet" and "it is genuinely not there" — two things that
+    // look identical to a time-based guess.
     if (tungguSel) {
       try {
         await page.waitForSelector(tungguSel, { timeout: tungguMs });
       } catch (_) {
         return (
-          `(selector tunggu '${tungguSel}' tak pernah muncul dalam ${tungguMs} ms — ` +
-          `halaman mungkin butuh login, diblokir bot, atau selectornya salah)`
+          `(the wait selector '${tungguSel}' never appeared within ${tungguMs} ms — ` +
+          `the page may need a login, may block bots, or the selector may be wrong)`
         );
       }
     } else {
       await page.waitForTimeout(500);
     }
 
-    // Konten lazy-load hanya muncul setelah digulir. Tanpa ini, daftar panjang
-    // terbaca hanya beberapa baris pertama dan sisanya tampak tak ada.
+    // Lazy-loaded content only appears after scrolling. Without this, a long list
+    // reads as just its first few rows and the rest appears absent.
     for (let i = 0; i < gulir; i++) {
       await page.evaluate(() => window.scrollBy(0, window.innerHeight));
       await page.waitForTimeout(400);
@@ -647,8 +660,8 @@ async function webExtract(opts) {
           return {
             jml: el.length,
             data: el.map((t) =>
-              Array.from(t.querySelectorAll("tr")).map((r) =>
-                Array.from(r.querySelectorAll("th,td")).map((c) =>
+              Array.from(t.querySelectorAll("tr")).map((r: any) =>
+                Array.from(r.querySelectorAll("th,td")).map((c: any) =>
                   bersih(c.innerText),
                 ),
               ),
@@ -681,9 +694,9 @@ async function webExtract(opts) {
     );
 
     if (hasil.kosong) {
-      // Dinyatakan sebagai FAKTA TENTANG SELECTOR, bukan tentang halaman. Model
-      // yang membaca "tidak ada data" akan menyimpulkan datanya memang tak ada.
-      return `(selector '${selector}' tidak cocok dengan elemen apa pun di halaman ini)`;
+      // Stated as a FACT ABOUT THE SELECTOR, not about the page. A model that
+      // reads "no data" will conclude the data does not exist.
+      return `(selector '${selector}' matched no element on this page)`;
     }
     const teks =
       mode === "teks"

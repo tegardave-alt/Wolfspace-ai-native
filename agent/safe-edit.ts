@@ -1,13 +1,14 @@
 // ── WOLFSPACE Safe-Edit Middleware ──
-// Pengganti fs.writeFile yang aman: snapshot → sandbox test → apply/rollback
-// if code crash in sanbox, automatic rollback & .quarantine
+// A safe replacement for fs.writeFile: snapshot -> sandbox test ->
+// apply/rollback. If the code crashes in the sandbox it is rolled back
+// automatically and quarantined.
 
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const { execSync } = require("child_process");
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+import { execSync } from "child_process";
 const { createSnapshot, rollback } = require("./snapshot.ts");
 const codeQuality = require("./code-quality.cjs");
 
@@ -19,13 +20,13 @@ function _ensureDir(d) {
   if (!fs.existsSync(d)) fs.mkdirSync(d, { recursive: true });
 }
 
-// ── Deteksi bahasa dari ekstensi file ──
+// ── Detect the language from a file extension ──
 function _detectLang(filePath) {
   const ext = path.extname(filePath).toLowerCase();
-  // '.jsx' DULU TIDAK ADA di peta ini, sehingga setiap tulisan JSX melewati
-  // syntax check sepenuhnya — JSX rusak mendarat di disk dan baru ketahuan saat
-  // Babel gagal di browser (ditangkap auto-rollback, tapi itu SESUDAH fakta).
-  // `node --check` tak bisa mem-parse JSX, jadi jalurnya terpisah.
+  // '.jsx' USED TO BE MISSING from this map, so every JSX write skipped the
+  // syntax check entirely — broken JSX landed on disk and was only noticed when
+  // Babel failed in the browser (caught by auto-rollback, but AFTER the fact).
+  // `node --check` cannot parse JSX, so it takes a separate path.
   const map = {
     ".py": "python",
     ".js": "javascript",
@@ -36,7 +37,7 @@ function _detectLang(filePath) {
   return map[ext] || null;
 }
 
-// ── Cari interpreter Python yang tersedia ──
+// ── Find an available Python interpreter ──
 function _pythonBin() {
   const bundled =
     process.env.APPDATA &&
@@ -73,14 +74,14 @@ function _syntaxCheck(content, lang) {
       return { ok: true };
     }
     if (lang === "jsx") {
-      // Pakai Babel standalone yang SUDAH di-vendor untuk runtime UI — sumber
-      // kebenaran yang sama dengan yang akan mem-parse berkas ini di browser,
-      // jadi lolos di sini berarti benar-benar lolos nanti.
+      // Use the Babel standalone ALREADY vendored for the UI runtime — the same
+      // source of truth that will parse this file in the browser, so passing
+      // here means genuinely passing later.
       const B = require(path.join(QROOT, "public", "vendor", "babel.min.js"));
       B.transform(content, { presets: ["react"], filename: "check.jsx" });
       return { ok: true };
     }
-    // Bahasa lain tidak di-check sintaks, langsung lolos
+    // Other languages get no syntax check and pass straight through.
     return { ok: true };
   } catch (e) {
     const errMsg =
@@ -93,10 +94,10 @@ function _syntaxCheck(content, lang) {
 }
 
 /**
- * Karantina kode yang bermasalah.
- * @param {string} content - isi kode yang crash
- * @param {string} filePath - file yang seharusnya ditulis
- * @param {string} reason   - pesan error
+ * Quarantine code that misbehaved.
+ * @param {string} content - the code that crashed
+ * @param {string} filePath - the file it was meant to be written to
+ * @param {string} reason   - the error message
  */
 function quarantine(content, filePath, reason) {
   _ensureDir(QUARANTINE);
@@ -116,26 +117,26 @@ function quarantine(content, filePath, reason) {
 }
 
 /**
- * Tulis file dengan aman:
- *   1. Snapshot file lama
- *   2. Cek sintaks kode baru di sandbox
- *   3a. Jika lolos → tulis ke file asli
- *   3b. Jika gagal → rollback + karantina kode baru
+ * Write a file safely:
+ *   1. Snapshot the old file
+ *   2. Check the new code's syntax in a sandbox
+ *   3a. Passed -> write to the real file
+ *   3b. Failed -> roll back and quarantine the new code
  *
- * @param {string} filePath   - path absolut file yang akan ditulis
- * @param {string} newContent - konten baru
+ * @param {string} filePath   - absolute path of the file to write
+ * @param {string} newContent - the new contents
  * @returns {{ ok: boolean, snapshotId?: string, quarantineFile?: string, error?: string }}
  */
 function safeWriteFile(filePath, newContent) {
   const abs = path.resolve(filePath);
   const lang = _detectLang(abs);
 
-  // 0. Gerbang kualitas struktural (HARDCODED — lihat agent/code-quality.cjs).
-  //    Dijalankan SEBELUM snapshot: penolakan di sini tak mengubah apa pun di
-  //    disk, jadi tak perlu rollback. Prinsipnya ratchet — berkas kotor boleh
-  //    disunting, tapi tak boleh bertambah dalam. Ini menegakkan di jalur
-  //    eksekusi apa yang prompt "write clean code" gagal tegakkan.
-  let oldForGate = null;
+  // 0. The structural quality gate (HARDCODED — see agent/code-quality.cjs).
+  //    Run BEFORE the snapshot: a refusal here changes nothing on disk, so
+  //    there is nothing to roll back. The principle is a ratchet — a dirty file
+  //    may be edited but must not get deeper. This enforces on the execution
+  //    path what the prompt "write clean code" failed to enforce.
+  let oldForGate: any = null;
   try {
     if (fs.existsSync(abs)) oldForGate = fs.readFileSync(abs, "utf8");
   } catch (_) {}
@@ -147,15 +148,16 @@ function safeWriteFile(filePath, newContent) {
     return { ok: false, error: gate.error, metrics: gate.metrics };
   }
 
-  // 1. Snapshot file yang ada (jika sudah ada)
+  // 1. Snapshot the existing file (when there is one)
   const snap = createSnapshot([abs], `before-edit:${path.basename(abs)}`);
 
-  // 2. Syntax check di sandbox (hanya untuk JS/Python)
+  // 2. Syntax check in the sandbox (JS/Python only)
   if (lang) {
     const check = _syntaxCheck(newContent, lang);
     if (!check.ok) {
-      // Gagal → rollback (file asli tidak berubah) + karantina kode baru
-      rollback(snap.id); // file asli tidak berubah, ini hanya untuk konsistensi log
+      // Failed -> roll back (the original file is untouched) and quarantine the
+      // new code.
+      rollback(snap.id); // the original file is unchanged; this is only for log consistency
       const qFile = quarantine(newContent, abs, check.error);
       console.error(
         `[safe-edit] ✘ Edit DITOLAK: ${path.basename(abs)} — ${check.error}`,
@@ -169,7 +171,7 @@ function safeWriteFile(filePath, newContent) {
     }
   }
 
-  // 3. Lolos → tulis ke file asli
+  // 3. Passed -> write to the real file
   _ensureDir(path.dirname(abs));
   fs.writeFileSync(abs, newContent, "utf8");
   console.log(

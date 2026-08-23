@@ -388,7 +388,7 @@ class MCPClient {
     // plugin cannot hijack the name of a server the user already uses.
     let plug = {};
     try {
-      plug = require("./plugins.cjs").konfigMcp();
+      plug = require("./plugins.ts").konfigMcp();
     } catch (_) {
       plug = {};
     }
@@ -405,7 +405,7 @@ class MCPClient {
   // "mencabut izin tidak boleh membuka gerbang" (test name, kept verbatim).
   _dariPlugin(nama) {
     try {
-      return require("./plugins.cjs").adalahPlugin(nama);
+      return require("./plugins.ts").adalahPlugin(nama);
     } catch (_) {
       return false;
     }
@@ -428,7 +428,7 @@ class MCPClient {
     if (!this._dariPlugin(nama)) return { allow: true, alasan: null };
     try {
       const cc = require("./broker/commandchain.ts");
-      const P = require("./plugins.cjs");
+      const P = require("./plugins.ts");
 
       const vonis = cc.periksa(cc.sesiRuleset(), P.kapabilitas(nama));
       if (!vonis.allow) return vonis;
@@ -525,7 +525,7 @@ class MCPClient {
       // its config file relative to cwd (`data/initial_instructions.md`), so it
       // always looked in the WOLFSPACE root and died at startup with
       // "Configuration file not found" — a message pointing at a path that was
-      // never there. It also made the `cwd` written by plugins.cjs konfigMcp()
+      // never there. It also made the `cwd` written by plugins.ts konfigMcp()
       // useless: relative args in a plugin manifest resolved from the parent
       // process's cwd rather than from the repo root.
       const proc = spawn(cmd, conf.args || [], {
@@ -856,7 +856,7 @@ class MCPClient {
     if (!izin.allow) {
       try {
         const cc = require("./broker/commandchain.ts");
-        const P = require("./plugins.cjs");
+        const P = require("./plugins.ts");
         cc.catat({
           capability: P.kapabilitas(serverName),
           decision: "DENY",

@@ -52,7 +52,7 @@ const READY_TIMEOUT_MS = 30000;
  * Resolve a Python interpreter that can actually run the worker.
  *
  * The requirement is not "a Python" but "a Python that can import langgraph",
- * and those are different answers on this machine. agent/safe-edit.cjs picks the
+ * and those are different answers on this machine. agent/safe-edit.ts picks the
  * bundled uv interpreter, which is right for a syntax check because that needs
  * no dependencies. Copying that rule here spawned the worker against uv's
  * 3.12.10, which has no langgraph, while the system 3.11.9 does — so the worker

@@ -26,25 +26,31 @@ const CFG = path.join(AKAR, "agent", "jsconfig.json");
 
 // Daftar ratchet: berkas yang sudah masuk pemeriksaan. Boleh BERTAMBAH, tak
 // boleh berkurang.
-const SUDAH_DIPERIKSA = ["agent/attachment-bridge.cjs"];
+const SUDAH_DIPERIKSA = ["agent/attachment-bridge.ts"];
 
 // Files that have MIGRATED to TypeScript. The ratchet still applies; only its
 // condition changes: a .ts file is ALWAYS checked by tsc, so what is guarded is
 // no longer a `// @ts-check` line but that the file is still .ts and has not
 // quietly been reverted to an unchecked .cjs.
 const SUDAH_TYPESCRIPT = [
+  "agent/attachment-bridge.ts",
   "agent/broker/audit-log.ts",
   "agent/broker/commandchain.ts",
   "agent/broker/host.ts",
   "agent/broker/policy.ts",
   "agent/broker/zone-process.ts",
+  "agent/cloud.ts",
   "agent/mcp-client.ts",
   "agent/penjaga-agent.ts",
+  "agent/plugins.ts",
   "agent/python-agent.ts",
   "agent/python-worker.ts",
+  "agent/safe-edit.ts",
   "agent/sandbox-policy.ts",
   "agent/sandbox.ts",
+  "agent/skills.ts",
   "agent/snapshot.ts",
+  "agent/temuan.ts",
   "agent/tools/appcontainer-jail.ts",
   "agent/tools/arch-tools.ts",
   "agent/tools/bash-jail.ts",
@@ -60,6 +66,7 @@ const SUDAH_TYPESCRIPT = [
   "agent/tools/tool-definitions.ts",
   "agent/tools/web-tools.ts",
   "agent/tools/wsl-jail.ts",
+  "agent/web.ts",
   "core/terminal.ts",
   "electron/preload.ts",
   "public/app.tsx",

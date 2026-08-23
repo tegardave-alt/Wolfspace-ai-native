@@ -63,7 +63,7 @@ function isGuarded(filePath) {
 }
 
 /**
- * Gerbang kualitas. Dipanggil safe-edit.cjs SEBELUM menulis ke disk.
+ * Gerbang kualitas. Dipanggil safe-edit.ts SEBELUM menulis ke disk.
  *
  * @param {string} filePath   path tujuan
  * @param {string} newContent isi yang akan ditulis

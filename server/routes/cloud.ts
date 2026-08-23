@@ -1,5 +1,5 @@
 // Cloud key (BYOK) API: save, detect provider, list, delete.
-// Ported from the former server/routes/cloud.cjs; behavior is unchanged.
+// Ported from the former server/routes/cloud.ts; behavior is unchanged.
 //
 // Keys are written to the gitignored store resolved by agent/keys-path.cjs and
 // are never sent to the browser — the list endpoint returns provider names and

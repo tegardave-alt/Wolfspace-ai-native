@@ -1,9 +1,9 @@
 // Cloud model integration for WOLFSPACE (extracted from server.cjs)
 // Dependencies – same as original server.cjs
-const fs = require("fs");
-const path = require("path");
-const http = require("http");
-const https = require("https");
+import * as fs from "fs";
+import * as path from "path";
+import * as http from "http";
+import * as https from "https";
 const { dlog } = require("./debug.cjs");
 const { resolveKeysPath } = require("./keys-path.cjs");
 
@@ -146,7 +146,7 @@ const PROVIDER_NAMES = {
 // -------------------------------------------------------------------
 // Load API keys – from cloud-keys.json (git‑ignored) or environment vars
 // -------------------------------------------------------------------
-let CLOUD_KEYS = {};
+let CLOUD_KEYS: Record<string, any> = {};
 function loadCloudKeys() {
   CLOUD_KEYS = {};
   try {
@@ -225,18 +225,18 @@ function httpsStatus(opts) {
   });
 }
 
-async function probeProvider(provider, key) {
+async function probeProvider(provider: any, key: any): Promise<number> {
   const t = PROBE[provider];
   if (!t) return 0;
   let path = t.path;
-  const headers = {};
+  const headers: Record<string, any> = {};
   if (t.auth === "bearer") headers["authorization"] = "Bearer " + key;
   else if (t.auth === "anthropic") {
     headers["x-api-key"] = key;
     headers["anthropic-version"] = "2023-06-01";
   } else if (t.auth === "query")
     path = path.replace("KEY", encodeURIComponent(key));
-  return httpsStatus({ hostname: t.host, path, headers });
+  return httpsStatus({ hostname: t.host, path, headers }) as Promise<number>;
 }
 
 function candidatesFor(key) {
@@ -309,7 +309,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     );
     let host = cfg.host,
       path = cfg.path,
-      port = null,
+      port: any = null,
       headers = { "content-type": "application/json" },
       body,
       extract;
@@ -330,12 +330,12 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       path = "/zen/v1/chat/completions";
     const openaiCompatible = () => {
       headers["authorization"] = "Bearer " + cloud.key;
-      const payload = {
+      const payload: Record<string, any> = {
         model,
         stream: true,
         messages: [{ role: "system", content: sys || "" }, ...workMsgs],
       };
-      // OPENCODE free models: JANGAN kirim reasoning_effort (tidak supported)
+      // OPENCODE free models: do NOT send reasoning_effort (unsupported).
       const isFreeModel = model.includes("-free");
       const supportsReasoning =
         (model.includes("o1") ||
@@ -457,7 +457,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       });
     const isLocal = host === "127.0.0.1" || host === "localhost";
     const reqFn = isLocal ? http.request : https.request;
-    const reqOpts = {
+    const reqOpts: Record<string, any> = {
       hostname: host,
       path,
       method: "POST",
@@ -469,17 +469,17 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       let acc = "",
         buf = "",
         errBody = "";
-      if (s.statusCode >= 400) {
+      if (s.statusCode! >= 400) {
         s.on("data", (c) => (errBody += c));
         s.on("end", () => {
           dlog("cloud", "error", "cloud model http error", {
             provider,
             model,
-            status: s.statusCode,
+            status: s.statusCode!,
             body: errBody.slice(0, 200),
           });
           reject(
-            new Error(`${provider} ${s.statusCode}: ${errBody.slice(0, 300)}`),
+            new Error(`${provider} ${s.statusCode!}: ${errBody.slice(0, 300)}`),
           );
         });
         return;
@@ -487,7 +487,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       s.on("data", (chunk) => {
         buf += chunk.toString();
         const lines = buf.split("\n");
-        buf = lines.pop();
+        buf = lines.pop()!;
         for (const line of lines) {
           const m = line.match(/^data:\s*(.*)$/);
           if (!m) continue;
@@ -625,8 +625,8 @@ function _askCloudToolsOnce(cloud, messages, tools) {
       model = aliases[model.toLowerCase()];
     let host = cfg.host,
       p = cfg.path,
-      port,
-      transport = https;
+      port: any,
+      transport: any = https;
     if (provider === "opencode" && model.includes("-free"))
       p = "/zen/v1/chat/completions";
     if (cloud.baseUrl) {
@@ -642,12 +642,12 @@ function _askCloudToolsOnce(cloud, messages, tools) {
     }
     const isReasoning = /deepseek|reason/i.test(model);
     const sanitizedMessages = _sanitizeMessages(messages);
-    // JANGAN kirim `tools: []`. Sebagian API (terbukti: qwen -> 400 "[] is too
-    // short - 'tools'") memvalidasi panjang minimum array ini, jadi array KOSONG
-    // membuat seluruh permintaan ditolak — padahal maksudnya "tanpa tool", yang
-    // dinyatakan dengan MENGHILANGKAN field-nya. `tool_choice` juga tak bermakna
-    // tanpa tools, jadi ikut dihilangkan agar payload tetap valid di semua provider.
-    const _payload = {
+    // Do NOT send `tools: []`. Some APIs validate this array's minimum length
+    // (proven: qwen -> 400 "[] is too short - 'tools'"), so an EMPTY array gets
+    // the whole request refused — when what was meant was "no tools", which is
+    // expressed by OMITTING the field. `tool_choice` is meaningless without
+    // tools, so it goes too, keeping the payload valid across every provider.
+    const _payload: Record<string, any> = {
       model,
       messages: sanitizedMessages,
       temperature: 0.1,
@@ -674,25 +674,25 @@ function _askCloudToolsOnce(cloud, messages, tools) {
         timeout: 90000,
       },
       (s) => {
-        const bad = s.statusCode >= 400;
+        const bad = s.statusCode! >= 400;
         let buf = "",
           errBody = "",
           content = "",
           reasoning = "";
-        const tcs = [];
+        const tcs: any[] = [];
         s.on("data", (c) => {
           if (bad) {
             errBody += c;
             return;
           }
           buf += c;
-          let nl;
+          let nl: any;
           while ((nl = buf.indexOf("\n")) >= 0) {
             const line = buf.slice(0, nl).trim();
             buf = buf.slice(nl + 1);
             const m = line.match(/^data:\s*(.*)$/);
             if (!m || m[1] === "[DONE]") continue;
-            let j;
+            let j: any;
             try {
               j = JSON.parse(m[1]);
             } catch {
@@ -733,11 +733,11 @@ function _askCloudToolsOnce(cloud, messages, tools) {
                 return resolve({
                   role: "assistant",
                   content: String(err.failed_generation),
-                }); // Jangan kirim tool_calls:[] untuk DeepSeek
+                }); // Do not send tool_calls:[] for DeepSeek
             } catch (_) {}
             return reject(
               new Error(
-                provider + " " + s.statusCode + ": " + errBody.slice(0, 300),
+                provider + " " + s.statusCode! + ": " + errBody.slice(0, 300),
               ),
             );
           }
@@ -747,9 +747,13 @@ function _askCloudToolsOnce(cloud, messages, tools) {
           // and the old `content || reasoning` fallback streamed the model's internal
           // monologue ("Saya asumsikan...", stray </think>) straight to the user.
           // Expose it as a separate field so callers can retry instead of leaking it.
-          const response = { role: "assistant", content: content || null };
+          const response: Record<string, any> = {
+            role: "assistant",
+            content: content || null,
+          };
           if (!content && reasoning) response.reasoning = reasoning;
-          // Hanya kirim tool_calls jika ada minimal 1 (hindari error DeepSeek)
+          // Only send tool_calls when there is at least one (avoids a DeepSeek
+          // error).
           if (validToolCalls.length > 0) response.tool_calls = validToolCalls;
           resolve(response);
         });
@@ -765,7 +769,7 @@ function _askCloudToolsOnce(cloud, messages, tools) {
 const _TRANSIENT =
   /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|too busy|Service Unavailable|service_unavailable|<!DOCTYPE/i;
 async function askCloudTools(cloud, messages, tools) {
-  let last;
+  let last: any;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
       return await _askCloudToolsOnce(cloud, messages, tools);

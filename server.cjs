@@ -521,7 +521,7 @@ async function findPythonAsync() {
 
 // Ã¢â€ â‚¬Ã¢â€ â‚¬ Shared patch machinery for visual edits + compile auto-fix Ã¢â€ â‚¬Ã¢â€ â‚¬
 // Apply <<<<ORIGINAL/====/>>>> hunks by literal string replacement; null on any miss.
-const { fillCloudKey } = require("./agent/cloud.cjs");
+const { fillCloudKey } = require("./agent/cloud.ts");
 const { resolveKeysPath } = require("./agent/keys-path.cjs");
 function applyHunks(src, reply) {
   const re = new RegExp(
@@ -2083,7 +2083,7 @@ const _TRANSIENT =
 // CATATAN: _askCloudToolsOnce / askCloudTools / runSelfTool DIHAPUS dari sini.
 //
 // Ketiganya salinan LENGKAP dari jalur agent yang sudah pindah ke modul
-// (agent/cloud.cjs dan agent/tools/index.ts), dan tak punya satu pun
+// (agent/cloud.ts dan agent/tools/index.ts), dan tak punya satu pun
 // pemanggil: tidak di server.cjs, tidak di electron/main.js, tidak di preload,
 // tidak di renderer. Diekspor, tapi tak pernah dikonsumsi.
 //
@@ -2468,7 +2468,7 @@ const {
   rollback,
   listSnapshots,
 } = require("./agent/snapshot.ts");
-const { safeWriteFile, quarantine } = require("./agent/safe-edit.cjs");
+const { safeWriteFile, quarantine } = require("./agent/safe-edit.ts");
 
 // ── Modular route handlers (server/routes/*) ──
 // Each exports handle(req, res, deps) → truthy when the request was handled.
@@ -2933,7 +2933,7 @@ const server = http.createServer(async (req, res) => {
             JSON.stringify({ ok: false, error: "name & data wajib" }),
           );
         }
-        const bridge = require("./agent/attachment-bridge.cjs");
+        const bridge = require("./agent/attachment-bridge.ts");
         const hasil = bridge.serahkan({
           nama: name, // dipotong jadi basename di dalam jembatan
           isi: Buffer.from(data, "base64"),
@@ -3644,11 +3644,11 @@ const server = http.createServer(async (req, res) => {
   // GET /plugins — daftar plugin terpasang + status persetujuannya.
   //
   // Manifest yang RUSAK ikut dikirim (field `rusak`), tidak dibuang diam-diam.
-  // Plugin yang hilang tanpa jejak adalah persis cara skills.cjs jadi terlupakan
+  // Plugin yang hilang tanpa jejak adalah persis cara skills.ts jadi terlupakan
   // sampai akhirnya jadi celah.
   if (req.method === "GET" && req.url === "/plugins") {
     try {
-      const P = require("./agent/plugins.cjs");
+      const P = require("./agent/plugins.ts");
       const { plugin, rusak } = P.pindai();
       const setuju = new Set(P.disetujui());
       const aktifSesi = new Set(P.kapabilitasDisetujui());
@@ -3697,7 +3697,7 @@ const server = http.createServer(async (req, res) => {
         b = JSON.parse(raw || "{}");
       } catch (_) {}
       try {
-        const P = require("./agent/plugins.cjs");
+        const P = require("./agent/plugins.ts");
         const r = P.pasang(b);
         res.writeHead(r.ok ? 200 : 400, {
           "Content-Type": "application/json",
@@ -3734,7 +3734,7 @@ const server = http.createServer(async (req, res) => {
       } catch (_) {}
       const nama = String(b.nama || "");
       try {
-        const P = require("./agent/plugins.cjs");
+        const P = require("./agent/plugins.ts");
         // Prosesnya dihentikan DULU, sebelum foldernya hilang: mencopot tanpa
         // mematikan meninggalkan proses yatim yang masih melayani panggilan.
         try {
@@ -3768,7 +3768,7 @@ const server = http.createServer(async (req, res) => {
       const nama = String(b.nama || "");
       const beri = b.setujui !== false;
       try {
-        const P = require("./agent/plugins.cjs");
+        const P = require("./agent/plugins.ts");
         const ada = P.pindai().plugin.some((p) => p.nama === nama);
         if (!ada) {
           res.writeHead(404, { "Content-Type": "application/json" });

@@ -14,7 +14,7 @@ const {
   fillCloudKey,
   loadCloudKeys,
   CLOUD_KEYS,
-} = require("./cloud.cjs");
+} = require("./cloud.ts");
 const { createPseudoTagStreamFilter } = require("./pseudo-tag-filter.cjs");
 
 /**

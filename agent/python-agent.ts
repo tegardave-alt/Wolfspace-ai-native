@@ -58,7 +58,7 @@ const penjaga = require("./penjaga-agent.ts");
 // discarded — stale code that only shows up after an edit. This is the same
 // reason appcontainer-jail keeps its state on globalThis.
 const tools = () => require("./tools.cjs");
-const cloud_ = () => require("./cloud.cjs");
+const cloud_ = () => require("./cloud.ts");
 const { dlog } = require("./debug.cjs");
 
 /** A tool result in the shape the worker's `call_tool` expects back. */

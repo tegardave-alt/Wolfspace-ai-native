@@ -13,7 +13,7 @@
 //    server buatan itu, melainkan backend WOLFSPACE SENDIRI di 8090.
 
 const http = require("http");
-const W = require("../agent/web.cjs");
+const W = require("../agent/web.ts");
 
 const HTML = `<html><body>
 <h1>Daftar</h1>
@@ -172,7 +172,7 @@ describe("webExtract mengambil BAGIAN, bukan seluruh teks", () => {
       tunggu: ".tak-akan-pernah",
       tunggu_ms: 1500,
     });
-    expect(r).toMatch(/tak pernah muncul/i);
+    expect(r).toMatch(/never appeared/i);
   }, 60000);
 });
 

@@ -81,7 +81,7 @@ const KOSAKATA_DEFAULT = [
   // Separate from readFile, and not merely for tidiness: readFile takes a PATH
   // and is therefore subject to the roots policy. attachment.read takes a
   // HANDLE — there is no path to check, because the file's address never enters
-  // the system at all (see agent/attachment-bridge.cjs). Keeping them apart lets
+  // the system at all (see agent/attachment-bridge.ts). Keeping them apart lets
   // a session be locked down without attachments
   // (buatRuleset({ tanpa: ["attachment.read"] })) without also killing file
   // reads inside the worktree.
@@ -193,12 +193,12 @@ function sesiRuleset(): Ruleset {
     // was frozen, and the whole point would be gone. What is unapproved is not
     // refused when called; it never has a tool to call in the first place.
     //
-    // require inside the function rather than at the top of the file: plugins.cjs
+    // require inside the function rather than at the top of the file: plugins.ts
     // scans the disk, and this module is used on paths that must stay pure under
     // test.
     let kapPlugin: string[] = [];
     try {
-      kapPlugin = require("../plugins.cjs").kapabilitasDisetujui();
+      kapPlugin = require("../plugins.ts").kapabilitasDisetujui();
     } catch (_) {
       kapPlugin = []; // no plugin system = no plugin capabilities
     }

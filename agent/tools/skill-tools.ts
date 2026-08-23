@@ -1,5 +1,5 @@
 // Skill management tools
-const skills = require("../skills.cjs");
+const skills = require("../skills.ts");
 const sandbox = require("../sandbox.ts");
 
 module.exports = {

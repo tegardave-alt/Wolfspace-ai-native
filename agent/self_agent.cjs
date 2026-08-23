@@ -12,7 +12,7 @@ const {
   CLOUD_KEYS,
   loadCloudKeys,
   askCloudTools,
-} = require("./cloud.cjs");
+} = require("./cloud.ts");
 const {
   runSelfTool,
   SELF_TOOLS,
@@ -149,7 +149,7 @@ let failedTools = new Set();
 // bukan kalimatnya yang diedit diam-diam sesudah jadi.
 
 // Buang blok reasoning (<think>...</think>) dan tag think yang nyasar/tak berpasangan.
-// cloud.cjs membungkus reasoning-delta dengan tag ini untuk tampilan streaming, dan
+// cloud.ts membungkus reasoning-delta dengan tag ini untuk tampilan streaming, dan
 // beberapa model (DeepSeek R1 dkk.) juga mengeluarkannya sendiri — apapun sumbernya,
 // isi think TIDAK BOLEH tampil sebagai jawaban ke user.
 // ── Perkakas bersama: memperlakukan KODE sebagai wilayah terlarang ──
@@ -1019,7 +1019,7 @@ async function selfAgentStream(payload, emit, ctl = {}) {
   // menyeberangi RESTART proses — bagian yang tak diberikan checklist, karena
   // checkpoint-nya memakai MemorySaver yang mati bersama prosesnya.
   try {
-    const _t = require("./temuan.cjs");
+    const _t = require("./temuan.ts");
     const _n = _t.muat(_t.kunciWs(_wsRoot));
     if (_n) dlog("self", "info", "temuan dimuat", { berkas: _n });
   } catch (_) {}
@@ -1510,7 +1510,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // membuang hasil `read` (isinya paling panjang, jadi paling cepat
         // terpotong) sehingga agent tak tahu ia pernah membacanya.
         try {
-          const _temuan = require("./temuan.cjs");
+          const _temuan = require("./temuan.ts");
           const _blok = _temuan.blokPrompt(_temuan.kunciWs(_wsRoot));
           if (_blok) {
             const m = { ...activeMessages[0] };
@@ -1524,7 +1524,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 
         let msg;
         // OBSERVABILITAS panggilan model. Dulu tak ada jejak APA PUN saat permintaan
-        // dimulai — padahal cloud.cjs memberi timeout 600000ms (10 MENIT). Akibatnya
+        // dimulai — padahal cloud.ts memberi timeout 600000ms (10 MENIT). Akibatnya
         // agent bisa diam belasan menit dan log hanya berisi noise renderer, membuat
         // "macet" mustahil dibedakan dari "sedang menunggu model". Ini terjadi nyata:
         // setelah menarik 4 halaman Notion, konteks membengkak dan run berhenti tanpa
@@ -1680,7 +1680,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         }
 
         // Reasoning bisa bocor lewat dua jalur: terselip di content (tag <think> dari
-        // cloud.cjs/model) atau model menghabiskan giliran HANYA berpikir (content
+        // cloud.ts/model) atau model menghabiskan giliran HANYA berpikir (content
         // kosong, field reasoning terisi). Bersihkan yang pertama; untuk yang kedua,
         // dorong model menjawab ulang alih-alih menampilkan monolog internalnya.
         if (msg.content) msg.content = stripThinkBlocks(msg.content);
