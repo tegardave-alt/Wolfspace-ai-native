@@ -176,8 +176,34 @@ function listSnapshots(): MetaSnapshot[] {
 function _pruneOldSnapshots() {
   if (!fs.existsSync(SNAP_DIR)) return;
 
-  const snaps = listSnapshots();
+  // Reads the DIRECTORY NAMES only — no _meta.json, no stat per entry.
+  //
+  // This used to call listSnapshots(), which opens and JSON.parses every
+  // snapshot's metadata: four syscalls per snapshot, measured at 22 ms over 50
+  // of them. It runs on EVERY snapshot, and a snapshot is taken on every file
+  // the agent edits — so that was 22 ms of frozen window per edit, growing with
+  // the number of snapshots kept. All of server.ts runs inside Electron's main
+  // process, which is what turns that into "Not Responding while it works".
+  //
+  // Nothing is lost, because an id already IS its timestamp: createSnapshot
+  // mints `${Date.now()}_${hex}`. Both things this function decides — too old,
+  // too many — come straight out of the name.
   const now = Date.now();
+  let nama: string[];
+  try {
+    nama = fs.readdirSync(SNAP_DIR);
+  } catch {
+    return;
+  }
+
+  const snaps: { id: string; ts: number }[] = [];
+  for (const id of nama) {
+    const ts = Number(id.split("_")[0]);
+    // A name that is not ours is left completely alone: this function deletes
+    // directories, and guessing here would delete someone else's.
+    if (Number.isFinite(ts) && ts > 0) snaps.push({ id, ts });
+  }
+  snaps.sort((a, b) => b.ts - a.ts);
 
   snaps.forEach((snap, idx) => {
     const tooOld = now - snap.ts > MAX_AGE_MS;
