@@ -44,6 +44,7 @@ const SUDAH_TYPESCRIPT = [
   "agent/snapshot.ts",
   "core/terminal.ts",
   "electron/preload.ts",
+  "public/app.tsx",
   "public/app/AgentSteps.tsx",
   "public/app/CodeBlocks.tsx",
   "public/app/Components.tsx",
