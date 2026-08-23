@@ -98,6 +98,45 @@ every `/ww` route, so it is backend code that happens to live under `scripts/`.
 It is type-checked with `server.ts` in `tsconfig.server.json`, and its CLI is
 reachable through `npm run ww -- <command>`, which carries the hook.
 
+## The cost of loading TypeScript at run time, and where it went
+
+`scripts/ts-register.cjs` transpiles with esbuild on require. A cold backend
+start loads 30 `.ts` files totalling 684 KB, and that transpile was 37% of
+`require("./core.js")` — paid again on every launch, for output that is a pure
+function of the file's bytes.
+
+There are now TWO cache tiers, and they survive different things:
+
+- **in memory, on `globalThis`** — survives a `require.cache` drop. Hot-reload
+  discards every project entry, and the agent triggers that on its own edits.
+- **on disk, `node_modules/.cache/wolfspace-ts`** — survives a process restart,
+  which the memory tier cannot.
+
+Measured in one session, same machine:
+
+|                        | `require("./core.js")` |
+| ---------------------- | ---------------------- |
+| `WOLFSPACE_TS_CACHE=0` | 711 / 841 / 684 ms     |
+| warm disk cache        | 296 / 305 / 276 ms     |
+
+Three properties are load-bearing:
+
+- **the key is CONTENT**, plus the esbuild version and the transform options. A
+  key based on path or mtime would serve an edited file its old compile, which
+  looks like the source is haunted; a key without the compiler version would keep
+  serving the previous esbuild's work after an upgrade.
+- **the write is NOT awaited.** Writing those 30 files synchronously measured
+  435 ms of blocked startup, which made the first run of any edited file slower
+  than no cache at all. The compile is already in hand; persisting it is for the
+  next process.
+- **every disk operation degrades to "just transpile".** In a packaged app
+  `node_modules` is inside `app.asar` and read-only. A cache that can break
+  startup is a bug, not an optimisation.
+
+`WOLFSPACE_TS_CACHE=0` turns the disk tier off. The directory needs no pruning:
+`npm ci` deletes `node_modules` outright, so it self-cleans on every clean
+install.
+
 ## The three ratchets
 
 `tests/kontrak-tipe.test.js` holds one list, `SUDAH_TYPESCRIPT`, and derives
