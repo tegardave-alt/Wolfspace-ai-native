@@ -91,7 +91,6 @@ http.createServer(handler) → listen
 | File                                         | Peran motor                                                |
 | -------------------------------------------- | ---------------------------------------------------------- |
 | `core.js`                                    | Adaptor: ekspor logika `server.cjs` untuk IPC (tanpa port) |
-| `boot.js`                                    | Bukan starter app; trampoline eval (jalur terpisah)        |
 | `Wolfspace.cmd` / `start.ps1` / `launch.ps1` | Saklar OS di luar npm                                      |
 
 ### 2.5 Kunci kontak (`config` & rahasia)

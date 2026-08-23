@@ -435,7 +435,6 @@ DAFTAR RUTE INLINE server.cjs (dari pembacaan req.url):
     tak pernah ke disk. Kenapa: broker menolak path di luar cakupan workspace;
     jembatan ini membuat attach hidup tanpa melonggarkan pengurungan.
   jsconfig.json - konfigurasi tsc untuk kode agent.
-  scripts/generate-docs.cjs - bangun docs/prompts.md dari config/prompts.json.
   CATATAN PENTING: banyak file punya komentar header PANJANG yang sengaja
   menjelaskan bug yang pernah terjadi + mengapa desain begini. Itu dokumentasi
   hidup; jangan dihapus ringan saat revisi.
@@ -558,7 +557,6 @@ DAFTAR RUTE INLINE server.cjs (dari pembacaan req.url):
   kompres-aset.cjs - memproduksi .br/.gz untuk aset.
   setup.ps1/.sh, start-models.ps1/.sh, start.ps1, app.ps1, launch.ps1,
   Wolfspace.cmd - peluncur/persiapan.
-  patch_*.js / build-app.js, ambil-js-debug.cjs - patch ikon/build lain.
   three/, reactflow/, appcontainer/, ikon-bahasa/ - aset vendor/build.
 
 -------------------- 12. FRONTEND (public/) --------------------
@@ -840,7 +838,6 @@ WOLFSPACE/
                     |-- posix.cjs
                     |-- windows.cjs
                 |-- scripts/
-                    |-- generate-docs.cjs
                 |-- tools/
                     |-- appcontainer-jail.cjs
                     |-- arch-tools.cjs
@@ -1152,7 +1149,6 @@ WOLFSPACE/
         |-- posix.cjs
         |-- windows.cjs
     |-- scripts/
-        |-- generate-docs.cjs
     |-- tools/
         |-- appcontainer-jail.cjs
         |-- arch-tools.cjs
@@ -1304,7 +1300,6 @@ WOLFSPACE/
                         |-- posix.cjs
                         |-- windows.cjs
                     |-- scripts/
-                        |-- generate-docs.cjs
                     |-- tools/
                         |-- arch-tools.cjs
                         |-- bash-jail.cjs
@@ -2331,14 +2326,9 @@ WOLFSPACE/
         |-- entry.js
     |-- ambil-js-debug.cjs
     |-- app.cjs
-    |-- build-app.js
     |-- kompres-aset.cjs
     |-- langgraph-flow-server.cjs
     |-- mcp-http-bridge.cjs
-    |-- patch_agent_icon_safe.js
-    |-- patch_app_icon.js
-    |-- patch_app_icon_regex.js
-    |-- patch_fs_icon_safe.js
     |-- profil-beku.cjs
     |-- setup.ps1
     |-- setup.sh
@@ -2522,31 +2512,26 @@ WOLFSPACE/
 |-- .gitignore
 |-- _crash.log
 |-- _memory_anomaly.log
-|-- _webp2png.mjs
 |-- agent-leak-report.md
 |-- agent-load-report.md
 |-- app.ps1
 |-- auto-commit.bat
 |-- auto-commit.ps1
-|-- boot.js
 |-- bun.lock
 |-- config.json
 |-- core.js
 |-- desktop.ini
 |-- electron-load-report.md
-|-- fix-asar.js
 |-- jedi_worker.py
 |-- launch.ps1
 |-- LICENSE
 |-- load-report.md
 |-- package.json
 |-- package-lock.json
-|-- patch-asar.mjs
 |-- playwright.config.cjs
 |-- process-manager.cjs
 |-- README.md
 |-- run.ps1.txt
-|-- scan-modules.js
 |-- server.cjs
 |-- server.log
 |-- server_disk_patch.txt
