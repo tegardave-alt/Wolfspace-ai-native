@@ -54,6 +54,8 @@ const BERKAS_MIGRASI = [
   "agent/tools/web-tools.ts",
   "agent/tools/wsl-jail.ts",
   "agent/web.ts",
+  "core/dap-sesi.ts",
+  "core/dap.ts",
   "core/terminal.ts",
   "electron/preload.ts",
   "packages/contracts/agent-events.ts",

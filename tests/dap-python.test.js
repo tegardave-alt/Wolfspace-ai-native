@@ -19,9 +19,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
-const { KlienDap, mulaiSesi, klienPython } = require("../core/dap.cjs");
+const { KlienDap, mulaiSesi, klienPython } = require("../core/dap.ts");
 
-const SRC = fs.readFileSync(require.resolve("../core/dap.cjs"), "utf8");
+const SRC = fs.readFileSync(require.resolve("../core/dap.ts"), "utf8");
 const tanpaKomentar = (t) =>
   t
     .split("\n")
@@ -343,7 +343,7 @@ kalauDebugpy("sesi debug Python sungguhan (butuh debugpy)", () => {
 //   js      berhenti baris=4  x=6 y=7  terpasang=[…,{"baris":4,"sah":true}]
 //   md      GAGAL MULAI: belum ada adapter DAP untuk berkas ini
 describe("pemilihan adapter", () => {
-  const { adapterUntuk } = require("../core/dap-sesi.cjs");
+  const { adapterUntuk } = require("../core/dap-sesi.ts");
 
   test("ekstensi menentukan adapter", () => {
     expect(adapterUntuk("/a/b.py")).toBe("python");
@@ -392,14 +392,14 @@ describe("pengambil js-debug", () => {
   test("dijalankan sendiri, bukan otomatis saat aplikasi mulai", () => {
     // Mengunduh sesuatu diam-diam saat pemakai menekan Debug adalah hal yang
     // tak boleh dilakukan aplikasi tanpa diminta.
-    const DAP = fs.readFileSync(require.resolve("../core/dap.cjs"), "utf8");
+    const DAP = fs.readFileSync(require.resolve("../core/dap.ts"), "utf8");
     expect(DAP).not.toMatch(/https\.get/);
     expect(DAP).toMatch(/Jalankan: node scripts\/ambil-js-debug\.cjs/);
   });
 });
 
 describe("klien js-debug", () => {
-  const DAP = fs.readFileSync(require.resolve("../core/dap.cjs"), "utf8");
+  const DAP = fs.readFileSync(require.resolve("../core/dap.ts"), "utf8");
   const B = tanpaKomentar(DAP);
 
   test("startDebugging DIJAWAB BERHASIL, bukan ditolak", () => {

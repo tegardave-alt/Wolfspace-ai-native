@@ -67,6 +67,8 @@ const SUDAH_TYPESCRIPT = [
   "agent/tools/web-tools.ts",
   "agent/tools/wsl-jail.ts",
   "agent/web.ts",
+  "core/dap-sesi.ts",
+  "core/dap.ts",
   "core/terminal.ts",
   "electron/preload.ts",
   "public/app.tsx",
@@ -170,4 +172,51 @@ describe("kontrak tipe jalur kritis", () => {
     },
     120000,
   );
+
+  test("tiap berkas migrasi BENAR-BENAR diperiksa suatu project", () => {
+    // Ratchet kedua, dan alasannya konkret: core/terminal.ts lolos ratchet
+    // pertama sejak Fase 7 sementara TAK ADA yang pernah menjalankan tsc
+    // atasnya. agent/tsconfig memuat "**/*.ts" relatif ke agent/, server/
+    // hanya routes/, electron/ hanya preload.ts — core/ jatuh di antaranya.
+    //
+    // "Masih .ts" dan "diperiksa" adalah dua pertanyaan berbeda. Yang pertama
+    // saja membuat berkas bisa bermigrasi, ter-ratchet, dan tak terperiksa.
+    const skrip = JSON.parse(
+      fs.readFileSync(path.join(AKAR, "package.json"), "utf8"),
+    ).scripts.typecheck;
+    const proyek = [...skrip.matchAll(/tsc -p (\S+)/g)].map((m) => m[1]);
+    expect(proyek.length).toBeGreaterThan(0);
+
+    // Kumpulkan berkas yang benar-benar dilihat tiap project. --listFiles
+    // menjawab dari tsc sendiri, bukan dari tafsiran kita atas pola include.
+    const terlihat = new Set();
+    for (const p of proyek) {
+      let keluar = "";
+      try {
+        keluar = execFileSync(
+          process.execPath,
+          [
+            path.join(AKAR, "node_modules", "typescript", "lib", "tsc.js"),
+            "-p",
+            p,
+            "--listFiles",
+            "--noEmit",
+          ],
+          { cwd: AKAR, encoding: "utf8", timeout: 180000, maxBuffer: 1 << 26 },
+        );
+      } catch (e) {
+        // Galat tipe tak menghalangi daftar berkasnya tetap tercetak.
+        keluar = String((e && e.stdout) || "");
+      }
+      for (const baris of keluar.split(/\r?\n/)) {
+        const t = baris.trim();
+        if (t) terlihat.add(path.resolve(t).toLowerCase());
+      }
+    }
+
+    const tak = SUDAH_TYPESCRIPT.filter(
+      (rel) => !terlihat.has(path.join(AKAR, rel).toLowerCase()),
+    );
+    expect(tak).toEqual([]);
+  }, 600000);
 });

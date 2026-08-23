@@ -1,6 +1,6 @@
 // DAP debug-session routes.
-// Ported from the former server/routes/dap.cjs; behavior is unchanged. Session
-// logic lives in core/dap-sesi.cjs — this file is only its HTTP layer.
+// Ported from the former server/routes/dap.ts; behavior is unchanged. Session
+// logic lives in core/dap-sesi.ts — this file is only its HTTP layer.
 //
 // PATH CONTAINMENT HAPPENS HERE, NOT IN THE UI. `program` arrives from the
 // renderer and therefore cannot be trusted; it reuses the same `kurungDiAkar`
@@ -15,7 +15,7 @@
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
-const dapSesi = require("../../core/dap-sesi.cjs") as DapSessionApi;
+const dapSesi = require("../../core/dap-sesi.ts") as DapSessionApi;
 
 /** State snapshot returned by dapSesi.keadaan(); null when the id is unknown. */
 export interface DapState {

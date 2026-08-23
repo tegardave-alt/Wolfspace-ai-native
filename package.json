@@ -19,7 +19,7 @@
     "test:watch": "jest --watch --verbose",
     "prepare": "husky",
     "vendor:three": "node scripts/three/build.cjs",
-    "typecheck": "tsc -p agent/jsconfig.json && tsc -p public/tsconfig.json && tsc -p packages/contracts/tsconfig.json && tsc -p server/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p agent/tsconfig.json",
+    "typecheck": "tsc -p agent/jsconfig.json && tsc -p public/tsconfig.json && tsc -p packages/contracts/tsconfig.json && tsc -p server/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p core/tsconfig.json && tsc -p agent/tsconfig.json",
     "profil": "node scripts/profil-beku.cjs",
     "build:preload": "node scripts/build-preload.cjs"
   },

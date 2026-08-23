@@ -1,47 +1,57 @@
 "use strict";
 /**
- * ── Klien Debug Adapter Protocol ──
+ * ── A Debug Adapter Protocol client ──
  *
- * DAP adalah bahasa standar antara editor dan debugger — spesifikasi terbuka
- * (MIT, dari Microsoft) yang sama dengan yang dipakai VS Code. Berkas ini sisi
- * EDITOR-nya: ia bicara dengan proses adapter (debugpy, js-debug, dlv dap) dan
- * menerjemahkan pesannya jadi janji dan kejadian.
+ * DAP is the standard language between an editor and a debugger — the same open
+ * specification (MIT, from Microsoft) VS Code uses. This file is the EDITOR
+ * side: it talks to an adapter process (debugpy, js-debug, dlv dap) and turns
+ * its messages into promises and events.
  *
- * KENAPA ADA. Jalur debug sebelumnya membaca TEKS dari PTY: menunggu prompt
- * `debug>`/`(Pdb)` muncul, lalu menebak keadaan dari situ. Itu bekerja, tapi
- * tiap bahasa menuntut tabel kata perintahnya sendiri, dan tak satu pun
- * keadaan bisa dibaca sebagai data — titik henti harus diketik, isi variabel
- * kembali sebagai teks bebas, dan berakhirnya sesi hanya bisa DITEBAK dari
- * prompt yang muncul kembali.
+ * WHY IT EXISTS. The previous debug path read TEXT from a PTY: wait for a
+ * `debug>`/`(Pdb)` prompt to appear, then infer the state from it. That worked,
+ * but every language needed its own table of command words, and no state could
+ * be read as data — breakpoints had to be typed, variable contents came back as
+ * free text, and the end of a session could only be GUESSED from a prompt
+ * reappearing.
  *
- * Dengan DAP semuanya jadi data: `setBreakpoints` menerima nomor baris,
- * `variables` mengembalikan pasangan nama-nilai, dan `terminated` adalah
- * kejadian yang pasti — bukan tebakan atas keluaran layar.
+ * With DAP it is all data: `setBreakpoints` takes line numbers, `variables`
+ * returns name/value pairs, and `terminated` is a definite event rather than a
+ * guess about what appeared on screen.
  *
- * BENTUK KAWATNYA sama seperti LSP: header `Content-Length`, baris kosong,
- * lalu badan JSON.
+ * THE WIRE FORMAT is the same as LSP: a `Content-Length` header, a blank line,
+ * then a JSON body.
  *
  *     Content-Length: 92\r\n
  *     \r\n
  *     {"seq":1,"type":"request","command":"initialize","arguments":{…}}
  *
- * Tiga jenis pesan: `request` (kita -> adapter), `response` (jawaban atas
- * request, dicocokkan lewat `request_seq`), dan `event` (adapter -> kita,
- * tanpa diminta).
+ * Three message kinds: `request` (us -> adapter), `response` (an answer to a
+ * request, matched by `request_seq`), and `event` (adapter -> us, unsolicited).
  */
 
-const { spawn } = require("child_process");
-const { EventEmitter } = require("events");
+import { spawn } from "child_process";
+import { EventEmitter } from "events";
 
 const PEMISAH = "\r\n\r\n";
 
 class KlienDap extends EventEmitter {
+  // Declared because TypeScript classes require it. Assignment happens in the
+  // constructor, as it did in the CommonJS original — nothing moved.
+  _seq: number;
+  _menunggu: Map<
+    number,
+    { selesai: (v: any) => void; gagal: (e: any) => void }
+  >;
+  _sisa: Buffer;
+  _mati: boolean;
+  _balasStartDebugging?: boolean;
+  proses: any;
   /**
    * @param {string} perintah  biner adapter (mis. "python")
    * @param {string[]} argumen argumennya (mis. ["-m", "debugpy.adapter"])
    * @param {object} opsi      { cwd, env }
    */
-  constructor(perintah, argumen, opsi = {}) {
+  constructor(perintah: any, argumen: any, opsi: any = {}) {
     super();
     this._seq = 1;
     this._menunggu = new Map(); // seq -> { selesai, gagal }
@@ -55,16 +65,16 @@ class KlienDap extends EventEmitter {
       windowsHide: true,
     });
     this.proses.stdout.on("data", (b) => this._terima(b));
-    // stderr adapter BUKAN keluaran program yang di-debug — itu datang sebagai
-    // kejadian `output`. Yang di sini pesan adapter sendiri saat ia bermasalah,
-    // dan membuangnya berarti kegagalan adapter jadi senyap total.
+    // The adapter's stderr is NOT the debugged program's output — that arrives as
+    // an `output` event. What comes here is the adapter's own message when it is
+    // in trouble, and discarding it makes an adapter failure completely silent.
     this.proses.stderr.on("data", (b) =>
       this.emit("galat-adapter", b.toString("utf8")),
     );
     this.proses.on("exit", (kode) => {
       this._mati = true;
-      // Setiap janji yang masih menggantung DIGAGALKAN. Tanpa ini, adapter yang
-      // mati di tengah jalan meninggalkan pemanggil menunggu selamanya.
+      // Every still-pending promise is REJECTED. Without this, an adapter that
+      // dies midway leaves its caller waiting forever.
       for (const { gagal } of this._menunggu.values())
         gagal(new Error("adapter berhenti (kode " + kode + ")"));
       this._menunggu.clear();
@@ -75,12 +85,12 @@ class KlienDap extends EventEmitter {
     );
   }
 
-  // ── Membaca aliran byte jadi pesan utuh ──
+  // ── Reading a byte stream into whole messages ──
   //
-  // Dipotong lewat Buffer, bukan string: Content-Length dihitung dalam BYTE,
-  // sementara panjang string JavaScript dihitung dalam unit UTF-16. Satu
-  // karakter non-ASCII di nama berkas atau isi variabel sudah cukup membuat
-  // keduanya berbeda, dan sesudah itu seluruh aliran tergeser.
+  // Split with a Buffer, not a string: Content-Length counts BYTES, while a
+  // JavaScript string's length counts UTF-16 units. One non-ASCII character in a
+  // filename or a variable's contents is enough to make the two differ, and after
+  // that the whole stream is offset.
   _terima(potongan) {
     this._sisa = Buffer.concat([this._sisa, potongan]);
     for (;;) {
@@ -89,17 +99,17 @@ class KlienDap extends EventEmitter {
       const kepala = this._sisa.slice(0, batas).toString("ascii");
       const cocok = /Content-Length:\s*(\d+)/i.exec(kepala);
       if (!cocok) {
-        // Header tanpa panjang tak bisa dipulihkan — buang sampai pemisah
-        // berikutnya alih-alih menganggap sisanya badan pesan.
+        // A header with no length cannot be recovered — discard up to the next
+        // separator rather than treating the remainder as a message body.
         this._sisa = this._sisa.slice(batas + PEMISAH.length);
         continue;
       }
       const panjang = Number(cocok[1]);
       const awal = batas + PEMISAH.length;
-      if (this._sisa.length < awal + panjang) return; // belum utuh, tunggu
+      if (this._sisa.length < awal + panjang) return; // not whole yet, wait
       const badan = this._sisa.slice(awal, awal + panjang).toString("utf8");
       this._sisa = this._sisa.slice(awal + panjang);
-      let pesan;
+      let pesan: any;
       try {
         pesan = JSON.parse(badan);
       } catch (e) {
@@ -130,16 +140,16 @@ class KlienDap extends EventEmitter {
       return;
     }
     if (pesan.type === "request") {
-      // Adapter boleh MEMINTA sesuatu ke klien (mis. runInTerminal,
-      // startDebugging). Yang tak kita dukung dijawab tegas — membiarkannya
-      // menggantung membuat adapter menunggu selamanya dan sesinya seolah macet
-      // tanpa sebab.
+      // An adapter may REQUEST something of the client (runInTerminal,
+      // startDebugging). What we do not support is answered plainly — leaving it
+      // hanging makes the adapter wait forever and the session appear stuck for
+      // no reason.
       //
-      // `startDebugging` DIJAWAB BERHASIL bila pemanggil menyanggupinya. Ini
-      // bukan basa-basi: js-debug memakainya untuk melahirkan sesi anak yang
-      // benar-benar men-debug, dan menjawab gagal membuatnya membatalkan
-      // seluruh sesi — titik henti tak pernah terpasang, `stopped` tak pernah
-      // datang, dan tak ada satu pun pesan yang menyebut kenapa.
+      // `startDebugging` is ANSWERED WITH SUCCESS when the caller can honour it.
+      // That is not a formality: js-debug uses it to spawn the child session that
+      // actually does the debugging, and answering failure makes it abandon the
+      // whole session — breakpoints never install, `stopped` never arrives, and
+      // not a single message says why.
       const sanggup =
         pesan.command === "startDebugging" && this._balasStartDebugging;
       this._tulis({
@@ -169,9 +179,9 @@ class KlienDap extends EventEmitter {
     if (this._mati) return Promise.reject(new Error("adapter sudah berhenti"));
     const seq = this._seq++;
     return new Promise((selesai, gagal) => {
-      // Batas waktu WAJIB: adapter yang menerima request tapi tak pernah
-      // menjawab tak bisa dibedakan dari yang sedang bekerja lama, dan tanpa
-      // batas ini seluruh alur berhenti tanpa satu pun pesan.
+      // A timeout is REQUIRED: an adapter that accepted a request but never
+      // answers is indistinguishable from one working slowly, and without this
+      // the whole flow stops with no message at all.
       const jam = setTimeout(() => {
         this._menunggu.delete(seq);
         gagal(new Error("tak ada balasan untuk '" + perintah + "'"));
@@ -195,7 +205,7 @@ class KlienDap extends EventEmitter {
     });
   }
 
-  /** Menunggu satu kejadian, dengan batas waktu. */
+  /** Wait for one event, with a timeout. */
   tunggu(kejadian, batasMs = 15000) {
     return new Promise((selesai, gagal) => {
       const jam = setTimeout(() => {
@@ -219,19 +229,20 @@ class KlienDap extends EventEmitter {
 }
 
 /**
- * Urutan pembukaan sesi, sesuai spesifikasi DAP.
+ * The session opening sequence, per the DAP specification.
  *
- * Yang mudah salah adalah URUTANNYA, dan salahnya tidak berupa galat melainkan
- * titik henti yang diam-diam tak terpasang:
+ * What is easy to get wrong is the ORDER, and getting it wrong produces no error
+ * — just breakpoints that silently fail to install:
  *
- *   1. `initialize`         -> tunggu responsnya
- *   2. `launch`             -> JANGAN ditunggu di sini. Responsnya baru datang
- *                              sesudah program benar-benar mulai, sementara
- *                              adapter menunggu kita mengirim titik henti dulu
- *                              — saling menunggu, dan sesinya membeku.
- *   3. kejadian `initialized` -> BARU adapter siap menerima titik henti
+ *   1. `initialize`           -> wait for its response
+ *   2. `launch`               -> do NOT wait here. Its response only arrives
+ *                                after the program has actually started, while
+ *                                the adapter is waiting for us to send
+ *                                breakpoints first — each waiting on the other,
+ *                                and the session freezes.
+ *   3. the `initialized` event -> only NOW is the adapter ready for breakpoints
  *   4. `setBreakpoints` + `configurationDone`
- *   5. sesudah itu barulah respons `launch` datang
+ *   5. and only after that does the `launch` response arrive
  */
 async function mulaiSesi(klien, argumenLaunch, titikHenti) {
   await klien.kirim("initialize", {
@@ -250,11 +261,11 @@ async function mulaiSesi(klien, argumenLaunch, titikHenti) {
   const janjiLaunch = klien.kirim("launch", argumenLaunch, 30000);
   await siap;
 
-  const hasilTitik = [];
+  const hasilTitik: any[] = [];
   for (const [berkas, baris] of Object.entries(titikHenti || {})) {
     const b = await klien.kirim("setBreakpoints", {
       source: { path: berkas },
-      breakpoints: baris.map((l) => ({ line: l })),
+      breakpoints: (baris as any[]).map((l) => ({ line: l })),
     });
     hasilTitik.push(...((b && b.breakpoints) || []));
   }
@@ -263,22 +274,22 @@ async function mulaiSesi(klien, argumenLaunch, titikHenti) {
   return hasilTitik;
 }
 
-/** Adapter debugpy: proses Python yang bicara DAP lewat stdio. */
-function klienPython(opsi = {}) {
+/** The debugpy adapter: a Python process speaking DAP over stdio. */
+function klienPython(opsi: any = {}) {
   const py = opsi.python || process.env.WOLFSPACE_PYTHON || "python";
   return new KlienDap(py, ["-m", "debugpy.adapter"], { cwd: opsi.cwd });
 }
 
-// ── Klien yang bicara lewat SOKET, bukan stdio ──
+// ── A client that talks over a SOCKET rather than stdio ──
 //
-// js-debug (adapter Node/JavaScript resmi) tak menyediakan mode stdio: ia
-// dijalankan sebagai server yang mendengarkan di satu porta TCP. Bentuk
-// pesannya sama persis — header Content-Length lalu badan JSON — jadi yang
-// berbeda hanya pipanya.
-// Dibuat sebagai fungsi PABRIK, bukan subkelas: konstruktor KlienDap selalu
-// melahirkan proses, jadi mewarisinya berarti melahirkan satu proses yang
-// langsung dibuang setiap kali klien soket dibuat. Yang dipakai ulang di sini
-// prototipenya — pemecah pesan, pencocokan seq, dan pengiriman semuanya sama.
+// js-debug (the official Node/JavaScript adapter) offers no stdio mode: it runs
+// as a server listening on a TCP port. The message format is identical — a
+// Content-Length header then a JSON body — so only the pipe differs.
+// Built as a FACTORY function rather than a subclass: KlienDap's constructor
+// always spawns a process, so inheriting from it would spawn one process
+// immediately discarded every time a socket client is made. What is reused here
+// is its prototype — the message splitter, the seq matching, and the sending are
+// all the same.
 function klienDariSoket(soket) {
   const k = Object.create(KlienDap.prototype);
   EventEmitter.call(k);
@@ -299,31 +310,33 @@ function klienDariSoket(soket) {
   return k;
 }
 
-// ── js-debug memakai SESI ANAK, dan itu mengubah bentuk kliennya ──
+// ── js-debug uses a CHILD SESSION, and that changes the client's shape ──
 //
-// Ini yang membuat js-debug berbeda dari debugpy, dan yang membuat percobaan
-// pertama gagal tanpa penjelasan: titik henti kembali `verified:false` dan
-// kejadian `stopped` tak pernah datang.
+// This is what makes js-debug different from debugpy, and what made the first
+// attempt fail with no explanation: breakpoints came back `verified:false` and
+// the `stopped` event never arrived.
 //
-// Sesi yang kita buka BUKAN yang men-debug. Ia sesi induk; begitu `launch`
-// dikerjakan, ia mengirim permintaan BALIK `startDebugging` — meminta klien
-// membuka sesi KEDUA yang benar-benar menempel ke proses Node-nya. Klien yang
-// menolak permintaan balik (seperti versi pertama berkas ini) membuat sesi anak
-// itu tak pernah lahir, jadi tak ada yang berhenti dan tak ada yang melapor.
+// The session we open is NOT the one doing the debugging. It is the parent; once
+// `launch` is handled, it sends a `startDebugging` request BACK — asking the
+// client to open a SECOND session that actually attaches to the Node process. A
+// client that refuses that reverse request (as the first version of this file
+// did) means the child session is never born, so nothing stops and nothing
+// reports.
 //
-// Karena titik henti dipasang SEBELUM anak lahir, ia harus diingat lalu
-// dikirim ULANG ke anak begitu ia ada — di sanalah ia benar-benar berlaku.
+// Because breakpoints are set BEFORE the child exists, they have to be
+// remembered and sent AGAIN once it does — that is where they actually take
+// effect.
 function _bungkusJs(induk, porta, prosesServer) {
   const net = require("net");
-  const muka = new EventEmitter();
-  let anakKlien = null;
-  const titikDiingat = []; // [{ source, breakpoints }]
+  const muka: any = new EventEmitter();
+  let anakKlien: any = null;
+  const titikDiingat: any[] = []; // [{ source, breakpoints }]
 
   const aktif = () => anakKlien || induk;
 
   muka.kirim = (perintah, argumen, batas) => {
-    // setBreakpoints DIINGAT apa pun tujuannya: kalau anak lahir belakangan,
-    // ia butuh daftar yang sama.
+    // setBreakpoints is REMEMBERED whatever its destination: if the child is born
+    // later, it needs the same list.
     if (perintah === "setBreakpoints") titikDiingat.push(argumen);
     return aktif().kirim(perintah, argumen, batas);
   };
@@ -403,13 +416,14 @@ function _bungkusJs(induk, porta, prosesServer) {
 }
 
 /**
- * Adapter js-debug: proses Node yang MENDENGARKAN di porta TCP.
+ * The js-debug adapter: a Node process LISTENING on a TCP port.
  *
- * Portanya 0 — dipilihkan sistem, lalu dibaca dari baris yang dicetak server.
- * Memilih nomor tetap berarti dua jendela WOLFSPACE tak bisa men-debug
- * bersamaan, dan bentrokannya muncul sebagai sesi yang gagal tanpa sebab jelas.
+ * Port 0 — chosen by the system, then read from the line the server prints.
+ * Picking a fixed number would mean two WOLFSPACE windows could not debug at the
+ * same time, and the clash would show up as a session failing for no clear
+ * reason.
  */
-function klienJs(opsi = {}) {
+function klienJs(opsi: any = {}) {
   const net = require("net");
   const berkasServer =
     opsi.server ||

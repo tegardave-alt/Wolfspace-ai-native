@@ -1,40 +1,40 @@
 "use strict";
 /**
- * ── Sesi debug DAP, dengan keadaan yang bisa dibaca renderer ──
+ * ── A DAP debug session, with state the renderer can read ──
  *
- * core/dap.cjs bicara protokolnya. Berkas ini yang MENGINGAT: satu sesi punya
- * keadaan (sedang berhenti di mana, apa isi variabelnya, apa yang sudah
- * dicetak), dan renderer menanyakannya lewat satu permintaan.
+ * core/dap.ts speaks the protocol. This file REMEMBERS: one session has state
+ * (where it is stopped, what its variables hold, what has been printed), and the
+ * renderer asks for it in a single request.
  *
- * KENAPA DITARIK DI SINI, BUKAN DI RENDERER. Saat program berhenti di titik
- * henti, yang dibutuhkan bukan satu jawaban melainkan tiga permintaan
- * beruntun: `stackTrace` -> `scopes` -> `variables`. Membiarkan renderer
- * merangkainya berarti tiga perjalanan IPC untuk satu peristiwa, dan tiap
- * jedanya adalah jeda antara "program berhenti" dan "layar menunjukkannya".
- * Di sini ketiganya dikerjakan begitu kejadian `stopped` tiba, jadi saat
- * renderer bertanya, jawabannya sudah lengkap.
+ * WHY IT IS PULLED HERE RATHER THAN IN THE RENDERER. When a program stops at a
+ * breakpoint, what is needed is not one answer but three requests in sequence:
+ * `stackTrace` -> `scopes` -> `variables`. Letting the renderer chain them means
+ * three IPC round trips for one event, and every gap is a gap between "the
+ * program stopped" and "the screen shows it". Here all three happen the moment
+ * the `stopped` event arrives, so by the time the renderer asks, the answer is
+ * already complete.
  */
 
-const path = require("path");
-const { KlienDap, mulaiSesi } = require("./dap.cjs");
+import * as path from "path";
+const { KlienDap, mulaiSesi } = require("./dap.ts");
 
 const sesi = new Map();
 let urut = 1;
 
-const KELUARAN_MAKS = 400; // baris; sesi panjang tak boleh tumbuh tanpa batas
+const KELUARAN_MAKS = 400; // lines; a long session must not grow without bound
 
 function _bersihkanKeluaran(s) {
   if (s.keluaran.length > KELUARAN_MAKS)
     s.keluaran = s.keluaran.slice(-KELUARAN_MAKS);
 }
 
-// Menarik keadaan lengkap saat program berhenti. Kegagalan di sini TIDAK boleh
-// menjatuhkan sesinya: adapter kadang menolak `scopes` untuk bingkai yang sudah
-// tak sah (mis. pemakai menekan Continue tepat saat data ditarik), dan itu
-// bukan alasan mematikan seluruh sesi debug.
+// Pull the full state when the program stops. A failure here must NOT bring the
+// session down: adapters sometimes refuse `scopes` for a frame that is no longer
+// valid (the user pressed Continue exactly as the data was being pulled, say),
+// and that is no reason to kill the whole debug session.
 async function _tarikKeadaan(s, badan) {
   const utas = badan && badan.threadId;
-  const hasil = {
+  const hasil: Record<string, any> = {
     alasan: (badan && badan.reason) || "stopped",
     utas,
     berkas: null,
@@ -59,9 +59,9 @@ async function _tarikKeadaan(s, badan) {
       hasil.berkas = atas.berkas;
       hasil.baris = atas.baris;
       const sc = await s.klien.kirim("scopes", { frameId: atas.id });
-      // Cakupan lokal saja. `globals` di Python memuat ratusan nama bawaan yang
-      // tak pernah dicari orang saat men-debug, dan menampilkannya justru
-      // menenggelamkan variabel yang benar-benar dilihat.
+      // Local scopes only. Python's `globals` holds hundreds of builtin names
+      // nobody ever looks for while debugging, and showing them drowns the
+      // variables that are actually being watched.
       const lokal =
         (sc.scopes || []).find((c) => /local/i.test(c.name)) ||
         (sc.scopes || [])[0];
@@ -73,7 +73,7 @@ async function _tarikKeadaan(s, badan) {
           nama: x.name,
           nilai: x.value,
           tipe: x.type || "",
-          // > 0 berarti nilainya punya isi yang bisa dibuka lebih dalam.
+          // > 0 means the value has contents that can be expanded further.
           anak: x.variablesReference > 0 ? x.variablesReference : 0,
         }));
       }
@@ -85,11 +85,11 @@ async function _tarikKeadaan(s, badan) {
 }
 
 /**
- * Membuka sesi. `titikHenti` berbentuk { "<path absolut>": [nomor baris] }.
+ * Open a session. `titikHenti` has the shape { "<absolute path>": [line numbers] }.
  */
-// Ekstensi -> adapter. Kuncinya sengaja sama dengan jenisDebugger() di
-// public/app.jsx supaya UI dan server tak pernah berbeda pendapat soal berkas
-// mana yang lewat DAP.
+// Extension -> adapter. The keys deliberately match jenisDebugger() in
+// public/app.tsx so the UI and the server never disagree about which files go
+// through DAP.
 const ADAPTER = {
   py: "python",
   js: "js",
@@ -108,12 +108,12 @@ async function buka({ program, cwd, titikHenti, python }) {
   const jenis = adapterUntuk(program);
   if (!jenis) throw new Error("belum ada adapter DAP untuk berkas ini");
   const id = "dap_" + Date.now().toString(36) + "_" + urut++;
-  const dap = require("./dap.cjs");
+  const dap = require("./dap.ts");
   const klien =
     jenis === "js"
       ? await dap.klienJs({ cwd })
       : dap.klienPython({ cwd, python });
-  const s = {
+  const s: Record<string, any> = {
     id,
     klien,
     program,
@@ -132,9 +132,9 @@ async function buka({ program, cwd, titikHenti, python }) {
     _bersihkanKeluaran(s);
   });
   klien.on("breakpoint", (b) => {
-    // js-debug menjalankan sesi ANAK; balasan setBreakpoints dari sesi INDUK
-    // selalu `verified:false` karena bukan dia yang memasangnya. Pengakuan yang
-    // sebenarnya datang belakangan sebagai kejadian ini.
+    // js-debug runs a CHILD session; a setBreakpoints reply from the PARENT is
+    // always `verified:false` because the parent is not what installed them. The
+    // real acknowledgement arrives later as this event.
     const t = b && b.breakpoint;
     if (!t) return;
     s.terpasang = (s.terpasang || []).filter((x) => x.baris !== t.line);
@@ -143,9 +143,9 @@ async function buka({ program, cwd, titikHenti, python }) {
   klien.on("stopped", (b) => {
     _tarikKeadaan(s, b);
   });
-  // `continued` tak selalu dikirim tiap adapter, jadi keadaan "jalan lagi" juga
-  // disetel saat aksi dikirim (lihat aksi()). Keduanya perlu: yang satu untuk
-  // adapter yang mengirimnya, yang satu untuk yang tidak.
+  // `continued` is not sent by every adapter, so the "running again" state is
+  // also set when an action is sent (see aksi()). Both are needed: one for the
+  // adapters that send it, one for those that do not.
   klien.on("continued", () => {
     s.berhenti = null;
   });
@@ -185,10 +185,10 @@ async function buka({ program, cwd, titikHenti, python }) {
     );
     s.terpasang = tp.map((t) => ({ baris: t.line, sah: !!t.verified }));
   } catch (e) {
-    // Sesinya TIDAK dihapus di sini: pesan galatnya justru yang paling ingin
-    // dilihat pemakai, dan menghapusnya membuat /dap/keadaan menjawab
-    // "sesi tak ada" — yang terbaca seperti bug aplikasi, bukan seperti
-    // program yang gagal dijalankan.
+    // The session is NOT deleted here: its error message is exactly what the user
+    // most wants to see, and deleting it makes /dap/keadaan answer "no such
+    // session" — which reads like an application bug rather than like a program
+    // that failed to start.
     s.galat = String((e && e.message) || e);
     s.selesai = true;
   }
@@ -212,9 +212,9 @@ async function aksi(id, nama) {
   const perintah = PETA_AKSI[nama];
   if (!perintah) throw new Error("aksi tak dikenal: " + nama);
   const utas = (s.berhenti && s.berhenti.utas) || 1;
-  // Keadaan "berhenti" dibersihkan SEBELUM permintaan dikirim. Kalau sesudah,
-  // ada jendela saat layar masih menunjukkan baris lama padahal programnya
-  // sudah jalan — dan pemakai menekan tombol berikutnya berdasarkan itu.
+  // The "stopped" state is cleared BEFORE the request is sent. Afterwards there
+  // would be a window where the screen still shows the old line while the program
+  // is already running — and the user presses the next button based on that.
   s.berhenti = null;
   await s.klien.kirim(perintah, { threadId: utas });
   return { ok: true };
@@ -245,9 +245,9 @@ function keadaan(id, sejak) {
     galat: s.galat,
     terpasang: s.terpasang || [],
     berhenti: s.berhenti,
-    // Keluaran dikirim SEJAK indeks yang sudah dipegang renderer, bukan
-    // seluruhnya tiap kali. Mengirim ulang semuanya pada polling 400 ms membuat
-    // muatannya tumbuh terus sepanjang sesi.
+    // Output is sent FROM the index the renderer already holds, rather than all of
+    // it every time. Resending everything on a 400 ms poll makes the payload grow
+    // continuously through the session.
     keluaranDari: dari,
     keluaran: s.keluaran.slice(dari),
     keluaranTotal: s.keluaran.length,
@@ -260,8 +260,8 @@ async function tutup(id) {
   sesi.delete(id);
   s.selesai = true;
   try {
-    // Diminta berhenti baik-baik dulu; kalau adapter tak menjawab, batas waktu
-    // di dalam kirim() yang menyelesaikannya, lalu prosesnya dibunuh.
+    // Asked to stop politely first; if the adapter does not answer, the timeout
+    // inside kirim() resolves it and then the process is killed.
     await s.klien.kirim("disconnect", { terminateDebuggee: true }, 3000);
   } catch (_) {}
   try {
