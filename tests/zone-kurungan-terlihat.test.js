@@ -137,7 +137,7 @@ describe("penanda sampai ke keluaran yang DIBACA MODEL", () => {
   // justru paling mahal.
   test("capability_exec menyisipkan penanda ke output saat tak terkurung", () => {
     const T = fs.readFileSync(
-      require.resolve("../agent/tools/index.cjs"),
+      require.resolve("../agent/tools/index.ts"),
       "utf8",
     );
     expect(T).toMatch(/TANPA PENGURUNGAN JARINGAN/);

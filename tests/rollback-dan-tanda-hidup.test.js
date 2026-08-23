@@ -230,7 +230,7 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
     // bisa terjadi diam-diam lagi.
     const be =
       fs.readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8") +
-      fs.readFileSync(require.resolve("../agent/tools/index.cjs"), "utf8");
+      fs.readFileSync(require.resolve("../agent/tools/index.ts"), "utf8");
     const emit = new Set(
       [...be.matchAll(/emit\(\s*\{\s*t:\s*"([a-z_]+)"/g)].map((m) => m[1]),
     );

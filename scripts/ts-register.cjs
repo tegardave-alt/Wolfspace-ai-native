@@ -20,7 +20,7 @@
 //
 // The entry points that install it today:
 //   server.cjs                  (line 1, before agent/mcp-client.ts)
-//   agent/tools/index.cjs       (reached directly by test subprocesses)
+//   agent/tools/index.ts       (reached directly by test subprocesses)
 //   agent/plugins.cjs
 //   agent/self_agent.cjs
 //   scripts/mcp-http-bridge.cjs

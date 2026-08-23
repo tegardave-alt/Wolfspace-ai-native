@@ -1,6 +1,6 @@
 // Jejak audit broker harus BERTAHAN, dan tak boleh membawa muatannya.
 //
-// KENAPA ADA. `Broker.audit` hanya array di memori, dan agent/tools/index.cjs
+// KENAPA ADA. `Broker.audit` hanya array di memori, dan agent/tools/index.ts
 // membuat Broker BARU tiap panggilan capability_exec — jadi catatan
 // ALLOW/DENY/BLOCKED mati bersama panggilannya. Terlihat sekali di hasil tool,
 // lalu hilang.

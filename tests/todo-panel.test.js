@@ -70,7 +70,7 @@ describe("panel todowrite di atas kotak ketik", () => {
     // Tool tetap harus berjalan dan hasilnya tetap sampai ke model; kalau
     // emit-nya ikut dimatikan, panelnya justru kosong.
     const TOOLS = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     expect(TOOLS).toMatch(/emit\(\{ t: "todos", todos \}\)/);

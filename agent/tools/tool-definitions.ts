@@ -1,7 +1,7 @@
 // Tool definitions (OpenAI function-calling format)
 // ── Tool definitions (OpenAI function-calling format) ──
 // NOTE: disk_* tools removed from defaults — only project-scoped tools exposed.
-// Disk tools are still implemented in tools/index.cjs if needed dynamically.
+// Disk tools are still implemented in tools/index.ts if needed dynamically.
 const SELF_TOOLS = [
   {
     type: "function",
@@ -540,7 +540,7 @@ const SELF_TOOLS = [
   // HUMAN presses the install button.
   //
   // Installing is a human action. The implementation is deliberately LEFT ALIVE
-  // in tools/index.cjs so the UI (and a future HITL path) can still call it —
+  // in tools/index.ts so the UI (and a future HITL path) can still call it —
   // only the door to the model is closed.
   //
   // If the model ever needs to PROPOSE an install, the path already exists: add

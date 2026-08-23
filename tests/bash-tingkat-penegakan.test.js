@@ -25,7 +25,7 @@
 // Jadi yang diperbaiki bukan regexnya, melainkan KLAIMNYA.
 
 const path = require("path");
-const T = require("../agent/tools/index.cjs");
+const T = require("../agent/tools/index.ts");
 
 const WS = path.resolve(__dirname, "..");
 const ctx = { workspaceRoot: WS, sessionId: "uji-penegakan" };

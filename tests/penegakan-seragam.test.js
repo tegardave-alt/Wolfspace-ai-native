@@ -15,7 +15,7 @@
 // tak ada di hasil, tempat ia bisa diperiksa mesin.
 
 const path = require("path");
-const T = require("../agent/tools/index.cjs");
+const T = require("../agent/tools/index.ts");
 const P = require("../agent/penegakan.cjs");
 
 const WS = path.resolve(__dirname, "..");

@@ -78,7 +78,7 @@ function flagPermission(major: number, worker?: string): string[] | null {
       "--experimental-permission",
       // --no-warnings accompanies the experimental flag: without it every
       // zone prints an ExperimentalWarning to stderr, and zone stderr is
-      // reported back to the caller (_withIo in agent/tools/index.cjs), so
+      // reported back to the caller (_withIo in agent/tools/index.ts), so
       // every capability_exec result would come back dirty.
       "--no-warnings",
       // v20 demands an EXPLICIT read permission for its own entry script;

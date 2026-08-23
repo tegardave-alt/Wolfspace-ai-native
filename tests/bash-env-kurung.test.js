@@ -164,7 +164,7 @@ describe("pekerjaan SAH tidak ikut mati", () => {
 
 describe("struktur: allowlist ada, dan jujur soal batasnya", () => {
   const SRC = fs
-    .readFileSync(require.resolve("../agent/tools/index.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/tools/index.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("bash TIDAK lagi mewarisi process.env utuh", () => {
@@ -209,9 +209,9 @@ describe("struktur: allowlist ada, dan jujur soal batasnya", () => {
     // Penting untuk pembaca berikutnya. Ini menutup satu keluarga pelarian,
     // bukan membuat shell tak bisa menjangkau luar — path absolut yang ditulis
     // terang masih bergantung pada penjaga regex yang bisa ditembus cara lain.
-    const i = SRC.indexOf("Environment bash TIDAK lagi diwariskan utuh");
+    const i = SRC.indexOf("bash's environment is NO LONGER inherited whole");
     expect(i).toBeGreaterThan(-1);
-    expect(SRC.slice(i, i + 2000)).toMatch(/BUKAN pengurungan sungguhan/);
+    expect(SRC.slice(i, i + 2000)).toMatch(/NOT real containment/);
   });
 });
 
@@ -350,7 +350,7 @@ describe("TANPA proyek dipilih, bash tetap terkurung — ke QROOT", () => {
     // Q_ALLOWED sendiri. Melarangnya di seluruh berkas akan menuntut perubahan
     // yang justru salah.
     const SRC = fs
-      .readFileSync(require.resolve("../agent/tools/index.cjs"), "utf8")
+      .readFileSync(require.resolve("../agent/tools/index.ts"), "utf8")
       .replace(/\s+/g, " ");
     const i = SRC.indexOf("const _confineRoot =");
     expect(i).toBeGreaterThan(-1);

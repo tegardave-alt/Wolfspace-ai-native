@@ -58,7 +58,7 @@ describe("agent-events contract matches what the backend emits", () => {
   test("self-agent: every emitted event IS in the contract", () => {
     const emitted = eventsEmitted(
       "agent/self_agent.cjs",
-      "agent/tools/index.cjs",
+      "agent/tools/index.ts",
     );
     const contract = eventsInUnion("SelfAgentStreamEvent");
     expect(emitted.size).toBeGreaterThan(0);
@@ -69,7 +69,7 @@ describe("agent-events contract matches what the backend emits", () => {
     // This is the direction that caught the first version of this contract.
     const emitted = eventsEmitted(
       "agent/self_agent.cjs",
-      "agent/tools/index.cjs",
+      "agent/tools/index.ts",
     );
     const contract = eventsInUnion("SelfAgentStreamEvent");
     expect(difference(contract, emitted)).toEqual([]);
@@ -87,7 +87,7 @@ describe("the UI handles no event that can never arrive", () => {
   const emitted = eventsEmitted(
     "agent/chat.cjs",
     "agent/self_agent.cjs",
-    "agent/tools/index.cjs",
+    "agent/tools/index.ts",
   );
 
   test("every j.t branch in app.tsx has an emitter in the backend", () => {

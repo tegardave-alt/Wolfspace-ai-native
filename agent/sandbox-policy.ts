@@ -14,7 +14,7 @@
 //       -> "sandbox" was never set in config.json nor in config.docker.json
 //          (that file has since been deleted along with every Docker file), so
 //          this path was dead; setting it to false made no difference either.
-//   - agent/tools/index.cjs  : _hasDocker() alone
+//   - agent/tools/index.ts  : _hasDocker() alone
 //       -> turned itself on whenever Docker was running, and IGNORED
 //          sandbox:false.
 // The upshot was that "sandbox: false" did not actually disable the sandbox, and
@@ -84,7 +84,7 @@ export function shouldSandbox(
   return !!pengurunganTersedia;
 }
 
-// For callers that do not load CONFIG themselves (e.g. agent/tools/index.cjs).
+// For callers that do not load CONFIG themselves (e.g. agent/tools/index.ts).
 // Read once and cached; config.json does not change while the process lives.
 //
 // The cache uses a SENTINEL rather than `undefined`. It used to test

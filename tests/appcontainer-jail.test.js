@@ -93,7 +93,7 @@ describe("pesan modul", () => {
 
   test("dipasang sebagai bawaan di Windows, bukan opt-in", () => {
     const idx = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     // Jalur lain memakai '=== "1"' (harus dinyalakan). Jalur ini kebalikannya:
@@ -164,7 +164,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
     // membeku tiap perintah) dan melewati AbortController, sehingga pembatalan
     // user dan pembedaan TIMEOUT vs DIBATALKAN ikut hilang.
     const idx = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     expect(idx).toMatch(/_bungkusAc\.bungkus\(cwd, shBin, shArgs\)/);
@@ -175,7 +175,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
     // Perintah dijalankan LEWAT berkas .cmd. Bawaannya temp sistem, yang
     // tertutup untuk container — akibatnya setiap perintah gagal sebelum mulai.
     const idx = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     expect(idx).toMatch(/scriptDir: _dirSkripAc\(cwd\)/);
@@ -228,7 +228,7 @@ describe("satu workspace pada satu waktu", () => {
     // workspace besar. Di Electron itu UI yang membeku, bukan sekadar lambat.
     expect(AC.siapUntuk(process.cwd())).toBeInstanceOf(Promise);
     const idx = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     expect(idx).toMatch(/await _ac\.siapUntuk\(_confineRoot\)/);

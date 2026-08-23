@@ -50,6 +50,7 @@ const SUDAH_TYPESCRIPT = [
   "agent/tools/file-tools.ts",
   "agent/tools/gen3d-tools.ts",
   "agent/tools/git-tool.ts",
+  "agent/tools/index.ts",
   "agent/tools/net-diag.ts",
   "agent/tools/sandbox-validator.ts",
   "agent/tools/skill-tools.ts",

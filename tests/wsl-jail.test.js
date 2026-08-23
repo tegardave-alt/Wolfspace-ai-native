@@ -26,7 +26,7 @@
 //      SETIAP eksekusi — bukan sekali di awal.
 
 const W = require("../agent/tools/wsl-jail.ts");
-const T = require("../agent/tools/index.cjs");
+const T = require("../agent/tools/index.ts");
 
 const siap = process.platform === "win32" && W.tersedia().siap;
 const kalauSiap = siap ? test : test.skip;
@@ -146,7 +146,7 @@ describe("integrasi ke tool bash", () => {
 
   test("opt-in dibaca dari WOLFSPACE_BASH_WSL", () => {
     const src = require("fs").readFileSync(
-      require.resolve("../agent/tools/index.cjs"),
+      require.resolve("../agent/tools/index.ts"),
       "utf8",
     );
     expect(src).toMatch(/WOLFSPACE_BASH_WSL/);

@@ -19,7 +19,7 @@
 
 const path = require("path");
 const fs = require("fs");
-const T = require("../agent/tools/index.cjs");
+const T = require("../agent/tools/index.ts");
 
 const WS = path.resolve(__dirname, "..");
 const ctx = { workspaceRoot: WS, sessionId: "uji-klaim" };

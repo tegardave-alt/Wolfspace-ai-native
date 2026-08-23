@@ -183,7 +183,7 @@ describe("timeout bash dibedakan dari pembatalan user", () => {
       noop, // menang harus pembatalan, bukan timer timeout
       { isCancelled: () => dibatalkan },
     );
-    // cancelCheck (index.cjs) mengecek isCancelled() tiap 1s; nyalakan sesudah
+    // cancelCheck (index.ts) mengecek isCancelled() tiap 1s; nyalakan sesudah
     // start supaya proses sungguhan berjalan dulu, lalu tunggu pengecekan itu.
     await new Promise((r) => setTimeout(r, 1200));
     dibatalkan = true;
@@ -260,7 +260,7 @@ describe("UI membeku karena PROSES MAIN, bukan renderer", () => {
     .readFileSync(require.resolve("../agent/tools/disk-tools.ts"), "utf8")
     .replace(/\r\n/g, "\n");
   const SRC_IDX = fs
-    .readFileSync(require.resolve("../agent/tools/index.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/tools/index.ts"), "utf8")
     .replace(/\r\n/g, "\n");
   const SRC_FILE = fs
     .readFileSync(require.resolve("../agent/tools/file-tools.ts"), "utf8")

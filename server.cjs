@@ -211,7 +211,7 @@ const debugSubs = new Set(); // live SSE writers
 const trace = require("./agent/trace.cjs");
 // sandbox-policy TIDAK lagi di-require di sini: satu-satunya pemakainya dulu
 // adalah gerbang sandbox Docker untuk eksekusi kode, yang sudah dihapus. Modulnya
-// sendiri masih hidup dan dipakai agent/tools/index.cjs untuk menggerbangi
+// sendiri masih hidup dan dipakai agent/tools/index.ts untuk menggerbangi
 // pengurungan bash berbasis namespace.
 let _evSeq = 0;
 function dlog(cat, level, msg, data) {
@@ -2083,7 +2083,7 @@ const _TRANSIENT =
 // CATATAN: _askCloudToolsOnce / askCloudTools / runSelfTool DIHAPUS dari sini.
 //
 // Ketiganya salinan LENGKAP dari jalur agent yang sudah pindah ke modul
-// (agent/cloud.cjs dan agent/tools/index.cjs), dan tak punya satu pun
+// (agent/cloud.cjs dan agent/tools/index.ts), dan tak punya satu pun
 // pemanggil: tidak di server.cjs, tidak di electron/main.js, tidak di preload,
 // tidak di renderer. Diekspor, tapi tak pernah dikonsumsi.
 //
@@ -2285,7 +2285,7 @@ async function runInWorkspace(lang, code) {
             // meskipun kodenya benar. Terukur: 120.046 ms, ok:false, sementara
             // stdout-nya berisi "halo dari javascript" — hasil yang benar,
             // vonis yang salah. Pola yang sama sudah dipakai
-            // agent/tools/index.cjs dan agent/tools/file-tools.ts.
+            // agent/tools/index.ts dan agent/tools/file-tools.ts.
             //
             // _envVerifikasi() memakai daftar-putih, jadi variabel ini TIDAK
             // diwarisi dari proses induk dan harus disetel di sini. Di luar
@@ -4066,7 +4066,7 @@ const server = http.createServer(async (req, res) => {
 
   // RAG (P1): simpan/ambil PENGETAHUAN (memori proyek + docs). Store per-proyek
   // di ~/.wolfspace/rag/<key>. Ingest dipanggil frontend saat run agent selesai
-  // (adone); retrieve juga tersedia sbg tool agent (agent/tools/index.cjs).
+  // (adone); retrieve juga tersedia sbg tool agent (agent/tools/index.ts).
   if (
     req.method === "POST" &&
     (req.url === "/rag/ingest" || req.url === "/rag/retrieve")

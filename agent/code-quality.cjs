@@ -10,7 +10,7 @@
 // Pola yang sama sudah dipakai dua kali di repo ini dan terbukti:
 //   - SYSTEM_RULES di agent/self_agent.cjs ("dipindahkan dari prompt ke sistem
 //     untuk kepatuhan 100%")
-//   - _HOST_PATH_RE di agent/tools/index.cjs (penjaga path host untuk bash)
+//   - _HOST_PATH_RE di agent/tools/index.ts (penjaga path host untuk bash)
 // Keduanya menegakkan di jalur eksekusi, bukan meminta baik-baik.
 //
 // PRINSIP RATCHET — ini inti rancangannya.

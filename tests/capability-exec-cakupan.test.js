@@ -19,7 +19,7 @@ process.env.WOLFSPACE_ZONE_WSL = "0"; // fork, supaya tak spawn wsl.exe per zona
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const { runSelfTool } = require("../agent/tools/index.cjs");
+const { runSelfTool } = require("../agent/tools/index.ts");
 
 const QROOT = path.resolve(__dirname, "..");
 const WS_GLOBAL = path.join(QROOT, "workspace");
@@ -104,7 +104,7 @@ describe("cakupan capability_exec mengikuti workspace aktif", () => {
     // Penjaga struktural: kalau nanti ada yang menyalin blok ini, urutannya
     // harus tetap context -> env -> global.
     const SRC = fs.readFileSync(
-      require.resolve("../agent/tools/index.cjs"),
+      require.resolve("../agent/tools/index.ts"),
       "utf8",
     );
     const i = SRC.indexOf('name === "capability_exec"');

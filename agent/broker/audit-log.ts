@@ -1,7 +1,7 @@
 // ── Broker audit trail that PERSISTS to disk ──
 //
 // WHY THIS EXISTS. Before it, `Broker.audit` was only an in-memory array, and
-// agent/tools/index.cjs built a NEW Broker on every capability_exec call. That
+// agent/tools/index.ts built a NEW Broker on every capability_exec call. That
 // meant ALLOW/DENY/BLOCKED records died with the call that produced them: seen
 // once in the tool result, then gone. Nothing left to read tomorrow.
 //

@@ -183,7 +183,7 @@ describe("web_extract terdaftar dan digerbang", () => {
     "utf8",
   );
   const IDX = fs.readFileSync(
-    require.resolve("../agent/tools/index.cjs"),
+    require.resolve("../agent/tools/index.ts"),
     "utf8",
   );
 

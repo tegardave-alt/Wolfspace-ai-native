@@ -3,9 +3,9 @@
 // `node -e` subprocesses load it without ever going through server.cjs.
 require("../../scripts/ts-register.cjs");
 // Tool aggregator - imports all sub-modules and provides runSelfTool dispatcher
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 // Atomic write: write to temp then rename (prevents partial/corrupt files)
 function atomicWrite(dest, content) {
@@ -20,13 +20,13 @@ function atomicWrite(dest, content) {
     throw e;
   }
 }
-const { spawn } = require("child_process");
+import { spawn } from "child_process";
 const { getPlatformAdapter } = require("../platform/index.cjs");
 const { dlog } = require("../debug.cjs");
-// Gerbang kualitas struktural. WAJIB di modul INI, bukan cuma di safe-edit.cjs:
-// self_agent.cjs memakai ./tools.cjs -> tools/index.cjs, sedangkan safeWriteFile
-// hanya dipanggil server.cjs yang jalur agent-nya sudah tak terpakai. Gerbang di
-// sana tak pernah menyentuh agent sama sekali.
+// The structural quality gate. REQUIRED in THIS module, not only in
+// safe-edit.cjs: self_agent.cjs uses ./tools.cjs -> tools/index.ts, while
+// safeWriteFile is only called by server.cjs, whose agent path is no longer in
+// use. A gate there never touches the agent at all.
 const codeQuality = require("../code-quality.cjs");
 const { createSnapshot } = require("../snapshot.ts");
 
@@ -34,8 +34,8 @@ const { createSnapshot } = require("../snapshot.ts");
 // Core modules (file-tools, exec-tools) are loaded eagerly — needed on
 // almost every agent step. Peripheral modules load only on first tool call,
 // reducing startup time and memory when tools are not used.
-const _modLoadErrors = {};
-const _modCache = {};
+const _modLoadErrors: Record<string, any> = {};
+const _modCache: Record<string, any> = {};
 
 function _ensureMod(name, path) {
   if (_modCache[name]) return _modCache[name];
@@ -81,7 +81,7 @@ function lazyWeb() {
     _webTools || (_webTools = _ensureMod("web-tools", "./web-tools.ts")) || {}
   );
 }
-let _archTools = null;
+let _archTools: any = null;
 function lazyArch() {
   return (
     _archTools ||
@@ -102,9 +102,11 @@ function lazyBroker() {
   );
 }
 
-// CommandChain (Fase 2): bash = kapabilitas proc.raw. Dimuat malas + gagal-aman —
-// kalau modulnya tak bisa dimuat, bash tetap jalan (perilaku lama), tak lumpuh.
-let _cc;
+// CommandChain (Phase 2): bash is the proc.raw capability. Lazily loaded and
+// fail-safe —
+// if the module cannot load, bash still runs (the old behaviour) rather than
+// being crippled.
+let _cc: any;
 function lazyCC() {
   if (_cc !== undefined) return _cc;
   try {
@@ -119,7 +121,10 @@ function lazyCC() {
 const { SELF_TOOLS } = require("./tool-definitions.ts");
 
 // Sandbox validator — non-critical, isolated
-let validateOperation = async () => ({
+let validateOperation: (
+  toolName?: any,
+  args?: any,
+) => Promise<any> = async () => ({
   safe: false,
   reason: "sandbox-validator not available",
 });
@@ -147,10 +152,11 @@ const qRead =
   fileTools.qRead || ((p) => "(file-tools not loaded: read unavailable)");
 const qGrep =
   fileTools.qGrep || ((p) => "(file-tools not loaded: grep unavailable)");
-// Jalur tool agent memakai varian ASINKRON. Di mode Electron kode ini berjalan
-// di proses main — pemilik jendela — jadi pemindaian sinkron di sini membekukan
-// UI. Fallback ke versi sinkron kalau modulnya versi lama (mis. salinan di
-// _agent_backups yang di-require jalur lain), supaya tak ada yang mati total.
+// The agent tool path uses the ASYNCHRONOUS variant. In Electron mode this code
+// runs in the main process — the window's owner — so a synchronous scan here
+// freezes the UI. It falls back to the synchronous version if the module is an
+// older copy (one in _agent_backups required by another path, say), so nothing
+// dies outright.
 const qListA = fileTools.qListAsync || (async () => qList());
 const qGlobA = fileTools.qGlobAsync || (async (p, o) => qGlob(p, o));
 const qGrepA = fileTools.qGrepAsync || (async (p, o) => qGrep(p, o));
@@ -191,10 +197,10 @@ const diskGrep = (...a) => {
   const m = lazyDisk();
   return m.diskGrep ? m.diskGrep(...a) : "(disk-tools not loaded)";
 };
-// Varian ASINKRON untuk jalur tool agent. Di mode Electron kode ini berjalan di
-// proses main (pemilik jendela), dan profil CPU menunjukkan diskWalk sinkron
-// menahannya 8-13 detik sekali hentak. Fallback ke sinkron kalau modulnya versi
-// lama, supaya tak ada tool yang mati total.
+// The ASYNCHRONOUS variant for the agent tool path. In Electron mode this code
+// runs in the main process (the window's owner), and CPU profiling showed a
+// synchronous diskWalk holding it for 8-13 seconds in one burst. Falls back to
+// synchronous if the module is an older copy, so no tool dies outright.
 const diskListA = async (...a) => {
   const m = lazyDisk();
   return m.diskListAsync ? m.diskListAsync(...a) : diskList(...a);
@@ -217,9 +223,9 @@ const webFetch = async (...a) => {
 };
 const webExtract = async (...a) => {
   const m = lazyWeb();
-  // Dilempar, bukan dikembalikan sebagai string. Modul web yang gagal dimuat
-  // berarti browsernya tak ada — dan "(web-tools not loaded)" sebagai HASIL akan
-  // dibaca model sebagai isi halaman, lalu dilaporkan sebagai temuan.
+  // Thrown rather than returned as a string. A web module that failed to load
+  // means there is no browser — and "(web-tools not loaded)" as a RESULT would
+  // be read by the model as page content and then reported as a finding.
   if (!m.webExtract)
     throw new Error("web-tools tidak dapat dimuat (playwright?)");
   return m.webExtract(...a);
@@ -259,10 +265,8 @@ const sandbox = {
     const m = lazySkill();
     return m.sandbox ? m.sandbox.defaultSandboxOpts() : {};
   },
-  // null berarti "tak diketahui", dan penegakan.js menerjemahkannya jadi
-  // "penasihat" — bukan diam-diam jadi "kernel". Arah default itu disengaja:
-  // salah menebak ke arah lebih lemah menghasilkan peringatan berlebih; salah
-  // ke arah lebih kuat menghasilkan jaminan palsu.
+  // null means "unknown", and penegakan.js translates that into "advisory" —
+  // not silently into "kernel". That default direction is deliberate:
   adapterCapabilities: () => {
     const m = lazySkill();
     return m.sandbox && m.sandbox.adapterCapabilities
@@ -388,9 +392,9 @@ function abortSessionBash(sessionId) {
   return count;
 }
 
-// ── Confinement bash ke satu folder workspace (opt-in via context.workspaceRoot) ──
-// Kurung setiap perintah bash ke dalam satu folder: cwd wajib di dalamnya, dan
-// tidak boleh ada token path yang menembus keluar (.. / path absolut sibling).
+// ── bash confinement to one workspace folder (opt-in via context.workspaceRoot) ──
+// Confine every bash command to one folder: cwd must be inside it, and no path
+// token may reach outside (.. or an absolute sibling path).
 function _wwInside(root, p) {
   const r = path.resolve(root);
   const t = path.resolve(p);
@@ -398,7 +402,7 @@ function _wwInside(root, p) {
 }
 function _confineBash(cmd, argCwd, confineRoot) {
   const root = path.resolve(confineRoot);
-  // 1) cwd harus di dalam root (default = root bila tak diberikan)
+  // 1) cwd must be inside root (defaults to root when not given)
   let cwd = root;
   if (argCwd) {
     const resolved = path.isAbsolute(argCwd)
@@ -414,18 +418,19 @@ function _confineBash(cmd, argCwd, confineRoot) {
     }
     cwd = resolved;
   }
-  // 2) tolak traversal '..' bergaya path (konservatif, tapi lolos untuk teks "wait..")
+  // 2) reject path-style '..' traversal (conservative, but lets the text
+  //    "wait.." through)
   if (
     /\.\.[\\/]|[\\/]\.\.(?=[\s"')\\/:]|$)|(^|[\s"'=(:])\.\.(?=[\s"')]|$)/.test(
       cmd,
     )
   )
     return { ok: false, reason: `dilarang '..' (traversal keluar workspace)` };
-  // 3) setiap token yang berbentuk path harus resolve di dalam root
+  // 3) every path-shaped token must resolve inside root
   const norm = cmd.replace(/>>|>|<|\|/g, " "); // pisahkan operator redirect/pipe
   for (let tok of norm.split(/\s+/)) {
     tok = tok.replace(/^["']|["']$/g, "").trim();
-    if (!tok || /:\/\//.test(tok)) continue; // kosong / URL (http://…) — bukan path lokal
+    if (!tok || /:\/\//.test(tok)) continue; // empty / a URL (http://…) — not a local path
     const looksPath =
       /[\\/]/.test(tok) ||
       tok.includes("..") ||
@@ -445,9 +450,8 @@ function _confineBash(cmd, argCwd, confineRoot) {
 
 const _bashJail = require("./bash-jail.ts");
 
-// Ubah cwd host jadi path DI DALAM jail. Sama seperti perhitungan `-w` untuk
-// Docker: hanya cwd yang benar-benar di bawah root workspace yang dihormati,
-// sisanya jatuh ke /work.
+// Turn the host cwd into a path INSIDE the jail. The same calculation as `-w`
+// for Docker: only a cwd genuinely under the workspace root is honoured,
 function _workdirDalamJail(root, cwd) {
   if (!cwd) return "/work";
   try {
@@ -462,58 +466,59 @@ function _workdirDalamJail(root, cwd) {
   }
 }
 
-// ── Pengurungan OS sungguhan untuk bash ──
-// HANYA folder ww yang terlihat (/work, rw); folder saudara & host tak terlihat
-// sama sekali. Sistem read-only + jaringan kosong + /tmp tmpfs + batas pids.
-// Ini menutup celah shell yang tak bisa ditutup regex maupun broker.
+// ── Real OS containment for bash ──
+// ONLY the ww folder is visible (/work, rw); sibling and host folders are not
+// visible at all. Read-only system dirs + empty network + /tmp tmpfs + a pid
+// limit. This closes the shell gap that neither a regex nor the broker can.
 //
-// Dulu dikerjakan kontainer Docker sekali-pakai; kini agent/tools/bash-jail.ts
-// dengan namespace Linux. Jaminannya sama, tapi tanpa daemon yang harus dipasang
-// dan dinyalakan — dan justru ketergantungan itu yang membuat pengurungan
-// terkuat jadi paling jarang aktif: saat daemon mati, yang benar-benar berjalan
-// adalah penjaga regex di bawah.
+// This used to be done by a single-use Docker container; now it is
+// agent/tools/bash-jail.ts with Linux namespaces. The guarantee is the same,
+// but with no daemon to install and start — and that dependency was exactly
+// what made the strongest containment the least often active: when the daemon
+// was down, what actually ran was the regex guard below.
 const _sandboxPolicy = require("../sandbox-policy.ts");
 const _penegakanLabel = require("../penegakan.cjs");
 
-// PENEGAKAN DI KODE (bukan anjuran prompt): tolak perintah bash yang menyebut
-// path HOST di luar workspace, SEBELUM dikirim ke container.
+// ENFORCEMENT IN CODE (not a prompt suggestion): refuse a bash command naming a
+// HOST path outside the workspace, BEFORE it reaches the container.
 //
-// Kenapa hardcode: bash jalur Docker hanya me-mount folder workspace, jadi path
-// seperti C:\Users\... atau /c/Users/... TIDAK PERNAH ada di dalam container.
-// Tanpa penjaga ini, `sh` cuma membalas "can't cd to /c/Users/..." — pesan yang
-// tak menjelaskan APA PUN tentang sebabnya, sehingga agent mengulang perintah
-// yang sama berkali-kali (terpantau 6x beruntun sampai penjaga kemandekan
-// menghentikannya). Instruksi di prompt tak cukup: model bisa mengabaikannya.
-// Di sini kegagalan diubah jadi ARAHAN — sebutkan batasnya dan tool penggantinya.
-// Environment bash TIDAK lagi diwariskan utuh.
+// Why hardcode it: the Docker bash path only mounts the workspace folder, so a
+// path like C:\Users\... or /c/Users/... NEVER exists inside the container.
+// Without this guard, `sh` merely replies "can't cd to /c/Users/..." — a
+// message explaining NOTHING about the cause, so the agent repeats the same
+// command over and over (observed 6 times in a row until the stall guard
+// stopped it). A prompt instruction is not enough: the model can ignore it.
+// Here the failure becomes GUIDANCE — name the boundary and the tool to use
+// instead.
+// bash's environment is NO LONGER inherited whole.
 //
-// KENAPA. Penjaga path (_HOST_PATH_RE di bawah) memeriksa STRING perintah
-// sebelum dijalankan. Tapi %VAR% baru diperluas DI DALAM cmd.exe — sesudah
-// pemeriksaan itu selesai. Penjaga melihat "%TEMP%", shell melihat
-// "C:\Users\dave\AppData\Local\Temp". Dua string berbeda, dan yang benar-benar
-// menyentuh disk adalah yang kedua.
+// WHY. The path guard (_HOST_PATH_RE below) inspects the command STRING before
+// it runs. But %VAR% is only expanded INSIDE cmd.exe — after that check has
+// finished. The guard sees "%TEMP%", the shell sees
+// "C:\Users\dave\AppData\Local\Temp". Two different strings, and the one that
+// actually touches the disk is the second.
 //
-// Diukur pada worktree DI LUAR TEMP (supaya tak bisa dibantah sebagai "cuma
-// naik satu tingkat"):
-//     type C:\...\rahasia.txt   -> DITAHAN
-//     type %TEMP%\rahasia.txt   -> BOCOR
-//     type %TMP%\rahasia.txt    -> BOCOR
-//     type %USERPROFILE%\...    -> BOCOR
+// Measured on a worktree OUTSIDE TEMP (so it cannot be dismissed as "just one
+// level up"):
+//     type C:\...\secret.txt    -> HELD
+//     type %TEMP%\secret.txt    -> LEAKED
+//     type %TMP%\secret.txt     -> LEAKED
+//     type %USERPROFILE%\...     -> LEAKED
 //
-// Menambal regex tak menyelesaikannya: jumlah variabel tak terbatas, dan
-// cmd.exe punya %CD%, substring expansion (%TEMP:~0,3% menghasilkan "C:\"
-// tanpa pernah menuliskannya), serta penyambungan lewat `set`. Lomba yang tak
-// bisa dimenangkan pemeriksa string.
+// Patching the regex does not solve it: the number of variables is unbounded,
+// and cmd.exe has %CD%, substring expansion (%TEMP:~0,3% yields "C:\" without
+// ever writing it out), and concatenation through `set`. A race a string
+// checker cannot win.
 //
-// Yang ditutup di sini SUMBERNYA: kalau %TEMP% tak ada di environment, ia tak
-// bisa diperluas jadi apa pun — pemeriksa dan shell kembali melihat string yang
-// sama. Pola dan daftarnya mengikuti _envVerifikasi() di server.cjs, yang sudah
-// melakukan hal ini untuk jalur verifikasi.
+// What is closed here is the SOURCE: if %TEMP% is not in the environment, it
+// cannot expand into anything — checker and shell see the same string again.
+// The pattern and list follow _envVerifikasi() in server.cjs, which already
+// does this for the verification path.
 //
-// BUKAN pengurungan sungguhan. Ini menutup satu keluarga pelarian, bukan
-// membuat shell tak bisa menjangkau luar — path absolut yang ditulis terang
-// masih diandalkan pada penjaga regex. Pengurungan sungguhan butuh level OS
-// (bash-jail.ts di Linux; di Windows padanannya WSL).
+// NOT real containment. This closes one family of escapes; it does not make
+// the shell unable to reach outside — an absolute path written plainly still
+// relies on the regex guard. Real containment needs the OS level
+// (bash-jail.ts on Linux; on Windows the equivalent is WSL).
 const _ENV_BASH_IZIN = [
   "PATH",
   "Path",
@@ -531,51 +536,53 @@ const _ENV_BASH_IZIN = [
   "PYTHONIOENCODING",
 ];
 function _envBash(cwd) {
-  // Jalan keluar darurat, dan sengaja hanya bisa disetel oleh yang MELUNCURKAN
-  // aplikasi — bukan oleh agent, yang tak bisa menyentuh env proses backend.
+  // An emergency escape hatch, and deliberately settable only by whoever
+  // LAUNCHES the application — not by the agent, which cannot touch the backend
+  // process's environment.
   if (process.env.WOLFSPACE_BASH_ENV === "full")
     return { ...process.env, ELECTRON_RUN_AS_NODE: "1" };
 
   const e = process.env;
-  const out = {};
+  const out: Record<string, any> = {};
   for (const k of _ENV_BASH_IZIN) if (e[k] != null) out[k] = e[k];
-  // TEMP/TMP diarahkan ke DALAM direktori kerja, bukan dihapus: banyak alat
-  // (npm, python, kompilator) menulis berkas sementara dan GAGAL bila keduanya
-  // hilang. Mengarahkannya membuat berkas itu mendarat di dalam cakupan, dan
-  // %TEMP% tak lagi menunjuk ke pohon host.
+  // TEMP/TMP are pointed INTO the working directory rather than deleted: many
+  // tools (npm, python, compilers) write temporary files and FAIL when both are
+  // missing. Redirecting them makes those files land inside the scope, and
+  // %TEMP% no longer points into the host tree.
   out.TEMP = cwd;
   out.TMP = cwd;
   out.PYTHONIOENCODING = out.PYTHONIOENCODING || "utf-8";
   out.ELECTRON_RUN_AS_NODE = "1";
 
-  // MENYARING SAJA TIDAK CUKUP DI WINDOWS.
+  // FILTERING ALONE IS NOT ENOUGH ON WINDOWS.
   //
-  // cmd.exe memasok sendiri variabel identitas pengguna dari token proses,
-  // terlepas dari blok environment yang diberikan. Terukur: sesudah allowlist
-  // dipasang, `set` di dalam shell tetap memperlihatkan HOMEDRIVE, HOMEPATH,
-  // LOGONSERVER, USERDOMAIN, USERNAME, dan USERPROFILE — dan %USERPROFILE%
-  // tetap menembus penjaga path, satu-satunya yang masih bocor dari empat
-  // kasus uji.
+  // cmd.exe supplies user-identity variables itself from the process token,
+  // regardless of the environment block it is given. Measured: after the
+  // allowlist was installed, `set` inside the shell still showed HOMEDRIVE,
+  // HOMEPATH, LOGONSERVER, USERDOMAIN, USERNAME and USERPROFILE — and
+  // %USERPROFILE% still got through the path guard, the only one of four test
+  // cases still leaking.
   //
-  // Karena itu keenamnya DITIMPA, bukan dihapus: nilai eksplisit mengalahkan
-  // suntikan cmd.exe. Yang menunjuk lokasi diarahkan ke direktori kerja;
-  // yang sekadar identitas dinetralkan supaya tak membocorkan nama akun.
+  // So all six are OVERWRITTEN rather than deleted: an explicit value beats
+  // cmd.exe's injection. Those naming a location are pointed at the working
+  // directory; those that are merely identity are neutralised so no account
+  // name leaks.
   out.USERPROFILE = cwd;
   out.HOMEDRIVE = String(cwd).slice(0, 2); // "C:"
   out.HOMEPATH = String(cwd).slice(2) || "\\";
-  out.HOME = cwd; // dipakai git/ssh di jalur POSIX
+  out.HOME = cwd; // used by git/ssh on the POSIX path
   out.USERNAME = "wolfspace";
   out.USERDOMAIN = "wolfspace";
   out.LOGONSERVER = "";
   return out;
 }
 
-// Tempat berkas skrip perintah saat jalur AppContainer aktif.
+// Where the command script file lives when the AppContainer path is active.
 //
-// Harus DI DALAM cakupan container, karena di situlah satu-satunya tempat yang
-// bisa dibacanya. Di dalam workspace, bukan di akarnya: skrip ini sengaja tidak
-// dihapus inline (menghapusnya di baris yang sama menimpa kode keluar cmd.exe),
-// jadi kalau ditaruh di akar ia menumpuk di tengah repo orang.
+// It has to be INSIDE the container's scope, because that is the only place it
+// can read. Inside the workspace, not at its root: this script is deliberately
+// not deleted inline (deleting it on the same line overwrites cmd.exe's exit
+// code), so at the root it would pile up in the middle of someone's repo.
 const _DIR_SKRIP_AC = ".wolfspace-cmd";
 const _UMUR_SKRIP_MS = 60 * 60 * 1000;
 
@@ -584,8 +591,7 @@ function _dirSkripAc(cwd) {
   const dir = path.join(cwd, _DIR_SKRIP_AC);
   try {
     fs.mkdirSync(dir, { recursive: true });
-    // Dipangkas di sini, bukan lewat penghapusan inline. Tanpa ini direktorinya
-    // tumbuh tanpa batas sepanjang umur workspace.
+    // Trimmed here rather than through an inline delete. Without this the
     const batas = Date.now() - _UMUR_SKRIP_MS;
     for (const n of fs.readdirSync(dir)) {
       const f = path.join(dir, n);
@@ -598,25 +604,25 @@ function _dirSkripAc(cwd) {
 }
 
 const _HOST_PATH_RE = [
-  /\b[A-Za-z]:[\\/]/, //  C:\... atau D:/...
+  /\b[A-Za-z]:[\\/]/, //  C:\... or D:/...
   /(^|\s|['"=(])\/[a-z]\/(Users|Program|Windows)/i, // /c/Users/... (gaya MSYS)
   /(^|\s|['"=(])\/mnt\/[a-z]\//i, //  /mnt/c/... (gaya WSL)
 ];
 
-// Menulis berkas KODE lewat shell melewati gerbang kualitas DAN syntax check.
-// Penjaga nama-perintah (sed/Set-Content/node -e) tak menangkap ini; diuji
-// empiris, `echo ... > x.jsx`, `printf ... > x.jsx`, dan `tee x.jsx` semuanya
-// lolos dan berkasnya mendarat di disk.
+// Writing a CODE file through the shell bypasses both the quality gate AND the
+// syntax check. The command-name guard (sed/Set-Content/node -e) does not catch
+// it; tested empirically, `echo ... > x.jsx`, `printf ... > x.jsx` and
+// `tee x.jsx` all got through and the file landed on disk.
 //
-// Sengaja SEMPIT: yang dilarang hanya yang menargetkan ekstensi kode. Redirect
-// ke log/teks (`> build.log`, `> out.txt`) tetap sah — memblokir semua redirect
-// akan melumpuhkan pemakaian bash yang wajar.
+// Deliberately NARROW: only redirects targeting a code extension are refused. A
+// redirect to a log or text file (`> build.log`, `> out.txt`) stays legitimate —
+// blocking every redirect would cripple reasonable use of bash.
 const _CODE_EXT = String.raw`(?:js|jsx|cjs|mjs|ts|tsx|py|json|css|html)`;
 const _BASH_CODE_WRITE_RE = new RegExp(
   [
     String.raw`>>?\s*['"]?[^\s'"|;&]+\.${_CODE_EXT}\b`, // > x.jsx / >> x.jsx
     String.raw`\btee\s+(?:-a\s+)?['"]?[^\s'"|;&]+\.${_CODE_EXT}\b`, // tee x.jsx
-    String.raw`\b(?:cp|mv|copy|move)\b[^|;&]*\.${_CODE_EXT}\b`, // cp/mv ke .jsx
+    String.raw`\b(?:cp|mv|copy|move)\b[^|;&]*\.${_CODE_EXT}\b`, // cp/mv to .jsx
     String.raw`\bopen\s*\(\s*['"][^'"]+\.${_CODE_EXT}['"]\s*,\s*['"][wa]`, // python open(...,'w')
   ].join("|"),
   "i",
@@ -631,9 +637,10 @@ function _hostPathEscape(cmd) {
 }
 
 // ── Opsi 1: akses file per-workspace lewat BROKER (object-capability) ──
-// Saat agent dikurung ke satu folder ww, otorisasi read/write/edit dilakukan oleh
-// Policy broker (deny-by-default, roots:[folder]) — bukan logika QROOT buatan
-// tangan. Broker yang mengeksekusi fs, mengembalikan hasil + jejak audit.
+// When the agent is confined to a single ww folder, read/write/edit
+// authorisation is done by the broker Policy (deny-by-default, roots:[folder])
+// rather than hand-written QROOT logic. The broker executes the fs call and
+// returns the result plus an audit trail.
 async function _brokeredFileOp(name, args, wsRoot) {
   const b = lazyBroker();
   if (!b.Policy)
@@ -655,17 +662,17 @@ async function _brokeredFileOp(name, args, wsRoot) {
   try {
     if (name === "read") {
       const content = await broker.request("readFile", { path: abs });
-      // Catat temuan DI SINI juga, bukan hanya di cabang qRead.
+      // Record findings HERE too, not only in the qRead branch.
       //
-      // KENAPA DUA TEMPAT. Ada DUA cabang `name === "read"` di berkas ini:
-      // yang ini (lewat broker, dipakai saat sebuah workspace dipilih) dan satu
-      // lagi lewat qRead(). Versi pertama catatan temuan hanya mengait cabang
-      // qRead — dan di run nyata pengguna, seluruh 23 pembacaan lewat broker,
-      // sehingga jurnalnya tetap kosong tanpa satu pun error.
+      // WHY TWO PLACES. There are TWO `name === "read"` branches in this file:
+      // this one (through the broker, used when a workspace is selected) and
+      // another through qRead(). The first version of finding-recording hooked
+      // only the qRead branch — and in a real user run all 23 reads went
+      // through the broker, so the journal stayed empty with no error at all.
       //
-      // Itu "pola dua permukaan" yang sama yang sudah berkali-kali menggigit
-      // repo ini. wsRoot dipakai apa adanya: ia sudah jadi akar terkurung yang
-      // divalidasi, dan itulah kunci yang sama yang dibaca sisi prompt.
+      // That is the same "two surfaces" pattern that has bitten this repo
+      // repeatedly. wsRoot is used as is: it is already a validated confined
+      // root, and it is the same key the prompt side reads.
       try {
         const _t = require("../temuan.cjs");
         _t.catat(_t.kunciWs(wsRoot), args.path, content, { alat: "read" });
@@ -680,7 +687,7 @@ async function _brokeredFileOp(name, args, wsRoot) {
       return {
         ok: true,
         edited: true,
-        path: abs, // path final hasil resolve kurungan — dipakai UI (preview panel)
+        path: abs, // the final path after confinement resolution — used by the UI (preview panel)
         output: "brokered write " + rel,
         auditTrail: broker.auditTrail(),
       };
@@ -689,10 +696,11 @@ async function _brokeredFileOp(name, args, wsRoot) {
       const old = await broker.request("readFile", { path: abs });
       let target = args.old_string;
       if (!old.includes(target)) {
-        // Paritas dengan edit reguler (non-broker): fallback whitespace-tolerant.
-        // Tanpa ini, edit terkurung yang meleset indentasi hanya membalas
-        // "tidak ditemukan" tanpa info baru -> model mengulang panggilan identik
-        // sampai kena guard "panggilan tool berulang tanpa kemajuan".
+        // Parity with the regular (non-broker) edit: a whitespace-tolerant
+        // fallback. Without it, a confined edit that misses the indentation only
+        // replies "not found" with no new information -> the model repeats the
+        // identical call until the "repeated tool call without progress" guard
+        // fires.
         const oldLines = old.split(/\r?\n/);
         const tLines = String(args.old_string || "").split(/\r?\n/);
         let matchIndex = -1,
@@ -715,8 +723,8 @@ async function _brokeredFileOp(name, args, wsRoot) {
             .slice(matchIndex, matchIndex + tLines.length)
             .join("\n");
         } else {
-          // Beri KONTEN NYATA di sekitar area termirip supaya percobaan berikut
-          // model membawa informasi baru (bukan mengulang buta).
+          // Give REAL CONTENT around the closest-matching area so the model's
+          // next attempt carries new information rather than repeating blindly.
           const probe = (
             tLines.find((l) => l.trim().length > 8) ||
             tLines[0] ||
@@ -772,7 +780,7 @@ async function _brokeredFileOp(name, args, wsRoot) {
 }
 
 // ── Core tool dispatcher ──
-async function _runSelfToolInner(name, args, emit, context = {}) {
+async function _runSelfToolInner(name, args, emit, context: any = {}) {
   try {
     // Check if required module is available before dispatching
     const toolModMap = {
@@ -843,8 +851,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
     }
 
     // -- Per-workspace broker routing (opt-in via context.workspaceRoot) --
-    // Bila agent dikurung ke folder ww, read/write/edit lewat broker (deny-by-default,
-    // roots:[folder]) — menggantikan guard QROOT/regex untuk akses file terstruktur.
+    // When the agent is confined to a ww folder, read/write/edit go through the
+    // broker (deny-by-default, roots:[folder]) — replacing the QROOT/regex guard
+    // for structured file access.
     {
       const _wsRoot =
         (context && context.workspaceRoot) ||
@@ -855,7 +864,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         if (name === "read" || name === "write" || name === "edit") {
           return await _brokeredFileOp(name, args, _wsRoot);
         }
-        // Eksplorasi read-only → scope ke folder ww (bukan QROOT).
+        // Read-only exploration -> scoped to the ww folder, not QROOT.
         if (name === "list")
           return { ok: true, output: await diskListA(_wsRoot) };
         if (name === "glob")
@@ -903,9 +912,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       }
     }
 
-    // _cachedResult sudah menangani nilai balik berupa Promise (ia menyimpan
-    // hasilnya setelah resolve), jadi ketiga tool ini bisa asinkron tanpa
-    // mengubah pemanggilnya.
+    // _cachedResult already handles a Promise return value (it stores the result
+    // after it resolves), so all three of these tools can be asynchronous without
+    // changing their callers.
     if (name === "list")
       return _cachedResult("list", async () => ({
         ok: true,
@@ -933,20 +942,20 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         "read|" + (args.path || "") + "|" + (args.near || ""),
         () => {
           const output = qRead(args.path, args.near);
-          // Catat bahwa jalur ini SUDAH dibaca.
+          // Record that this path HAS been read.
           //
-          // KENAPA DI SINI. Cache tool ber-TTL 30 detik; di run nyata median
-          // jeda antar-aksi 5,8 detik tapi jeda terpanjang 395 detik, jadi
-          // cache tak menolong untuk pembacaan yang terpisah puluhan langkah —
-          // dan justru itu bentuk pengulangan yang terukur (berkas sama dibaca
-          // 13x, beruntun cuma 4x).
+          // WHY HERE. The tool cache has a 30-second TTL; in a real run the
+          // median gap between actions was 5.8 seconds but the longest was 395
+          // seconds, so the cache does not help for reads separated by dozens of
+          // steps — and that is exactly the repetition that was measured (the
+          // same file read 13 times, only 4 of them consecutively).
           //
-          // Murah dan tak boleh menggagalkan tool: catat() menulis JSONL secara
-          // append dan menelan galatnya sendiri.
+          // Cheap, and it must not fail the tool: catat() appends JSONL and
+          // swallows its own errors.
           try {
-            // Kunci workspace dihitung oleh temuan.kunciWs() — SATU tempat.
-            // Kalau rantai fallback-nya berbeda antara sisi tulis dan sisi baca,
-            // blok "SUDAH DIBACA" jadi selalu kosong tanpa satu pun error.
+            // The workspace key is computed by temuan.kunciWs() — ONE place. If
+            // its fallback chain differed between the write side and the read
+            // side, the "ALREADY READ" block would always be empty with no error.
             const _t = require("../temuan.cjs");
             _t.catat(
               _t.kunciWs(context && context.workspaceRoot),
@@ -960,16 +969,16 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       );
     }
     if (name === "grep") {
-      // qGrep() memindai SELURUH pohon source (readFileSync tiap berkas cocok,
-      // sampai 600 berkas) — diukur 5,26s dingin, 252ms panas, dan LOOP
-      // TERBLOKIR hampir sepanjang itu (event loop sampler: ~93% dari durasi).
+      // qGrep() scans the ENTIRE source tree (a readFileSync per matching file,
+      // up to 600 files) — measured at 5.26s cold, 252ms warm, and the LOOP IS
+      // BLOCKED for almost all of it (event-loop sampler: ~93% of the duration).
       //
-      // Cache-nya dulu tak berguna: qGrep() dipanggil DI LUAR _cachedResult,
-      // jadi kerja mahalnya selalu dijalankan ulang — _cachedResult hanya
-      // menyimpan hasil yang SUDAH dihitung, bukan mencegah penghitungannya.
-      // Pola paling umum di run agent adalah grep pola yang sama/mirip
-      // berkali-kali dalam satu sesi; itu yang tak terselamatkan sama sekali.
-      // Sekarang qGrep() pindah ke DALAM callback, menyamai pola list/read/glob.
+      // Its cache used to be useless: qGrep() was called OUTSIDE _cachedResult,
+      // so the expensive work always ran again — _cachedResult only stores a
+      // result ALREADY computed, it does not prevent the computation. The most
+      // common pattern in an agent run is grepping the same or a similar pattern
+      // many times in one session; that was the case saved by nothing at all.
+      // qGrep() now moves INSIDE the callback, matching the list/read/glob shape.
       const _grepKey =
         "grep|" +
         (args.pattern || "") +
@@ -1011,7 +1020,8 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       const old = fs.readFileSync(dest, "utf8");
       let targetToReplace = args.old_string;
       if (!old.includes(targetToReplace)) {
-        // Smart fallback: cocokkan berdasarkan baris dengan normalisasi indentasi (whitespace-tolerant match)
+        // Smart fallback: match by line with indentation normalised
+        // (whitespace-tolerant).
         const oldLines = old.split(/\r?\n/);
         const targetLines = args.old_string.split(/\r?\n/);
         let matchIndex = -1;
@@ -1068,8 +1078,8 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             chk.error,
         };
       }
-      // Gerbang kualitas struktural (agent/code-quality.cjs) — ratchet: berkas
-      // kotor boleh disunting, tapi tak boleh bertambah dalam.
+      // The structural quality gate (agent/code-quality.cjs) — a ratchet: a dirty
+      // file may be edited, but must not get deeper.
       const _qEdit = codeQuality.check(dest, patched, old);
       if (!_qEdit.ok) {
         sbx.destroy();
@@ -1113,7 +1123,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       );
       const targetBlock = lines.slice(s, e).join("\n");
 
-      let newBlock;
+      let newBlock: any;
       if (targetBlock.includes(args.target_content)) {
         newBlock = targetBlock.replace(
           args.target_content,
@@ -1153,9 +1163,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             chk.error,
         };
       }
-      // Gerbang kualitas struktural. Jalur ini TERLEWAT di penambalan pertama —
-      // ia punya Verify-Then-Commit sendiri yang hanya memeriksa SINTAKS, jadi
-      // edit yang memperdalam sarang 8 -> 40 spasi lolos dan commit sukses.
+      // The structural quality gate. This path was MISSED by the first patch — it
+      // has its own Verify-Then-Commit that checks SYNTAX only, so an edit
+      // deepening nesting from 8 to 40 spaces passed and committed successfully.
       const _qAdv = codeQuality.check(dest, patched, oldStr);
       if (!_qAdv.ok) {
         sbx.destroy();
@@ -1188,8 +1198,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       };
     }
     if (name === "write_artifact") {
-      // Validasi: jangan pernah menulis "# undefined\n\nundefined" lalu melapor sukses.
-      // Args kosong biasanya berarti JSON argumen gagal parse (content besar terpotong).
+      // Validation: never write "# undefined\n\nundefined" and then report
+      // success. Empty args usually mean the argument JSON failed to parse (a
+      // large content field was truncated).
       const title = (args.title || "").trim();
       const content = (args.content || "").trim();
       if (!title || !content) {
@@ -1202,8 +1213,8 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       const artifactDir = path.join(QROOT, "artifacts");
       if (!fs.existsSync(artifactDir))
         fs.mkdirSync(artifactDir, { recursive: true });
-      // Turunkan filename dari title bila tak diberikan, supaya artifact berbeda tidak
-      // saling menimpa ke "artifact.md" default yang sama.
+      // Derive the filename from the title when none is given, so different
+      // artifacts do not overwrite each other at the same default "artifact.md".
       let fname = (args.filename || "").replace(/[\\/]/g, "").trim();
       if (!fname) {
         const slug =
@@ -1238,9 +1249,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           output: "REJECTED BY SANDBOX (broken syntax):\n" + chk.error,
         };
       }
-      // Gerbang kualitas struktural. Berkas BARU (existed=false) kena batas keras;
-      // yang sudah ada kena ratchet terhadap isi lamanya.
-      let _oldForGate = null;
+      // The structural quality gate. A NEW file (existed=false) gets the hard
+      // limit; an existing one gets a ratchet against its previous contents.
+      let _oldForGate: any = null;
       if (existed) {
         try {
           _oldForGate = fs.readFileSync(dest, "utf8");
@@ -1285,20 +1296,20 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         )
       )
         return { ok: false, output: "dangerous command rejected" };
-      // Reject bash commands that try to edit files — must use 'edit' tool instead.
+      // Reject bash commands that try to edit files — must use the 'edit' tool.
       //
-      // SEMPIT, tak sekadar cocok nama perintah. Regex lama menandai `findstr`
-      // (grep Windows, tak pernah menulis), `sed` tanpa -i (juga tak menulis),
-      // dan `node -e`/`node --eval` APA PUN isinya — termasuk perintah
-      // verifikasi paling wajar sekalipun, `node -e "console.log(1)"`. Diuji
-      // langsung: perintah itu ditolak dengan pesan "gunakan tool edit" yang
-      // tak nyambung (tak ada satu berkas pun yang mau diedit).
+      // NARROW, not merely a command-name match. The old regex flagged `findstr`
+      // (Windows grep, which never writes), `sed` without -i (also no write), and
+      // `node -e`/`node --eval` WHATEVER it contained — including the most
+      // reasonable verification command there is, `node -e "console.log(1)"`.
+      // Tested directly: that command was refused with an unrelated "use the edit
+      // tool" message (no file was being edited at all).
       //
-      // ok DULU true untuk penolakan ini — bug tersendiri. `ok:true` membuat
-      // pesan penolakan lolos sebagai "bukti" ke hallucination guard
-      // (localAccessed, self_agent.cjs) dan tak pernah terhitung gagal oleh
-      // gerbang item-macet (yang hanya melihat `!r.ok`). Sekarang `ok:false`,
-      // supaya penolakan terlihat sebagai penolakan.
+      // ok USED TO BE true for this refusal — a bug in itself. `ok:true` let the
+      // refusal message through as "evidence" to the hallucination guard
+      // (localAccessed, self_agent.cjs) and it was never counted as a failure by
+      // the stuck-item gate (which only looks at `!r.ok`). Now `ok:false`, so a
+      // refusal looks like a refusal.
       if (
         /\b(sed\s+(?:-[a-z]*i\S*|--in-place)|Set-Content|Out-File|Add-Content|fs\.writeFile)\b/i.test(
           cmd,
@@ -1310,13 +1321,13 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             'DILARANG edit file via bash. Gunakan tool "edit" now with parameters: path=file, old_string=the removed code, new_string="" (kosong untuk hapus). JANGAN coba bash lagi.',
         };
 
-      // ── Tutup bypass gerbang kualitas lewat shell ──
-      // Penjaga di atas hanya menangkap NAMA PERINTAH (sed/Set-Content/node -e).
-      // Diuji empiris: `echo ... > x.jsx`, `printf ... > x.jsx`, dan `tee x.jsx`
-      // semuanya LOLOS dan berkasnya mendarat di disk — artinya seluruh gerbang
-      // kualitas (dan syntax check) bisa dilewati hanya dengan redirect shell.
-      // Yang dijaga di sini BUKAN redirect apa pun (`> build.log` tetap sah),
-      // melainkan redirect/salin yang MENARGETKAN berkas kode.
+      // ── Close the shell bypass around the quality gate ──
+      // The guard above only catches COMMAND NAMES (sed/Set-Content/node -e).
+      // Tested empirically: `echo ... > x.jsx`, `printf ... > x.jsx` and
+      // `tee x.jsx` all GOT THROUGH and the file landed on disk — meaning the
+      // whole quality gate (and the syntax check) could be bypassed with a shell
+      // redirect. What is guarded here is NOT any redirect (`> build.log` stays
+      // legitimate) but a redirect or copy TARGETING a code file.
       if (_BASH_CODE_WRITE_RE.test(cmd))
         return {
           ok: false,
@@ -1326,23 +1337,24 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             "sintaks dan struktur sebelum menyentuh disk.",
         };
 
-      // ── CommandChain: bash adalah kapabilitas proc.raw ──
+      // ── CommandChain: bash is the proc.raw capability ──
       //
-      // Sampai Fase 2, bash melompati broker sepenuhnya: tak masuk audit, bisu
-      // soal cakupan, tak bisa dikunci. Di sini ia menjadi transaksi CommandChain:
-      //   - ADMISSION: proc.raw harus ada di kosakata genesis sesi. Bila sebuah
-      //     sesi dibekukan TANPA proc.raw, bash mati — tak terbypass di tengah
-      //     jalan (itulah properti smart contract-nya).
-      //   - CATAT: tiap eksekusi bash dirantai ke ledger, dengan penanda cakupan
-      //     yang JUJUR (advisory di Windows — tak ada namespace).
-      // Gagal-aman: bila CommandChain tak bisa dimuat, bash tetap jalan.
+      // Until Phase 2, bash bypassed the broker entirely: absent from the audit,
+      // silent about its scope, impossible to lock down. Here it becomes a
+      // CommandChain transaction:
+      //   - ADMISSION: proc.raw must be in the session's genesis vocabulary. If a
+      //     session is frozen WITHOUT proc.raw, bash dies — and cannot be
+      //     bypassed mid-run (that is its smart-contract property).
+      //   - RECORD: every bash execution is chained into the ledger, with an
+      //     HONEST scope marker (advisory on Windows — there is no namespace).
+      // Fail-safe: if CommandChain cannot be loaded, bash still runs.
       {
         const cc = lazyCC();
         if (cc) {
           const rs = cc.sesiRuleset();
           const adm = cc.periksa(rs, "proc.raw");
-          // Cakupan jujur: hanya di Linux dengan bash-jail siap ia benar-benar
-          // ditegakkan; selain itu (termasuk SEMUA Windows) advisory.
+          // An honest scope: only on Linux with bash-jail ready is it genuinely
+          // enforced; otherwise (including ALL of Windows) it is advisory.
           const enforced = process.platform === "linux" && _bashJail.tersedia();
           const kurungan = {
             enforced,
@@ -1377,16 +1389,16 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         }
       }
 
-      // Tingkat penegakan kurungan untuk eksekusi INI. Dilaporkan ke
-      // pemanggil supaya "terkurung" tak lagi jadi satu kata untuk dua hal
-      // yang sangat berbeda kekuatannya.
+      // The containment enforcement level for THIS execution. Reported back to
+      // the caller so "contained" is no longer one word for two things of very
+      // different strength.
       let _label = _penegakanLabel.label("kernel", "namespace");
-      // Kenapa AppContainer tidak dipakai, kalau memang tidak. Ikut ditempel ke
-      // hasil jalur cadangan supaya turunnya jaminan tak lewat tanpa terbaca.
+      // Why AppContainer was not used, when it was not. Attached to the fallback
+      // path's result too, so a downgraded guarantee does not pass unread.
       let _catatan_ac = "";
-      // Modul pembungkus AppContainer, kalau jalur itu aktif. Null artinya
-      // shell di-spawn langsung seperti sebelumnya.
-      let _bungkusAc = null;
+      // The AppContainer wrapper module, if that path is active. Null means the
+      // shell is spawned directly, as before.
+      let _bungkusAc: any = null;
 
       let cwd = QROOT;
       if (args.cwd) {
@@ -1396,37 +1408,38 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           if (st.isDirectory()) cwd = resolved;
         } catch {}
       }
-      // ── Confinement bash: SELALU ada akarnya, tak pernah null ──
+      // ── bash confinement: there is ALWAYS a root, never null ──
       //
-      // Dulu opt-in: tanpa proyek aktif, _confineRoot null dan seluruh blok di
-      // bawah — termasuk _confineBash — TIDAK PERNAH jalan. Bash lalu bebas
-      // sepenuhnya. Terukur, dan inilah yang membuat perbaikan %VAR% tampak
-      // "belum terjadi" saat diuji tanpa memilih proyek:
+      // It used to be opt-in: with no active project, _confineRoot was null and
+      // the whole block below — including _confineBash — NEVER ran. bash was then
+      // entirely free. Measured, and this is what made the %VAR% fix look like it
+      // "had not happened" when tested without selecting a project:
       //
-      //   tanpa workspaceRoot : `type C:\...\rahasia.txt` -> BOCOR
-      //   dengan workspaceRoot: `type C:\...\rahasia.txt` -> TERKURUNG
+      //   without workspaceRoot: `type C:\...\secret.txt` -> LEAKED
+      //   with workspaceRoot   : `type C:\...\secret.txt` -> CONTAINED
       //
-      // Ke-13 kasus pelarian yang saya uji sebelumnya semuanya memakai
-      // workspaceRoot, jadi kondisi "belum pilih proyek" tak pernah tersentuh —
-      // padahal itu keadaan default saat aplikasi baru dibuka.
+      // All 13 escape cases tested earlier used workspaceRoot, so the
+      // "no project selected yet" condition was never touched — even though that
+      // is the default state when the app is freshly opened.
       //
-      // Sekarang QROOT jadi akar cadangan: agent tetap bisa menyunting sumbernya
-      // sendiri (itu memang fungsi self-agent), tapi tak bisa keluar dari pohon
-      // WOLFSPACE. Pengurungan jadi sifat yang selalu ada, bukan yang menyala
-      // hanya bila kebetulan ada proyek dipilih.
+      // QROOT is now the fallback root: the agent can still edit its own source
+      // (that is what a self-agent is for) but cannot leave the WOLFSPACE tree.
+      // Containment becomes a property that is always present rather than one
+      // that switches on only when a project happens to be selected.
       const _confineRoot =
         (context && context.workspaceRoot) ||
         process.env.WW_WORKSPACE_ROOT ||
         QROOT;
       if (_confineRoot) {
-        // Utama: pengurungan OS lewat namespace Linux — batas nyata, bukan regex.
-        // Gerbangnya lewat kebijakan terpusat (agent/sandbox-policy.ts) dengan
-        // fallback "auto"; setelan eksplisit sandbox:false / WOLFSPACE_SANDBOX=off
-        // tetap dihormati.
+        // Primary: OS containment through Linux namespaces — a real boundary, not
+        // a regex. It is gated by the central policy (agent/sandbox-policy.ts)
+        // with an "auto" fallback; an explicit sandbox:false /
+        // WOLFSPACE_SANDBOX=off is still honoured.
         //
-        // Diuji 13/13 di WSL, termasuk 7 percobaan lolos: isi berkas host, /root,
-        // /etc/passwd, naik direktori, tulis /bin, jaringan (diuji di level TCP
-        // agar tak lulus hanya karena DNS mati), dan injeksi heredoc.
+        // Tested 13/13 on WSL, including 7 escape attempts: host file contents,
+        // /root, /etc/passwd, walking up directories, writing /bin, the network
+        // (tested at TCP level so it could not pass merely because DNS was down),
+        // and heredoc injection.
         if (
           process.env.WW_BASH_NATIVE !== "1" &&
           _sandboxPolicy.shouldSandbox(
@@ -1435,10 +1448,10 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             "auto",
           )
         ) {
-          // Penjaga path host tetap dipakai: jail hanya me-mount folder
-          // workspace, jadi perintah yang menyebut path absolut host pasti tak
-          // menemukannya — ditolak lebih awal dengan alasan yang jelas ketimbang
-          // gagal dengan "No such file" yang membingungkan.
+          // The host-path guard is still used: the jail mounts only the workspace
+          // folder, so a command naming an absolute host path will certainly not
+          // find it — refused early with a clear reason rather than failing with
+          // a confusing "No such file".
           const bocor = _hostPathEscape(cmd);
           if (bocor)
             return {
@@ -1461,49 +1474,49 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             ..._penegakanLabel.label("kernel", "namespace"),
           };
         }
-        // ── BAWAAN di Windows: AppContainer ──
+        // ── The DEFAULT on Windows: AppContainer ──
         //
-        // Ini dicoba LEBIH DULU dari semua jalur lain, dan tidak perlu dinyalakan.
-        // Alasannya: jalur cadangan paling bawah hanya MEMINDAI TEKS perintah, dan
-        // itu terbukti bisa ditembus — perintah yang merakit path saat jalan lolos
-        // pemindaian lalu benar-benar membuat folder di Desktop. Selama jalur teks
-        // jadi bawaan, batas yang sebenarnya berlaku adalah "tidak ada".
+        // This is tried BEFORE every other path, and needs no switching on.
+        // The reason: the bottom fallback path only SCANS COMMAND TEXT, and that
+        // is demonstrably defeatable — a command that assembles a path at run
+        // time passes the scan and genuinely creates a folder on the Desktop.
+        // While the text path is the default, the boundary in force is "none".
         //
-        // AppContainer memberi token dengan SID container. Pemeriksaan akses
-        // berkas jadi WAJIB menyertakan SID itu di DACL objek, jadi seluruh
-        // filesystem tertutup kecuali yang dibuka eksplisit. Deny-by-default, di
-        // kernel, dan TANPA elevasi.
+        // AppContainer gives a token carrying a container SID. File access checks
+        // then REQUIRE that SID in the object's DACL, so the whole filesystem is
+        // closed except what is explicitly opened. Deny-by-default, in the kernel,
+        // and WITHOUT elevation.
         //
-        // Terukur lewat jalur ini, pelarian yang sama persis:
-        //   tulis Desktop / baca cloud-keys / baca Documents\oi  -> ditolak
-        //   path DIRAKIT saat jalan ke Desktop                   -> ditolak
-        //   baca + tulis + hapus di workspace, node              -> bisa
+        // Measured through this path, on the very same escapes:
+        //   write Desktop / read cloud-keys / read Documents\oi  -> refused
+        //   a path ASSEMBLED at run time to the Desktop           -> refused
+        //   read + write + delete in the workspace, node          -> allowed
         //
-        // Dipilih ketimbang dua jalur di bawahnya: perintahnya tetap PowerShell
-        // (WSL menggantinya jadi sh POSIX), dan tak menuntut WOLFSPACE berjalan
-        // sebagai Administrator (jalur akun terpisah menuntut itu, yang justru
-        // memperbesar risiko).
+        // Chosen over the two paths below it: commands stay PowerShell (WSL
+        // replaces them with POSIX sh), and it does not require WOLFSPACE to run
+        // as Administrator (the separate-account path did, which enlarges the
+        // attack surface instead).
         //
-        // WOLFSPACE_BASH_AC=0 mematikannya. Itu ADA supaya jalan keluarnya
-        // terlihat dan tercatat, bukan supaya dipakai: mematikannya mengembalikan
-        // bash ke pemindaian teks yang sudah terbukti bocor.
+        // WOLFSPACE_BASH_AC=0 turns it off. That EXISTS so the escape hatch is
+        // visible and recorded, not so it gets used: turning it off returns bash
+        // to the text scanning that has already been shown to leak.
         //
-        // DIBUNGKUS, BUKAN DICABANGKAN. Versi pertama jalur ini memanggil
-        // execFileSync di cabangnya sendiri dan langsung return. Itu tampak
-        // bekerja lalu mematahkan dua hal yang tak kelihatan dari hasilnya:
-        // execFileSync MEMBLOKIR event loop selama perintah jalan (di aplikasi
-        // Electron artinya UI membeku setiap kali agent menjalankan bash), dan
-        // ia melewati seluruh mesin di bawah — AbortController, pembedaan
-        // TIMEOUT vs DIBATALKAN, streaming keluaran, pelacakan proses sesi.
-        // Jadi yang ditukar hanya EXE yang di-spawn: AcLaunch.exe menjalankan
-        // shell yang sama persis, dengan argumen yang sama persis, di dalam
-        // container. Semantik perintah tak berubah sedikit pun.
+        // WRAPPED, NOT BRANCHED. The first version of this path called
+        // execFileSync in its own branch and returned immediately. That appeared
+        // to work while breaking two things invisible from the result:
+        // execFileSync BLOCKS the event loop for as long as the command runs (in
+        // an Electron app that means the UI freezes every time the agent runs
+        // bash), and it bypassed the whole machinery below — AbortController, the
+        // TIMEOUT vs CANCELLED distinction, output streaming, session process
+        // tracking. So all that is swapped is the EXE being spawned: AcLaunch.exe
+        // runs exactly the same shell with exactly the same arguments, inside the
+        // container. Command semantics do not change at all.
         if (
           process.platform === "win32" &&
           process.env.WOLFSPACE_BASH_AC !== "0" &&
           process.env.WOLFSPACE_BASH_AC !== "false" &&
-          // Permintaan eksplisit menang. Tanpa syarat ini, jalur ini membajak
-          // WOLFSPACE_BASH_WSL yang sengaja dinyalakan orang.
+          // An explicit request wins. Without this condition, this path would
+          // hijack a WOLFSPACE_BASH_WSL that someone deliberately turned on.
           !process.env.WOLFSPACE_BASH_WSL
         ) {
           const _ac = require("./appcontainer-jail.ts");
@@ -1512,41 +1525,41 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             _bungkusAc = _ac;
             _label = _penegakanLabel.label("kernel", "appcontainer");
           } else {
-            // Tak siap bukan alasan diam. Kalau container hilang, batasnya turun
-            // drastis, dan itu harus terbaca — bukan cuma jalan pelan-pelan.
+            // Not being ready is no reason to stay quiet. If the container is
+            // gone the boundary drops sharply, and that has to be readable —
+            // not merely run more slowly.
             _catatan_ac =
               "\n[AppContainer tak aktif: " +
               siapAc.alasan +
               " — jalankan scripts/appcontainer/pasang.ps1]";
           }
         }
-        // Jalur akun-terpisah (WOLFSPACE_BASH_ACL) DIHAPUS.
+        // The separate-account path (WOLFSPACE_BASH_ACL) was REMOVED.
         //
-        // Ia mengurung lewat NTFS ACL dengan menjalankan shell sebagai akun
-        // lain. Batasnya nyata, tapi Start-Process -Credential menuntut
-        // WOLFSPACE sendiri berjalan sebagai Administrator -- menaikkan hak
-        // seluruh aplikasi demi menurunkan hak satu perintah, yang justru
-        // memperbesar permukaan serangnya. AppContainer memberi batas kernel
-        // yang setara TANPA elevasi apa pun, jadi jalur itu kehilangan
-        // satu-satunya alasan keberadaannya dan ikut membawa akun, kredensial
-        // DPAPI, dan share yang harus dirawat.
-        // ── Jalur WSL: kurungan kernel di Windows, OPT-IN ──
+        // It contained through NTFS ACLs by running the shell as another
+        // account. The boundary was real, but Start-Process -Credential requires
+        // WOLFSPACE itself to run as Administrator — raising the whole
+        // application's privileges in order to lower one command's, which
+        // enlarges the attack surface instead. AppContainer gives an equivalent
+        // kernel boundary with NO elevation at all, so that path lost its only
+        // reason to exist, taking an account, DPAPI credentials and a share to
+        // maintain with it.
+        // ── The WSL path: kernel containment on Windows, OPT-IN ──
         //
-        // Windows tak punya padanan namespace, jadi jalur di bawah hanya bisa
-        // memindai teks — dan itu terbukti bisa ditembus. Jalur ini memberi
-        // batas sungguhan: folder tetap di Windows, dibagikan lewat SMB,
-        // di-mount ke distro sebagai /work, lalu dijalankan di dalam bwrap yang
-        // hanya mengikat /work.
+        // Windows has no namespace equivalent, so the path below can only scan
+        // text — and that is demonstrably defeatable. This path gives a real
+        // boundary: the folder stays on Windows, is shared over SMB, mounted
+        // into the distro as /work, then run inside a bwrap binding only /work.
         //
-        // OPT-IN, dan alasannya bukan kehati-hatian: perintah dijalankan `sh`
-        // di Linux, BUKAN PowerShell. `dir`, `Get-ChildItem`, dan `%VAR%` tak
-        // berlaku di sana. Menjadikannya bawaan akan mematahkan setiap perintah
-        // PowerShell yang sudah ditulis model — perubahan semantik yang harus
-        // dipilih sadar, bukan diwarisi.
+        // OPT-IN, and the reason is not caution: commands are run by `sh` on
+        // Linux, NOT PowerShell. `dir`, `Get-ChildItem` and `%VAR%` do not apply
+        // there. Making it the default would break every PowerShell command the
+        // model has already written — a semantic change that has to be chosen
+        // deliberately, not inherited.
         //
-        // Terukur sesudah terpasang: pelarian yang dulu berhasil membuat folder
-        // di Desktop kini mengembalikan ENOENT; /etc tak bisa ditulis; jaringan
-        // terputus; 200 berkas kecil 3 detik (CIFS) vs 1 detik (lokal).
+        // Measured once installed: the escape that used to create a folder on
+        // the Desktop now returns ENOENT; /etc is not writable; the network is
+        // cut; 200 small files take 3 seconds (CIFS) vs 1 second (local).
         if (
           process.env.WOLFSPACE_BASH_WSL === "1" ||
           process.env.WOLFSPACE_BASH_WSL === "true"
@@ -1569,35 +1582,35 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
               "untuk kembali ke jalur Windows (yang batasnya hanya pemeriksaan teks).",
           };
         }
-        // Cadangan: guard regex (bocor, defense-in-depth) saat namespace tak
-        // tersedia — mis. di Windows, yang tak punya padanan di kernelnya.
+        // Fallback: the regex guard (leaky, defence-in-depth) when namespaces are
+        // unavailable — on Windows, for instance, whose kernel has no equivalent.
         //
-        // "Bocor" itu TERUKUR, bukan kehati-hatian retorik. Penjaganya memindai
-        // TEKS perintah: tolak '..', lalu tiap token berbentuk path harus resolve
-        // di dalam root. Perintah yang MERAKIT path saat jalan tak punya token
-        // untuk dipindai, jadi lewat begitu saja:
+        // "Leaky" is MEASURED, not rhetorical caution. The guard scans the
+        // command TEXT: reject '..', then every path-shaped token must resolve
+        // inside root. A command that ASSEMBLES a path at run time has no token
+        // to scan, so it walks straight through:
         //
-        //   ls "C:/Users/dave/Desktop"                      -> ditahan
-        //   ls ../Desktop                                   -> ditahan
-        //   node -e "...String.fromCharCode(67,58,47,...)"  -> LOLOS, terbaca
+        //   ls "C:/Users/dave/Desktop"                      -> held
+        //   ls ../Desktop                                   -> held
+        //   node -e "...String.fromCharCode(67,58,47,...)"  -> GOT THROUGH, read
         //
-        // Percobaan ketiga membaca direktori di luar workspace dan berhasil.
-        // Itu bukan cacat yang bisa ditambal dengan regex yang lebih pintar —
-        // memindai teks tak akan pernah tahu apa yang dirakit saat jalan. Batas
-        // yang benar ada di kernel, dan di Windows kernelnya tak punya padanan.
+        // The third attempt read a directory outside the workspace and succeeded.
+        // That is not a defect a cleverer regex can patch — scanning text can
+        // never know what will be assembled at run time. The correct boundary is
+        // in the kernel, and on Windows the kernel has no equivalent.
         //
-        // Karena itu hasilnya DILABELI. Tanpa label, "TERKURUNG WORKSPACE"
-        // terbaca seperti jaminan kernel padahal bukan — persis jenis laporan
-        // yang lebih berbahaya daripada tak melaporkan apa pun.
+        // So the result is LABELLED. Without a label, "WORKSPACE CONTAINED"
+        // reads like a kernel guarantee when it is not — exactly the kind of
+        // report that is more dangerous than reporting nothing.
         //
-        // DILEWATI kalau AppContainer aktif, dan itu bukan penyederhanaan.
-        // Menjalankan pemindai teks di atas batas kernel tidak menambah
-        // keamanan sedikit pun — yang ditolaknya sudah ditolak kernel — tapi ia
-        // MENAMBAH penolakan palsu: perintah sah yang kebetulan menyebut path
-        // absolut di luar workspace (membaca dokumentasi, membandingkan berkas)
-        // akan ditahan padahal kernel akan menanganinya dengan benar. Dan
-        // labelnya akan berbohong ke arah sebaliknya: "penasihat" pada perintah
-        // yang sebenarnya terkurung kernel.
+        // SKIPPED when AppContainer is active, and that is not a simplification.
+        // Running a text scanner on top of a kernel boundary adds no security at
+        // all — what it refuses the kernel already refuses — but it ADDS false
+        // refusals: a legitimate command that happens to name an absolute path
+        // outside the workspace (reading documentation, comparing files) would be
+        // held even though the kernel would handle it correctly. And the label
+        // would lie in the other direction: "advisory" on a command that is in
+        // fact kernel-contained.
         if (_bungkusAc) {
           cwd = _confineRoot;
         } else {
@@ -1607,19 +1620,20 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             return {
               ok: false,
               ..._penegakanLabel.label("penasihat", "heuristik-teks"),
-              // Kalimatnya sengaja TIDAK menyebut "terkurung".
+              // The wording deliberately does NOT say "contained".
               //
-              // Sebelum ini bunyinya "TERKURUNG WORKSPACE (regex fallback)", dan
-              // akibatnya terukur: agent meneruskannya ke user sebagai "percobaan
-              // pindah ke C:\Users\dave\Desktop diblokir oleh sistem keamanan".
-              // Kalimat itu benar untuk perintah ITU, tapi terbaca sebagai jaminan
-              // yang berlaku umum — padahal perintah berikutnya, dengan path yang
-              // dirakit saat jalan, berhasil MEMBUAT folder di Desktop.
+              // It used to read "WORKSPACE CONTAINED (regex fallback)", and the
+              // consequence was measured: the agent passed it on to the user as
+              // "the attempt to move to C:\Users\dave\Desktop was blocked by the
+              // security system". That sentence was true of THAT command, but
+              // read as a guarantee holding generally — while the next command,
+              // with a path assembled at run time, successfully CREATED a folder
+              // on the Desktop.
               //
-              // Menahan sebagian sambil terdengar seperti menahan semuanya lebih
-              // buruk daripada tak menahan apa pun: orang berhenti waspada. Jadi
-              // yang dibuang klaimnya, bukan pemeriksaannya — pemeriksaan ini
-              // masih berguna untuk menangkap salah ketik, dan hanya untuk itu.
+              // Holding some while sounding like holding everything is worse
+              // than holding nothing: people stop being careful. So what was
+              // removed is the claim, not the check — this check is still useful
+              // for catching typos, and only for that.
               output:
                 "DITOLAK oleh pemeriksaan teks (BUKAN batas keamanan): " +
                 guard.reason +
@@ -1639,35 +1653,37 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       return new Promise((resolve) => {
         const controller = new AbortController();
         const signal = controller.signal;
-        // Shell dipilih lewat adapter platform, BUKAN hardcode "cmd.exe".
+        // The shell is chosen through the platform adapter, NOT hardcoded to
+        // "cmd.exe".
         //
-        // Dulu baris ini memanggil cmd.exe tanpa syarat. Di Windows itu benar,
-        // tapi begitu backend dijalankan di Linux/WSL, interop WSL dengan patuh
-        // meluncurkan cmd.exe Windows yang ASLI — lalu gagal:
+        // This line used to call cmd.exe unconditionally. On Windows that is
+        // correct, but once the backend runs on Linux/WSL, WSL interop dutifully
+        // launches the REAL Windows cmd.exe — and then it fails:
         //     exit 2: '\\wsl.localhost\WolfspaceTest\root\wolfspace'
         //     CMD.EXE was started with the above path as the current directory.
         //     UNC paths are not supported.
-        // Yang menyesatkan, perintah sesederhana `echo halo` tetap BERHASIL
-        // (cmd.exe juga punya echo), sehingga kerusakannya hanya muncul pada
-        // perintah khas Unix seperti `ls`. Adapter platform sudah ada dan
-        // memang untuk ini: posix mengembalikan ['/bin/sh', ['-c', cmd]].
-        // Berkas skrip perintah harus mendarat di tempat yang TERBACA container.
-        // Bawaannya temp sistem, yang tertutup — dan karena perintah dijalankan
-        // lewat berkas itu, semuanya gagal sebelum mulai.
+        // Misleadingly, a command as simple as `echo hello` still SUCCEEDS
+        // (cmd.exe has echo too), so the damage only surfaces on Unix-flavoured
+        // commands like `ls`. The platform adapter already exists precisely for
+        // this: posix returns ['/bin/sh', ['-c', cmd]].
+        // The command script file has to land somewhere the container can READ.
+        // The default is the system temp, which is closed — and since commands
+        // are run through that file, everything failed before it started.
         let [shBin, shArgs] = getPlatformAdapter().shellFor(
           cmd,
           _bungkusAc ? { scriptDir: _dirSkripAc(cwd) } : {},
         );
-        // Shell dan argumennya TIDAK diubah — hanya dijalankan di dalam token
-        // AppContainer. Itu sebabnya `dir`, `type`, `%VAR%`, dan seluruh
-        // semantik cmd.exe tetap berlaku persis seperti sebelumnya.
+        // The shell and its arguments are UNCHANGED — only run inside an
+        // AppContainer token. That is why `dir`, `type`, `%VAR%` and all of
+        // cmd.exe's semantics still apply exactly as before.
         if (_bungkusAc)
           [shBin, shArgs] = _bungkusAc.bungkus(cwd, shBin, shArgs);
         const child = spawn(shBin, shArgs, {
           cwd,
           windowsHide: true,
-          // Tambahan AppContainer hanya sampai AcLaunch, tidak diwariskan ke
-          // perintahnya — lihat envTambahan(). Pengerasan env tetap utuh.
+          // The AppContainer additions reach AcLaunch only; they are not
+          // inherited by the command — see envTambahan(). The env hardening
+          // stays intact.
           env: _bungkusAc
             ? { ..._envBash(cwd), ..._bungkusAc.envTambahan(cwd) }
             : _envBash(cwd),
@@ -1738,16 +1754,16 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
                 "TIMEOUT (" + timeoutMs / 1000 + "s): " + cmd.slice(0, 100),
             });
           if (aborted) return; // already resolved above
-          // Kegagalan khas kurungan diberi penjelasan sebelum sampai ke model.
-          // Pesan asli git ("Permission denied" saat membuka /dev/null)
-          // mengarahkan orang ke hak berkas repo, yang bukan penyebabnya sama
-          // sekali — dan model akan menghabiskan giliran demi giliran mengejar
-          // dugaan yang salah itu.
+          // Containment-specific failures are explained before they reach the
+          // model. git's own message ("Permission denied" while opening
+          // /dev/null) points people at the repo's file rights, which is not the
+          // cause at all — and the model would spend turn after turn chasing
+          // that wrong theory.
           const _terangkan = (t) =>
             _bungkusAc ? _bungkusAc.jelaskan(t, cmd) : t;
-          // Kegagalan SENYAP di dalam container: kode keluar bukan-nol tanpa
-          // sepatah keluaran pun. Ditangani sebelum apa pun, karena bentuk
-          // "sukses tanpa hasil"-nya justru yang menyesatkan.
+          // A SILENT failure inside the container: a non-zero exit code with not
+          // a word of output. Handled before anything else, because its "success
+          // with no result" shape is the misleading one.
           const _senyap = _bungkusAc ? _bungkusAc.jelaskanKode(code) : null;
           if (_senyap) {
             _unregisterBashProcess(sessId, entry);
@@ -1761,11 +1777,11 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           if (code !== 0 && stderr) {
             resolve({
               ok: false,
-              // Label ikut pada hasil GAGAL juga. Tanpa ini, justru hasil yang
-              // paling mudah dibaca sebagai "diblokir sistem keamanan" adalah
-              // satu-satunya yang tak menyebut batas mana yang berlaku — dan
-              // "Access is denied" dari kernel jadi tak terbedakan dari galat
-              // biasa apa pun.
+              // The label goes on FAILED results too. Without it, the result
+              // most easily read as "blocked by the security system" would be
+              // the only one not naming which boundary applied — and the
+              // kernel's "Access is denied" would be indistinguishable from any
+              // ordinary error.
               ..._label,
               output:
                 "exit " +
@@ -1781,9 +1797,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           } else {
             resolve({
               ok: true,
-              // Ikut pada hasil SUKSES, bukan hanya pada penolakan. Justru saat
-              // perintah berhasil-lah penting diketahui batas mana yang berlaku:
-              // penolakan sudah jelas ditahan sesuatu, keberhasilan tidak.
+              // On SUCCESSFUL results too, not only refusals. It is precisely
+              // when a command succeeds that knowing which boundary applied
+              // matters: a refusal obviously held something, a success does not.
               ..._label,
               output: full.slice(0, 4000) || "(exit " + code + ")",
             });
@@ -1793,16 +1809,16 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           clearTimeout(timer);
           clearInterval(cancelCheck);
           _unregisterBashProcess(sessId, entry);
-          // AbortError bisa datang dari DUA sumber (timer timeout ATAU cancelCheck
-          // user), dan `error` selalu menyala lebih dulu daripada `close` — spawn
-          // dengan `signal` melempar error segera setelah abort(), sementara close
-          // menunggu OS benar-benar mereap proses. Jadi cabang "TIMEOUT" di close
-          // di bawah TAK PERNAH tercapai untuk kasus timeout: error menang duluan.
-          // Diukur langsung: timeout 3s dilaporkan sebagai "DIBATALKAN: perintah
-          // dihentikan oleh user" — model membaca ini sebagai "user menghentikan
-          // saya", bukan "perintah saya terlalu lama", dan tak pernah belajar
-          // memperpendek pekerjaannya. `aborted` hanya diset true oleh cancelCheck
-          // (pembatalan user sungguhan), jadi itu yang membedakan keduanya.
+          // An AbortError can come from TWO sources (the timeout timer OR the
+          // user's cancelCheck), and `error` always fires before `close` — spawn
+          // with `signal` throws immediately after abort(), while close waits for
+          // the OS to actually reap the process. So the "TIMEOUT" branch in close
+          // below is NEVER reached for a timeout: error wins first. Measured
+          // directly: a 3s timeout was reported as "CANCELLED: command stopped by
+          // user" — the model read that as "the user stopped me" rather than "my
+          // command took too long", and never learned to shorten its work.
+          // `aborted` is only set true by cancelCheck (a genuine user
+          // cancellation), so that is what separates the two.
           if (err.name === "AbortError") {
             if (aborted)
               return resolve({
@@ -1842,9 +1858,10 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         const customEnv = { ...process.env };
         try {
           const fs = require("fs");
-          // Baca dari lokasi kunci yang benar (~/.wolfspace via keys-path.cjs). Path lama
-          // <project>/cloud-keys.json sudah dipindah keluar demi keamanan sesi lalu, jadi
-          // pembacaan lama SELALU gagal (ditelan catch) dan opencode_run kehilangan kunci.
+          // Read from the correct key location (~/.wolfspace via keys-path.cjs).
+          // The old path <project>/cloud-keys.json was moved out for session
+          // security, so the old read ALWAYS failed (swallowed by catch) and
+          // opencode_run lost its keys.
           const { resolveKeysPath } = require("../keys-path.cjs");
           const keysStr = fs.readFileSync(resolveKeysPath(), "utf8");
           const keys = JSON.parse(keysStr);
@@ -1927,19 +1944,20 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         });
       });
     }
-    // ── Lampiran: barangnya sudah menyeberang, alamatnya tidak pernah ──
+    // ── Attachments: the thing crossed over, its address never did ──
     //
-    // Tak ada pemeriksaan path di sini, dan itu BUKAN kelalaian: jembatan
-    // (agent/attachment-bridge.cjs) tak pernah menerima path, jadi tak ada
-    // alamat yang bisa diperiksa maupun ditembus. Yang dipegang agent adalah
-    // handle acak; memegangnya memberi tepat satu hal — isi satu berkas itu.
-    // Ia tak memberi tahu berkas itu ada di mana, tak bisa dipakai membaca
-    // saudaranya, dan tak bisa mendaftar isi direktori mana pun.
+    // There is no path check here, and that is NOT an oversight: the bridge
+    // (agent/attachment-bridge.cjs) never receives a path, so there is no address
+    // to check or to break through. What the agent holds is a random handle;
+    // holding it grants exactly one thing — the contents of that one file. It
+    // says nothing about where the file is, cannot be used to read its siblings,
+    // and cannot list any directory.
     //
-    // Tetap lewat CommandChain supaya teraudit dan bisa DIKUNCI per sesi
-    // (buatRuleset({ tanpa:["attachment.read"] })), mengikuti pola proc.raw.
+    // It still goes through CommandChain so it is audited and can be LOCKED per
+    // session (buatRuleset({ tanpa:["attachment.read"] })), following the
+    // proc.raw pattern.
     if (name === "attachment_list" || name === "attachment_read") {
-      let bridge;
+      let bridge: any;
       try {
         bridge = require("../attachment-bridge.cjs");
       } catch (e) {
@@ -1980,9 +1998,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       if (cc) {
         const rs = cc.sesiRuleset();
         const adm = cc.periksa(rs, "attachment.read");
-        // enforced=true, dan ini SATU-SATUNYA kapabilitas berkas yang boleh
-        // mengakuinya di Windows: jaminannya bukan pengurungan direktori
-        // (yang memang advisory di sini) melainkan ketiadaan path sama sekali.
+        // enforced=true, and this is the ONLY file capability allowed to claim
+        // it on Windows: the guarantee is not directory containment (which is
+        // advisory here) but the complete absence of a path.
         const kurungan = {
           enforced: true,
           mekanisme: "handle-only — alamat berkas tak pernah masuk ke sistem",
@@ -2071,11 +2089,12 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       if (!term) return { ok: false, output: "terminal unavailable" };
       if (!args.id) return { ok: false, output: "parameter id wajib" };
 
-      // PTY adalah shell PENUH — apa pun yang diketik ke sini dieksekusi tanpa
-      // melewati penjaga bash maupun gerbang kualitas. Selama tool ini rusak
-      // (term=null) celah itu tak terlihat; begitu diperbaiki, ia langsung
-      // terbukti: `echo "<40 spasi>" > x.jsx` lewat terminal_write mendarat utuh
-      // di disk. Penjaga yang sama dengan bash/sandbox_run dipakai di sini.
+      // A PTY is a FULL shell — anything typed into it executes without passing
+      // the bash guard or the quality gate. While this tool was broken
+      // (term=null) that gap was invisible; the moment it was fixed it was
+      // immediately demonstrated: `echo "<40 spaces>" > x.jsx` through
+      // terminal_write landed intact on disk. The same guard as bash and
+      // sandbox_run is used here.
       if (_BASH_CODE_WRITE_RE.test(String(args.data || "")))
         return {
           ok: false,
@@ -2142,16 +2161,16 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         (e) => ({ ok: false, output: e.message }),
       );
     if (name === "web_extract") {
-      // Digerbang admission, tak seperti web_fetch.
+      // Admission-gated, unlike web_fetch.
       //
-      // Bedanya nyata: web_extract menjalankan browser penuh dan mengeksekusi
-      // JavaScript halaman. Itu kapabilitas jaringan yang jauh lebih luas
-      // daripada sekadar mengambil teks, jadi ia diperlakukan seperti kapabilitas
-      // lain — bisa dicabut lewat buatRuleset({ tanpa: ["network:https"] }) dan
-      // penolakannya tercatat di ledger.
+      // The difference is real: web_extract runs a full browser and executes the
+      // page's JavaScript. That is a far wider network capability than merely
+      // fetching text, so it is treated like any other capability — revocable
+      // through buatRuleset({ tanpa: ["network:https"] }), with its refusals
+      // recorded in the ledger.
       //
-      // web_fetch sengaja TIDAK ikut digerbang di sini: mengubahnya akan
-      // mematahkan alur yang sudah dipakai, dan itu keputusan tersendiri.
+      // web_fetch is deliberately NOT gated here: changing it would break flows
+      // already in use, and that is a separate decision.
       const cc = require("../broker/commandchain.ts");
       const adm = cc.periksa(cc.sesiRuleset(), "network:https");
       if (!adm.allow) {
@@ -2174,9 +2193,10 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       );
     }
     if (name === "retrieve") {
-      // RAG: recall PENGETAHUAN (memori proyek + docs). P1 = satu store "global"
-      // agar ingest (frontend) & retrieve (di sini) selalu sekunci. Isolasi per-ww
-      // (scope via workspaceRoot) = P3 — saat itu ingest juga dikunci ke ref sama.
+      // RAG: recall KNOWLEDGE (project memory plus docs). P1 is a single
+      // "global" store so ingest (frontend) and retrieve (here) always share a
+      // key. Per-ww isolation (scope via workspaceRoot) is P3 — at which point
+      // ingest is keyed to the same ref.
       const rag = require("../rag.cjs");
       const out = rag.retrieveFormatted("global", args.query, {
         k: args.k,
@@ -2190,26 +2210,25 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       return dspyTool.run(args);
     }
     if (name === "generate_3d") {
-      // Text/image-to-3D via Replicate (TRELLIS + flux). Konfinemen keluaran ke
-      // workspaceRoot ditangani di dalam modul.
+      // Text/image-to-3D through Replicate (TRELLIS + flux). Confining its output
+      // to workspaceRoot is handled inside the module.
       const g3 = require("./gen3d-tools.ts");
       return await g3.generate3d(args, context);
     }
-    // Tool disk_* DIHAPUS — dulu di sini ada disk_list/disk_read/disk_glob/
-    // disk_grep yang menerima path SEMBARANG dan tak pernah melewati blok
-    // `if (_wsRoot)` di atas, sehingga mereka mengabaikan pengurungan worktree
-    // sepenuhnya.
+    // The disk_* tools were REMOVED — this used to hold disk_list/disk_read/
+    // disk_glob/disk_grep, which accepted ANY path and never passed through the
+    // `if (_wsRoot)` block above, so they ignored worktree containment entirely.
     //
-    // Mereka sudah lama dicabut dari SELF_TOOLS (lihat catatan di
-    // tool-definitions.ts), jadi model TIDAK BISA memanggilnya — implementasi
-    // ini kode mati. Tapi kode mati yang menembus pengurungan adalah ranjau:
-    // satu baris yang mengembalikannya ke daftar tool sudah cukup untuk
-    // membatalkan seluruh pengurungan, tanpa satu pun tes menjadi merah.
+    // They were withdrawn from SELF_TOOLS long ago (see the note in
+    // tool-definitions.ts), so the model CANNOT call them — this implementation
+    // is dead code. But dead code that pierces containment is a landmine: one
+    // line returning them to the tool list is enough to undo the whole
+    // containment, without a single test going red.
     //
-    // Fungsi disk-tools.ts sendiri TETAP dipakai: diskListA/diskGlobA/
-    // diskGrepA melayani list/glob/grep yang DIKURUNG ke _wsRoot, dan
-    // resolveDiskPath dipakai bash untuk cwd. Yang dihapus jalur tool-nya,
-    // bukan modulnya.
+    // The disk-tools.ts functions themselves are STILL used: diskListA/diskGlobA/
+    // diskGrepA serve the list/glob/grep that ARE confined to _wsRoot, and
+    // resolveDiskPath is used by bash for cwd. What was removed is the tool path,
+    // not the module.
 
     if (name === "skill_list") {
       const list = skills.listSkills();
@@ -2246,16 +2265,16 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       );
     }
     if (name === "git") {
-      // git TIDAK BISA jalan di dalam AppContainer -- ia membuka /dev/null
-      // dengan O_RDWR saat start, dan perangkat NUL tak bisa dibaca di sana.
-      // Jadi sesudah bash terkurung kernel, ini satu-satunya jalan git yang
-      // tersisa, dan bentuknya sengaja bukan "jalankan perintah git" melainkan
-      // operasi bernama dengan argv yang dibangun tool itu sendiri.
+      // git CANNOT run inside an AppContainer — it opens /dev/null with O_RDWR
+      // at startup, and the NUL device cannot be read there. So once bash became
+      // kernel-contained, this is the only remaining route for git, and its shape
+      // is deliberately not "run a git command" but named operations with argv
+      // built by the tool itself.
       //
-      // Admission-nya ada DI DALAM tool: hanya operasi TULIS yang digerbang,
-      // karena hanya operasi tulis yang bisa menjalankan hook repo di luar
-      // kurungan. Menggerbang `status` dan `log` juga hanya akan membuat
-      // lockdown terasa sewenang-wenang tanpa menutup apa pun.
+      // Its admission lives INSIDE the tool: only WRITE operations are gated,
+      // because only write operations can run repo hooks outside the containment.
+      // Gating `status` and `log` too would only make lockdown feel arbitrary
+      // without closing anything.
       return require("./git-tool.ts").jalankan(
         args || {},
         (context && context.workspaceRoot) ||
@@ -2264,24 +2283,24 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       );
     }
     if (name === "net_diag") {
-      // Tak lewat admission proc.raw: tool ini TIDAK men-spawn shell dan tak
-      // menerima perintah. Ia memanggil wsl.exe dengan argv yang dibangun
-      // sendiri dari daftar tetap, jadi kewenangannya sudah sesempit
-      // definisinya — bukan sesuatu yang perlu dicabut terpisah.
+      // No proc.raw admission: this tool does NOT spawn a shell and accepts no
+      // command. It calls wsl.exe with argv it builds itself from a fixed list,
+      // so its authority is already as narrow as its definition — not something
+      // needing separate revocation.
       return require("./net-diag.ts").jalankan(args || {});
     }
     if (name === "sandbox_run") {
-      // ── Admission proc.raw, sama seperti bash ──
+      // ── proc.raw admission, the same as bash ──
       //
-      // KENAPA ADA. sandbox_run men-spawn proses OS persis seperti bash, tapi
-      // dulu TIDAK melewati CommandChain sama sekali. Akibatnya terukur: dengan
-      // WOLFSPACE_CC_TANPA=proc.raw, bash mati total — termasuk jalur pelarian
-      // yang terbukti — sementara sandbox_run tetap jalan DAN tetap berhasil
-      // membuat folder di luar workspace.
+      // WHY IT EXISTS. sandbox_run spawns an OS process exactly as bash does, but
+      // used to bypass CommandChain entirely. The consequence was measured: with
+      // WOLFSPACE_CC_TANPA=proc.raw, bash died completely — including the proven
+      // escape path — while sandbox_run kept running AND still succeeded in
+      // creating a folder outside the workspace.
       //
-      // Lockdown yang menutup satu pintu sambil meninggalkan pintu sebelahnya
-      // terbuka bukan lockdown; ia cuma memindahkan jalannya. Dan itu lebih
-      // buruk daripada tak ada lockdown, karena orang mengira sesi sudah dikunci.
+      // A lockdown that closes one door while leaving the one beside it open is
+      // not a lockdown; it just moves the route. And that is worse than no
+      // lockdown, because people believe the session is locked.
       try {
         const cc = require("../broker/commandchain.ts");
         const rs = cc.sesiRuleset();
@@ -2303,10 +2322,10 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           };
         }
       } catch (_) {
-        // CommandChain tak termuat: jangan diam-diam jadi izin. Tool ini
-        // men-spawn proses OS, jadi ketiadaan pemeriksa harus menutup, bukan
-        // membuka. Prinsipnya sama dengan flagPermission yang menolak berjalan
-        // di bawah Node 20 alih-alih berjalan tanpa pengurungan.
+        // CommandChain did not load: do not silently become permission. This tool
+        // spawns an OS process, so a missing checker must close rather than open.
+        // The same principle as flagPermission refusing to run under Node 20
+        // instead of running with no containment.
         return {
           ok: false,
           ..._penegakanLabel.label("penasihat", "admission"),
@@ -2315,12 +2334,12 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             "admission proc.raw, dan tool ini men-spawn proses OS.",
         };
       }
-      // Deskripsi tool ini menyatakan sendiri bahwa proses yang di-spawn punya
-      // "normal OS-level filesystem access" — jadi ia bisa menulis berkas kode di
-      // mana pun, melewati gerbang kualitas DAN syntax check. Terbukti empiris:
-      // `echo "<40 spasi>" > public/x.jsx` mendarat utuh di disk.
-      // Penjaga yang sama dengan bash dipakai di sini; batasnya juga sama sempit
-      // (hanya yang menargetkan ekstensi kode).
+      // This tool's own description states that the spawned process has "normal
+      // OS-level filesystem access" — so it can write code files anywhere,
+      // bypassing both the quality gate AND the syntax check. Proven
+      // empirically: `echo "<40 spaces>" > public/x.jsx` landed intact on disk.
+      // The same guard as bash is used here; its scope is equally narrow (only
+      // targets with a code extension).
       if (_BASH_CODE_WRITE_RE.test(String(args.command || "")))
         return {
           ok: false,
@@ -2334,15 +2353,15 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       if (args.network !== undefined) opts.networkAllowed = args.network;
       if (args.readRoots) opts.readRoots = args.readRoots;
       if (args.writeRoots) opts.writeRoots = args.writeRoots;
-      // sandbox_run dulu satu-satunya tool eksekusi yang tak melaporkan tingkat
-      // penegakannya, padahal deskripsinya sendiri sudah mengaku: "the spawned
-      // process itself has normal OS-level filesystem and network access, so
-      // this is NOT a security boundary". Pengakuan itu ada di teks untuk model
-      // — tak ada di HASIL, tempat ia bisa diperiksa mesin.
+      // sandbox_run used to be the only execution tool that did not report its
+      // enforcement level, even though its own description admits: "the spawned
+      // process itself has normal OS-level filesystem and network access, so this
+      // is NOT a security boundary". That admission was in text for the model —
+      // not in the RESULT, where a machine could check it.
       //
-      // Sumbernya bukan tebakan: adapter platform sudah menjawabnya lewat
-      // capabilities().fsIsolation ('none' | 'advisory' | 'enforced'). Yang
-      // belum ada cuma jalan bagi jawaban itu untuk sampai ke pemanggil.
+      // The source is not a guess: the platform adapter already answers it
+      // through capabilities().fsIsolation ('none' | 'advisory' | 'enforced').
+      // All that was missing was a way for that answer to reach the caller.
       const _labelSandbox = _penegakanLabel.dariAdapter(
         sandbox.adapterCapabilities(),
         "bwrap",
@@ -2352,9 +2371,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           ok: r.ok,
           output: r.output + (r.error ? "\nError: " + r.error : ""),
           sandboxId: r.sessionId,
-          // Kalau AppContainer benar-benar terpasang pada eksekusi ini, ITU
-          // yang berlaku — bukan jawaban umum adapter platform, yang menjawab
-          // untuk jalur helper JS dan tak tahu apa-apa soal container.
+          // If AppContainer is genuinely installed for this execution, THAT is
+          // what applies — not the platform adapter's general answer, which
+          // speaks for the JS helper path and knows nothing about the container.
           ...(r.terkurungAc
             ? _penegakanLabel.label("kernel", "appcontainer")
             : _labelSandbox),
@@ -2372,17 +2391,17 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
             (_modLoadErrors["broker"] || "unknown error"),
         };
       const { Policy, Broker, runInCapabilityZone } = b;
-      // Cakupan mengikuti workspace YANG SEDANG AKTIF, bukan WORKSPACE global.
+      // The scope follows the ACTIVE workspace, not the global WORKSPACE.
       //
-      // WORKSPACE adalah satu folder tetap di dalam pohon WOLFSPACE sendiri
-      // (QROOT/workspace). Memakainya saat agent dikurung ke folder lain salah
-      // di DUA arah sekaligus:
-      //   1. bocor  — agent yang dikurung ke proyek X tetap diberi izin baca
-      //      /tulis di dalam pohon WOLFSPACE. Itu justru menembus pengurungan
-      //      yang dipasang read/write/edit/bash tepat di atas.
-      //   2. lumpuh — request() ke berkas proyeknya SENDIRI selalu ditolak,
-      //      sehingga capability_exec praktis tak bisa dipakai di mode ww.
-      // Sumber cakupan disamakan dengan tool lain di berkas ini
+      // WORKSPACE is one fixed folder inside WOLFSPACE's own tree
+      // (QROOT/workspace). Using it while the agent is confined to another folder
+      // is wrong in TWO directions at once:
+      //   1. leaky   — an agent confined to project X is still granted read and
+      //      write inside the WOLFSPACE tree. That pierces the very containment
+      //      read/write/edit/bash install just above.
+      //   2. crippled — request() for its OWN project's files is always refused,
+      //      so capability_exec is practically unusable in ww mode.
+      // The scope source is unified with the other tools in this file
       // (context.workspaceRoot -> WW_WORKSPACE_ROOT -> global).
       const workDir =
         (context && context.workspaceRoot) ||
@@ -2392,9 +2411,9 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       try {
         fs.mkdirSync(workDir, { recursive: true });
       } catch (_) {}
-      let cloudHosts = [];
+      let cloudHosts: any[] = [];
       try {
-        cloudHosts = Object.values(require("../cloud.cjs").CLOUD || {})
+        cloudHosts = Object.values<any>(require("../cloud.cjs").CLOUD || {})
           .map((c) => c.host)
           .filter(Boolean);
       } catch (_) {}
@@ -2404,20 +2423,20 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
         fetch: { hosts: [...new Set(cloudHosts)] },
       });
       const broker = new Broker(policy);
-      // Keluaran cetak zona ikut dilaporkan, tidak dibuang. Untuk sandbox,
-      // console.log adalah cara utama orang melihat apa yang terjadi — dan
-      // sebelumnya stdout tak pernah dibaca sama sekali, sehingga hilang DAN
-      // menggantung prosesnya begitu melewati kapasitas buffer pipa.
+      // The zone's printed output is reported too, not discarded. For a sandbox,
+      // console.log is the main way people see what happened — and previously
+      // stdout was never read at all, so it was lost AND it hung the process once
+      // it passed the pipe buffer's capacity.
       const _withIo = (teks, z) => {
-        const bagian = [];
+        const bagian: any[] = [];
         if (z && z.stdout) bagian.push(z.stdout.trimEnd());
         if (z && z.stderr) bagian.push("[stderr]\n" + z.stderr.trimEnd());
         if (teks) bagian.push(teks);
         if (z && z.truncated) bagian.push("[keluaran dipotong]");
-        // Penanda turunnya jaminan, di dalam keluaran yang DIBACA MODEL.
-        // Kalau hanya ada di field terpisah, model tak akan melihatnya dan
-        // tetap menyimpulkan "kode ini berjalan terkurung" — kesimpulan yang
-        // salah, dan justru itu yang mahal.
+        // A marker of the downgraded guarantee, inside output the MODEL READS.
+        // In a separate field alone the model would not see it and would still
+        // conclude "this code ran contained" — a wrong conclusion, and precisely
+        // the expensive one.
         if (z && z.kurungan && !z.kurungan.jaringanTerkurung) {
           bagian.push(
             "[TANPA PENGURUNGAN JARINGAN] " +
@@ -2454,7 +2473,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
   }
 }
 
-async function runSelfTool(name, args, emit, context = {}) {
+async function runSelfTool(name, args, emit, context: any = {}) {
   const _t0 = performance.now();
   try {
     return await _runSelfToolInner(name, args, emit, context);

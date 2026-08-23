@@ -49,7 +49,7 @@ describe("pintu pemasangan bukan milik model", () => {
     // Yang dicabut pintunya ke model, bukan fungsinya. UI (dan jalur HITL nanti)
     // masih perlu memanggil ini.
     const IDX = fs.readFileSync(
-      require.resolve("../agent/tools/index.cjs"),
+      require.resolve("../agent/tools/index.ts"),
       "utf8",
     );
     expect(IDX).toMatch(/name === "skill_install"/);

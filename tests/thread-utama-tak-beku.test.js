@@ -17,7 +17,7 @@
 //        execFileSync         node:child_process:950
 //        tersedia             agent/tools/appcontainer-jail.ts
 //        siapUntuk            agent/tools/appcontainer-jail.ts
-//        runSelfTool          agent/tools/index.cjs
+//        runSelfTool          agent/tools/index.ts
 //
 //      Blok sinkron terpanjang saat perintah bash PERTAMA: 2178 ms. Sesudah
 //      keduanya dipindah ke execFile asinkron: 47 ms. Menunggu proses anak tak

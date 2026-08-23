@@ -38,7 +38,8 @@ function siklus(putaran) {
   const kode = [
     "const path = require('path');",
     "const AKAR = " + JSON.stringify(AKAR) + ";",
-    "const T = path.join(AKAR, 'agent', 'tools', 'index.cjs');",
+    "require(path.join(AKAR, 'scripts', 'ts-register.cjs'));",
+    "const T = path.join(AKAR, 'agent', 'tools', 'index.ts');",
     "const AC = path.join(AKAR, 'agent', 'tools', 'appcontainer-jail.ts');",
     "const S = path.join(AKAR, 'agent', 'sandbox.ts');",
     "const hasil = [];",

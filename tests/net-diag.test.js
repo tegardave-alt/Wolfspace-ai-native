@@ -15,7 +15,7 @@
 // merakitnya.
 
 const N = require("../agent/tools/net-diag.ts");
-const T = require("../agent/tools/index.cjs");
+const T = require("../agent/tools/index.ts");
 const { SELF_TOOLS } = require("../agent/tools/tool-definitions.ts");
 
 const adaWsl = process.platform === "win32";

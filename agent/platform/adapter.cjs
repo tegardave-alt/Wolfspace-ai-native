@@ -1,6 +1,6 @@
 // ── Platform Adapter contract ──
 // An MCP-style abstraction for OS-specific execution. One interface, many
-// interchangeable per-OS implementations selected at runtime (see index.cjs).
+// interchangeable per-OS implementations selected at runtime (see index.ts).
 //
 // The parallel to MCP:
 //   MCP protocol            -> this PlatformAdapter interface
