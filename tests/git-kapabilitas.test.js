@@ -82,7 +82,7 @@ describe("bentuk: kapabilitas bernama, bukan perintah", () => {
       "utf8",
     );
     expect(sa).toMatch(/_perluPersetujuan/);
-    expect(sa).toMatch(/git-tool\.cjs"\)\.OPERASI/);
+    expect(sa).toMatch(/git-tool\.(?:cjs|ts)"\)\.OPERASI/);
     // Argumen yang tak bisa diurai harus gagal ke arah MEMINTA izin.
     expect(sa).toMatch(/catch \(_\) \{\s*\n\s*return true;/);
   });

@@ -26,6 +26,7 @@ const BERKAS_MIGRASI = [
   "agent/broker/policy.ts",
   "agent/broker/zone-process.ts",
   "agent/mcp-client.ts",
+  "agent/python-worker.ts",
   "agent/sandbox-policy.ts",
   "agent/sandbox.ts",
   "agent/snapshot.ts",

@@ -2148,7 +2148,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           if (tc.function.name !== "git") return false;
           try {
             const a = JSON.parse(tc.function.arguments || "{}");
-            const op = require("./tools/git-tool.cjs").OPERASI[a.operasi];
+            const op = require("./tools/git-tool.ts").OPERASI[a.operasi];
             return !op || op.tulis === true;
           } catch (_) {
             return true;
