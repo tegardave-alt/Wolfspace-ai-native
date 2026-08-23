@@ -38,7 +38,16 @@ die in CI — the exact divergence `scripts/ts-register.cjs` exists to prevent.
   `scripts/build-main.cjs`, the same way `preload.js` is generated from
   `preload.ts`. Electron's main entry must be `.js`, and transpiling at load
   measured ~286 ms against a startup budget deliberately cut from 1071 ms to
-  314 ms. `tests/main-terbangun.test.js` keeps the committed artefact honest.
+  314 ms.
+
+  Neither generated file is committed. `.gitignore` excludes both, CI builds
+  them before `electron-builder` runs, and the packaged asar is verified to
+  contain both. `tests/main-terbangun.test.js` and
+  `tests/preload-terbangun.test.js` assert against `bangun()` — the build
+  function — rather than against a file on disk, which is stricter: a stale
+  artefact could satisfy a disk read and cannot satisfy a fresh build. They
+  also pin the ordering in `ci.yml`, because losing that build step is the one
+  way this arrangement ships an app with no main process.
 
 ## What stays CommonJS under `scripts/`, and why
 

@@ -68,6 +68,13 @@ jobs:
       # mesin dev tanpa toolchain C++. Inilah alasan utama job ini ada.
       - run: npm ci
 
+      # electron/main.js dan electron/preload.js DIBANGUN di sini, bukan di-commit.
+      # electron-builder mengemas pohon berkas apa adanya, jadi tanpa langkah ini
+      # paketnya berisi aplikasi tanpa main process dan tanpa jembatan preload —
+      # buildnya sukses, dan rusaknya baru ketahuan saat dijalankan.
+      - name: Bangun artefak Electron
+        run: npm run build:preload && npm run build:main
+
       - name: Package (dir saja, tanpa installer)
         run: npx electron-builder --win --dir
 
@@ -116,7 +123,7 @@ jobs:
           # ikut asarUnpack. Ia berkas hasil generate dari preload.ts dan yang
           # benar-benar dimuat Electron — kalau hilang, jendela terbuka tanpa
           # window.WOLFSPACE sama sekali dan renderer tak bisa menjangkau apa pun.
-          echo "--- preload di dalam asar ---"
+          echo "--- artefak generated di dalam asar ---"
           node -e "
             const asar = require('@electron/asar');
             const isi = asar.extractFile('dist-app/win-unpacked/resources/app.asar',
@@ -126,6 +133,13 @@ jobs:
               process.exit(1);
             }
             console.log('  ok      electron/preload.js (' + isi.length + ' bytes)');
+            const utama = asar.extractFile('dist-app/win-unpacked/resources/app.asar',
+                                           'electron/main.js').toString('utf8');
+            if (!utama.includes('GENERATED FILE') || !utama.includes('BrowserWindow')) {
+              console.error('::error::main.js terpaket tapi bukan hasil build yang sah');
+              process.exit(1);
+            }
+            console.log('  ok      electron/main.js (' + utama.length + ' bytes)');
           "
 
           echo "--- uji rantai require dari hasil paket ---"

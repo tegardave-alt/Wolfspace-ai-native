@@ -26,6 +26,11 @@
 
 const fs = require("fs");
 const path = require("path");
+
+// electron/main.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk: the
+// assertions below describe what the build produces.
+const bangunMain = () => require("../scripts/build-main.cjs").bangun();
 const os = require("os");
 const { execFileSync } = require("child_process");
 
@@ -126,7 +131,7 @@ jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
 // yang menunjuk ke sini. Karena itu keberadaannya dikunci, bukan diserahkan
 // pada ingatan.
 describe("sandbox GPU dimatikan supaya aplikasi bisa jalan", () => {
-  const src = fs.readFileSync(path.join(ROOT, "electron", "main.js"), "utf8");
+  const src = bangunMain();
   // The REASONING lives in electron/main.ts. main.js is built from it by
   // scripts/build-main.cjs and esbuild strips comments, so asserting the
   // explanation against the build output would only prove it is absent.

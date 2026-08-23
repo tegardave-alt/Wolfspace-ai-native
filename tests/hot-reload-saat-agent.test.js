@@ -29,7 +29,12 @@
 const fs = require("fs");
 const vm = require("vm");
 
-const MAIN = fs.readFileSync(require.resolve("../electron/main.js"), "utf8");
+// electron/main.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk: the
+// assertions below describe what the build produces.
+const bangunMain = () => require("../scripts/build-main.cjs").bangun();
+
+const MAIN = bangunMain();
 const APP = fs.readFileSync(require.resolve("../public/app.tsx"), "utf8");
 
 describe("penjaga: reload ditunda selama agent berjalan", () => {

@@ -130,14 +130,6 @@
     ],
     "*.{jsx,tsx,ts}": [
       "prettier --write"
-    ],
-    "electron/main.ts": [
-      "node scripts/build-main.cjs",
-      "git add electron/main.js"
-    ],
-    "electron/preload.ts": [
-      "node scripts/build-preload.cjs",
-      "git add electron/preload.js"
     ]
   },
   "jest": {

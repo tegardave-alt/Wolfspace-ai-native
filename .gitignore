@@ -79,3 +79,11 @@ public/**/*.gz
 __pycache__/
 *.pyc
 .pytest_cache/
+
+# Generated from their .ts sources by scripts/build-preload.cjs and
+# scripts/build-main.cjs. NOT committed: CI builds them before packaging (see
+# the "Bangun artefak Electron" step), and the packaged asar is verified to
+# contain both. Tests read them through bangun() rather than from disk, so a
+# fresh clone needs no build before `npm test`.
+electron/main.js
+electron/preload.js

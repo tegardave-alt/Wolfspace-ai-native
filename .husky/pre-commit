@@ -1,5 +1,2 @@
-# --concurrent false matters: the electron/*.ts entries rebuild the generated
-# .js from a source the *.ts prettier task has just rewritten. Run in parallel,
-# the build can read the file before it is formatted and stage a stale artefact.
-npx lint-staged --concurrent false
+npx lint-staged
 npm test

@@ -33,12 +33,17 @@
 const fs = require("fs");
 const path = require("path");
 
+// electron/main.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk: the
+// assertions below describe what the build produces.
+const bangunMain = () => require("../scripts/build-main.cjs").bangun();
+
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 
 const AC = baca("agent/tools/appcontainer-jail.ts");
-const MAIN = baca("electron/main.js");
+const MAIN = bangunMain();
 // Komentar dibuang untuk pemeriksaan "tak ada penugasan langsung": komentar
 // penjelas di main.js justru MENGUTIP bentuk yang salah sebagai contoh.
 const MAIN_KODE = MAIN.split("\n")

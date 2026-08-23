@@ -21,6 +21,15 @@
 const fs = require("fs");
 const path = require("path");
 
+// electron/main.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk: the
+// assertions below describe what the build produces.
+const bangunMain = () => require("../scripts/build-main.cjs").bangun();
+
+// electron/preload.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk.
+const bangunPreload = () => require("../scripts/build-preload.cjs").bangun();
+
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
@@ -202,8 +211,8 @@ describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
   //   WebContentsView : WebContents penuh, seperti tab browser, dipasang
   //               sebagai lapisan di atas jendela. Tak ada pembatasan frame
   //               yang berlaku padanya.
-  const MAIN = baca("electron/main.js");
-  const PRELOAD = baca("electron/preload.js");
+  const MAIN = bangunMain();
+  const PRELOAD = bangunPreload();
   const APP = baca("public/app.tsx");
 
   test("dua jalur buntu itu benar-benar sudah dilepas", () => {
@@ -309,7 +318,7 @@ describe("navigate() memakai penafsir ini, bukan cabang lamanya", () => {
 // `try { } catch (_) {}`, jadi kemungkinan (2) hilang tanpa jejak. Berkas ini
 // mengunci agar tiap kemungkinan meninggalkan catatan yang bisa dibaca.
 describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
-  const MAIN2 = baca("electron/main.js");
+  const MAIN2 = bangunMain();
 
   test("tidak ada lagi catch kosong yang menelan sebabnya", () => {
     // Komentar dibuang dulu: catatan tentang KENAPA bentuk itu ditinggalkan
@@ -375,7 +384,7 @@ describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
 //   site isolation dimatikan          -> TETAP GAGAL
 //   sandbox: false pada view ini saja -> berhasil, 2022 karakter ter-render
 describe("kurungan view browser dilonggarkan seperlunya saja", () => {
-  const M = baca("electron/main.js");
+  const M = bangunMain();
   const t = M.slice(
     M.indexOf("function _brBuat()"),
     M.indexOf("function browserAksi("),
@@ -428,7 +437,7 @@ describe("kurungan view browser dilonggarkan seperlunya saja", () => {
 describe("audio panel browser", () => {
   // Komentar dibuang: catatan tentang KENAPA pilihan ini diambil justru harus
   // tetap ada, dan ia mengutip nama-nama saklarnya.
-  const M = tanpaKomentar(baca("electron/main.js"));
+  const M = tanpaKomentar(bangunMain());
 
   test("HANYA ADA SATU appendSwitch disable-features", () => {
     // Ini yang paling mudah salah: panggilan kedua MENIMPA yang pertama, tidak

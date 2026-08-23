@@ -1,48 +1,33 @@
-// electron/preload.js is GENERATED from electron/preload.ts, and it is committed
-// rather than gitignored — CI and electron-builder package the tree directly,
-// without running an npm build step first, so a missing file would ship an app
-// whose renderer has no bridge at all.
+// electron/preload.js is GENERATED from electron/preload.ts and is NOT committed
+// — .gitignore excludes it, and CI builds it before packaging.
 //
-// A committed build artefact only stays honest if something checks it. That is
-// this file: it re-runs the real build and compares. It goes red when the source
-// changed without rebuilding, and equally when someone edits the generated file
-// by hand — the two failures that would otherwise be silent, because the app
-// keeps starting and only the behaviour quietly lags behind the source.
+// So there is no committed artefact to check for staleness any more. What still
+// needs guarding is the thing that mattered underneath: that the build PRODUCES
+// the bridge the renderer relies on. These assertions run the real build and read
+// its output, which is stricter than reading a file from disk — a stale artefact
+// could satisfy the old test, and cannot satisfy this one.
 
 const fs = require("fs");
-const { bangun, SRC, OUT } = require("../scripts/build-preload.cjs");
+const { bangun, SRC } = require("../scripts/build-preload.cjs");
 
-describe("electron/preload.js stays in sync with preload.ts", () => {
-  test("the source exists, and so does its build output", () => {
+describe("the preload build produces the bridge the renderer needs", () => {
+  const hasil = bangun();
+
+  test("the source exists and the build succeeds", () => {
     expect(fs.existsSync(SRC)).toBe(true);
-    expect(fs.existsSync(OUT)).toBe(true);
+    expect(hasil.length).toBeGreaterThan(500);
   });
 
-  test("preload.js matches a fresh rebuild of preload.ts", () => {
-    const onDisk = fs.readFileSync(OUT, "utf8").replace(/\r\n/g, "\n");
-    const rebuilt = bangun().replace(/\r\n/g, "\n");
-    // The message names the command, because that is the only thing anyone
-    // seeing this test go red needs to do.
-    if (onDisk !== rebuilt) {
-      throw new Error(
-        "electron/preload.js is stale or hand-edited. Run: npm run build:preload",
-      );
-    }
-    expect(onDisk).toBe(rebuilt);
-  });
-
-  test("the build output marks itself as generated", () => {
-    const content = fs.readFileSync(OUT, "utf8");
-    expect(content).toMatch(/GENERATED FILE/);
-    expect(content).toContain("npm run build:preload");
+  test("the output marks itself as generated", () => {
+    expect(hasil).toMatch(/GENERATED FILE/);
+    expect(hasil).toContain("npm run build:preload");
   });
 
   test("the bridge the renderer relies on is actually installed", () => {
     // Not merely "the file is non-empty": if these names disappeared from the
     // build output, window.WOLFSPACE would lack the surface app.tsx uses, and
     // the whole IPC path would die silently while the app still opens.
-    const content = fs.readFileSync(OUT, "utf8");
-    expect(content).toContain('exposeInMainWorld("WOLFSPACE"');
+    expect(hasil).toContain('exposeInMainWorld("WOLFSPACE"');
     for (const channel of [
       "WOLFSPACE:invoke",
       "WOLFSPACE:stream",
@@ -52,7 +37,21 @@ describe("electron/preload.js stays in sync with preload.ts", () => {
       "WOLFSPACE:hmr",
       "WOLFSPACE:probe",
     ]) {
-      expect(content).toContain(channel);
+      expect(hasil).toContain(channel);
     }
+  });
+
+  test("something builds it before packaging, since it is not committed", () => {
+    // This is the guarantee that replaces the staleness check. CI packages with
+    // `npx electron-builder` directly, so if that step ever loses its build the
+    // package ships a renderer with no bridge at all — and it builds cleanly.
+    const ci = fs.readFileSync(
+      require.resolve("../.github/workflows/ci.yml"),
+      "utf8",
+    );
+    expect(ci).toContain("npm run build:preload");
+    expect(ci.indexOf("npm run build:preload")).toBeLessThan(
+      ci.indexOf("electron-builder --win --dir"),
+    );
   });
 });
