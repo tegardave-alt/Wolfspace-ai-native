@@ -38,7 +38,14 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
 
   beforeAll(() => {
     dir = fs.mkdtempSync(path.join(os.tmpdir(), "wolfspace-pyagent-"));
-    fs.writeFileSync(path.join(dir, "halo.txt"), "isi berkas uji\n", "utf8");
+    // Long enough to be checkable evidence: buktiSahih matches a path or a
+    // token of 8+ characters, so a fixture of short words could never be
+    // grounded in by any answer.
+    fs.writeFileSync(
+      path.join(dir, "halo.txt"),
+      "KONSTANTA_UJI = 12345\n",
+      "utf8",
+    );
   });
 
   afterAll(() => {
@@ -88,7 +95,9 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
           ],
         };
       }
-      return { content: "sudah dibaca", tool_calls: [] };
+      // Grounded on purpose: the evidence check refuses an answer naming
+      // nothing a tool returned.
+      return { content: "berkasnya memuat KONSTANTA_UJI", tool_calls: [] };
     };
 
     try {
@@ -216,6 +225,127 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     expect(act.ok).toBe(false);
     expect(String(act.output)).toMatch(/REFUSED/);
   }, 120000);
+
+  test("jawaban yang tak berpijak pada bukti tidak langsung diterima", async () => {
+    // The same check the JS loop applies, from the same function. What it
+    // catches is an answer invented wholesale after tools ran and returned
+    // something else. It sends the graph back rather than failing the run:
+    // throwing away work that was mostly right helps nobody.
+    const A = require(path.join(AKAR, "agent", "python-agent.ts"));
+    const T = require(path.join(AKAR, "agent", "tools.cjs"));
+    const cloudMod = require(path.join(AKAR, "agent", "cloud.cjs"));
+    const asli = T.runSelfTool;
+    const askAsli = cloudMod.askCloudTools;
+
+    T.runSelfTool = async () => ({
+      ok: true,
+      output: "agent/tools/index.ts:42: const BATAS_PANGGILAN_IDENTIK = 8",
+    });
+
+    let giliran = 0;
+    const jawaban = [];
+    cloudMod.askCloudTools = async (cloud, messages) => {
+      giliran++;
+      if (giliran === 1) {
+        return {
+          content: "",
+          tool_calls: [{ name: "grep", args: { pattern: "x" } }],
+        };
+      }
+      if (giliran === 2) {
+        // Ungrounded: mentions nothing the tool returned.
+        return { content: "sudah saya perbaiki semuanya", tool_calls: [] };
+      }
+      // The objection must have reached the conversation.
+      jawaban.push(
+        JSON.stringify(messages).includes("Ground it in that output"),
+      );
+      return {
+        content: "BATAS_PANGGILAN_IDENTIK ada di agent/tools/index.ts",
+        tool_calls: [],
+      };
+    };
+
+    const events = [];
+    try {
+      await A.selfAgentStreamPython(
+        {
+          history: [{ role: "user", content: "cari" }],
+          cloud: {},
+          thread_id: "uji-bukti",
+        },
+        (e) => events.push(e),
+      );
+    } finally {
+      T.runSelfTool = asli;
+      cloudMod.askCloudTools = askAsli;
+    }
+
+    // The ungrounded answer did not end the run; the model was asked again.
+    expect(giliran).toBeGreaterThan(2);
+    expect(jawaban.some(Boolean)).toBe(true);
+    // And the grounded answer was accepted.
+    const selesai = events.find((e) => e.t === "adone");
+    expect(selesai).toBeTruthy();
+    expect(String(selesai.summary)).toMatch(/index\.ts/);
+  }, 120000);
+
+  test("panggilan identik berulang dihentikan backstop", async () => {
+    // The last resort for a loop whose output keeps changing and therefore
+    // slips past every other check. It punishes stalling, not volume: the
+    // threshold is the same one the JS loop uses.
+    const A = require(path.join(AKAR, "agent", "python-agent.ts"));
+    const T = require(path.join(AKAR, "agent", "tools.cjs"));
+    const cloudMod = require(path.join(AKAR, "agent", "cloud.cjs"));
+    const asli = T.runSelfTool;
+    const askAsli = cloudMod.askCloudTools;
+
+    let dijalankan = 0;
+    T.runSelfTool = async () => {
+      dijalankan++;
+      // Output keeps changing, so stall detection based on identical results
+      // would never fire — this is exactly the case the backstop is for.
+      return { ok: true, output: "waktu " + Date.now() + Math.random() };
+    };
+
+    let hentikan = false;
+    cloudMod.askCloudTools = async () => {
+      if (hentikan) return { content: "berhenti", tool_calls: [] };
+      return {
+        content: "",
+        tool_calls: [{ name: "grep", args: { pattern: "sama" } }],
+      };
+    };
+
+    const events = [];
+    const jalan = A.selfAgentStreamPython(
+      {
+        history: [{ role: "user", content: "ulang" }],
+        cloud: {},
+        thread_id: "uji-backstop",
+      },
+      (e) => {
+        events.push(e);
+        // Let the graph run out its own step ceiling rather than forever.
+        if (events.filter((x) => x.t === "act").length > 12) hentikan = true;
+      },
+    );
+
+    try {
+      await jalan;
+    } finally {
+      T.runSelfTool = asli;
+      cloudMod.askCloudTools = askAsli;
+    }
+
+    // The tool stopped being executed once the backstop tripped, even though
+    // the model kept asking for it.
+    const ditolak = events.filter(
+      (e) => e.t === "act" && String(e.output || "").includes("STOPPED"),
+    );
+    expect(ditolak.length).toBeGreaterThan(0);
+    expect(dijalankan).toBeLessThanOrEqual(8);
+  }, 180000);
 });
 
 describe("pemilihan orkestrator", () => {

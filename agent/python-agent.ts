@@ -21,17 +21,30 @@
 // asked for it. That is the property worth protecting; an agent whose security
 // boundary depends on which code path invoked it would be no boundary at all.
 //
-// HONEST ABOUT WHAT THIS IS NOT, YET
+// WHERE PARITY WITH THE JS LOOP STANDS
 //
-// agent/self_agent.cjs carries far more than a graph: hallucination guards that
-// check claims against evidence, stall detection, retry-with-a-different-
-// provider, HITL approval, the findings journal. None of that is here. The graph
-// in services/agent-python is the SHAPE of the loop, not a replacement for those
-// guards, and calling this path a drop-in replacement today would be a claim the
-// code does not support.
+// The guards are not reimplemented here. They live in agent/penjaga-agent.ts and
+// BOTH orchestrators call them, because a guard on only one of two agent paths
+// makes the same request behave differently depending on who handled it.
+//
+//   carried here now          how
+//   ----------------          ---
+//   approval gate             penjaga.perluPersetujuan, before any tool runs
+//   evidence check            penjaga.buktiSahih, on the final answer
+//   repeat backstop           penjaga.kunciPanggilan + melewatiBatasUlang
+//   model heartbeat           model_wait events during a long call
+//   transient retry           already inside askCloudTools; NOT duplicated here
+//
+//   NOT here yet              why it is not merely missing
+//   -----------               ---------------------------
+//   HITL resume               the graph must carry hitlApproved back in; today
+//                             the call is refused with a reason instead
+//   planner checklist         needs the planning prompt still in self_agent.cjs
+//   findings journal          crosses process restarts; a separate extraction
 //
 // So the JS agent stays the default. This path runs when it is asked for, by
-// name — see WOLFSPACE_AGENT_PY in selfAgentStreamPython below.
+// name — see WOLFSPACE_AGENT_PY in pythonAgentEnabled below. Making it the
+// default is a decision for when the remaining three are closed, not before.
 
 import * as path from "path";
 
@@ -70,20 +83,48 @@ async function pseudoModel(
   cloud: any,
   args: any,
   toolDefs: any[],
+  emit: (e: any) => void,
 ): Promise<ToolAnswer> {
   const messages = args?.messages || [];
-  const msg = await cloud_().askCloudTools(cloud, messages, toolDefs);
-  return {
-    ok: true,
-    messages: [
-      {
-        role: "assistant",
-        content: (msg && msg.content) || "",
-        reasoning: (msg && msg.reasoning) || "",
-        tool_calls: (msg && msg.tool_calls) || [],
-      },
-    ],
-  };
+
+  // A heartbeat while the model thinks.
+  //
+  // Without it a long call is indistinguishable from a hang. Measured on the JS
+  // path: model calls of 64 seconds and MCP startup of 60 are both normal, and
+  // for that whole time the UI showed nothing moving — which reads as "the run
+  // died", not as "the run is working". The `model_wait` event is the one the
+  // frontend already handles, so this needs no UI change.
+  const t0 = Date.now();
+  const hb = setInterval(() => {
+    emit({
+      t: "model_wait",
+      m:
+        "Still waiting for the model (" +
+        Math.round((Date.now() - t0) / 1000) +
+        "s)…",
+    });
+  }, 10000);
+
+  try {
+    // Retrying a transient failure is NOT done here: askCloudTools already
+    // retries three times on transport-shaped errors. A second retry loop around
+    // it would multiply the attempts rather than add resilience, and turn a
+    // 3-attempt budget into 9 without anyone choosing that.
+    const msg = await cloud_().askCloudTools(cloud, messages, toolDefs);
+    return {
+      ok: true,
+      messages: [
+        {
+          role: "assistant",
+          content: (msg && msg.content) || "",
+          reasoning: (msg && msg.reasoning) || "",
+          tool_calls: (msg && msg.tool_calls) || [],
+        },
+      ],
+    };
+  } finally {
+    clearInterval(hb);
+  }
 }
 
 /**
@@ -99,7 +140,10 @@ async function pseudoModel(
  * The last assistant message is the summary because it IS the answer; there is
  * nothing else it could be.
  */
-async function pseudoValidate(args: any): Promise<ToolAnswer> {
+async function pseudoValidate(
+  args: any,
+  bukti: Set<string>,
+): Promise<ToolAnswer> {
   const messages = args?.messages || [];
   let summary = "";
   for (let i = messages.length - 1; i >= 0; i--) {
@@ -109,6 +153,34 @@ async function pseudoValidate(args: any): Promise<ToolAnswer> {
       break;
     }
   }
+
+  // ── The answer has to stand on the evidence the tools produced ──
+  //
+  // The same check the JS loop applies, from the same function, so an answer
+  // accepted by one orchestrator is accepted by the other. It does not demand
+  // that the model quote tool output; naming a path or reusing a distinctive
+  // term from the evidence is enough. What it catches is an answer invented
+  // wholesale after tools ran and returned something else.
+  //
+  // Not finishing sends the graph back to the executor with the objection in the
+  // conversation, which is the shape the routing already has — rather than
+  // failing the run, which would throw away work that was mostly right.
+  if (!penjaga.buktiSahih(summary, bukti)) {
+    return {
+      ok: true,
+      finished: false,
+      messages: [
+        {
+          role: "user",
+          content:
+            "Your answer does not refer to anything the tools actually returned. " +
+            "Ground it in that output — name the file, the line, or the value you " +
+            "found — or say plainly that you could not determine it.",
+        },
+      ],
+    };
+  }
+
   return { ok: true, finished: true, summary };
 }
 
@@ -158,10 +230,39 @@ export async function selfAgentStreamPython(
   const cloud = payload?.cloud;
   const toolDefs = [...tools().SELF_TOOLS];
 
+  // What the tools actually returned this run, used to check the final answer.
+  // Only SUBSTANTIVE output counts: an empty result, or one that says it found
+  // nothing, is not evidence, and counting it would make the check demand the
+  // model "cite" that absence.
+  const bukti = new Set<string>();
+
+  // How many times each identical call has been made. The backstop below is the
+  // last resort for a loop whose output keeps changing and therefore slips past
+  // every other check — it punishes stalling, not volume.
+  const hitungan = new Map<string, number>();
+
   const onTool = async (name: string, args: any): Promise<ToolAnswer> => {
-    if (name === "__model__") return pseudoModel(cloud, args, toolDefs);
-    if (name === "__validate__") return pseudoValidate(args);
+    if (name === "__model__") return pseudoModel(cloud, args, toolDefs, emit);
+    if (name === "__validate__") return pseudoValidate(args, bukti);
     if (name === "__plan__") return pseudoPlan(args);
+
+    // The absolute backstop against an endless loop, using the same key and the
+    // same threshold as the JS loop so a call counted as a repeat by one
+    // orchestrator is counted as a repeat by the other.
+    const kunci = penjaga.kunciPanggilan({ name, args });
+    const n = (hitungan.get(kunci) || 0) + 1;
+    hitungan.set(kunci, n);
+    if (penjaga.melewatiBatasUlang(n)) {
+      return {
+        ok: false,
+        output:
+          "STOPPED: `" +
+          name +
+          "` has been called with identical arguments " +
+          n +
+          " times without progress. Change the approach, or say what is blocking you.",
+      };
+    }
 
     // ── The approval gate, shared with the JS loop ──
     //
@@ -189,9 +290,16 @@ export async function selfAgentStreamPython(
 
     // A real tool. Same function, same sandbox, same ledger as the JS agent.
     const r = await tools().runSelfTool(name, args, emit, agentCtx);
+    const output = String((r && r.output) ?? "");
+
+    // Evidence, for the answer check at the end. Only what a tool actually
+    // found: a successful call that returned nothing is not something an answer
+    // can stand on.
+    if (r && r.ok && !penjaga.takSubstantif(output)) bukti.add(output);
+
     return {
       ok: !!(r && r.ok),
-      output: String((r && r.output) ?? ""),
+      output,
       edited: !!(r && r.edited),
       target: (r && r.target) || "",
       bytes: (r && r.bytes) || 0,
