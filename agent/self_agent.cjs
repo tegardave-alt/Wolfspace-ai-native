@@ -1896,7 +1896,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               "\n... [TRUNCATED] (Output too long, please use specific filters if needed)";
           }
           // Hanya output tool yang SUBSTANTIF dihitung sebagai evidence. Hasil kosong /
-          // "(tidak ada file cocok)" / "(ok)" bukan bukti apa pun; kalau dimasukkan,
+          // "(no matching file)" / "(ok)" bukan bukti apa pun; kalau dimasukkan,
           // hasValidEvidence akan memaksa jawaban "mengutip" ketiadaan itu, dan untuk
           // pertanyaan pengetahuan umum model malah mengelak ("silakan minta saya membuat
           // file...") alih-alih menjawab dari pengetahuannya.
@@ -2350,7 +2350,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               const targetFile = pathMatch[1].replace(/\\\\/g, "\\");
               // Auto-read the file so agent has context for edit tool
               try {
-                const fileToolsMod = require("./tools/file-tools.cjs");
+                const fileToolsMod = require("./tools/file-tools.ts");
                 const absPath = fileToolsMod.qResolve
                   ? fileToolsMod.qResolve(targetFile)
                   : null;
@@ -2984,7 +2984,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     } else {
       // Initial run — pre-search injection + intent-based routing
       try {
-        const fileToolsMod = require("./tools/file-tools.cjs");
+        const fileToolsMod = require("./tools/file-tools.ts");
         const userMsg = messages[messages.length - 1];
         if (userMsg && userMsg.role === "user" && fileToolsMod.qGrep) {
           const content = (userMsg.content || "").toLowerCase();

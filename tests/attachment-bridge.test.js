@@ -336,7 +336,7 @@ describe("tool disk_* benar-benar tak ada — bukan sekadar disembunyikan", () =
   }, 20000);
 
   test("jalur SAH tidak ikut mati: list/glob/grep tetap terkurung ke worktree", async () => {
-    // disk-tools.cjs sendiri TETAP dipakai — diskListA/diskGlobA/diskGrepA
+    // disk-tools.ts sendiri TETAP dipakai — diskListA/diskGlobA/diskGrepA
     // melayani list/glob/grep yang dikurung. Yang dihapus jalur tool-nya, bukan
     // modulnya; kalau ikut terhapus, agent kehilangan kemampuan menjelajah
     // worktree-nya sendiri.

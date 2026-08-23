@@ -2,8 +2,8 @@
 const fs = require("fs");
 const path = require("path");
 const { spawn } = require("child_process");
-const { resolveDiskPath } = require("./disk-tools.cjs");
-const { QROOT } = require("./file-tools.cjs");
+const { resolveDiskPath } = require("./disk-tools.ts");
+const { QROOT } = require("./file-tools.ts");
 
 // Modul PTY untuk tool terminal_open/write/read/close.
 //

@@ -1,8 +1,8 @@
 // Disk exploration (read-only, outside QROOT)
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
-const { globToRe, getSemanticValidator } = require("./file-tools.cjs");
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
+const { globToRe, getSemanticValidator } = require("./file-tools.ts");
 
 // ── Local disk exploration (read-only, outside QROOT) ──
 const DISK_HOME = os.homedir();
@@ -26,12 +26,12 @@ function resolveDiskPath(p) {
   return dest;
 }
 
-function diskWalk(dir, filterRe, maxDepth) {
+function diskWalk(dir: any, filterRe: any, maxDepth?: any) {
   const skip =
     /^(\.git|node_modules|_agent_backups|dist-app|build|\.dart_tool|vendor|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|\.nuxt|target|bower_components|\.terraform|cache)$/i;
   const secret =
     /(\.env|\.pem$|\.key$|\.secret|credentials?|token|cloud-keys|\.lock$)/i;
-  const out = [];
+  const out: any[] = [];
   (function walk(d, depth) {
     if (out.length > 800 || depth > (maxDepth || 7)) return;
     let ents;
@@ -59,7 +59,7 @@ function diskWalk(dir, filterRe, maxDepth) {
   return out;
 }
 
-function diskList(p) {
+function diskList(p: any) {
   const dir = resolveDiskPath(p || DISK_HOME);
   let st;
   try {
@@ -68,7 +68,7 @@ function diskList(p) {
     throw new Error("path tidak ada: " + p);
   }
   if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
-  const out = [];
+  const out: any[] = [];
   let ents;
   try {
     ents = fs.readdirSync(dir, { withFileTypes: true });
@@ -90,7 +90,7 @@ function diskList(p) {
   return out.join("\n");
 }
 
-function diskGlob(p, pattern, options = {}) {
+function diskGlob(p: any, pattern: any, options: any = {}) {
   const dir = resolveDiskPath(p || DISK_HOME);
   let st;
   try {
@@ -114,7 +114,7 @@ function diskGlob(p, pattern, options = {}) {
             .map((f) => f.fp.replace(/\\/g, "/"));
           if (hits.length) return hits.slice(0, 200).join("\n");
         }
-        return "(tidak ada file cocok)";
+        return "(no matching file)";
       }
     }
   }
@@ -126,7 +126,7 @@ function diskGlob(p, pattern, options = {}) {
     return "pola tidak valid";
   }
   const hits = diskWalk(dir, re).map((f) => f.fp.replace(/\\/g, "/"));
-  return hits.length ? hits.slice(0, 200).join("\n") : "(tidak ada file cocok)";
+  return hits.length ? hits.slice(0, 200).join("\n") : "(no matching file)";
 }
 
 function diskRead(p, near) {
@@ -158,7 +158,7 @@ function diskRead(p, near) {
   return head + shown;
 }
 
-function diskGrep(p, pattern, options = {}) {
+function diskGrep(p: any, pattern: any, options: any = {}) {
   if (!pattern) return "pola kosong";
   let re;
   try {
@@ -188,13 +188,13 @@ function diskGrep(p, pattern, options = {}) {
       extRegex = new RegExp(`\\.(${exts.join("|")})$`, "i");
     }
   }
-  // Fallback ke pencarian membabi buta jika LLM tidak menggunakan logikanya
+  // Fall back to a blind search when the LLM does not use its reasoning.
   if (!extRegex) {
     extRegex =
       /\.(cjs|js|jsx|css|html|json|dart|yaml|yml|md|py|ts|tsx|txt|xml|sql|sh|bat|ps1|log|cfg|ini|toml|go|rs|java|c|cpp|h|hpp|rb|php|swift|kt|scala|r|m|tex|vue|svelte)$/i;
   }
 
-  const hits = [];
+  const hits: any[] = [];
   const files = diskWalk(dir, extRegex);
   for (const f of files) {
     if (hits.length >= 150) break;
@@ -223,27 +223,23 @@ function diskGrep(p, pattern, options = {}) {
   return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
 }
 
-// ── Versi ASINKRON dari penjelajah disk ──
+// ── The ASYNCHRONOUS version of the disk walker ──
 //
-// KENAPA. Di mode Electron, run agent berjalan DI DALAM proses main — pemilik
-// BrowserWindow dan pemompa antrean pesan Windows. Profil CPU proses main pada
-// run agent sungguhan menunjukkan penyumbang terbesar setelah idle adalah
-// tepat di sini:
+// WHY IT EXISTS. The synchronous readdir blocks the event loop, and in Electron
+// the main process shares that loop with BrowserWindow and the Windows message
+// pump. CPU profiling of the main process during a real agent run showed the
+// biggest contributor after idle was exactly this walk, and a lag sampler
+// recorded the main process freezing for 8-13 seconds in one burst. During that
+// time the window pumps no messages at all — that is the "the app hangs" being
+// reported, while the renderer itself is healthy (longest task 319ms).
 //
-//     3271ms  RegExp: ^.*.*/agent/.*.*/.*\.\{cjs,js,jsx,json\}$
-//     2544ms + 2443ms + 1789ms + 1705ms + ...  readdir   (~11,5 detik)
-//     1008ms  walk   disk-tools.cjs:32
+// The regex was fixed separately in globToRe (file-tools.ts). What is fixed
+// here is the readdir: asynchronous, so the event loop — and the message pump —
+// keeps being served between directories.
 //
-// dan sampler lag mencatat proses main membeku 8-13 detik sekali hentak. Selama
-// itu jendela tidak memompa pesan sama sekali — itulah "Not Responding" yang
-// dilaporkan, dan renderer-nya sendiri sehat (longtask maksimal 319ms).
-//
-// Regex-nya diperbaiki terpisah di globToRe (file-tools.cjs). Yang diperbaiki di
-// sini adalah readdir-nya: asinkron, sehingga event loop — dan pompa pesan —
-// tetap dilayani di antara direktori.
-//
-// Versi sinkron dipertahankan: server.cjs dan jalur non-Electron memakainya, dan
-// batas serta filternya sengaja dijaga IDENTIK supaya hasil kedua jalur sama.
+// The synchronous version is kept: server.cjs and the non-Electron path use it,
+// and its limits and filters are deliberately IDENTICAL so both paths produce
+// the same result.
 const fspDisk = fs.promises;
 
 async function _petaBatasDisk(items, batas, fn) {
@@ -260,12 +256,12 @@ async function _petaBatasDisk(items, batas, fn) {
   return hasil;
 }
 
-async function diskWalkAsync(dir, filterRe, maxDepth) {
+async function diskWalkAsync(dir: any, filterRe: any, maxDepth?: any) {
   const skip =
     /^(\.git|node_modules|_agent_backups|dist-app|build|\.dart_tool|vendor|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|\.nuxt|target|bower_components|\.terraform|cache)$/i;
   const secret =
     /(\.env|\.pem$|\.key$|\.secret|credentials?|token|cloud-keys|\.lock$)/i;
-  const out = [];
+  const out: any[] = [];
   async function walk(d, depth) {
     if (out.length > 800 || depth > (maxDepth || 7)) return;
     let ents;
@@ -295,7 +291,7 @@ async function diskWalkAsync(dir, filterRe, maxDepth) {
   return out;
 }
 
-async function diskListAsync(p) {
+async function diskListAsync(p: any) {
   const dir = resolveDiskPath(p || DISK_HOME);
   let st;
   try {
@@ -328,7 +324,7 @@ async function diskListAsync(p) {
   return baris.join("\n");
 }
 
-async function diskGlobAsync(p, pattern, options = {}) {
+async function diskGlobAsync(p: any, pattern: any, options: any = {}) {
   const dir = resolveDiskPath(p || DISK_HOME);
   let st;
   try {
@@ -352,7 +348,7 @@ async function diskGlobAsync(p, pattern, options = {}) {
             .map((f) => f.fp.replace(/\\/g, "/"));
           if (hits.length) return hits.slice(0, 200).join("\n");
         }
-        return "(tidak ada file cocok)";
+        return "(no matching file)";
       }
     }
   }
@@ -365,10 +361,10 @@ async function diskGlobAsync(p, pattern, options = {}) {
   const hits = (await diskWalkAsync(dir, re)).map((f) =>
     f.fp.replace(/\\/g, "/"),
   );
-  return hits.length ? hits.slice(0, 200).join("\n") : "(tidak ada file cocok)";
+  return hits.length ? hits.slice(0, 200).join("\n") : "(no matching file)";
 }
 
-async function diskGrepAsync(p, pattern, options = {}) {
+async function diskGrepAsync(p: any, pattern: any, options: any = {}) {
   if (!pattern) return "pola kosong";
   let re;
   try {
@@ -399,8 +395,8 @@ async function diskGrepAsync(p, pattern, options = {}) {
       /\.(cjs|js|jsx|css|html|json|dart|yaml|yml|md|py|ts|tsx|txt|xml|sql|sh|bat|ps1|log|cfg|ini|toml|go|rs|java|c|cpp|h|hpp|rb|php|swift|kt|scala|r|m|tex|vue|svelte)$/i;
 
   const files = await diskWalkAsync(dir, extRegex);
-  // Dikumpulkan menurut URUTAN BERKAS, bukan urutan selesainya I/O — supaya
-  // keluaran untuk masukan yang sama selalu sama.
+  // Collected in FILE ORDER rather than I/O completion order, so the output for
+  // the same input is always the same.
   const perFile = await _petaBatasDisk(files, 12, async (f) => {
     let txt;
     try {
@@ -408,7 +404,7 @@ async function diskGrepAsync(p, pattern, options = {}) {
     } catch {
       return [];
     }
-    const lokal = [];
+    const lokal: any[] = [];
     const lines = txt.split("\n");
     for (let i = 0; i < lines.length; i++)
       if (re.test(lines[i]))
@@ -421,7 +417,7 @@ async function diskGrepAsync(p, pattern, options = {}) {
         );
     return lokal;
   });
-  const hits = [];
+  const hits: any[] = [];
   for (const lokal of perFile) {
     for (const h of lokal) {
       if (hits.length >= 150) break;

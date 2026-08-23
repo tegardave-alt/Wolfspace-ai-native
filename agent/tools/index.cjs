@@ -52,7 +52,7 @@ function _ensureMod(name, path) {
 // ── Eager (core) ──
 let fileTools, execTools;
 try {
-  fileTools = require("./file-tools.cjs");
+  fileTools = require("./file-tools.ts");
 } catch (e) {
   _modLoadErrors["file-tools"] = e.message;
   fileTools = {};
@@ -72,7 +72,7 @@ let _diskTools = null,
 function lazyDisk() {
   return (
     _diskTools ||
-    (_diskTools = _ensureMod("disk-tools", "./disk-tools.cjs")) ||
+    (_diskTools = _ensureMod("disk-tools", "./disk-tools.ts")) ||
     {}
   );
 }
@@ -124,7 +124,7 @@ let validateOperation = async () => ({
   reason: "sandbox-validator not available",
 });
 try {
-  const v = require("./sandbox-validator.cjs");
+  const v = require("./sandbox-validator.ts");
   if (v.validateOperation) validateOperation = v.validateOperation;
 } catch (e) {
   _modLoadErrors["sandbox-validator"] = e.message;
@@ -2206,7 +2206,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
     // satu baris yang mengembalikannya ke daftar tool sudah cukup untuk
     // membatalkan seluruh pengurungan, tanpa satu pun tes menjadi merah.
     //
-    // Fungsi disk-tools.cjs sendiri TETAP dipakai: diskListA/diskGlobA/
+    // Fungsi disk-tools.ts sendiri TETAP dipakai: diskListA/diskGlobA/
     // diskGrepA melayani list/glob/grep yang DIKURUNG ke _wsRoot, dan
     // resolveDiskPath dipakai bash untuk cwd. Yang dihapus jalur tool-nya,
     // bukan modulnya.

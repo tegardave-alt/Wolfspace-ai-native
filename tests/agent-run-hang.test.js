@@ -253,17 +253,17 @@ describe("UI membeku karena PROSES MAIN, bukan renderer", () => {
   //
   // Diukur pada run agent SUNGGUHAN (sampler lag di proses main + CPU profiler):
   //   sebelum : beku 10282ms, 6777ms, 13036ms — renderer sehat (longtask maks 319ms)
-  //   profil  : 3271ms RegExp glob + ~11,5 detik readdir + walk disk-tools.cjs
+  //   profil  : 3271ms RegExp glob + ~11,5 detik readdir + walk disk-tools.ts
   //   sesudah : satu kejadian 1378ms, dan itu saat STARTUP, bukan saat agent bekerja
   const fs = require("fs");
   const SRC_DISK = fs
-    .readFileSync(require.resolve("../agent/tools/disk-tools.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/tools/disk-tools.ts"), "utf8")
     .replace(/\r\n/g, "\n");
   const SRC_IDX = fs
     .readFileSync(require.resolve("../agent/tools/index.cjs"), "utf8")
     .replace(/\r\n/g, "\n");
   const SRC_FILE = fs
-    .readFileSync(require.resolve("../agent/tools/file-tools.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/tools/file-tools.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("penjelajah disk punya varian asinkron", () => {
@@ -303,7 +303,7 @@ describe("UI membeku karena PROSES MAIN, bukan renderer", () => {
   });
 
   test("hasil asinkron IDENTIK dengan sinkron — kalau tidak, agent lihat dunia berbeda", async () => {
-    const d = require("../agent/tools/disk-tools.cjs");
+    const d = require("../agent/tools/disk-tools.ts");
     const dir = require("path").join(__dirname, "..", "agent");
     expect(await d.diskListAsync(dir)).toBe(d.diskList(dir));
     expect(await d.diskGlobAsync(dir, "**/*.cjs")).toBe(
@@ -315,7 +315,7 @@ describe("UI membeku karena PROSES MAIN, bukan renderer", () => {
   }, 60000);
 
   describe("globToRe: pola brace tak lagi gagal diam-diam", () => {
-    const { globToRe } = require("../agent/tools/file-tools.cjs");
+    const { globToRe } = require("../agent/tools/file-tools.ts");
 
     test("brace DIPERLUAS, bukan dicocokkan harfiah", () => {
       // Bug lama: {} ikut di-escape, jadi pola ini mencari nama berkas yang

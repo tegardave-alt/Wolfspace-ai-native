@@ -1,8 +1,8 @@
 // File operations for WOLFSPACE source code
-const fs = require("fs");
-const path = require("path");
-const util = require("util");
-const { exec } = require("child_process");
+import * as fs from "fs";
+import * as path from "path";
+import * as util from "util";
+import { exec } from "child_process";
 const execP = util.promisify(exec);
 
 // ── WOLFSPACE source root + guardrails ──
@@ -37,7 +37,7 @@ function qWalk(filterRe) {
   // Noise files: backups, copies, temp files that are NOT real source code
   const noiseFile =
     /^(git_version|old_app|_old_app|vscode_backup_app|sedBrucB6|sedgrJyrL|test_.*|t\.cjs$)/;
-  const out = [];
+  const out: any[] = [];
   (function walk(dir, depth) {
     if (out.length > 600 || depth > 5) return;
     let ents;
@@ -77,7 +77,7 @@ function qList() {
 function qGlob(pattern) {
   if (!pattern) return "pola kosong";
   const re = globToRe(pattern);
-  const res = [];
+  const res: any[] = [];
   const files = qWalk(null);
   for (const f of files) {
     if (re.test(f.rel))
@@ -94,28 +94,28 @@ function qGlob(pattern) {
           "b)",
       );
   }
-  return res.length ? res.join("\n") : "(tidak ada file cocok)";
+  return res.length ? res.join("\n") : "(no matching file)";
 }
-// Glob -> RegExp. Dua bug lama diperbaiki di sini; keduanya ditemukan lewat
-// profil CPU proses MAIN Electron saat run agent nyata, di mana satu baris ini
-// menyumbang 3271ms self-time:
+// Glob -> RegExp. Two long-standing bugs are fixed here; both were found through
+// a CPU profile of the Electron MAIN process during a real agent run, where this
+// one line contributed 3271ms of self time:
 //
 //     RegExp: ^.*.*/agent/.*.*/.*\.\{cjs,js,jsx,json\}$
 //
-//  1. BRACE DI-ESCAPE HARFIAH. `{}` masuk daftar escape, jadi pola lumrah
-//     seperti `**/*.{cjs,js,jsx,json}` berubah menjadi pencarian nama berkas
-//     yang benar-benar mengandung karakter "{cjs,js,jsx,json}". Tak ada berkas
-//     seperti itu, jadi hasilnya SELALU nol — gagal diam-diam, bukan error.
-//     Agent lalu mengira foldernya kosong dan mencoba pola lain berulang kali,
-//     dan tiap percobaan membayar ongkos pemindaian penuh lagi.
-//  2. `**` MENJADI `.*.*`. Dua wildcard tanpa batas yang bersebelahan membuat
-//     regex engine backtracking secara katastrofik pada path panjang — dan
-//     diskWalk mengujinya DUA KALI per berkas (fp dan rel).
+//  1. BRACES WERE ESCAPED LITERALLY. `{}` was on the escape list, so an
+//     everyday pattern like `**/*.{cjs,js,jsx,json}` turned into a search for
+//     filenames genuinely containing the characters "{cjs,js,jsx,json}". No such
+//     file exists, so the result was ALWAYS zero — a silent failure, not an
+//     error. The agent then assumed the folder was empty and tried other
+//     patterns repeatedly, each attempt paying the full scan cost again.
+//  2. `**` BECAME `.*.*`. Two adjacent unbounded wildcards make the regex engine
+//     backtrack catastrophically on long paths — and diskWalk tests it TWICE per
+//     file (fp and rel).
 //
-// Ditulis sebagai pemindai satu-lewat supaya `{...}` bisa ditangani sebelum
-// escaping, bukan sesudah. `*` tetap melintasi `/` seperti perilaku lama —
-// yang berubah hanya yang memang rusak.
-function globToRe(pat) {
+// Written as a single-pass scanner so `{...}` can be handled before escaping
+// rather than after. `*` still crosses `/` as it always did — only what was
+// actually broken changed.
+function globToRe(pat: any) {
   const src = String(pat == null ? "" : pat);
   const META = /[.+^${}()|[\]\\]/;
   let out = "";
@@ -127,9 +127,9 @@ function globToRe(pat) {
         i++;
         bintang++;
       }
-      // `**/` berarti NOL ATAU LEBIH direktori. Kalau diterjemahkan `.*/`, ia
-      // memaksa minimal satu segmen, sehingga `**/agent/**` gagal pada path
-      // yang MULAI dengan `agent/` — persis pemakaian paling umum agent.
+      // `**/` means ZERO OR MORE directories. Translated as `.*/` it would force
+      // at least one segment, so `**/agent/**` would fail on a path that STARTS
+      // with `agent/` — precisely the agent's most common usage.
       if (bintang >= 2 && src[i + 1] === "/") {
         out += "(?:.*/)?";
         i++;
@@ -153,7 +153,7 @@ function globToRe(pat) {
         i = tutup;
         continue;
       }
-      // `{` tanpa pasangan: perlakukan harfiah, seperti sebelumnya
+      // An unmatched `{`: treat it literally, as before.
     }
     out += META.test(c) ? "\\" + c : c;
   }
@@ -188,10 +188,10 @@ function qRead(absPath, near) {
   return head + shown;
 }
 
-function qGrep(pattern, options = {}) {
+function qGrep(pattern: any, options: any = {}) {
   if (!pattern) return "pola kosong";
 
-  let patternsToSearch = [];
+  let patternsToSearch: any[] = [];
 
   // ── Semantic mode: expand query into multiple intent-based patterns ──
   if (options.intent || options.semantic) {
@@ -217,7 +217,7 @@ function qGrep(pattern, options = {}) {
     patternsToSearch = [re];
   }
 
-  const hits = [];
+  const hits: any[] = [];
   const files = qWalk(/\.(cjs|js|jsx|css|html|json|dart|yaml|md)$/i);
   for (const f of files) {
     if (hits.length >= 150) break;
@@ -250,7 +250,7 @@ async function qSyntaxOk(absPath) {
         stdio: "pipe",
         windowsHide: true,
         env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-      });
+      } as any);
       return { ok: true };
     }
     if (ext === ".json") {
@@ -278,7 +278,7 @@ async function qSyntaxOk(absPath) {
 const { createSnapshot } = require("../snapshot.ts");
 
 function qBackup() {
-  const filesToBackup = [];
+  const filesToBackup: any[] = [];
   let n = 0;
   for (const f of qWalk(/\.(cjs|js|jsx|css|html|json|dart|yaml|py|md|txt)$/i)) {
     if (n > 500) break;
@@ -294,11 +294,11 @@ function qBackup() {
 
 // ── Semantic file intent helper ──
 // Uses sandbox-validator's intent detection for semantic-aware file operations
-let _semanticModule = null;
+let _semanticModule: any = null;
 function getSemanticValidator() {
   if (!_semanticModule) {
     try {
-      _semanticModule = require("./sandbox-validator.cjs");
+      _semanticModule = require("./sandbox-validator.ts");
     } catch (e) {
       _semanticModule = null;
     }
@@ -334,30 +334,32 @@ function qIntentDescription(filePath) {
     .join(", ");
 }
 
-// ── Versi ASINKRON dari pemindai pohon source ──
+// ── The ASYNCHRONOUS version of the source-tree scanner ──
 //
-// KENAPA ADA, dan kenapa versi sinkronnya tetap dipertahankan.
+// WHY IT EXISTS, and why the synchronous version is kept.
 //
-// Di mode Electron, backend WOLFSPACE TIDAK punya proses sendiri: main.js
-// me-require core.js in-process, dan ipcMain.on("WOLFSPACE:stream") memanggil
-// selfAgentStream() langsung. Proses main itu juga yang memiliki BrowserWindow
-// dan memompa antrean pesan Windows. Jadi setiap detik yang dihabiskan di sini
-// secara sinkron adalah satu detik jendela tidak memompa pesan — dan Windows
-// menandainya "Not Responding".
+// In Electron mode the WOLFSPACE backend has NO process of its own: main.js
+// requires core.js in-process, and ipcMain.on("WOLFSPACE:stream") calls
+// selfAgentStream() directly. That main process also owns the BrowserWindow and
+// pumps the Windows message queue. So every second spent here synchronously is a
+// second the window pumps no messages — and Windows marks it "Not Responding".
 //
-// Terukur pada run agent SUNGGUHAN (tugas: grep + list di source sendiri),
-// dengan sampler lag event-loop dipasang di proses main:
-//     [MAIN-BEKU] 10845ms   [MAIN-BEKU] 5415ms   [MAIN-BEKU] 10670ms
-// Di detik yang sama, PerformanceObserver('longtask') di RENDERER mencatat
-// maksimal 312ms — renderer sehat; yang membeku pemilik jendelanya.
+// Measured on a REAL agent run (task: grep + list over its own source), with an
+// event-loop lag sampler installed in the main process:
+//     [MAIN-FROZEN] 10845ms   [MAIN-FROZEN] 5415ms   [MAIN-FROZEN] 10670ms
+// In those same seconds, PerformanceObserver('longtask') in the RENDERER recorded
+// a maximum of 312ms — the renderer was healthy; what froze was the window's
+// owner.
 //
-// Versi sinkron TIDAK dihapus: qBackup/qGrep sinkron masih dipakai jalur lain,
-// dan tes yang ada bersandar padanya. Yang berubah hanya jalur tool agent, yaitu
-// satu-satunya jalur yang berjalan di dalam proses pemilik jendela.
+// The synchronous version is NOT removed: synchronous qBackup/qGrep are still
+// used by other paths, and existing tests rely on them. What changed is only the
+// agent tool path, which is the one path running inside the window's owner
+// process.
 const fsp = fs.promises;
 
-// Batas paralel untuk baca/salin berkas. Tanpa batas, 600 readFile serentak
-// membanjiri threadpool libuv (default 4) dan justru memperlambat semuanya.
+// The parallelism limit for reading and copying files. Without one, 600
+// concurrent readFile calls swamp the libuv threadpool (default 4) and make
+// everything slower instead.
 async function _petaBatas(items, batas, fn) {
   const hasil = new Array(items.length);
   let i = 0;
@@ -374,9 +376,10 @@ async function _petaBatas(items, batas, fn) {
   return hasil;
 }
 
-// Cermin qWalk, tapi readdir-nya asinkron sehingga event loop (dan pompa pesan
-// jendela) tetap dilayani di antara direktori. Batas dan filternya SAMA persis;
-// kalau salah satu berubah, hasil tool jadi beda antara dua jalur.
+// Mirrors qWalk, but with an asynchronous readdir so the event loop — and the
+// window's message pump — keeps being served between directories. Its limits and
+// filters are EXACTLY the same; if either drifts, the tool's result differs
+// between the two paths.
 async function qWalkAsync(filterRe) {
   const skip =
     /^(node_modules|_agent_backups|dist-app|workspace|build|\.dart_tool|vendor|\.wolfspace|\.asar-pack|\.git)$/;
@@ -384,7 +387,7 @@ async function qWalkAsync(filterRe) {
     /(cloud-keys\.json|\.env|\.pem$|\.key$|secret|credential|token)/i;
   const noiseFile =
     /^(git_version|old_app|_old_app|vscode_backup_app|sedBrucB6|sedgrJyrL|test_.*|t\.cjs$)/;
-  const out = [];
+  const out: any[] = [];
   async function walk(dir, depth) {
     if (out.length > 600 || depth > 5) return;
     let ents;
@@ -433,12 +436,12 @@ async function qGlobAsync(pattern) {
     } catch {}
     return f.rel + " (" + sz + "b)";
   });
-  return res.length ? res.join("\n") : "(tidak ada file cocok)";
+  return res.length ? res.join("\n") : "(no matching file)";
 }
 
-async function qGrepAsync(pattern, options = {}) {
+async function qGrepAsync(pattern: any, options: any = {}) {
   if (!pattern) return "pola kosong";
-  let patternsToSearch = [];
+  let patternsToSearch: any[] = [];
   if (options.intent || options.semantic) {
     const sv = getSemanticValidator();
     if (sv && sv.qSemanticSearch) {
@@ -460,9 +463,9 @@ async function qGrepAsync(pattern, options = {}) {
   }
 
   const files = await qWalkAsync(/\.(cjs|js|jsx|css|html|json|dart|yaml|md)$/i);
-  // Dibaca paralel-terbatas, lalu dikumpulkan MENURUT URUTAN BERKAS — bukan
-  // urutan selesainya I/O. Kalau tidak, keluaran grep berubah-ubah tiap
-  // panggilan untuk masukan yang sama, dan cache 30 detik jadi menyesatkan.
+  // Read with bounded parallelism, then collected in FILE ORDER — not I/O
+  // completion order. Otherwise grep output would vary between calls for the same
+  // input, and the 30-second cache would mislead.
   const perFile = await _petaBatas(files, 12, async (f) => {
     let txt;
     try {
@@ -470,7 +473,7 @@ async function qGrepAsync(pattern, options = {}) {
     } catch {
       return [];
     }
-    const lokal = [];
+    const lokal: any[] = [];
     const lines = txt.split("\n");
     for (let i = 0; i < lines.length; i++) {
       for (const re of patternsToSearch) {
@@ -485,7 +488,7 @@ async function qGrepAsync(pattern, options = {}) {
     return lokal;
   });
 
-  const hits = [];
+  const hits: any[] = [];
   for (const lokal of perFile) {
     for (const h of lokal) {
       if (hits.length >= 150) break;
@@ -497,7 +500,7 @@ async function qGrepAsync(pattern, options = {}) {
 }
 
 async function qBackupAsync() {
-  const filesToBackup = [];
+  const filesToBackup: any[] = [];
   let n = 0;
   for (const f of await qWalkAsync(
     /\.(cjs|js|jsx|css|html|json|dart|yaml|py|md|txt)$/i,

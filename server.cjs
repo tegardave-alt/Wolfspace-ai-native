@@ -2285,7 +2285,7 @@ async function runInWorkspace(lang, code) {
             // meskipun kodenya benar. Terukur: 120.046 ms, ok:false, sementara
             // stdout-nya berisi "halo dari javascript" — hasil yang benar,
             // vonis yang salah. Pola yang sama sudah dipakai
-            // agent/tools/index.cjs dan agent/tools/file-tools.cjs.
+            // agent/tools/index.cjs dan agent/tools/file-tools.ts.
             //
             // _envVerifikasi() memakai daftar-putih, jadi variabel ini TIDAK
             // diwarisi dari proses induk dan harus disetel di sini. Di luar
