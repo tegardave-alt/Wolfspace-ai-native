@@ -163,6 +163,59 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     expect(ctxTerlihat).toBeTruthy();
     expect(ctxTerlihat.workspaceRoot).toBeNull();
   }, 120000);
+
+  test("bash DITAHAN gerbang persetujuan, dan runSelfTool tak pernah dipanggil", async () => {
+    // The most important parity gap between the two orchestrators. `bash` runs
+    // PowerShell on the host with neither broker nor sandbox, so the JS loop
+    // asks a human. A Python path that ran it anyway would not be a weaker
+    // agent — it would be a removed boundary.
+    const A = require(path.join(AKAR, "agent", "python-agent.ts"));
+    const T = require(path.join(AKAR, "agent", "tools.cjs"));
+    const cloudMod = require(path.join(AKAR, "agent", "cloud.cjs"));
+    const asli = T.runSelfTool;
+    const askAsli = cloudMod.askCloudTools;
+
+    let toolDijalankan = 0;
+    T.runSelfTool = async () => {
+      toolDijalankan++;
+      return { ok: true, output: "SEHARUSNYA TAK PERNAH SAMPAI SINI" };
+    };
+    let giliran = 0;
+    cloudMod.askCloudTools = async () => {
+      giliran++;
+      if (giliran === 1) {
+        return {
+          content: "",
+          tool_calls: [{ name: "bash", args: { command: "echo halo" } }],
+        };
+      }
+      return { content: "selesai", tool_calls: [] };
+    };
+
+    const events = [];
+    try {
+      await A.selfAgentStreamPython(
+        {
+          history: [{ role: "user", content: "jalankan echo" }],
+          cloud: {},
+          thread_id: "uji-hitl",
+        },
+        (e) => events.push(e),
+      );
+    } finally {
+      T.runSelfTool = asli;
+      cloudMod.askCloudTools = askAsli;
+    }
+
+    // The gate held: the tool never executed.
+    expect(toolDijalankan).toBe(0);
+    // And the refusal is visible, not silent.
+    expect(events.map((e) => e.t)).toContain("hitl");
+    const act = events.find((e) => e.t === "act" && e.kind === "bash");
+    expect(act).toBeTruthy();
+    expect(act.ok).toBe(false);
+    expect(String(act.output)).toMatch(/REFUSED/);
+  }, 120000);
 });
 
 describe("pemilihan orkestrator", () => {

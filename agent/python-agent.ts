@@ -36,6 +36,7 @@
 import * as path from "path";
 
 const worker = require("./python-worker.ts");
+const penjaga = require("./penjaga-agent.ts");
 // Resolved at CALL time rather than destructured at load.
 //
 // electron/main.js drops the whole project require.cache on every hot reload,
@@ -161,6 +162,30 @@ export async function selfAgentStreamPython(
     if (name === "__model__") return pseudoModel(cloud, args, toolDefs);
     if (name === "__validate__") return pseudoValidate(args);
     if (name === "__plan__") return pseudoPlan(args);
+
+    // ── The approval gate, shared with the JS loop ──
+    //
+    // Same function, same decision: `bash` runs PowerShell on the host with
+    // neither broker nor sandbox, so it needs a human. git is gated per
+    // OPERATION, because gating it by name would ask for approval on `status`
+    // and an approval asked for something trivial stops being read.
+    //
+    // Refused rather than paused, and that limit is deliberate rather than
+    // hidden: the JS loop can collect an approval and re-run the same calls
+    // with hitlApproved, which needs the graph to carry that flag back in.
+    // Until then the model is told plainly why the call did not run, which it
+    // can act on, and the UI is told through the `hitl` event it already
+    // handles.
+    if (penjaga.perluPersetujuan({ name, args })) {
+      emit({ t: "hitl", kind: name, arg: args, reason: "needs approval" });
+      return {
+        ok: false,
+        output:
+          "REFUSED: `" +
+          name +
+          "` needs human approval and this orchestrator cannot collect one yet. Use a tool that runs inside the sandbox (sandbox_run) or the broker (capability_exec), or ask the user to run it.",
+      };
+    }
 
     // A real tool. Same function, same sandbox, same ledger as the JS agent.
     const r = await tools().runSelfTool(name, args, emit, agentCtx);

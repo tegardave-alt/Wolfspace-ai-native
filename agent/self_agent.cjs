@@ -19,6 +19,11 @@ const {
   qBackup,
   qBackupAsync,
 } = require("./tools.cjs");
+// Guards shared with the Python orchestrator — ONE implementation, two callers.
+// They used to be defined inline further down; two copies of a security gate is
+// the drift this repo has been bitten by before, and the copy is always the one
+// that drifts.
+const _penjagaAgent = require("./penjaga-agent.ts");
 // runReply DIHAPUS dari chat.cjs — ia tak menjalankan apa pun, hanya
 // mengembalikan {ok:true, info:"auto-run disabled"} yang dulu dipancarkan
 // sebagai field `run` di event adone. Verifikasi nyata ada di tool agent.
@@ -1901,11 +1906,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           // pertanyaan pengetahuan umum model malah mengelak ("silakan minta saya membuat
           // file...") alih-alih menjawab dari pengetahuannya.
           const _outStr = (r.output || "").trim();
-          const _nonSubstantive =
-            !_outStr ||
-            /^\(?\s*(ok|tidak ada|not found|no match|not found|nothing|kosong|empty|0\s+(hasil|match|file|baris))/i.test(
-              _outStr,
-            );
+          const _nonSubstantive = _penjagaAgent.takSubstantif(_outStr);
           if (r.ok && !_nonSubstantive) localAccessed.add(r.output);
           if (
             !r.ok &&
@@ -2129,31 +2130,13 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // the host — no broker (that's capability_exec only), no sandbox (that's
         // sandbox_run only), so it needs user approval. edit/write stay HITL-free:
         // they're covered by auto-snapshot + rollback.
-        const EXECUTION_TOOLS = ["bash"];
-        // Tool `git` digerbang PER OPERASI, bukan per nama.
-        //
-        // Sebelum tool ini ada, git hanya bisa dipanggil lewat `bash`, jadi ia
-        // otomatis ikut minta persetujuan. Kalau tool baru ini dibiarkan lolos,
-        // model justru mendapat jalan menjalankan `commit` — yang MENJALANKAN
-        // HOOK repo di luar kurungan — tanpa satu pun persetujuan. Menambal itu
-        // dengan menaruh "git" di EXECUTION_TOOLS akan menggerbang `status` dan
-        // `log` juga, dan persetujuan yang diminta untuk hal sepele adalah
-        // persetujuan yang berhenti dibaca orang.
-        //
-        // Jadi yang menentukan bukan nama toolnya, melainkan apakah operasinya
-        // menulis. Argumen yang tak bisa diurai diperlakukan sebagai menulis:
-        // gagal ke arah meminta izin, bukan ke arah melewatinya.
-        const _perluPersetujuan = (tc) => {
-          if (EXECUTION_TOOLS.includes(tc.function.name)) return true;
-          if (tc.function.name !== "git") return false;
-          try {
-            const a = JSON.parse(tc.function.arguments || "{}");
-            const op = require("./tools/git-tool.ts").OPERASI[a.operasi];
-            return !op || op.tulis === true;
-          } catch (_) {
-            return true;
-          }
-        };
+        // The approval gate lives in agent/penjaga-agent.ts, shared with the
+        // Python orchestrator. It used to be defined here, which was fine while
+        // there was one agent loop; with two, a gate on only one of them means
+        // the SAME request behaves differently depending on which one handled
+        // it. The reasoning for gating git per OPERATION rather than by name
+        // moved with the code.
+        const _perluPersetujuan = (tc) => _penjagaAgent.perluPersetujuan(tc);
         const executionCalls = calls.filter(_perluPersetujuan);
         const nonExecutionCalls = calls.filter((tc) => !_perluPersetujuan(tc));
 
