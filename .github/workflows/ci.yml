@@ -73,7 +73,7 @@ jobs:
       # paketnya berisi aplikasi tanpa main process dan tanpa jembatan preload —
       # buildnya sukses, dan rusaknya baru ketahuan saat dijalankan.
       - name: Bangun artefak Electron
-        run: npm run build:preload && npm run build:main
+        run: npm run build:preload && npm run build:main && npm run build:app
 
       - name: Package (dir saja, tanpa installer)
         run: npx electron-builder --win --dir

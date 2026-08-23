@@ -49,6 +49,35 @@ die in CI — the exact divergence `scripts/ts-register.cjs` exists to prevent.
   also pin the ordering in `ci.yml`, because losing that build step is the one
   way this arrangement ships an app with no main process.
 
+## The renderer is compiled ahead of time too
+
+`public/index.html` used to fetch fifteen `.tsx`/`.jsx` files and compile them
+with a vendored Babel INSIDE THE BROWSER, on every load, before a pixel was
+drawn. Measured A/B on this machine, identical conditions, one variable:
+
+|                            | `RENDERER-STOP` | main thread |
+| -------------------------- | --------------- | ----------- |
+| with `public/app.build.js` | never fired     | 912 ms      |
+| compiling in the browser   | ~3053 ms        | 1206 ms     |
+
+`scripts/build-app.cjs` produces that file. Two properties are load-bearing and
+easy to break without noticing:
+
+- **transform, never bundle.** These files carry no `import`/`export` on purpose;
+  they are concatenated in a fixed order into ONE global scope, and components
+  defined in later files are referenced by earlier ones through hoisting. A
+  bundler would give each its own scope and the app would break at first render.
+- **the order is READ FROM `index.html`**, not copied into the builder. Two
+  surfaces holding the same list is how this repo has produced bugs before.
+
+The in-browser Babel path REMAINS, and is not hedging: the agent edits its own
+UI source and HMR re-runs `loadApp()`, at which point the prebuilt file is stale
+by definition. The HMR handler passes `{ segar: true }` to skip it. That also
+means a fresh clone works before anything has been built — just slower.
+
+Because Babel is still loaded for that fallback, the CSP still needs
+`unsafe-eval`. Removing it is a separate decision, not a side effect of this.
+
 ## What stays CommonJS under `scripts/`, and why
 
 Not leftovers. Each is a launcher or a standalone script, which is what the split

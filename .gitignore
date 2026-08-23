@@ -87,3 +87,8 @@ __pycache__/
 # fresh clone needs no build before `npm test`.
 electron/main.js
 electron/preload.js
+
+# The renderer, compiled ahead of time by scripts/build-app.cjs. Same reasoning
+# as the Electron artefacts above: built by CI before packaging, and index.html
+# falls back to compiling from source when it is absent.
+public/app.build.js
