@@ -39,6 +39,7 @@ const SUDAH_TYPESCRIPT = [
   "agent/broker/policy.ts",
   "agent/broker/zone-process.ts",
   "agent/mcp-client.ts",
+  "agent/python-agent.ts",
   "agent/python-worker.ts",
   "agent/sandbox-policy.ts",
   "agent/sandbox.ts",
