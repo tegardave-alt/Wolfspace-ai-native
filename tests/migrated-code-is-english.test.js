@@ -35,6 +35,7 @@ const BERKAS_MIGRASI = [
   "agent/mcp-client.ts",
   "agent/penegakan.ts",
   "agent/penjaga-agent.ts",
+  "agent/perencana-agent.ts",
   "agent/plugins.ts",
   "agent/python-agent.ts",
   "agent/python-worker.ts",

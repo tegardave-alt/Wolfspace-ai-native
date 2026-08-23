@@ -29,53 +29,63 @@
 const fs = require("fs");
 
 describe("planner tahan-gagal, tak lagi satu titik kegagalan untuk seluruh run", () => {
-  const SRC = fs
+  // The planner moved into agent/perencana-agent.ts so the Python orchestrator
+  // could call the SAME code instead of answering __plan__ with an empty stub.
+  // The properties guarded here did not change — only where they live.
+  require("../scripts/ts-register.cjs");
+  const perencana = require("../agent/perencana-agent.ts");
+  const PLANNER = fs
+    .readFileSync(require.resolve("../agent/perencana-agent.ts"), "utf8")
+    .replace(/\r\n/g, "\n");
+  const SELF_SRC = fs
     .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
-  // Anchor pertama "kind: \"planner\"" adalah emit AWAL node planner; blok
-  // kerjanya (loop fallback + fallback ke checklist default) menyusul persis
-  // sesudahnya sampai emit KEDUA "Rencana selesai". Diambil lebar supaya
-  // tahan terhadap komentar di sekitarnya, sampai penanda akhir yang pasti.
-  const PLANNER = SRC.slice(
-    SRC.indexOf('kind: "planner"'),
-    SRC.indexOf('arg: "Rencana selesai"'),
-  );
-
   test("panggilan model planner dibungkus try/catch, bukan telanjang", () => {
-    expect(PLANNER).toMatch(/for \(let _t = 0; _t < 4; _t\+\+\) \{/);
+    expect(PLANNER).toMatch(
+      /for \(let t = 0; t < MAKS_PERCOBAAN_PROVIDER; t\+\+\) \{/,
+    );
     expect(PLANNER).toMatch(/try \{/);
-    expect(PLANNER).toMatch(/catch \(e\) \{/);
+    expect(PLANNER).toMatch(/catch \(e: any\) \{/);
   });
 
   test("provider gagal berikutnya dicoba, bukan langsung menyerah", () => {
-    expect(PLANNER).toMatch(/_planTried\.push\(_planCloud\.provider\)/);
+    expect(PLANNER).toMatch(/dicoba\.push\(aktif\?\.provider\)/);
     expect(PLANNER).toMatch(/Object\.keys\(CLOUD_KEYS\)\.find\(/);
-    expect(PLANNER).toMatch(/fillCloudKey\(_planCloud\)/);
+    expect(PLANNER).toMatch(/fillCloudKey\(aktif\)/);
   });
 
   test("provider yang BERHASIL dipakai lagi oleh executor (cloud diperbarui)", () => {
-    expect(PLANNER).toMatch(
-      /if \(_planCloud !== cloud\) \{\s*\n\s*cloud = _planCloud;/,
-    );
+    // rencanakan() hands back the provider that answered; the caller has to
+    // adopt it, or the executor rediscovers the dead key the planner just
+    // worked around.
+    expect(PLANNER).toMatch(/return \{ checklist, cloud: aktif, dicoba \}/);
+    expect(SELF_SRC).toMatch(/if \(_rencana\.cloud !== cloud\) \{/);
+    expect(SELF_SRC).toMatch(/cloud = _rencana\.cloud;/);
   });
 
   test("error non-transient TIDAK memicu percobaan provider lain sia-sia", () => {
-    expect(PLANNER).toMatch(
-      /if \(!_TRANSIENT_SELF\.test\(\(e && e\.message\) \|\| ""\)\) break;/,
+    // Checked by CALLING it rather than reading it: a refusal is not a reason to
+    // burn the next key, while auth and quota failures are exactly that reason.
+    expect(perencana.layakGantiProvider("invalid request: bad schema")).toBe(
+      false,
     );
+    expect(perencana.layakGantiProvider("401 Unauthorized")).toBe(true);
+    expect(perencana.layakGantiProvider("insufficient_quota")).toBe(true);
   });
 
   test("kegagalan TOTAL (semua provider mati) tak melempar — jatuh ke checklist default", () => {
-    // reply tetap null kalau loop 4x habis tanpa sukses; lines tetap terisi
-    // fallback, planner node tetap RETURN, bukan throw ke luar graph.
-    expect(PLANNER).toMatch(/const lines = reply\s*\n?\s*\?/);
+    // reply stays null when the loop runs out; the checklist is filled with the
+    // fallback and rencanakan RETURNS rather than throwing out of the graph.
     expect(PLANNER).toMatch(
-      /if \(lines\.length === 0\) lines\.push\("Jalankan tugas user\."\);/,
+      /const checklist = reply \? parseChecklist\(reply\.content\) : \[\]/,
     );
+    expect(PLANNER).toMatch(
+      /if \(checklist\.length === 0\) checklist\.push\(RENCANA_FALLBACK\)/,
+    );
+    expect(perencana.RENCANA_FALLBACK).toBe("Jalankan tugas user.");
   });
 });
-
 describe("MCP getTools() tak lagi diam tanpa tanda selama sampai 60 detik", () => {
   const SRC = fs
     .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")

@@ -25,6 +25,8 @@ const {
 // the drift this repo has been bitten by before, and the copy is always the one
 // that drifts.
 const _penjagaAgent = require("./penjaga-agent.ts");
+// The planner, shared with the Python orchestrator for the same reason.
+const _perencana = require("./perencana-agent.ts");
 // runReply REMOVED from chat.ts — it never ran anything, it only returned
 // {ok:true, info:"auto-run disabled"}, which used to be emitted as the `run`
 // field on the done event. Real verification lives in the agent tools.
@@ -1400,67 +1402,35 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           output: "Sedang membuat checklist singkat",
         });
         const lastMsg = state.messages[state.messages.length - 1];
-        const prompt = `Anda adalah AI Planner. Berdasarkan permintaan user, buat checklist SANGAT SINGKAT (maksimal 3 langkah). Tiap langkah di baris baru diawali "- ". JANGAN detail — langsung ke inti tugas. Jangan tambahkan teks lain.\n\nPermintaan: ${lastMsg.content}`;
-        // The planner is not a step that may kill the run: its checklist is only a
-        // convenience (the executor runs the same without it — see the "Jalankan
-        // tugas user." fallback below). Before there was a provider fallback here, a
-        // single dead key in first position (github 401, say) killed the ENTIRE run
-        // 1-2 seconds in — before the executor even got to try its own provider.
-        // Verified on a real run: 8 of the 10 keys in CLOUD_KEYS were dead when
-        // measured.
-        const _planTried: any[] = [];
-        let _planCloud = cloud;
-        let reply: any = null;
-        for (let _t = 0; _t < 4; _t++) {
-          try {
-            reply = await askCloudTools(
-              _planCloud,
-              [{ role: "user", content: prompt }],
-              [],
-            );
-            if (_planCloud !== cloud) {
-              cloud = _planCloud; // the live provider is used by the executor too
-              dlog("self", "info", "planner fallback established", {
-                provider: cloud.provider,
-              });
-            }
-            break;
-          } catch (e) {
-            dlog("self", "warn", "planner_request_failed", {
-              provider: _planCloud.provider,
-              error: ((e && e.message) || "").slice(0, 120),
-            });
-            if (!_TRANSIENT_SELF.test((e && e.message) || "")) break;
-            _planTried.push(_planCloud.provider);
-            const fb = Object.keys(CLOUD_KEYS).find(
-              (p) =>
-                !_planTried.includes(p) && CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
-            );
-            if (!fb) break;
-            _planCloud = {
-              provider: fb,
-              key: CLOUD_KEYS[fb].key,
-              model: CLOUD_KEYS[fb].model,
-              baseUrl: CLOUD_KEYS[fb].baseUrl,
-            };
-            fillCloudKey(_planCloud);
-          }
+        // The planner lives in agent/perencana-agent.ts so the Python graph can
+        // answer its __plan__ pseudo-tool with the SAME code. It used to reply
+        // with an empty checklist, and an empty checklist costs the anchor that
+        // stops the agent redoing finished work.
+        //
+        // Never throws: the checklist is a convenience and the executor runs the
+        // same without one.
+        const _rencana = await _perencana.rencanakan(
+          cloud,
+          String((lastMsg && lastMsg.content) || ""),
+          (lvl, pesan, data) => dlog("self", lvl, pesan, data),
+        );
+        if (_rencana.cloud !== cloud) {
+          // The live provider is used by the executor too — otherwise it would
+          // rediscover the dead key the planner just worked around.
+          cloud = _rencana.cloud;
+          dlog("self", "info", "planner fallback established", {
+            provider: cloud.provider,
+          });
         }
-        const lines = reply
-          ? (reply.content || "")
-              .split("\n")
-              .filter((l) => l.trim().startsWith("-"))
-              .map((l) => l.trim().replace(/^- /, ""))
-          : [];
-        if (lines.length === 0) lines.push("Jalankan tugas user.");
+        const lines = _rencana.checklist;
         emit({
           t: "act",
           kind: "planner",
           arg: "Rencana selesai",
           ok: true,
-          output: lines.slice(0, 3).join("\n"),
+          output: lines.join("\n"),
         });
-        return { task_checklist: lines.slice(0, 3) };
+        return { task_checklist: lines };
       })
       .addNode("executor", async (state) => {
         if (isCancelled()) return { stopReason: "cancelled" };

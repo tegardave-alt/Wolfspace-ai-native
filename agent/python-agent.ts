@@ -33,13 +33,14 @@
 //   evidence check            penjaga.buktiSahih, on the final answer
 //   repeat backstop           penjaga.kunciPanggilan + melewatiBatasUlang
 //   model heartbeat           model_wait events during a long call
+//   planner checklist         perencana.rencanakan, the SAME call the JS loop
+//                             makes — including its provider fallback
 //   transient retry           already inside askCloudTools; NOT duplicated here
 //
 //   NOT here yet              why it is not merely missing
 //   -----------               ---------------------------
 //   HITL resume               the graph must carry hitlApproved back in; today
 //                             the call is refused with a reason instead
-//   planner checklist         needs the planning prompt still in self_agent.ts
 //   findings journal          crosses process restarts; a separate extraction
 //
 // So the JS agent stays the default. This path runs when it is asked for, by
@@ -193,8 +194,34 @@ async function pseudoValidate(
  * checks `len(checklist) == 0`). Filling it needs the planning prompt that lives
  * in self_agent.ts, which is a separate extraction from this wiring.
  */
-async function pseudoPlan(args: any): Promise<ToolAnswer> {
-  return { ok: true, messages: [], checklist: [] };
+async function pseudoPlan(args: any, cloud: any): Promise<ToolAnswer> {
+  // This used to `return { ok: true, messages: [], checklist: [] }` — always
+  // empty. The graph accepted it, the run continued, and nothing anywhere said
+  // the plan was missing.
+  //
+  // That absence is not cosmetic. The checklist is the ground truth re-injected
+  // into the system message at every step: it is what stops the agent redoing
+  // finished work, and since failures are recorded against ITEMS, it is also
+  // what carries "already tried, already failed" without the model needing to
+  // remember it. Answering with nothing meant the Python path lost the anchor
+  // exactly where a long run needs it most.
+  //
+  // Now it calls the same planner the JS loop calls, so the two orchestrators
+  // cannot produce different plans for the same request.
+  const perencana = require("./perencana-agent.ts");
+  const pesan = Array.isArray(args?.messages) ? args.messages : [];
+  const terakhir = pesan.length ? pesan[pesan.length - 1] : null;
+
+  const hasil = await perencana.rencanakan(
+    cloud,
+    String((terakhir && terakhir.content) || ""),
+    (level: string, pesanLog: string, data: any) =>
+      dlog("python-agent", level, pesanLog, data),
+  );
+
+  // `messages` stays empty on purpose: the graph appends whatever comes back,
+  // and the JS planner contributes no message either — only the checklist.
+  return { ok: true, messages: [], checklist: hasil.checklist };
 }
 
 /**
@@ -244,7 +271,7 @@ export async function selfAgentStreamPython(
   const onTool = async (name: string, args: any): Promise<ToolAnswer> => {
     if (name === "__model__") return pseudoModel(cloud, args, toolDefs, emit);
     if (name === "__validate__") return pseudoValidate(args, bukti);
-    if (name === "__plan__") return pseudoPlan(args);
+    if (name === "__plan__") return pseudoPlan(args, cloud);
 
     // The absolute backstop against an endless loop, using the same key and the
     // same threshold as the JS loop so a call counted as a repeat by one
