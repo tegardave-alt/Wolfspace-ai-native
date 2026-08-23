@@ -1,8 +1,8 @@
 // NOTE on the `: any` props below. Their shape comes from the agent run state
-// built in public/app.jsx, which has not migrated yet. Writing a made-up shape
-// here would be a lie that typechecks; these narrow once app.jsx follows.
+// built in public/app.tsx, which has not migrated yet. Writing a made-up shape
+// here would be a lie that typechecks; these narrow once app.tsx follows.
 
-// AgentSteps — extracted from Sidebar.tsx (the app.jsx split): ToolOutput,
+// AgentSteps — extracted from Sidebar.tsx (the app.tsx split): ToolOutput,
 // *ActionRow, ConsolidatedThoughtCard, AgentSteps, HitlModal. Prepended via
 // APP_MODULES.
 
@@ -98,7 +98,7 @@ function ToolOutput({ text, ok, kind, arg }: any) {
             // off — and with a built-in border that CSS `outline` cannot
             // touch, because it is drawn to pixels rather than set through
             // style. Found while tracing a similar line in the Logic code
-            // panel (LogicCodePane, app.jsx); matched here BEFORE anyone
+            // panel (LogicCodePane, app.tsx); matched here BEFORE anyone
             // reported it, because this app's three Monaco editors are meant
             // to look identical.
             overviewRulerLanes: 0,

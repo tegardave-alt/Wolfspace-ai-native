@@ -19,7 +19,7 @@ const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 const KOMP = baca("public/app/Components.tsx");
 const SB = baca("public/app/Sidebar.tsx");
-const APP = baca("public/app.jsx");
+const APP = baca("public/app.tsx");
 const CSS = baca("public/styles.css");
 const tanpaKomentar = (t) =>
   t

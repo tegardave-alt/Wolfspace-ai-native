@@ -1,6 +1,6 @@
-// VisualTools — extracted from app.jsx: useVisualPicker and useVisualDraw, plus
+// VisualTools — extracted from app.tsx: useVisualPicker and useVisualDraw, plus
 // their module-level guards (VP_STOP/VD_STOP). Loaded via APP_MODULES,
-// concatenated after app.jsx into one scope. Function declarations hoist; the
+// concatenated after app.tsx into one scope. Function declarations hoist; the
 // `let` guards are only touched during interaction (a click), so they are always
 // initialised by then. Used by App via startPicker / startVisualDraw.
 

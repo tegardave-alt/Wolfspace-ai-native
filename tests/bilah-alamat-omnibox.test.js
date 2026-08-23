@@ -204,7 +204,7 @@ describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
   //               yang berlaku padanya.
   const MAIN = baca("electron/main.js");
   const PRELOAD = baca("electron/preload.js");
-  const APP = baca("public/app.jsx");
+  const APP = baca("public/app.tsx");
 
   test("dua jalur buntu itu benar-benar sudah dilepas", () => {
     // webviewTag menyala = Electron crash lagi begitu panel dipakai.

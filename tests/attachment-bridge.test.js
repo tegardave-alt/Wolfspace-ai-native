@@ -365,8 +365,10 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
     fs.readFileSync(require.resolve(m), "utf8").replace(/\s+/g, " ");
 
   test("doSend menerima display berupa objek {text, attachments}", () => {
-    const app = baca("../public/app.jsx");
-    expect(app).toContain("const _pesanUser = (content, display)");
+    const app = baca("../public/app.tsx");
+    expect(app).toMatch(
+      /const _pesanUser = \(content(?:: \w+)?, display(?:: \w+)?\)/,
+    );
     // Bentuk string lama HARUS tetap didukung: beberapa pemanggil lain
     // (retry, resume HITL) masih mengirimkannya.
     expect(app).toContain("return { text: display || content };");

@@ -265,11 +265,11 @@
 
         // 2. Alur Normal
         try {
-          // Modul yang diekstrak dari app.jsx dipecah ke file terpisah, lalu di-CONCAT
-          // SEBELUM app.jsx dan ditransform SEKALI — jadi tetap satu scope global. Urutan
+          // Modul yang diekstrak dari app.tsx dipecah ke file terpisah, lalu di-CONCAT
+          // SEBELUM app.tsx dan ditransform SEKALI — jadi tetap satu scope global. Urutan
           // PREPEND ini penting: sebagian komponen (Sidebar/Composer/Icons) dirender saat
-          // awal, jadi definisinya harus ada sebelum App di-render di akhir app.jsx.
-          // Body fungsi (memakai hooks/React dari app.jsx) baru jalan saat render — setelah
+          // awal, jadi definisinya harus ada sebelum App di-render di akhir app.tsx.
+          // Body fungsi (memakai hooks/React dari app.tsx) baru jalan saat render — setelah
           // seluruh skrip termuat. Auto-Rollback di bawah tetap utuh. Tambah file = +1 entri.
           const APP_MODULES = [
             "/app/Config.tsx",
@@ -300,8 +300,8 @@
             }
           }
           parts.push({
-            name: "/app.jsx",
-            src: await (await fetch("/app.jsx?v=" + Date.now())).text(),
+            name: "/app.tsx",
+            src: await (await fetch("/app.tsx?v=" + Date.now())).text(),
           });
 
           try {
@@ -372,7 +372,7 @@
             }
           }
         } catch (fetchError) {
-          console.error("Failed to fetch app.jsx:", fetchError);
+          console.error("Failed to fetch app.tsx:", fetchError);
         }
       };
 

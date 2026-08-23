@@ -1,4 +1,4 @@
-// Views — extracted from Components.tsx (the app.jsx split). Prepended via
+// Views — extracted from Components.tsx (the app.tsx split). Prepended via
 // APP_MODULES.
 
 /** One saved conversation as kept in the chat history. */

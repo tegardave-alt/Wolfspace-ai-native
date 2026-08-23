@@ -1,4 +1,4 @@
-// CodeBlocks — extracted from Components.tsx (the app.jsx split). Prepended
+// CodeBlocks — extracted from Components.tsx (the app.tsx split). Prepended
 // via APP_MODULES.
 
 /* ----------------------------- Syntax highlight ----------------------------- */
@@ -202,7 +202,7 @@ function CodeBlock({ lang, code }: any) {
         fontSize: 13,
         lineNumbers: "on",
         renderLineHighlight: "none",
-        // Same as AgentSteps.tsx and LogicCodePane (app.jsx): the 14px canvas
+        // Same as AgentSteps.tsx and LogicCodePane (app.tsx): the 14px canvas
         // Monaco paints along the editor's right edge stays active even with
         // the minimap off, and its border is untouchable by CSS `outline`
         // because it is drawn to pixels rather than set through style.

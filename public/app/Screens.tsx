@@ -1,6 +1,6 @@
-// Screens — extracted from app.jsx (see public/app.jsx for the App
+// Screens — extracted from app.tsx (see public/app.tsx for the App
 // orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.jsx (prepended), then Babel once -> a single global scope. Function
+// app.tsx (prepended), then Babel once -> a single global scope. Function
 // bodies (hooks/React/SB) run at render time.
 
 function PickerFolderIcon({ size = 15 }: any) {

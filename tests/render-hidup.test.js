@@ -29,7 +29,7 @@ const AKAR = path.resolve(__dirname, "..");
 // palsu.
 describe("dependensi hook tidak dipakai sebelum dideklarasikan", () => {
   const src = fs
-    .readFileSync(path.join(AKAR, "public", "app.jsx"), "utf8")
+    .readFileSync(path.join(AKAR, "public", "app.tsx"), "utf8")
     .replace(/\r\n/g, "\n")
     .split("\n");
 

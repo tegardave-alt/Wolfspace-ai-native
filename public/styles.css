@@ -2347,7 +2347,7 @@ select {
    .monaco-editor.focused) begitu editor menerima fokus keyboard, bahkan pada
    editor readOnly. Tanpa aturan ini tepi ATAS dan KIRI panel kode Logic
    menampilkan garis itu; tepi KANAN diselesaikan terpisah lewat opsi
-   overviewRulerLanes: 0 di app.jsx, karena itu digambar ke kanvas — CSS
+   overviewRulerLanes: 0 di app.tsx, karena itu digambar ke kanvas — CSS
    outline tak menyentuh piksel yang sudah dilukis. */
 .logic-code-host .monaco-editor,
 .logic-code-host .monaco-editor.focused,

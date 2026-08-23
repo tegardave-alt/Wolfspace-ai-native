@@ -1,6 +1,6 @@
 // Config — the workspace root constant, taken DYNAMICALLY from the preload
 // (window.WOLFSPACE.root). Loaded FIRST via APP_MODULES so it is available to
-// every module and to app.jsx. It produces the same value the old hardcoded one
+// every module and to app.tsx. It produces the same value the old hardcoded one
 // did back when the folder was still "quantum", but follows a rename (to
 // wolfspace, say) automatically — with no code change.
 const _wsRaw =

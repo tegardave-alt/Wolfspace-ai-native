@@ -363,9 +363,9 @@ describe("pemilihan adapter", () => {
     // berkas ke jalur DAP yang lalu ditolak server, yang satu membiarkannya
     // lewat PTY padahal jalur yang lebih baik tersedia.
     const APP = fs
-      .readFileSync(path.join(__dirname, "..", "public", "app.jsx"), "utf8")
+      .readFileSync(path.join(__dirname, "..", "public", "app.tsx"), "utf8")
       .replace(/\r\n/g, "\n");
-    const i = APP.indexOf("const _ADAPTER_DAP = {");
+    const i = APP.search(/const _ADAPTER_DAP(?:: [^=]+)? = \{/);
     expect(i).toBeGreaterThan(0);
     const blok = APP.slice(i, APP.indexOf("};", i));
     for (const e of ["py", "js", "mjs", "cjs", "ts", "tsx", "jsx"])

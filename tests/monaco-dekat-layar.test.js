@@ -1,6 +1,6 @@
 // Editor Monaco hanya dibuat untuk blok yang dekat layar.
 //
-// KENAPA ADA. Riwayat chat dirender utuh — public/app.jsx memakai
+// KENAPA ADA. Riwayat chat dirender utuh — public/app.tsx memakai
 // `messages.map(...)` tanpa jendela — dan tiap blok kode membuat satu editor
 // Monaco PENUH: model, view, ResizeObserver (automaticLayout), dan observer
 // pada emitter global Monaco. Riwayat panjang berarti ratusan editor serentak.

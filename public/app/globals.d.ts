@@ -3,7 +3,7 @@
 // WHY THIS EXISTS. The files here are NOT ES modules — index.html fetches them
 // one by one, transpiles each, and then CONCATENATES the results into a single
 // <script>. They all share one global scope: the `useState` in PluginsView.tsx
-// is the same useState app.jsx destructured from React, with no import anywhere.
+// is the same useState app.tsx destructured from React, with no import anywhere.
 //
 // Without this file TypeScript flags every one of those names "Cannot find
 // name" — not because the code is wrong, but because its scope contract was
@@ -28,40 +28,33 @@ declare namespace JSX {
   }
 }
 
-// The hooks are declared standalone below because app.jsx destructures them, but
+// The hooks are declared standalone below because app.tsx destructures them, but
 // some modules still reach for React.useState directly — so the object carries
 // them too rather than forcing a rewrite of those call sites.
 declare var React: {
   createElement(...args: any[]): JSX.Element;
   Fragment: any;
-  useState: typeof useState;
-  useRef: typeof useRef;
-  useEffect: typeof useEffect;
-  useCallback: typeof useCallback;
-  useMemo: typeof useMemo;
-  // Not destructured in app.jsx, so these exist only as members.
-  useLayoutEffect: (
+  useState<T>(
+    initial: T | (() => T),
+  ): [T, (value: T | ((previous: T) => T)) => void];
+  useRef<T>(initial: T): { current: T };
+  useEffect(effect: () => void | (() => void), deps?: readonly any[]): void;
+  useCallback<F extends (...a: any[]) => any>(fn: F, deps?: readonly any[]): F;
+  useMemo<T>(fn: () => T, deps?: readonly any[]): T;
+  useLayoutEffect(
     effect: () => void | (() => void),
     deps?: readonly any[],
-  ) => void;
-  memo: <F>(component: F, areEqual?: (a: any, b: any) => boolean) => F;
+  ): void;
+  memo<F>(component: F, areEqual?: (a: any, b: any) => boolean): F;
 };
 
-// Destructured at the head of app.jsx:
+// The hooks are NOT declared standalone: app.tsx does
 //   const { useState, useRef, useEffect, useCallback, useMemo } = React;
-declare function useState<T>(
-  initial: T | (() => T),
-): [T, (value: T | ((previous: T) => T)) => void];
-declare function useRef<T>(initial: T): { current: T };
-declare function useEffect(
-  effect: () => void | (() => void),
-  deps?: readonly any[],
-): void;
-declare function useCallback<F extends (...a: any[]) => any>(
-  fn: F,
-  deps?: readonly any[],
-): F;
-declare function useMemo<T>(fn: () => T, deps?: readonly any[]): T;
+// at the head of the shared global scope, so those bindings come from the
+// object above and every module sees them. Declaring them here as well would
+// collide, and pointing the object's members at such declarations
+// (`useState: typeof useState`) makes the reference circular once app.tsx is
+// in scope — which silently degraded every hook to an untyped call.
 
 // Monaco comes from a vendor <script> (public/vendor/monaco), not npm, so it
 // exists only on window at runtime and TypeScript has no way to know it.
@@ -120,14 +113,6 @@ declare interface PeristiwaBrowser {
   [k: string]: unknown;
 }
 
-// Defined in public/app.jsx and used across modules through the shared global
-// scope — the same arrangement as the React hooks above.
-declare function resolveWorkspaceRoot(proyek?: unknown): string | undefined;
-// WOLFSPACE_ROOT is NOT declared here: Config.tsx is already .tsx and inside the
-// tsconfig scope, so its own definition is the source. Adding a `declare` here
-// would collide with it (TS2451). Only names from files that have NOT migrated
-// yet need declaring — resolveWorkspaceRoot in app.jsx, for instance.
-
 // Cloud (BYOK) configuration as stored under localStorage "wolfspace_cloud".
 declare interface KonfigCloud {
   provider?: string;
@@ -139,27 +124,7 @@ declare interface KonfigCloud {
   [k: string]: unknown;
 }
 
-// Defined in public/app.jsx and reached from other modules through the shared
-// global scope. They are declared here rather than imported because app.jsx has
-// not migrated yet; once it does, these declarations must be removed or they
-// will collide (TS2451), exactly as WOLFSPACE_ROOT did.
-declare const CLOUD_DEFAULT: Record<string, string>;
-declare const PROVIDER_LABELS: Record<string, string>;
-declare const PROVIDER_OPTS: readonly string[];
-declare function detectPrefix(
-  key: string,
-): { provider: string; name: string } | null;
-declare function keyish(s: unknown): boolean;
-declare function getCloud(): KonfigCloud | null;
 declare function setCloudLS(c: KonfigCloud | null): void;
-
-// SB is the Sidebar glyph table, defined in app/Sidebar.jsx.
-//
-// Deliberately `any`: naming every glyph would mean enumerating dozens of keys
-// from a file that has not migrated yet, and Record<string, fn> collides with
-// noUncheckedIndexedAccess — every SB.x() call would read as possibly undefined.
-// Drop this declaration when Sidebar.jsx migrates, or it will collide (TS2451),
-// exactly as Icon did once Icons.tsx started declaring itself.
 
 // three.js is vendored offline and exposed on window by public/vendor/three3d
 // (see scripts/three/build.cjs), not installed from npm. Only the handful of
@@ -181,17 +146,7 @@ interface Window {
 // global scope. Each of these declarations must be REMOVED when its own file
 // migrates, or it collides (TS2451) — the pattern WOLFSPACE_ROOT and Icon both
 // demonstrated.
-//   escHtml, parseBlocks, IPC, wwApi, wwListFetch -> app.jsx
 declare function Blocks(props: { text?: string }): JSX.Element;
-declare function escHtml(s: string): string;
-declare function parseBlocks(text: string): any[];
-declare function wwApi(
-  path: string,
-  opts?: { method?: string; body?: any },
-): Promise<any>;
-declare function wwListFetch(): Promise<any>;
-// IPC is the Electron bridge, null in a plain browser — hence the union.
-declare const IPC: { ipc?: any; invoke?: (...a: any[]) => Promise<any> } | null;
 
 // monacoReady is a PROMISE set on window by index.html once the vendored Monaco
 // loader finishes, so modules can await it instead of racing the <script> tag.
@@ -214,9 +169,12 @@ interface Window {
 
 // Reached through window by app/Screens.tsx.
 //
-// IPC is also declared standalone above (app.jsx defines it as a const in the
-// shared scope); Screens reads it off window instead, so both spellings have
-// to exist. xterm and its fit addon come from vendored <script> tags rather
+// window.IPC is NOT the same binding as app.tsx's `const IPC`; Screens reads
+// it off window, so this member has to exist independently of that const.
+// xterm and its fit addon come from vendored <script> tags rather than npm, so
+// they are optional and untyped — as with monaco and three.
+// showDirectoryPicker is the File System Access API, which TypeScript's DOM
+// lib does not declare and which only Chromium-based browsers implement.
 // than npm, so they are optional and untyped — as with monaco and three.
 // showDirectoryPicker is the File System Access API, which TypeScript's DOM
 // lib does not declare and which only Chromium-based browsers implement.
@@ -228,3 +186,22 @@ interface Window {
   xterm?: any;
   showDirectoryPicker?: (opts?: any) => Promise<any>;
 }
+
+// Set on window by app.tsx itself, plus two names that come from elsewhere.
+//
+// The __ww*Shimmed flags are latches so the fetch and EventSource shims are
+// installed once. reportAppSuccess / triggerAppRollback / _reactRoot are the
+// hooks index.html's rollback machinery calls into. ReactDOM and IKON_BAHASA
+// are not on window: ReactDOM comes from a vendored <script>, and IKON_BAHASA
+// from app/IkonBahasa.jsx, which is GENERATED by scripts/ikon-bahasa/build.cjs
+// and so is deliberately not migrated.
+interface Window {
+  __wwFetchShimmed?: boolean;
+  __wwEventSourceShimmed?: boolean;
+  reportAppSuccess?: (...a: any[]) => void;
+  testHitl?: (...a: any[]) => void;
+  triggerAppRollback?: (...a: any[]) => void;
+  _reactRoot?: any;
+}
+declare const ReactDOM: any;
+declare const IKON_BAHASA: Record<string, string>;

@@ -1,5 +1,5 @@
-// Icons — extracted from app.jsx (see public/app.jsx for the App orchestrator).
-// Loaded via APP_MODULES in index.html: CONCATenated BEFORE app.jsx (prepended),
+// Icons — extracted from app.tsx (see public/app.tsx for the App orchestrator).
+// Loaded via APP_MODULES in index.html: CONCATenated BEFORE app.tsx (prepended),
 // then run through Babel once into a single global scope. Function bodies
 // (hooks/React/SB) execute at render time.
 

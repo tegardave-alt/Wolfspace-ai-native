@@ -50,12 +50,12 @@ afterAll(() => {
 describe("catatan temuan: identitas PERSIS, bukan kemiripan", () => {
   test("jalur yang sudah dibaca dikenali, yang belum tidak", () => {
     // Inilah sebabnya ini BUKAN RAG. RAG mencari lewat kemiripan, dan "app.js"
-    // bisa berskor tinggi untuk kueri "app.jsx" — agent lalu MELEWATI pekerjaan
+    // bisa berskor tinggi untuk kueri "app.tsx" — agent lalu MELEWATI pekerjaan
     // yang belum ia kerjakan. Kegagalan itu lebih buruk daripada mengulang,
     // karena tak terlihat.
     T.catat(WS, "app.js", "function render(){}\n");
     expect(T.sudahDibaca(WS, "app.js")).toBeTruthy();
-    expect(T.sudahDibaca(WS, "app.jsx")).toBeNull();
+    expect(T.sudahDibaca(WS, "app.tsx")).toBeNull();
     expect(T.sudahDibaca(WS, "belum-pernah.js")).toBeNull();
   });
 

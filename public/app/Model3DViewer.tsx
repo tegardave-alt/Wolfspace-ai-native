@@ -1,6 +1,6 @@
-// Model3DViewer — extracted from app.jsx (an interactive GLB/STL 3D viewer).
-// Loaded via APP_MODULES in index.html: CONCATenated with app.jsx BEFORE Babel,
-// so it shares one global scope (React/hooks from app.jsx plus
+// Model3DViewer — extracted from app.tsx (an interactive GLB/STL 3D viewer).
+// Loaded via APP_MODULES in index.html: CONCATenated with app.tsx BEFORE Babel,
+// so it shares one global scope (React/hooks from app.tsx plus
 // window.WOLFSPACE3D). A function declaration, so it hoists and is safe to append.
 
 /* ----------------------------- Viewer 3D (GLB/STL) ----------------------------- */

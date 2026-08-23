@@ -1,25 +1,25 @@
 const { useState, useRef, useEffect, useCallback, useMemo } = React;
 
-// ── thread_id agent bertahan melewati reload halaman ──
+// ── The agent's thread_id survives a page reload ──
 //
-// KENAPA ADA. thread_id hidup di state React saja. Begitu halaman dimuat ulang
-// di tengah run — dan public/index.html memang memanggil window.location.reload()
-// untuk perubahan frontend yang bukan .css/.jsx/.js — thread_id lenyap.
-// Permintaan berikutnya dikirim tanpa itu, self_agent.cjs mencetak thread BARU,
-// MemorySaver tak punya checkpoint untuknya, dan agent mengulang dari nol.
+// WHY THIS EXISTS. thread_id lived in React state alone. As soon as the page
+// reloaded mid-run — and public/index.html does call window.location.reload()
+// for frontend changes that are not .css/.jsx/.js — thread_id vanished. The
+// next request went without it, self_agent.cjs minted a NEW thread, MemorySaver
+// had no checkpoint for it, and the agent started over from nothing.
 //
-// Penjaga di electron/main.js sudah menunda hot-reload selama agent bekerja,
-// jadi sumber reload yang paling sering sudah tertutup. Ini lapis kedua: reload
-// dari mana pun (F5, rollback Babel di index.html, crash renderer) tak lagi
-// membuat agent lupa.
+// A guard in electron/main.js already defers hot-reload while the agent works,
+// so the most common reload source is already closed. This is the second layer:
+// a reload from anywhere (F5, index.html's Babel rollback, a renderer crash) no
+// longer makes the agent forget.
 //
-// Kedaluwarsa 30 menit, dan DIHAPUS begitu run benar-benar tuntas. Tanpa itu,
-// thread basi akan diam-diam menyambung pesan berikutnya yang sama sekali tak
-// berhubungan ke percakapan lama — kesalahan yang lebih membingungkan daripada
-// mengulang pekerjaan.
+// It expires after 30 minutes and is DELETED once a run genuinely finishes.
+// Without that, a stale thread would quietly attach the next, entirely
+// unrelated message to an old conversation — a failure more confusing than
+// simply repeating the work.
 const THREAD_KEY = "wolfspace:thread-terputus";
 const THREAD_TTL_MS = 30 * 60 * 1000;
-function simpanThreadTerputus(id) {
+function simpanThreadTerputus(id: any) {
   try {
     if (id)
       localStorage.setItem(THREAD_KEY, JSON.stringify({ id, ts: Date.now() }));
@@ -36,10 +36,10 @@ function ambilThreadTerputus() {
   }
 }
 
-/* Icons dipindah ke public/app/Icons.tsx (APP_MODULES). */
+/* Icons moved to public/app/Icons.tsx (APP_MODULES). */
 
 /* ----------------------------- Backend glue ----------------------------- */
-const PREFIXES = [
+const PREFIXES: [string, string, string][] = [
   ["github_pat_", "github", "GitHub Models"],
   ["ghp_", "github", "GitHub Models"],
   ["sk-ant-", "anthropic", "Claude"],
@@ -50,7 +50,7 @@ const PREFIXES = [
   ["sk-UUa", "opencode", "OpenCode"],
   ["sk-", "openai", "OpenAI"],
 ];
-const CLOUD_DEFAULT = {
+const CLOUD_DEFAULT: Record<string, string> = {
   anthropic: "claude",
   openai: "gpt-4o",
   openrouter: "anthropic/claude-opus-4-8",
@@ -65,7 +65,7 @@ const CLOUD_DEFAULT = {
   cloudflare: "@cf/meta/llama-3.1-8b-instruct",
   custom: "gpt-4o",
 };
-const PROVIDER_LABELS = {
+const PROVIDER_LABELS: Record<string, string> = {
   openai: "OpenAI",
   qwen: "Qwen",
   groq: "Groq",
@@ -96,13 +96,13 @@ const PROVIDER_OPTS = [
   "cloudflare",
   "custom",
 ];
-function detectPrefix(key) {
+function detectPrefix(key: any): { provider: string; name: string } | null {
   key = (key || "").trim();
   for (const [p, prov, name] of PREFIXES)
     if (key.startsWith(p)) return { provider: prov, name };
   return key ? { provider: "openai", name: "OpenAI" } : null;
 }
-function keyish(s) {
+function keyish(s: any) {
   return /^(sk-|gsk_|AIza|github_pat_|ghp_)/.test((s || "").trim());
 }
 function getCloud() {
@@ -112,26 +112,29 @@ function getCloud() {
     return null;
   }
 }
-function setCloudLS(c) {
+function setCloudLS(c: any) {
   if (c) localStorage.setItem("wolfspace_cloud", JSON.stringify(c));
   else localStorage.removeItem("wolfspace_cloud");
 }
-function escHtml(s) {
+function escHtml(s: any) {
   return s.replace(
     /[&<>]/g,
-    (c) => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;" })[c],
+    (c: any) =>
+      (({ "&": "&amp;", "<": "&lt;", ">": "&gt;" }) as Record<string, string>)[
+        c
+      ]!,
   );
 }
-function mdInline(s) {
+function mdInline(s: any) {
   let h = escHtml(s);
   h = h.replace(/`([^`\n]+)`/g, '<span class="inline-code">$1</span>');
   h = h.replace(/\*\*([^*\n]+)\*\*/g, "<strong>$1</strong>");
   return h;
 }
-function mdToHtml(s) {
+function mdToHtml(s: any) {
   const lines = s.split(/\r?\n/);
-  const outBlocks = [];
-  let normalLines = [];
+  const outBlocks: any[] = [];
+  let normalLines: any[] = [];
 
   const flushNormal = () => {
     if (normalLines.length > 0) {
@@ -150,15 +153,15 @@ function mdToHtml(s) {
       /^\s*\|?\s*:?-{3,}:?\s*(\|\s*:?-{3,}:?\s*)+\|?\s*$/.test(nextLine)
     ) {
       flushNormal();
-      const parseRow = (r) => {
+      const parseRow = (r: any) => {
         let trimmed = r.trim();
         if (trimmed.startsWith("|")) trimmed = trimmed.slice(1);
         if (trimmed.endsWith("|")) trimmed = trimmed.slice(0, -1);
-        return trimmed.split("|").map((c) => c.trim());
+        return trimmed.split("|").map((c: any) => c.trim());
       };
       const headers = parseRow(line);
       i += 2;
-      const rows = [];
+      const rows: any[] = [];
       while (
         i < lines.length &&
         lines[i].trim().includes("|") &&
@@ -169,11 +172,11 @@ function mdToHtml(s) {
       }
       let html =
         '<div class="md-table-wrap"><table class="md-table"><thead><tr>';
-      headers.forEach((h) => {
+      headers.forEach((h: any) => {
         html += `<th>${mdInline(h)}</th>`;
       });
       html += "</tr></thead><tbody>";
-      rows.forEach((row) => {
+      rows.forEach((row: any) => {
         html += "<tr>";
         for (let c = 0; c < headers.length; c++) {
           const cell = row[c] || "";
@@ -191,8 +194,9 @@ function mdToHtml(s) {
   flushNormal();
   return outBlocks.join("");
 }
-function parseBlocks(text) {
-  // Pre-processing: Jika model hanya memberikan tag penutup tapi lupa tag pembuka
+function parseBlocks(text: any) {
+  // Pre-processing: when the model supplies only a closing tag and forgets the
+  // opening one.
   if (
     (text.includes("</think>") || text.includes("</thought>")) &&
     !text.includes("<think>") &&
@@ -201,7 +205,7 @@ function parseBlocks(text) {
     text = "<think>\n" + text;
   }
 
-  const out = [];
+  const out: any[] = [];
   const re =
     /(?:```(\w*)\n?([\s\S]*?)```)|(?:<(?:think|thought)>([\s\S]*?)(?:<\/(?:think|thought)>|$))/gi;
   let last = 0,
@@ -254,21 +258,21 @@ function parseBlocks(text) {
 // there is no second kind of model left to choose between, so there is no `port`
 // branch either. A missing cloud key surfaces as a clear backend error rather
 // than as a request pointing at a port that no longer means anything.
-function reqFor(_modelVal, cloud, history) {
+function reqFor(_modelVal: any, cloud: any, history: any) {
   return { history, cloud, effort: readEffort(cloud) };
 }
 // Verify HTTP server is running (only for browser users, not Electron)
 async function checkServerHealth() {
   if (IPC) return true; // Electron: uses IPC, no HTTP needed
   try {
-    const r = await fetch("/", { method: "HEAD", timeout: 2000 });
+    const r = await fetch("/", { method: "HEAD", timeout: 2000 } as any);
     return r.ok;
   } catch {
     return false;
   }
 }
 // Parse an SSE stream from a fetch Response, calling onEvent(parsedJSON) per line.
-async function pumpSSE(r, signal, onEvent) {
+async function pumpSSE(r: any, signal: any, onEvent: any) {
   const reader = r.body.getReader();
   const dec = new TextDecoder();
   let buf = "";
@@ -277,13 +281,13 @@ async function pumpSSE(r, signal, onEvent) {
     if (done) break;
     buf += dec.decode(value, { stream: true });
     const lines = buf.split("\n");
-    buf = lines.pop();
+    buf = lines.pop()!;
     for (const line of lines) {
       const mm = line.match(/^data:\s*(.*)$/);
       if (!mm) continue;
-      let j;
+      let j: any;
       try {
-        j = JSON.parse(mm[1]);
+        j = JSON.parse(mm[1]!);
       } catch (e) {
         continue;
       }
@@ -296,9 +300,13 @@ const IPC =
     ? window.WOLFSPACE
     : null;
 
-// Ambil /ww/list lewat IPC (Electron: tanpa server HTTP) ATAU fetch (browser).
-// Tanpa ini, di app Electron origin app:// fetch("/ww/list") jadi 404 → hantu tak terbuang.
-async function wwApi(path, { method = "GET", body = null } = {}) {
+// Fetch /ww/list over IPC (Electron: no HTTP server) OR fetch (browser).
+// Without this, in the Electron app's app:// origin, fetch("/ww/list") 404s and
+// ghosts are never cleared.
+async function wwApi(
+  path: string,
+  { method = "GET", body = null }: { method?: string; body?: any } = {},
+) {
   try {
     if (IPC && IPC.invoke) {
       const r = await IPC.invoke("api", { method, path, body });
@@ -320,11 +328,13 @@ async function wwApi(path, { method = "GET", body = null } = {}) {
 const wwListFetch = () => wwApi("/ww/list");
 
 // ── Electron fetch-shim ──
-// Electron TAK punya server HTTP (zero open ports). Rutekan setiap fetch path-relatif
-// ("/…") ke backend in-process lewat IPC.invoke("api"), supaya SEMUA endpoint non-stream
-// (models, cloud-providers, detect-key, cloud-save, hf, ollama, agents, terminal, run, dst)
-// hidup di Electron TANPA mengubah call-site. Di browser (IPC null) shim TIDAK dipasang —
-// fetch asli tetap dipakai. Chat/self-agent pakai IPC.stream (bukan fetch), tak terpengaruh.
+// Electron has NO HTTP server (zero open ports). Route every path-relative
+// fetch ("/…") to the in-process backend through IPC.invoke("api"), so ALL
+// non-streaming endpoints (models, cloud-providers, detect-key, cloud-save, hf,
+// ollama, agents, terminal, run, and so on) work under Electron WITHOUT
+// changing a single call site. In a browser (IPC null) the shim is NOT
+// installed and real fetch is used. Chat and self-agent use IPC.stream rather
+// than fetch, so they are unaffected.
 if (
   typeof window !== "undefined" &&
   IPC &&
@@ -334,10 +344,11 @@ if (
 ) {
   window.__wwFetchShimmed = true;
   const _realFetch = window.fetch.bind(window);
-  window.fetch = async (input, init) => {
+  window.fetch = (async (input: any, init: any) => {
     init = init || {};
     const url = typeof input === "string" ? input : (input && input.url) || "";
-    // Hanya API path-relatif same-origin. URL absolut/eksternal/blob → fetch asli.
+    // Same-origin path-relative APIs only. Absolute, external or blob URLs go
+    // to the real fetch.
     if (typeof url !== "string" || !url.startsWith("/"))
       return _realFetch(input, init);
     const method = String(
@@ -349,10 +360,11 @@ if (
         : typeof input === "object"
           ? input.body
           : null;
-    // FormData/stream tak didukung shim → serahkan ke fetch asli (jarang di path relatif).
+    // FormData and streams are unsupported by the shim, so they are handed to
+    // the real fetch (rare on a relative path).
     if (body != null && typeof body !== "string")
       return _realFetch(input, init);
-    let payload = null;
+    let payload: any = null;
     if (body != null) {
       try {
         payload = JSON.parse(body);
@@ -360,7 +372,7 @@ if (
         payload = body;
       }
     }
-    let r;
+    let r: any;
     try {
       r = await IPC.invoke("api", { method, path: url, body: payload });
     } catch (_) {
@@ -373,21 +385,22 @@ if (
       ok: status >= 200 && status < 300,
       status,
       statusText: "",
-      headers: { get: (k) => hdr[String(k).toLowerCase()] ?? null },
+      headers: { get: (k: any) => hdr[String(k).toLowerCase()] ?? null },
       json: async () => JSON.parse(text || "null"),
       text: async () => text,
       clone() {
         return this;
       },
     };
-  };
+  }) as any;
 }
 
 // ── Electron EventSource-shim ──
-// EventSource (SSE) BUKAN fetch, jadi fetch-shim tak menangkapnya → di Electron
-// `new EventSource("/api/agents/stream")` nyasar ke app:// (404), mematikan output
-// live Agent Runner / opencode CLI. Di Electron, rutekan EventSource path-relatif
-// ke IPC.stream("api", …) (apiStream) dan parse SSE jadi event onmessage.
+// EventSource (SSE) is NOT fetch, so the fetch shim never catches it — under
+// Electron `new EventSource("/api/agents/stream")` goes to app:// (404), killing
+// the live output of Agent Runner and the opencode CLI. Under Electron,
+// path-relative EventSource is routed to IPC.stream("api", …) (apiStream) and
+// the SSE is parsed into onmessage events.
 if (
   typeof window !== "undefined" &&
   IPC &&
@@ -396,7 +409,7 @@ if (
 ) {
   window.__wwEventSourceShimmed = true;
   const _RealES = window.EventSource;
-  window.EventSource = function (url) {
+  window.EventSource = function (url: any) {
     if (typeof url !== "string" || !url.startsWith("/")) {
       return _RealES
         ? new _RealES(url)
@@ -410,33 +423,35 @@ if (
       close() {},
     };
     let buf = "";
-    let cancel = null;
+    let cancel: any = null;
     try {
       cancel = IPC.stream(
         "api",
         { method: "GET", path: url },
-        (chunk) => {
+        (chunk: any) => {
           if (typeof chunk !== "string") return;
           buf += chunk;
-          let i;
+          let i: any;
           while ((i = buf.indexOf("\n\n")) >= 0) {
             const raw = buf.slice(0, i);
             buf = buf.slice(i + 2);
             const dataLines = raw
               .split("\n")
-              .filter((l) => l.slice(0, 5) === "data:")
-              .map((l) => l.slice(5).replace(/^ /, ""));
+              .filter((l: any) => l.slice(0, 5) === "data:")
+              .map((l: any) => l.slice(5).replace(/^ /, ""));
             if (dataLines.length && typeof es.onmessage === "function")
-              es.onmessage({ data: dataLines.join("\n") });
+              (es.onmessage as any)({ data: dataLines.join("\n") });
           }
         },
         () => {
           es.readyState = 2;
-          if (typeof es.onerror === "function") es.onerror({ type: "done" });
+          if (typeof es.onerror === "function")
+            (es.onerror as any)({ type: "done" });
         },
       );
     } catch (e) {
-      if (typeof es.onerror === "function") setTimeout(() => es.onerror(e), 0);
+      if (typeof es.onerror === "function")
+        setTimeout(() => (es.onerror as any)(e), 0);
     }
     es.close = () => {
       es.readyState = 2;
@@ -445,13 +460,14 @@ if (
       } catch (_) {}
     };
     return es;
-  };
+  } as any;
 }
 
 // ── Auto-migrasi localStorage (Electron, sekali jalan) ──
-// Kalau ada file jembatan dari browser (~/.wolfspace/ls-migrate.json via /ww/ls-load)
-// dan Electron ini belum pernah migrasi, TERAPKAN OTOMATIS saat load — tanpa perlu
-// menempel apa pun di DevTools console (yang diblokir proteksi self-XSS).
+// If a bridge file from the browser exists (~/.wolfspace/ls-migrate.json via
+// /ww/ls-load) and this Electron has never migrated, APPLY IT AUTOMATICALLY on
+// load — with nothing to paste into the DevTools console, which self-XSS
+// protection blocks anyway.
 if (
   typeof window !== "undefined" &&
   IPC &&
@@ -459,7 +475,7 @@ if (
   !localStorage.getItem("wolfspace_migrated")
 ) {
   IPC.invoke("api", { method: "GET", path: "/ww/ls-load" })
-    .then((r) => {
+    .then((r: any) => {
       if (!r || r.status !== 200) return;
       let data = {};
       try {
@@ -467,9 +483,11 @@ if (
       } catch (_) {
         return;
       }
-      const keys = Object.keys(data).filter((k) => k !== "wolfspace_migrated");
-      if (!keys.length) return; // belum ada dump dari browser → cek lagi lain kali
-      for (const k of keys) localStorage.setItem(k, data[k]);
+      const keys = Object.keys(data).filter(
+        (k: any) => k !== "wolfspace_migrated",
+      );
+      if (!keys.length) return; // no browser dump yet -> check again next time
+      for (const k of keys) localStorage.setItem(k, (data as any)[k]);
       localStorage.setItem("wolfspace_migrated", "1");
       console.log(
         "[ww] auto-migrasi localStorage: " +
@@ -481,12 +499,12 @@ if (
     .catch(() => {});
 }
 
-async function streamChat(reqBody, onText, signal) {
-  // Tak ada lagi `run`: cabang "run"/"retry" dulu membawa hasil auto-run, dan
-  // agent/chat.cjs sudah tak memancarkan keduanya — ia hanya mengirim tok, err,
-  // done. Menyimpannya berarti merawat keadaan yang selalu null.
+async function streamChat(reqBody: any, onText: any, signal: any) {
+  // No more `run`: the "run"/"retry" branches used to carry auto-run results,
+  // and agent/chat.cjs no longer emits either — it sends only tok, err and done.
+  // Keeping them would mean maintaining state that is always null.
   let acc = "";
-  const handle = (j) => {
+  const handle = (j: any) => {
     if (j.t === "tok") {
       acc += j.c;
       onText(acc);
@@ -499,7 +517,7 @@ async function streamChat(reqBody, onText, signal) {
   };
   if (IPC) {
     // Electron IPC � no HTTP
-    await new Promise((resolve) => {
+    await new Promise((resolve: any) => {
       const cancel = IPC.stream("chat", reqBody, handle, resolve);
       if (signal)
         signal.addEventListener("abort", () => {
@@ -519,9 +537,9 @@ async function streamChat(reqBody, onText, signal) {
   return { text: acc };
 }
 // Self-edit agent: stream the READ/GREP/EDIT/� loop (IPC, or /self-agent over HTTP).
-async function streamSelfAgent(reqBody, onEvent, signal) {
+async function streamSelfAgent(reqBody: any, onEvent: any, signal: any) {
   if (IPC) {
-    await new Promise((resolve) => {
+    await new Promise((resolve: any) => {
       const cancel = IPC.stream("self-agent", reqBody, onEvent, resolve);
       if (signal)
         signal.addEventListener("abort", () => {
@@ -541,7 +559,10 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
     if (!r.ok) throw new Error(`HTTP ${r.status}: ${r.statusText}`);
     await pumpSSE(r, signal, onEvent);
   } catch (e) {
-    if (e instanceof TypeError && e.message.includes("Failed to fetch")) {
+    if (
+      e instanceof TypeError &&
+      (e as any).message.includes("Failed to fetch")
+    ) {
       throw new Error(
         'Cannot reach the self-agent server.\n\nIf you are running in a browser:\n1. Open a terminal in the WOLFSPACE folder\n2. Run: npm start\n3. Wait until "http://127.0.0.1:8090" appears\n4. Refresh the browser and try again\n\nOr use Electron: npm run app',
       );
@@ -550,12 +571,12 @@ async function streamSelfAgent(reqBody, onEvent, signal) {
   }
 }
 
-/* Components dipindah ke public/app/Components.tsx (APP_MODULES). */
+/* Components moved to public/app/Components.tsx (APP_MODULES). */
 
-/* Sidebar dipindah ke public/app/Sidebar.tsx (APP_MODULES). */
+/* Sidebar moved to public/app/Sidebar.tsx (APP_MODULES). */
 
 /* ----------------------------- App ----------------------------- */
-const SUGGESTIONS = [];
+const SUGGESTIONS: any[] = [];
 
 /* ═══════════════════════════════════════════════════════════
    PROJECT PICKER SCREEN
@@ -567,42 +588,45 @@ const PICKER_WORKSPACES = [
   { name: "peaceful-maxwell" },
   { name: "eager-hertz" },
 ];
-/* Screens dipindah ke public/app/Screens.tsx (APP_MODULES). */
+/* Screens moved to public/app/Screens.tsx (APP_MODULES). */
 
 /* ── Logic: sidebar file (tab Changes/Files) — desain mengikuti prototipe/screenshot.
-   Terhubung ke daftar file workspace NYATA lewat GET /ww/tree, tapi hanya AKTIF
-   saat konteks web-dev (`active`) — mis. ketika agent sedang membuat/mengubah web.
+   Wired to the REAL workspace file list through GET /ww/tree, but only ACTIVE
+   in a web-dev context (`active`) — when the agent is building or changing a
+   site, for instance.
    Props: root=path workspace, active=boolean (sinyal web-dev). ── */
-// Root sidebar Logic = FOLDER dari web yang sedang dibuat, bukan seluruh workspace.
-// previewUrl berbentuk "/preview-file?path=<abs .html>" (di-set saat agent menulis
-// HTML) → ambil direktori file itu. Bila previewUrl berupa URL http (server dev),
-// tak ada folder lokal → pakai fallback (workspace aktif).
-function webProjectRoot(previewUrl, fallback) {
+// The Logic sidebar root is the FOLDER of the site being built, not the whole
+// workspace. previewUrl looks like "/preview-file?path=<abs .html>" (set when
+// the agent writes HTML), so the file's directory is taken from it. When
+// previewUrl is an http URL (a dev server) there is no local folder, so the
+// fallback (the active workspace) is used.
+function webProjectRoot(previewUrl: any, fallback: any) {
   if (!previewUrl) return fallback;
   const m = String(previewUrl).match(/[?&]path=([^&]+)/);
   if (m) {
     try {
-      const abs = decodeURIComponent(m[1]);
+      const abs = decodeURIComponent(m[1]!);
       const dir = abs.replace(/[\\/][^\\/]*$/, ""); // buang nama file → dirname
       if (dir && dir !== abs) return dir;
     } catch (_) {}
   }
   return fallback;
 }
-// Ikon berkas per bahasa. Tabelnya ada di public/app/IkonBahasa.jsx, dihasilkan
-// scripts/ikon-bahasa/build.cjs dari material-icon-theme (MIT) — tema ikon yang
-// sama dengan yang dipakai VS Code, jadi ikonnya memang yang dikenali orang.
+// Per-language file icons. The table lives in public/app/IkonBahasa.jsx,
+// generated by scripts/ikon-bahasa/build.cjs from material-icon-theme (MIT) —
+// the same icon theme VS Code uses, so these are the icons people recognise.
 //
-// Di-vendor sebagai satu modul, bukan dijadikan dependensi runtime: paket
-// aslinya 1250 SVG (1,6 MB) sementara yang muncul di pohon ini cuma puluhan.
-function ekstensiDari(name) {
+// Vendored as a single module rather than taken as a runtime dependency: the
+// original package is 1250 SVGs (1.6 MB) while only dozens ever appear in this
+// tree.
+function ekstensiDari(name: any) {
   const m = String(name || "")
     .toLowerCase()
     .match(/\.([a-z0-9]+)$/);
   return m ? m[1] : "";
 }
 
-function tsjFileType(name, dir) {
+function tsjFileType(name: any, dir: any) {
   if (dir) return "folder";
   const n = (name || "").toLowerCase();
   if (/\.pdf$/.test(n)) return "pdf";
@@ -616,32 +640,34 @@ function tsjFileType(name, dir) {
     /\.(pem|key|crt|cert|env)$/.test(n)
   )
     return "key";
-  // Bahasa diperiksa SESUDAH kasus khusus di atas: README.md tetap ikon info,
-  // bukan monogram "MD" — namanya lebih memberi tahu daripada ekstensinya.
+  // The language is checked AFTER the special cases above: README.md keeps the
+  // info icon rather than an "MD" monogram — its name tells you more than its
+  // extension does.
   const ext = ekstensiDari(n);
-  if (IKON_BAHASA[ext]) return "lang:" + ext;
+  if (ext && IKON_BAHASA[ext]) return "lang:" + ext;
   return "file";
 }
-// Bangun pohon HANYA dari file yang SEDANG DIKEMBANGKAN (ditulis/diedit agent),
-// bukan seluruh isi folder. `paths` = daftar path file yang disentuh; `root` =
-// folder proyek web (untuk memangkas prefix agar path tampil relatif & ringkas).
-// Hasilnya [{ name, depth, type }] — folder perantara ikut ditampilkan supaya
-// struktur terlihat, tapi hanya cabang menuju file yang dikembangkan.
-function buildDevTree(paths, root, folders) {
+// Build the tree ONLY from files being ACTIVELY DEVELOPED (written or edited by
+// the agent), not from the whole folder. `paths` is the list of touched file
+// paths; `root` is the web project folder, used to trim the prefix so paths show
+// relative and short. The result is [{ name, depth, type }] — intermediate
+// folders are included so the structure is visible, but only along branches
+// leading to a developed file.
+function buildDevTree(paths: any, root: any, folders: any) {
   const rootN = String(root || "")
     .replace(/\\/g, "/")
     .replace(/\/+$/, "")
     .toLowerCase();
-  const rootNode = { children: {} };
+  const rootNode: any = { children: {} as Record<string, any> };
   for (const raw of paths || []) {
     let s = String(raw || "").replace(/\\/g, "/");
     const sl = s.toLowerCase();
     if (rootN && sl.startsWith(rootN + "/")) s = s.slice(rootN.length + 1);
-    s = s.replace(/^\/+/, "").replace(/^[a-zA-Z]:\//, ""); // buang drive bila tak ter-strip root
+    s = s.replace(/^\/+/, "").replace(/^[a-zA-Z]:\//, ""); // drop the drive if not stripped
     const parts = s.split("/").filter(Boolean);
     if (!parts.length) continue;
     let cur = rootNode;
-    parts.forEach((part, i) => {
+    parts.forEach((part: any, i: number) => {
       const isFile = i === parts.length - 1;
       cur.children[part] = cur.children[part] || {
         name: part,
@@ -673,29 +699,30 @@ function buildDevTree(paths, root, folders) {
       cur = cur.children[part];
     }
   }
-  const out = [];
-  const walk = (node, depth, pre) => {
+  const out: any[] = [];
+  const walk = (node: any, depth: any, pre: any) => {
     const kids = Object.values(node.children);
-    const cmp = (a, b) =>
+    const cmp = (a: any, b: any) =>
       a.name.toLowerCase().localeCompare(b.name.toLowerCase());
     kids
-      .filter((k) => !k.isFile)
+      .filter((k: any) => !k.isFile)
       .sort(cmp)
-      .forEach((d) => {
+      .forEach((d: any) => {
         out.push({ name: d.name, depth, type: "folder", rel: pre + d.name });
         walk(d, depth + 1, pre + d.name + "/");
       });
     kids
-      .filter((k) => k.isFile)
+      .filter((k: any) => k.isFile)
       .sort(cmp)
-      .forEach((f) =>
+      .forEach((f: any) =>
         out.push({
           name: f.name,
           depth,
           type: tsjFileType(f.name, false),
-          // Path RELATIF terhadap root, dirakit saat menyusun pohon. Tanpa ini
-          // node cuma punya nama, dan nama saja tak cukup untuk membuka
-          // berkasnya — dua "index.html" di folder berbeda tak terbedakan.
+          // A path RELATIVE to root, assembled while building the tree. Without
+          // it a node has only a name, and a name alone is not enough to open
+          // the file — two "index.html" in different folders are
+          // indistinguishable.
           rel: pre + f.name,
         }),
       );
@@ -706,14 +733,15 @@ function buildDevTree(paths, root, folders) {
 /* ── Panel kode di sisi kanan view Logic ──
    Tata letaknya mengikuti VS Code: pohon berkas di kiri, isi berkas di kanan.
 
-   Isinya diambil lewat /preview-file?raw=1 — bukan jalur preview biasa, yang
-   menyuntikkan <base> ke berkas HTML supaya link relatifnya resolve. Suntikan
-   itu benar untuk preview dan salah untuk editor: yang tampil bukan lagi isi
-   berkasnya, dan pemakai membaca satu baris yang tidak ada di disk.
+   Contents come through /preview-file?raw=1 — not the ordinary preview path,
+   which injects a <base> into HTML files so their relative links resolve. That
+   injection is right for a preview and wrong for an editor: what shows is no
+   longer the file's contents, and the user reads a line that is not on disk.
 
-   Editor dibuat SEKALI lalu modelnya diganti tiap berpindah berkas. Membuat
-   ulang editor tiap klik menumpuk observer Monaco, dan itu jalur yang persis
-   sudah pernah meledak di repo ini (lihat tests/monaco-dekat-layar.test.js). */
+   The editor is created ONCE and its model swapped on each file change.
+   Recreating the editor on every click stacks Monaco observers, and that is
+   precisely the path that has blown up in this repo before (see
+   tests/monaco-dekat-layar.test.js). */
 function LogicCodePane({
   root,
   rel,
@@ -727,73 +755,73 @@ function LogicCodePane({
   onTutupTab,
   onGeserTab,
   onKotorBerubah,
-}) {
-  const hostRef = React.useRef(null);
-  const edRef = React.useRef(null);
+}: any) {
+  const hostRef = React.useRef<any>(null);
+  const edRef = React.useRef<any>(null);
   const [galat, setGalat] = React.useState("");
   const [muat, setMuat] = React.useState(false);
-  // ── Panel ini bisa DISUNTING, dan itu menuntut tiga hal ──
+  // ── This panel is EDITABLE, and that demands three things ──
   //
-  // Dulu editornya readOnly, jadi tak ada keadaan yang perlu dijaga. Begitu ia
-  // bisa diketik, tiga hal jadi wajib: menandai bahwa ada perubahan yang belum
-  // saved, mengingat berkas MANA yang sedang disunting, dan mencegah
-  // pergantian berkas menelan ketikan yang belum disimpan.
+  // The editor used to be readOnly, so there was no state to protect. Once it
+  // could be typed into, three things became necessary: marking that unsaved
+  // changes exist, remembering WHICH file is being edited, and stopping a file
+  // switch from swallowing unsaved typing.
   const [kotor, setKotor] = React.useState(false);
-  // Salinan ref dari `kotor`. Run dibungkus useCallback, dan callback yang
-  // membaca state langsung akan memegang nilai dari render saat ia dibuat —
-  // artinya Run yang ditekan sesudah mengetik masih melihat "bersih" dan
+  // A ref copy of `kotor`. Run is wrapped in useCallback, and a callback that
+  // reads state directly holds the value from the render that created it —
+  // meaning a Run pressed after typing would still see "clean" and
   // melewatkan simpan tanpa satu pun tanda.
   const kotorRef = React.useRef(false);
   // Dirty state PER FILE. A single flag only describes the active file, and the
   // tab strip has to mark every file that has unsaved work.
   const kotorPerBerkas = React.useRef(new Map());
   const [saveState, setSaveState] = React.useState("");
-  // relRef menyimpan berkas yang isinya SEDANG ada di editor. Prop `rel` sudah
-  // berubah ke berkas baru sebelum isinya tiba, jadi menyimpan memakai `rel`
-  // akan menulis isi berkas LAMA ke nama berkas BARU.
+  // relRef holds the file whose contents are CURRENTLY in the editor. The `rel`
+  // prop has already changed to the new file before its contents arrive, so
+  // saving by `rel` would write the OLD file's contents under the NEW file's name.
   const relRef = React.useRef(rel);
 
   // ── Titik henti ──
   //
-  // Disimpan DI ATAS (app.jsx), bukan di sini: ia harus bertahan saat pemakai
-  // berpindah berkas lalu kembali, dan harus terbaca oleh panel debug yang
-  // bukan anak komponen ini.
+  // Held ABOVE (in app.tsx) rather than here: it has to survive the user moving
+  // to another file and back, and it has to be readable by the debug panel,
+  // which is not a child of this component.
   //
-  // ubahTitikRef dipakai karena penangan klik Monaco dipasang SEKALI saat
-  // editor dibuat. Kalau ia menutupi fungsi dari render saat itu, ia akan
-  // selamanya melihat daftar titik henti yang kosong — klik pertama bekerja,
-  // klik kedua "menghapus" titik yang menurutnya tak pernah ada.
-  const ubahTitikRef = React.useRef(() => {});
+  // ubahTitikRef is used because Monaco's click handler is installed ONCE when
+  // the editor is created. If it closed over the function from that render, it
+  // would see an empty breakpoint list forever — the first click works, the
+  // second "removes" a point it believes never existed.
+  const ubahTitikRef = React.useRef<(baris?: any) => void>(() => {});
   React.useEffect(() => {
-    ubahTitikRef.current = (baris) => {
+    ubahTitikRef.current = (baris: any) => {
       if (!setTitikHenti) return;
       const berkas = relRef.current;
       if (!berkas) return;
-      setTitikHenti((sblm) => {
+      setTitikHenti((sblm: any) => {
         const ada = (sblm && sblm[berkas]) || [];
         const baru = ada.includes(baris)
-          ? ada.filter((l) => l !== baris)
-          : ada.concat(baris).sort((a, b) => a - b);
+          ? ada.filter((l: any) => l !== baris)
+          : ada.concat(baris).sort((a: any, b: any) => a - b);
         return { ...(sblm || {}), [berkas]: baru };
       });
     };
   }, [setTitikHenti]);
 
   // Dekorasi digambar ulang tiap titik henti / baris aktif berubah. Koleksinya
-  // dipegang di ref supaya yang lama benar-benar diganti, bukan ditumpuk —
-  // menumpuk membuat titik henti yang dilepas tetap terlihat.
-  const hiasRef = React.useRef(null);
+  // held in a ref so the old set is genuinely replaced rather than stacked —
+  // stacking leaves removed breakpoints still visible.
+  const hiasRef = React.useRef<any>(null);
   React.useEffect(() => {
     const ed = edRef.current;
     if (!ed || !window.monaco) return;
     const garis = (titikHenti && titikHenti[rel]) || [];
     const R = window.monaco.Range;
-    const daftar = garis.map((l) => ({
+    const daftar = garis.map((l: any) => ({
       range: new R(l, 1, l, 1),
       options: {
         glyphMarginClassName: "dbg-titik-henti",
         glyphMarginHoverMessage: { value: "Breakpoint on line " + l },
-        stickiness: 1, // ikut bergeser saat baris di atasnya disisipkan/dihapus
+        stickiness: 1, // moves along when lines above are inserted or deleted
       },
     }));
     if (barisAktif && barisAktif.berkas === rel && barisAktif.baris)
@@ -808,9 +836,9 @@ function LogicCodePane({
     hiasRef.current = ed.deltaDecorations(hiasRef.current || [], daftar);
   }, [titikHenti, rel, barisAktif, muat]);
 
-  // Baris tempat debugger berhenti DIGULIRKAN ke tengah pandangan. Tanpa ini,
-  // melangkah ke bagian berkas yang sedang tak terlihat tampak seperti tak ada
-  // yang terjadi.
+  // The line the debugger stopped on is SCROLLED to the middle of the view.
+  // Without this, stepping into a part of the file that is off screen looks like
+  // nothing happened.
   React.useEffect(() => {
     const ed = edRef.current;
     if (!ed || !barisAktif || barisAktif.berkas !== rel || !barisAktif.baris)
@@ -823,7 +851,7 @@ function LogicCodePane({
   React.useEffect(() => {
     let dibuang = false;
     if (!window.monacoReady || !hostRef.current) return;
-    window.monacoReady.then((monaco) => {
+    window.monacoReady.then((monaco: any) => {
       if (dibuang || !hostRef.current || edRef.current) return;
       pasangSaranPustaka(monaco);
       edRef.current = monaco.editor.create(hostRef.current, {
@@ -831,55 +859,55 @@ function LogicCodePane({
         language: "plaintext",
         theme: "wolfspace-gelap",
         automaticLayout: true,
-        // Bisa disunting. Sebelumnya readOnly, dan itulah yang membuat panel
-        // ini hanya bisa dibaca — melonggarkannya di sini adalah separuh
-        // perbaikan; separuh lainnya adalah rute POST /ww/tulis-berkas.
+        // Editable. It used to be readOnly, and that is what made this panel
+        // read-only — loosening it here is half the fix; the other half is the
+        // POST /ww/tulis-berkas route.
         readOnly: false,
         domReadOnly: false,
-        // false, sama seperti dua editor Monaco lain di aplikasi ini
-        // (AgentSteps, CodeBlocks). Beda dari keduanya di sini menghasilkan
-        // bug yang nyata: minimap punya SLIDER (kotak penunjuk viewport), dan
-        // pada berkas pendek di panel sempit, slider itu memenuhi hampir
-        // seluruh tinggi minimap — terlihat persis seperti satu garis biru
-        // solid membentang penuh, bukan seperti minimap sama sekali.
+        // false, the same as this app's two other Monaco editors (AgentSteps,
+        // CodeBlocks). Differing from them here produced a real bug: the minimap
+        // has a SLIDER (the viewport indicator), and on a short file in a narrow
+        // panel that slider fills almost the whole minimap height — looking
+        // exactly like one solid blue line spanning the full height, and not
+        // like a minimap at all.
         minimap: { enabled: false },
         fontSize: 12,
         scrollBeyondLastLine: false,
         wordWrap: "off",
-        // Garis yang MASIH terlihat sesudah minimap dimatikan bukan sisa
-        // minimap sama sekali — itu batas atas/bawah kotak highlight "baris
-        // aktif", bawaan Monaco kalau renderLineHighlight tak disetel (default
-        // "all"). Pada baris pertama, batas ATASNYA berimpit dengan tepi
-        // editor, jadi yang terlihat cuma satu garis membentang penuh persis
-        // di bawah header panel — gejala yang sama sekali beda dari minimap,
-        // tapi kelihatan serupa: satu garis solid selebar panel.
+        // The line STILL visible after the minimap was turned off was no
+        // minimap remnant at all — it is the top/bottom border of the "active
+        // line" highlight box, Monaco's default when renderLineHighlight is
+        // unset (default "all"). On the first line its TOP border coincides
+        // with the editor edge, so all you see is one full-width line right
+        // under the panel header — a completely different cause from the
+        // minimap, but looking the same: one solid line the width of the panel.
         //
-        // Dua editor Monaco lain (AgentSteps, CodeBlocks) sudah "none", dan
-        // panel ini tetap ikut sesudah bisa disunting: menyalakannya kembali
-        // mengembalikan garis palsu itu persis, dan penanda kursor Monaco
-        // sendiri sudah cukup menunjukkan baris mana yang sedang diketik.
+        // The two other Monaco editors (AgentSteps, CodeBlocks) are already
+        // "none", and this panel followed once it became editable: turning it
+        // back on reproduces that false line exactly, and Monaco's own cursor
+        // marker already shows which line is being typed on.
         renderLineHighlight: "none",
-        // PENYEBAB KETIGA, ditemukan lewat screenshot Playwright dari editor
-        // TERISOLASI (di luar aplikasi) supaya tak ikut tertipu oleh cache
-        // atau reload yang tertunda. Dua perbaikan di atas membersihkan garis
-        // atas dan bawah; garis di TEPI KANAN bertahan sesudah keduanya —
-        // terbukti berasal dari elemen `.decorationsOverviewRuler`, kanvas
-        // 14px yang Monaco gambar sendiri di sisi kanan editor (untuk
-        // menampilkan tanda kesalahan/hasil pencarian, meski minimap mati).
-        // Batasnya DIGAMBAR ke kanvas, bukan diatur lewat CSS — jadi
-        // `outline: none` tak menyentuhnya; harus dimatikan lewat opsi ini.
+        // THE THIRD CAUSE, found through a Playwright screenshot of an ISOLATED
+        // editor (outside the app) so it could not be fooled by caching or a
+        // deferred reload. The two fixes above cleared the top and bottom lines;
+        // the line on the RIGHT EDGE survived both — traced to the
+        // `.decorationsOverviewRuler` element, the 14px canvas Monaco paints
+        // itself on the editor's right side (to show error marks and search
+        // hits, even with the minimap off). Its border is DRAWN to the canvas
+        // rather than set through CSS — so `outline: none` does not touch it;
+        // it has to be disabled through this option.
         overviewRulerLanes: 0,
-        // Jalur gutter tempat titik henti digambar. Tanpa ini, dekorasi
-        // glyphMarginClassName tak punya tempat dan tak pernah terlihat —
-        // kliknya bekerja, titiknya tidak muncul, dan itu tak bisa dibedakan
-        // dari titik henti yang gagal dipasang.
+        // The gutter lane breakpoints are drawn in. Without it, a
+        // glyphMarginClassName decoration has nowhere to go and is never seen —
+        // the click works, the point does not appear, and that is
+        // indistinguishable from a breakpoint that failed to set.
         glyphMargin: true,
       });
-      // Klik di gutter = pasang/lepas titik henti, seperti VS Code. Yang
-      // diperiksa JENIS sasarannya, bukan koordinat: nomor baris dan jalur
-      // glyph bersebelahan, dan menebak dari x membuat klik pada nomor baris
+      // A gutter click sets or clears a breakpoint, as in VS Code. What is
+      // checked is the target's TYPE, not its coordinates: the line number and
+      // the glyph lane sit side by side, and guessing from x makes a click on
       // ikut memasang titik henti.
-      edRef.current.onMouseDown((e) => {
+      edRef.current.onMouseDown((e: any) => {
         const T = monaco.editor.MouseTargetType;
         if (
           e.target.type !== T.GUTTER_GLYPH_MARGIN &&
@@ -901,9 +929,10 @@ function LogicCodePane({
     };
   }, []);
 
-  // Akar yang dipakai penyedia saran. Disetel di sini, bukan sekali saat
-  // editor dibuat: pemakai bisa berpindah proyek tanpa editor dibuat ulang, dan
-  // saran yang tertinggal di akar lama menawarkan pustaka proyek yang salah.
+  // The root the suggestion provider uses. Set here rather than once when the
+  // editor is created: the user can switch projects without the editor being
+  // rebuilt, and suggestions left on the old root offer the wrong project's
+  // libraries.
   React.useEffect(() => {
     _akarPustaka = String(root || "");
   }, [root]);
@@ -950,7 +979,7 @@ function LogicCodePane({
     let dibatalkan = false;
     setGalat("");
 
-    const pasang = (model) => {
+    const pasang = (model: any) => {
       const ed = edRef.current;
       if (!ed) return;
       ed.setModel(model);
@@ -979,10 +1008,10 @@ function LogicCodePane({
     setMuat(true);
     const abs = String(root || "").replace(/[\/]+$/, "") + "/" + rel;
     fetch("/preview-file?raw=1&path=" + encodeURIComponent(abs))
-      .then((r) =>
+      .then((r: any) =>
         r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)),
       )
-      .then((teks) => {
+      .then((teks: any) => {
         if (dibatalkan) return;
         setMuat(false);
         if (!edRef.current || !window.monaco) return;
@@ -999,24 +1028,24 @@ function LogicCodePane({
         modelRef.current.set(rel, model);
         pasang(model);
       })
-      .catch((e) => {
+      .catch((e: any) => {
         if (dibatalkan) return;
         setMuat(false);
-        setGalat(String(e.message || e));
+        setGalat(String((e as any).message || e));
       });
     return () => {
       dibatalkan = true;
     };
   }, [root, rel, onKotorBerubah]);
 
-  // fetch path-relatif biasa — jalur yang SAMA dengan pemuatan isi berkas di
-  // atas. Di desktop, shim di bagian atas berkas ini sudah membelokkan setiap
-  // fetch("/…") ke IPC.invoke("api"), jadi menulis jalur IPC sendiri di sini
-  // bukan cuma mubazir: ia jadi salinan kedua dari transport yang sama, yang
-  // harus ikut diperbaiki tiap kali bentuk balasan IPC berubah.
-  // Mengembalikan true/false, bukan void: Run memakainya untuk memutuskan
-  // apakah boleh lanjut. Menjalankan sesudah simpan GAGAL berarti menjalankan
-  // isi berkas yang lama sementara pesan galatnya lewat tanpa dibaca.
+  // An ordinary path-relative fetch — the SAME path as loading file contents
+  // above. On desktop, the shim at the top of this file already redirects every
+  // fetch("/…") to IPC.invoke("api"), so writing an IPC path by hand here would
+  // not merely be redundant: it would be a second copy of the same transport,
+  // needing its own fix every time the IPC reply shape changes.
+  // It returns true/false rather than void: Run uses it to decide whether to
+  // continue. Running after a FAILED save means running the old file contents
+  // while the error message goes unread.
   const simpan = React.useCallback(async () => {
     const ed = edRef.current;
     const target = relRef.current;
@@ -1045,32 +1074,32 @@ function LogicCodePane({
       setSaveState("saved");
       return true;
     } catch (e) {
-      // Penanda kotor SENGAJA tidak dibersihkan saat failed: pemakai harus tetap
-      // melihat bahwa perubahannya belum aman di disk.
-      setSaveState("failed: " + String(e.message || e));
+      // The dirty marker is DELIBERATELY not cleared on failure: the user must
+      // keep seeing that their changes are not safely on disk.
+      setSaveState("failed: " + String((e as any).message || e));
       return false;
     }
   }, [root, onKotorBerubah]);
 
-  // ── Jalankan: SIMPAN DULU, baru jalankan ──
+  // ── Run: SAVE FIRST, then run ──
   //
-  // Tanpa itu, menekan Run sesudah mengetik menjalankan isi berkas yang LAMA —
-  // keluarannya tak cocok dengan yang terlihat di editor, dan tak ada satu pun
-  // petunjuk kenapa. Ditunggu sampai simpan selesai (await), bukan dipanggil
-  // berbarengan: perintahnya akan mendahului tulisan ke disk.
+  // Without that, pressing Run after typing runs the OLD file contents — the
+  // output does not match what is visible in the editor, and there is not a
+  // single clue why. The save is awaited rather than fired alongside: otherwise
+  // the command would outrun the write to disk.
   const abs = React.useCallback(
-    (r) => String(root || "").replace(/[\/]+$/, "") + "/" + r,
+    (r: any) => String(root || "").replace(/[\/]+$/, "") + "/" + r,
     [root],
   );
   const bisaJalan = !!rel && !!perintahJalankan(rel);
-  // Ekstensi saja TIDAK cukup. Tanpa pemeriksaan ini, membuka .rb di mesin
-  // tanpa rdbg membuat tombolnya menyala, perintahnya gagal di terminal, dan
-  // UI tetap menyatakan "Sesi hidup · rdbg" — aplikasi melaporkan keadaan yang
-  // tak sama dengan yang sebenarnya.
-  const [debugAda, setDebugAda] = React.useState(null); // null = belum tahu
+  // The extension alone is NOT enough. Without this check, opening a .rb on a
+  // machine without rdbg lights the button up, the command fails in the
+  // terminal, and the UI still says "Session live · rdbg" — the app reporting a
+  // state that does not match reality.
+  const [debugAda, setDebugAda] = React.useState<any>(null); // null = not known yet
   React.useEffect(() => {
     let mati = false;
-    ambilDebugTersedia().then((d) => {
+    ambilDebugTersedia().then((d: any) => {
       if (!mati) setDebugAda(d);
     });
     return () => {
@@ -1078,22 +1107,22 @@ function LogicCodePane({
     };
   }, []);
   const jenisDbg = rel ? jenisDebugger(rel) : null;
-  // "Belum tahu" diperlakukan sebagai BOLEH: mematikan tombol karena satu
-  // permintaan gagal lebih membingungkan daripada perintah yang gagal dengan
+  // "Not known yet" is treated as ALLOWED: disabling a button because one
+  // request failed is more confusing than a command that fails with
   // pesan jelas di terminal.
   const bisaDebug =
     !!rel &&
     !!perintahDebug(rel) &&
-    (debugAda === null || debugAda[jenisDbg] !== false);
-  // `mode` diteruskan apa adanya ke pemanggil: satu jalur untuk Run dan Debug,
-  // supaya syarat "simpan dulu" tak mungkin berlaku di salah satunya saja.
+    (debugAda === null || debugAda[jenisDbg!] !== false);
+  // `mode` is passed straight through to the caller: one path for both Run and
+  // Debug, so the "save first" requirement cannot apply to only one of them.
   const kirimKe = React.useCallback(
-    async (mode) => {
+    async (mode: any) => {
       const target = relRef.current;
       if (!target || !onRun) return;
       if (kotorRef.current) {
         const ok = await simpan();
-        if (!ok) return; // could not save -> jangan jalankan yang basi
+        if (!ok) return; // could not save -> do not run something stale
       }
       onRun(abs(target), mode, String(root || ""));
     },
@@ -1102,27 +1131,27 @@ function LogicCodePane({
   const jalankan = React.useCallback(() => kirimKe("jalan"), [kirimKe]);
   const debug = React.useCallback(() => kirimKe("debug"), [kirimKe]);
 
-  // Pemicu debug didaftarkan KE ATAS, bukan disalin ke panel terminal. Kalau
-  // panel terminal memanggil perintah debug-nya sendiri, ia melewati
-  // "simpan dulu" yang ada di sini — dan menjalankan isi berkas yang lama di
-  // bawah debugger justru bentuk kebingungan yang paling mahal: baris yang
-  // disorot debugger tak cocok dengan baris yang terlihat di editor.
+  // The debug trigger is registered UPWARDS rather than copied into the terminal
+  // panel. If the terminal panel called its own debug command it would bypass
+  // the "save first" rule that lives here — and running old file contents under
+  // a debugger is the most expensive form of confusion there is: the line the
+  // debugger highlights does not match the line visible in the editor.
   React.useEffect(() => {
     if (!onDaftarDebug) return;
     if (!rel) {
       onDaftarDebug(null);
       return () => onDaftarDebug(null);
     }
-    // Alasan ikut dikirim, bukan cuma "tidak bisa". Tombol yang mati tanpa
-    // keterangan tak bisa dibedakan dari aplikasi yang rusak — dan dua sebabnya
-    // menuntut tindakan yang sama sekali berbeda: yang satu ganti berkas, yang
+    // The reason is sent along, not just "cannot". A dead button with no
+    // explanation is indistinguishable from a broken app — and the two causes
+    // call for completely different actions: one means changing file, the other
     // satu pasang debuggernya.
     let alasan = "";
     if (!perintahDebug(rel)) alasan = "No known debugger for this file type.";
-    else if (debugAda && debugAda[jenisDbg] === false)
+    else if (debugAda && debugAda[jenisDbg!] === false)
       alasan =
         "The debugger for this file (" +
-        String(_PERINTAH_DEBUG[ekstensiDari(rel)] || "").split(" ")[0] +
+        String(_PERINTAH_DEBUG[ekstensiDari(rel)!] || "").split(" ")[0] +
         ") is not installed on this machine.";
     onDaftarDebug({
       berkas: rel,
@@ -1132,12 +1161,12 @@ function LogicCodePane({
     return () => onDaftarDebug(null);
   }, [onDaftarDebug, bisaDebug, debug, rel, debugAda, jenisDbg]);
 
-  // Ctrl+S / Cmd+S di dalam editor. Tanpa ini, pintasan itu diambil alih
-  // browser (Save Page) dan pemakai mengira aplikasinya tak merespons.
+  // Ctrl+S / Cmd+S inside the editor. Without this the shortcut is taken over by
+  // the browser (Save Page) and the user thinks the app is not responding.
   React.useEffect(() => {
     const el = hostRef.current;
     if (!el) return;
-    const tekan = (e) => {
+    const tekan = (e: any) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
         simpan();
@@ -1157,10 +1186,10 @@ function LogicCodePane({
         minWidth: 0,
         display: "flex",
         flexDirection: "column",
-        // Warna yang SAMA dengan panel berkas di kirinya. Editor Monaco-nya
-        // sendiri berlatar transparan (tema wolfspace-gelap), jadi warna ini
-        // yang benar-benar terlihat — keduanya terbaca sebagai satu permukaan,
-        // bukan dua panel yang kebetulan bersebelahan.
+        // The SAME colour as the file panel to its left. The Monaco editor
+        // itself has a transparent background (the wolfspace-dark theme), so
+        // this is the colour actually seen — the two read as one surface rather
+        // than two panels that happen to be adjacent.
         background: "#0c1219",
       }}
     >
@@ -1186,7 +1215,7 @@ function LogicCodePane({
             name only ever tells you where you are — never where else you could
             go. */}
         <div className="tab-strip" role="tablist">
-          {(tabs && tabs.length ? tabs : rel ? [rel] : []).map((t) => (
+          {(tabs && tabs.length ? tabs : rel ? [rel] : []).map((t: any) => (
             <div
               key={t}
               role="tab"
@@ -1194,23 +1223,23 @@ function LogicCodePane({
               className={"tab" + (t === rel ? " aktif" : "")}
               title={t}
               draggable
-              onDragStart={(e) => {
+              onDragStart={(e: any) => {
                 e.dataTransfer.setData("text/plain", t);
                 e.dataTransfer.effectAllowed = "move";
               }}
-              onDragOver={(e) => {
+              onDragOver={(e: any) => {
                 // Without preventDefault the browser refuses the drop and the
                 // whole gesture silently does nothing.
                 e.preventDefault();
                 e.dataTransfer.dropEffect = "move";
               }}
-              onDrop={(e) => {
+              onDrop={(e: any) => {
                 e.preventDefault();
                 const dari = e.dataTransfer.getData("text/plain");
                 if (dari && dari !== t && onGeserTab) onGeserTab(dari, t);
               }}
               onClick={() => onPilihTab && onPilihTab(t)}
-              onAuxClick={(e) => {
+              onAuxClick={(e: any) => {
                 // Middle-click closes, as in every editor with tabs.
                 if (e.button === 1 && onTutupTab) {
                   e.preventDefault();
@@ -1233,7 +1262,7 @@ function LogicCodePane({
                 }
                 aria-label={"Close " + t}
                 title={"Close " + t}
-                onClick={(e) => {
+                onClick={(e: any) => {
                   e.stopPropagation();
                   if (onTutupTab) onTutupTab(t);
                 }}
@@ -1287,18 +1316,18 @@ function LogicCodePane({
                 : "This file is not run through the terminal"
             }
           >
-            {/* Segitiga isi — tanda "jalankan" yang sama di editor mana pun. */}
+            {/* A filled triangle — the same "run" symbol as in any editor. */}
             <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor">
               <path d="M1 0.5v9l8-4.5z" />
             </svg>
             Run
           </button>
         )}
-        {/* Tombol Debug PINDAH ke kelompok tab terminal. Debug adalah
-            SESI yang hidup di terminal — tempatnya bersama keluaran yang
-            ia hasilkan, bukan di sebelah tombol Save. Yang tetap di
-            sini cuma pemicunya, didaftarkan ke atas lewat onDaftarDebug
-            supaya syarat "simpan dulu" tak hilang saat dipindah. */}
+        {/* The Debug button MOVED to the terminal tab group. Debug is
+            a SESSION that lives in the terminal — it belongs beside the
+            output it produces, not next to the Save button. All that stays
+            here is its trigger, registered upwards through onDaftarDebug so
+            the "save first" requirement is not lost in the move. */}
         {rel && (
           <button
             type="button"
@@ -1307,8 +1336,8 @@ function LogicCodePane({
             disabled={!kotor}
             title="Save (Ctrl+S)"
           >
-            {/* Disket. Ikon yang sama dipakai editor mana pun untuk "simpan",
-                jadi ia terbaca tanpa perlu tulisannya dibaca dulu. */}
+            {/* A floppy disk. The same icon every editor uses for "save",
+                so it reads without its label having to be read first. */}
             <svg
               width="10"
               height="10"
@@ -1334,18 +1363,18 @@ function LogicCodePane({
   );
 }
 
-// ── Ekstensi -> perintah untuk menjalankannya di terminal ──
+// ── Extension -> the command that runs it in the terminal ──
 //
-// Dipisah jadi fungsi murni supaya bisa diuji tanpa DOM, terminal, atau PTY:
-// yang mudah salah di sini bukan tombolnya, melainkan pengutipan path. Path
-// absolut Windows penuh spasi ("C:\Users\...\My Project\a.js"), dan tanpa tanda
-// kutip shell memecahnya jadi beberapa argumen — perintahnya gagal dengan pesan
-// yang menunjuk ke berkas yang tak pernah ada.
+// Split out as a pure function so it can be tested without a DOM, a terminal or
+// a PTY: what is easy to get wrong here is not the button but the path quoting.
+// Windows absolute paths are full of spaces ("C:\Users\...\My Project\a.js"),
+// and without quotes the shell splits them into several arguments — the command
+// then fails with a message pointing at a file that never existed.
 //
-// Mengembalikan null untuk yang memang tak dijalankan lewat terminal (.html
-// tempatnya di panel preview, .json/.md bukan program) supaya tombolnya bisa
-// dimatikan dengan alasan yang jelas, bukan menjalankan sesuatu yang keliru.
-const _PERINTAH_JALAN = {
+// It returns null for things that are not run through a terminal at all (.html
+// belongs in the preview panel, .json/.md are not programs) so the button can be
+// disabled with a clear reason rather than running something wrong.
+const _PERINTAH_JALAN: Record<string, string> = {
   js: "node",
   mjs: "node",
   cjs: "node",
@@ -1359,65 +1388,66 @@ const _PERINTAH_JALAN = {
   sh: "bash",
   ps1: "powershell -NoProfile -File",
 };
-function perintahJalankan(pathAbsolut) {
+function perintahJalankan(pathAbsolut: any) {
   const nama = String(pathAbsolut || "");
   const ext = ekstensiDari(nama);
-  const bin = _PERINTAH_JALAN[ext];
+  const bin = _PERINTAH_JALAN[ext!];
   if (!bin) return null;
-  // Tanda kutip GANDA, bukan tunggal: PowerShell adalah shell bawaan di sini,
-  // dan kutip tunggal di dalamnya tidak melebarkan apa pun — tapi cmd.exe
-  // memperlakukan kutip tunggal sebagai karakter biasa, jadi path-nya rusak.
+  // DOUBLE quotes, not single: PowerShell is the default shell here, and single
+  // quotes inside it expand nothing — but cmd.exe treats a single quote as an
+  // ordinary character, which breaks the path.
   return bin + ' "' + nama.replace(/"/g, '\\"') + '"';
 }
 
-// ── Saran pustaka saat mengetik import/require ──
+// ── Library suggestions while typing import/require ──
 //
-// Monaco sudah membawa layanan bahasa JS/TS, jadi anggota objek dan bawaan
-// bahasa sudah tersaran sendiri. Yang TIDAK ia ketahui adalah pustaka apa yang
-// dipakai proyek INI — dan justru itu yang paling sering diketik.
+// Monaco already ships JS/TS language services, so object members and language
+// built-ins suggest themselves. What it does NOT know is which libraries THIS
+// project uses — and those are what gets typed most often.
 //
-// Daftarnya diambil dari manifes lewat /ww/pustaka, dan hanya ditawarkan di
-// dalam TANDA KUTIP milik import/require. Tanpa batasan itu, nama paket ikut
-// muncul di tengah kalimat biasa dan menutupi saran yang benar.
+// The list comes from the manifest via /ww/pustaka, and is only offered inside
+// an import/require STRING. Without that restriction, package names show up
+// mid-sentence in ordinary prose and bury the correct suggestions.
 const _POLA_IMPOR = /(?:require\(|import\s*\(|from\s+|import\s+)['"]([^'"]*)$/;
 const _POLA_IMPOR_PY = /^\s*(?:from|import)\s+([\w.]*)$/;
 let _pustakaCache = { akar: null, data: null, janji: null };
-function ambilPustaka(akar) {
+function ambilPustaka(akar: any) {
   if (!akar) return Promise.resolve(null);
   if (_pustakaCache.akar === akar && _pustakaCache.data)
     return Promise.resolve(_pustakaCache.data);
-  // Satu permintaan per akar, bukan satu per ketukan tombol: penyedia saran
-  // dipanggil ulang tiap karakter, dan tanpa ini tiap huruf jadi satu request.
+  // One request per root rather than one per keystroke: the suggestion provider
+  // is called again on every character, and without this each letter would be a
+  // request.
   if (_pustakaCache.akar === akar && _pustakaCache.janji)
     return _pustakaCache.janji;
   const janji = fetch("/ww/pustaka?path=" + encodeURIComponent(akar))
-    .then((r) => r.json())
-    .then((d) => {
+    .then((r: any) => r.json())
+    .then((d: any) => {
       _pustakaCache = { akar, data: d, janji: null };
       return d;
     })
     .catch(() => null);
-  _pustakaCache = { akar, data: null, janji };
+  _pustakaCache = { akar, data: null as any, janji } as any;
   return janji;
 }
-// Akar yang sedang dibuka. Penyedia saran didaftarkan SEKALI secara global
-// (mendaftarkannya per-editor menumpuk penyedia dan menggandakan saran tiap
-// kali berkas diganti), jadi akarnya dititipkan di sini.
+// The currently open root. The suggestion provider is registered ONCE,
+// globally (registering per-editor stacks providers and duplicates the
+// suggestions each time the file changes), so the root is parked here.
 let _akarPustaka = "";
 let _saranTerpasang = false;
-function pasangSaranPustaka(monaco) {
+function pasangSaranPustaka(monaco: any) {
   if (_saranTerpasang) return;
   _saranTerpasang = true;
-  const buat = (nama, jenis, rentang) => ({
+  const buat = (nama: any, jenis: any, rentang: any) => ({
     label: nama,
     kind: monaco.languages.CompletionItemKind.Module,
     detail: jenis,
     insertText: nama,
     range: rentang,
   });
-  const sediakan = (bahasaPy) => ({
+  const sediakan = (bahasaPy: any) => ({
     triggerCharacters: bahasaPy ? [" ", "."] : ['"', "'", "/"],
-    provideCompletionItems: async (model, position) => {
+    provideCompletionItems: async (model: any, position: any) => {
       const sampai = model.getValueInRange({
         startLineNumber: position.lineNumber,
         startColumn: 1,
@@ -1438,11 +1468,11 @@ function pasangSaranPustaka(monaco) {
         endColumn: position.column,
       };
       const daftar = bahasaPy
-        ? (data.py || []).map((n) => buat(n, "requirements.txt", rentang))
+        ? (data.py || []).map((n: any) => buat(n, "requirements.txt", rentang))
         : (data.js || [])
-            .map((n) => buat(n, "package.json", rentang))
+            .map((n: any) => buat(n, "package.json", rentang))
             .concat(
-              (data.builtin || []).map((n) =>
+              (data.builtin || []).map((n: any) =>
                 buat(n, "modul bawaan Node", rentang),
               ),
             );
@@ -1454,27 +1484,26 @@ function pasangSaranPustaka(monaco) {
   monaco.languages.registerCompletionItemProvider("python", sediakan(true));
 }
 
-// ── Debug: menjalankan berkas DI BAWAH debugger, di terminal yang sama ──
+// ── Debug: running a file UNDER a debugger, in the same terminal ──
 //
-// Yang dipilih di sini debugger BER-BARIS-PERINTAH, bukan protokol DAP seperti
-// yang dipakai VS Code. Alasannya bukan kemalasan: DAP menuntut adapter per
-// bahasa, proses perantara, dan panel variabel/tumpukan sendiri — sementara
-// `node inspect` dan `python -m pdb` sudah memberi hal yang sama (titik henti,
-// melangkah, memeriksa nilai) DI DALAM PTY yang sudah kita punya.
+// What is chosen here is a COMMAND-LINE debugger, not the DAP protocol VS Code
+// uses. The reason is not laziness: DAP demands a per-language adapter, an
+// intermediary process, and its own variable and stack panels — while `node
+// inspect` and `python -m pdb` already give the same things (breakpoints,
+// stepping, inspecting values) INSIDE the PTY we already have.
 //
-// `node inspect`, BUKAN `node --inspect-brk`. Keduanya sering tertukar:
-// --inspect-brk hanya membuka port lalu mencetak alamat ws:// dan menunggu
-// klien dari luar — di terminal ia terlihat seperti menggantung tanpa sebab.
-// `node inspect` menjalankan klien REPL-nya sekalian, dan itulah yang bisa
-// dipakai orang.
+// `node inspect`, NOT `node --inspect-brk`. The two are often confused:
+// --inspect-brk only opens a port, prints a ws:// address and waits for an
+// external client — in a terminal it looks like it hung for no reason. `node
+// inspect` starts its REPL client as well, and that is the one people can use.
 //
-// null berarti "tak ada debugger yang kita tahu untuk berkas ini" — tombolnya
-// dimatikan dengan alasan yang jelas, bukan menjalankan sesuatu yang salah.
-// Ekstensi yang punya adapter DAP. Kuncinya sengaja sama dengan ADAPTER di
-// core/dap-sesi.cjs — kalau keduanya menyimpang, UI mengirim berkas ke jalur
-// DAP yang lalu ditolak server, atau sebaliknya membiarkannya lewat PTY
-// padahal jalur yang lebih baik tersedia.
-const _ADAPTER_DAP = {
+// null means "no debugger we know of for this file" — the button is disabled
+// with a clear reason rather than running something wrong.
+// Extensions that have a DAP adapter. The keys deliberately match ADAPTER in
+// core/dap-sesi.cjs — if the two drift, the UI either sends a file down the DAP
+// path where the server then refuses it, or lets it go through the PTY when a
+// better path was available.
+const _ADAPTER_DAP: Record<string, any> = {
   py: 1,
   js: 1,
   mjs: 1,
@@ -1484,7 +1513,7 @@ const _ADAPTER_DAP = {
   jsx: 1,
 };
 
-const _PERINTAH_DEBUG = {
+const _PERINTAH_DEBUG: Record<string, string> = {
   js: "node inspect",
   mjs: "node inspect",
   cjs: "node inspect",
@@ -1492,19 +1521,19 @@ const _PERINTAH_DEBUG = {
   rb: "rdbg",
   go: "dlv debug",
 };
-function perintahDebug(pathAbsolut) {
-  const bin = _PERINTAH_DEBUG[ekstensiDari(String(pathAbsolut || ""))];
+function perintahDebug(pathAbsolut: any) {
+  const bin = _PERINTAH_DEBUG[ekstensiDari(String(pathAbsolut || ""))!];
   if (!bin) return null;
   return bin + ' "' + String(pathAbsolut).replace(/"/g, '\\"') + '"';
 }
 
-// Perintah tiap tombol pada bilah debug, PER DEBUGGER. Sengaja tidak disamakan:
-// node memakai kata penuh (next/step/out/cont), pdb memakai singkatan satu
-// huruf (n/s/r/c), dan mengirim kata yang salah ke pdb bukan menghasilkan galat
-// melainkan diam-diam berarti hal lain — "s" di node inspect tak dikenal,
-// sedangkan "next" di pdb dibaca sebagai perintah "n" yang benar hanya karena
+// The command behind each debug-bar button, PER DEBUGGER. Deliberately not
+// unified: node uses whole words (next/step/out/cont), pdb uses single-letter
+// abbreviations (n/s/r/c), and sending the wrong word to pdb does not produce
+// an error — it quietly means something else. "s" is unknown to node inspect,
+// while "next" in pdb reads as the correct "n" command only because
 // kebetulan berawalan sama.
-const _AKSI_DEBUG = {
+const _AKSI_DEBUG: Record<string, any> = {
   node: {
     lanjut: "cont",
     lewati: "next",
@@ -1522,34 +1551,34 @@ const _AKSI_DEBUG = {
     berhenti: "exit",
   },
 };
-// Debugger mana yang benar-benar terpasang. Diambil SEKALI per sesi — daftarnya
-// tak berubah selagi aplikasi jalan, dan tanpa cache tiap render berkas memicu
+// Which debuggers are actually installed. Fetched ONCE per session — the list
+// does not change while the app runs, and without caching every file render
 // satu permintaan.
-let _debugTersedia = null;
-let _debugTersediaJanji = null;
+let _debugTersedia: any = null;
+let _debugTersediaJanji: any = null;
 function ambilDebugTersedia() {
   if (_debugTersedia) return Promise.resolve(_debugTersedia);
   if (_debugTersediaJanji) return _debugTersediaJanji;
   _debugTersediaJanji = fetch("/debug/tersedia")
-    .then((r) => r.json())
-    .then((d) => {
+    .then((r: any) => r.json())
+    .then((d: any) => {
       _debugTersedia = d || {};
       _debugTersediaJanji = null;
       return _debugTersedia;
     })
     .catch(() => {
       _debugTersediaJanji = null;
-      // Gagal bertanya BUKAN berarti tak ada. Mengembalikan objek kosong akan
-      // mematikan tombol Debug diam-diam untuk semua bahasa hanya karena satu
-      // permintaan gagal — jadi null, dan pemanggil memperlakukannya sebagai
-      // "belum tahu" alih-alih "tidak ada".
+      // Failing to ask does NOT mean absent. Returning an empty object would
+      // silently disable the Debug button for every language just because one
+      // request failed — so null, and the caller treats it as "not known yet"
+      // rather than "not there".
       return null;
     });
   return _debugTersediaJanji;
 }
 
-function jenisDebugger(pathAbsolut) {
-  const bin = _PERINTAH_DEBUG[ekstensiDari(String(pathAbsolut || ""))];
+function jenisDebugger(pathAbsolut: any) {
+  const bin = _PERINTAH_DEBUG[ekstensiDari(String(pathAbsolut || ""))!];
   if (!bin) return null;
   if (bin.startsWith("node")) return "node";
   if (bin.indexOf("pdb") >= 0) return "pdb";
@@ -1558,11 +1587,12 @@ function jenisDebugger(pathAbsolut) {
   return null;
 }
 
-// Ekstensi -> bahasa Monaco. Dipisah dari IKON_BAHASA karena keduanya menjawab
-// pertanyaan berbeda: yang satu "ikon apa", yang ini "penyorot mana".
-function bahasaMonaco(nama) {
+// Extension -> Monaco language. Kept separate from IKON_BAHASA because the two
+// answer different questions: one is "which icon", this one is "which
+// highlighter".
+function bahasaMonaco(nama: any) {
   const e = ekstensiDari(nama);
-  const peta = {
+  const peta: Record<string, string> = {
     js: "javascript",
     mjs: "javascript",
     cjs: "javascript",
@@ -1595,7 +1625,7 @@ function bahasaMonaco(nama) {
     xml: "xml",
     md: "markdown",
   };
-  return peta[e] || "plaintext";
+  return peta[e!] || "plaintext";
 }
 
 function LogicFileTree({
@@ -1609,28 +1639,28 @@ function LogicFileTree({
   onBuatFolder,
   onHapus,
   onHapusFolder,
-}) {
-  // Tab "Changes" DIHAPUS. Ia selalu berbunyi "Tak ada perubahan." — tak
-  // pernah tersambung ke data nyata sejak awal — jadi bukan fitur yang
-  // dinonaktifkan, melainkan potongan UI yang tak pernah punya isi.
+}: any) {
+  // The "Changes" tab was REMOVED. It always read "No changes." — it was never
+  // wired to real data in the first place — so it was not a disabled feature
+  // but a piece of UI that never had any content.
   const tree = buildDevTree(files, root, folders);
-  // Lebar bisa diatur, POLA YANG SAMA dengan resizer sidebar (Sidebar.tsx):
-  // localStorage terpisah, batas atas/bawah, kelas "resizing" selama diseret.
-  // Disamakan sengaja — dua panel yang bisa diatur lebarnya dengan cara
-  // berbeda akan terasa seperti dua aplikasi berbeda.
+  // Resizable width, THE SAME PATTERN as the sidebar resizer (Sidebar.tsx):
+  // separate localStorage, upper and lower bounds, a "resizing" class while
+  // dragging. Matched deliberately — two panels resized in different ways would
+  // feel like two different applications.
   // ── Batas lebar pohon berkas ──
   //
-  // SATU tempat. Angkanya sempat ditulis tiga kali — saat memuat, saat
-  // menyeret, dan saat melepas — dan tiga salinan batas yang harus sepakat
-  // adalah tiga tempat ia bisa menyimpang tanpa ketahuan.
+  // ONE place. The numbers were once written three times — on load, while
+  // dragging, and on release — and three copies of a bound that have to agree
+  // are three places for it to drift unnoticed.
   //
-  // Lantainya 96px, bukan 160px. Yang menentukan bukan selera melainkan isi
-  // headernya: label "Files" + jarak + tombol berkas-baru 24px + padding
-  // 12+8 = sekitar 90px. Di bawah itu tombolnya mulai terdorong keluar, dan
-  // yang didapat bukan panel sempit melainkan panel rusak.
+  // The floor is 96px, not 160px. What decides that is not taste but the header
+  // contents: the "Files" label plus spacing plus the 24px new-file button plus
+  // 12+8 padding is about 90px. Below that the button starts being pushed out,
+  // and what you get is not a narrow panel but a broken one.
   const LF_MIN = 96;
   const LF_MAKS = 500;
-  const lfBatas = (w) => Math.max(LF_MIN, Math.min(LF_MAKS, w));
+  const lfBatas = (w: any) => Math.max(LF_MIN, Math.min(LF_MAKS, w));
 
   const [lfWidth, setLfWidth] = React.useState(() => {
     try {
@@ -1644,17 +1674,17 @@ function LogicFileTree({
     }
   });
   const [lfResizing, setLfResizing] = React.useState(false);
-  const handleLfResizerMouseDown = (e) => {
+  const handleLfResizerMouseDown = (e: any) => {
     e.preventDefault();
     e.stopPropagation();
     setLfResizing(true);
     const startX = e.clientX;
     const startWidth = lfWidth;
-    const onMove = (moveEvent) => {
+    const onMove = (moveEvent: any) => {
       const deltaX = moveEvent.clientX - startX;
       setLfWidth(lfBatas(startWidth + deltaX));
     };
-    const onUp = (upEvent) => {
+    const onUp = (upEvent: any) => {
       const deltaX = upEvent.clientX - startX;
       const finalWidth = lfBatas(startWidth + deltaX);
       setLfResizing(false);
@@ -1670,18 +1700,18 @@ function LogicFileTree({
 
   // ── New file, cara VS Code ──
   //
-  // draf === null berarti tak sedang membuat; string (termasuk "") berarti
-  // baris ketiknya terbuka. Dibedakan begitu, bukan lewat boolean terpisah,
-  // supaya tak mungkin ada keadaan "terbuka tapi tanpa nilai".
+  // draf === null means not creating; a string (including "") means the input
+  // row is open. Distinguished that way rather than through a separate boolean,
+  // so an "open but with no value" state cannot exist.
   // ── Right-click menu ──
   //
   // Held as coordinates + target, not as a boolean: the menu has to appear
   // where the pointer is, and it has to know which file it was opened on.
-  const [menuKonteks, setMenuKonteks] = React.useState(null); // {x,y,rel}
+  const [menuKonteks, setMenuKonteks] = React.useState<any>(null); // {x,y,rel}
   React.useEffect(() => {
     if (!menuKonteks) return;
     const tutup = () => setMenuKonteks(null);
-    const esc = (e) => e.key === "Escape" && setMenuKonteks(null);
+    const esc = (e: any) => e.key === "Escape" && setMenuKonteks(null);
     // Closed by a click anywhere and by Escape. Only one of the two makes a
     // menu that feels stuck.
     document.addEventListener("mousedown", tutup);
@@ -1701,7 +1731,7 @@ function LogicFileTree({
   // tested.
   const [hapusGalat, setHapusGalat] = React.useState("");
   const [hapusSibuk, setHapusSibuk] = React.useState(false);
-  const hapusBerkas = async (rel, folder) => {
+  const hapusBerkas = async (rel: any, folder: any) => {
     if (!rel || !akarAda || hapusSibuk) return;
     setHapusSibuk(true);
     setHapusGalat("");
@@ -1729,7 +1759,7 @@ function LogicFileTree({
     } catch (e) {
       // The menu STAYS OPEN on failure, carrying the reason. Closing it would
       // leave the file still on disk and nothing on screen saying so.
-      setHapusGalat(String((e && e.message) || e));
+      setHapusGalat(String((e && (e as any).message) || e));
     } finally {
       setHapusSibuk(false);
     }
@@ -1738,8 +1768,8 @@ function LogicFileTree({
   // How much a folder holds, asked of the DISK. The tree only lists files the
   // agent has touched, so counting from it would understate the damage — and
   // the number the user approves has to be the real one.
-  const [jumlahIsi, setJumlahIsi] = React.useState(null);
-  const hitungIsi = async (rel) => {
+  const [jumlahIsi, setJumlahIsi] = React.useState<any>(null);
+  const hitungIsi = async (rel: any) => {
     setJumlahIsi(null);
     const abs = String(root).replace(/[\/]+$/, "") + "/" + rel;
     try {
@@ -1759,7 +1789,7 @@ function LogicFileTree({
     } catch (_) {}
   };
 
-  const [draf, setDraf] = React.useState(null);
+  const [draf, setDraf] = React.useState<any>(null);
   const [galatBuat, setGalatBuat] = React.useState("");
   const [sibuk, setSibuk] = React.useState(false);
   const akarAda = !!String(root || "").trim();
@@ -1767,7 +1797,7 @@ function LogicFileTree({
   // submit handler: the placeholder, the icon and the error text all have to
   // agree with it, and deciding at submit time means the row lies until then.
   const [jenisBaru, setJenisBaru] = React.useState("berkas");
-  const mulaiBuat = (jenis) => {
+  const mulaiBuat = (jenis: any) => {
     setGalatBuat("");
     setJenisBaru(jenis === "folder" ? "folder" : "berkas");
     setDraf("");
@@ -1777,7 +1807,7 @@ function LogicFileTree({
     setGalatBuat("");
   };
   const buatBerkas = async () => {
-    // Dinormalkan seperti VS Code: pemisah disamakan, spasi tepi dibuang,
+    // Normalised as VS Code does: separators unified, edge whitespace trimmed,
     // garis miring berlebih diringkas.
     const nama = String(draf || "")
       .trim()
@@ -1785,17 +1815,17 @@ function LogicFileTree({
       .replace(/\/{2,}/g, "/")
       .replace(/^\/+|\/+$/g, "");
     if (!nama) return batalBuat();
-    // Ditolak di sini SEBELUM menembak server, semata supaya pesannya cepat
-    // dan jelas — server tetap memeriksa ulang, karena pemeriksaan di
-    // renderer bisa dilewati begitu saja.
-    if (nama.split("/").some((s) => s === "." || s === ".."))
+    // Refused here BEFORE hitting the server, purely so the message is fast and
+    // clear — the server checks again anyway, because a check in the renderer
+    // can simply be bypassed.
+    if (nama.split("/").some((s: any) => s === "." || s === ".."))
       return setGalatBuat("invalid name");
     const abs = String(root).replace(/[\\/]+$/, "") + "/" + nama;
     setSibuk(true);
     setGalatBuat("");
     try {
-      // fetch path-relatif: di desktop shim di atas berkas ini membelokkannya
-      // ke IPC.invoke("api") sendiri, jadi satu jalur cukup untuk keduanya.
+      // A path-relative fetch: on desktop the shim at the top of this file
+      // redirects it to IPC.invoke("api") itself, so one path serves both.
       const hasil = await (
         await fetch("/ww/buat-berkas", {
           method: "POST",
@@ -1818,24 +1848,24 @@ function LogicFileTree({
         onBuat(hasil.path || nama);
       }
     } catch (e) {
-      // Baris ketiknya sengaja TIDAK ditutup: nama yang salah masih ada di
-      // sana untuk diperbaiki, bukan hilang bersama pesan galatnya.
-      setGalatBuat(String((e && e.message) || e));
+      // The input row is deliberately NOT closed: the wrong name is still there
+      // to be corrected, rather than lost along with its error message.
+      setGalatBuat(String((e && (e as any).message) || e));
     } finally {
       setSibuk(false);
     }
   };
 
-  const icon = (t) => {
-    // Monogram bahasa: kotak kecil berwarna khas bahasanya. Dirender sebagai
-    // SVG (bukan <span> ber-CSS) supaya ia sejajar dengan ikon lain yang sudah
-    // SVG, dan ukurannya tak ikut berubah saat font halaman berubah.
+  const icon = (t: any) => {
+    // A language monogram: a small box in that language's signature colour.
+    // Rendered as SVG (rather than a CSS-styled <span>) so it lines up with the
+    // other icons, which are already SVG, and so its size does not shift when
+    // the page font changes.
     if (typeof t === "string" && t.startsWith("lang:")) {
       const svg = IKON_BAHASA[t.slice(5)];
       if (svg)
-        // SVG-nya disuntikkan apa adanya: ia berasal dari berkas tetap yang
-        // ikut di-vendor, bukan dari masukan mana pun, jadi tak ada teks
-        // pemakai yang bisa sampai ke sini.
+        // The SVG is injected as is: it comes from a fixed, vendored file rather
+        // than from any input, so no user text can reach here.
         return (
           <span
             style={{
@@ -1937,8 +1967,8 @@ function LogicFileTree({
     <div
       className={"logic-filetree" + (lfResizing ? " resizing" : "")}
       style={{
-        // Lebar diatur pemakai (lfWidth); panel kode di kanannya yang
-        // menyerap sisa lebar, sama seperti VS Code.
+        // The width is user-set (lfWidth); the code panel to its right absorbs
+        // the remaining width, the same as VS Code.
         width: lfWidth + "px",
         flex: "0 0 auto",
         flexShrink: 0,
@@ -1986,9 +2016,9 @@ function LogicFileTree({
             color: "#6f7d92",
           }}
         >
-          {/* Dua tombol yang dulu ada di sini — "Search" dan "Collapse all" —
-              tak satu pun punya onClick: mereka hiasan sejak awal. Yang
-              tersisa cuma satu, dan yang ini benar-benar bekerja. */}
+          {/* Two buttons that used to be here — "Search" and "Collapse all" —
+              had no onClick at all: they were decoration from the start. Only
+              one is left, and this one genuinely works. */}
           {/* New folder, to the left of New file. Same shape and same size —
               two buttons that do the same kind of thing should not look like
               two different kinds of control. */}
@@ -2010,12 +2040,12 @@ function LogicFileTree({
               cursor: akarAda ? "pointer" : "not-allowed",
               opacity: akarAda ? 1 : 0.4,
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={(e: any) => {
               if (!akarAda) return;
               e.currentTarget.style.background = "#1b2431";
               e.currentTarget.style.color = "#cdd9e5";
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={(e: any) => {
               e.currentTarget.style.background = "transparent";
               e.currentTarget.style.color = "inherit";
             }}
@@ -2056,19 +2086,19 @@ function LogicFileTree({
               cursor: akarAda ? "pointer" : "not-allowed",
               opacity: akarAda ? 1 : 0.4,
             }}
-            onMouseEnter={(e) => {
+            onMouseEnter={(e: any) => {
               if (!akarAda) return;
               e.currentTarget.style.background = "#1b2431";
               e.currentTarget.style.color = "#cdd9e5";
             }}
-            onMouseLeave={(e) => {
+            onMouseLeave={(e: any) => {
               e.currentTarget.style.background = "transparent";
               e.currentTarget.style.color = "inherit";
             }}
           >
-            {/* Lembar dokumen dengan tanda + di sudut — ikon "new file" yang
-                sama bentuknya dengan VS Code, digambar dengan goresan yang
-                sama (viewBox 24, strokeWidth 2) seperti ikon lain di sini. */}
+            {/* A document sheet with a + in the corner — the "new file" icon
+                the same shape as VS Code's, drawn with the same stroke
+                (viewBox 24, strokeWidth 2) as the other icons here. */}
             <svg
               width="15"
               height="15"
@@ -2087,16 +2117,16 @@ function LogicFileTree({
           </button>
         </div>
       </div>
-      {/* Baris ketik nama berkas, seperti VS Code: muncul DI DALAM pohon,
-          bukan sebagai dialog. Ditaruh di luar cabang kosong/berisi di bawah
-          supaya ia tetap muncul walau pohonnya masih kosong — di situlah
-          justru berkas pertama dibuat. */}
+      {/* The filename input row, as in VS Code: it appears INSIDE the tree,
+          rather than as a dialog. Placed outside the empty/non-empty branch
+          below so it still appears when the tree is empty — which is exactly
+          where a first file gets created. */}
       {menuKonteks && (
         <div
           className="pohon-menu"
           style={{ left: menuKonteks.x + "px", top: menuKonteks.y + "px" }}
-          onMouseDown={(e) => e.stopPropagation()}
-          onContextMenu={(e) => e.preventDefault()}
+          onMouseDown={(e: any) => e.stopPropagation()}
+          onContextMenu={(e: any) => e.preventDefault()}
         >
           <div className="pohon-menu-berkas">{menuKonteks.rel}</div>
           {!menuKonteks.konfirmasi ? (
@@ -2105,7 +2135,7 @@ function LogicFileTree({
               className="pohon-menu-opsi bahaya"
               onClick={() => {
                 if (menuKonteks.folder) hitungIsi(menuKonteks.rel);
-                setMenuKonteks((m) => m && { ...m, konfirmasi: true });
+                setMenuKonteks((m: any) => m && { ...m, konfirmasi: true });
               }}
             >
               {menuKonteks.folder ? "Delete folder" : "Delete file"}
@@ -2174,11 +2204,11 @@ function LogicFileTree({
                 jenisBaru === "folder" ? "folder-name" : "file-name.js"
               }
               disabled={sibuk}
-              onChange={(e) => {
+              onChange={(e: any) => {
                 setDraf(e.target.value);
                 setGalatBuat("");
               }}
-              onKeyDown={(e) => {
+              onKeyDown={(e: any) => {
                 if (e.key === "Enter") {
                   e.preventDefault();
                   buatBerkas();
@@ -2187,9 +2217,9 @@ function LogicFileTree({
                   batalBuat();
                 }
               }}
-              // VS Code membatalkan begitu fokus lepas. Tapi kalau ada pesan
-              // galat yang belum sempat dibaca, membatalkan justru menelan
-              // pesannya — jadi baris ini bertahan sampai Escape.
+              // VS Code cancels as soon as focus is lost. But if an error
+              // message has not been read yet, cancelling swallows it — so this
+              // row survives until Escape.
               onBlur={() => {
                 if (!galatBuat && !sibuk) batalBuat();
               }}
@@ -2220,10 +2250,10 @@ function LogicFileTree({
           )}
         </div>
       )}
-      {/* Dulu cuma `!active`, yang mengikat isi pohon pada ADA-TIDAKNYA
-          pratinjau. Berkas yang dibuat sendiri lewat tombol + tak butuh
-          pratinjau untuk ada, jadi ia akan dibuat lalu tak terlihat. Yang
-          menentukan sekarang isi pohonnya sendiri. */}
+      {/* This used to be just `!active`, which tied the tree's contents to
+          a preview. A file created by hand through the + button does not need a
+          preview to exist, so it would be created and then invisible. What
+          decides now is the tree's own contents. */}
       {!active && tree.length === 0 ? (
         <div
           style={{
@@ -2276,14 +2306,14 @@ function LogicFileTree({
         </div>
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}>
-          {tree.map((n, i) => (
+          {tree.map((n: any, i: number) => (
             <div
               key={i}
               title={n.rel || n.name}
               onClick={() =>
                 n.type !== "folder" && onPilih && onPilih(n.rel || n.name)
               }
-              onContextMenu={(e) => {
+              onContextMenu={(e: any) => {
                 e.preventDefault();
                 setHapusGalat("");
                 setMenuKonteks({
@@ -2304,17 +2334,17 @@ function LogicFileTree({
                 color: n.type === "folder" ? "#cdd9e5" : "#adbac7",
                 fontSize: "13px",
                 whiteSpace: "nowrap",
-                // Berkas yang sedang dibuka ditandai TETAP, bukan cuma saat
-                // hover — tanpa itu, begitu tetikus bergerak tak ada lagi yang
-                // memberi tahu isi editor di kanan milik berkas yang mana.
+                // The open file is marked PERSISTENTLY, not only on hover —
+                // without that, once the mouse moves nothing tells you which
+                // file the editor on the right belongs to.
                 background:
                   n.rel && n.rel === terpilih ? "#1b2431" : "transparent",
               }}
-              onMouseEnter={(e) => {
+              onMouseEnter={(e: any) => {
                 if (n.rel !== terpilih)
                   e.currentTarget.style.background = "#141c26";
               }}
-              onMouseLeave={(e) => {
+              onMouseLeave={(e: any) => {
                 e.currentTarget.style.background =
                   n.rel && n.rel === terpilih ? "#1b2431" : "transparent";
               }}
@@ -2351,13 +2381,14 @@ function LogicFileTree({
 }
 
 function App() {
-  // Melaporkan ke index.html bahwa App berhasil dirender tanpa Runtime Error
+  // Report to index.html that App rendered without a Runtime Error.
   useEffect(() => {
     if (window.reportAppSuccess) window.reportAppSuccess();
   }, []);
   const [pickerDone, setPickerDone] = useState(false);
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
-  // Panel Logic (kanvas React Flow) — overlay yang menutupi UI chat saat dibuka.
+  // The Logic panel (a React Flow canvas) — an overlay covering the chat UI
+  // when open.
   const [logicOpen, setLogicOpen] = useState(false);
   useEffect(() => {
     const closePanelMenu = () => setPanelMenuOpen(false);
@@ -2374,7 +2405,7 @@ function App() {
     } catch (_) {}
     return WOLFSPACE_ROOT_WIN;
   });
-  const [hitlRequest, setHitlRequest] = React.useState(null);
+  const [hitlRequest, setHitlRequest] = React.useState<any>(null);
 
   React.useEffect(() => {
     const checkSelectedProject = () => {
@@ -2382,13 +2413,13 @@ function App() {
         const deleted = JSON.parse(
           localStorage.getItem("wolfspace_deleted_workspaces") || "[]",
         );
-        // Path-exact saja (lihat isPathDeleted) — tak lagi cocok nama/suffix.
-        const isDel = (pStr) => isPathDeleted(deleted, pStr);
+        // Path-exact only (see isPathDeleted) — no longer matches name/suffix.
+        const isDel = (pStr: any) => isPathDeleted(deleted, pStr);
         if (isDel(selectedProject)) {
           const stored = JSON.parse(
             localStorage.getItem("wolfspace_projects_list") || "[]",
           );
-          const valid = stored.filter((p) => !isDel(p.path));
+          const valid = stored.filter((p: any) => !isDel(p.path));
           if (valid.length > 0 && valid[0].path)
             setSelectedProject(valid[0].path);
           else if (!isDel(WOLFSPACE_ROOT_WIN))
@@ -2423,18 +2454,18 @@ function App() {
       ],
     });
   };
-  const handleHitlResolve = (val) => {
+  const handleHitlResolve = (val: any) => {
     console.log("HITL resolved with:", val);
     const req = hitlRequest;
     setHitlRequest(null);
     if (!req) return;
     if (req.kind === "continue") {
-      // Jeda batas-langkah (checkpoint) — bukan HITL persetujuan. "Lanjutkan"
-      // meneruskan run dari checkpoint dengan plafon langkah diperpanjang.
+      // A step-ceiling pause (a checkpoint), not an HITL approval. "Continue"
+      // resumes the run from the checkpoint with an extended step ceiling.
       if (val === "continue") {
         doSend("", null, { thread_id: req.thread_id, continue_response: true });
       } else {
-        setBusy(false); // user memilih berhenti; edit yang sudah ada dipertahankan
+        setBusy(false); // the user chose to stop; existing edits are kept
       }
       return;
     }
@@ -2480,21 +2511,22 @@ function App() {
   const [cloudVersion, setCloudVersion] = useState(0); // Trigger reload when cloud config changes
 
   const [panelOpen, setPanelOpen] = useState(false);
-  const [messages, setMessages] = useState([]);
-  // File yang SEDANG DIKEMBANGKAN (ditulis/diedit agent) — sumber untuk sidebar
-  // Logic. Berbeda dari "semua isi folder": hanya file yang benar-benar disentuh
-  // agent di sesi ini. Direset saat ganti workspace.
-  const [devFiles, setDevFiles] = useState([]);
+  const [messages, setMessages] = useState<any[]>([]);
+  // Files being ACTIVELY DEVELOPED (written or edited by the agent) — the
+  // source for the Logic sidebar. Different from "everything in the folder":
+  // only files the agent genuinely touched this session. Reset on workspace
+  // change.
+  const [devFiles, setDevFiles] = useState<any[]>([]);
   // Folders created by hand. Kept apart from devFiles because that list is
   // FILES: a folder with nothing in it would leave no trace there and would
   // vanish from the tree the moment it was created.
-  const [devFolders, setDevFolders] = useState([]);
+  const [devFolders, setDevFolders] = useState<any[]>([]);
   useEffect(() => {
     setDevFiles([]);
     setDevFolders([]);
   }, [selectedProject]);
   useEffect(() => {
-    const onAct = (e) => {
+    const onAct = (e: any) => {
       const d = (e && e.detail) || {};
       if (!/write|edit|create|apply|save/i.test(String(d.kind || ""))) return;
       if (d.ok === false) return; // tulisan gagal — jangan catat
@@ -2503,16 +2535,18 @@ function App() {
         const m = String(d.arg || "").match(
           /([^\s"'`]+\.[a-zA-Z0-9]{1,8})(?=[\s"'`]|$)/,
         );
-        if (m) p = m[1];
+        if (m) p = m[1]!;
       }
       if (!p) return;
       p = p.replace(/\\/g, "/");
-      setDevFiles((prev) => (prev.indexOf(p) >= 0 ? prev : prev.concat(p)));
+      setDevFiles((prev: any) =>
+        prev.indexOf(p) >= 0 ? prev : prev.concat(p),
+      );
     };
     window.addEventListener("wolfspace_agent_act", onAct);
     return () => window.removeEventListener("wolfspace_agent_act", onAct);
   }, []);
-  // Web Dev Live Browser: state, auto-preview saat agent menulis .html, dan
+  // Web Dev Live Browser: state, auto-preview when the agent writes .html, and
   // ref iframe kini satu hook di public/app/usePreviewPanel.tsx.
   const preview = usePreviewPanel({
     selectedProject,
@@ -2520,52 +2554,53 @@ function App() {
   });
   const getPreviewDoc = preview.getDoc;
 
-  const [history, setHistory] = useState([]);
+  const [history, setHistory] = useState<any[]>([]);
   const [busy, setBusy] = useState(false);
-  // Checklist todowrite, DI TINGKAT APLIKASI — bukan di dalam state satu pesan.
+  // The todowrite checklist, at APPLICATION level — not inside one message's
+  // state.
   //
-  // Dulu ia hidup sebagai run.todos milik tiap gelembung agent, jadi ia ikut
-  // tergulung naik bersama pesannya begitu percakapan berlanjut: daftar yang
-  // gunanya justru untuk dilihat SELAMA bekerja malah hilang dari layar paling
-  // cepat. Di sini ia satu daftar untuk seluruh sesi, dirender tepat di atas
-  // kotak ketik supaya selalu di tempat yang sama.
-  const [todos, setTodos] = useState([]);
-  // Berkas yang sedang dibuka di panel kode view Logic (path RELATIF terhadap
-  // root proyek). Disimpan di sini, bukan di dalam LogicFileTree, karena dua
-  // panel memakainya: pohon untuk menandai baris aktif, editor untuk memuat.
+  // It used to live as run.todos on each agent bubble, so it scrolled away with
+  // its message as the conversation continued: a list whose whole purpose is to
+  // be seen WHILE working was the first thing to leave the screen. Here it is
+  // one list for the whole session, rendered directly above the input box so it
+  // is always in the same place.
+  const [todos, setTodos] = useState<any[]>([]);
+  // The file open in the Logic view's code panel (a path RELATIVE to the project
+  // root). Held here rather than inside LogicFileTree because two panels use it:
+  // the tree to mark the active row, the editor to load it.
   const [logicBerkas, setLogicBerkas] = useState("");
   // ── Open editor tabs ──
   //
   // Order matters and is the user's, so this is an array, not a Set.
-  const [logicTabs, setLogicTabs] = useState([]);
-  const [logicKotor, setLogicKotor] = useState({}); // rel -> unsaved?
-  const bukaTab = useCallback((rel) => {
+  const [logicTabs, setLogicTabs] = useState<any[]>([]);
+  const [logicKotor, setLogicKotor] = useState<any>({}); // rel -> unsaved?
+  const bukaTab = useCallback((rel: any) => {
     if (!rel) return;
-    setLogicTabs((t) => (t.includes(rel) ? t : t.concat(rel)));
+    setLogicTabs((t: any) => (t.includes(rel) ? t : t.concat(rel)));
     setLogicBerkas(rel);
   }, []);
-  const tutupTab = useCallback((rel) => {
-    setLogicTabs((t) => {
+  const tutupTab = useCallback((rel: any) => {
+    setLogicTabs((t: any) => {
       const i = t.indexOf(rel);
       if (i < 0) return t;
-      const sisa = t.filter((x) => x !== rel);
+      const sisa = t.filter((x: any) => x !== rel);
       // Closing the ACTIVE tab has to hand focus to a neighbour — the one on
       // the right, falling back to the left, as every editor does. Leaving the
       // pane blank instead makes closing feel like losing your place.
-      setLogicBerkas((aktif) =>
+      setLogicBerkas((aktif: any) =>
         aktif !== rel ? aktif : sisa[i] || sisa[i - 1] || "",
       );
       return sisa;
     });
-    setLogicKotor((k) => {
+    setLogicKotor((k: any) => {
       if (!(rel in k)) return k;
       const n = { ...k };
       delete n[rel];
       return n;
     });
   }, []);
-  const geserTab = useCallback((dari, ke) => {
-    setLogicTabs((t) => {
+  const geserTab = useCallback((dari: any, ke: any) => {
+    setLogicTabs((t: any) => {
       const a = t.indexOf(dari);
       const b = t.indexOf(ke);
       if (a < 0 || b < 0 || a === b) return t;
@@ -2574,21 +2609,21 @@ function App() {
       return n;
     });
   }, []);
-  const tandaiKotor = useCallback((rel, kotor) => {
-    setLogicKotor((k) => (k[rel] === kotor ? k : { ...k, [rel]: kotor }));
+  const tandaiKotor = useCallback((rel: any, kotor: any) => {
+    setLogicKotor((k: any) => (k[rel] === kotor ? k : { ...k, [rel]: kotor }));
   }, []);
   const [status, setStatus] = useState("Loading models…");
   const [view, setView] = useState("chat");
-  // ── Sidebar punya TIGA keadaan, bukan dua ──
+  // ── The sidebar has THREE states, not two ──
   //
   //   "penuh"    232px, label terlihat
   //   "ringkas"   60px, ikon saja
-  //   "sembunyi"   0px, yang tersisa cuma tombol pembukanya
+  //   "sembunyi"   0px, leaving only its open button
   //
-  // Disimpan sebagai KATA, bukan angka atau boolean. Nilai lama di localStorage
-  // masih boolean ("1"/"0") dari versi dua-keadaan, jadi ia diterjemahkan sekali
-  // — tanpa itu, pemakai yang sudah memakai aplikasi ini mendapat sidebar yang
-  // kembali ke bawaan tanpa sebab.
+  // Stored as a WORD, not a number or a boolean. Old localStorage values are
+  // still booleans ("1"/"0") from the two-state version, so they are translated
+  // once — without that, anyone already using this app would get a sidebar that
+  // reverted to the default for no apparent reason.
   const [sbMode, setSbMode] = useState(() => {
     try {
       const v = localStorage.getItem("wolfspace_sb");
@@ -2603,11 +2638,13 @@ function App() {
       localStorage.setItem("wolfspace_sb", sbMode);
     } catch (e) {}
   }, [sbMode]);
-  // Urutan siklusnya: penuh -> ringkas -> sembunyi -> penuh. Satu tombol, dan
-  // arahnya selalu sama supaya bisa dihafal.
-  const _URUT_SB = ["penuh", "ringkas", "sembunyi"];
+  // The cycle order is penuh -> ringkas -> sembunyi -> penuh. One button, and
+  // always the same direction so it can be learned.
+  const _URUT_SB: string[] = ["penuh", "ringkas", "sembunyi"];
   const putarSidebar = useCallback(() => {
-    setSbMode((m) => _URUT_SB[(_URUT_SB.indexOf(m) + 1) % _URUT_SB.length]);
+    setSbMode(
+      (m: any) => _URUT_SB[(_URUT_SB.indexOf(m) + 1) % _URUT_SB.length]!,
+    );
   }, []);
   const [theme, setTheme] = useState(() => {
     try {
@@ -2619,49 +2656,49 @@ function App() {
 
   const [terminalPct, setTerminalPct] = useState(30);
   const [panelPct, setPanelPct] = useState(35);
-  // Code (view Logic) adalah panel KETIGA, setara terminal dan preview. Ia dulu
-  // lapisan `position:absolute; inset:0` yang menutupi seluruh area — karena itu
-  // ia cuma bisa penuh layar, tak pernah bisa berbagi tempat dengan yang lain.
+  // Code (the Logic view) is the THIRD panel, equal to terminal and preview. It
+  // used to be a `position:absolute; inset:0` layer covering the whole area —
+  // which is why it could only ever be full screen and never share space.
   const [logicPct, setLogicPct] = useState(45);
   // ── Jembatan panel Code -> terminal ──
   //
-  // Terminal memegang sesi PTY-nya sendiri di dalam VSCodeTerminal, dan panel
-  // Code adalah saudaranya — bukan induknya. Perintah dititipkan lewat state di
-  // sini, lalu diturunkan sebagai prop. Nonce ikut dikirim supaya menjalankan
-  // berkas yang SAMA dua kali tetap terbaca sebagai dua permintaan; tanpa itu
-  // nilainya tak berubah dan effect di terminal tak menyala lagi.
-  const [perintahTerminal, setPerintahTerminal] = useState(null);
-  // Debugger yang SEDANG hidup, atau null. Ini yang menentukan bilah debug
-  // muncul atau tidak, dan kata perintah mana yang dikirim tiap tombolnya.
-  const [debugAktif, setDebugAktif] = useState(null);
-  // { mulai, berkas } dari panel kode, atau null saat berkas yang terbuka tak
-  // punya debugger. Dititipkan ke tab DEBUG supaya tombol mulainya ada di sana
-  // TANPA memotong jalur "simpan dulu" yang dimiliki panel kode.
-  const [pemicuDebug, setPemicuDebug] = useState(null);
-  // (Effect "terminal ditutup -> sesi debug mati" ada DI BAWAH, sesudah
-  // terminalOpen dideklarasikan. Di sini ia melempar ReferenceError: senarai
-  // dependensi dinilai saat render, bukan saat effect-nya berjalan.)
+  // The terminal holds its own PTY session inside VSCodeTerminal, and the Code
+  // panel is its sibling, not its parent. Commands are parked in state here and
+  // passed down as a prop. A nonce goes with them so running the SAME file twice
+  // still reads as two requests; without it the value would not change and the
+  // terminal's effect would not fire again.
+  const [perintahTerminal, setPerintahTerminal] = useState<any>(null);
+  // The debugger CURRENTLY alive, or null. This decides whether the debug bar
+  // appears, and which command word each of its buttons sends.
+  const [debugAktif, setDebugAktif] = useState<any>(null);
+  // { mulai, berkas } from the code panel, or null when the open file has no
+  // debugger. Handed to the DEBUG tab so its start button can live there WITHOUT
+  // bypassing the "save first" path the code panel owns.
+  const [pemicuDebug, setPemicuDebug] = useState<any>(null);
+  // (The "terminal closed -> debug session dies" effect is BELOW, after
+  // terminalOpen is declared. Here it would throw a ReferenceError: a dependency
+  // array is evaluated at render time, not when the effect runs.)
   // ── Sesi DAP ──
   //
-  // Python memakai jalur ini; bahasa lain masih lewat PTY. Keduanya sengaja
-  // hidup berdampingan alih-alih menunggu semua bahasa punya adapter: yang
-  // sudah bisa memberi titik henti klik dan panel variabel tak perlu menunggu
-  // yang belum.
-  const [titikHenti, setTitikHenti] = useState({}); // { rel: [baris] }
-  // Salinan ref-nya. jalankanDiTerminal dibungkus useCallback, dan callback
-  // yang membaca state langsung memegang nilai dari render saat ia dibuat —
-  // titik henti yang baru dipasang sesudah itu tak akan ikut terkirim.
-  const titikHentiRef = useRef({});
+  // Python uses this path; other languages still go through the PTY. The two
+  // deliberately coexist rather than waiting for every language to have an
+  // adapter: what can already offer click breakpoints and a variables panel need
+  // not wait for what cannot.
+  const [titikHenti, setTitikHenti] = useState<any>({}); // { rel: [line] }
+  // Its ref copy. jalankanDiTerminal is wrapped in useCallback, and a callback
+  // that reads state directly holds the value from the render that created it —
+  // breakpoints set after that would never be sent.
+  const titikHentiRef = useRef<any>({});
   useEffect(() => {
     titikHentiRef.current = titikHenti;
   }, [titikHenti]);
-  const [dapId, setDapId] = useState(null);
-  const [dapKeadaan, setDapKeadaan] = useState(null);
-  const dapKeluaranRef = useRef([]);
+  const [dapId, setDapId] = useState<any>(null);
+  const [dapKeadaan, setDapKeadaan] = useState<any>(null);
+  const dapKeluaranRef = useRef<any[]>([]);
   useEffect(() => {
     if (!dapId) return;
     let mati = false;
-    let jam = null;
+    let jam: any = null;
     const tanya = async () => {
       try {
         const r = await fetch(
@@ -2676,9 +2713,9 @@ function App() {
           setDapId(null);
           return;
         }
-        // Keluaran DITAMBAHKAN, bukan diganti: server sengaja hanya mengirim
-        // yang belum dipegang renderer supaya muatannya tak tumbuh sepanjang
-        // sesi, jadi menggantinya akan membuang semua yang sudah ada.
+        // Output is APPENDED, not replaced: the server deliberately sends only
+        // what the renderer does not already hold, so the payload does not grow
+        // through the session — replacing would discard everything so far.
         if (d.keluaran && d.keluaran.length)
           dapKeluaranRef.current = dapKeluaranRef.current.concat(d.keluaran);
         setDapKeadaan({ ...d, semuaKeluaran: dapKeluaranRef.current });
@@ -2691,7 +2728,7 @@ function App() {
       clearTimeout(jam);
     };
   }, [dapId]);
-  // Sesi ditutup saat panel Code ditutup — kalau tidak, proses Python-nya
+  // The session closes when the Code panel closes — otherwise its Python process
   // hidup terus tanpa satu pun cara menyentuhnya lagi.
   useEffect(() => {
     if (logicOpen || !dapId) return;
@@ -2703,31 +2740,37 @@ function App() {
     setDapId(null);
   }, [logicOpen, dapId]);
 
-  const mulaiDap = useCallback(async (akar, pathAbsolut, baris) => {
-    dapKeluaranRef.current = [];
-    setDapKeadaan(null);
-    try {
-      const r = await fetch("/dap/mulai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          root: akar,
-          program: pathAbsolut,
-          titikHenti: baris || [],
-        }),
-      });
-      const d = await r.json();
-      if (!d || !d.ok)
-        throw new Error((d && d.error) || "could not start debugging");
-      setDapId(d.id);
-      return true;
-    } catch (e) {
-      setDapKeadaan({ selesai: true, galat: String((e && e.message) || e) });
-      return false;
-    }
-  }, []);
+  const mulaiDap = useCallback(
+    async (akar: any, pathAbsolut: any, baris: any) => {
+      dapKeluaranRef.current = [];
+      setDapKeadaan(null);
+      try {
+        const r = await fetch("/dap/mulai", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            root: akar,
+            program: pathAbsolut,
+            titikHenti: baris || [],
+          }),
+        });
+        const d = await r.json();
+        if (!d || !d.ok)
+          throw new Error((d && d.error) || "could not start debugging");
+        setDapId(d.id);
+        return true;
+      } catch (e) {
+        setDapKeadaan({
+          selesai: true,
+          galat: String((e && (e as any).message) || e),
+        });
+        return false;
+      }
+    },
+    [],
+  );
   const aksiDap = useCallback(
-    async (aksi) => {
+    async (aksi: any) => {
       if (!dapId) return;
       await fetch("/dap/aksi", {
         method: "POST",
@@ -2739,34 +2782,37 @@ function App() {
     [dapId],
   );
 
-  const jalankanDiTerminal = useCallback((pathAbsolut, mode, akar) => {
-    const debugMode = mode === "debug";
-    // Python lewat DAP: itu satu-satunya jalur yang memberi titik henti klik,
-    // panel variabel, dan akhir sesi yang pasti. Bahasa lain masih lewat PTY
-    // sampai adapternya menyusul.
-    if (debugMode && _ADAPTER_DAP[ekstensiDari(pathAbsolut)]) {
-      const rel = String(pathAbsolut)
-        .slice(String(akar || "").length)
-        .replace(/^[\/]+/, "");
+  const jalankanDiTerminal = useCallback(
+    (pathAbsolut: any, mode: any, akar: any) => {
+      const debugMode = mode === "debug";
+      // Python over DAP: that is the only path giving click breakpoints, a
+      // variables panel and a definite end of session. Other languages stay on the
+      // PTY until their adapters follow.
+      if (debugMode && _ADAPTER_DAP[ekstensiDari(pathAbsolut)!]) {
+        const rel = String(pathAbsolut)
+          .slice(String(akar || "").length)
+          .replace(/^[\/]+/, "");
+        setTerminalOpen(true);
+        setDebugAktif("dap");
+        mulaiDap(akar, pathAbsolut, (titikHentiRef.current || {})[rel] || []);
+        return;
+      }
+      const cmd = debugMode
+        ? perintahDebug(pathAbsolut)
+        : perintahJalankan(pathAbsolut);
+      if (!cmd) return;
+      // The terminal is opened if closed — otherwise the command is sent to a
+      // component that is not rendered and vanishes without a trace.
       setTerminalOpen(true);
-      setDebugAktif("dap");
-      mulaiDap(akar, pathAbsolut, (titikHentiRef.current || {})[rel] || []);
-      return;
-    }
-    const cmd = debugMode
-      ? perintahDebug(pathAbsolut)
-      : perintahJalankan(pathAbsolut);
-    if (!cmd) return;
-    // Terminalnya dibuka kalau tertutup — kalau tidak, perintahnya terkirim ke
-    // komponen yang tak dirender dan hilang tanpa jejak.
-    setTerminalOpen(true);
-    setDebugAktif(debugMode ? jenisDebugger(pathAbsolut) : null);
-    setPerintahTerminal({ cmd, n: Date.now() });
-  }, []);
-  // Satu tempat untuk menerjemahkan tombol bilah debug jadi kata perintah.
+      setDebugAktif(debugMode ? jenisDebugger(pathAbsolut) : null);
+      setPerintahTerminal({ cmd, n: Date.now() });
+    },
+    [],
+  );
+  // One place to turn a debug-bar button into a command word.
   const aksiDebug = useCallback(
-    (aksi) => {
-      const peta = _AKSI_DEBUG[debugAktif];
+    (aksi: any) => {
+      const peta = _AKSI_DEBUG[debugAktif!];
       if (!peta || !peta[aksi]) return;
       setPerintahTerminal({ cmd: peta[aksi], n: Date.now() });
       if (aksi === "berhenti") setDebugAktif(null);
@@ -2774,16 +2820,16 @@ function App() {
     [debugAktif],
   );
 
-  // ── Posisi panel bisa dipindah, seperti "Move Panel" di VS Code ──
+  // ── Panels can be moved, like "Move Panel" in VS Code ──
   //
-  // Sebelumnya chat, terminal, dan preview adalah TIGA KOLOM SEJAJAR di satu
-  // baris flex — termasuk terminal, yang karena itu duduk di kanan alih-alih di
-  // bawah. Untuk terminal itu pilihan yang buruk: keluaran perintah berbentuk
-  // baris panjang, dan kolom sempit memaksanya membungkus terus-menerus.
+  // Chat, terminal and preview used to be THREE PARALLEL COLUMNS in one flex
+  // row — including the terminal, which is why it sat on the right rather than
+  // below. For a terminal that is a poor choice: command output comes as long
+  // lines, and a narrow column forces it to wrap constantly.
   //
-  // Bawaannya kini mengikuti kebiasaan yang sudah dikenal orang: preview di
-  // KANAN (ia halaman, jadi butuh lebar), terminal di BAWAH (ia baris teks,
-  // jadi butuh panjang). Keduanya tetap bisa ditukar.
+  // The default now follows what people already know: preview on the RIGHT (it
+  // is a page, so it needs width), terminal at the BOTTOM (it is lines of text,
+  // so it needs length). Both can still be swapped.
   const [posisi, setPosisi] = useState(() => {
     const bawaan = {
       preview: "kanan",
@@ -2793,19 +2839,19 @@ function App() {
     };
     try {
       const t = JSON.parse(localStorage.getItem("wolfspace_posisi") || "null");
-      // Nilai divalidasi, bukan dipercaya: localStorage bisa membawa isi dari
-      // versi lama atau suntingan tangan, dan posisi yang tak dikenal akan
-      // membuat panelnya tak dirender di mana pun — panel hilang tanpa jejak.
-      // "kiri" menyusul sesudah dua yang lain; nilai lama tanpa "kiri" tetap
-      // sah, dan nilai tak dikenal jatuh ke bawaannya.
-      const sah = (v, d) =>
+      // The value is validated rather than trusted: localStorage can carry
+      // content from an older version or a hand edit, and an unknown position
+      // would leave the panel rendered nowhere — a panel gone without a trace.
+      // "kiri" arrived after the other two; old values without it stay valid,
+      // and unknown values fall back to the default.
+      const sah = (v: any, d: any) =>
         v === "kanan" || v === "bawah" || v === "kiri" ? v : d;
       return t
         ? {
             preview: sah(t.preview, bawaan.preview),
             terminal: sah(t.terminal, bawaan.terminal),
-            // Tersimpan dari versi sebelum Code jadi panel — nilainya memang
-            // tak ada di sana, jadi bawaannya yang dipakai.
+            // Stored by a version from before Code was a panel — the value
+            // genuinely is not there, so the default applies.
             logic: sah(t.logic, bawaan.logic),
             chat: sah(t.chat, bawaan.chat),
           }
@@ -2820,17 +2866,17 @@ function App() {
     } catch (e) {}
   }, [posisi]);
 
-  // ── Chat bisa disembunyikan, dan itu butuh penjagaan ──
+  // ── Chat can be hidden, and that needs guarding ──
   //
-  // Gunanya: memberi panel preview seluruh layar tanpa harus menutup chat dan
-  // kehilangan tempatnya. Tapi menyembunyikan chat saat tak ada panel lain yang
-  // terbuka menghasilkan layar KOSONG — dan pemakai tak punya satu pun petunjuk
-  // bahwa yang perlu ditekan ada di menu ⋮. Itu jebakan yang dibuat sendiri.
+  // The point: giving the preview panel the whole screen without closing chat
+  // and losing its place. But hiding chat when no other panel is open leaves an
+  // EMPTY screen — and the user has no hint at all that what they need is in the
+  // ⋮ menu. That is a trap of our own making.
   //
-  // Dua lapis penjagaan, dan keduanya perlu:
-  //   - menunya MENOLAK menyembunyikan saat tak ada panel lain (lihat TopBar)
-  //   - effect di bawah MENGEMBALIKAN chat kalau panel terakhir ditutup selagi
-  //     chat tersembunyi — jalur yang tak lewat menu sama sekali
+  // Two layers of guarding, and both are needed:
+  //   - the menu REFUSES to hide when no other panel is open (see TopBar)
+  //   - the effect below RESTORES chat if the last panel is closed while chat is
+  //     hidden — a path that does not go through the menu at all
   const [chatVisible, setChatVisible] = useState(() => {
     try {
       return localStorage.getItem("wolfspace_chat_tampil") !== "0";
@@ -2845,15 +2891,15 @@ function App() {
   }, [chatVisible]);
 
   const [terminalOpen, setTerminalOpen] = useState(false);
-  // Terminal ditutup = sesi debugnya ikut mati. Ini jalur yang PASTI, tak perlu
-  // menebak dari keluaran: PTY-nya sendiri dibunuh saat panelnya dilepas, jadi
-  // tak ada lagi yang bisa menerima perintah debug.
+  // Closing the terminal kills its debug session too. This is the DEFINITE path,
+  // with no guessing from output: the PTY itself is killed when the panel is
+  // unmounted, so nothing is left that could receive a debug command.
   //
-  // Letaknya WAJIB sesudah deklarasi terminalOpen. Ditaruh di atasnya — di
-  // dekat state debug lain, tempat ia "terbaca lebih rapi" — ia melempar
-  // ReferenceError yang menjatuhkan seluruh aplikasi: senarai dependensi
-  // dinilai SAAT RENDER, bukan saat effect-nya berjalan, jadi ia menyentuh
-  // binding yang masih di zona mati temporal.
+  // Its position MUST be after the terminalOpen declaration. Placed above it —
+  // next to the other debug state, where it "reads more tidily" — it throws a
+  // ReferenceError that brings the whole app down: a dependency array is
+  // evaluated AT RENDER TIME, not when the effect runs, so it touches a binding
+  // still in the temporal dead zone.
   useEffect(() => {
     if (!terminalOpen) setDebugAktif(null);
   }, [terminalOpen]);
@@ -2867,10 +2913,10 @@ function App() {
       return [];
     }
   });
-  const [globalPreviewItem, setGlobalPreviewItem] = useState(null);
+  const [globalPreviewItem, setGlobalPreviewItem] = useState<any>(null);
   const [showHistory, setShowHistory] = useState(false);
 
-  const [currentChatId, setCurrentChatId] = useState(null);
+  const [currentChatId, setCurrentChatId] = useState<any>(null);
   useEffect(() => {
     if (messages.length === 0) return;
     try {
@@ -2878,7 +2924,7 @@ function App() {
       const cid = currentChatId || Date.now();
       if (!currentChatId) setCurrentChatId(cid);
 
-      const existingIndex = saved.findIndex((c) => c.id === cid);
+      const existingIndex = saved.findIndex((c: any) => c.id === cid);
       if (existingIndex >= 0) {
         saved[existingIndex] = {
           ...saved[existingIndex],
@@ -2912,26 +2958,26 @@ function App() {
       );
     } catch (e) {}
   };
-  const restoreChat = (chat) => {
+  const restoreChat = (chat: any) => {
     setCurrentChatId(chat.id);
     setMessages(chat.messages);
     setHistory(chat.history || []);
     setShowHistory(false);
     setView("chat");
   };
-  const deleteChat = (id) => {
+  const deleteChat = (id: any) => {
     try {
       const list = JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
-      const updated = list.filter((c) => c.id !== id);
+      const updated = list.filter((c: any) => c.id !== id);
       localStorage.setItem("wolfspace_chats", JSON.stringify(updated));
       setSavedChats(updated);
     } catch (e) {}
   };
-  const renameChat = (id, newTitle) => {
+  const renameChat = (id: any, newTitle: any) => {
     try {
       if (!newTitle || !newTitle.trim()) return;
       const list = JSON.parse(localStorage.getItem("wolfspace_chats") || "[]");
-      const updated = list.map((c) =>
+      const updated = list.map((c: any) =>
         c.id === id ? { ...c, title: newTitle.trim() } : c,
       );
       localStorage.setItem("wolfspace_chats", JSON.stringify(updated));
@@ -2958,7 +3004,7 @@ function App() {
     }
   };
 
-  const handleSlashCommand = async (content) => {
+  const handleSlashCommand = async (content: any) => {
     const trimmed = content.trim();
     if (!trimmed.startsWith("/")) return false;
     const parts = trimmed.slice(1).split(/\s+/);
@@ -2984,7 +3030,7 @@ function App() {
         return true;
       }
       if (sub === "toggle") {
-        setTerminalOpen((v) => !v);
+        setTerminalOpen((v: any) => !v);
         setStatus("Terminal status updated.");
         return true;
       }
@@ -3020,15 +3066,15 @@ function App() {
     setLoading: setTerminalLoading,
     run: runTerminalCommand,
   };
-  const scrollRef = useRef(null);
-  const ctrlRef = useRef(null);
-  // SATU penangan untuk kedua sumbu. Dulu ada dua salinan yang identik kecuali
-  // setter-nya, dan keduanya keras memakai clientX — begitu panel bisa pindah ke
-  // bawah, menggeser pembagi horizontal akan mengubah ukuran memakai koordinat
-  // yang salah sumbu. Sumbunya kini mengikuti POSISI panelnya.
-  const geserPembagi = (sumbu, set) => (e) => {
+  const scrollRef = useRef<any>(null);
+  const ctrlRef = useRef<any>(null);
+  // ONE handler for both axes. There used to be two copies, identical but for
+  // their setter, and both hardcoded clientX — so once a panel could move to the
+  // bottom, dragging the horizontal splitter would resize using a coordinate
+  // from the wrong axis. The axis now follows the panel's POSITION.
+  const geserPembagi = (sumbu: any, set: any) => (e: any) => {
     e.preventDefault();
-    const move = (ev) => {
+    const move = (ev: any) => {
       const total = sumbu === "x" ? window.innerWidth : window.innerHeight;
       const dari = sumbu === "x" ? ev.clientX : ev.clientY;
       set(Math.min(75, Math.max(12, ((total - dari) / total) * 100)));
@@ -3056,7 +3102,7 @@ function App() {
   const loadModels = useCallback(async () => {
     // Cloud-only: the local llama.cpp/GGUF path was removed together with the
     // Model Hub, so the picker is built purely from configured cloud providers.
-    const opts = [];
+    const opts: any[] = [];
     let cloud = getCloud();
     // Hydrate from server-configured providers (key stays server-side) when there is
     // no stored cloud OR the stored provider is no longer configured (e.g. stale key).
@@ -3064,10 +3110,10 @@ function App() {
       const provs = await (await fetch("/cloud-providers")).json();
       if (Array.isArray(provs) && provs.length) {
         const pick =
-          provs.find((p) => p.provider === "opencode") ||
-          provs.find((p) => p.provider === "nvidia") ||
-          provs.find((p) => p.provider === "gemini") ||
-          provs.find((p) => p.provider === "puter") ||
+          provs.find((p: any) => p.provider === "opencode") ||
+          provs.find((p: any) => p.provider === "nvidia") ||
+          provs.find((p: any) => p.provider === "gemini") ||
+          provs.find((p: any) => p.provider === "puter") ||
           provs[0];
         // Only override if the user hasn't explicitly set a local key or custom baseUrl.
         // If they have, we respect their choice.
@@ -3103,8 +3149,10 @@ function App() {
     setModels(opts);
     const def = hasCloud
       ? "cloud"
-      : (opts.find((o) => o.default) || opts[0]).value;
-    setModelVal((v) => (v && opts.some((o) => o.value === v) ? v : def));
+      : (opts.find((o: any) => o.default) || opts[0]).value;
+    setModelVal((v: any) =>
+      v && opts.some((o: any) => o.value === v) ? v : def,
+    );
     setStatus(
       hasCloud
         ? "cloud: " + (cloud.name || cloud.provider)
@@ -3119,7 +3167,7 @@ function App() {
   // Warn if server isn't running (for browser users, not Electron)
   useEffect(() => {
     if (!IPC) {
-      checkServerHealth().then((ok) => {
+      checkServerHealth().then((ok: any) => {
         if (!ok) setStatus("Run 'npm start' in a terminal.");
       });
     }
@@ -3129,21 +3177,22 @@ function App() {
     if (el) el.scrollTop = el.scrollHeight;
   }, [messages]);
 
-  const labelOf = (v) => (models.find((m) => m.value === v) || {}).label || v;
+  const labelOf = (v: any) =>
+    (models.find((m: any) => m.value === v) || {}).label || v;
 
-  // Memisahkan APA YANG DIKIRIM ke model dari APA YANG DILIHAT user.
+  // Separates WHAT IS SENT to the model from WHAT THE USER SEES.
   //
-  // Lampiran dulu ikut mendarat di gelembung chat sebagai baris teks mentah
-  // ("- [Terlampir] a.pdf … — id: att_57a5…"). Handle itu memang harus sampai
-  // ke model — ia satu-satunya cara agent membaca lampiran — tapi tak ada
-  // gunanya dibaca manusia, dan sesudah jembatan handle dipasang ia jadi makin
-  // panjang serta makin tak terbaca.
+  // Attachments used to land in the chat bubble as raw text lines
+  // ("- [Attached] a.pdf … — id: att_57a5…"). That handle does have to reach the
+  // model — it is the only way the agent can read an attachment — but there is
+  // no point in a human reading it, and once the handle bridge was in place it
+  // only got longer and less readable.
   //
-  // Parameter `display` sudah lama ada untuk keperluan ini, hanya tak pernah
-  // dipakai Composer. Sekarang ia boleh berupa objek {text, attachments}:
-  // `text` yang tampil di gelembung, `attachments` dirender sebagai kartu.
-  // Bentuk string lama tetap didukung — beberapa pemanggil lain memakainya.
-  const _pesanUser = (content, display) => {
+  // The `display` parameter has existed for this purpose for a long time, it was
+  // simply never used by Composer. It may now be an object {text, attachments}:
+  // `text` shows in the bubble, `attachments` render as cards. The old string
+  // form is still supported — several other callers use it.
+  const _pesanUser = (content: any, display: any) => {
     if (display && typeof display === "object")
       return {
         text: display.text || "",
@@ -3152,12 +3201,13 @@ function App() {
     return { text: display || content };
   };
 
-  const doSend = async (content, display, hitlData = null) => {
+  const doSend = async (content: any, display?: any, hitlData: any = null) => {
     if (!content && !hitlData) return;
     const trimmedContent = content.trim();
-    // /ask: mode tanya EKSPLISIT — dijamin TANPA tool (tidak akan pernah edit atau
-    // eksekusi file), bahkan pada model cloud. Ini escape-hatch keamanan, kebalikan
-    // dari perilaku default di mana model sendiri yang memutuskan pakai tool atau tidak.
+    // /ask: an EXPLICIT question mode — guaranteed TOOL-FREE (it will never edit
+    // or execute a file), even on a cloud model. This is a safety escape hatch,
+    // the opposite of the default where the model itself decides whether to use
+    // tools.
     let askMode = false;
     {
       const t = (content || "").trim();
@@ -3190,18 +3240,20 @@ function App() {
     const _localCloud =
       _cl && _cl.baseUrl && /(127\.0\.0\.1|localhost)/.test(_cl.baseUrl);
 
-    // Default: model cloud tool-capable selalu lewat agent, dan MODEL sendiri yang
-    // memutuskan (tool_choice auto) apakah cukup menjawab atau memakai tool. Tak ada
-    // lagi gerbang regex tebak-menebak yang bisa salah-rute (dulu typo "jalaankan"
-    // diam-diam jatuh ke chat tanpa-tool → model mengarang output). Pengecualian:
-    //   - /ask  -> paksa jalur tanpa-tool (jaminan tak menyentuh file)
-    //   - HITL/continue resume -> selalu agent
-    //   - model lokal/bridge  -> memang tak bisa tool, plain chat
+    // Default: a tool-capable cloud model always goes through the agent, and the
+    // MODEL itself decides (tool_choice auto) whether answering is enough or a
+    // tool is needed. There is no longer a guessing regex gate that could
+    // mis-route (a typo like "jalaankan" used to fall silently into tool-free
+    // chat, and the model then invented output). The exceptions:
+    //   - /ask                 -> force the tool-free path (guaranteed to touch
+    //                             no files)
+    //   - HITL/continue resume -> always the agent
+    //   - local/bridge models   -> genuinely cannot use tools, so plain chat
     const useAgent =
       !!hitlData || (modelVal === "cloud" && !_localCloud && !askMode);
     if (!useAgent) {
       // Bridge / local model: plain conversational chat (text streaming, no function-calling).
-      setMessages((m) => [
+      setMessages((m: any) => [
         ...m,
         {
           role: "user",
@@ -3212,8 +3264,8 @@ function App() {
       try {
         const res = await streamChat(
           reqFor(modelVal, getCloud(), newHist),
-          (t) => {
-            setMessages((m) => {
+          (t: any) => {
+            setMessages((m: any) => {
               const c = m.slice();
               c[c.length - 1] = { role: "model", text: t };
               return c;
@@ -3221,12 +3273,16 @@ function App() {
           },
           ctrl.signal,
         );
-        setHistory((h) => [...h, { role: "assistant", content: res.text }]);
+        setHistory((h: any) => [
+          ...h,
+          { role: "assistant", content: res.text },
+        ]);
         setStatus("ready");
         console.log("[doSend] Setting busy=false (normal chat complete)");
         setBusy(false); // Reset busy state after stream completes
       } catch (e) {
-        if (e.name !== "AbortError") setStatus("error: " + e.message);
+        if ((e as any).name !== "AbortError")
+          setStatus("error: " + (e as any).message);
         else setStatus("cancelled");
         console.log("[doSend] Setting busy=false (normal chat error)");
         setBusy(false);
@@ -3235,7 +3291,7 @@ function App() {
       // Agentic chat (like Claude Code): the model answers OR uses tools to edit
       // WOLFSPACE's own source. The live process renders as a clean timeline.
       if (!hitlData) {
-        setMessages((m) => [
+        setMessages((m: any) => [
           ...m,
           {
             role: "user",
@@ -3244,7 +3300,7 @@ function App() {
           { role: "agent", agent: { events: [], busy: true } },
         ]);
       } else {
-        setMessages((m) => {
+        setMessages((m: any) => {
           const c = m.slice();
           const last = { ...c[c.length - 1] };
           last.agent = { ...last.agent, busy: true };
@@ -3252,15 +3308,15 @@ function App() {
           return c;
         });
       }
-      const upd = (patch) =>
-        setMessages((m) => {
+      const upd = (patch: any) =>
+        setMessages((m: any) => {
           const c = m.slice();
           const last = { ...c[c.length - 1] };
           last.agent = { ...last.agent, ...patch };
           c[c.length - 1] = last;
           return c;
         });
-      const evlist = [];
+      const evlist: any[] = [];
       let think = "";
       let adoneSent = false;
       let waitingForInput = false;
@@ -3273,26 +3329,26 @@ function App() {
             cloud: getCloud(),
             effort: curEffort,
             workspace_root: resolveWorkspaceRoot(selectedProject) || undefined,
-            // Run yang terputus reload disambung, bukan diulang. hitlData tetap
-            // menang karena di-spread SESUDAH ini.
+            // A run interrupted by a reload is resumed, not restarted. hitlData
+            // still wins because it is spread AFTER this.
             thread_id: ambilThreadTerputus() || undefined,
             ...hitlData,
           },
-          (j) => {
+          (j: any) => {
             if (j.thread_id) simpanThreadTerputus(j.thread_id);
             if (j.t === "backup") upd({ backup: j.dir });
             // model_wait: satu-satunya tanda hidup selama menunggu.
-            // Dulu di-emit backend tapi TAK ADA penanganannya di sini, dan tak
-            // ada cabang penampung — jadi hilang senyap. Akibatnya seluruh masa
-            // tunggu tampak sebagai layar diam: panggilan model yang 64 detik,
-            // dan penyiapan MCP yang sampai 60 detik. Justru saat itulah user
-            // paling butuh tahu agent masih hidup.
+            // The backend used to emit this with NO handler here and no
+            // catch-all branch — so it vanished silently. Every wait then
+            // looked like a frozen screen: a 64-second model call, an MCP
+            // startup of up to 60 seconds. Those are exactly the moments a user
+            // most needs to know the agent is still alive.
             else if (j.t === "model_wait") upd({ status: j.m, busy: true });
-            // force_retry: pengulangan agent, dari ENAM titik emit di backend.
-            // Didorong sebagai baris timeline ber-type "act" supaya memakai
-            // penampil yang sudah ada — tak perlu penampil baru, dan sebabnya
-            // ikut terlihat. Tanpa ini, setiap putaran ulang tampak sebagai
-            // layar diam dan terbaca seolah run berhenti sendiri.
+            // force_retry: an agent retry, from SIX emit points in the backend.
+            // Pushed as a timeline row of type "act" so it reuses the existing
+            // renderer — no new renderer needed, and its reason shows with it.
+            // Without this, every retry loop looked like a frozen screen and
+            // read as though the run had stopped by itself.
             else if (j.t === "force_retry") {
               evlist.push({
                 type: "act",
@@ -3303,14 +3359,14 @@ function App() {
               });
               upd({ events: [...evlist], status: j.m, busy: true });
             }
-            // todos: keadaan checklist. Disimpan sebagai STATE, bukan baris
-            // timeline — isinya sudah muncul lewat keluaran tool todowrite,
-            // jadi mendorongnya ke timeline hanya menggandakan.
+            // todos: checklist state. Held as STATE rather than a timeline row
+            // — its contents already appear through todowrite's tool output, so
+            // pushing it to the timeline would only duplicate.
             //
-            // Sekarang masuk ke state TINGKAT APLIKASI, bukan ke state pesan.
-            // Sebagai run.todos ia ikut tergulung naik bersama gelembungnya,
-            // jadi daftar yang gunanya untuk dilihat SELAMA bekerja malah
-            // paling cepat hilang dari layar. Panelnya kini duduk tetap di atas
+            // It now goes into APPLICATION-level state rather than message
+            // state. As run.todos it scrolled away with its bubble, so a list
+            // whose whole purpose is to be seen WHILE working was the first
+            // thing to leave the screen. Its panel now sits fixed above
             // kotak ketik.
             else if (j.t === "todos") setTodos(j.todos || []);
             else if (j.t === "step") {
@@ -3339,7 +3395,7 @@ function App() {
                 output: j.output,
               });
               upd({ events: [...evlist], thinking: "" });
-              // Pancarkan juga dari chat UTAMA (bukan cuma chat workflow): dipakai
+              // Emitted from the MAIN chat too, not only the workflow chat: used
               // live-mirror & auto-preview Web Dev Live Browser. j.path = path final
               // hasil resolve tool (akurat walau kurungan workspace me-remap path).
               try {
@@ -3379,7 +3435,10 @@ function App() {
                 title: "Question from the Agent",
                 code: j.question || "",
                 thread_id: j.thread_id || null,
-                options: (j.choices || []).map((c) => ({ value: c, text: c })),
+                options: (j.choices || []).map((c: any) => ({
+                  value: c,
+                  text: c,
+                })),
               });
               upd({ thinking: "Waiting for your reply...", busy: true });
             } else if (j.t === "adone") {
@@ -3387,7 +3446,7 @@ function App() {
                 // Agent paused for HITL — keep busy=true, just ensure thread_id is updated
                 adoneSent = true;
                 waitingForInput = true;
-                setHitlRequest((prev) =>
+                setHitlRequest((prev: any) =>
                   prev
                     ? { ...prev, thread_id: j.thread_id }
                     : {
@@ -3405,8 +3464,9 @@ function App() {
                 return; // Don't set done/busy=false
               }
               if (j.continuable && j.thread_id) {
-                // Agent dijeda karena plafon langkah (checkpoint) — belum selesai,
-                // bukan gagal. Tutup timeline dengan rapi lalu tawarkan "Lanjutkan".
+                // The agent paused on the step ceiling (a checkpoint) — not
+                // finished, not failed. Close the timeline tidily and then offer
+                // "Continue".
                 adoneSent = true;
                 waitingForInput = true;
                 upd({
@@ -3435,13 +3495,13 @@ function App() {
                 summary: j.summary,
                 editCount: j.edits,
                 backup: j.backup,
-                // `run`, `phase`, dan `phaseNodes` DIHAPUS: self_agent tak
-                // pernah memancarkan ketiganya. `run` dulu berisi {ok:true,
-                // info:"auto-run disabled"} dari runReply yang tak menjalankan
-                // apa pun, dan phaseNodes menumpuk ke keadaan yang tak dirender
+                // `run`, `phase` and `phaseNodes` were REMOVED: self_agent never
+                // emitted any of the three. `run` used to hold {ok:true,
+                // info:"auto-run disabled"} from a runReply that ran nothing, and
+                // phaseNodes accumulated into state that was never rendered
                 // komponen mana pun.
               });
-              setHistory((h) => [
+              setHistory((h: any) => [
                 ...h,
                 { role: "assistant", content: j.summary || "" },
               ]);
@@ -3454,16 +3514,16 @@ function App() {
           ctrl.signal,
         );
       } catch (e) {
-        if (e.name !== "AbortError")
+        if ((e as any).name !== "AbortError")
           upd({
             busy: false,
             error: true,
-            events: [...evlist, { type: "err", m: e.message }],
+            events: [...evlist, { type: "err", m: (e as any).message }],
           });
       }
       console.log("[doSend] Setting busy=false (agent stream complete)");
-      // Run tuntas (bukan sekadar menunggu jawaban) -> thread tak boleh tersisa,
-      // supaya pesan berikutnya yang tak berhubungan tidak ikut tersambung.
+      // The run finished (not merely waiting for an answer), so the thread must
+      // not linger — otherwise the next, unrelated message would attach to it.
       if (!waitingForInput) simpanThreadTerputus(null);
       // If no "adone" event was sent, provide a default summary based on events
       if (!adoneSent) {
@@ -3473,7 +3533,10 @@ function App() {
               ? `Selesai. ${evlist.length} operasi dieksekusi.`
               : "Done. No operations were performed.";
           upd({ busy: false, done: true, summary });
-          setHistory((h) => [...h, { role: "assistant", content: summary }]);
+          setHistory((h: any) => [
+            ...h,
+            { role: "assistant", content: summary },
+          ]);
         } else {
           upd({ busy: false });
         }
@@ -3486,7 +3549,7 @@ function App() {
     ctrlRef.current = null;
     setBusy(false);
   };
-  doSendRef.current = doSend;
+  (doSendRef as any).current = doSend;
   const cancel = () => {
     console.log("[cancel] Aborting and setting busy=false");
     if (ctrlRef.current) ctrlRef.current.abort();
@@ -3501,61 +3564,65 @@ function App() {
     setStatus("Ready.");
   };
   const saveChat = () => {
-    // Digantikan oleh useEffect auto-save agar tidak duplikat
+    // Superseded by the auto-save useEffect, to avoid duplicating it.
   };
 
   // ── Ukuran baris atas, dihitung sekali ──
   //
   // Panel di KANAN memakan lebar; panel di BAWAH memakan tinggi. Keduanya
-  // dihitung terpisah justru supaya tak saling potong: memakai satu angka untuk
-  // dua sumbu membuat chat menyusut dua kali padahal cuma satu panel terbuka.
-  // Panel didaftar, bukan dihitung satu per satu. Bentuk lamanya menyebut tiap
-  // panel di empat rumus terpisah (_xKanan, _xBawah, jumlah bawah, lebar atas);
-  // begitu Code jadi panel ketiga, pola itu berarti menyunting keempatnya dan
-  // berharap tak ada yang terlewat.
+  // computed separately precisely so they do not cut into each other: using one
+  // number for both axes makes chat shrink twice when only one panel is open.
+  // Panels are listed rather than counted one by one. The old shape named every
+  // panel in four separate formulas (_xKanan, _xBawah, the bottom total, the top
+  // width); once Code became the third panel, that pattern meant editing all
+  // four and hoping none was missed.
   const _panelTerbuka = [
     terminalOpen && { sisi: posisi.terminal, pct: terminalPct },
     panelOpen && { sisi: posisi.preview, pct: panelPct },
     logicOpen && { sisi: posisi.logic, pct: logicPct },
   ].filter(Boolean);
   const _adaPanel = _panelTerbuka.length > 0;
-  // Jaring pengaman terakhir: kalau panel terakhir ditutup selagi chat
-  // tersembunyi, layar jadi kosong total dan tak ada jalan kembali yang
-  // terlihat. Menu sudah menolak kasus itu, tapi menutup panel TIDAK lewat menu.
+  // The last safety net: if the final panel is closed while chat is hidden, the
+  // screen goes completely empty with no visible way back. The menu already
+  // refuses that case, but closing a panel does NOT go through the menu.
   useEffect(() => {
     if (!chatVisible && !_adaPanel) setChatVisible(true);
   }, [chatVisible, _adaPanel]);
 
-  // ── Sisi dikelompokkan per SUMBU, bukan per nama ──
+  // ── Sides are grouped by AXIS, not by name ──
   //
-  // "kiri" dan "kanan" sama-sama memakan LEBAR dan sama-sama duduk di baris
-  // pertama; yang membedakan cuma urutan visualnya. Menghitungnya terpisah
-  // berarti panel kiri tak ikut mengurangi lebar chat — chat lalu diminta
-  // selebar sisa yang sudah dipakai orang lain, dan panel terakhir terdorong
-  // turun ke baris berikutnya.
-  const _grup = (sisi) => (sisi === "bawah" ? "bawah" : "mendatar");
-  const _jumlahGrup = (g) =>
-    _panelTerbuka.reduce((n, p) => n + (_grup(p.sisi) === g ? p.pct : 0), 0);
-  const _adaMendatar = _panelTerbuka.some((p) => _grup(p.sisi) === "mendatar");
-  // ── Jatah per sisi, dan kenapa ia WAJIB ada sejak panel ketiga ──
+  // "kiri" and "kanan" both consume WIDTH and both sit in the first row; only
+  // their visual order differs. Counting them separately means a left panel does
+  // not reduce the chat width — chat is then asked to be as wide as space
+  // already taken by someone else, and the last panel is pushed onto the next
+  // row.
+  const _grup = (sisi: any) => (sisi === "bawah" ? "bawah" : "mendatar");
+  const _jumlahGrup = (g: any) =>
+    _panelTerbuka.reduce(
+      (n: any, p: any) => n + (_grup(p.sisi) === g ? p.pct : 0),
+      0,
+    );
+  const _adaMendatar = _panelTerbuka.some(
+    (p: any) => _grup(p.sisi) === "mendatar",
+  );
+  // ── The per-side budget, and why it became MANDATORY at the third panel ──
   //
-  // Tiap pembagi dibatasi 12–75% SENDIRI-SENDIRI. Dengan dua panel itu masih
-  // bisa dianggap aman; dengan tiga, tiga panel di sisi yang sama menjumlah
-  // sampai 225% tanpa satu pun melanggar batasnya. Di wadah yang membungkus,
-  // kelebihan sekecil apa pun mendorong panel terakhir turun ke baris
-  // berikutnya — bug yang persis sama dengan yang dulu tertangkap harness
-  // geometri, hanya sumbernya beda.
+  // Each splitter is bounded to 12–75% INDEPENDENTLY. With two panels that could
+  // still be considered safe; with three, three panels on the same side sum to
+  // 225% without any one of them breaking its own bound. In a wrapping
+  // container, the slightest excess pushes the last panel onto the next row —
+  // the very bug the geometry harness once caught, just from a different source.
   //
-  // Jadi jumlah per sisi diciutkan proporsional supaya muat. Chat menyisakan
-  // 20% untuk dirinya; tanpa chat, panel boleh mengambil seluruhnya.
+  // So each side's total is scaled down proportionally to fit. Chat reserves 20%
+  // for itself; with no chat, panels may take all of it.
   const _JATAH = chatVisible ? 80 : 100;
-  const _skalaSisi = (sisi) => {
+  const _skalaSisi = (sisi: any) => {
     const g = _grup(sisi);
     const jml = _jumlahGrup(g);
     if (jml <= 0) return 1;
     if (jml > _JATAH) return _JATAH / jml;
-    // Dinaikkan HANYA saat panel bawah satu-satunya penghuni layar. Kalau chat
-    // masih ada, ruang sisa memang miliknya — bukan lubang yang perlu ditambal.
+    // Raised ONLY when a bottom panel is the screen's sole occupant. If chat is
+    // still there, the remaining space is genuinely its own — not a hole to fill.
     if (g === "bawah" && !chatVisible && !_adaMendatar) return 100 / jml;
     return 1;
   };
@@ -3564,18 +3631,18 @@ function App() {
     20,
     100 - _jumlahGrup("mendatar") * _skalaSisi("kanan"),
   );
-  // ── Saat chat disembunyikan, sisanya harus MENGISI, bukan meninggalkan lubang ──
+  // ── With chat hidden, the rest must FILL, not leave a hole ──
   //
-  // Persentase panel selama ini dihitung sebagai "bagian dari layar yang tidak
-  // dipakai chat". Begitu chat hilang, angka itu tak lagi berarti apa-apa:
-  // terminal 30% + preview 35% di bawah menyisakan 35% ruang kosong yang tak
-  // ditempati siapa pun, dan pemakai melihat pita hitam tanpa penjelasan.
+  // Panel percentages have always been computed as "a share of the screen chat
+  // is not using". Once chat is gone that number means nothing: a 30% terminal
+  // plus a 35% preview at the bottom leaves 35% of empty space occupied by
+  // nobody, and the user sees an unexplained black band.
   //
-  // Jadi saat chat disembunyikan:
-  //   - masih ada panel di kanan -> baris atas tetap setinggi sisa; panel kanan
-  //     yang melebar mengisi lebarnya (lihat gayaPanel)
-  //   - semua panel di bawah      -> tak ada baris atas sama sekali (0), dan
-  //     tinggi tiap panel dinormalkan supaya jumlahnya tepat 100%
+  // So when chat is hidden:
+  //   - a panel still on the right -> the top row keeps the remaining height;
+  //     the widened right panel fills its width (see gayaPanel)
+  //   - every panel at the bottom  -> there is no top row at all (0), and each
+  //     panel's height is normalised so they sum to exactly 100%
   const _isiPenuh = !chatVisible;
   const tinggiAtas = _isiPenuh
     ? _adaMendatar
@@ -3583,35 +3650,35 @@ function App() {
       : 0
     : Math.max(20, 100 - _jumlahBawah);
   // Gaya sebuah panel + pembaginya, mengikuti sisi tempat ia duduk. Satu tempat
-  // supaya terminal dan preview tak pernah menyimpang perlakuannya.
+  // so terminal and preview never drift apart in how they are treated.
   //
-  // TIAP PANEL MENANGGUNG 6px PEMBAGINYA SENDIRI. Tanpa itu jumlahnya melewati
-  // 100% — chat 65% + preview 35% + pembagi 6px = 1006px di layar 1000px — dan
-  // di wadah yang membungkus, kelebihan sekecil apa pun membuat panel yang
-  // seharusnya di KANAN terdorong turun ke baris berikutnya. Terukur di harness
-  // geometri: preview diminta di kanan, hasilnya mendarat di x=0 y=420.
-  // ── Urutan visual: satu tabel, bukan angka yang tersebar ──
+  // EACH PANEL CARRIES ITS OWN 6px SPLITTER. Without that the total exceeds
+  // 100% — chat 65% + preview 35% + splitter 6px = 1006px on a 1000px screen —
+  // and in a wrapping container the slightest excess pushes a panel that belongs
+  // on the RIGHT down onto the next row. Measured in the geometry harness:
+  // preview was asked for on the right and landed at x=0 y=420.
+  // ── Visual order: one table, not numbers scattered about ──
   //
-  // Baris pertama disusun dengan `order`, dan yang menentukan bukan cuma sisi
-  // panelnya — posisi CHAT ikut menggesernya. Kalau chat di kanan, pembagi
-  // milik panel kanan harus pindah ke sisi yang menghadap chat; kalau tidak,
-  // garis pemisahnya nyasar ke tepi luar dan panelnya menempel ke chat tanpa
+  // The first row is arranged with `order`, and what decides it is not only the
+  // panel's side — CHAT's position shifts it too. With chat on the right, a
+  // right panel's splitter has to move to the side facing chat; otherwise the
+  // dividing line ends up on the outer edge and the panel butts against chat
   // pemisah sama sekali.
   //
   //   chat "kiri"  :  [chat] [div] [kanan…]        kiri…] [div] [chat]
   //   chat "kanan" :  [kiri…] [div] [kanan…] [div] [chat]
   //
-  // Angka bawah sengaja jauh (20): ia selalu paling akhir, dan memberi jarak
-  // supaya nilai baris pertama bisa disisipkan tanpa bertabrakan.
+  // The bottom number is deliberately far away (20): it is always last, and the
+  // gap lets first-row values be inserted without colliding.
   const _chatKanan = posisi.chat === "kanan";
   const _ORDER_CHAT = _chatKanan ? 10 : 0;
-  const _orderPanel = (sisi) =>
+  const _orderPanel = (sisi: any) =>
     sisi === "bawah" ? 20 : sisi === "kiri" ? -2 : 1;
-  // Pembagi selalu di sisi panel yang MENGHADAP chat.
-  const _orderPembagi = (sisi) =>
+  // The splitter always sits on the panel side FACING chat.
+  const _orderPembagi = (sisi: any) =>
     sisi === "bawah" ? 20 : sisi === "kiri" ? -1 : _chatKanan ? 2 : 0;
 
-  const gayaPanel = (sisi, pct) =>
+  const gayaPanel = (sisi: any, pct: any) =>
     sisi === "bawah"
       ? {
           flex: "0 0 auto",
@@ -3621,17 +3688,17 @@ function App() {
         }
       : {
           // Tanpa chat, panel kanan MELEBAR mengisi baris. Grow-nya sebanding
-          // dengan pct, bukan "1 1 0%" rata: dengan satu panel keduanya sama
-          // saja, tapi dengan dua atau tiga panel kanan, grow rata membuat
-          // semuanya selebar sama persis — hasil seretan pembagi hilang tanpa
-          // sebab yang terlihat.
+          // with pct, not a flat "1 1 0%": with one panel the two are the same,
+          // but with two or three right-hand panels a flat grow makes them all
+          // exactly equal width — the result of dragging a splitter disappears
+          // for no visible reason.
           flex: _isiPenuh
             ? pct + " 1 0%"
             : "0 0 calc(" + pct * _skalaSisi("kanan") + "% - 6px)",
           height: tinggiAtas + "%",
           order: _orderPanel(sisi),
         };
-  const gayaPembagi = (sisi) =>
+  const gayaPembagi = (sisi: any) =>
     sisi === "bawah"
       ? {
           flex: "0 0 auto",
@@ -3649,7 +3716,7 @@ function App() {
             models={models}
             modelVal={modelVal}
             setModelVal={setModelVal}
-            onStart={(msg, project, tampil) => {
+            onStart={(msg: any, project: any, tampil: any) => {
               setSelectedProject(project);
               setPickerDone(true);
               setTimeout(() => doSend(msg, tampil), 0);
@@ -3710,30 +3777,30 @@ function App() {
               terminalOpen={terminalOpen}
               setTerminalOpen={setTerminalOpen}
             />
-            {/* Panel dipindah lewat PEMBUNGKUSAN FLEKS, bukan penyusunan ulang
-                markup. .chat-split membungkus (flex-wrap), jadi panel yang
-                lebarnya 100% otomatis turun ke baris berikutnya — itulah
-                "bawah". Yang lebarnya sebagian tetap di baris pertama — itulah
-                "kanan". Urutannya diatur `order` supaya panel bawah selalu
-                jatuh di bawah, apa pun urutannya di sumber.
+            {/* Panels are moved by FLEX WRAPPING rather than by re-ordering
+                markup. .chat-split wraps (flex-wrap), so a panel that is 100%
+                wide drops to the next row automatically — that is what
+                "bottom" means. One that is only partly wide stays in the first
+                row — that is "right". Their order is set with `order` so a
+                bottom panel is always last.
 
-                Kenapa begini, bukan membungkus chat + panel-bawah dalam satu
-                kolom: blok preview panjangnya ~590 baris, dan memindahkannya
-                berarti memotong-tempel JSX sebesar itu hanya untuk mengubah
-                POSISI. Cara ini mencapai hasil yang sama tanpa memindahkan satu
-                baris pun. */}
+                Why this way rather than wrapping chat plus the bottom panel in
+                one column: the preview block is ~590 lines, and moving it would
+                mean cutting and pasting that much JSX purely to change a
+                POSITION. This achieves the same result without moving a single
+                line. */}
             <div className="chat-split" style={{ position: "relative" }}>
               {chatVisible && (
                 <div
                   className="chat-col"
                   style={{
-                    // Lebarnya SISA, bukan persentase. Memberi chat basis 65%
-                    // membuat baris pertama diukur sebagai 65% + 35% + pembagi —
-                    // melebihi 100%, sehingga panel kanan terdorong turun. Dengan
-                    // basis 0 dan grow 1, chat mengambil apa pun yang tersisa
-                    // SESUDAH panel kanan mendapat jatahnya, jadi tak pernah ada
-                    // kelebihan. lebarAtas tetap dipakai sebagai lebar MINIMUM
-                    // supaya chat tak bisa diperas habis.
+                    // Its width is the REMAINDER, not a percentage. Giving chat a
+                    // 65% basis makes the first row measure as 65% + 35% +
+                    // splitter — over 100%, so the right panel is pushed down.
+                    // With basis 0 and grow 1, chat takes whatever is left AFTER
+                    // the right panel has its share, so there is never an excess.
+                    // lebarAtas is still used as a MINIMUM width so chat cannot
+                    // be squeezed away entirely.
                     flex: "1 1 0%",
                     minWidth: lebarAtas + "%",
                     height: tinggiAtas + "%",
@@ -3743,7 +3810,7 @@ function App() {
                   <div
                     className="chat-scroll"
                     ref={scrollRef}
-                    onClick={(e) => {
+                    onClick={(e: any) => {
                       if (
                         e.target.tagName === "IMG" &&
                         (e.target.src || e.target.getAttribute("src"))
@@ -3759,7 +3826,7 @@ function App() {
                       <div className="chat-inner"></div>
                     ) : (
                       <div className="chat-inner">
-                        {messages.map((m, i) => (
+                        {messages.map((m: any, i: number) => (
                           <Message key={i} msg={m} />
                         ))}
                       </div>
@@ -3777,14 +3844,14 @@ function App() {
                     models={models}
                     modelVal={modelVal}
                     setModelVal={setModelVal}
-                    onSend={(t, tampil) => doSend(t, tampil)}
+                    onSend={(t: any, tampil: any) => doSend(t, tampil)}
                     onCancel={cancel}
                     busy={busy}
                     todos={todos}
                     onClearTodos={() => setTodos([])}
-                    onToggleTodo={(i) =>
-                      setTodos((d) =>
-                        d.map((t, j) =>
+                    onToggleTodo={(i: any) =>
+                      setTodos((d: any) =>
+                        d.map((t: any, j: any) =>
                           j === i
                             ? {
                                 ...t,
@@ -3891,7 +3958,7 @@ function App() {
                           zIndex: 10,
                         }}
                         title="Panel menu"
-                        onClick={(e) => {
+                        onClick={(e: any) => {
                           e.stopPropagation();
                           setPanelMenuOpen(!panelMenuOpen);
                         }}
@@ -3920,7 +3987,7 @@ function App() {
                       </div>
                       {panelMenuOpen && (
                         <div
-                          onClick={(e) => e.stopPropagation()}
+                          onClick={(e: any) => e.stopPropagation()}
                           style={{
                             position: "absolute",
                             top: "38px",
@@ -3934,8 +4001,9 @@ function App() {
                             minWidth: "235px",
                           }}
                         >
-                          {/* Visual Picker & Visual Draw dipindah kemari dari sidebar (bagian "Alat")
-                            — akses langsung dari tombol menu panel ini, bukan lagi di sidebar. */}
+                          {/* Visual Picker & Visual Draw moved here from the sidebar
+                            — reachable directly from this panel's menu button,
+                            no longer from the sidebar. */}
                           <button
                             className="btn-reset"
                             style={{
@@ -3949,11 +4017,11 @@ function App() {
                               fontFamily: "inherit",
                               textAlign: "left",
                             }}
-                            onMouseEnter={(e) =>
+                            onMouseEnter={(e: any) =>
                               (e.currentTarget.style.background =
                                 "rgba(255, 255, 255, 0.08)")
                             }
-                            onMouseLeave={(e) =>
+                            onMouseLeave={(e: any) =>
                               (e.currentTarget.style.background = "transparent")
                             }
                             onClick={() => {
@@ -4010,11 +4078,11 @@ function App() {
                               fontFamily: "inherit",
                               textAlign: "left",
                             }}
-                            onMouseEnter={(e) =>
+                            onMouseEnter={(e: any) =>
                               (e.currentTarget.style.background =
                                 "rgba(255, 255, 255, 0.08)")
                             }
-                            onMouseLeave={(e) =>
+                            onMouseLeave={(e: any) =>
                               (e.currentTarget.style.background = "transparent")
                             }
                             onClick={() => {
@@ -4038,11 +4106,11 @@ function App() {
                               fontFamily: "inherit",
                               textAlign: "left",
                             }}
-                            onMouseEnter={(e) =>
+                            onMouseEnter={(e: any) =>
                               (e.currentTarget.style.background =
                                 "rgba(255, 255, 255, 0.08)")
                             }
-                            onMouseLeave={(e) =>
+                            onMouseLeave={(e: any) =>
                               (e.currentTarget.style.background = "transparent")
                             }
                             onClick={() => {
@@ -4098,8 +4166,10 @@ function App() {
                         <input
                           type="text"
                           value={preview.inputUrl}
-                          onChange={(e) => preview.setInputUrl(e.target.value)}
-                          onKeyDown={(e) => {
+                          onChange={(e: any) =>
+                            preview.setInputUrl(e.target.value)
+                          }
+                          onKeyDown={(e: any) => {
                             if (e.key === "Enter")
                               preview.navigate(preview.inputUrl);
                           }}
@@ -4141,11 +4211,11 @@ function App() {
                             display: "flex",
                             alignItems: "center",
                           }}
-                          onMouseEnter={(e) =>
+                          onMouseEnter={(e: any) =>
                             (e.currentTarget.style.background =
                               "rgba(255,255,255,0.08)")
                           }
-                          onMouseLeave={(e) =>
+                          onMouseLeave={(e: any) =>
                             (e.currentTarget.style.background = "transparent")
                           }
                         >
@@ -4177,11 +4247,12 @@ function App() {
                               window.WOLFSPACE &&
                               window.WOLFSPACE.ipc
                             ) {
-                              // Electron: tak ada server HTTP di 8090 (app:// protocol-only),
-                              // jadi browser eksternal manapun tak bisa menjangkau
-                              // /preview-file. Buka file ASLI dari disk via file:// —
-                              // setWindowOpenHandler meneruskannya ke shell.openExternal,
-                              // yang meluncurkan browser default OS langsung ke file itu.
+                              // Electron: there is no HTTP server on 8090 (app://
+                              // is protocol-only), so no external browser can
+                              // reach /preview-file. Open the REAL file from disk
+                              // over file:// — setWindowOpenHandler forwards it to
+                              // shell.openExternal, which launches the OS default
+                              // browser straight at that file.
                               let p = String(preview.inputUrl).replace(
                                 /\\/g,
                                 "/",
@@ -4189,8 +4260,9 @@ function App() {
                               if (!p.startsWith("/")) p = "/" + p;
                               window.open("file://" + encodeURI(p), "_blank");
                             } else {
-                              // Mode server/browser biasa: /preview-file memang dilayani
-                              // di origin yang sama — tab baru pada origin itu cukup.
+                              // Ordinary server/browser mode: /preview-file really
+                              // is served from the same origin, so a new tab on
+                              // that origin is enough.
                               window.open(
                                 preview.url || preview.inputUrl,
                                 "_blank",
@@ -4207,11 +4279,11 @@ function App() {
                             display: "flex",
                             alignItems: "center",
                           }}
-                          onMouseEnter={(e) =>
+                          onMouseEnter={(e: any) =>
                             (e.currentTarget.style.background =
                               "rgba(255,255,255,0.08)")
                           }
-                          onMouseLeave={(e) =>
+                          onMouseLeave={(e: any) =>
                             (e.currentTarget.style.background = "transparent")
                           }
                         >
@@ -4241,18 +4313,18 @@ function App() {
                             display: "flex",
                             alignItems: "center",
                           }}
-                          onMouseEnter={(e) => {
+                          onMouseEnter={(e: any) => {
                             e.currentTarget.style.background =
                               "rgba(248,81,73,0.15)";
                             e.currentTarget.style.color = "#f85149";
                           }}
-                          onMouseLeave={(e) => {
+                          onMouseLeave={(e: any) => {
                             e.currentTarget.style.background = "transparent";
                             e.currentTarget.style.color = "#8b98a9";
                           }}
                         >
-                          {/* Ikon-X SVG (bukan glyph teks '×') agar boks & alignment-nya
-                            identik dengan tombol Reload/Buka-eksternal di sebelahnya. */}
+                          {/* An SVG X icon (not the text glyph '×') so its box and
+                            match the Reload and Open-external buttons beside it. */}
                           <svg
                             width="14"
                             height="14"
@@ -4279,10 +4351,10 @@ function App() {
                         background: "#ffffff",
                       }}
                     >
-                      {/* Situs luar yang ditolak tampil di dalam frame TIDAK
-                          memicu onerror — iframe-nya cuma tinggal putih. Overlay
-                          ini menggantikan layar putih diam itu dengan sebab dan
-                          satu jalan keluar yang memang bekerja. */}
+                      {/* An external site that refuses to display in a frame does
+                          fire onerror — the iframe simply stays white. This
+                          overlay replaces that silent white screen with a reason
+                          and one way out that actually works. */}
                       {preview.gagalLuar && (
                         <div
                           style={{
@@ -4304,11 +4376,11 @@ function App() {
                           <h3 style={{ margin: 0, color: "#dce4f0" }}>
                             Halaman gagal dimuat
                           </h3>
-                          {/* Sebabnya diambil dari peristiwa did-fail-load
-                              webview, bukan dikarang. Versi sebelumnya menebak
-                              "situsnya menolak di-frame" — dan saat diuji dengan
-                              wikipedia.org tebakan itu terbukti keliru
-                              menyalahkan situs yang baik-baik saja. */}
+                          {/* The reason comes from the did-fail-load event
+                              webview rather than invented. An earlier version
+                              guessed "the site refuses to be framed" — and when
+                              tested against wikipedia.org that guess turned out
+                              to blame a site that was perfectly fine. */}
                           <p
                             style={{
                               margin: 0,
@@ -4351,17 +4423,17 @@ function App() {
                         </div>
                       )}
                       {preview.url && preview.luar ? (
-                        /* Wadah KOSONG — penanda posisi, bukan isi.
-                           Situs luar digambar oleh WebContentsView di proses
-                           main, yang MENGAMBANG di atas jendela. Yang dikirim
-                           ke sana adalah persegi panjang wadah ini.
+                        /* An EMPTY container — a position marker, not content.
+                           An external site is drawn by a WebContentsView in the
+                           main process, FLOATING above the window. What is sent
+                           to it is this container's rectangle.
 
-                           Kenapa bukan <iframe>: renderer ini tak bisa memuat
-                           situs luar lewat subframe sama sekali — permintaan
-                           dikirim lalu net::ERR_ABORTED sebelum satu pun header
-                           kembali, termasuk untuk situs yang TERBUKTI boleh
-                           di-frame seperti wikipedia.org.
-                           Kenapa bukan <webview>: Electron CRASH dengan
+                           Why not an <iframe>: this renderer cannot load an
+                           external origin under app:// — the request is sent and
+                           then net::ERR_ABORTED before a single header comes
+                           back, including for sites PROVEN to allow framing such
+                           as wikipedia.org.
+                           Why not a <webview>: Electron CRASHES with
                            FATAL:check.cc NOTREACHED. */
                         <div
                           ref={preview.slotRef}
@@ -4442,11 +4514,10 @@ function App() {
               )}
               {logicOpen && (
                 <>
-                  {/* Panel ketiga, diperlakukan PERSIS seperti terminal dan
-                      preview: pembagi yang bisa diseret + gaya dari gayaPanel.
-                      Bentuk lamanya `position:absolute; inset:0; zIndex:60` —
-                      lapisan yang menutupi seluruh area, dan itulah satu-satunya
-                      alasan ia cuma bisa penuh layar. */}
+                  {/* The third panel, treated EXACTLY like terminal and
+                      preview: a draggable splitter plus styling from gayaPanel.
+                      It used to be a layer covering the entire area, and that is
+                      the only reason it could only ever be full screen. */}
                   <div
                     className={
                       "split-divider" +
@@ -4469,15 +4540,14 @@ function App() {
                       overflow: "hidden",
                     }}
                   >
-                    {/* Bilah judul "Logic" DIHAPUS. Panel ini sudah punya dua
-                      header di bawahnya — "Files" di pohon berkas dan nama
-                      berkas di editor — jadi ia baris ketiga yang tak membawa
-                      keterangan baru, hanya memakan tinggi.
+                    {/* The "Logic" title bar was REMOVED. This panel already has
+                      headers below it — "Files" in the file tree and the
+                      filename in the editor — so it was a third row carrying no
+                      new information, only consuming height.
 
-                      Tombol tutupnya ikut hilang bersamanya; penggantinya ada di
-                      menu ☰ -> TAMPILAN -> Code -> Tutup. */}
-                    {/* Isi Logic: pohon berkas di kiri, isi berkasnya di kanan
-                      — tata letak yang sama dengan VS Code. */}
+                      Its close button went with it; the replacement is in the
+                      tab group beside TERMINAL and DEBUG
+                      — the same layout as VS Code. */}
                     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
                       <LogicFileTree
                         files={devFiles}
@@ -4486,36 +4556,40 @@ function App() {
                         active={!!preview.url}
                         terpilih={logicBerkas}
                         onPilih={bukaTab}
-                        onHapus={(rel) => {
+                        onHapus={(rel: any) => {
                           // The file is gone from disk, so both the list and its
                           // tab have to go with it. Leaving either behind means a
                           // row that opens nothing and a tab that loads a 404.
-                          setDevFiles((prev) => prev.filter((x) => x !== rel));
+                          setDevFiles((prev: any) =>
+                            prev.filter((x: any) => x !== rel),
+                          );
                           tutupTab(rel);
                         }}
-                        onHapusFolder={(rel) => {
+                        onHapusFolder={(rel: any) => {
                           // Everything under the folder is gone from disk, so it
                           // has to go from both lists and from any open tab.
                           // Leaving a child behind means a row that opens
                           // nothing and a tab that loads a 404.
-                          const di = (x) =>
+                          const di = (x: any) =>
                             x === rel || x.startsWith(rel + "/");
-                          setDevFiles((prev) => {
-                            prev.filter(di).forEach((x) => tutupTab(x));
-                            return prev.filter((x) => !di(x));
+                          setDevFiles((prev: any) => {
+                            prev.filter(di).forEach((x: any) => tutupTab(x));
+                            return prev.filter((x: any) => !di(x));
                           });
-                          setDevFolders((prev) => prev.filter((x) => !di(x)));
+                          setDevFolders((prev: any) =>
+                            prev.filter((x: any) => !di(x)),
+                          );
                         }}
-                        onBuatFolder={(rel) =>
-                          setDevFolders((prev) =>
+                        onBuatFolder={(rel: any) =>
+                          setDevFolders((prev: any) =>
                             prev.includes(rel) ? prev : prev.concat(rel),
                           )
                         }
-                        onBuat={(rel) => {
-                          // devFiles adalah daftar berkas yang SEDANG dikerjakan.
-                          // Berkas yang baru dibuat pemakai termasuk di dalamnya,
-                          // persis seperti berkas yang ditulis agent.
-                          setDevFiles((prev) =>
+                        onBuat={(rel: any) => {
+                          // devFiles is the list of files being worked on. A file
+                          // the user just created belongs in it, exactly like one
+                          // the agent wrote.
+                          setDevFiles((prev: any) =>
                             prev.indexOf(rel) >= 0 ? prev : prev.concat(rel),
                           );
                           bukaTab(rel);
@@ -4557,7 +4631,7 @@ function App() {
               <SettingsView
                 onBack={() => setView("chat")}
                 onSaved={loadModels}
-                onCloudChanged={() => setCloudVersion((v) => v + 1)}
+                onCloudChanged={() => setCloudVersion((v: any) => v + 1)}
               />
             )}
           </div>
@@ -4583,11 +4657,11 @@ function App() {
             {view === "history" && (
               <HistoryView
                 savedChats={savedChats}
-                onSelect={(chat) => {
+                onSelect={(chat: any) => {
                   restoreChat(chat);
                   setView("chat");
                 }}
-                onDelete={(id) => deleteChat(id)}
+                onDelete={(id: any) => deleteChat(id)}
               />
             )}
           </div>
@@ -4597,11 +4671,16 @@ function App() {
   );
 }
 
-/* AgentRunner dipindah ke public/app/AgentRunner.jsx (APP_MODULES). */
+/* AgentRunner moved to public/app/AgentRunner.jsx (APP_MODULES). */
 
 /* --- Badge --- */
-function Badge({ variant = "default", className = "", children, ...props }) {
-  const variants = {
+function Badge({
+  variant = "default",
+  className = "",
+  children,
+  ...props
+}: any) {
+  const variants: Record<string, string> = {
     default: "bg-primary text-primary-foreground",
     secondary: "bg-secondary text-secondary-foreground",
     destructive: "bg-destructive text-destructive-foreground",
@@ -4620,7 +4699,7 @@ function Badge({ variant = "default", className = "", children, ...props }) {
 }
 
 /* --- Card --- */
-function Card({ className = "", children, ...props }) {
+function Card({ className = "", children, ...props }: any) {
   return (
     <div
       className={`rounded-lg border border-border bg-card text-card-foreground shadow-sm ${className}`}
@@ -4630,14 +4709,14 @@ function Card({ className = "", children, ...props }) {
     </div>
   );
 }
-function CardHeader({ className = "", children, ...props }) {
+function CardHeader({ className = "", children, ...props }: any) {
   return (
     <div className={`flex flex-col space-y-1.5 p-4 ${className}`} {...props}>
       {children}
     </div>
   );
 }
-function CardTitle({ className = "", children, ...props }) {
+function CardTitle({ className = "", children, ...props }: any) {
   return (
     <h3
       className={`text-base font-semibold leading-none tracking-tight ${className}`}
@@ -4647,21 +4726,21 @@ function CardTitle({ className = "", children, ...props }) {
     </h3>
   );
 }
-function CardDescription({ className = "", children, ...props }) {
+function CardDescription({ className = "", children, ...props }: any) {
   return (
     <p className={`text-sm text-muted-foreground ${className}`} {...props}>
       {children}
     </p>
   );
 }
-function CardContent({ className = "", children, ...props }) {
+function CardContent({ className = "", children, ...props }: any) {
   return (
     <div className={`p-4 pt-0 ${className}`} {...props}>
       {children}
     </div>
   );
 }
-function CardFooter({ className = "", children, ...props }) {
+function CardFooter({ className = "", children, ...props }: any) {
   return (
     <div className={`flex items-center p-4 pt-0 ${className}`} {...props}>
       {children}
@@ -4670,12 +4749,12 @@ function CardFooter({ className = "", children, ...props }) {
 }
 
 /* --- Tabs --- */
-function Tabs({ tabs, active, onChange, className = "" }) {
+function Tabs({ tabs, active, onChange, className = "" }: any) {
   return (
     <div
       className={`inline-flex h-9 items-center justify-center rounded-lg bg-muted p-1 text-muted-foreground ${className}`}
     >
-      {tabs.map((t) => (
+      {tabs.map((t: any) => (
         <button
           key={t.value}
           onClick={() => onChange(t.value)}
@@ -4694,11 +4773,11 @@ function Tabs({ tabs, active, onChange, className = "" }) {
 }
 
 /* --- Dropdown --- */
-function Dropdown({ trigger, items, align = "left", className = "" }) {
+function Dropdown({ trigger, items, align = "left", className = "" }: any) {
   const [open, setOpen] = useState(false);
-  const ref = useRef(null);
+  const ref = useRef<any>(null);
   useEffect(() => {
-    const handler = (e) => {
+    const handler = (e: any) => {
       if (ref.current && !ref.current.contains(e.target)) setOpen(false);
     };
     document.addEventListener("mousedown", handler);
@@ -4711,7 +4790,7 @@ function Dropdown({ trigger, items, align = "left", className = "" }) {
         <div
           className={`absolute z-50 mt-1 min-w-[12rem] overflow-hidden rounded-lg border border-border bg-popover p-1 text-popover-foreground shadow-md ${align === "right" ? "right-0" : "left-0"}`}
         >
-          {items.map((item, i) =>
+          {items.map((item: any, i: number) =>
             item.separator ? (
               <div key={i} className="my-1 h-px bg-border" />
             ) : (
@@ -4752,10 +4831,10 @@ function Dialog({
   children,
   footer,
   className = "",
-}) {
+}: any) {
   useEffect(() => {
     if (!open) return;
-    const handler = (e) => {
+    const handler = (e: any) => {
       if (e.key === "Escape") onClose?.();
     };
     document.addEventListener("keydown", handler);
@@ -4785,9 +4864,9 @@ function Dialog({
 }
 
 /* --- Tooltip --- */
-function Tooltip({ content, children, side = "top", className = "" }) {
+function Tooltip({ content, children, side = "top", className = "" }: any) {
   const [show, setShow] = useState(false);
-  const sides = {
+  const sides: Record<string, string> = {
     top: "bottom-full left-1/2 -translate-x-1/2 mb-1.5",
     bottom: "top-full left-1/2 -translate-x-1/2 mt-1.5",
     left: "right-full top-1/2 -translate-y-1/2 mr-1.5",
@@ -4818,8 +4897,8 @@ function Button({
   className = "",
   children,
   ...props
-}) {
-  const variants = {
+}: any) {
+  const variants: Record<string, string> = {
     default: "bg-primary text-primary-foreground hover:bg-primary/90",
     destructive:
       "bg-destructive text-destructive-foreground hover:bg-destructive/90",
@@ -4829,7 +4908,7 @@ function Button({
     ghost: "hover:bg-accent hover:text-accent-foreground",
     link: "text-primary underline-offset-4 hover:underline",
   };
-  const sizes = {
+  const sizes: Record<string, string> = {
     default: "h-9 px-4 py-2",
     sm: "h-8 rounded-md px-3 text-xs",
     lg: "h-10 rounded-md px-8",
@@ -4846,7 +4925,7 @@ function Button({
 }
 
 /* --- Input --- */
-function Input({ className = "", ...props }) {
+function Input({ className = "", ...props }: any) {
   return (
     <input
       className={`flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm text-foreground shadow-sm transition-colors placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring disabled:cursor-not-allowed disabled:opacity-50 ${className}`}
@@ -4856,7 +4935,7 @@ function Input({ className = "", ...props }) {
 }
 
 /* --- Separator --- */
-function Separator({ orientation = "horizontal", className = "" }) {
+function Separator({ orientation = "horizontal", className = "" }: any) {
   return (
     <div
       className={`${orientation === "horizontal" ? "h-px w-full" : "w-px h-full"} bg-border ${className}`}
@@ -4865,7 +4944,7 @@ function Separator({ orientation = "horizontal", className = "" }) {
 }
 
 /* --- ScrollArea --- */
-function ScrollArea({ className = "", children, ...props }) {
+function ScrollArea({ className = "", children, ...props }: any) {
   return (
     <div className={`overflow-auto ${className}`} {...props}>
       {children}
@@ -4874,9 +4953,9 @@ function ScrollArea({ className = "", children, ...props }) {
 }
 
 /* --- Avatar --- */
-function Avatar({ src, fallback, className = "", size = "default" }) {
+function Avatar({ src, fallback, className = "", size = "default" }: any) {
   const [err, setErr] = useState(false);
-  const sizes = {
+  const sizes: Record<string, string> = {
     sm: "h-6 w-6 text-xs",
     default: "h-8 w-8 text-sm",
     lg: "h-10 w-10 text-base",
@@ -4899,19 +4978,20 @@ function Avatar({ src, fallback, className = "", size = "default" }) {
 }
 
 /* ----------------------------- Error Boundary ----------------------------- */
-class ErrorBoundary extends React.Component {
-  constructor(props) {
+class ErrorBoundary extends (React as any).Component {
+  constructor(props: any) {
     super(props);
     this.state = { hasError: false, error: null, errorInfo: null };
   }
-  static getDerivedStateFromError(error) {
+  static getDerivedStateFromError(error: any) {
     return { hasError: true };
   }
-  componentDidCatch(error, errorInfo) {
+  componentDidCatch(error: any, errorInfo: any) {
     console.error("ErrorBoundary caught a Runtime Error:", error, errorInfo);
     this.setState({ error, errorInfo });
     // Rekam error + picu Auto-Rollback lewat guard terpusat di index.html
-    // (triggerAppRollback punya anti-loop: tidak reload berulang jika versi aman pun error)
+    // (triggerAppRollback has an anti-loop: it does not reload repeatedly if even
+    // the safe version errors.)
     const errText =
       (error ? error.toString() : "Unknown Error") +
       "\n" +
@@ -4935,7 +5015,7 @@ class ErrorBoundary extends React.Component {
 }
 
 if (!window._reactRoot) {
-  window._reactRoot = ReactDOM.createRoot(document.getElementById("root"));
+  window._reactRoot = ReactDOM.createRoot(document.getElementById("root")!);
 }
 window._reactRoot.render(
   <ErrorBoundary>

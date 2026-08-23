@@ -1,6 +1,6 @@
-// Sidebar — extracted from app.jsx (see public/app.jsx for the App
+// Sidebar — extracted from app.tsx (see public/app.tsx for the App
 // orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.jsx (prepended), then Babel once -> a single global scope. Function
+// app.tsx (prepended), then Babel once -> a single global scope. Function
 // bodies (hooks/React/SB) run at render time.
 
 /* ----------------------------- Sidebar (Claude-style) ----------------------------- */
@@ -357,7 +357,7 @@ function sanitizeDeletedWorkspaces() {
   } catch (_) {}
 }
 
-// Clean the old blacklist poison once, as app.jsx loads (safe and idempotent).
+// Clean the old blacklist poison once, as app.tsx loads (safe and idempotent).
 try {
   sanitizeDeletedWorkspaces();
 } catch (_) {}

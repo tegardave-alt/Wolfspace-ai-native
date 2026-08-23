@@ -20,7 +20,7 @@ const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) => fs.readFileSync(path.join(AKAR, p), "utf8");
-const APP = baca("public/app.jsx");
+const APP = baca("public/app.tsx");
 const KOMP = baca("public/app/Components.tsx");
 const STEPS = baca("public/app/AgentSteps.tsx");
 const CSS = baca("public/styles.css");
@@ -43,7 +43,9 @@ describe("panel todowrite di atas kotak ketik", () => {
   test("datanya tingkat APLIKASI, bukan state satu pesan", () => {
     // Inti keluhan aslinya. upd({ todos }) menaruhnya di pesan; begitu pesannya
     // tergulung naik, daftarnya ikut hilang.
-    expect(APP).toMatch(/const \[todos, setTodos\] = useState\(\[\]\)/);
+    expect(APP).toMatch(
+      /const \[todos, setTodos\] = useState(?:<[^>]*>)?\(\[\]\)/,
+    );
     expect(APP).toMatch(/setTodos\(j\.todos \|\| \[\]\)/);
     expect(APP).not.toMatch(/upd\(\{ todos: j\.todos \}\)/);
   });
@@ -135,8 +137,8 @@ describe("panel todowrite di atas kotak ketik", () => {
     expect(KOMP).toMatch(/checked=\{st === "completed"\}/);
     expect(KOMP).toMatch(/onChange=\{\(\) => onToggle && onToggle\(i\)\}/);
     // Dan pengubahnya benar-benar tersambung ke state, bukan berhenti di prop.
-    expect(APP).toMatch(/onToggleTodo=\{\(i\) =>/);
-    expect(APP).toMatch(/setTodos\(\(d\) =>/);
+    expect(APP).toMatch(/onToggleTodo=\{\(i(?:: \w+)?\) =>/);
+    expect(APP).toMatch(/setTodos\(\(d(?:: \w+)?\) =>/);
   });
 
   test("label terikat ke kotaknya lewat htmlFor/id", () => {

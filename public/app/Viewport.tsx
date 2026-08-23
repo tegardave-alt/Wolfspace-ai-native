@@ -2,7 +2,7 @@
 // screen. Loaded AFTER Config.tsx and BEFORE the other modules, because
 // CodeBlocks.tsx and AgentSteps.tsx both use it.
 //
-// WHY THIS EXISTS. Chat history is rendered in full (app.jsx: messages.map, no
+// WHY THIS EXISTS. Chat history is rendered in full (app.tsx: messages.map, no
 // windowing), and every code block used to build a COMPLETE Monaco editor right
 // away — model, view, ResizeObserver (automaticLayout), and an observer on
 // Monaco's global emitter. A long history therefore meant hundreds of live

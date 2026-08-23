@@ -23,7 +23,7 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
-const APP = baca("public/app.jsx");
+const APP = baca("public/app.tsx");
 const CSS = baca("public/styles.css");
 const tanpaKomentar = (t) =>
   t
@@ -64,7 +64,9 @@ describe("model tidak dibuang saat pindah tab", () => {
 
 describe("keadaan tab", () => {
   test("urutannya milik pemakai, jadi array bukan Set", () => {
-    expect(B).toMatch(/const \[logicTabs, setLogicTabs\] = useState\(\[\]\)/);
+    expect(B).toMatch(
+      /const \[logicTabs, setLogicTabs\] = useState(?:<[^>]*>)?\(\[\]\)/,
+    );
   });
 
   test("menutup tab AKTIF menyerahkan fokus ke tetangga", () => {
@@ -99,7 +101,7 @@ describe("bilah tab", () => {
   test("dragOver MENCEGAH bawaan — kalau tidak, jatuhnya ditolak", () => {
     // Tanpa preventDefault peramban menolak drop dan seluruh gerakannya
     // diam-diam tak melakukan apa pun.
-    const i = B.indexOf("onDragOver={(e) => {");
+    const i = B.search(/onDragOver=\{\(e(?:: \w+)?\) => \{/);
     expect(i).toBeGreaterThan(0);
     expect(B.slice(i, i + 260)).toMatch(/e\.preventDefault\(\)/);
   });

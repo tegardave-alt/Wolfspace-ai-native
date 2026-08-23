@@ -39,7 +39,7 @@ describe("electron/preload.js stays in sync with preload.ts", () => {
 
   test("the bridge the renderer relies on is actually installed", () => {
     // Not merely "the file is non-empty": if these names disappeared from the
-    // build output, window.WOLFSPACE would lack the surface app.jsx uses, and
+    // build output, window.WOLFSPACE would lack the surface app.tsx uses, and
     // the whole IPC path would die silently while the app still opens.
     const content = fs.readFileSync(OUT, "utf8");
     expect(content).toContain('exposeInMainWorld("WOLFSPACE"');

@@ -30,7 +30,7 @@ const fs = require("fs");
 const vm = require("vm");
 
 const MAIN = fs.readFileSync(require.resolve("../electron/main.js"), "utf8");
-const APP = fs.readFileSync(require.resolve("../public/app.jsx"), "utf8");
+const APP = fs.readFileSync(require.resolve("../public/app.tsx"), "utf8");
 
 describe("penjaga: reload ditunda selama agent berjalan", () => {
   test("channel stream dicatat, sehingga run agent bisa dikenali", () => {
@@ -88,8 +88,8 @@ describe("penjaga: reload ditunda selama agent berjalan", () => {
   });
 });
 
-// Helper thread_id diambil dari app.jsx lalu benar-benar DIJALANKAN dengan
-// localStorage palsu. app.jsx berkas browser tanpa module.exports, jadi ini satu-
+// Helper thread_id diambil dari app.tsx lalu benar-benar DIJALANKAN dengan
+// localStorage palsu. app.tsx berkas browser tanpa module.exports, jadi ini satu-
 // satunya cara menguji perilakunya tanpa memuat seluruh React.
 function muatHelperThread() {
   // Batas akhir dipatok ke deklarasi berikutnya, BUKAN offset tetap: offset
@@ -111,7 +111,18 @@ function muatHelperThread() {
     Date,
   };
   vm.createContext(ctx);
-  vm.runInContext(potong, ctx);
+  // TRANSPILED first, exactly as index.html loads a .tsx file. The extracted
+  // slice carries type annotations since app.jsx migrated, and vm would stop
+  // at the first colon.
+  globalThis.self = globalThis;
+  const Babel = require(
+    require("path").join(__dirname, "..", "public/vendor/babel.min.js"),
+  );
+  vm.runInContext(
+    Babel.transform(potong, { presets: ["typescript"], filename: "thread.ts" })
+      .code,
+    ctx,
+  );
   return ctx;
 }
 

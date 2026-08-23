@@ -24,7 +24,7 @@ const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 const SRV = baca("server.cjs");
-const APP = baca("public/app.jsx");
+const APP = baca("public/app.tsx");
 const CSS = baca("public/styles.css");
 const tanpaKomentar = (t) =>
   t
@@ -59,8 +59,8 @@ describe("rute hapus", () => {
 
 describe("menu klik-kanan", () => {
   test("berlaku untuk berkas MAUPUN folder, dan tahu bedanya", () => {
-    expect(B).toMatch(/onContextMenu=\{\(e\) => \{/);
-    const i = B.indexOf("onContextMenu={(e) => {");
+    expect(B).toMatch(/onContextMenu=\{\(e(?:: \w+)?\) => \{/);
+    const i = B.search(/onContextMenu=\{\(e(?:: \w+)?\) => \{/);
     expect(B.slice(i, i + 300)).toMatch(/folder: n\.type === "folder"/);
   });
 
@@ -85,7 +85,9 @@ describe("menu klik-kanan", () => {
   });
 
   test("klik di dalam menu tidak ikut menutupnya", () => {
-    expect(B).toMatch(/onMouseDown=\{\(e\) => e\.stopPropagation\(\)\}/);
+    expect(B).toMatch(
+      /onMouseDown=\{\(e(?:: \w+)?\) => e\.stopPropagation\(\)\}/,
+    );
   });
 
   test("aksi merusak diberi warna merusak", () => {
@@ -113,7 +115,7 @@ describe("sesudah dihapus", () => {
     // Terukur: langkah 1 -> ["Delete file"], langkah 2 -> ["Yes, delete",
     // "Cancel"]. Cancel meninggalkan berkasnya utuh di disk.
     expect(B).toMatch(
-      /setMenuKonteks\(\(m\) => m && \{ \.\.\.m, konfirmasi: true \}\)/,
+      /setMenuKonteks\(\(m(?:: \w+)?\) => m && \{ \.\.\.m, konfirmasi: true \}\)/,
     );
   });
 
@@ -138,11 +140,11 @@ describe("sesudah dihapus", () => {
   test("hilang dari daftar berkas DAN tabnya ditutup", () => {
     // Meninggalkan salah satunya berarti baris yang tak membuka apa pun, dan
     // tab yang memuat 404.
-    const i = B.indexOf("onHapus={(rel) => {");
+    const i = B.search(/onHapus=\{\(rel(?:: \w+)?\) => \{/);
     expect(i).toBeGreaterThan(0);
     const blok = B.slice(i, i + 400);
     expect(blok).toMatch(
-      /setDevFiles\(\(prev\) => prev\.filter\(\(x\) => x !== rel\)\)/,
+      /setDevFiles\(\s*\(prev(?:: \w+)?\) =>\s*prev\.filter\(\(x(?:: \w+)?\) => x !== rel\),?\s*\)/,
     );
     expect(blok).toMatch(/tutupTab\(rel\)/);
   });
@@ -217,9 +219,13 @@ describe("folder baru", () => {
   test("folder kosong tetap muncul di pohon", () => {
     // Pohon dibangun dari daftar BERKAS; folder tanpa isi tak meninggalkan
     // jejak di sana dan akan dibuat di disk lalu tak pernah terlihat.
-    expect(B).toMatch(/function buildDevTree\(paths, root, folders\)/);
+    expect(B).toMatch(
+      /function buildDevTree\(paths(?:: \w+)?, root(?:: \w+)?, folders(?:: \w+)?\)/,
+    );
     expect(B).toMatch(/for \(const raw of folders \|\| \[\]\)/);
-    expect(B).toMatch(/const \[devFolders, setDevFolders\] = useState\(\[\]\)/);
+    expect(B).toMatch(
+      /const \[devFolders, setDevFolders\] = useState(?:<[^>]*>)?\(\[\]\)/,
+    );
     expect(B).toMatch(/folders=\{devFolders\}/);
   });
 
@@ -262,7 +268,7 @@ describe("hapus folder", () => {
     // harus angka yang sebenarnya.
     expect(RUTE).toMatch(/fs\.readdirSync\(d, \{ withFileTypes: true \}\)/);
     expect(RUTE).toMatch(/if \(p\.hitung === true\)/);
-    expect(B).toMatch(/const hitungIsi = async \(rel\)/);
+    expect(B).toMatch(/const hitungIsi = async \(rel(?:: \w+)?\)/);
     expect(B).toMatch(/hitung: true/);
   });
 
@@ -287,7 +293,7 @@ describe("hapus folder", () => {
   });
 
   test("isinya hilang dari KEDUA daftar, dan tabnya ditutup", () => {
-    const iH = B.indexOf("onHapusFolder={(rel) => {");
+    const iH = B.search(/onHapusFolder=\{\(rel(?:: \w+)?\) => \{/);
     expect(iH).toBeGreaterThan(0);
     const blok = B.slice(iH, iH + 700);
     expect(blok).toMatch(/x === rel \|\| x\.startsWith\(rel \+ "\/"\)/);
@@ -296,7 +302,7 @@ describe("hapus folder", () => {
   });
 
   test("klik-kanan kini juga untuk folder", () => {
-    const iC = B.indexOf("onContextMenu={(e) => {");
+    const iC = B.search(/onContextMenu=\{\(e(?:: \w+)?\) => \{/);
     const blok = B.slice(iC, iC + 300);
     expect(blok).not.toMatch(/if \(n\.type === "folder"\) return/);
     expect(blok).toMatch(/folder: n\.type === "folder"/);

@@ -147,7 +147,7 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
   // memakai event ini — jadi perbaikan itu tak menampilkan apa pun sampai
   // penanganannya ada.
   const UI = fs
-    .readFileSync(require.resolve("../public/app.jsx"), "utf8")
+    .readFileSync(require.resolve("../public/app.tsx"), "utf8")
     .replace(/\r\n/g, "\n");
   const STEPS = fs
     .readFileSync(require.resolve("../public/app/AgentSteps.tsx"), "utf8")

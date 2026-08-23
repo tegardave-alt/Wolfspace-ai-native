@@ -17,7 +17,7 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
-const APP = baca("public/app.jsx");
+const APP = baca("public/app.tsx");
 const SRV = baca("server.cjs");
 const SCR = baca("public/app/Screens.tsx");
 const KOMP = baca("public/app/Components.tsx");
@@ -37,21 +37,34 @@ const ambil = (n) => {
   return APP.slice(i, APP.indexOf("\n}", i) + 2);
 };
 const potongObjek = (nama, akhir) => {
-  const i = APP.indexOf("const " + nama + " =");
+  const i = APP.search(new RegExp("const " + nama + "(?:: [^=]+)? ="));
   if (i < 0) throw new Error("tak ketemu: " + nama);
   return APP.slice(i, APP.indexOf(akhir, i) + akhir.length);
 };
-const KOTAK = eval(
+// The extracted source is TRANSPILED first, exactly as index.html loads a .tsx
+// file. Since app.jsx migrated, that source carries type annotations — and a
+// raw eval() stops at the first colon. Transpiling here preserves this file's
+// claim: what runs is the production path, not a reinterpretation.
+globalThis.self = globalThis;
+const Babel = require(
+  require("path").join(__dirname, "..", "public/vendor/babel.min.js"),
+);
+const _sumberKotak =
   potongObjek("_PERINTAH_DEBUG", "};") +
-    "\n" +
-    potongObjek("_AKSI_DEBUG", "\n};") +
-    "\n" +
-    ambil("ekstensiDari") +
-    "\n" +
-    ambil("perintahDebug") +
-    "\n" +
-    ambil("jenisDebugger") +
-    "\n({ debug: perintahDebug, jenis: jenisDebugger, AKSI: _AKSI_DEBUG })",
+  "\n" +
+  potongObjek("_AKSI_DEBUG", "\n};") +
+  "\n" +
+  ambil("ekstensiDari") +
+  "\n" +
+  ambil("perintahDebug") +
+  "\n" +
+  ambil("jenisDebugger") +
+  "\n({ debug: perintahDebug, jenis: jenisDebugger, AKSI: _AKSI_DEBUG })";
+const KOTAK = eval(
+  Babel.transform(_sumberKotak, {
+    presets: ["typescript"],
+    filename: "debug.ts",
+  }).code,
 );
 
 describe("perintah debug", () => {
@@ -165,7 +178,7 @@ describe("bilah debug di terminal", () => {
     expect(BERSIH).toMatch(/const kirimKe = React\.useCallback\(/);
     expect(BERSIH).toMatch(/kirimKe\("jalan"\)/);
     expect(BERSIH).toMatch(/kirimKe\("debug"\)/);
-    // Akar ikut dioper: app.jsx memerlukannya untuk MENGURUNG path sebelum
+    // Akar ikut dioper: app.tsx memerlukannya untuk MENGURUNG path sebelum
     // sesi DAP dibuka, dan hanya panel kode yang tahu akar berkas yang dibuka.
     expect(BERSIH).toMatch(
       /onRun\(abs\(target\), mode, String\(root \|\| ""\)\)/,
@@ -347,7 +360,7 @@ describe("keadaan debug jujur terhadap kenyataan", () => {
     expect(SRV).toMatch(/req\.url\.startsWith\("\/debug\/tersedia"\)/);
     expect(SRV).toMatch(/const _BINER_DEBUG = \{/);
     expect(BERSIH).toMatch(/ambilDebugTersedia\(\)/);
-    expect(BERSIH).toMatch(/debugAda\[jenisDbg\] !== false/);
+    expect(BERSIH).toMatch(/debugAda\[jenisDbg!?\] !== false/);
   });
 
   test("pemeriksaannya TIDAK melahirkan proses", () => {
@@ -373,7 +386,7 @@ describe("keadaan debug jujur terhadap kenyataan", () => {
     // Mematikan tombol Debug untuk semua bahasa hanya karena satu permintaan
     // gagal lebih membingungkan daripada perintah yang gagal di terminal.
     expect(BERSIH).toMatch(
-      /debugAda === null \|\| debugAda\[jenisDbg\] !== false/,
+      /debugAda === null \|\| debugAda\[jenisDbg!?\] !== false/,
     );
   });
 

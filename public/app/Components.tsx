@@ -1,6 +1,6 @@
-// Components — extracted from app.jsx (see public/app.jsx for the App
+// Components — extracted from app.tsx (see public/app.tsx for the App
 // orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.jsx (prepended), then Babel once -> a single global scope. Function
+// app.tsx (prepended), then Babel once -> a single global scope. Function
 // bodies (hooks/React/SB) run at render time.
 
 /* ----------------------------- Top bar ----------------------------- */
@@ -314,7 +314,7 @@ function Blocks({ text }: any) {
 }
 // WRAPPED in React.memo below — do not use MessageDasar directly.
 //
-// WHY. app.jsx renders the whole history: {messages.map((m,i) => <Message/>)}.
+// WHY. app.tsx renders the whole history: {messages.map((m,i) => <Message/>)}.
 // While the agent works, the stream handler calls upd() on EVERY token, and
 // upd() does setMessages(m => ...), which copies the array. Without memo,
 // each token reconciles the entire list AGAIN — including every ToolOutput

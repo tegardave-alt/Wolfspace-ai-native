@@ -1,7 +1,7 @@
 // packages/contracts/agent-events.ts is only useful if something HOLDS IT TO IT.
 //
 // Without this file the contract is just a document: it could be wrong for
-// months with nothing to show for it, because no code imports it (app.jsx and
+// months with nothing to show for it, because no code imports it (app.tsx and
 // self_agent.cjs are both not TypeScript). And it WAS wrong — its first version
 // listed "phase", "retry" and "run", three events no live code emits. This test
 // is what found that.
@@ -77,7 +77,7 @@ describe("agent-events contract matches what the backend emits", () => {
 });
 
 describe("the UI handles no event that can never arrive", () => {
-  // The third direction, born from a real mistake: app.jsx used to have
+  // The third direction, born from a real mistake: app.tsx used to have
   // branches for "phase", "retry" and "run" — three events no live code emits.
   // A branch like that never fails loudly; it just sits there making people
   // believe the feature still exists.
@@ -90,8 +90,8 @@ describe("the UI handles no event that can never arrive", () => {
     "agent/tools/index.cjs",
   );
 
-  test("every j.t branch in app.jsx has an emitter in the backend", () => {
-    const ui = read("public/app.jsx");
+  test("every j.t branch in app.tsx has an emitter in the backend", () => {
+    const ui = read("public/app.tsx");
     const handled = new Set(
       [...ui.matchAll(/j\.t === "([a-z_]+)"/g)].map((m) => m[1]),
     );
@@ -106,9 +106,9 @@ describe("the UI handles no event that can never arrive", () => {
     // together.
     //
     // COMMENTS ARE STRIPPED FIRST. What is guarded is CODE: the historical note
-    // in app.jsx names these very events precisely to explain why they are gone,
+    // in app.tsx names these very events precisely to explain why they are gone,
     // and a test that goes red over prose like that punishes good documentation.
-    const ui = withoutComments(read("public/app.jsx"));
+    const ui = withoutComments(read("public/app.tsx"));
     for (const t of ["phase", "retry", "run"]) {
       expect(ui).not.toContain('j.t === "' + t + '"');
     }
