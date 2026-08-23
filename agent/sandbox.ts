@@ -15,7 +15,7 @@ import { exec, spawn, execSync } from "child_process";
 import * as util from "util";
 
 const execP = util.promisify(exec);
-const { dlog } = require("./debug.cjs");
+const { dlog } = require("./debug.ts");
 const { getPlatformAdapter } = require("./platform/index.cjs");
 
 /** Read/write permission over specific directory trees. */
@@ -79,7 +79,7 @@ class CapabilityFS {
       /[\\/]node_modules[\\/]/,
       /[\\/]\.git[\\/]/,
       /cloud-keys\.json$/,
-      /[\\/]\.wolfspace[\\/]/, // secrets now live in ~/.wolfspace (see agent/keys-path.cjs)
+      /[\\/]\.wolfspace[\\/]/, // secrets now live in ~/.wolfspace (see agent/keys-path.ts)
       /\.env$/,
       /[\\/]System32[\\/]/,
       /[\\/]Windows[\\/]/,

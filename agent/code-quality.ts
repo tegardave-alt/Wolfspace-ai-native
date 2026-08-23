@@ -1,47 +1,46 @@
 // ── WOLFSPACE Code-Quality Gate (HARDCODED) ──
 //
-// KENAPA DI KODE, BUKAN DI PROMPT.
-// config/prompts.json menyuruh agent "Write clean, correct code". Itu aspirasi
-// tanpa satuan: tak terukur, tak bisa gagal, jadi tak pernah ditegakkan. Hasil
-// nyatanya terukur di repo ini — Components.jsx mencapai indentasi 48 spasi
-// (24 level), function App() 2.310 baris, dan 62% kelas CSS mati. Sebagian
-// besar ditulis oleh agent yang SEDANG membaca prompt "write clean code" itu.
+// WHY IN CODE RATHER THAN IN THE PROMPT.
+// config/prompts.json tells the agent to "Write clean, correct code". That is an
+// aspiration with no unit: unmeasurable, unfailable, therefore never enforced.
+// The real result is measurable in this repo — Components.jsx reached 48 spaces
+// of indentation (24 levels), function App() ran to 2,310 lines, and 62% of CSS
+// classes were dead. Most of it was written by an agent that WAS READING that
+// "write clean code" prompt.
 //
-// Pola yang sama sudah dipakai dua kali di repo ini dan terbukti:
-//   - SYSTEM_RULES di agent/self_agent.cjs ("dipindahkan dari prompt ke sistem
-//     untuk kepatuhan 100%")
-//   - _HOST_PATH_RE di agent/tools/index.ts (penjaga path host untuk bash)
-// Keduanya menegakkan di jalur eksekusi, bukan meminta baik-baik.
+// The same pattern has been used twice in this repo and proven:
+//   - SYSTEM_RULES in agent/self_agent.ts ("moved from the prompt into the
+//     system for 100% compliance")
+//   - _HOST_PATH_RE in agent/tools/index.ts (the host-path guard for bash)
+// Both enforce on the execution path rather than asking nicely.
 //
-// PRINSIP RATCHET — ini inti rancangannya.
-// Ambang tetap akan melumpuhkan agent: berkas yang SUDAH 48 spasi berarti tiap
-// edit ditolak, termasuk edit yang memperbaikinya. Jadi aturannya bukan "harus
-// bersih", tapi "TIDAK BOLEH LEBIH BURUK dari sebelumnya". Berkas kotor tetap
-// bisa disunting, perbaikan selalu lolos, pemburukan selalu ditolak. Utang
-// teknis berhenti bertambah tanpa memblokir pekerjaan.
+// edit would be refused, including the edit that fixes it. So the rule is not
+// "must be clean" but "MUST NOT BE WORSE than before". A dirty file can still be
+// edited, an improvement always passes, a worsening always fails. Technical debt
+// stops growing without blocking work.
 //
-// Berkas BARU tak punya baseline, jadi kena batas keras — di situlah standar
-// bersih ditegakkan penuh.
+// A NEW file has no baseline, so it gets the hard limit — that is where the
+// clean standard is enforced in full.
 
 "use strict";
 
-const path = require("path");
+import * as path from "path";
 
-// Batas untuk berkas BARU. Longgar dengan sengaja: JSX memang bersarang secara
-// alami (komponen > div > div > button > span). 24 spasi = 12 level, cukup untuk
-// UI wajar tapi memblokir monster 48 spasi yang ada sekarang.
+// The limit for NEW files. Generous on purpose: JSX nests naturally (component >
+// div > div > button > span). 24 spaces is 12 levels, enough for reasonable UI
+// while still blocking the 48-space monsters that exist today.
 const NEW_FILE_MAX_INDENT = 24;
 const NEW_FILE_MAX_LINES = 800;
 
-// Ekstensi yang dijaga. Bukan .md/.json/.css — aturan indentasi tak bermakna
-// di sana, dan CSS punya pola nesting sendiri yang sah.
+// The extensions guarded. Not .md/.json/.css — an indentation rule is meaningless
+// there, and CSS has its own legitimate nesting pattern.
 const GUARDED_EXT = new Set([".js", ".jsx", ".cjs", ".mjs", ".ts", ".tsx"]);
 
 /**
- * Ukur properti struktural yang objektif dan bisa dibandingkan.
- * Sengaja memakai indentasi sebagai proksi kedalaman, bukan AST: proksi ini
- * tahan terhadap sintaks apa pun (JSX, TS, template literal) dan tak bisa
- * gagal-parse — penjaga yang crash sendiri lebih buruk daripada tak ada penjaga.
+ * Measure structural properties that are objective and comparable.
+ * Indentation is deliberately used as a proxy for depth rather than an AST: this
+ * proxy survives any syntax (JSX, TS, template literals) and cannot fail to
+ * parse — a guard that crashes on its own is worse than no guard.
  */
 function measure(content) {
   const lines = String(content || "").split("\n");
@@ -63,11 +62,11 @@ function isGuarded(filePath) {
 }
 
 /**
- * Gerbang kualitas. Dipanggil safe-edit.ts SEBELUM menulis ke disk.
+ * The quality gate. Called by safe-edit.ts BEFORE anything is written to disk.
  *
- * @param {string} filePath   path tujuan
- * @param {string} newContent isi yang akan ditulis
- * @param {string|null} oldContent isi lama (null = berkas baru)
+ * @param {string} filePath   the destination path
+ * @param {string} newContent the contents to be written
+ * @param {string|null} oldContent the old contents (null = a new file)
  * @returns {{ok: boolean, error?: string, metrics?: object}}
  */
 function check(filePath, newContent, oldContent) {
@@ -75,7 +74,7 @@ function check(filePath, newContent, oldContent) {
 
   const after = measure(newContent);
 
-  // ── Berkas BARU: batas keras, tak ada baseline untuk ditoleransi ──
+  // ── A NEW file: the hard limit, with no baseline to tolerate ──
   if (oldContent == null) {
     if (after.maxIndent > NEW_FILE_MAX_INDENT) {
       return {
@@ -102,7 +101,7 @@ function check(filePath, newContent, oldContent) {
     return { ok: true, metrics: after };
   }
 
-  // ── Berkas LAMA: ratchet. Boleh tetap kotor, tak boleh bertambah kotor ──
+  // ── An EXISTING file: a ratchet. May stay dirty, must not get dirtier ──
   const before = measure(oldContent);
 
   if (after.maxIndent > before.maxIndent) {

@@ -2,7 +2,7 @@
 //
 // Without this file the contract is just a document: it could be wrong for
 // months with nothing to show for it, because no code imports it (app.tsx and
-// self_agent.cjs are both not TypeScript). And it WAS wrong — its first version
+// self_agent.ts are both not TypeScript). And it WAS wrong — its first version
 // listed "phase", "retry" and "run", three events no live code emits. This test
 // is what found that.
 //
@@ -47,8 +47,8 @@ function eventsEmitted(...files) {
 const difference = (a, b) => [...a].filter((x) => !b.has(x)).sort();
 
 describe("agent-events contract matches what the backend emits", () => {
-  test("chat: contract == what agent/chat.cjs emits, exactly", () => {
-    const emitted = eventsEmitted("agent/chat.cjs");
+  test("chat: contract == what agent/chat.ts emits, exactly", () => {
+    const emitted = eventsEmitted("agent/chat.ts");
     const contract = eventsInUnion("ChatStreamEvent");
     expect(emitted.size).toBeGreaterThan(0); // if zero, this test tests nothing
     expect(difference(emitted, contract)).toEqual([]); // emitted but undeclared
@@ -57,7 +57,7 @@ describe("agent-events contract matches what the backend emits", () => {
 
   test("self-agent: every emitted event IS in the contract", () => {
     const emitted = eventsEmitted(
-      "agent/self_agent.cjs",
+      "agent/self_agent.ts",
       "agent/tools/index.ts",
     );
     const contract = eventsInUnion("SelfAgentStreamEvent");
@@ -68,7 +68,7 @@ describe("agent-events contract matches what the backend emits", () => {
   test("self-agent: the contract promises no event that is never emitted", () => {
     // This is the direction that caught the first version of this contract.
     const emitted = eventsEmitted(
-      "agent/self_agent.cjs",
+      "agent/self_agent.ts",
       "agent/tools/index.ts",
     );
     const contract = eventsInUnion("SelfAgentStreamEvent");
@@ -85,8 +85,8 @@ describe("the UI handles no event that can never arrive", () => {
   // rollback-dan-tanda-hidup.test.js guards the opposite direction (every
   // emitted event MUST be handled). Together the two pin the sets equal.
   const emitted = eventsEmitted(
-    "agent/chat.cjs",
-    "agent/self_agent.cjs",
+    "agent/chat.ts",
+    "agent/self_agent.ts",
     "agent/tools/index.ts",
   );
 

@@ -1,7 +1,7 @@
 """State shape and wire types for the LangGraph agent worker.
 
 The state is a faithful port of the `Annotation.Root({...})` block in
-agent/self_agent.cjs. Every channel keeps its original name and its original
+agent/self_agent.ts. Every channel keeps its original name and its original
 reducer semantics, because the JS graph stays authoritative until each node is
 proven at parity — and a run checkpointed by one side has to be readable by the
 other.

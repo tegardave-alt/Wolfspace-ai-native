@@ -93,10 +93,10 @@ jobs:
           # scripts/ts-register.cjs and the .ts files under server/routes/ are on this
           # list because server.cjs requires them at top level since the gradual
           # TypeScript migration started. build.files previously named only
-          # "scripts/ww.cjs", so without the new entries the whole backend fails to
+          # "scripts/ww.ts", so without the new entries the whole backend fails to
           # load in the packaged app — exactly the class of bug this job exists to catch.
-          for f in core.js server.cjs core/terminal.ts scripts/ww.cjs scripts/ts-register.cjs \
-                   agent/self_agent.cjs agent/mcp-client.ts \
+          for f in core.js server.cjs server.ts core/terminal.ts scripts/ww.ts scripts/ts-register.cjs \
+                   agent/self_agent.ts agent/mcp-client.ts \
                    agent/sandbox.ts agent/sandbox-policy.ts \
                    agent/broker/zone-worker.cjs agent/broker/zone-process.ts \
                    agent/broker/host.ts agent/broker/policy.ts \

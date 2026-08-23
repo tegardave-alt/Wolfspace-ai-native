@@ -27,7 +27,7 @@ export type ChatStreamEvent =
 
 /**
  * Events on the "self-agent" stream channel (core.selfAgentStream ->
- * agent/self_agent.cjs + agent/tools/index.cjs). Most variants may carry
+ * agent/self_agent.ts + agent/tools/index.cjs). Most variants may carry
  * thread_id: the run is a LangGraph checkpoint, so a reload can resume it
  * instead of restarting.
  */

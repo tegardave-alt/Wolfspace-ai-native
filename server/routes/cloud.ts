@@ -1,16 +1,16 @@
 // Cloud key (BYOK) API: save, detect provider, list, delete.
 // Ported from the former server/routes/cloud.ts; behavior is unchanged.
 //
-// Keys are written to the gitignored store resolved by agent/keys-path.cjs and
+// Keys are written to the gitignored store resolved by agent/keys-path.ts and
 // are never sent to the browser — the list endpoint returns provider names and
 // model ids only, never the key itself.
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as fs from "node:fs";
 
-// keys-path.cjs is untyped CommonJS and migrates in a later phase; require()
+// keys-path.ts is untyped CommonJS and migrates in a later phase; require()
 // with a local shape keeps this file from needing a .d.ts for it today.
-const { resolveKeysPath } = require("../../agent/keys-path.cjs") as {
+const { resolveKeysPath } = require("../../agent/keys-path.ts") as {
   resolveKeysPath: () => string;
 };
 

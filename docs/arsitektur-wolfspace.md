@@ -10,7 +10,7 @@ Tujuan: saat membaca kode (termasuk buatan AI), kamu selalu tahu **siapa yang me
 ```
 UI (public/)  ⇄  Electron IPC  ATAU  HTTP :8090
                     ⇄  core.js → server.cjs
-                         ⇄  agent/* + core/* + scripts/ww.cjs
+                         ⇄  agent/* + core/* + scripts/ww.ts
 ```
 
 - **Jalur produk utama:** `npm run app` → desktop Electron (backend **in-process**, UI lewat `app://`).
@@ -188,9 +188,9 @@ Modul rute terpisah (`server/routes/*`) didaftarkan dulu, sisanya inline di `ser
 | ------------ | ---------------------------------------------------- | ---------------------------------------- |
 | Health       | `GET /healthz`                                       | status proses                            |
 | Chat         | `POST /chat`                                         | `agent/chat.cjs`                         |
-| Self-agent   | `POST /self-agent`                                   | `agent/self_agent.cjs`                   |
+| Self-agent   | `POST /self-agent`                                   | `agent/self_agent.ts`                    |
 | Agent lama   | `POST /agent`                                        | loop WRITE/RUN di server (jalur warisan) |
-| Workspace ww | `/ww/*`                                              | `scripts/ww.cjs` + fs (lihat §5)         |
+| Workspace ww | `/ww/*`                                              | `scripts/ww.ts` + fs (lihat §5)          |
 | MCP          | `/mcp`, `/mcp/status`, `/mcp/connect`, `/mcp/toggle` | `agent/mcp-client.cjs`                   |
 | Plugin       | `/plugins`, pasang/copot/setujui                     | `agent/plugins.cjs`                      |
 | Cloud keys   | `/cloud-save`, `/detect-key`, `/cloud-providers`     | `server/routes/cloud.cjs`, `keys-path`   |
@@ -237,7 +237,7 @@ Modul rute terpisah (`server/routes/*`) didaftarkan dulu, sisanya inline di `ser
 
 ### 5.1 Otak disk/git
 
-**Starter logika:** `scripts/ww.cjs`  
+**Starter logika:** `scripts/ww.ts`  
 Dipakai sebagai CLI (`create|adopt|list|watch`) **dan** `require()` dari server.
 
 ### 5.2 Kabel `/ww/*` ↔ UI ↔ agent
@@ -294,7 +294,7 @@ saklar:  Composer kirim tugas agent
 kopling: IPC.stream("self-agent")  ATAU  POST /self-agent
    │
    ▼
-starter: agent/self_agent.cjs :: selfAgentStream
+starter: agent/self_agent.ts :: selfAgentStream
    ├─ prompts (config/prompts.json, sysprompt_opt, rules)
    ├─ cloud.cjs          → model BYOK (OpenAI/Claude/Gemini/… )
    ├─ LangGraph (lazy)   → loop langkah
@@ -426,8 +426,8 @@ GET /debug/tersedia → debugger apa yang terpasang
                                 │
 ┌───────────────────────────────▼──────────────────────────────────────────┐
 │ POROS (server.cjs + server/routes/*)                                      │
-│  /chat → chat.cjs          /self-agent → self_agent.cjs                   │
-│  /ww/* → ww.cjs + fs       /mcp/* → mcp-client                            │
+│  /chat → chat.cjs          /self-agent → self_agent.ts                   │
+│  /ww/* → ww.ts + fs       /mcp/* → mcp-client                            │
 │  /api/terminal/*           /dap/* → dap-sesi → dap                        │
 │  /preview-file             /plugins/*  /rag/*  /cloud-*  /debug*          │
 │  /cloud-providers /attach + static public/                                │
@@ -532,8 +532,8 @@ Hal-hal yang **ada di mesin** tapi perilaku/kabelnya perlu dibaca hati-hati:
 3. `public/index.html` → `public/app.jsx` (wwApi, App state, Logic*)
 4. `public/app/Sidebar.jsx`
 5. `server.cjs` (blok `/ww/*`, `/self-agent`, static) + `server/routes/*`
-6. `scripts/ww.cjs`
-7. `agent/self_agent.cjs` → `agent/tools.cjs` / `tools/index.cjs`
+6. `scripts/ww.ts`
+7. `agent/self_agent.ts` → `agent/tools.cjs` / `tools/index.cjs`
 8. `core.js` (apa yang diekspor ke Electron)
 
 ---

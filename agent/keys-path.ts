@@ -1,27 +1,25 @@
 // ── Resolve where cloud-keys.json lives ──
 //
-// Keys are PER PROJECT ROOT (folder yang memuat agent/), bukan satu file global
-// di ~/.wolfspace. Tanpa itu, clone GitHub di folder lain ikut memakai API key
-// instalasi lama di PC yang sama — terasa seperti data "ikut terpasang", padahal
-// yang terjadi adalah satu laci bersama untuk semua salinan kode.
+// Keys are PER PROJECT ROOT (the folder containing agent/), not one global file
+// in ~/.wolfspace. Without that, a GitHub clone in another folder would use the
+// API keys of an older installation on the same PC — which feels like data
+// "came with the checkout", when what actually happened is one shared drawer for
+// every copy of the code.
 //
-// Lokasi kanonik: <project>/.wolfspace/cloud-keys.json  (sudah di .gitignore)
+// The canonical location: <project>/.wolfspace/cloud-keys.json (already in
+// .gitignore)
 //
-// Masih di LUAR tree sumber yang di-scan agent sehari-hari, dan tetap di luar git.
-// Sandbox/AppContainer tetap harus menolak baca .wolfspace; ini defense in depth,
-// bukan batas keamanan OS.
+// Still OUTSIDE the source tree the agent scans day to day, and still outside
+// git. The sandbox/AppContainer must still refuse to read .wolfspace; this is
+// defence in depth, not an OS boundary.
 //
-// Override:
-//   WOLFSPACE_KEYS_PATH  = path file penuh
-//   WOLFSPACE_KEYS_DIR   = folder (file = cloud-keys.json di dalamnya)
-//   WOLFSPACE_SHARE_KEYS=1 + default lama: pakai ~/.wolfspace (hanya jika sadar
-//     ingin semua clone berbagi — tidak disarankan)
-//
+// Overrides:
+//   WOLFSPACE_KEYS_PATH  = a full file path
 "use strict";
 
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 const QROOT = path.resolve(__dirname, "..");
 const LEGACY_IN_REPO = path.join(QROOT, "cloud-keys.json"); // sangat lama
@@ -30,7 +28,7 @@ const LEGACY_HOME_FILE = path.join(LEGACY_HOME_DIR, "cloud-keys.json");
 
 function keysDir() {
   if (process.env.WOLFSPACE_KEYS_DIR) return process.env.WOLFSPACE_KEYS_DIR;
-  // Opt-in: satu laci untuk semua instalasi (perilaku lama). Default OFF.
+  // Opt-in: one drawer for every installation (the old behaviour). Off by default.
   if (
     process.env.WOLFSPACE_SHARE_KEYS === "1" ||
     process.env.WOLFSPACE_SHARE_KEYS === "true"
@@ -47,16 +45,16 @@ function resolveKeysPath() {
   try {
     fs.mkdirSync(dir, { recursive: true });
     if (!fs.existsSync(target)) {
-      // 1) Legacy di root project (cloud-keys.json) → pindah ke .wolfspace/
+      // 1) Legacy at the project root (cloud-keys.json) -> move it into .wolfspace/
       if (fs.existsSync(LEGACY_IN_REPO)) {
         fs.copyFileSync(LEGACY_IN_REPO, target);
         try {
           fs.rmSync(LEGACY_IN_REPO, { force: true });
         } catch (_) {}
       }
-      // 2) JANGAN otomatis menyalin ~/.wolfspace/cloud-keys.json ke setiap
-      //    project. Itu penyebab clone "tiba-tiba ber-API key". Impor sadar:
-      //    WOLFSPACE_IMPORT_HOME_KEYS=1 npm run app
+      // 2) Do NOT automatically copy ~/.wolfspace/cloud-keys.json into every
+      //    project. That is what made a clone "suddenly have API keys". Import
+      //    deliberately: WOLFSPACE_IMPORT_HOME_KEYS=1 npm run app
       else if (
         (process.env.WOLFSPACE_IMPORT_HOME_KEYS === "1" ||
           process.env.WOLFSPACE_IMPORT_HOME_KEYS === "true") &&

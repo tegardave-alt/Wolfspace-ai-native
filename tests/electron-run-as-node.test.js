@@ -127,6 +127,13 @@ jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
 // pada ingatan.
 describe("sandbox GPU dimatikan supaya aplikasi bisa jalan", () => {
   const src = fs.readFileSync(path.join(ROOT, "electron", "main.js"), "utf8");
+  // The REASONING lives in electron/main.ts. main.js is built from it by
+  // scripts/build-main.cjs and esbuild strips comments, so asserting the
+  // explanation against the build output would only prove it is absent.
+  const sumber = fs.readFileSync(
+    path.join(ROOT, "electron", "main.ts"),
+    "utf8",
+  );
 
   test("switch terpasang di main.js", () => {
     expect(src).toMatch(/appendSwitch\("disable-gpu-sandbox"\)/);
@@ -141,7 +148,7 @@ describe("sandbox GPU dimatikan supaya aplikasi bisa jalan", () => {
   test("alasannya tercatat, termasuk yang TIDAK menolong", () => {
     // --disable-gpu adalah tebakan pertama siapa pun, dan ia terukur GAGAL.
     // Tanpa catatan itu, orang berikutnya akan mencobanya lagi.
-    expect(src).toMatch(/STATUS_DLL_NOT_FOUND/);
-    expect(src).toMatch(/--disable-gpu\s+FATAL juga/);
+    expect(sumber).toMatch(/STATUS_DLL_NOT_FOUND/);
+    expect(sumber).toMatch(/--disable-gpu\s+also FATAL/);
   });
 });

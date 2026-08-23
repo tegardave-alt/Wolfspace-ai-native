@@ -5,7 +5,7 @@ The node bodies are stubs on purpose: a run must be checkable without a model,
 a sandbox, or a host process on the other end of the pipe.
 
 Each case below mirrors a branch in the `addConditionalEdges` calls of
-agent/self_agent.cjs. If the JS routing changes, one of these should go red.
+agent/self_agent.ts. If the JS routing changes, one of these should go red.
 """
 
 from __future__ import annotations

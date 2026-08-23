@@ -26,11 +26,22 @@ const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
 const SRC = fs
-  .readFileSync(path.join(AKAR, "agent", "self_agent.cjs"), "utf8")
+  .readFileSync(path.join(AKAR, "agent", "self_agent.ts"), "utf8")
   .replace(/\r\n/g, "\n");
 
 // Fungsinya DIAMBIL dari sumber lalu dieksekusi — bukan ditulis ulang menurut
 // tafsiran, supaya yang diuji memang jalur produksi.
+
+// The extracted slices carry TypeScript annotations since self_agent
+// migrated, and eval would stop at the first colon. esbuild is what
+// scripts/ts-register.cjs uses to load this same file at run time, so the
+// slice goes through the same conversion the production path does.
+const _ts = (kode) =>
+  require("esbuild").transformSync(kode, {
+    loader: "ts",
+    format: "cjs",
+    target: "es2022",
+  }).code;
 const ambil = (nama) => {
   const i = SRC.indexOf("function " + nama + "(");
   if (i < 0) throw new Error("fungsi tak ketemu: " + nama);
@@ -38,16 +49,18 @@ const ambil = (nama) => {
   return SRC.slice(i, j);
 };
 const salvageReasoning = eval(
-  "(function(){" +
-    ambil("_tanpaKode") +
-    // Pemisah paragraf yang sadar blok berpagar — dipakai salvageReasoning
-    // supaya baris kosong DI DALAM ``` tak dianggap batas paragraf.
-    // Lihat tests/keluaran-model-utuh.test.js.
-    ambil("_paragrafSadarPagar") +
-    ambil("stripThinkBlocks") +
-    ambil("_tampakCatatanKerja") +
-    ambil("salvageReasoning") +
-    "return salvageReasoning;})()",
+  _ts(
+    "(function(){" +
+      ambil("_tanpaKode") +
+      // Pemisah paragraf yang sadar blok berpagar — dipakai salvageReasoning
+      // supaya baris kosong DI DALAM ``` tak dianggap batas paragraf.
+      // Lihat tests/keluaran-model-utuh.test.js.
+      ambil("_paragrafSadarPagar") +
+      ambil("stripThinkBlocks") +
+      ambil("_tampakCatatanKerja") +
+      ambil("salvageReasoning") +
+      "return salvageReasoning;})()",
+  ),
 );
 
 // Persis bentuk yang muncul di layar user.

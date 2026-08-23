@@ -2,6 +2,14 @@
 // ── Tool definitions (OpenAI function-calling format) ──
 // NOTE: disk_* tools removed from defaults — only project-scoped tools exposed.
 // Disk tools are still implemented in tools/index.ts if needed dynamically.
+// `export {}` makes this a MODULE rather than a global script.
+//
+// A .ts file with no import or export shares one global scope with every
+// other such file, so two of them declaring the same top-level name collide
+// (TS2451) — which is how mcp-client.ts and dspy_tool.ts both declaring
+// `dlog` surfaced a problem that had been latent for several phases.
+export {};
+
 const SELF_TOOLS = [
   {
     type: "function",
@@ -544,7 +552,7 @@ const SELF_TOOLS = [
   // only the door to the model is closed.
   //
   // If the model ever needs to PROPOSE an install, the path already exists: add
-  // its name to EXECUTION_TOOLS in agent/self_agent.cjs, as bash is. Locked by
+  // its name to EXECUTION_TOOLS in agent/self_agent.ts, as bash is. Locked by
   // tests/plugin-pintu-pasang.test.js.
   // git has its own tool because it CAN NO LONGER be run through bash.
   //

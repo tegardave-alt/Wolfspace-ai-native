@@ -70,7 +70,7 @@ even bind to Node processes reliably).
 cloud-provider hosts from `agent/cloud.cjs`.
 
 > An earlier revision of this section said "prototype, not wired into
-> `agent/tools/index.cjs` or `self_agent.cjs`". That was stale — the wiring
+> `agent/tools/index.cjs` or `self_agent.ts`". That was stale — the wiring
 > landed but the doc wasn't updated. Kept as a note because stale docs cost
 > real time in this repo before (see the `WOLFSPACE-sandbox` uppercase-tag
 > comment that survived the fix that removed the bug).

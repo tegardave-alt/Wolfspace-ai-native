@@ -14,7 +14,7 @@ function replicateKey() {
   const QROOT = path.resolve(__dirname, "..", "..");
   const candidates: any[] = [];
   try {
-    candidates.push(require("../keys-path.cjs").resolveKeysPath());
+    candidates.push(require("../keys-path.ts").resolveKeysPath());
   } catch (_) {}
   candidates.push(path.join(QROOT, "server", "cloud-keys.json"));
   candidates.push(path.join(QROOT, "cloud-keys.json"));

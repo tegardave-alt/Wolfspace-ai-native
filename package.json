@@ -10,18 +10,20 @@
   "scripts": {
     "start": "node server.cjs",
     "dev": "nodemon server.cjs",
-    "app": "node scripts/build-preload.cjs && node scripts/app.cjs",
+    "app": "node scripts/build-preload.cjs && node scripts/build-main.cjs && node scripts/app.cjs",
     "app:wsl": "node scripts/wsl-app.cjs",
-    "dist": "node scripts/build-preload.cjs && electron-builder --win",
+    "dist": "node scripts/build-preload.cjs && node scripts/build-main.cjs && electron-builder --win",
     "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles --passWithNoTests",
     "stress": "node scripts/stress.cjs",
     "test:watch": "jest --watch --verbose",
     "prepare": "husky",
     "vendor:three": "node scripts/three/build.cjs",
-    "typecheck": "tsc -p agent/jsconfig.json && tsc -p public/tsconfig.json && tsc -p packages/contracts/tsconfig.json && tsc -p server/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p core/tsconfig.json && tsc -p agent/tsconfig.json",
+    "typecheck": "tsc -p agent/jsconfig.json && tsc -p public/tsconfig.json && tsc -p packages/contracts/tsconfig.json && tsc -p server/tsconfig.json && tsc -p electron/tsconfig.json && tsc -p core/tsconfig.json && tsc -p agent/tsconfig.json && tsc -p tsconfig.server.json",
     "profil": "node scripts/profil-beku.cjs",
-    "build:preload": "node scripts/build-preload.cjs"
+    "build:preload": "node scripts/build-preload.cjs",
+    "build:main": "node scripts/build-main.cjs",
+    "ww": "node -r ./scripts/ts-register.cjs scripts/ww.ts"
   },
   "keywords": [
     "ai",
@@ -65,9 +67,10 @@
       "electron/**",
       "core.js",
       "server.cjs",
+      "server.ts",
       "agent/**",
       "server/**",
-      "scripts/ww.cjs",
+      "scripts/ww.ts",
       "scripts/ts-register.cjs",
       "core/**",
       "public/**",
@@ -79,7 +82,7 @@
       "server.cjs",
       "agent/**",
       "server/**",
-      "scripts/ww.cjs",
+      "scripts/ww.ts",
       "scripts/ts-register.cjs",
       "core/**",
       "public/**",
@@ -127,6 +130,14 @@
     ],
     "*.{jsx,tsx,ts}": [
       "prettier --write"
+    ],
+    "electron/main.ts": [
+      "node scripts/build-main.cjs",
+      "git add electron/main.js"
+    ],
+    "electron/preload.ts": [
+      "node scripts/build-preload.cjs",
+      "git add electron/preload.js"
     ]
   },
   "jest": {

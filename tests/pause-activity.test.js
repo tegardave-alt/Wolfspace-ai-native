@@ -15,7 +15,7 @@
 // (6 perintah bash berbeda, `npm test` 4x di siklus edit->test). Yang diuji di
 // sini murni KEJUJURAN PELAPORAN.
 
-const { describePauseActivity } = require("../agent/self_agent.cjs");
+const { describePauseActivity } = require("../agent/self_agent.ts");
 
 const state = (o) => ({ step: 14, edits: 0, failedTools: new Set(), ...o });
 const sess = (o) => ({ callCountsByName: {}, noProgressBySig: {}, ...o });

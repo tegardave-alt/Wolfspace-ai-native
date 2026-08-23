@@ -10,7 +10,7 @@ import * as path from "path";
 import * as os from "os";
 import { execSync } from "child_process";
 const { createSnapshot, rollback } = require("./snapshot.ts");
-const codeQuality = require("./code-quality.cjs");
+const codeQuality = require("./code-quality.ts");
 
 const QROOT = path.resolve(__dirname, "..");
 const QUARANTINE = path.join(QROOT, ".wolfspace", "quarantine");
@@ -131,7 +131,7 @@ function safeWriteFile(filePath, newContent) {
   const abs = path.resolve(filePath);
   const lang = _detectLang(abs);
 
-  // 0. The structural quality gate (HARDCODED — see agent/code-quality.cjs).
+  // 0. The structural quality gate (HARDCODED — see agent/code-quality.ts).
   //    Run BEFORE the snapshot: a refusal here changes nothing on disk, so
   //    there is nothing to roll back. The principle is a ratchet — a dirty file
   //    may be edited but must not get deeper. This enforces on the execution

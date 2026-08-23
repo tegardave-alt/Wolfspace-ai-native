@@ -3,13 +3,13 @@
 // KENAPA BERKAS INI ADA, TERPISAH DARI code-quality.test.js.
 // Versi pertama gerbang ini dipasang di agent/safe-edit.ts, diuji lewat
 // safeWriteFile langsung, lulus, dan saya nyatakan bekerja. Padahal
-// self_agent.cjs memakai ./tools.cjs -> agent/tools/index.ts, yang punya
+// self_agent.ts memakai ./tools.cjs -> agent/tools/index.ts, yang punya
 // implementasi edit/write SENDIRI dan tak pernah menyentuh safeWriteFile.
 // Gerbangnya ada di jalur mati; agent tak pernah tunduk padanya sedetik pun.
 // Tes unit tak bisa menangkap itu — hanya tes yang memakai jalur nyata bisa.
 //
 // Jadi setiap kasus di sini memanggil runSelfTool dari agent/tools.cjs, persis
-// seperti self_agent.cjs, dan memeriksa DISK sesudahnya — bukan cuma nilai balik.
+// seperti self_agent.ts, dan memeriksa DISK sesudahnya — bukan cuma nilai balik.
 
 // Zona kapabilitas di berkas ini dipaksa ke transport fork.
 //

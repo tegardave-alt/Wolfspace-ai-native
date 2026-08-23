@@ -1,30 +1,43 @@
-// ── WOLFSPACE RAG (P1) ────────────────────────────────────────────────────────
-// Retrieval untuk PENGETAHUAN, bukan kode: memori proyek (rangkuman run/keputusan)
-// + docs. Kode tetap dicari agentic (grep/glob/read). Lihat design brief.
+// ── WOLFSPACE RAG (P1) ──
+// Retrieval for KNOWLEDGE, not code: project memory (run summaries, decisions)
+// plus docs. Code is still searched agentically (grep/glob/read). See the design
+// brief.
 //
-// P1 = offline, zero-dependency, file-based. Embedder LOKAL berbasis hashing
-// (word + char n-gram → vektor ternormalisasi) di balik interface embed() yang
-// bisa di-swap ke transformer/cloud nanti tanpa mengubah store/tool/ingest.
+// P1 = offline, zero-dependency, file-based. A LOCAL hashing embedder (word plus
+// character n-grams -> a normalised vector) behind an embed() interface that can
+// be swapped for a transformer or a cloud one later without touching the store,
+// the tool, or ingest.
 //
-// Store: ~/.wolfspace/rag/<projectKey>/index.json  (satu per proyek → isolasi ww).
+// Store: ~/.wolfspace/rag/<projectKey>/index.json (one per project, so ww stays
+// isolated).
 "use strict";
-const fs = require("fs");
-const path = require("path");
-const os = require("os");
+import * as fs from "fs";
+import * as path from "path";
+import * as os from "os";
 
 const DIM = 512;
-const MAX_RECORDS = 2000; // batasi pertumbuhan; buang yang terlama saat penuh
+const MAX_RECORDS = 2000; // bound the growth; drop the oldest when full
 
 function ragRoot() {
-  return path.join(process.env.USERPROFILE || os.homedir(), ".wolfspace", "rag");
+  return path.join(
+    process.env.USERPROFILE || os.homedir(),
+    ".wolfspace",
+    "rag",
+  );
 }
-// Kunci proyek stabil dari path/nama workspace (case-insensitive, aman jadi folder).
+// A stable project key from the workspace path or name (case-insensitive, safe
+// as a folder name).
 function projectKeyFrom(p) {
   const s = String(p || "").trim();
   if (!s) return "global";
   return (
-    s.replace(/\\/g, "/").replace(/\/+$/, "").toLowerCase()
-      .replace(/[^a-z0-9._-]+/g, "_").replace(/^_+|_+$/g, "").slice(0, 80) || "global"
+    s
+      .replace(/\\/g, "/")
+      .replace(/\/+$/, "")
+      .toLowerCase()
+      .replace(/[^a-z0-9._-]+/g, "_")
+      .replace(/^_+|_+$/g, "")
+      .slice(0, 80) || "global"
   );
 }
 function storeFile(projectKey) {
@@ -44,11 +57,12 @@ function _hash(str) {
 function _features(text) {
   const t = String(text || "").toLowerCase();
   const words = t.split(/[^a-z0-9]+/).filter((w) => w.length > 1);
-  const feats = [];
+  const feats: any[] = [];
   for (const w of words) {
     feats.push("w:" + w); // token utuh
-    const p = "#" + w + "#"; // char 3-gram (sub-word: robust ke variasi bentuk)
-    for (let i = 0; i + 3 <= p.length; i++) feats.push("c:" + p.slice(i, i + 3));
+    const p = "#" + w + "#"; // character 3-grams (sub-word: robust to variant forms)
+    for (let i = 0; i + 3 <= p.length; i++)
+      feats.push("c:" + p.slice(i, i + 3));
   }
   return feats;
 }
@@ -59,7 +73,7 @@ function embed(text) {
   for (const f of feats) tf.set(f, (tf.get(f) || 0) + 1);
   for (const [f, c] of tf) {
     const idx = _hash(f) % DIM;
-    const sign = (_hash("s" + f) & 1) ? 1 : -1; // signed hashing → kurangi tabrakan
+    const sign = _hash("s" + f) & 1 ? 1 : -1; // signed hashing → kurangi tabrakan
     v[idx] += sign * (1 + Math.log(c)); // TF ter-log
   }
   let norm = 0;
@@ -71,7 +85,7 @@ function embed(text) {
 function cosine(a, b) {
   let d = 0;
   const n = Math.min(a.length, b.length);
-  for (let i = 0; i < n; i++) d += a[i] * b[i]; // keduanya sudah L2-normal
+  for (let i = 0; i < n; i++) d += a[i] * b[i]; // both are already L2-normalised
   return d;
 }
 
@@ -93,7 +107,10 @@ function _save(projectKey, data) {
   fs.writeFileSync(storeFile(projectKey), JSON.stringify(data), "utf8");
 }
 function _norm(s) {
-  return String(s || "").replace(/\s+/g, " ").trim().toLowerCase();
+  return String(s || "")
+    .replace(/\s+/g, " ")
+    .trim()
+    .toLowerCase();
 }
 
 // ── Ingest ────────────────────────────────────────────────────────────────────
@@ -105,16 +122,26 @@ function ingest(projectRef, item) {
     const projectKey = projectKeyFrom(projectRef);
     const store = _load(projectKey);
     const nt = _norm(text);
-    // Dedupe: lewati bila teks (nyaris) sama sudah ada.
-    if (store.records.some((r) => _norm(r.text) === nt)) return { ok: true, dedup: true };
+    // Dedupe: skip when (nearly) the same text is already present.
+    if (store.records.some((r) => _norm(r.text) === nt))
+      return { ok: true, dedup: true };
     store.records.push({
-      id: (item.kind || "mem") + "_" + Date.now().toString(36) + Math.random().toString(36).slice(2, 6),
+      id:
+        (item.kind || "mem") +
+        "_" +
+        Date.now().toString(36) +
+        Math.random().toString(36).slice(2, 6),
       kind: item.kind === "doc" ? "doc" : "memory",
       text,
       vec: embed(text),
-      meta: { source: (item.meta && item.meta.source) || "run", ts: Date.now(), tags: (item.meta && item.meta.tags) || [] },
+      meta: {
+        source: (item.meta && item.meta.source) || "run",
+        ts: Date.now(),
+        tags: (item.meta && item.meta.tags) || [],
+      },
     });
-    if (store.records.length > MAX_RECORDS) store.records.splice(0, store.records.length - MAX_RECORDS);
+    if (store.records.length > MAX_RECORDS)
+      store.records.splice(0, store.records.length - MAX_RECORDS);
     _save(projectKey, store);
     return { ok: true, count: store.records.length };
   } catch (e) {
@@ -124,7 +151,7 @@ function ingest(projectRef, item) {
 
 // ── Retrieve ──────────────────────────────────────────────────────────────────
 // query → top-k { text, kind, source, ts, score }. Filter opsional by kind.
-function retrieve(projectRef, query, opts = {}) {
+function retrieve(projectRef, query, opts: any = {}) {
   try {
     const q = String(query || "").trim();
     if (!q) return { ok: true, results: [] };
@@ -134,26 +161,48 @@ function retrieve(projectRef, query, opts = {}) {
     const qv = embed(q);
     const scored = store.records
       .filter((r) => !opts.kind || r.kind === opts.kind)
-      .map((r) => ({ score: cosine(qv, r.vec), text: r.text, kind: r.kind, source: r.meta && r.meta.source, ts: r.meta && r.meta.ts }))
-      .filter((r) => r.score > 0.02) // buang yang nyaris tak relevan
+      .map((r) => ({
+        score: cosine(qv, r.vec),
+        text: r.text,
+        kind: r.kind,
+        source: r.meta && r.meta.source,
+        ts: r.meta && r.meta.ts,
+      }))
+      .filter((r) => r.score > 0.02) // drop what is barely relevant
       .sort((a, b) => b.score - a.score)
       .slice(0, k);
-    return { ok: true, results: scored, total: store.records.length, projectKey };
+    return {
+      ok: true,
+      results: scored,
+      total: store.records.length,
+      projectKey,
+    };
   } catch (e) {
     return { ok: false, err: e.message, results: [] };
   }
 }
 
-// Format hasil untuk dibaca agent (tool output) — dengan sitasi.
-function retrieveFormatted(projectRef, query, opts = {}) {
+// Format the results for the agent to read (as tool output) — with citations.
+function retrieveFormatted(projectRef, query, opts: any = {}) {
   const r = retrieve(projectRef, query, opts);
   if (!r.ok) return "retrieve gagal: " + r.err;
-  if (!r.results.length) return "Tak ada memori/dokumen relevan (" + (r.total || 0) + " tersimpan).";
+  if (!r.results.length)
+    return "Tak ada memori/dokumen relevan (" + (r.total || 0) + " tersimpan).";
   return r.results
-    .map((x, i) => `[${i + 1}] (${x.kind} · ${x.source || "?"} · ${x.score.toFixed(2)})\n${x.text}`)
+    .map(
+      (x, i) =>
+        `[${i + 1}] (${x.kind} · ${x.source || "?"} · ${x.score.toFixed(2)})\n${x.text}`,
+    )
     .join("\n\n");
 }
 
 module.exports = {
-  embed, cosine, ingest, retrieve, retrieveFormatted, projectKeyFrom, storeFile, DIM,
+  embed,
+  cosine,
+  ingest,
+  retrieve,
+  retrieveFormatted,
+  projectKeyFrom,
+  storeFile,
+  DIM,
 };

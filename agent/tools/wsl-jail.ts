@@ -59,7 +59,7 @@
 "use strict";
 
 import { execFileSync } from "child_process";
-const _penegakan = require("../penegakan.cjs");
+const _penegakan = require("../penegakan.ts");
 
 const DISTRO = process.env.WOLFSPACE_WSL_DISTRO || "WolfspaceTest";
 const SHARE = process.env.WOLFSPACE_WSL_SHARE || "wolfws";

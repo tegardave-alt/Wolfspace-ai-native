@@ -23,7 +23,7 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
-const SRV = baca("server.cjs");
+const SRV = baca("server.ts");
 const APP = baca("public/app.tsx");
 const CSS = baca("public/styles.css");
 const tanpaKomentar = (t) =>

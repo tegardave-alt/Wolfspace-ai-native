@@ -39,17 +39,26 @@ const SUDAH_TYPESCRIPT = [
   "agent/broker/host.ts",
   "agent/broker/policy.ts",
   "agent/broker/zone-process.ts",
+  "agent/chat.ts",
   "agent/cloud.ts",
+  "agent/code-quality.ts",
+  "agent/debug.ts",
+  "agent/dspy_tool.ts",
+  "agent/keys-path.ts",
   "agent/mcp-client.ts",
+  "agent/penegakan.ts",
   "agent/penjaga-agent.ts",
   "agent/plugins.ts",
   "agent/python-agent.ts",
   "agent/python-worker.ts",
+  "agent/rag.ts",
   "agent/safe-edit.ts",
   "agent/sandbox-policy.ts",
   "agent/sandbox.ts",
+  "agent/self_agent.ts",
   "agent/skills.ts",
   "agent/snapshot.ts",
+  "agent/sysprompt_opt.ts",
   "agent/temuan.ts",
   "agent/tools/appcontainer-jail.ts",
   "agent/tools/arch-tools.ts",
@@ -70,6 +79,7 @@ const SUDAH_TYPESCRIPT = [
   "core/dap-sesi.ts",
   "core/dap.ts",
   "core/terminal.ts",
+  "electron/main.ts",
   "electron/preload.ts",
   "public/app.tsx",
   "public/app/AgentSteps.tsx",
@@ -85,6 +95,8 @@ const SUDAH_TYPESCRIPT = [
   "public/app/Views.tsx",
   "public/app/VisualTools.tsx",
   "public/app/usePreviewPanel.tsx",
+  "scripts/ww.ts",
+  "server.ts",
 ];
 
 describe("kontrak tipe jalur kritis", () => {
@@ -219,4 +231,28 @@ describe("kontrak tipe jalur kritis", () => {
     );
     expect(tak).toEqual([]);
   }, 600000);
+
+  test("berkas migrasi backend adalah MODUL, bukan skrip global", () => {
+    // Berkas .ts tanpa import maupun export adalah SKRIP bagi TypeScript:
+    // seluruh const tingkat-atasnya berbagi SATU scope global dengan setiap
+    // berkas serupa. Tabrakan baru terjadi kalau DUA berkas kebetulan
+    // mendeklarasikan nama yang sama — itulah kenapa mcp-client.ts bertahan
+    // begitu sejak fase awal tanpa ketahuan, sampai dspy_tool.ts datang dan
+    // keduanya mendeklarasikan `dlog`. Lima berkas ada di keadaan itu,
+    // menunggu nama umum berikutnya.
+    //
+    // public/app/*.tsx DIKECUALIKAN, dan itu bukan celah: berkas-berkas itu
+    // memang digabung jadi satu scope global oleh index.html, dan
+    // app/globals.d.ts mendokumentasikan kontraknya. Menuntutnya jadi modul
+    // justru merusak rancangannya.
+    const skrip = SUDAH_TYPESCRIPT.filter((rel) => {
+      if (rel.startsWith("public/")) return false;
+      if (rel.endsWith(".d.ts")) return false;
+      const isi = fs.readFileSync(path.join(AKAR, rel), "utf8");
+      const adaImport = /^\s*import[\s{*]/m.test(isi);
+      const adaExport = /^\s*export[\s{*=]/m.test(isi);
+      return !adaImport && !adaExport;
+    });
+    expect(skrip).toEqual([]);
+  });
 });

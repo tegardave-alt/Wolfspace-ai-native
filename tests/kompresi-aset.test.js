@@ -17,7 +17,7 @@ const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
 const SRV = fs
-  .readFileSync(path.join(AKAR, "server.cjs"), "utf8")
+  .readFileSync(path.join(AKAR, "server.ts"), "utf8")
   .replace(/\r\n/g, "\n");
 const SKRIP = fs.readFileSync(
   path.join(AKAR, "scripts", "kompres-aset.cjs"),

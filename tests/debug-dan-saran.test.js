@@ -18,7 +18,7 @@ const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 const APP = baca("public/app.tsx");
-const SRV = baca("server.cjs");
+const SRV = baca("server.ts");
 const SCR = baca("public/app/Screens.tsx");
 const KOMP = baca("public/app/Components.tsx");
 const tanpaKomentar = (t) =>

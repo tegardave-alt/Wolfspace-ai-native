@@ -185,7 +185,7 @@ describe("bertahan melewati hot-reload backend", () => {
 
 describe("tersambung: agent memakai handle, bukan alamat", () => {
   // Uji END-TO-END lewat runSelfTool — dispatcher yang BENAR-BENAR dipakai
-  // self_agent.cjs, bukan modul jembatan langsung. Pelajaran dari
+  // self_agent.ts, bukan modul jembatan langsung. Pelajaran dari
   // gate-agent-path.test.js: gerbang pernah dipasang di jalur mati dan lulus
   // semua tesnya tanpa pernah mengikat agent sedetik pun.
   const path = require("path");

@@ -211,7 +211,7 @@ graph TD
     UI["public/app.jsx + public/app/*.tsx<br/>(React, Babel-in-browser, no build step)"]
     API["server.cjs<br/>(HTTP entry, dispatches to routes)"]
     Routes["server/routes/*<br/>(cloud, terminal, snapshots, openclaw,<br/>debug, hunks — modular per domain)"]
-    Agent["agent/self_agent.cjs<br/>(ReAct loop, tool-calling, HITL)"]
+    Agent["agent/self_agent.ts<br/>(ReAct loop, tool-calling, HITL)"]
     Tools["agent/tools/*<br/>(file, exec, disk, web, skills, arch, gen3d)"]
     Memory["agent/temuan.cjs<br/>(what has already been read this run —<br/>survives context truncation)"]
     MCP["agent/mcp-client.cjs<br/>(MCP servers over stdio JSON-RPC)"]

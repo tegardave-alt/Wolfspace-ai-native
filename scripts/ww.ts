@@ -2,20 +2,20 @@
 /*
  * ww — workspace manager (prototype)
  *
- * Analogi: satu direktori induk (default C:\Users\dave\ww) berisi banyak folder.
- * SETIAP folder = satu repo git INDEPENDEN dengan branch-nya sendiri, terisolasi
- * penuh (masing-masing punya .git sendiri, tidak berbagi riwayat). Begitu sebuah
- * folder dibuat — lewat perintah `create` ATAU dibuat manual di Explorer lalu
- * ditangkap `watch` — folder itu langsung jadi repo + branch sendiri.
+ * The idea: one parent directory (C:\Users\dave\ww by default) holding many
+ * folders. EACH folder is an INDEPENDENT git repo with its own branch, fully
+ * isolated (each has its own .git and shares no history). As soon as a folder
+ * appears — through the `create` command, OR created by hand in Explorer and
+ * caught by `watch` — it immediately becomes its own repo plus branch.
  *
- * Perintah:
- *   node scripts/ww.cjs create <nama> [--branch <b>] [--root <dir>]
- *   node scripts/ww.cjs adopt  <nama> [--branch <b>] [--root <dir>]
- *   node scripts/ww.cjs list                          [--root <dir>]
- *   node scripts/ww.cjs watch                         [--root <dir>]
+ * Commands:
+ *   npm run ww -- create <name> [--branch <b>] [--root <dir>]
+ *   npm run ww -- adopt  <name> [--branch <b>] [--root <dir>]
+ *   npm run ww -- list                         [--root <dir>]
+ *   npm run ww -- watch                        [--root <dir>]
  *
- * Ini prototype standalone: TIDAK menyentuh server/UI WOLFSPACE. Tujuannya
- * membuktikan logika worktree+branch per-folder dulu, baru diintegrasikan.
+ * This began as a standalone prototype that did NOT touch the WOLFSPACE
+ * server/UI, to prove the per-folder worktree+branch logic before integrating.
  */
 "use strict";
 
@@ -38,7 +38,7 @@ const die = (m) => {
   process.exit(1);
 };
 
-// Jalankan git di dalam cwd. Kembalikan stdout (trim). Lempar bila gagal.
+// Run git inside cwd. Return stdout (trimmed). Throws on failure.
 function git(args, cwd) {
   return execFileSync("git", args, {
     cwd,
@@ -46,7 +46,7 @@ function git(args, cwd) {
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
 }
-// Versi yang tidak melempar (untuk probing) — kembalikan null bila gagal.
+// The non-throwing version (for probing) — returns null on failure.
 function gitTry(args, cwd) {
   try {
     return git(args, cwd);
@@ -55,7 +55,7 @@ function gitTry(args, cwd) {
   }
 }
 
-// Ubah nama folder jadi nama branch git yang valid.
+// Turn a folder name into a valid git branch name.
 function toBranch(name) {
   let b = String(name)
     .trim()
@@ -66,12 +66,12 @@ function toBranch(name) {
   return b || "work";
 }
 
-// Sebuah folder sudah repo git bila punya subfolder .git.
+// A folder is already a git repo when it has a .git subfolder.
 function isRepo(dir) {
   return fs.existsSync(path.join(dir, ".git"));
 }
 
-// Nama folder yang harus diabaikan watcher (sementara/tersembunyi/sistem).
+// Folder names the watcher must ignore (temporary/hidden/system).
 function isIgnorableName(name) {
   return (
     !name ||
@@ -79,19 +79,20 @@ function isIgnorableName(name) {
     name.startsWith("_") ||
     name.startsWith("$") ||
     name.startsWith("~") ||
-    // Nama default Explorer/Finder SEBELUM di-rename user: jangan buru-buru adopt
-    // "New folder" lalu identitasnya terlanjur salah. Tunggu sampai diberi nama asli.
+    // The default Explorer/Finder name BEFORE the user renames it: do not rush to
+    // adopt "New folder" and lock in the wrong identity. Wait for a real name.
     /^(new folder|untitled folder|new folder \(\d+\))$/i.test(name) ||
     /^(node_modules|System Volume Information|\$RECYCLE\.BIN)$/i.test(name)
   );
 }
 
-// Pastikan root tidak berada di dalam repo git lain (agar tiap folder benar-benar
-// repo terpisah, bukan subdir dari repo induk yang tak sengaja).
+// Make sure the root is not inside another git repo (so each folder really is a
+// separate repo rather than an accidental subdirectory of a parent one).
 function assertRootNotNested(root) {
   const inside = gitTry(["rev-parse", "--is-inside-work-tree"], root);
   if (inside === "true") {
-    // root sendiri boleh saja BUKAN repo; yang bahaya kalau root DI DALAM repo lain.
+    // The root itself may well NOT be a repo; the danger is the root being INSIDE
+    // another one.
     if (!isRepo(root)) {
       die(
         `Root '${root}' berada di DALAM repo git lain. Tiap folder harus repo terpisah.\n` +
@@ -112,7 +113,7 @@ function ensureRoot(root) {
 }
 
 // ── inti: jadikan sebuah folder repo independen + branch sendiri ───────────────
-function initWorkspace(dir, name, branchArg) {
+function initWorkspace(dir, name, branchArg?) {
   const branch = toBranch(branchArg || name);
 
   if (isRepo(dir)) {
@@ -123,14 +124,15 @@ function initWorkspace(dir, name, branchArg) {
 
   fs.mkdirSync(dir, { recursive: true });
 
-  // git init dengan branch bernama sesuai folder (git ≥ 2.28).
+  // git init with the branch named after the folder (git >= 2.28).
   git(["init", "-b", branch], dir);
-  // Identitas lokal supaya commit awal tidak gagal di mesin tanpa user.name global.
+  // A local identity so the first commit does not fail on a machine with no global
+  // user.name.
   git(["config", "user.name", "ww"], dir);
   git(["config", "user.email", "ww@local"], dir);
 
-  // Marker ww (selalu ditulis — ini milik kita; menjamin ada ≥1 file untuk commit
-  // pertama supaya branch termaterialisasi).
+  // The ww marker (always written — it is ours, and it guarantees at least one
+  // file for the first commit so the branch materialises).
   const meta = {
     name,
     branch,
@@ -141,8 +143,8 @@ function initWorkspace(dir, name, branchArg) {
     path.join(dir, ".ww.json"),
     JSON.stringify(meta, null, 2) + "\n",
   );
-  // Seed HANYA jika belum ada — JANGAN menimpa file milik user saat attach folder
-  // yang sudah berisi proyek nyata.
+  // Seed ONLY when absent — do NOT overwrite the user's files when attaching a
+  // folder that already holds a real project.
   const giPath = path.join(dir, ".gitignore");
   if (!fs.existsSync(giPath)) {
     fs.writeFileSync(
@@ -189,7 +191,8 @@ function cmdAdopt(name, opts) {
   initWorkspace(dir, name, opts.branch);
 }
 
-// Kembalikan daftar workspace di root sebagai DATA (untuk server/UI). Kebenaran disk.
+// Return the workspaces under the root as DATA (for the server/UI). The disk is
+// the truth.
 function listWorkspaces(root) {
   const r = path.resolve(root || DEFAULT_ROOT);
   if (!fs.existsSync(r)) return [];
@@ -234,12 +237,13 @@ function cmdList(opts) {
   }
 }
 
-// Core watcher — dipakai CLI `watch` DAN server WOLFSPACE (auto-start). Mengembalikan
-// handle chokidar (pemanggil yang menutup lewat .close()). `throw` (bukan die) supaya
-// aman dipanggil di dalam proses server. opts.log(msg) opsional untuk laporan event.
-function startWatcher(root, opts = {}) {
+// The core watcher — used by the `watch` CLI AND by the WOLFSPACE server
+// (auto-start). Returns the chokidar handle (the caller closes it with .close()).
+// It THROWS rather than dying, so it is safe to call inside the server process.
+// opts.log(msg) is optional, for event reporting.
+function startWatcher(root, opts: any = {}) {
   const rootResolved = path.resolve(root || DEFAULT_ROOT);
-  // Validasi root tanpa mematikan proses (throw, bukan die).
+  // Validate the root without killing the process (throw, not die).
   if (!fs.existsSync(rootResolved))
     fs.mkdirSync(rootResolved, { recursive: true });
   if (!fs.statSync(rootResolved).isDirectory())
@@ -250,14 +254,14 @@ function startWatcher(root, opts = {}) {
   )
     throw new Error("root berada di dalam repo git lain: " + rootResolved);
 
-  const chokidar = require("chokidar"); // throw bila tak terpasang → ditangani pemanggil
+  const chokidar = require("chokidar"); // throws when not installed -> handled by the caller
   const onLog = typeof opts.log === "function" ? opts.log : () => {};
   const pending = new Map(); // dir → timer (debounce)
   const inFlight = new Set();
 
   const watcher = chokidar.watch(rootResolved, {
-    depth: 0, // hanya level teratas
-    ignoreInitial: true, // jangan proses folder yang sudah ada saat start
+    depth: 0, // top level only
+    ignoreInitial: true, // do not process folders that already exist at start
     persistent: true,
     awaitWriteFinish: false,
   });
@@ -267,14 +271,14 @@ function startWatcher(root, opts = {}) {
     const name = path.basename(dir);
     if (isIgnorableName(name)) return;
     if (inFlight.has(dir)) return;
-    // Debounce: tunggu folder selesai dibuat sebelum menyentuhnya.
+    // Debounce: wait for the folder to finish being created before touching it.
     clearTimeout(pending.get(dir));
     pending.set(
       dir,
       setTimeout(() => {
         pending.delete(dir);
         if (!fs.existsSync(dir) || !fs.statSync(dir).isDirectory()) return;
-        if (isRepo(dir)) return; // sudah repo (mis. dibuat via `create`) — abaikan
+        if (isRepo(dir)) return; // already a repo (created via `create`, say) — ignore
         inFlight.add(dir);
         try {
           onLog(`folder baru terdeteksi: ${name}`);
@@ -316,7 +320,7 @@ function cmdWatch(opts) {
 
 // ── argumen ────────────────────────────────────────────────────────────────────
 function parseArgs(argv) {
-  const positional = [];
+  const positional: any[] = [];
   const opts = { root: DEFAULT_ROOT, branch: null };
   for (let i = 0; i < argv.length; i++) {
     const a = argv[i];
@@ -358,24 +362,24 @@ function main() {
   }
 }
 
-// Dipakai sebagai modul oleh server (auto-start watcher) ATAU sebagai CLI.
-// Ringkasan git read-only untuk SATU folder workspace (dipakai UI untuk
-// menampilkan branch + status kotor/bersih di sidebar). Tak pernah melempar —
-// folder yang belum jadi repo mengembalikan { repo:false }.
+// Used as a module by the server (auto-starting the watcher) OR as a CLI.
+// A read-only git summary for ONE workspace folder (used by the UI to show the
+// branch and dirty/clean status in the sidebar). Never throws — a folder that is
+// not yet a repo returns { repo:false }.
 function gitInfo(dir) {
   if (!dir || !fs.existsSync(dir)) return { repo: false, error: "not-found" };
   if (!isRepo(dir)) return { repo: false };
   const branch = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir) || "?";
-  // --porcelain: satu baris per perubahan (staged/unstaged/untracked). Jumlah
-  // baris tak kosong = jumlah perubahan yang belum tercermin di commit.
+  // --porcelain: one line per change (staged/unstaged/untracked). The count of
+  // non-empty lines is the number of changes not yet reflected in a commit.
   const porcelain = gitTry(["status", "--porcelain"], dir);
   const dirtyCount =
     porcelain == null
       ? 0
       : porcelain.split("\n").filter((l) => l.trim()).length;
-  // Commit terakhir: hash pendek + subject + waktu relatif. null bila belum ada commit.
+  // The last commit: short hash + subject + relative time. null when there is none.
   const last = gitTry(["log", "-1", "--format=%h%s%cr"], dir);
-  let lastCommit = null;
+  let lastCommit: any = null;
   if (last) {
     const [hash, subject, when] = last.split("");
     lastCommit = { hash, subject, when };
@@ -383,7 +387,8 @@ function gitInfo(dir) {
   return { repo: true, branch, dirtyCount, dirty: dirtyCount > 0, lastCommit };
 }
 
-// Jalankan git & tangkap hasil/eror rapi (untuk aksi yang perlu lapor sukses/gagal).
+// Run git and capture its result/error cleanly (for actions that must report
+// success or failure).
 function gitRun(args, cwd) {
   try {
     const out = execFileSync("git", args, {
@@ -400,56 +405,56 @@ function gitRun(args, cwd) {
   }
 }
 
-// ── Versi TAK-MEMBLOKIR dari gitInfo & listBranches ──
+// ── NON-BLOCKING versions of gitInfo and listBranches ──
 //
-// Keduanya menjalankan tiga perintah git BERUNTUN lewat execFileSync. Diukur di
-// repo ini: rev-parse 56 ms, status --porcelain 220 ms, log -1 67 ms,
-// for-each-ref 64 ms — jadi /ww/git membekukan thread ~291 ms dan /ww/branches
-// ~194 ms. Karena seluruh server.cjs berjalan di dalam proses utama Electron,
-// itu jendela yang benar-benar membeku, bukan sekadar permintaan yang lama.
+// Both ran three git commands BACK TO BACK through execFileSync. Measured in this
+// repo: rev-parse 56 ms, status --porcelain 220 ms, log -1 67 ms, for-each-ref
+// 64 ms — so /ww/git froze the thread for ~291 ms and /ww/branches for ~194 ms.
+// Because all of server.ts runs inside Electron's main process, that is a genuinely
+// frozen window rather than merely a slow request.
 //
-// Ketiganya dijalankan BERBARENGAN (Promise.all), bukan beruntun: mereka tidak
-// saling bergantung, dan yang menentukan lamanya jadi perintah paling lambat
-// saja alih-alih jumlah ketiganya.
+// The three now run TOGETHER (Promise.all) rather than in sequence: they do not
+// depend on each other, so the duration becomes the slowest command rather than
+// the sum of all three.
 //
-// Yang sinkron TETAP ADA — berkas ini juga dipakai sebagai CLI (lihat main() di
-// bawah), dan di sana tak ada jendela yang bisa membeku.
-// ── Satu hasil dipakai bersama, dan disimpan sebentar ──
+// The synchronous versions REMAIN — this file is also used as a CLI (see main()
+// below), and there is no window there to freeze.
+// ── One result shared, and held briefly ──
 //
-// KENAPA. Terukur pada server yang benar-benar berjalan: /ww/git sehat
-// sendirian (40 ms), tapi di bawah beban ia runtuh —
+// WHY. Measured against a genuinely running server: /ww/git is healthy on its own
+// (40 ms), but it collapses under load —
 //
-//     1 serentak  -> p99   322 ms
-//     8 serentak  -> p99  2023 ms
-//    32 serentak  -> p99  8149 ms   (melewati ambang "Not Responding")
+//     1 concurrent  -> p99   322 ms
+//     8 concurrent  -> p99  2023 ms
+//    32 concurrent  -> p99  8149 ms   (past the "Not Responding" threshold)
 //
-// Sebabnya BUKAN kode sinkron: rute ini sudah asinkron. Yang langka kemampuan
-// sistem melahirkan proses — tiap permintaan melahirkan tiga proses git, jadi
-// 32 permintaan berarti 96 proses. Yang membuktikannya: throughput rata di
-// 6 rps DI SETIAP tingkat serentak. Menambah beban hanya memperpanjang
-// antrean, tak menambah hasil.
+// The cause is NOT synchronous code: this route is already async. What is scarce
+// is the system's ability to spawn processes — each request spawns three git
+// processes, so 32 requests mean 96 processes. The proof: throughput stayed flat
+// at 6 rps AT EVERY concurrency level. More load only lengthened the queue without
+// producing more results.
 //
-// Karena itu obatnya bukan paralelisme melainkan MENGURANGI pekerjaan:
-//   1. berbagi hasil — permintaan yang datang selagi satu masih berjalan
-//      menunggu hasil yang itu, bukan melahirkan tiga proses lagi;
-//   2. cache pendek — status git jarang berubah dalam hitungan detik, dan UI
-//      memanggilnya saat menu dibuka.
+// So the cure is not parallelism but LESS WORK:
+//   1. share the result — a request arriving while one is in flight waits for that
+//      one instead of spawning three more processes;
+//   2. a short cache — git status rarely changes within seconds, and the UI calls
+//      this when a menu opens.
 //
-// Cache berarti data basi, dan itu ditangani serius: setiap operasi yang
-// MENGUBAH git (commit, pindah/buat/hapus branch) membatalkan cache foldernya.
-// Tanpa itu, pemakai melakukan commit lalu panelnya masih melaporkan keadaan
-// sebelum commit — kesalahan yang jauh lebih buruk daripada lambat.
+// A cache means stale data, and that is taken seriously: every operation that
+// CHANGES git (commit, switching/creating/deleting a branch) invalidates that
+// folder's cache. Without it the user commits and their panel still reports the
+// pre-commit state — a mistake far worse than being slow.
 const CACHE_MS = 1500;
-// Kuncinya "<jenis>|<dir>", tapi FOLDERNYA DISIMPAN TERPISAH di dalam entri —
-// pembatalan membandingkan nilai itu, bukan mencocokkan akhiran teks kuncinya.
+// The key is "<kind>|<dir>", but THE FOLDER IS STORED SEPARATELY inside the entry —
+// invalidation compares that value rather than matching the key's text suffix.
 //
-// Bukan kerapian: versi pertama memakai `k.endsWith(" " + dir)`, dan satu spasi
-// di dalamnya diam-diam tertulis sebagai byte NUL. Pencocokannya jadi selalu
-// gagal — cache tak pernah dibatalkan, dan tak ada satu pun galat. Yang
-// menemukannya cuma uji yang memang menguji pembatalannya. Membandingkan nilai
-// menghapus seluruh kelas kesalahan itu.
+// Not tidiness: the first version used `k.endsWith(" " + dir)`, and the space
+// inside it was quietly written as a NUL byte. The match therefore always failed —
+// the cache was never invalidated, and there was no error at all. The only thing
+// that found it was the test that specifically tested invalidation. Comparing
+// values removes that entire class of mistake.
 const _cacheGit = new Map(); // kunci -> { dir, waktu, nilai }
-const _jalanGit = new Map(); // kunci -> janji yang sedang berjalan
+const _jalanGit = new Map(); // key -> the promise currently in flight
 
 function _bersamaGit(jenis, dir, buat) {
   const kunci = jenis + "|" + dir;
@@ -464,8 +469,8 @@ function _bersamaGit(jenis, dir, buat) {
       return nilai;
     })
     .catch((e) => {
-      // Kegagalan TIDAK di-cache: satu git yang gagal karena folder sedang
-      // terkunci akan membekukan jawaban salah selama 1,5 detik berikutnya.
+      // Failures are NOT cached: one git that failed because the folder was locked
+      // would freeze the wrong answer in place for the next 1.5 seconds.
       _jalanGit.delete(kunci);
       throw e;
     });
@@ -473,14 +478,14 @@ function _bersamaGit(jenis, dir, buat) {
   return janji;
 }
 
-/** Membuang cache untuk satu folder. Dipanggil sesudah git DIUBAH. */
+/** Drops the cache for one folder. Called after git has been CHANGED. */
 function lupakanGit(dir) {
   const cari = String(dir || "");
   for (const [k, v] of [..._cacheGit.entries()])
     if (v.dir === cari) _cacheGit.delete(k);
 }
 
-function gitTryAsync(args, cwd) {
+function gitTryAsync(args, cwd): Promise<any> {
   return new Promise((selesai) => {
     execFile(
       "git",
@@ -502,7 +507,7 @@ async function _gitInfoTarik(dir) {
     porcelain == null
       ? 0
       : porcelain.split("\n").filter((l) => l.trim()).length;
-  let lastCommit = null;
+  let lastCommit: any = null;
   if (terakhir) {
     const [hash, subject, when] = terakhir.split("\x1f");
     lastCommit = { hash, subject, when };
@@ -531,8 +536,8 @@ async function _listBranchesTarik(dir) {
   return { repo: true, current: current || null, branches };
 }
 
-// Pembungkusnya: SATU permintaan git per folder per 1,5 detik, berapa pun
-// jumlah pemanggil yang datang bersamaan.
+// The wrapper: ONE git request per folder per 1.5 seconds, however many callers
+// arrive at once.
 function gitInfoAsync(dir) {
   return _bersamaGit("info", dir, () => _gitInfoTarik(dir));
 }
@@ -540,7 +545,7 @@ function listBranchesAsync(dir) {
   return _bersamaGit("branches", dir, () => _listBranchesTarik(dir));
 }
 
-// Daftar branch lokal + branch aktif. Tak melempar.
+// The local branches plus the active one. Does not throw.
 function listBranches(dir) {
   if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
   const current = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
@@ -557,14 +562,14 @@ function listBranches(dir) {
   return { repo: true, current: current || null, branches };
 }
 
-// Pindah ke branch lain (checkout). Gagal bila ada konflik/perubahan menghalangi.
+// Switch to another branch (checkout). Fails when a conflict or change blocks it.
 function switchBranch(dir, branch) {
   if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
   if (!branch) return { ok: false, err: "nama branch kosong" };
   return gitRun(["checkout", branch], dir);
 }
 
-// Buat branch baru (opsional dari branch/ref lain) lalu pindah ke sana.
+// Create a new branch (optionally from another branch/ref) and switch to it.
 function createBranch(dir, branch, from) {
   if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
   const name = toBranch(branch);
@@ -574,7 +579,8 @@ function createBranch(dir, branch, from) {
   return r.ok ? { ok: true, out: r.out, name } : r;
 }
 
-// Ganti nama branch (git branch -m). Bila oldName = branch aktif, boleh diringkas.
+// Rename a branch (git branch -m). When oldName is the active branch it may be
+// omitted.
 function renameBranch(dir, oldName, newName) {
   if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
   const nn = toBranch(newName);
@@ -583,7 +589,7 @@ function renameBranch(dir, oldName, newName) {
   return r.ok ? { ok: true, name: nn } : r;
 }
 
-// Hapus branch lokal (-D paksa). Menolak menghapus branch yang sedang aktif.
+// Delete a local branch (-D, forced). Refuses to delete the active branch.
 function deleteBranch(dir, branch) {
   if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
   const cur = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
@@ -592,23 +598,22 @@ function deleteBranch(dir, branch) {
   return gitRun(["branch", "-D", branch], dir);
 }
 
-// Commit SEMUA perubahan di working tree workspace, dengan pesan dari pemakai.
+// Commit EVERY change in the workspace working tree, with a message from the user.
 //
-// Sengaja `add -A`: panel ini menampilkan satu angka ("N uncommitted changes")
-// yang memang dihitung dari seluruh working tree, jadi commit-nya harus mencakup
-// hal yang sama. Staging sebagian butuh UI daftar berkas yang belum ada — dan
-// tombol yang meng-commit LEBIH SEDIKIT daripada yang ditampilkan angkanya akan
-// menyesatkan.
+// `add -A` on purpose: this panel shows a single number ("N uncommitted changes")
+// counted from the whole working tree, so the commit has to cover the same thing.
+// Partial staging would need a file-list UI that does not exist — and a button that
+// commits LESS than its own number claims would be misleading.
 //
-// Kalau tak ada yang berubah, `git commit` keluar dengan kode bukan-nol dan
-// pesan "nothing to commit". Itu bukan kegagalan yang perlu ditakuti pemakai,
-// jadi dipisahkan lebih dulu supaya balasannya jelas.
+// When nothing has changed, `git commit` exits non-zero with "nothing to commit".
+// That is not a failure the user needs to fear, so it is separated out first and
+// answered clearly.
 function commitAll(dir, message) {
   if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
   const pesan = String(message || "").trim();
   if (!pesan) return { ok: false, err: "pesan commit kosong" };
-  // Baris pertama saja yang jadi subject; sisanya diabaikan supaya `git log
-  // --oneline` tetap terbaca. Batas 200 mengikuti kebiasaan git, bukan aturan.
+  // Only the first line becomes the subject; the rest is ignored so `git log
+  // --oneline` stays readable. The 200 limit follows git convention, not a rule.
   const subject = pesan.split(/\r?\n/)[0].slice(0, 200);
   const kotor = gitTry(["status", "--porcelain"], dir);
   if (!kotor) return { ok: false, err: "tidak ada perubahan untuk di-commit" };
@@ -620,8 +625,9 @@ function commitAll(dir, message) {
   return { ok: true, hash, subject };
 }
 
-// Ganti nama FOLDER workspace di disk (fs.rename) + perbarui .ww.json. Aman:
-// hanya folder ber-.ww.json (workspace ww sah), target belum ada, nama valid.
+// Rename a workspace FOLDER on disk (fs.rename) and update .ww.json. Safe: only
+// folders with a .ww.json (a legitimate ww workspace), only when the target does
+// not exist, and only for a valid name.
 function renameWorkspaceFolder(dir, newName) {
   try {
     if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory())
@@ -640,7 +646,7 @@ function renameWorkspaceFolder(dir, newName) {
     if (fs.existsSync(newPath))
       return { ok: false, err: "sudah ada folder/berkas bernama itu" };
     fs.renameSync(dir, newPath);
-    // Perbarui .ww.json (menyimpan nama/label) bila ada field-nya.
+    // Update .ww.json (which holds the name/label) when it has that field.
     try {
       const mk = path.join(newPath, ".ww.json");
       const j = JSON.parse(fs.readFileSync(mk, "utf8"));
@@ -673,3 +679,7 @@ module.exports = {
   DEFAULT_ROOT,
 };
 if (require.main === module) main();
+
+// Marks this file as a MODULE rather than a global script, so its top-level names
+// do not share one scope with the other .ts files in this project.
+export {};

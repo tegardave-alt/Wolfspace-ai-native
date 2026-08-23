@@ -39,7 +39,7 @@
 import { execFile } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
-const _penegakan = require("../penegakan.cjs");
+const _penegakan = require("../penegakan.ts");
 
 const BATAS_MS = 60000;
 const MAKS_KELUARAN = 12000;

@@ -1,13 +1,13 @@
 // Chat streaming and reply handling (extracted from server.cjs)
 // Dependencies – same as original server.cjs
-const http = require("http");
-const https = require("https");
-const { dlog } = require("./debug.cjs");
+import * as http from "http";
+import * as https from "https";
+const { dlog } = require("./debug.ts");
 const { pickSystem } = require("./prompts.cjs");
-// runners.cjs DIHAPUS bersama runByLang/detectLang/extractCode: ketiganya
-// diimpor di sini tapi TIDAK PERNAH dipanggil — masing-masing muncul tepat
-// sekali, yaitu di baris impor ini. Eksekusi kode berjalan lewat tool agent
-// (sandbox_run / capability_exec), bukan lewat dispatcher bahasa.
+// runners.cjs was REMOVED along with runByLang/detectLang/extractCode: all
+// three were imported here but NEVER called — each appeared exactly once, on
+// that import line. Code execution goes through the agent tools (sandbox_run /
+// capability_exec), not through a language dispatcher.
 const { runSelfTool, SELF_TOOLS } = require("./tools.cjs");
 const {
   askCloudStream,
@@ -28,7 +28,7 @@ const { createPseudoTagStreamFilter } = require("./pseudo-tag-filter.cjs");
  * @param {Object} ctl - control object, currently unused but kept for compatibility.
  */
 async function chatStream({ history, port, cloud }, emit, ctl) {
-  // Guard: pastikan history selalu berupa array, bukan null/undefined
+  // Guard: make sure history is always an array, never null/undefined.
   const safeHistory = Array.isArray(history) ? history : [];
 
   // Choose system prompt based on history and mode – prompts module handles.
@@ -65,11 +65,12 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
     emit({ t: "err", m: err.message || String(err) });
   };
 
-  // Resolusi cloud MANDIRI (sama seperti selfAgentStream). Jalur IPC Electron TIDAK
-  // melewati preprocessing HTTP (fillCloudKey), dan localStorage Electron terpisah &
-  // kosong → cloud bisa null. Isi key dari file kunci; kalau tetap kosong, pilih
-  // provider pertama yang punya key. Tanpa ini chat jatuh ke model LOKAL yang tak ada
-  // (config.models kosong) → "model diam" di Electron.
+  // Cloud resolution done HERE (as selfAgentStream does). The Electron IPC path
+  // does NOT go through the HTTP preprocessing (fillCloudKey), and Electron's
+  // localStorage is separate and empty -> cloud can be null. Fill the key from
+  // the key file; if it is still empty, pick the first provider that has one.
+  // Without this, chat falls back to a LOCAL model that does not exist
+  // (config.models is empty) -> "the model is silent" under Electron.
   loadCloudKeys();
   fillCloudKey(cloud);
   if (!(cloud && cloud.key)) {
@@ -85,21 +86,22 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
       };
   }
 
-  // TIDAK ADA lagi cadangan ke model lokal. Jalur llama.cpp/GGUF sudah dihapus
-  // bersama Model Hub, jadi askModelStream() pasti menolak dengan
-  // "local model is not active — no port" — pesan yang menyebut PORT dan FITUR
-  // yang sama-sama tak ada lagi. Pengguna melihatnya sebagai HTTP 400 dan tak
-  // punya petunjuk apa pun tentang apa yang harus dilakukan.
+  // There is NO local-model fallback any more. The llama.cpp/GGUF path was
+  // removed along with the Model Hub, so askModelStream() would certainly refuse
+  // with "local model is not active — no port" — a message naming a PORT and a
+  // FEATURE that both no longer exist. The user sees it as an HTTP 400 with no
+  // hint about what to do.
   //
-  // Penyebab sebenarnya selalu sama: tak ada kunci cloud yang terjangkau. Itu
-  // yang harus dikatakan, beserta cara memperbaikinya. Perhatikan `port` masih
-  // diterima di tanda tangan fungsi tapi sudah tak dipakai untuk memilih model.
+  // The real cause is always the same: no reachable cloud key. That is what
+  // should be said, along with how to fix it. Note that `port` is still accepted
+  // in the signature but no longer used to choose a model.
   if (!(cloud && cloud.key)) {
     dlog("chat", "info", "stop", { reason: "no_cloud_key" });
-    // Pesan menyebut BERKASNYA, bukan cuma "simpan API key": saat backend jalan
-    // di WSL, menyimpan lewat UI hanya mengisi localStorage untuk origin
-    // http://<ip-wsl>:8090 — dan IP distro berubah tiap restart, jadi kuncinya
-    // hilang lagi. Berkas di $HOME backend kebal terhadap itu.
+    // The message names the FILE rather than just saying "save an API key": when
+    // the backend runs in WSL, saving through the UI only fills localStorage for
+    // the origin http://<wsl-ip>:8090 — and the distro's IP changes on every
+    // restart, so the key is lost again. A file in the backend's $HOME is immune
+    // to that.
     const os = require("os");
     const berkas = require("path").join(
       os.homedir(),
@@ -138,16 +140,17 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
  * @param {Array} history - chat history
  * @returns {boolean} true if the latest user message explicitly requests execution.
  */
-// _isExecutionRequested() DIHAPUS — nol pemanggil di seluruh repo. Deteksi
-// "user minta eksekusi" sudah pindah ke jalur tool-calling self_agent.cjs.
+// _isExecutionRequested() was REMOVED — zero callers anywhere in the repo.
+// Detecting "the user asked for execution" moved to the tool-calling path in
+// self_agent.ts.
 
-// runReply() DIHAPUS. Docstring-nya menjanjikan "detect code blocks, execute if
-// requested", tapi badannya sudah lama hanya mengembalikan
+// runReply() was REMOVED. Its docstring promised "detect code blocks, execute if
+// requested", but its body had long since only returned
 //     { ok: true, info: "auto-run disabled in normal chat", reply }
-// tanpa menjalankan apa pun. Objek itu ikut dipancarkan self_agent sebagai
-// field `run` pada event adone, sehingga UI menerima ok:true yang terbaca
-// seperti "eksekusi berhasil" padahal tak ada eksekusi, plus salinan penuh teks
-// ringkasan di bawah nama `run`. Verifikasi nyata terjadi di tool agent.
+// without running anything. self_agent emitted that object as the `run` field of
+// its adone event, so the UI received an ok:true that read like "execution
+// succeeded" when there was no execution, plus a full copy of the summary text
+// under the name `run`. Real verification happens in the agent tools.
 
 /**
  * Helper to parse a pseudo‑action line like "!run python ..." – not used currently

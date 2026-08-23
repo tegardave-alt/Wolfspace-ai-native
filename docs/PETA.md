@@ -47,11 +47,11 @@ graph TD
         HTML --> App
     end
     App -- "WOLFSPACE:invoke / :stream" --> Main
-    Core --> Agent["agent/self_agent.cjs<br/>loop ReAct + LangGraph"]
+    Core --> Agent["agent/self_agent.ts<br/>loop ReAct + LangGraph"]
     Agent --> Tools["agent/tools/*<br/>28 tool"]
     Tools --> Kurung["Pengurungan:<br/>broker+WSL · bash-jail · sandbox"]
     Core --> MCP["agent/mcp-client.cjs<br/>server MCP via stdio"]
-    Core --> WW["scripts/ww.cjs<br/>workspace + git"]
+    Core --> WW["scripts/ww.ts<br/>workspace + git"]
 ```
 
 ---
@@ -90,7 +90,7 @@ UI (app.jsx)
   └─ streamSelfAgent(payload) ──IPC "WOLFSPACE:stream"──►  electron/main.js
                                                               └─ core().selfAgentStream
                                                                    │
-                     agent/self_agent.cjs (LangGraph StateGraph)   │
+                     agent/self_agent.ts (LangGraph StateGraph)   │
                        ├─ state di-checkpoint ke MemorySaver (globalThis)
                        ├─ task_checklist disuntik ulang TIAP langkah
                        └─ panggil tool ──► agent/tools/index.cjs (runSelfTool)
@@ -114,7 +114,7 @@ terbatas + `TEMP` diarahkan ke workspace). **Belum tercakup:** `runByLang`
 DONE.
 
 **`thread_id` adalah kunci ingatan.** Bila permintaan datang tanpa `thread_id`,
-`self_agent.cjs` mencetak yang baru — dan agent mulai dari nol. Karena itu UI
+`self_agent.ts` mencetak yang baru — dan agent mulai dari nol. Karena itu UI
 menyimpannya di `localStorage` (kedaluwarsa 30 menit, dihapus saat run tuntas),
 supaya reload dari sumber mana pun tak membuat agent lupa dan mengulang kerja.
 
@@ -256,11 +256,11 @@ bersama berkas Docker-nya.
 | ------------------------ | ----: | ------------------------------------- |
 | `server.cjs`             |  5493 | seluruh handler HTTP + logika backend |
 | `public/app.jsx`         |  3593 | komponen utama UI                     |
-| `agent/self_agent.cjs`   |  2511 | loop agent, LangGraph, HITL           |
+| `agent/self_agent.ts`    |  2511 | loop agent, LangGraph, HITL           |
 | `public/app/Sidebar.jsx` |  2347 | sidebar, panel workspace + git        |
 | `agent/tools/index.cjs`  |  1737 | dispatcher tool + gerbang             |
 | `electron/main.js`       |  1006 | shell, IPC, protokol, hot-reload      |
-| `scripts/ww.cjs`         |   532 | manajer workspace + operasi git       |
+| `scripts/ww.ts`          |   532 | manajer workspace + operasi git       |
 | `public/index.html`      |   384 | pemuat modul, Babel, auto-rollback    |
 
 Direktori: `public/` 183 berkas · `agent/` 47 · `scripts/` 25 · `tests/` 24.

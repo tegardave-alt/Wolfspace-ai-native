@@ -16,7 +16,7 @@
 
 const path = require("path");
 const T = require("../agent/tools/index.ts");
-const P = require("../agent/penegakan.cjs");
+const P = require("../agent/penegakan.ts");
 
 const WS = path.resolve(__dirname, "..");
 const ctx = { workspaceRoot: WS, sessionId: "uji-seragam" };

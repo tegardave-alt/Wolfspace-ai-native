@@ -4,8 +4,8 @@ import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
 import * as https from "https";
-const { dlog } = require("./debug.cjs");
-const { resolveKeysPath } = require("./keys-path.cjs");
+const { dlog } = require("./debug.ts");
+const { resolveKeysPath } = require("./keys-path.ts");
 
 // Load configuration (shared with other modules)
 const CONFIG_PATH = path.join(__dirname, "..", "config.json");
@@ -288,7 +288,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     const aliases = MODEL_ALIASES[provider];
     if (aliases && aliases[model.toLowerCase()])
       model = aliases[model.toLowerCase()];
-    // Extract system message from work array (chat.cjs prepends it as first element).
+    // Extract system message from work array (chat.ts prepends it as first element).
     // cloud.system overrides only if explicitly set; otherwise use the work[0] system message.
     let workMsgs = work;
     let sysFromWork = "";
@@ -448,7 +448,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       host,
       key: maskedKey,
     });
-    const { VERBOSE } = require("./debug.cjs");
+    const { VERBOSE } = require("./debug.ts");
     if (VERBOSE)
       dlog("cloud", "info", "cloud model request", {
         provider,
@@ -508,7 +508,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
           ms: Date.now() - t0,
           chars: acc.length,
         });
-        if (require("./debug.cjs").VERBOSE)
+        if (require("./debug.ts").VERBOSE)
           dlog("cloud", "info", "cloud model full response", {
             response: acc.slice(0, 5000),
           });

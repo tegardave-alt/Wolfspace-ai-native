@@ -80,8 +80,8 @@ describe("struktur penanda pengurungan", () => {
     expect(flagPermission(18, "/w.cjs")).toBeNull();
   });
 
-  test("peringatan TIDAK lewat debug.cjs yang digerbang VERBOSE", () => {
-    // agent/debug.cjs mati secara default. Peringatan turunnya jaminan justru
+  test("peringatan TIDAK lewat debug.ts yang digerbang VERBOSE", () => {
+    // agent/debug.ts mati secara default. Peringatan turunnya jaminan justru
     // paling perlu terlihat pada orang yang tak menyalakan apa pun.
     expect(SRC).toMatch(/process\.stderr\.write/);
     expect(SRC).not.toMatch(/require\(["'].*debug\.cjs?["']\)/);

@@ -281,7 +281,7 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
 
   test("backend menyediakan /mcp/connect", () => {
     const S = fs
-      .readFileSync(require.resolve("../server.cjs"), "utf8")
+      .readFileSync(require.resolve("../server.ts"), "utf8")
       .replace(/\r\n/g, "\n");
     expect(S).toMatch(/_path === "\/mcp\/connect" && req\.method === "POST"/);
     // Tanpa `name` -> semua; dengan `name` -> satu saja.

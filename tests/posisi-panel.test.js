@@ -378,7 +378,7 @@ describe("menyembunyikan chat", () => {
 // ketikan pemakai hidup di memori lalu hilang begitu berkas lain dibuka.
 describe("panel kode bisa disunting dan disimpan", () => {
   const APP2 = baca("public/app.tsx");
-  const SRV = baca("server.cjs");
+  const SRV = baca("server.ts");
   const K = baca("public/app/Components.tsx");
   const PANE = APP2.slice(
     APP2.indexOf("function LogicCodePane("),
@@ -484,7 +484,7 @@ describe("panel kode bisa disunting dan disimpan", () => {
 // punya onClick — mereka hiasan sejak awal.
 describe("berkas baru di pohon Logic", () => {
   const APP3 = baca("public/app.tsx");
-  const SRV3 = baca("server.cjs");
+  const SRV3 = baca("server.ts");
   // Dipotong sampai fungsi BERIKUTNYA sesudahnya. Memakai penanda yang
   // letaknya lebih AWAL di berkas menghasilkan irisan kosong, dan uji yang
   // berbentuk "tidak boleh ada X" lalu lulus tanpa memeriksa apa pun.

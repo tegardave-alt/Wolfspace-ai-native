@@ -5,7 +5,7 @@
 // KENAPA BERKAS INI ADA. Empat bug berbeda, semua menghasilkan gejala yang
 // sama dari sudut pandang user: "agent hang" / "semuanya terasa lebih berat".
 //
-//   1. planner (self_agent.cjs) memanggil model TANPA try/catch dan tanpa
+//   1. planner (self_agent.ts) memanggil model TANPA try/catch dan tanpa
 //      fallback provider — beda dengan executor yang punya keduanya. Satu
 //      kunci mati di urutan pertama (github 401, terverifikasi lewat run
 //      nyata) mematikan SELURUH run 1,2 detik masuk, sebelum executor
@@ -30,7 +30,7 @@ const fs = require("fs");
 
 describe("planner tahan-gagal, tak lagi satu titik kegagalan untuk seluruh run", () => {
   const SRC = fs
-    .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   // Anchor pertama "kind: \"planner\"" adalah emit AWAL node planner; blok
@@ -78,7 +78,7 @@ describe("planner tahan-gagal, tak lagi satu titik kegagalan untuk seluruh run",
 
 describe("MCP getTools() tak lagi diam tanpa tanda selama sampai 60 detik", () => {
   const SRC = fs
-    .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("detak dikirim SEBELUM dan SELAMA menunggu getTools()", () => {
@@ -295,7 +295,7 @@ describe("UI membeku karena PROSES MAIN, bukan renderer", () => {
 
   test("backup sesi ditunggu, bukan dijalankan sinkron", () => {
     const SRC_AGENT = fs
-      .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+      .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
       .replace(/\r\n/g, "\n");
     expect(SRC_AGENT).toMatch(/const ensureBackup = async \(\) =>/);
     expect((SRC_AGENT.match(/await ensureBackup\(\)/g) || []).length).toBe(2);
@@ -385,9 +385,9 @@ describe("run tak lagi ditutup oleh KALIMAT NIAT saat checklist masih terbuka", 
   // dari layar gejalanya persis "agent berhenti sendiri, todo tak diikuti".
   const fs = require("fs");
   const SRC = fs
-    .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
     .replace(/\r\n/g, "\n");
-  const a = require("../agent/self_agent.cjs");
+  const a = require("../agent/self_agent.ts");
 
   test("batas dorongan ada, terpisah, dan masuk akal", () => {
     expect(a.SYSTEM_RULES.MAX_CONTINUE_NUDGE).toBeGreaterThanOrEqual(2);
@@ -448,11 +448,11 @@ describe("respons HAMPA diperlakukan sebagai provider gagal, bukan 'model selesa
   // menyalahkan model, padahal salurannya yang gagal.
   const fs = require("fs");
   const SRC = fs
-    .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("ketiganya kosong -> pindah provider", () => {
-    const i = SRC.indexOf("Respons HAMPA");
+    const i = SRC.indexOf("An EMPTY response means a broken provider");
     expect(i).toBeGreaterThan(-1);
     const blok = SRC.slice(i, i + 2800);
     expect(blok).toMatch(/!msg\.content &&\s*\n\s*!msg\.reasoning &&/);
@@ -462,20 +462,20 @@ describe("respons HAMPA diperlakukan sebagai provider gagal, bukan 'model selesa
   });
 
   test("memakai batas fallback yang SAMA, tak menambah jatah sendiri", () => {
-    const i = SRC.indexOf("Respons HAMPA");
+    const i = SRC.indexOf("An EMPTY response means a broken provider");
     const blok = SRC.slice(i, i + 2800);
     expect(blok).toMatch(/state\.fallbackCount < 3/);
   });
 
   test("provider yang sudah gagal tidak dicoba ulang", () => {
-    const i = SRC.indexOf("Respons HAMPA");
+    const i = SRC.indexOf("An EMPTY response means a broken provider");
     const blok = SRC.slice(i, i + 2800);
     expect(blok).toMatch(/failedProviders\.push\(cloud\.provider\)/);
     expect(blok).toMatch(/!failedProviders\.includes\(p\)/);
   });
 
   test("user DIBERI TAHU, bukan diam-diam berpindah", () => {
-    const i = SRC.indexOf("Respons HAMPA");
+    const i = SRC.indexOf("An EMPTY response means a broken provider");
     const blok = SRC.slice(i, i + 2800);
     expect(blok).toMatch(/emit\(\{\s*\n?\s*t: "err"/);
     expect(blok).toMatch(/membalas kosong/);

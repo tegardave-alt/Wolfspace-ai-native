@@ -1,6 +1,6 @@
 // The shared agent guards, and the parity that makes sharing them worth it.
 //
-// These checks used to live inside a closure in agent/self_agent.cjs. There are
+// These checks used to live inside a closure in agent/self_agent.ts. There are
 // now two orchestrators, and a guard present on only one of them is worse than
 // no guard: the SAME request would behave differently depending on which one
 // handled it. This file holds the extracted implementation to the behaviour the
@@ -176,9 +176,9 @@ describe("kunci pengulangan panggilan", () => {
   });
 });
 
-describe("paritas dengan self_agent.cjs", () => {
+describe("paritas dengan self_agent.ts", () => {
   const SRC = fs.readFileSync(
-    path.join(AKAR, "agent", "self_agent.cjs"),
+    path.join(AKAR, "agent", "self_agent.ts"),
     "utf8",
   );
 

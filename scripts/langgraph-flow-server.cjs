@@ -1,6 +1,6 @@
 // Prototipe: React Flow (frontend) DIJALANKAN oleh LangGraph (backend). Server ini
 // meng-COMPILE graph yang digambar user (nodes/edges) menjadi StateGraph LangGraph
-// NYATA (@langchain/langgraph v1.x — sama dengan yang dipakai agent/self_agent.cjs),
+// NYATA (@langchain/langgraph v1.x — sama dengan yang dipakai agent/self_agent.ts),
 // lalu MENJALANKANNYA sambil men-stream eksekusi per-node (SSE) ke UI.
 //
 // Skenario web-dev: node "Generate Site" benar-benar menghasilkan HTML website,

@@ -91,7 +91,7 @@ describe("bentuk: kapabilitas bernama, bukan perintah", () => {
     expect(pj).toMatch(/return true;/);
 
     const sa = fs.readFileSync(
-      path.join(AKAR, "agent", "self_agent.cjs"),
+      path.join(AKAR, "agent", "self_agent.ts"),
       "utf8",
     );
     expect(sa).toMatch(/_perluPersetujuan/);

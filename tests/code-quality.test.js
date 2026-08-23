@@ -1,4 +1,4 @@
-// Gerbang kualitas struktural (agent/code-quality.cjs) — dijalankan safe-edit
+// Gerbang kualitas struktural (agent/code-quality.ts) — dijalankan safe-edit
 // SEBELUM setiap tulisan agent ke disk.
 //
 // Tes ini menjaga dua sifat yang saling bertentangan, dan keduanya wajib:
@@ -8,7 +8,7 @@
 //      penjaga sama sekali. Sifat kedua inilah yang paling mudah rusak saat
 //      seseorang memperketat ambang, jadi ia diuji eksplisit di sini.
 
-const q = require("../agent/code-quality.cjs");
+const q = require("../agent/code-quality.ts");
 
 const indent = (n, text) => " ".repeat(n) + text;
 

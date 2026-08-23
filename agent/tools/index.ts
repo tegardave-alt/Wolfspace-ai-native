@@ -22,12 +22,12 @@ function atomicWrite(dest, content) {
 }
 import { spawn } from "child_process";
 const { getPlatformAdapter } = require("../platform/index.cjs");
-const { dlog } = require("../debug.cjs");
+const { dlog } = require("../debug.ts");
 // The structural quality gate. REQUIRED in THIS module, not only in
-// safe-edit.ts: self_agent.cjs uses ./tools.cjs -> tools/index.ts, while
+// safe-edit.ts: self_agent.ts uses ./tools.cjs -> tools/index.ts, while
 // safeWriteFile is only called by server.cjs, whose agent path is no longer in
 // use. A gate there never touches the agent at all.
-const codeQuality = require("../code-quality.cjs");
+const codeQuality = require("../code-quality.ts");
 const { createSnapshot } = require("../snapshot.ts");
 
 // ── Hybrid module loading (eager core + lazy peripheral) ──
@@ -477,7 +477,7 @@ function _workdirDalamJail(root, cwd) {
 // what made the strongest containment the least often active: when the daemon
 // was down, what actually ran was the regex guard below.
 const _sandboxPolicy = require("../sandbox-policy.ts");
-const _penegakanLabel = require("../penegakan.cjs");
+const _penegakanLabel = require("../penegakan.ts");
 
 // ENFORCEMENT IN CODE (not a prompt suggestion): refuse a bash command naming a
 // HOST path outside the workspace, BEFORE it reaches the container.
@@ -1078,7 +1078,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             chk.error,
         };
       }
-      // The structural quality gate (agent/code-quality.cjs) — a ratchet: a dirty
+      // The structural quality gate (agent/code-quality.ts) — a ratchet: a dirty
       // file may be edited, but must not get deeper.
       const _qEdit = codeQuality.check(dest, patched, old);
       if (!_qEdit.ok) {
@@ -1307,7 +1307,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
       //
       // ok USED TO BE true for this refusal — a bug in itself. `ok:true` let the
       // refusal message through as "evidence" to the hallucination guard
-      // (localAccessed, self_agent.cjs) and it was never counted as a failure by
+      // (localAccessed, self_agent.ts) and it was never counted as a failure by
       // the stuck-item gate (which only looks at `!r.ok`). Now `ok:false`, so a
       // refusal looks like a refusal.
       if (
@@ -1858,11 +1858,11 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         const customEnv = { ...process.env };
         try {
           const fs = require("fs");
-          // Read from the correct key location (~/.wolfspace via keys-path.cjs).
+          // Read from the correct key location (~/.wolfspace via keys-path.ts).
           // The old path <project>/cloud-keys.json was moved out for session
           // security, so the old read ALWAYS failed (swallowed by catch) and
           // opencode_run lost its keys.
-          const { resolveKeysPath } = require("../keys-path.cjs");
+          const { resolveKeysPath } = require("../keys-path.ts");
           const keysStr = fs.readFileSync(resolveKeysPath(), "utf8");
           const keys = JSON.parse(keysStr);
           if (keys.opencode?.key)
@@ -2197,7 +2197,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
       // "global" store so ingest (frontend) and retrieve (here) always share a
       // key. Per-ww isolation (scope via workspaceRoot) is P3 — at which point
       // ingest is keyed to the same ref.
-      const rag = require("../rag.cjs");
+      const rag = require("../rag.ts");
       const out = rag.retrieveFormatted("global", args.query, {
         k: args.k,
         kind: args.kind || undefined,
@@ -2206,7 +2206,11 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
     }
     if (name === "dspy") {
       // Real DSpy optimization via native JS (WOLFSPACE's cloud LLM, no Python)
-      const dspyTool = require("./dspy_tool.cjs");
+      // ../, not ./ — dspy_tool lives in agent/, not agent/tools/. With the
+      // wrong path this tool threw "Cannot find module" on every call, and
+      // nothing noticed because no test calls it and the throw is caught and
+      // returned to the model as a tool failure.
+      const dspyTool = require("../dspy_tool.ts");
       return dspyTool.run(args);
     }
     if (name === "generate_3d") {

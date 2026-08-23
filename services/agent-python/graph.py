@@ -1,4 +1,4 @@
-"""The agent StateGraph, ported from agent/self_agent.cjs.
+"""The agent StateGraph, ported from agent/self_agent.ts.
 
 The node bodies are NOT here. Each node asks the TypeScript host to do the work
 and waits for the answer, because everything a node actually does — call a model,
@@ -24,7 +24,7 @@ from langgraph.graph import END, START, StateGraph
 
 from models import AgentState
 
-#: Matches MAX_STEPS in agent/self_agent.cjs. A run that reaches it is PAUSED
+#: Matches MAX_STEPS in agent/self_agent.ts. A run that reaches it is PAUSED
 #: with its checkpoint intact, not failed — the host offers "continue".
 MAX_STEPS = 14
 

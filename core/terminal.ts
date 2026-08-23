@@ -4,7 +4,7 @@
  * Shared by both the HTTP server and the agent tools.
  */
 
-const os = require("os");
+import * as os from "os";
 const { getPlatformAdapter } = require("../agent/platform/index.cjs");
 
 // Guarded for the same reason as in server.cjs: node-pty is a NATIVE module and

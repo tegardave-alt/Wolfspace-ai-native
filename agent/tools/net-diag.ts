@@ -21,7 +21,7 @@
 "use strict";
 
 import { execFile } from "child_process";
-const _penegakan = require("../penegakan.cjs");
+const _penegakan = require("../penegakan.ts");
 
 const DISTRO = process.env.WOLFSPACE_WSL_DISTRO || "WolfspaceTest";
 const BATAS_MS = 20000;

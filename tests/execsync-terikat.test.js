@@ -22,7 +22,7 @@ const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
 const SRV = fs
-  .readFileSync(path.join(AKAR, "server.cjs"), "utf8")
+  .readFileSync(path.join(AKAR, "server.ts"), "utf8")
   .replace(/\r\n/g, "\n");
 
 // Baris yang diawali komentar dibuang: berkas ini menjelaskan bentuk yang
@@ -122,7 +122,7 @@ describe("execSync terikat sebelum dipakai", () => {
 // dijalankan berbarengan: 53 ms dan 39 ms.
 describe("rute git tidak membekukan thread utama", () => {
   const WW = fs
-    .readFileSync(path.join(AKAR, "scripts", "ww.cjs"), "utf8")
+    .readFileSync(path.join(AKAR, "scripts", "ww.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("rute memakai versi async, bukan yang sinkron", () => {
@@ -176,7 +176,7 @@ describe("rute git tidak membekukan thread utama", () => {
     // dalamnya diam-diam tertulis sebagai byte NUL. Pencocokannya jadi selalu
     // gagal — cache tak pernah dibatalkan, dan tak ada satu pun galat.
     expect(WW).toMatch(/if \(v\.dir === cari\) _cacheGit\.delete\(k\)/);
-    // Komentar di ww.cjs MENGUTIP bentuk lamanya untuk menjelaskan kenapa ia
+    // Komentar di ww.ts MENGUTIP bentuk lamanya untuk menjelaskan kenapa ia
     // ditinggalkan — tanpa penyaring ini, catatan yang benar justru
     // menggagalkan ujinya.
     expect(tanpaKomentar(WW)).not.toMatch(/k\.endsWith\(/);
@@ -202,7 +202,7 @@ describe("rute git tidak membekukan thread utama", () => {
 
   test("hasil async SAMA persis dengan yang sinkron", async () => {
     // Kalau berbeda, ini bukan optimasi melainkan perubahan perilaku diam-diam.
-    const ww = require(path.join(AKAR, "scripts", "ww.cjs"));
+    const ww = require(path.join(AKAR, "scripts", "ww.ts"));
     const d = AKAR;
     expect(await ww.gitInfoAsync(d)).toEqual(ww.gitInfo(d));
     expect(await ww.listBranchesAsync(d)).toEqual(ww.listBranches(d));

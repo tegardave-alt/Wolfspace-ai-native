@@ -22,7 +22,7 @@
 //   server.cjs                  (line 1, before agent/mcp-client.ts)
 //   agent/tools/index.ts       (reached directly by test subprocesses)
 //   agent/plugins.ts
-//   agent/self_agent.cjs
+//   agent/self_agent.ts
 //   scripts/mcp-http-bridge.cjs
 //   tests/setup-jest.cjs        (plus tests/transformer-ts.cjs for Jest itself)
 //
@@ -32,16 +32,42 @@
 const fs = require("fs");
 const esbuild = require("esbuild");
 
+// Transpiled output is cached on globalThis, NOT in module scope.
+//
+// Hot-reload drops every project entry in require.cache (see electron/main.ts),
+// and the agent triggers that on its own edits, repeatedly, mid-run. A cache
+// living in module scope would be dropped with it and every .ts module in the
+// graph would be transpiled again — a cost that grew with each migration phase
+// until tests/tahan-hot-reload.test.js measured it crossing its budget.
+//
+// The key is the file's content, so an edited file is never served a stale
+// compile: that is the whole point of the reload the cache is surviving.
+const _cache =
+  globalThis.__wolfspaceTsCache || (globalThis.__wolfspaceTsCache = new Map());
+
 if (!require.extensions[".ts"]) {
   require.extensions[".ts"] = function loadTypeScript(module, filename) {
     const source = fs.readFileSync(filename, "utf8");
-    const { code } = esbuild.transformSync(source, {
-      loader: "ts",
-      format: "cjs",
-      target: "es2022",
-      sourcefile: filename,
-      sourcemap: "inline",
-    });
+    const key = filename + "\u0000" + source.length + "\u0000" + source;
+    let code = _cache.get(key);
+    if (code === undefined) {
+      code = esbuild.transformSync(source, {
+        loader: "ts",
+        format: "cjs",
+        target: "es2022",
+        sourcefile: filename,
+        sourcemap: "inline",
+      }).code;
+      // Keyed by content, so an entry for an older version of this file is dead
+      // the moment the file changes — drop it rather than growing without bound
+      // across a long session of edits.
+      for (const k of _cache.keys()) {
+        if (k.slice(0, filename.length + 1) === filename + "\u0000") {
+          _cache.delete(k);
+        }
+      }
+      _cache.set(key, code);
+    }
     module._compile(code, filename);
   };
 }

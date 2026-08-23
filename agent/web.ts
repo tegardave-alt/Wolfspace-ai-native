@@ -137,7 +137,7 @@ let _tavilyKey; // undefined = not read yet, null = absent
 function _getTavilyKey() {
   if (_tavilyKey !== undefined) return _tavilyKey;
   try {
-    const { resolveKeysPath } = require("./keys-path.cjs");
+    const { resolveKeysPath } = require("./keys-path.ts");
     const keys = JSON.parse(fs.readFileSync(resolveKeysPath(), "utf8"));
     _tavilyKey =
       (keys.tavily && keys.tavily.key) ||

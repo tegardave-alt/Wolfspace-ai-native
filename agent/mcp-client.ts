@@ -1,7 +1,7 @@
-const fs = require("fs");
-const path = require("path");
-const { spawn, execSync } = require("child_process");
-const { dlog } = require("./debug.cjs");
+import * as fs from "fs";
+import * as path from "path";
+import { spawn, execSync } from "child_process";
+const { dlog } = require("./debug.ts");
 
 // Tracks the PIDs of MCP processes so leftovers from an earlier session can be
 // cleaned up.
@@ -193,7 +193,7 @@ function _killOrphans() {
     }
   } catch (_) {}
 
-  let files = [];
+  let files: string[] = [];
   try {
     files = fs.readdirSync(PID_DIR);
   } catch (_) {
@@ -878,7 +878,7 @@ class MCPClient {
     }
 
     // STRIP WOLFSPACE-INTERNAL arguments before crossing into the MCP protocol.
-    // self_agent.cjs injects `rencana_tindakan` (chain-of-thought) into the schema
+    // self_agent.ts injects `rencana_tindakan` (chain-of-thought) into the schema
     // of EVERY tool, MCP tools included. An MCP server validates arguments against
     // its own schema, which knows no such field, and REJECTS the call — the
     // symptom being MCP "connected" while every call fails. self_agent has already
@@ -993,7 +993,7 @@ class MCPClient {
 // Keeping the instance on globalThis makes a post-reload require return the
 // SAME object: initialized stays true, init() returns immediately,
 // _killOrphans never runs, and the process handles in this.servers stay
-// intact. agent/self_agent.cjs already uses this pattern for the HITL
+// intact. agent/self_agent.ts already uses this pattern for the HITL
 // checkpointer, for exactly the same reason.
 const mcpClient =
   globalThis.__wolfspaceMcpClient ||

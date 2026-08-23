@@ -138,7 +138,7 @@ describe("bertahan melewati restart proses", () => {
 
 describe("biayanya tak boleh mengulang kesalahan rag.ingest", () => {
   test("catat() TIDAK menulis ulang seluruh berkas", () => {
-    // rag.cjs ingest() melakukan _load() + _save() SELURUH store tiap panggilan.
+    // rag.ts ingest() melakukan _load() + _save() SELURUH store tiap panggilan.
     // Terukur: ke-1 4,3 ms, ke-100 27,2 ms, ke-400 55,6 ms — 13,2 detik untuk
     // 400 ingest, tumbuh linear. Di jalur panas itu jauh lebih buruk daripada
     // blokir 10,8 detik yang sudah diperbaiki di repo ini.
@@ -169,7 +169,7 @@ describe("terpasang di jalur yang benar", () => {
     "utf8",
   );
   const SELF = fs.readFileSync(
-    require.resolve("../agent/self_agent.cjs"),
+    require.resolve("../agent/self_agent.ts"),
     "utf8",
   );
 

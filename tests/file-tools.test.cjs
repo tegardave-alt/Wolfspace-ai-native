@@ -5,7 +5,7 @@ describe("qGlob", () => {
   it("*agent* should return a string containing agent-related files", () => {
     const result = qGlob("*agent*");
     expect(typeof result).toBe("string");
-    expect(result).toContain("self_agent.cjs");
+    expect(result).toContain("self_agent.ts");
   });
 
   it('public/**/*.jsx should return a string containing "public/app.tsx"', () => {

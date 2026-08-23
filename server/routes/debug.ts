@@ -1,5 +1,5 @@
 // Debug API (run timelines, in-memory log ring, live SSE stream, HTML viewer).
-// Ported from the former server/routes/debug.cjs; behavior is unchanged.
+// Ported from the former server/routes/debug.ts; behavior is unchanged.
 // State (LOG_RING, debugSubs, DEBUG_VIEWER, dlog) still lives in server.cjs and
 // is injected via deps — this module holds routing logic only.
 

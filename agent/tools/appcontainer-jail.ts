@@ -42,7 +42,7 @@ import { execFile, execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
-const _penegakan = require("../penegakan.cjs");
+const _penegakan = require("../penegakan.ts");
 
 const CONTAINER = process.env.WOLFSPACE_AC_NAME || "wolfspace-jail";
 const EXE = path.join(

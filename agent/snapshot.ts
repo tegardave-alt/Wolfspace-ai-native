@@ -28,7 +28,7 @@ interface HasilSnapshot {
 
 // A rollback either restored files or explains why it could not.
 //
-// Written as a union because the caller in agent/self_agent.cjs sits inside a
+// Written as a union because the caller in agent/self_agent.ts sits inside a
 // catch block above three emits, and an `ok:false` that lost its reason would
 // tell the user the project was restored when it was not.
 type HasilRollback =
@@ -110,7 +110,7 @@ function rollback(snapshotId: string): HasilRollback {
   // straight through to here and threw.
   //
   // That throw did not stop here. rollback() is called from inside the catch
-  // block in self_agent.cjs, ABOVE three emits — including the one whose own
+  // block in self_agent.ts, ABOVE three emits — including the one whose own
   // comment reads "ALWAYS emit adone so frontend knows the agent is done".
   // Proven by executing that block as-is: corrupt metadata -> ZERO messages
   // reach the UI, and the UI hangs forever because it never learns the run

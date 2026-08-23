@@ -63,7 +63,7 @@ describe("jalur HTTP/UI memakai pembunuh PTY yang SAMA", () => {
   // server sungguhan: 3 anak sebelum, 9 sesudah 3x buka+tutup. Sesudah
   // diperbaiki: 6 — sisanya conhost.exe, yang bukan anak shell sehingga tak
   // terjangkau taskkill /T (lihat catatan di README broker/terminal).
-  const SRV = fs.readFileSync(require.resolve("../server.cjs"), "utf8");
+  const SRV = fs.readFileSync(require.resolve("../server.ts"), "utf8");
   const blok = SRV.slice(
     SRV.indexOf("function closeTerminalSession"),
     SRV.indexOf("const server = http.createServer"),

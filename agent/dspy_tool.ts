@@ -2,7 +2,11 @@
 // Real native integration: uses WOLFSPACE's own cloud LLM to optimize prompts
 // (ChainOfThought-style prompt optimization, no Python dependency).
 
-const { dlog } = require("./debug.cjs");
+// `export {}` makes this a MODULE rather than a global script — see
+// agent/mcp-client.ts for what a script-scope collision looks like.
+export {};
+
+const { dlog } = require("./debug.ts");
 
 function run(args) {
   const prompt = (args.prompt || "").trim();

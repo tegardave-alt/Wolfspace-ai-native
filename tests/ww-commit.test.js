@@ -17,7 +17,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
-const ww = require("../scripts/ww.cjs");
+const ww = require("../scripts/ww.ts");
 
 const git = (args, cwd) =>
   execFileSync("git", args, { cwd, encoding: "utf8" }).trim();
@@ -97,7 +97,7 @@ describe("commitAll", () => {
 
 describe("jalur HTTP dan UI terpasang", () => {
   test("/ww/commit terdaftar di dispatcher dan memanggil commitAll", () => {
-    const S = fs.readFileSync(require.resolve("../server.cjs"), "utf8");
+    const S = fs.readFileSync(require.resolve("../server.ts"), "utf8");
     expect(S).toMatch(/req\.url === "\/ww\/commit"/);
     expect(S).toMatch(/ww\.commitAll\(b\.path, b\.message\)/);
   });

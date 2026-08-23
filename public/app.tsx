@@ -5,7 +5,7 @@ const { useState, useRef, useEffect, useCallback, useMemo } = React;
 // WHY THIS EXISTS. thread_id lived in React state alone. As soon as the page
 // reloaded mid-run — and public/index.html does call window.location.reload()
 // for frontend changes that are not .css/.jsx/.js — thread_id vanished. The
-// next request went without it, self_agent.cjs minted a NEW thread, MemorySaver
+// next request went without it, self_agent.ts minted a NEW thread, MemorySaver
 // had no checkpoint for it, and the agent started over from nothing.
 //
 // A guard in electron/main.js already defers hot-reload while the agent works,

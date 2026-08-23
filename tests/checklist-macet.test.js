@@ -16,13 +16,13 @@
 // membawa sebabnya, dan BERTANYA ke user — bukan menyerah diam-diam.
 
 const fs = require("fs");
-const a = require("../agent/self_agent.cjs");
+const a = require("../agent/self_agent.ts");
 
 // Dinormalkan ke LF — repo dipakai dengan core.autocrlf=true, jadi akhiran baris
 // di working tree tergantung apakah berkas baru lewat checkout. Lihat catatan
 // yang sama di tests/verify-cakupan.test.js.
 const SRC = fs
-  .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+  .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
   .replace(/\r\n/g, "\n");
 
 describe("menautkan kegagalan ke item yang sedang dikerjakan", () => {

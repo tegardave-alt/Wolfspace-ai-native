@@ -27,7 +27,7 @@ const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
 const SRC = fs
-  .readFileSync(path.join(AKAR, "agent", "self_agent.cjs"), "utf8")
+  .readFileSync(path.join(AKAR, "agent", "self_agent.ts"), "utf8")
   .replace(/\r\n/g, "\n");
 
 // Pengambil yang MENGHITUNG KURUNG, bukan mencari "\n}" pertama. bentukState()
@@ -81,7 +81,10 @@ describe("bentuknya: tak ada require langgraph di lingkup modul", () => {
     // perlu dibersihkan — memanggil pembuatnya di sana akan memuat langgraph
     // hanya untuk membersihkan sesuatu yang kosong.
     const t = tanpaKomentar(
-      SRC.slice(SRC.indexOf("Bersihkan juga checkpoint")).slice(0, 1400),
+      SRC.slice(SRC.indexOf("Clear the in-memory LangGraph checkpoints")).slice(
+        0,
+        1400,
+      ),
     );
     expect(t).toMatch(/globalThis\.__wolfspaceAgentMemory/);
     expect(t).not.toMatch(/memoriAgen\(\)/);
@@ -93,7 +96,7 @@ describe("akibatnya: memuat agent tidak menyeret langgraph", () => {
     for (const k of Object.keys(require.cache))
       if (k.includes("langgraph") || k.includes("self_agent"))
         delete require.cache[k];
-    require(path.join(AKAR, "agent", "self_agent.cjs"));
+    require(path.join(AKAR, "agent", "self_agent.ts"));
     // Disaring ke node_modules: berkas uji ini sendiri bernama "langgraph".
     const termuat = Object.keys(require.cache).filter(
       (k) => k.includes("node_modules") && k.includes("langgraph"),

@@ -1,7 +1,7 @@
 // ── Agent guards, shared by BOTH orchestrators ──
 //
 // WHY THIS FILE EXISTS. These checks used to live inside a closure in
-// agent/self_agent.cjs, which was fine while there was one agent loop. There are
+// agent/self_agent.ts, which was fine while there was one agent loop. There are
 // now two — the JS loop and the Python graph in services/agent-python driven by
 // agent/python-agent.ts — and a guard that exists on only one of them is worse
 // than no guard: it makes the SAME request behave differently depending on which

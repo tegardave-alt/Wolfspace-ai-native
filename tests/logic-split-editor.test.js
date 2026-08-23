@@ -14,7 +14,7 @@ const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
 const APP = fs.readFileSync(path.join(AKAR, "public", "app.tsx"), "utf8");
-const SRV = fs.readFileSync(path.join(AKAR, "server.cjs"), "utf8");
+const SRV = fs.readFileSync(path.join(AKAR, "server.ts"), "utf8");
 
 describe("split berkas + editor di view Logic", () => {
   test("keduanya dirender berdampingan, pohon dulu baru editor", () => {

@@ -8,7 +8,7 @@ import * as path from "path";
 import { exec, spawn } from "child_process";
 import * as util from "util";
 const execP = util.promisify(exec);
-const { dlog } = require("./debug.cjs");
+const { dlog } = require("./debug.ts");
 
 const QROOT = path.resolve(__dirname, "..");
 const SKILLS_DIR = path.join(QROOT, "skills");

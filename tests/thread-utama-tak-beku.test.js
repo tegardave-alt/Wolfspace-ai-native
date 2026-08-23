@@ -44,7 +44,7 @@ const MAIN = baca("electron/main.js");
 const MAIN_KODE = MAIN.split("\n")
   .filter((b) => !/^\s*(\/\/|\*|\/\*)/.test(b))
   .join("\n");
-const SERVER = baca("server.cjs");
+const SERVER = baca("server.ts");
 
 // Isi sebuah fungsi, dari tanda tangannya sampai kurung tutup di kolom 0.
 const tubuh = (src, tanda) => {

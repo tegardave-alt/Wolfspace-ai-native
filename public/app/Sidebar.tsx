@@ -523,7 +523,7 @@ function WorkspaceGitPill({ path }: any) {
 
 // Panel detail git di dalam popover "Folder options". Mount = fetch fresh.
 // Normalise input into a valid git branch name (mirrors toBranch in
-// scripts/ww.cjs).
+// scripts/ww.ts).
 function toBranchName(name: any) {
   let b = String(name || "")
     .trim()

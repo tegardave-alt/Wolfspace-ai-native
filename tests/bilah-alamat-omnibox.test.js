@@ -380,6 +380,14 @@ describe("kurungan view browser dilonggarkan seperlunya saja", () => {
     M.indexOf("function _brBuat()"),
     M.indexOf("function browserAksi("),
   );
+  // The REASONING lives in electron/main.ts. main.js is built from it by
+  // scripts/build-main.cjs and esbuild strips comments, so asserting the
+  // explanation against the build output would only prove it is absent.
+  const S = baca("electron/main.ts");
+  const ts = S.slice(
+    S.indexOf("function _brBuat()"),
+    S.indexOf("function browserAksi("),
+  );
 
   test("sandbox dimatikan HANYA untuk view ini, bukan seluruh aplikasi", () => {
     expect(t).toMatch(
@@ -401,7 +409,7 @@ describe("kurungan view browser dilonggarkan seperlunya saja", () => {
 
   test("alasannya tercatat dengan angkanya, bukan cuma 'tidak jalan'", () => {
     for (const jejak of ["ERR_FAILED", "onErrorOccurred", "site isolation"])
-      expect(t).toContain(jejak);
+      expect(ts).toContain(jejak);
   });
 });
 

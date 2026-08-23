@@ -11,7 +11,7 @@ const AKAR = path.resolve(__dirname, "..");
 const { rollback, createSnapshot } = require("../agent/snapshot.ts");
 
 describe("rollback melaporkan kegagalan, bukan menyamarkannya", () => {
-  // KENAPA ADA. rollback() dipanggil dari dalam blok catch self_agent.cjs, di
+  // KENAPA ADA. rollback() dipanggil dari dalam blok catch self_agent.ts, di
   // ATAS tiga emit — termasuk yang komentarnya berbunyi "ALWAYS emit adone so
   // frontend knows the agent is done". Dua kegagalan terbukti dengan
   // mengeksekusi blok itu apa adanya:
@@ -89,7 +89,7 @@ describe("pemanggil rollback memeriksa hasilnya, dan adone SELALU terkirim", () 
   // Blok catch DIAMBIL dari sumber lalu dieksekusi — bukan ditulis ulang
   // menurut tafsiran, supaya yang diuji memang jalur produksi.
   const SRC = fs
-    .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
     .replace(/\r\n/g, "\n");
   const i = SRC.indexOf("if (sessionSnapshotId && (edits || 0) === 0) {");
   const j = SRC.indexOf('finalSummary = "Error: "', i);
@@ -229,7 +229,7 @@ describe("tanda hidup sampai ke layar: model_wait", () => {
     // penanganan di UI akan membuat tes ini merah, jadi "hilang senyap" tak
     // bisa terjadi diam-diam lagi.
     const be =
-      fs.readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8") +
+      fs.readFileSync(require.resolve("../agent/self_agent.ts"), "utf8") +
       fs.readFileSync(require.resolve("../agent/tools/index.ts"), "utf8");
     const emit = new Set(
       [...be.matchAll(/emit\(\s*\{\s*t:\s*"([a-z_]+)"/g)].map((m) => m[1]),

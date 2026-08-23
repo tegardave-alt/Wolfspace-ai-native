@@ -438,7 +438,7 @@ function statusKurungan(
 
 // A ONE-SHOT warning, straight to stderr.
 //
-// Deliberately NOT through agent/debug.cjs: that logger is gated on
+// Deliberately NOT through agent/debug.ts: that logger is gated on
 // VERBOSE/DEBUG_ON, both off by default — and a warning that a security
 // guarantee has been downgraded is exactly what someone who turned nothing on
 // most needs to see. Once per process rather than per execution, so it does

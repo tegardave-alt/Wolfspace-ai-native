@@ -13,7 +13,7 @@
  * diam-diam saat pemakai menekan tombol Debug adalah hal yang tak boleh
  * dilakukan aplikasi tanpa diminta.
  *
- *     node scripts/ambil-js-debug.cjs
+ *     node scripts/ambil-js-debug.ts
  */
 
 const fs = require("fs");

@@ -10,7 +10,7 @@
 //     -> public/index.html menjalankan window.location.reload()
 //     -> thread_id yang hidup di state React lenyap
 //     -> permintaan berikutnya dikirim tanpa thread_id
-//     -> self_agent.cjs mencetak thread BARU
+//     -> self_agent.ts mencetak thread BARU
 //     -> MemorySaver tak punya checkpoint untuknya
 //     -> agent mulai dari nol dan MENGULANG.
 //

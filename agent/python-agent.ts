@@ -2,7 +2,7 @@
 //
 // This is the piece that makes Phase 10 real: services/agent-python owns the
 // state machine, and everything it needs done is done here. It presents the same
-// surface as selfAgentStream in agent/self_agent.cjs — (payload, emit, ctl) —
+// surface as selfAgentStream in agent/self_agent.ts — (payload, emit, ctl) —
 // so a caller can be pointed at either without knowing which one it got.
 //
 // WHAT MOVES AND WHAT DOES NOT
@@ -39,7 +39,7 @@
 //   -----------               ---------------------------
 //   HITL resume               the graph must carry hitlApproved back in; today
 //                             the call is refused with a reason instead
-//   planner checklist         needs the planning prompt still in self_agent.cjs
+//   planner checklist         needs the planning prompt still in self_agent.ts
 //   findings journal          crosses process restarts; a separate extraction
 //
 // So the JS agent stays the default. This path runs when it is asked for, by
@@ -59,7 +59,7 @@ const penjaga = require("./penjaga-agent.ts");
 // reason appcontainer-jail keeps its state on globalThis.
 const tools = () => require("./tools.cjs");
 const cloud_ = () => require("./cloud.ts");
-const { dlog } = require("./debug.cjs");
+const { dlog } = require("./debug.ts");
 
 /** A tool result in the shape the worker's `call_tool` expects back. */
 interface ToolAnswer {
@@ -191,7 +191,7 @@ async function pseudoValidate(
  * routes to the planner only for what looks like a code task, and an empty
  * checklist there is a valid state the routing already handles (route_start
  * checks `len(checklist) == 0`). Filling it needs the planning prompt that lives
- * in self_agent.cjs, which is a separate extraction from this wiring.
+ * in self_agent.ts, which is a separate extraction from this wiring.
  */
 async function pseudoPlan(args: any): Promise<ToolAnswer> {
   return { ok: true, messages: [], checklist: [] };

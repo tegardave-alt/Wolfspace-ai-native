@@ -328,7 +328,7 @@ kalauDebugpy("sesi debug Python sungguhan (butuh debugpy)", () => {
 // js-debug adalah adapter Node/JavaScript RESMI dari microsoft/vscode-js-debug
 // (MIT) — yang sama dengan yang dipakai VS Code. Tak ada paketnya di npm
 // (@vscode/js-debug dan js-debug-adapter dua-duanya 404), jadi ia diambil dari
-// rilis GitHub lewat scripts/ambil-js-debug.cjs.
+// rilis GitHub lewat scripts/ambil-js-debug.ts.
 //
 // DUA HAL YANG MEMBUATNYA BEDA DARI debugpy, dan dua-duanya sempat menggagalkan
 // percobaan pertama tanpa satu pun pesan galat:

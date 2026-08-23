@@ -25,7 +25,7 @@ const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
 const SRC = fs
-  .readFileSync(path.join(AKAR, "agent", "self_agent.cjs"), "utf8")
+  .readFileSync(path.join(AKAR, "agent", "self_agent.ts"), "utf8")
   .replace(/\r\n/g, "\n");
 
 // Fungsinya DIAMBIL dari sumber lalu dijalankan — bukan ditulis ulang menurut

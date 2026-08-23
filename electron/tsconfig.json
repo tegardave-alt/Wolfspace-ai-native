@@ -10,8 +10,9 @@
     "noUncheckedIndexedAccess": true,
     "skipLibCheck": true
   },
-  // Only the migrated source. preload.js is generated output, and main.js is
-  // still plain CommonJS awaiting its own phase.
-  "include": ["preload.ts"],
+  // Only the sources. preload.js and main.js are both GENERATED output —
+  // scripts/build-preload.cjs and scripts/build-main.cjs write them — so they are
+  // never type-checked here; their .ts sources are.
+  "include": ["preload.ts", "main.ts"],
   "exclude": ["node_modules"]
 }
