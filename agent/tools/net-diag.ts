@@ -1,44 +1,49 @@
-// ── Diagnostik jaringan lewat WSL, TANPA shell bebas ──
+// ── Network diagnostics through WSL, with NO free shell ──
 //
-// KENAPA ADA. Agent tak punya cara memeriksa jaringan. `webExtract` melewati
-// penjaga SSRF dan hanya bicara HTTP; tak ada yang menjawab "apakah host ini
-// bisa dijangkau", "rutenya ke mana", atau "port ini terbuka?". Satu-satunya
-// jalan selama ini adalah `bash` — yang di Windows batasnya cuma pemindaian
-// teks, dan sudah terbukti bisa ditembus.
+// WHY THIS EXISTS. The agent had no way to inspect the network. `webExtract`
+// goes through the SSRF guard and only speaks HTTP; nothing answered "is this
+// host reachable", "where does the route go", or "is this port open?". The only
+// route available was `bash` — whose boundary on Windows is text scanning, and
+// that has already been shown to be defeatable.
 //
-// BENTUKNYA SENGAJA BUKAN "jalankan perintah". Tool ini tak menerima perintah;
-// ia menerima OPERASI dari daftar tetap, lalu MEMBANGUN argv-nya sendiri.
-// Bedanya menentukan: tak ada teks perintah yang perlu dipindai, jadi tak ada
-// yang bisa dirakit untuk lolos dari pemindai. Batasnya bukan tebakan atas
-// string — ia sifat dari bentuk data yang diterima.
+// ITS SHAPE IS DELIBERATELY NOT "run a command". This tool accepts no command;
+// it accepts an OPERATION from a fixed list and BUILDS its own argv. The
+// difference is decisive: there is no command text to scan, so there is nothing
+// to assemble that could slip past a scanner. The boundary is not a guess about
+// a string — it is a property of the shape of data accepted.
 //
-// Ini penerapan pola yang sama dengan broker: bukan "kurung shell-nya", tapi
-// "jangan beri shell sama sekali, beri kapabilitas bernama".
+// This is the same pattern as the broker: not "cage the shell" but "give no
+// shell at all, give named capabilities".
 //
-// Dijalankan DI DALAM distro WSL, bukan di Windows. Konsekuensinya nyata dan
-// disengaja: proses diagnostik tak pernah menyentuh sistem berkas Windows, dan
-// tak bisa — /mnt/c kosong di distro ini.
+// It runs INSIDE the WSL distro, not on Windows. The consequence is real and
+// intended: the diagnostic process never touches the Windows filesystem, and
+// cannot — /mnt/c is empty in this distro.
 "use strict";
 
-const { execFile } = require("child_process");
+import { execFile } from "child_process";
 const _penegakan = require("../penegakan.cjs");
 
 const DISTRO = process.env.WOLFSPACE_WSL_DISTRO || "WolfspaceTest";
 const BATAS_MS = 20000;
 const MAKS_KELUARAN = 8000;
 
-// Host harus berupa nama domain atau IP — tak ada spasi, tak ada karakter yang
-// bisa berubah arti di lapisan mana pun. Divalidasi SEBELUM masuk argv, dan
-// argv dilewatkan sebagai array (execFile), jadi tak ada shell yang menguraikan.
+// A host must be a domain name or an IP — no whitespace, no character that
+// could change meaning at any layer. Validated BEFORE it reaches argv, and argv
+// is passed as an array (execFile), so no shell parses it.
 const HOST_SAH = /^[A-Za-z0-9]([A-Za-z0-9.-]{0,251}[A-Za-z0-9])?$/;
 const PORT_SAH = (p) => Number.isInteger(p) && p > 0 && p < 65536;
 
 /**
- * Operasi yang tersedia. Tiap entri MEMBANGUN argv-nya sendiri dari parameter
- * yang sudah divalidasi — pemanggil tak pernah menyumbang teks mentah.
- * @type {Record<string, {butuhHost?: boolean, butuhPort?: boolean, argv: (a: {host?: string, port?: number}) => string[], jelas: string}>}
+ * The available operations. Each entry BUILDS its own argv from already-
+ * validated parameters — the caller never contributes raw text.
  */
-const OPERASI = {
+type Operasi = {
+  jelas: string;
+  argv: (a: any) => string[];
+  butuhHost?: boolean;
+  butuhPort?: boolean;
+};
+const OPERASI: Record<string, Operasi> = {
   ping: {
     butuhHost: true,
     jelas: "kirim 4 paket ICMP, laporkan hilang/waktu",
@@ -49,9 +54,9 @@ const OPERASI = {
     argv: () => ["ip", "route"],
   },
   antarmuka: {
-    // BusyBox ip TIDAK punya -br; memakainya membuat tool mencetak halaman
-    // bantuan alih-alih menjawab. Diuji di distro ini, bukan disalin dari ip
-    // versi iproute2 penuh.
+    // BusyBox ip does NOT have -br; using it makes the tool print a help page
+    // instead of an answer. Tested in this distro rather than copied from full
+    // iproute2's ip.
     jelas: "daftar antarmuka jaringan (ip addr)",
     argv: () => ["ip", "addr"],
   },
@@ -136,14 +141,14 @@ function jalankan(args) {
       { timeout: BATAS_MS, encoding: "utf8", windowsHide: true },
       (err, stdout, stderr) => {
         let teks = String(stdout || "") + String(stderr || "");
-        // Banyak alat jaringan keluar dengan kode != 0 justru saat menjawab
-        // pertanyaannya (ping ke host mati, nc ke port tertutup). Itu HASIL,
-        // bukan kegagalan tool — jadi keluarannya tetap dikembalikan.
+        // Many network tools exit non-zero precisely when they are answering
+        // the question (ping to a dead host, nc to a closed port). That is a
+        // RESULT, not a tool failure — so the output is still returned.
         //
-        // `nc -z` bahkan tak mencetak APA PUN; jawabannya hanya ada di kode
-        // keluar. Mengembalikan "(tak ada keluaran)" untuk itu akan membuat
-        // tool tampak bekerja sambil tak menjawab pertanyaannya — kelas cacat
-        // yang sama dengan laporan yang terdengar lebih kuat dari kenyataan.
+        // `nc -z` prints NOTHING at all; its answer lives only in the exit
+        // code. Returning "(no output)" for that would make the tool look like
+        // it worked while not answering the question — the same class of defect
+        // as a report that sounds stronger than reality.
         if (nama === "port") {
           const terbuka = !err;
           teks =

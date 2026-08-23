@@ -25,7 +25,7 @@
 //   3. MOUNT HILANG saat distro menganggur, jadi ia harus dipastikan sebelum
 //      SETIAP eksekusi — bukan sekali di awal.
 
-const W = require("../agent/tools/wsl-jail.cjs");
+const W = require("../agent/tools/wsl-jail.ts");
 const T = require("../agent/tools/index.cjs");
 
 const siap = process.platform === "win32" && W.tersedia().siap;
@@ -34,7 +34,7 @@ const kalauSiap = siap ? test : test.skip;
 describe("wsl-jail: bentuk dan kontraknya", () => {
   test("skrip mount memakai user=/pass=, BUKAN credentials=", () => {
     const src = require("fs").readFileSync(
-      require.resolve("../agent/tools/wsl-jail.cjs"),
+      require.resolve("../agent/tools/wsl-jail.ts"),
       "utf8",
     );
     const kode = src
@@ -50,7 +50,7 @@ describe("wsl-jail: bentuk dan kontraknya", () => {
 
   test("skrip dikirim lewat stdin, bukan sebagai argumen", () => {
     const src = require("fs").readFileSync(
-      require.resolve("../agent/tools/wsl-jail.cjs"),
+      require.resolve("../agent/tools/wsl-jail.ts"),
       "utf8",
     );
     // input: SKRIP_MOUNT lewat stdin. Kalau seseorang mengembalikannya jadi
@@ -60,7 +60,7 @@ describe("wsl-jail: bentuk dan kontraknya", () => {
 
   test("mount dipastikan pada SETIAP eksekusi", () => {
     const src = require("fs").readFileSync(
-      require.resolve("../agent/tools/wsl-jail.cjs"),
+      require.resolve("../agent/tools/wsl-jail.ts"),
       "utf8",
     );
     const i = src.indexOf("async function jalankan");
@@ -158,7 +158,7 @@ describe("integrasi ke tool bash", () => {
 // Jalan buntu yang sudah diukur, dicatat supaya tak diulang dari nol.
 describe("hubungannya dengan AppContainer", () => {
   const src = require("fs").readFileSync(
-    require.resolve("../agent/tools/wsl-jail.cjs"),
+    require.resolve("../agent/tools/wsl-jail.ts"),
     "utf8",
   );
 
@@ -166,20 +166,20 @@ describe("hubungannya dengan AppContainer", () => {
     // wsl.exe ditolak di dalam AppContainer (Access is denied), termasuk
     // `wsl --list`. Keduanya dua jalur yang saling meniadakan, bukan dua
     // lapisan yang bisa dipasang bersamaan.
-    expect(src).toMatch(/TIDAK BISA DIGABUNG/);
+    expect(src).toMatch(/CANNOT BE COMBINED/);
     expect(src).toMatch(/Access is denied/);
   });
 
   test("tercatat bahwa nilainya BUKAN jaringan, melainkan kernel terpisah", () => {
     // Klaim "wsl-jail satu-satunya yang mengurung jaringan" sudah terbantah:
     // AppContainer menutup jaringan keluar tanpa tambahan apa pun.
-    expect(src).toMatch(/KERNEL TERPISAH/);
-    expect(src).toMatch(/BUKAN LAGI SOAL JARINGAN/);
+    expect(src).toMatch(/A SEPARATE KERNEL/);
+    expect(src).toMatch(/NO LONGER ABOUT THE NETWORK/);
   });
 
   test("tercatat kenapa ia tetap opt-in, bukan bawaan", () => {
     // Alasannya bukan kehati-hatian: ia mengganti BAHASA perintahnya.
-    expect(src).toMatch(/sh` POSIX|sh POSIX/);
-    expect(src).toMatch(/dipilih sadar/);
+    expect(src).toMatch(/POSIX `sh`|POSIX sh/);
+    expect(src).toMatch(/WHY IT STAYS OPT-IN/);
   });
 });

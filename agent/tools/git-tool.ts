@@ -1,55 +1,55 @@
-// ── git sebagai KAPABILITAS BERNAMA, bukan sebagai perintah shell ──
+// ── git as a NAMED CAPABILITY, not as a shell command ──
 //
-// KENAPA ADA. git TIDAK BISA jalan di dalam AppContainer, dan itu bukan sesuatu
-// yang bisa ditambal. git memanggil sanitize_stdfds() saat start, yang membuka
-// /dev/null dengan O_RDWR TANPA SYARAT -- bukan hanya kalau fd standar hilang.
-// Di dalam container, perangkat NUL bisa DITULIS tapi tidak bisa DIBACA
-// (terukur: `cmd /c echo x > NUL` berhasil, `[IO.File]::OpenRead('NUL')`
-// ditolak). Jadi setiap perintah git apa pun mati sebelum menjalankan apa pun.
+// WHY THIS EXISTS. git CANNOT run inside an AppContainer, and that is not
+// something that can be patched around. git calls sanitize_stdfds() at startup,
+// which opens /dev/null with O_RDWR UNCONDITIONALLY — not only when a standard
+// fd is missing. Inside a container the NUL device can be WRITTEN but not READ
+// (measured: `cmd /c echo x > NUL` succeeds, `[IO.File]::OpenRead('NUL')` is
+// refused). So any git command at all dies before running anything.
 //
-// Sesudah bash jadi terkurung kernel, itu berarti agent coding kehilangan git
-// sepenuhnya. Melubangi kurungannya untuk git akan membatalkan seluruh gunanya:
-// perintah yang boleh keluar adalah perintah yang bisa dipakai untuk keluar.
+// Once bash became kernel-contained, that meant the coding agent lost git
+// entirely. Punching a hole in the containment for git would defeat its whole
+// purpose: a command allowed out is a command usable to get out.
 //
-// BENTUKNYA MENGIKUTI net-diag.cjs: tool ini tidak menerima perintah. Ia
-// menerima OPERASI dari daftar tetap lalu MEMBANGUN argv-nya sendiri. Tak ada
-// teks perintah yang perlu dipindai, jadi tak ada yang bisa dirakit untuk
-// lolos -- batasnya sifat dari bentuk datanya, bukan tebakan atas string.
+// ITS SHAPE FOLLOWS net-diag.ts: this tool accepts no command. It accepts an
+// OPERATION from a fixed list and BUILDS its own argv. There is no command text
+// to scan, so there is nothing to assemble that could slip past — the boundary
+// is a property of the data's shape, not a guess about a string.
 //
-// JUJUR SOAL BATASNYA. Proses git berjalan DI LUAR AppContainer, jadi jalur ini
-// BUKAN pengurungan kernel dan tidak dilabeli begitu. Yang membatasinya adalah
-// bentuk API-nya:
-//   - operasi dari daftar tetap; tak ada `-c`, `--exec-path`, `--upload-pack`
-//   - setiap path divalidasi harus berada DI DALAM workspace
-//   - `-C <workspace>` dipaksa, jadi repo lain tak bisa disasar
-//   - tanpa jaringan sama sekali: push/pull/fetch/clone/remote-set TIDAK ADA
-//   - pager, editor, dan prompt kredensial dimatikan supaya tak pernah
-//     menggantung menunggu manusia yang tak ada
+// HONEST ABOUT ITS LIMITS. The git process runs OUTSIDE the AppContainer, so
+// this path is NOT kernel containment and is not labelled as such. What limits
+// it is the shape of its API:
+//   - operations from a fixed list; no `-c`, `--exec-path`, `--upload-pack`
+//   - every path is validated to be INSIDE the workspace
+//   - `-C <workspace>` is forced, so another repo cannot be targeted
+//   - no network at all: push/pull/fetch/clone/remote-set DO NOT EXIST
+//   - the pager, editor and credential prompt are disabled so it never hangs
+//     waiting for a human who is not there
 //
-// HOOK ADALAH LUBANGNYA, dan itu disebut terang-terangan. `commit` dan
-// `checkout` menjalankan hook milik repo, dan hook adalah berkas di dalam
-// workspace yang bisa ditulis agent. Jadi operasi TULIS memang bisa
-// mengeksekusi kode di luar kurungan. Hook TIDAK dimatikan -- mematikannya
-// akan membuat commit melewati gerbang mutu yang justru dipasang orang dengan
-// sengaja. Sebagai gantinya operasi tulis melewati admission CommandChain
-// (kapabilitas `proc.raw`), jadi ia bisa dicabut per sesi dan tercatat di
-// ledger. Operasi BACA tidak menjalankan hook sama sekali, jadi tidak digerbang.
+// HOOKS ARE THE HOLE, and that is said plainly. `commit` and `checkout` run the
+// repo's hooks, and a hook is a file inside the workspace that the agent can
+// write. So a WRITE operation genuinely can execute code outside the
+// containment. Hooks are NOT disabled — disabling them would make commits skip
+// quality gates people installed deliberately. Instead, write operations pass
+// through CommandChain admission (the `proc.raw` capability), so they can be
+// revoked per session and are recorded in the ledger. READ operations run no
+// hooks at all, so they are not gated.
 "use strict";
 
-const { execFile } = require("child_process");
-const fs = require("fs");
-const path = require("path");
+import { execFile } from "child_process";
+import * as fs from "fs";
+import * as path from "path";
 const _penegakan = require("../penegakan.cjs");
 
 const BATAS_MS = 60000;
 const MAKS_KELUARAN = 12000;
 
-/** Nama ref/branch: tanpa spasi, tanpa `-` di depan (supaya tak jadi opsi). */
+/** A ref/branch name: no whitespace, no leading `-` (so it cannot become an option). */
 const REF_SAH = /^[A-Za-z0-9._\/][A-Za-z0-9._\/-]{0,200}$/;
 
 /**
- * Operasi. `tulis: true` berarti ia bisa mengubah repo DAN bisa menjalankan
- * hook, jadi ia digerbang admission.
+ * Operations. `tulis: true` means it can change the repo AND can run hooks, so
+ * it is admission-gated.
  * @type {Record<string, {tulis?: boolean, argv: (a: any, ws: string) => string[], jelas: string}>}
  */
 const OPERASI = {
@@ -120,8 +120,9 @@ const OPERASI = {
 };
 
 /**
- * Lingkungan git. Ketiganya mencegah git MENGGANTUNG menunggu manusia yang tak
- * ada -- kegagalan yang dari luar tampak persis seperti hang tanpa sebab.
+ * git's environment. All three stop git from HANGING while waiting for a human
+ * who is not there — a failure that from outside looks exactly like an
+ * unexplained hang.
  * @param {string} ws
  */
 function _env(ws) {
@@ -141,15 +142,15 @@ function _env(ws) {
 }
 
 /**
- * Path harus berada DI DALAM workspace. Ini pemeriksaan yang sama yang tak bisa
- * dilakukan pemindai teks: di sini path sudah jadi nilai, bukan potongan string
- * yang mungkin dirakit belakangan.
+ * A path must be INSIDE the workspace. This is the check a text scanner cannot
+ * make: here the path is already a value, not a fragment of a string that might
+ * be assembled later.
  * @param {string[]} daftar
  * @param {string} ws
  * @returns {{ok: true, berkas: string[]} | {ok: false, alasan: string}}
  */
 function _validasiBerkas(daftar, ws) {
-  const keluar = [];
+  const keluar: string[] = [];
   for (const p of daftar) {
     if (typeof p !== "string" || !p.trim())
       return { ok: false, alasan: "path kosong" };
@@ -188,7 +189,7 @@ async function jalankan(args, workspace) {
     };
   }
 
-  // Validasi SEBELUM apa pun dijalankan.
+  // Validate BEFORE anything runs.
   const b = { ...a };
   if (a.berkas && a.berkas.length) {
     const v = _validasiBerkas(a.berkas, ws);
@@ -225,9 +226,9 @@ async function jalankan(args, workspace) {
       output: ws + " bukan repo git (tak ada .git)",
     };
 
-  // Operasi TULIS bisa menjalankan hook milik repo, dan hook adalah berkas yang
-  // bisa ditulis agent. Jadi ia melewati pintu yang sama dengan eksekusi proses
-  // mentah: bisa dicabut per sesi, dan tercatat.
+  // WRITE operations can run the repo's hooks, and a hook is a file the agent
+  // can write. So it goes through the same door as raw process execution:
+  // revocable per session, and recorded.
   if (op.tulis) {
     const gerbang = _admission(nama);
     if (gerbang) return gerbang;
@@ -260,9 +261,9 @@ async function jalankan(args, workspace) {
           });
         }
         res({
-          // Kode keluar bukan-nol adalah HASIL yang sah untuk sebagian operasi
-          // (diff menemukan perbedaan, commit tanpa perubahan). Keluarannya
-          // tetap dikembalikan apa adanya.
+          // A non-zero exit code is a legitimate RESULT for some operations
+          // (diff found differences, commit with nothing to commit). The output
+          // is still returned as is.
           ok: !err,
           ...label,
           output: teks.trim().slice(0, MAKS_KELUARAN) || "(tak ada keluaran)",
@@ -273,8 +274,8 @@ async function jalankan(args, workspace) {
 }
 
 /**
- * Admission CommandChain untuk operasi tulis. Ketiadaan pemeriksa MENUTUP,
- * bukan membuka -- prinsip yang sama dengan sandbox_run.
+ * CommandChain admission for write operations. A missing checker CLOSES rather
+ * than opens — the same principle as sandbox_run.
  * @param {string} nama
  */
 function _admission(nama) {

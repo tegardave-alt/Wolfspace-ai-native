@@ -1551,7 +1551,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           process.env.WOLFSPACE_BASH_WSL === "1" ||
           process.env.WOLFSPACE_BASH_WSL === "true"
         ) {
-          const _wj = require("./wsl-jail.cjs");
+          const _wj = require("./wsl-jail.ts");
           const siap = _wj.tersedia();
           if (siap.siap) {
             return await _wj.jalankan(cmd, {
@@ -2256,7 +2256,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       // karena hanya operasi tulis yang bisa menjalankan hook repo di luar
       // kurungan. Menggerbang `status` dan `log` juga hanya akan membuat
       // lockdown terasa sewenang-wenang tanpa menutup apa pun.
-      return require("./git-tool.cjs").jalankan(
+      return require("./git-tool.ts").jalankan(
         args || {},
         (context && context.workspaceRoot) ||
           process.env.WW_WORKSPACE_ROOT ||
@@ -2268,7 +2268,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       // menerima perintah. Ia memanggil wsl.exe dengan argv yang dibangun
       // sendiri dari daftar tetap, jadi kewenangannya sudah sesempit
       // definisinya — bukan sesuatu yang perlu dicabut terpisah.
-      return require("./net-diag.cjs").jalankan(args || {});
+      return require("./net-diag.ts").jalankan(args || {});
     }
     if (name === "sandbox_run") {
       // ── Admission proc.raw, sama seperti bash ──

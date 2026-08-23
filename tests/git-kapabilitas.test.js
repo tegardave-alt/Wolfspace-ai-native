@@ -16,14 +16,14 @@
 
 const fs = require("fs");
 const path = require("path");
-const G = require("../agent/tools/git-tool.cjs");
+const G = require("../agent/tools/git-tool.ts");
 
 const AKAR = path.resolve(__dirname, "..");
 jest.setTimeout(90000);
 
 describe("bentuk: kapabilitas bernama, bukan perintah", () => {
   const src = fs.readFileSync(
-    path.join(AKAR, "agent", "tools", "git-tool.cjs"),
+    path.join(AKAR, "agent", "tools", "git-tool.ts"),
     "utf8",
   );
 
