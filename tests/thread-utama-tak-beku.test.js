@@ -15,9 +15,9 @@
 //
 //        spawnSync            node:internal/child_process:1128   2025 ms
 //        execFileSync         node:child_process:950
-//        tersedia             agent/tools/appcontainer-jail.cjs
-//        siapUntuk            agent/tools/appcontainer-jail.cjs
-//        runSelfTool          agent/tools/index.cjs
+//        tersedia             agent/tools/appcontainer-jail.ts
+//        siapUntuk            agent/tools/appcontainer-jail.ts
+//        runSelfTool          agent/tools/index.ts
 //
 //      Blok sinkron terpanjang saat perintah bash PERTAMA: 2178 ms. Sesudah
 //      keduanya dipindah ke execFile asinkron: 47 ms. Menunggu proses anak tak
@@ -33,18 +33,23 @@
 const fs = require("fs");
 const path = require("path");
 
+// electron/main.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk: the
+// assertions below describe what the build produces.
+const bangunMain = () => require("../scripts/build-main.cjs").bangun();
+
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 
-const AC = baca("agent/tools/appcontainer-jail.cjs");
-const MAIN = baca("electron/main.js");
+const AC = baca("agent/tools/appcontainer-jail.ts");
+const MAIN = bangunMain();
 // Komentar dibuang untuk pemeriksaan "tak ada penugasan langsung": komentar
 // penjelas di main.js justru MENGUTIP bentuk yang salah sebagai contoh.
 const MAIN_KODE = MAIN.split("\n")
   .filter((b) => !/^\s*(\/\/|\*|\/\*)/.test(b))
   .join("\n");
-const SERVER = baca("server.cjs");
+const SERVER = baca("server.ts");
 
 // Isi sebuah fungsi, dari tanda tangannya sampai kurung tutup di kolom 0.
 const tubuh = (src, tanda) => {
@@ -134,9 +139,15 @@ describe("penjaga writableEnded hidup di jalur Electron", () => {
   test("penjaga di server.cjs memang ADA — kalau tidak, perbaikan ini sia-sia", () => {
     // Nilainya justru bergantung pada ini: accessor-nya dipasang supaya
     // pemeriksaan di sisi handler punya arti.
+    //
+    // The threshold dropped from 10 to 9 when local-model support was removed:
+    // the /complete ghost-text endpoint held one of these checks and went away
+    // with askFIM(). What this guards is that handler-side checks still exist in
+    // numbers, not that any particular endpoint does — so the count follows the
+    // handlers that remain rather than pinning a number the code has outgrown.
     const n = (SERVER.match(/res\.writableEnded|res\.writableFinished/g) || [])
       .length;
-    expect(n).toBeGreaterThanOrEqual(10);
+    expect(n).toBeGreaterThanOrEqual(9);
   });
 });
 

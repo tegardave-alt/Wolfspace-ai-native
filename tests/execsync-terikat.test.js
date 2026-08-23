@@ -22,7 +22,7 @@ const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
 const SRV = fs
-  .readFileSync(path.join(AKAR, "server.cjs"), "utf8")
+  .readFileSync(path.join(AKAR, "server.ts"), "utf8")
   .replace(/\r\n/g, "\n");
 
 // Baris yang diawali komentar dibuang: berkas ini menjelaskan bentuk yang
@@ -57,7 +57,14 @@ describe("execSync terikat sebelum dipakai", () => {
       if (/(^|[^.\w])execSync\s*\(/.test(b)) pakai.push(n + 1);
     });
     // Kalau nol, uji ini tak menguji apa pun — jauh lebih buruk daripada gagal.
-    expect(pakai.length).toBeGreaterThan(2);
+    //
+    // The bound is 0, not a larger number: what makes this test meaningful is
+    // that at least one call site exists to be checked, which is exactly what
+    // the line above says. It used to demand more than 2 only because killPort()
+    // happened to contribute two of them; that function went away with
+    // local-model support, and pinning the old count would have failed on a
+    // deletion that removed no binding at all.
+    expect(pakai.length).toBeGreaterThan(0);
 
     // Impor modulnya ada di baris paling atas, jadi semua pemakaian sesudahnya
     // terjangkau. Yang perlu dipastikan: tak ada pemakaian SEBELUM impor itu.
@@ -99,13 +106,11 @@ describe("execSync terikat sebelum dipakai", () => {
     expect(p).toMatch(/process\.env\.PATH/);
     expect(p).toMatch(/fs\.existsSync/);
   });
-
-  test("killPort memakai netstat lalu taskkill", () => {
-    const i = SRV.indexOf("function killPort(");
-    const blok = SRV.slice(i, SRV.indexOf("\n}", i) + 2);
-    expect(blok).toMatch(/execSync\("netstat -ano"/);
-    expect(blok).toMatch(/execSync\("taskkill \/F \/PID "/);
-  });
+  // The killPort() guard that used to live here is gone with the function itself.
+  // killPort existed only to stop a model's llama-server, and its sole caller was
+  // /model/delete — an endpoint that called an undefined killPortAsync and could
+  // therefore never have worked. Both were removed with local-model support, so
+  // there is no longer any behaviour here to protect.
 });
 
 // ── Git di jalur HTTP tidak boleh sinkron ──
@@ -117,7 +122,7 @@ describe("execSync terikat sebelum dipakai", () => {
 // dijalankan berbarengan: 53 ms dan 39 ms.
 describe("rute git tidak membekukan thread utama", () => {
   const WW = fs
-    .readFileSync(path.join(AKAR, "scripts", "ww.cjs"), "utf8")
+    .readFileSync(path.join(AKAR, "scripts", "ww.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("rute memakai versi async, bukan yang sinkron", () => {
@@ -171,7 +176,7 @@ describe("rute git tidak membekukan thread utama", () => {
     // dalamnya diam-diam tertulis sebagai byte NUL. Pencocokannya jadi selalu
     // gagal — cache tak pernah dibatalkan, dan tak ada satu pun galat.
     expect(WW).toMatch(/if \(v\.dir === cari\) _cacheGit\.delete\(k\)/);
-    // Komentar di ww.cjs MENGUTIP bentuk lamanya untuk menjelaskan kenapa ia
+    // Komentar di ww.ts MENGUTIP bentuk lamanya untuk menjelaskan kenapa ia
     // ditinggalkan — tanpa penyaring ini, catatan yang benar justru
     // menggagalkan ujinya.
     expect(tanpaKomentar(WW)).not.toMatch(/k\.endsWith\(/);
@@ -197,7 +202,7 @@ describe("rute git tidak membekukan thread utama", () => {
 
   test("hasil async SAMA persis dengan yang sinkron", async () => {
     // Kalau berbeda, ini bukan optimasi melainkan perubahan perilaku diam-diam.
-    const ww = require(path.join(AKAR, "scripts", "ww.cjs"));
+    const ww = require(path.join(AKAR, "scripts", "ww.ts"));
     const d = AKAR;
     expect(await ww.gitInfoAsync(d)).toEqual(ww.gitInfo(d));
     expect(await ww.listBranchesAsync(d)).toEqual(ww.listBranches(d));

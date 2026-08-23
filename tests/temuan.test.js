@@ -23,7 +23,7 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 
-const T = require("../agent/temuan.cjs");
+const T = require("../agent/temuan.ts");
 
 const WS = path.join(os.tmpdir(), "wolf-tes-temuan");
 const jurnal = () =>
@@ -50,12 +50,12 @@ afterAll(() => {
 describe("catatan temuan: identitas PERSIS, bukan kemiripan", () => {
   test("jalur yang sudah dibaca dikenali, yang belum tidak", () => {
     // Inilah sebabnya ini BUKAN RAG. RAG mencari lewat kemiripan, dan "app.js"
-    // bisa berskor tinggi untuk kueri "app.jsx" — agent lalu MELEWATI pekerjaan
+    // bisa berskor tinggi untuk kueri "app.tsx" — agent lalu MELEWATI pekerjaan
     // yang belum ia kerjakan. Kegagalan itu lebih buruk daripada mengulang,
     // karena tak terlihat.
     T.catat(WS, "app.js", "function render(){}\n");
     expect(T.sudahDibaca(WS, "app.js")).toBeTruthy();
-    expect(T.sudahDibaca(WS, "app.jsx")).toBeNull();
+    expect(T.sudahDibaca(WS, "app.tsx")).toBeNull();
     expect(T.sudahDibaca(WS, "belum-pernah.js")).toBeNull();
   });
 
@@ -138,11 +138,11 @@ describe("bertahan melewati restart proses", () => {
 
 describe("biayanya tak boleh mengulang kesalahan rag.ingest", () => {
   test("catat() TIDAK menulis ulang seluruh berkas", () => {
-    // rag.cjs ingest() melakukan _load() + _save() SELURUH store tiap panggilan.
+    // rag.ts ingest() melakukan _load() + _save() SELURUH store tiap panggilan.
     // Terukur: ke-1 4,3 ms, ke-100 27,2 ms, ke-400 55,6 ms — 13,2 detik untuk
     // 400 ingest, tumbuh linear. Di jalur panas itu jauh lebih buruk daripada
     // blokir 10,8 detik yang sudah diperbaiki di repo ini.
-    const SRC = fs.readFileSync(require.resolve("../agent/temuan.cjs"), "utf8");
+    const SRC = fs.readFileSync(require.resolve("../agent/temuan.ts"), "utf8");
     expect(SRC).toMatch(/appendFileSync/);
     expect(SRC).not.toMatch(/writeFileSync\(\s*_berkasJurnal/);
   });
@@ -165,11 +165,11 @@ describe("biayanya tak boleh mengulang kesalahan rag.ingest", () => {
 
 describe("terpasang di jalur yang benar", () => {
   const IDX = fs.readFileSync(
-    require.resolve("../agent/tools/index.cjs"),
+    require.resolve("../agent/tools/index.ts"),
     "utf8",
   );
   const SELF = fs.readFileSync(
-    require.resolve("../agent/self_agent.cjs"),
+    require.resolve("../agent/self_agent.ts"),
     "utf8",
   );
 
@@ -206,14 +206,14 @@ describe("KEDUA jalur read mencatat temuan", () => {
   // "ALLOW readFile"). Jurnalnya tetap kosong tanpa satu pun error, jadi
   // kegagalannya senyap: mekanismenya terpasang, teruji, dan tak pernah jalan.
   //
-  // Ada DUA cabang `name === "read"` di agent/tools/index.cjs:
+  // Ada DUA cabang `name === "read"` di agent/tools/index.ts:
   //   _brokeredFileOp()  dipakai saat sebuah workspace dipilih  <- yang terlewat
   //   qRead()            dipakai saat tidak ada workspace
   //
   // "Pola dua permukaan" yang sama yang sudah berkali-kali menggigit repo ini.
   const fs = require("fs");
   const IDX = fs.readFileSync(
-    require.resolve("../agent/tools/index.cjs"),
+    require.resolve("../agent/tools/index.ts"),
     "utf8",
   );
 
@@ -236,7 +236,7 @@ describe("KEDUA jalur read mencatat temuan", () => {
   test("jalur broker BENAR-BENAR mencatat saat dipanggil", async () => {
     const os = require("os");
     const path = require("path");
-    const { runSelfTool } = require("../agent/tools/index.cjs");
+    const { runSelfTool } = require("../agent/tools/index.ts");
     const ws = fs.mkdtempSync(path.join(os.tmpdir(), "wolf-tes-broker-"));
     fs.writeFileSync(path.join(ws, "a.js"), "// berkas uji\nlet x = 1;\n");
     const kunci = T.kunciWs(ws);

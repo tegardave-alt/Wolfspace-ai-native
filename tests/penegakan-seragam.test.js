@@ -15,8 +15,8 @@
 // tak ada di hasil, tempat ia bisa diperiksa mesin.
 
 const path = require("path");
-const T = require("../agent/tools/index.cjs");
-const P = require("../agent/penegakan.cjs");
+const T = require("../agent/tools/index.ts");
+const P = require("../agent/penegakan.ts");
 
 const WS = path.resolve(__dirname, "..");
 const ctx = { workspaceRoot: WS, sessionId: "uji-seragam" };
@@ -78,7 +78,7 @@ describe("kosakata penegakan seragam", () => {
   }, 90000);
 
   test("label sandbox_run COCOK dengan mekanisme yang BENAR-BENAR dipakai", async () => {
-    const sandbox = require("../agent/sandbox.cjs");
+    const sandbox = require("../agent/sandbox.ts");
     const kap = sandbox.adapterCapabilities();
     const r = await T.runSelfTool(
       "sandbox_run",
@@ -96,7 +96,7 @@ describe("kosakata penegakan seragam", () => {
     // pada eksekusi yang benar-benar berhasil dibungkus. Sesudah sandbox_run
     // ikut dibungkus, berpegang pada adapter saja membuat label MEREMEHKAN:
     // "penasihat" untuk proses yang sebenarnya ditolak kernel.
-    const ac = require("../agent/tools/appcontainer-jail.cjs");
+    const ac = require("../agent/tools/appcontainer-jail.ts");
     const pakaiAc =
       process.platform === "win32" &&
       process.env.WOLFSPACE_BASH_AC !== "0" &&

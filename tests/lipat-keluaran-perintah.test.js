@@ -25,7 +25,7 @@ const fs = require("fs");
 const path = require("path");
 
 const SRC = fs.readFileSync(
-  path.join(__dirname, "..", "public", "app", "AgentSteps.jsx"),
+  path.join(__dirname, "..", "public", "app", "AgentSteps.tsx"),
   "utf8",
 );
 

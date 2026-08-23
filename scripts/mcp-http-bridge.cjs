@@ -1,6 +1,10 @@
+// Install the .ts hook FIRST: modules below require TypeScript files, and
+// this file can itself be an entry point — tests require it directly, and
+// `node -e` subprocesses load it without ever going through server.cjs.
+require("./ts-register.cjs");
 // Jembatan server MCP REMOTE -> stdio.
 //
-// KENAPA ADA JEMBATAN SAMA SEKALI. Klien MCP WOLFSPACE (agent/mcp-client.cjs)
+// KENAPA ADA JEMBATAN SAMA SEKALI. Klien MCP WOLFSPACE (agent/mcp-client.ts)
 // hanya bicara stdio: spawn proses anak, tulis JSON-RPC ke stdin, baca dari
 // stdout. Tak ada satu pun fetch di sana. Berkas ini dijalankan SEBAGAI proses
 // anak itu, lalu menerjemahkan stdio <-> jaringan.

@@ -26,6 +26,11 @@
 
 const fs = require("fs");
 const path = require("path");
+
+// electron/main.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk: the
+// assertions below describe what the build produces.
+const bangunMain = () => require("../scripts/build-main.cjs").bangun();
 const os = require("os");
 const { execFileSync } = require("child_process");
 
@@ -38,8 +43,18 @@ const ELECTRON = path.join(
   process.platform === "win32" ? "electron.exe" : "electron",
 );
 
+// Ada BINERNYA belum berarti ia bisa JALAN.
+//
+// Electron membuka jendela. Di Linux tanpa display ia mati saat meluncur, dan
+// tesnya gagal dengan `null` — terbaca seperti bug runInWorkspace, padahal
+// prosesnya tak pernah hidup. Penjaga lama cuma memeriksa berkasnya ada, jadi
+// di CI ubuntu ia lolos lalu gagal.
+//
+// Kelas yang sama dengan penjaga playwright di tests/butuh.cjs: keberadaan
+// bukan kemampuan.
 const adaElectron = fs.existsSync(ELECTRON);
-const jalankan = adaElectron ? describe : describe.skip;
+const adaDisplay = process.platform === "win32" || !!process.env.DISPLAY;
+const jalankan = adaElectron && adaDisplay ? describe : describe.skip;
 
 jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
   test("runInWorkspace selesai CEPAT dan ok:true, bukan timeout 120 detik", () => {
@@ -126,7 +141,14 @@ jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
 // yang menunjuk ke sini. Karena itu keberadaannya dikunci, bukan diserahkan
 // pada ingatan.
 describe("sandbox GPU dimatikan supaya aplikasi bisa jalan", () => {
-  const src = fs.readFileSync(path.join(ROOT, "electron", "main.js"), "utf8");
+  const src = bangunMain();
+  // The REASONING lives in electron/main.ts. main.js is built from it by
+  // scripts/build-main.cjs and esbuild strips comments, so asserting the
+  // explanation against the build output would only prove it is absent.
+  const sumber = fs.readFileSync(
+    path.join(ROOT, "electron", "main.ts"),
+    "utf8",
+  );
 
   test("switch terpasang di main.js", () => {
     expect(src).toMatch(/appendSwitch\("disable-gpu-sandbox"\)/);
@@ -141,7 +163,7 @@ describe("sandbox GPU dimatikan supaya aplikasi bisa jalan", () => {
   test("alasannya tercatat, termasuk yang TIDAK menolong", () => {
     // --disable-gpu adalah tebakan pertama siapa pun, dan ia terukur GAGAL.
     // Tanpa catatan itu, orang berikutnya akan mencobanya lagi.
-    expect(src).toMatch(/STATUS_DLL_NOT_FOUND/);
-    expect(src).toMatch(/--disable-gpu\s+FATAL juga/);
+    expect(sumber).toMatch(/STATUS_DLL_NOT_FOUND/);
+    expect(sumber).toMatch(/--disable-gpu\s+also FATAL/);
   });
 });

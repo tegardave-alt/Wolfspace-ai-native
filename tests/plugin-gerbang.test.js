@@ -16,9 +16,9 @@ const fs = require("fs");
 const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
-const P = require("../agent/plugins.cjs");
+const P = require("../agent/plugins.ts");
 const SRC_MCP = fs.readFileSync(
-  require.resolve("../agent/mcp-client.cjs"),
+  require.resolve("../agent/mcp-client.ts"),
   "utf8",
 );
 
@@ -135,13 +135,10 @@ describe("gerbang dipasang di DUA titik", () => {
 });
 
 describe("plugin menumpang mcp-client, tidak menggandakannya", () => {
-  test("plugins.cjs tak punya spawn sendiri", () => {
+  test("plugins.ts tak punya spawn sendiri", () => {
     // "Pola dua permukaan" sudah berkali-kali menggigit repo ini: dua salinan
     // yang harus diperbaiki bersamaan, salah satunya pasti terlupa.
-    const SRC = fs.readFileSync(
-      require.resolve("../agent/plugins.cjs"),
-      "utf8",
-    );
+    const SRC = fs.readFileSync(require.resolve("../agent/plugins.ts"), "utf8");
     expect(SRC).not.toMatch(/child_process|spawn\(|fork\(/);
   });
 
@@ -202,7 +199,7 @@ describe("menulis konfigurasi memakai isi berkas, bukan gabungan", () => {
   // Akibatnya plugin punya dua rumah, dan yang di config/mcp.json menang
   // (lihat urutan penggabungan). Plugin dicopot dari halaman Plugins pun entri
   // bayangannya tetap tinggal di berkas, hidup, tanpa ada yang tahu asalnya.
-  // Kelas kesalahan yang sama dengan skills.cjs: config mati yang bertahan.
+  // Kelas kesalahan yang sama dengan skills.ts: config mati yang bertahan.
   test("addServer & removeServer membaca _loadConfigMentah()", () => {
     for (const nama of ["addServer", "removeServer", "toggleServer"]) {
       const i = SRC_MCP.indexOf(nama + "(name");

@@ -1,16 +1,17 @@
 {
-  // Pemeriksa tipe untuk berkas .ts/.tsx di public/ — TANPA build step.
+  // Type checker for the .ts/.tsx files in public/ — with NO build step.
   //
-  // index.html tetap mentranspilasi di browser lewat vendor/babel.min.js
-  // (7.29.0, preset `typescript` sudah ada di bundelnya). Jadi Babel yang
-  // MEMBUANG tipe saat jalan, dan tsc di sini yang MEMERIKSANYA saat kerja.
-  // Keduanya tak pernah bertemu: tsc noEmit, Babel tak pernah type-check.
+  // index.html still transpiles in the browser through vendor/babel.min.js
+  // (7.29.0; the `typescript` preset ships in that bundle). So Babel STRIPS the
+  // types at run time and tsc here CHECKS them at work time. The two never meet:
+  // tsc is noEmit, Babel never type-checks.
   //
-  // .jsx yang sudah ada (104rb baris) sengaja TIDAK ikut. Memeriksanya berarti
-  // pekerjaan besar tanpa hasil yang bisa dipakai hari ini; berkas .tsx baru
-  // masuk sejak lahir, jadi tak pernah ada utang yang menumpuk.
+  // app.tsx is included from the repository root of public/, which is why the
+  // first include entry is "*.tsx" rather than only "app/**". It defines the
+  // shared global scope every module reads from, so leaving it out meant those
+  // globals had to be hand-declared in app/globals.d.ts and could drift.
   //
-  // Jalankan: npm run typecheck
+  // Run: npm run typecheck
   "compilerOptions": {
     "noEmit": true,
     "target": "ES2022",
@@ -30,6 +31,6 @@
     "isolatedModules": false,
     "allowJs": false
   },
-  "include": ["app/**/*.ts", "app/**/*.tsx", "app/globals.d.ts"],
+  "include": ["*.tsx", "app/**/*.ts", "app/**/*.tsx", "app/globals.d.ts"],
   "exclude": ["../node_modules", "vendor"]
 }

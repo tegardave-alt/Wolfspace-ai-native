@@ -1,6 +1,6 @@
-'use strict';
-const { Policy } = require('./policy.cjs');
-const { Broker } = require('./host.cjs');
-const { runInCapabilityZone } = require('./zone-process.cjs');
+"use strict";
+const { Policy } = require("./policy.ts");
+const { Broker } = require("./host.ts");
+const { runInCapabilityZone } = require("./zone-process.ts");
 
 module.exports = { Policy, Broker, runInCapabilityZone };

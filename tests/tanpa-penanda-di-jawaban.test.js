@@ -15,7 +15,7 @@
 const fs = require("fs");
 
 const SRC = fs
-  .readFileSync(require.resolve("../agent/self_agent.cjs"), "utf8")
+  .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
   .replace(/\r\n/g, "\n");
 
 // Baris komentar dibuang dulu supaya catatan sejarah (yang memang menyebut
@@ -59,13 +59,13 @@ describe("jawaban akhir tidak disisipi penanda sistem", () => {
     // lagi dengan nama berbeda.
     const berkas = fs
       .readdirSync(
-        require.resolve("../agent/self_agent.cjs").replace(/[^\\/]+$/, ""),
+        require.resolve("../agent/self_agent.ts").replace(/[^\\/]+$/, ""),
       )
       .filter((f) => f.endsWith(".cjs"));
     const temuan = [];
     for (const f of berkas) {
       const isi = fs.readFileSync(
-        require.resolve("../agent/self_agent.cjs").replace(/[^\\/]+$/, "") + f,
+        require.resolve("../agent/self_agent.ts").replace(/[^\\/]+$/, "") + f,
         "utf8",
       );
       const kode = isi

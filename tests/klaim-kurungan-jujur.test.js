@@ -19,7 +19,7 @@
 
 const path = require("path");
 const fs = require("fs");
-const T = require("../agent/tools/index.cjs");
+const T = require("../agent/tools/index.ts");
 
 const WS = path.resolve(__dirname, "..");
 const ctx = { workspaceRoot: WS, sessionId: "uji-klaim" };
@@ -51,7 +51,7 @@ describe("penolakan tidak mengklaim pengurungan yang tak ada", () => {
 
   test("deskripsi tool melarang model menyebutnya jaminan", () => {
     const def = fs.readFileSync(
-      path.join(WS, "agent", "tools", "tool-definitions.cjs"),
+      path.join(WS, "agent", "tools", "tool-definitions.ts"),
       "utf8",
     );
     const i = def.indexOf('name: "bash"');

@@ -10,7 +10,7 @@ Tujuan: saat membaca kode (termasuk buatan AI), kamu selalu tahu **siapa yang me
 ```
 UI (public/)  ⇄  Electron IPC  ATAU  HTTP :8090
                     ⇄  core.js → server.cjs
-                         ⇄  agent/* + core/* + scripts/ww.cjs
+                         ⇄  agent/* + core/* + scripts/ww.ts
 ```
 
 - **Jalur produk utama:** `npm run app` → desktop Electron (backend **in-process**, UI lewat `app://`).
@@ -65,7 +65,7 @@ starter: scripts/app.cjs
 electron/main.js
    ├─ protocol app://  →  public/ + preview-file
    ├─ registerIpc()    →  channel WOLFSPACE:*
-   ├─ startBackend()   →  optional child llama-server (dari config)
+   ├─ startBackend()   →  core.js in-process (tanpa child model lokal)
    ├─ createWindow()   →  app://WOLFSPACE/index.html
    ├─ fs.watch(...)    →  HMR UI / reloadCore (ditunda jika agent sibuk)
    └─ first IPC use    →  require(core.js) → require(server.cjs) SEBAGAI MODUL
@@ -91,21 +91,20 @@ http.createServer(handler) → listen
 | File                                         | Peran motor                                                |
 | -------------------------------------------- | ---------------------------------------------------------- |
 | `core.js`                                    | Adaptor: ekspor logika `server.cjs` untuk IPC (tanpa port) |
-| `boot.js`                                    | Bukan starter app; trampoline eval (jalur terpisah)        |
 | `Wolfspace.cmd` / `start.ps1` / `launch.ps1` | Saklar OS di luar npm                                      |
 
 ### 2.5 Kunci kontak (`config` & rahasia)
 
-| Berkas / lokasi                     | Isi                                                               |
-| ----------------------------------- | ----------------------------------------------------------------- |
-| `config.json`                       | host/port, model, llama, runners, `ww.root` / `ww.watch`, verbose |
-| `config/prompts.json`               | system prompt chat + self-agent                                   |
-| `config/mcp.json`                   | definisi server MCP                                               |
-| `config/.mcp-pids/`                 | jejak PID child MCP                                               |
-| `plugins/_disetujui.json`           | capability plugin yang disetujui                                  |
-| keys lewat `agent/keys-path.cjs`    | API key di luar tree proyek                                       |
-| `~/.wolfspace/…`                    | rag, migrasi, data user                                           |
-| `.wolfspace/snapshots` / quarantine | jejak safe-edit                                                   |
+| Berkas / lokasi                     | Isi                                                 |
+| ----------------------------------- | --------------------------------------------------- |
+| `config.json`                       | host/port, runners, `ww.root` / `ww.watch`, verbose |
+| `config/prompts.json`               | system prompt chat + self-agent                     |
+| `config/mcp.json`                   | definisi server MCP                                 |
+| `config/.mcp-pids/`                 | jejak PID child MCP                                 |
+| `plugins/_disetujui.json`           | capability plugin yang disetujui                    |
+| keys lewat `agent/keys-path.cjs`    | API key di luar tree proyek                         |
+| `~/.wolfspace/…`                    | rag, migrasi, data user                             |
+| `.wolfspace/snapshots` / quarantine | jejak safe-edit                                     |
 
 ---
 
@@ -188,19 +187,17 @@ Modul rute terpisah (`server/routes/*`) didaftarkan dulu, sisanya inline di `ser
 | ------------ | ---------------------------------------------------- | ---------------------------------------- |
 | Health       | `GET /healthz`                                       | status proses                            |
 | Chat         | `POST /chat`                                         | `agent/chat.cjs`                         |
-| Self-agent   | `POST /self-agent`                                   | `agent/self_agent.cjs`                   |
+| Self-agent   | `POST /self-agent`                                   | `agent/self_agent.ts`                    |
 | Agent lama   | `POST /agent`                                        | loop WRITE/RUN di server (jalur warisan) |
-| Workspace ww | `/ww/*`                                              | `scripts/ww.cjs` + fs (lihat §5)         |
+| Workspace ww | `/ww/*`                                              | `scripts/ww.ts` + fs (lihat §5)          |
 | MCP          | `/mcp`, `/mcp/status`, `/mcp/connect`, `/mcp/toggle` | `agent/mcp-client.cjs`                   |
 | Plugin       | `/plugins`, pasang/copot/setujui                     | `agent/plugins.cjs`                      |
 | Cloud keys   | `/cloud-save`, `/detect-key`, `/cloud-providers`     | `server/routes/cloud.cjs`, `keys-path`   |
-| Model        | `/hf/*`, `/ollama/*`, `/models`, …                   | unduh/daftar model                       |
 | Terminal     | `/api/terminal/*`                                    | `server/routes/terminal.cjs` → node-pty  |
 | DAP/debug    | `/dap/*`, `/debug/*`                                 | `server/routes/dap.cjs`, `core/dap*.cjs` |
 | Preview      | `/preview-file`, `/preview-file-assets/*`            | baca HTML/aset dari disk                 |
 | RAG          | `/rag/ingest`, `/rag/retrieve`                       | `agent/rag.cjs`                          |
 | Snapshot     | `/api/snapshots`, `/api/rollback`                    | `agent/snapshot.cjs`                     |
-| Hunk         | `/api/apply-hunk`, `/api/revert-hunk`                | edit parsial                             |
 | Complete     | `/complete`, `/pycomplete`                           | ghost text / Jedi                        |
 | Attach       | `/attach`, `/upload`                                 | `attachment-bridge.cjs`                  |
 | Flow         | `POST /flow/http`                                    | node HTTP di logic canvas                |
@@ -239,7 +236,7 @@ Modul rute terpisah (`server/routes/*`) didaftarkan dulu, sisanya inline di `ser
 
 ### 5.1 Otak disk/git
 
-**Starter logika:** `scripts/ww.cjs`  
+**Starter logika:** `scripts/ww.ts`  
 Dipakai sebagai CLI (`create|adopt|list|watch`) **dan** `require()` dari server.
 
 ### 5.2 Kabel `/ww/*` ↔ UI ↔ agent
@@ -296,7 +293,7 @@ saklar:  Composer kirim tugas agent
 kopling: IPC.stream("self-agent")  ATAU  POST /self-agent
    │
    ▼
-starter: agent/self_agent.cjs :: selfAgentStream
+starter: agent/self_agent.ts :: selfAgentStream
    ├─ prompts (config/prompts.json, sysprompt_opt, rules)
    ├─ cloud.cjs          → model BYOK (OpenAI/Claude/Gemini/… )
    ├─ LangGraph (lazy)   → loop langkah
@@ -414,7 +411,7 @@ GET /debug/tersedia → debugger apa yang terpasang
         ┌───────────────────────┴────────────────────────┐
         │ ELECTRON                                        │ HTTP
         │  app:// → public/                               │  static public/
-        │  IPC + optional llama child                     │  CORS + listen
+        │  IPC (tanpa child model lokal)                  │  CORS + listen
         │  core.js → server.cjs (tanpa listen)            │  server.cjs listen
         └───────────────────────┬─────────────────────────┘
                                 │
@@ -428,11 +425,11 @@ GET /debug/tersedia → debugger apa yang terpasang
                                 │
 ┌───────────────────────────────▼──────────────────────────────────────────┐
 │ POROS (server.cjs + server/routes/*)                                      │
-│  /chat → chat.cjs          /self-agent → self_agent.cjs                   │
-│  /ww/* → ww.cjs + fs       /mcp/* → mcp-client                            │
+│  /chat → chat.cjs          /self-agent → self_agent.ts                   │
+│  /ww/* → ww.ts + fs       /mcp/* → mcp-client                            │
 │  /api/terminal/*           /dap/* → dap-sesi → dap                        │
 │  /preview-file             /plugins/*  /rag/*  /cloud-*  /debug*          │
-│  /hf/* /models /attach /complete  + static public/                        │
+│  /cloud-providers /attach + static public/                                │
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │
 ┌───────────────────────────────▼──────────────────────────────────────────┐
@@ -534,8 +531,8 @@ Hal-hal yang **ada di mesin** tapi perilaku/kabelnya perlu dibaca hati-hati:
 3. `public/index.html` → `public/app.jsx` (wwApi, App state, Logic*)
 4. `public/app/Sidebar.jsx`
 5. `server.cjs` (blok `/ww/*`, `/self-agent`, static) + `server/routes/*`
-6. `scripts/ww.cjs`
-7. `agent/self_agent.cjs` → `agent/tools.cjs` / `tools/index.cjs`
+6. `scripts/ww.ts`
+7. `agent/self_agent.ts` → `agent/tools.cjs` / `tools/index.cjs`
 8. `core.js` (apa yang diekspor ke Electron)
 
 ---

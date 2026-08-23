@@ -11,7 +11,7 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const CSS = fs.readFileSync(path.join(AKAR, "public", "styles.css"), "utf8");
 const JSX = fs.readFileSync(
-  path.join(AKAR, "public", "app", "AgentSteps.jsx"),
+  path.join(AKAR, "public", "app", "AgentSteps.tsx"),
   "utf8",
 );
 const BLOK = CSS.slice(

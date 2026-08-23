@@ -14,9 +14,9 @@
 // data yang diterima. Tak ada yang bisa dirakit, karena tak ada tempat untuk
 // merakitnya.
 
-const N = require("../agent/tools/net-diag.cjs");
-const T = require("../agent/tools/index.cjs");
-const { SELF_TOOLS } = require("../agent/tools/tool-definitions.cjs");
+const N = require("../agent/tools/net-diag.ts");
+const T = require("../agent/tools/index.ts");
+const { SELF_TOOLS } = require("../agent/tools/tool-definitions.ts");
 
 const adaWsl = process.platform === "win32";
 const kalauWsl = adaWsl ? test : test.skip;

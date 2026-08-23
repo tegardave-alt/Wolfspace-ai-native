@@ -14,7 +14,7 @@
 // Dan karena UI yang melahirkannya, memperbaiki config/mcp.json dari luar tak
 // pernah bertahan: begitu user menambahkannya lagi, nama rusak itu lahir kembali.
 //
-// Logikanya juga DIGANDAKAN di Components.jsx dan Screens.jsx, dan dua salinan
+// Logikanya juga DIGANDAKAN di Components.tsx dan Screens.tsx, dan dua salinan
 // itu sudah melenceng — satu memakai sse-bridge.cjs lama (hanya bicara SSE,
 // server yang cuma menyediakan /mcp gagal senyap), satunya sudah pindah ke
 // mcp-http-bridge.cjs; figma cuma ada di salah satu. Pola dua permukaan yang
@@ -27,12 +27,16 @@ const AKAR = path.resolve(__dirname, "..");
 
 // Resolver DIAMBIL dari sumber lalu dieksekusi lewat transform yang sama dengan
 // index.html — bukan ditulis ulang menurut tafsiran. Kalau seseorang mengubah
-// Config.jsx, tes ini ikut berubah hasilnya.
+// Config.tsx, tes ini ikut berubah hasilnya.
 globalThis.self = globalThis;
 const Babel = require(path.join(AKAR, "public/vendor/babel.min.js"));
 const kode = Babel.transform(
-  fs.readFileSync(path.join(AKAR, "public/app/Config.jsx"), "utf8"),
-  { presets: ["react"], filename: "/app/Config.jsx" },
+  fs.readFileSync(path.join(AKAR, "public/app/Config.tsx"), "utf8"),
+  // The "typescript" preset joins in now that Config has migrated to .tsx —
+  // exactly like index.html, which picks its presets from the file extension.
+  // Without it Babel stops at the first type annotation and this whole test
+  // file fails to load.
+  { presets: ["react", "typescript"], filename: "/app/Config.tsx" },
 ).code;
 const resolve = new Function(
   "React",
@@ -106,9 +110,9 @@ describe("bentuk masukan lain", () => {
 });
 
 describe("satu sumber, bukan dua permukaan", () => {
-  const S = fs.readFileSync(path.join(AKAR, "public/app/Screens.jsx"), "utf8");
+  const S = fs.readFileSync(path.join(AKAR, "public/app/Screens.tsx"), "utf8");
   const C = fs.readFileSync(
-    path.join(AKAR, "public/app/Components.jsx"),
+    path.join(AKAR, "public/app/Components.tsx"),
     "utf8",
   );
 

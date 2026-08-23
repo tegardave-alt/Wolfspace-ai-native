@@ -10,7 +10,7 @@
 //     -> public/index.html menjalankan window.location.reload()
 //     -> thread_id yang hidup di state React lenyap
 //     -> permintaan berikutnya dikirim tanpa thread_id
-//     -> self_agent.cjs mencetak thread BARU
+//     -> self_agent.ts mencetak thread BARU
 //     -> MemorySaver tak punya checkpoint untuknya
 //     -> agent mulai dari nol dan MENGULANG.
 //
@@ -29,8 +29,13 @@
 const fs = require("fs");
 const vm = require("vm");
 
-const MAIN = fs.readFileSync(require.resolve("../electron/main.js"), "utf8");
-const APP = fs.readFileSync(require.resolve("../public/app.jsx"), "utf8");
+// electron/main.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk: the
+// assertions below describe what the build produces.
+const bangunMain = () => require("../scripts/build-main.cjs").bangun();
+
+const MAIN = bangunMain();
+const APP = fs.readFileSync(require.resolve("../public/app.tsx"), "utf8");
 
 describe("penjaga: reload ditunda selama agent berjalan", () => {
   test("channel stream dicatat, sehingga run agent bisa dikenali", () => {
@@ -88,8 +93,8 @@ describe("penjaga: reload ditunda selama agent berjalan", () => {
   });
 });
 
-// Helper thread_id diambil dari app.jsx lalu benar-benar DIJALANKAN dengan
-// localStorage palsu. app.jsx berkas browser tanpa module.exports, jadi ini satu-
+// Helper thread_id diambil dari app.tsx lalu benar-benar DIJALANKAN dengan
+// localStorage palsu. app.tsx berkas browser tanpa module.exports, jadi ini satu-
 // satunya cara menguji perilakunya tanpa memuat seluruh React.
 function muatHelperThread() {
   // Batas akhir dipatok ke deklarasi berikutnya, BUKAN offset tetap: offset
@@ -111,7 +116,18 @@ function muatHelperThread() {
     Date,
   };
   vm.createContext(ctx);
-  vm.runInContext(potong, ctx);
+  // TRANSPILED first, exactly as index.html loads a .tsx file. The extracted
+  // slice carries type annotations since app.jsx migrated, and vm would stop
+  // at the first colon.
+  globalThis.self = globalThis;
+  const Babel = require(
+    require("path").join(__dirname, "..", "public/vendor/babel.min.js"),
+  );
+  vm.runInContext(
+    Babel.transform(potong, { presets: ["typescript"], filename: "thread.ts" })
+      .code,
+    ctx,
+  );
   return ctx;
 }
 

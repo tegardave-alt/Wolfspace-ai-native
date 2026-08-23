@@ -142,7 +142,7 @@ describe("mcp-client meneruskan cwd", () => {
   // membuat konfigurasi terlihat benar sambil tetap gagal.
   const fs = require("fs");
   const SRC = fs.readFileSync(
-    require.resolve("../agent/mcp-client.cjs"),
+    require.resolve("../agent/mcp-client.ts"),
     "utf8",
   );
 
@@ -155,6 +155,10 @@ describe("mcp-client meneruskan cwd", () => {
   });
 
   test("alasannya tertulis, supaya tak dihapus lagi", () => {
-    expect(SRC).toMatch(/cwd DITERUSKAN/);
+    // The anchor follows the comment's wording: mcp-client migrated to
+    // TypeScript and its comments were translated, so "cwd DITERUSKAN" became
+    // "cwd IS FORWARDED". What this guards is unchanged — that the REASON stays
+    // written down, so nobody drops the cwd forwarding a second time.
+    expect(SRC).toMatch(/cwd IS FORWARDED/);
   });
 });

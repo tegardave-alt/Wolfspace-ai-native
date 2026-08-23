@@ -29,7 +29,7 @@ const AKAR = path.resolve(__dirname, "..");
 // palsu.
 describe("dependensi hook tidak dipakai sebelum dideklarasikan", () => {
   const src = fs
-    .readFileSync(path.join(AKAR, "public", "app.jsx"), "utf8")
+    .readFileSync(path.join(AKAR, "public", "app.tsx"), "utf8")
     .replace(/\r\n/g, "\n")
     .split("\n");
 
@@ -89,15 +89,16 @@ describe("dependensi hook tidak dipakai sebelum dideklarasikan", () => {
 // tak ada — bukan digagalkan, supaya suite tetap berguna di mesin tanpa
 // peramban. Sudah dijalankan dan lulus di mesin ini: root dirender, bilah atas
 // ada, tombol menu ada, 0 galat konsol, ErrorBoundary tidak muncul.
-const punyaPlaywright = (() => {
-  try {
-    require.resolve("playwright");
-    return true;
-  } catch (_) {
-    return false;
-  }
-})();
-const kalauBisa = punyaPlaywright ? describe : describe.skip;
+// Memeriksa BINER-nya, bukan cuma modulnya.
+//
+// playwright adalah devDependency, jadi require.resolve() berhasil di mana pun
+// npm install pernah jalan — sementara browsernya diunduh TERPISAH oleh
+// `npx playwright install`. Penjaga lama karena itu lolos di CI lalu gagal saat
+// meluncurkan browser, dan kegagalannya terbaca seperti bug aplikasi.
+//
+// CI sekarang memasang Chromium, jadi blok ini JALAN di sana, bukan dilewati.
+const { punyaBrowser, describeKalau } = require("./butuh.cjs");
+const kalauBisa = describeKalau(punyaBrowser());
 
 kalauBisa("aplikasi dirender tanpa galat (butuh playwright)", () => {
   const { spawn } = require("child_process");

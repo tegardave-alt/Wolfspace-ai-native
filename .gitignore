@@ -74,3 +74,21 @@ vendor/js-debug/
 # Aset pra-kompres, hasil scripts/kompres-aset.cjs — dihasilkan, bukan sumber.
 public/**/*.br
 public/**/*.gz
+
+# Python worker artefacts (services/agent-python).
+__pycache__/
+*.pyc
+.pytest_cache/
+
+# Generated from their .ts sources by scripts/build-preload.cjs and
+# scripts/build-main.cjs. NOT committed: CI builds them before packaging (see
+# the "Bangun artefak Electron" step), and the packaged asar is verified to
+# contain both. Tests read them through bangun() rather than from disk, so a
+# fresh clone needs no build before `npm test`.
+electron/main.js
+electron/preload.js
+
+# The renderer, compiled ahead of time by scripts/build-app.cjs. Same reasoning
+# as the Electron artefacts above: built by CI before packaging, and index.html
+# falls back to compiling from source when it is absent.
+public/app.build.js

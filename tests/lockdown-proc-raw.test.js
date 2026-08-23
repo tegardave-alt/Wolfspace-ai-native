@@ -24,7 +24,8 @@ const ROOT = path.resolve(__dirname, "..");
 
 // Dijalankan di proses anak; mencetak satu baris JSON.
 const PROBE = `
-  const T = require(${JSON.stringify(path.join(ROOT, "agent/tools/index.cjs"))});
+  require(${JSON.stringify(path.join(ROOT, "scripts/ts-register.cjs"))});
+  const T = require(${JSON.stringify(path.join(ROOT, "agent/tools/index.ts"))});
   (async () => {
     const ctx = { workspaceRoot: ${JSON.stringify(ROOT)}, sessionId: "uji" };
     const out = {};

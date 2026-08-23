@@ -27,7 +27,7 @@ const {
 } = require("../agent/broker/index.cjs");
 
 const SRC = fs.readFileSync(
-  require.resolve("../agent/broker/zone-process.cjs"),
+  require.resolve("../agent/broker/zone-process.ts"),
   "utf8",
 );
 
@@ -64,7 +64,7 @@ describe("struktur penanda pengurungan", () => {
     // sehingga di Node 20 SETIAP zona mati dengan `bad option` (exit 9) — dan
     // CI dipatok Node 20, jadi 7 dari 15 suite merah pada tiap push. Diukur
     // pada Node 20.15.1 asli, bukan disimpulkan dari dokumentasi.
-    const { flagPermission } = require("../agent/broker/zone-process.cjs");
+    const { flagPermission } = require("../agent/broker/zone-process.ts");
     expect(flagPermission(24, "/w.cjs")).toEqual(["--permission"]);
     expect(flagPermission(23, "/w.cjs")).toEqual(["--permission"]);
 
@@ -80,8 +80,8 @@ describe("struktur penanda pengurungan", () => {
     expect(flagPermission(18, "/w.cjs")).toBeNull();
   });
 
-  test("peringatan TIDAK lewat debug.cjs yang digerbang VERBOSE", () => {
-    // agent/debug.cjs mati secara default. Peringatan turunnya jaminan justru
+  test("peringatan TIDAK lewat debug.ts yang digerbang VERBOSE", () => {
+    // agent/debug.ts mati secara default. Peringatan turunnya jaminan justru
     // paling perlu terlihat pada orang yang tak menyalakan apa pun.
     expect(SRC).toMatch(/process\.stderr\.write/);
     expect(SRC).not.toMatch(/require\(["'].*debug\.cjs?["']\)/);
@@ -137,7 +137,7 @@ describe("penanda sampai ke keluaran yang DIBACA MODEL", () => {
   // justru paling mahal.
   test("capability_exec menyisipkan penanda ke output saat tak terkurung", () => {
     const T = fs.readFileSync(
-      require.resolve("../agent/tools/index.cjs"),
+      require.resolve("../agent/tools/index.ts"),
       "utf8",
     );
     expect(T).toMatch(/TANPA PENGURUNGAN JARINGAN/);

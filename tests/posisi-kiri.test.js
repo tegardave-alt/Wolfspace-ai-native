@@ -22,8 +22,8 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
-const APP = baca("public/app.jsx");
-const KOMP = baca("public/app/Components.jsx");
+const APP = baca("public/app.tsx");
+const KOMP = baca("public/app/Components.tsx");
 const tanpaKomentar = (t) =>
   t
     .split("\n")
@@ -37,7 +37,7 @@ describe("sisi dikelompokkan per SUMBU", () => {
     // — chat lalu diminta selebar sisa yang sudah dipakai orang lain, dan panel
     // terakhir terdorong turun ke baris berikutnya.
     expect(B).toMatch(
-      /const _grup = \(sisi\) => \(sisi === "bawah" \? "bawah" : "mendatar"\)/,
+      /const _grup = \(sisi(?:: \w+)?\) =>\s*\(?sisi === "bawah" \? "bawah" : "mendatar"\)?/,
     );
     expect(B).toMatch(/_jumlahGrup\("mendatar"\)/);
     expect(B).toMatch(/_adaMendatar/);
@@ -49,8 +49,8 @@ describe("sisi dikelompokkan per SUMBU", () => {
 
 describe("urutan visual", () => {
   test("ditentukan SATU tabel, bukan angka yang tersebar", () => {
-    expect(B).toMatch(/const _orderPanel = \(sisi\)/);
-    expect(B).toMatch(/const _orderPembagi = \(sisi\)/);
+    expect(B).toMatch(/const _orderPanel = \(sisi(?:: \w+)?\)/);
+    expect(B).toMatch(/const _orderPembagi = \(sisi(?:: \w+)?\)/);
     expect(B).toMatch(/order: _orderPanel\(sisi\)/);
     expect(B).toMatch(/order: _orderPembagi\(sisi\)/);
   });
@@ -103,7 +103,7 @@ describe("pilihan di menu sesuai sifat panelnya", () => {
     // Bentuk lamanya `ke === "kanan" ? "Kanan" : "Bawah"` — dengan tiga sisi ia
     // akan menamai "kiri" sebagai "Bawah".
     expect(KOMP).toMatch(
-      /const _NAMA_SISI = \{ kanan: "Right", bawah: "Bottom", kiri: "Left" \}/,
+      /const _NAMA_SISI(: [\w<>, ]+)? = \{\s*kanan: "Right",\s*bawah: "Bottom",\s*kiri: "Left",?\s*\}/,
     );
     expect(tanpaKomentar(KOMP)).not.toMatch(
       /ke === "kanan" \? "Kanan" : "Bawah"/,

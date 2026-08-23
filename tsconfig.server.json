@@ -1,0 +1,47 @@
+{
+  // Type checker for server.ts — the backend, ported from CommonJS.
+  //
+  // A SEPARATE project from server/tsconfig.json on purpose. That one covers
+  // server/routes/*.ts, which were written as TypeScript from birth and carry no
+  // debt, so it runs fully strict. This file is a 4600-line port; demanding the
+  // same on arrival would mean annotating hundreds of parameters in one sitting —
+  // the red wall that ends up ignored rather than fixed. The calibration here
+  // mirrors agent/tsconfig.json, which reasoned this out already.
+  //
+  // server.cjs is NOT listed: it is the launcher, and it is CommonJS on purpose.
+  //
+  // scripts/ww.ts rides along here rather than in its own project: server.ts
+  // requires it on every /ww route, so it is backend code that happens to live
+  // under scripts/, and it carries exactly the same port debt.
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "node16",
+    // node16, not "node": the latter is now node10 and TypeScript 7.0 drops it.
+    // The editor flags it today (it ships a newer tsc than the 5.9.3 pinned here),
+    // so leaving it means the repo reads as broken in the editor and clean in CI.
+    //
+    // `"ignoreDeprecations": "6.0"` is not an option: TS 5.9.3 rejects the value
+    // (TS5103), so silencing a future error would break the current check.
+    //
+    // Safe to change here because every one of these projects is noEmit: this
+    // moves how types RESOLVE, never what gets emitted — nothing shipped changes.
+    // Verified at 0 errors on each project before the switch.
+    "moduleResolution": "node16",
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "skipLibCheck": true,
+    "maxNodeModuleJsDepth": 0,
+
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+
+    // The port still requires untyped .cjs siblings; without this every one of
+    // those is an error before a single line has been reviewed.
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["server.ts", "scripts/ww.ts"],
+  "exclude": ["node_modules"]
+}

@@ -1,0 +1,17 @@
+# Python dependencies for WOLFSPACE.
+#
+# Recorded because there was no such file, and its absence had a cost: jedi was
+# missing on this machine, so Python autocomplete answered nothing while looking
+# healthy — jedi_worker.py degrades to a JSON error rather than crashing, and
+# server.ts spawned it at every backend start regardless.
+#
+#   pip install -r requirements.txt
+
+# Python autocomplete in the editor panel (static analysis, no model).
+# Used by jedi_worker.py, spawned from server.ts startJedi().
+jedi>=0.19
+
+# The LangGraph agent orchestrator in services/agent-python/.
+# Only needed to run the Python agent path; the JS agent is the default.
+langgraph>=0.2
+langchain-core>=0.3

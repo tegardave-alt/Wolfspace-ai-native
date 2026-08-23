@@ -19,9 +19,9 @@ const fs = require("fs");
 const os = require("os");
 const path = require("path");
 const { execFileSync } = require("child_process");
-const { KlienDap, mulaiSesi, klienPython } = require("../core/dap.cjs");
+const { KlienDap, mulaiSesi, klienPython } = require("../core/dap.ts");
 
-const SRC = fs.readFileSync(require.resolve("../core/dap.cjs"), "utf8");
+const SRC = fs.readFileSync(require.resolve("../core/dap.ts"), "utf8");
 const tanpaKomentar = (t) =>
   t
     .split("\n")
@@ -328,7 +328,7 @@ kalauDebugpy("sesi debug Python sungguhan (butuh debugpy)", () => {
 // js-debug adalah adapter Node/JavaScript RESMI dari microsoft/vscode-js-debug
 // (MIT) — yang sama dengan yang dipakai VS Code. Tak ada paketnya di npm
 // (@vscode/js-debug dan js-debug-adapter dua-duanya 404), jadi ia diambil dari
-// rilis GitHub lewat scripts/ambil-js-debug.cjs.
+// rilis GitHub lewat scripts/ambil-js-debug.ts.
 //
 // DUA HAL YANG MEMBUATNYA BEDA DARI debugpy, dan dua-duanya sempat menggagalkan
 // percobaan pertama tanpa satu pun pesan galat:
@@ -343,7 +343,7 @@ kalauDebugpy("sesi debug Python sungguhan (butuh debugpy)", () => {
 //   js      berhenti baris=4  x=6 y=7  terpasang=[…,{"baris":4,"sah":true}]
 //   md      GAGAL MULAI: belum ada adapter DAP untuk berkas ini
 describe("pemilihan adapter", () => {
-  const { adapterUntuk } = require("../core/dap-sesi.cjs");
+  const { adapterUntuk } = require("../core/dap-sesi.ts");
 
   test("ekstensi menentukan adapter", () => {
     expect(adapterUntuk("/a/b.py")).toBe("python");
@@ -363,9 +363,9 @@ describe("pemilihan adapter", () => {
     // berkas ke jalur DAP yang lalu ditolak server, yang satu membiarkannya
     // lewat PTY padahal jalur yang lebih baik tersedia.
     const APP = fs
-      .readFileSync(path.join(__dirname, "..", "public", "app.jsx"), "utf8")
+      .readFileSync(path.join(__dirname, "..", "public", "app.tsx"), "utf8")
       .replace(/\r\n/g, "\n");
-    const i = APP.indexOf("const _ADAPTER_DAP = {");
+    const i = APP.search(/const _ADAPTER_DAP(?:: [^=]+)? = \{/);
     expect(i).toBeGreaterThan(0);
     const blok = APP.slice(i, APP.indexOf("};", i));
     for (const e of ["py", "js", "mjs", "cjs", "ts", "tsx", "jsx"])
@@ -392,14 +392,14 @@ describe("pengambil js-debug", () => {
   test("dijalankan sendiri, bukan otomatis saat aplikasi mulai", () => {
     // Mengunduh sesuatu diam-diam saat pemakai menekan Debug adalah hal yang
     // tak boleh dilakukan aplikasi tanpa diminta.
-    const DAP = fs.readFileSync(require.resolve("../core/dap.cjs"), "utf8");
+    const DAP = fs.readFileSync(require.resolve("../core/dap.ts"), "utf8");
     expect(DAP).not.toMatch(/https\.get/);
     expect(DAP).toMatch(/Jalankan: node scripts\/ambil-js-debug\.cjs/);
   });
 });
 
 describe("klien js-debug", () => {
-  const DAP = fs.readFileSync(require.resolve("../core/dap.cjs"), "utf8");
+  const DAP = fs.readFileSync(require.resolve("../core/dap.ts"), "utf8");
   const B = tanpaKomentar(DAP);
 
   test("startDebugging DIJAWAB BERHASIL, bukan ditolak", () => {

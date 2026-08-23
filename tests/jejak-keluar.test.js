@@ -24,6 +24,17 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
+
+// The slice below carries TypeScript annotations since server migrated, and it
+// is written into a script that runs as JavaScript. Transpile it with esbuild —
+// the same tool scripts/ts-register.cjs uses to load that file in production.
+const _ts = (kode) =>
+  require("esbuild").transformSync(kode, {
+    loader: "ts",
+    format: "cjs",
+    target: "es2022",
+  }).code;
+
 const { execFileSync, spawnSync } = require("child_process");
 
 const AKAR = path.resolve(__dirname, "..");
@@ -39,13 +50,16 @@ function jalankan(potongan, opts = {}) {
   const skrip = path.join(dir, "uji.cjs");
   // Bagian jejakKeluar disalin dari server.cjs apa adanya: yang diuji perilaku
   // potongan itu, dan menyalinnya membuat uji tak perlu menyalakan server penuh.
-  const src = fs.readFileSync(path.join(AKAR, "server.cjs"), "utf8");
+  const src = fs.readFileSync(path.join(AKAR, "server.ts"), "utf8");
   const i = src.indexOf("(function jejakKeluar() {");
   const j = src.indexOf("})();", i) + 5;
   expect(i).toBeGreaterThan(0);
   fs.writeFileSync(
     skrip,
-    "const __dirname_asli = __dirname;\n" + src.slice(i, j) + "\n" + potongan,
+    "const __dirname_asli = __dirname;\n" +
+      _ts(src.slice(i, j)) +
+      "\n" +
+      potongan,
     "utf8",
   );
   const r = spawnSync(process.execPath, [skrip], {
@@ -103,7 +117,7 @@ describe("kepergian backend selalu meninggalkan jejak", () => {
   });
 
   test("terpasang di server.cjs, bukan hanya ada sebagai fungsi", () => {
-    const src = fs.readFileSync(path.join(AKAR, "server.cjs"), "utf8");
+    const src = fs.readFileSync(path.join(AKAR, "server.ts"), "utf8");
     expect(src).toMatch(/\(function jejakKeluar\(\) \{/);
     expect(src).toMatch(/process\.on\("exit"/);
     expect(src).toMatch(/process\.on\("unhandledRejection"/);

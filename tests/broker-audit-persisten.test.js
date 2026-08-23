@@ -1,6 +1,6 @@
 // Jejak audit broker harus BERTAHAN, dan tak boleh membawa muatannya.
 //
-// KENAPA ADA. `Broker.audit` hanya array di memori, dan agent/tools/index.cjs
+// KENAPA ADA. `Broker.audit` hanya array di memori, dan agent/tools/index.ts
 // membuat Broker BARU tiap panggilan capability_exec — jadi catatan
 // ALLOW/DENY/BLOCKED mati bersama panggilannya. Terlihat sekali di hasil tool,
 // lalu hilang.
@@ -31,7 +31,7 @@ const path = require("path");
 function muatSegar(dir) {
   process.env.WOLFSPACE_AUDIT_DIR = dir;
   jest.resetModules();
-  return require("../agent/broker/audit-log.cjs");
+  return require("../agent/broker/audit-log.ts");
 }
 
 let dir;
@@ -169,16 +169,20 @@ describe("gagal menulis: tidak melumpuhkan, tidak senyap", () => {
       process.stderr.write = asli;
     }
     // ...tapi kegagalannya HARUS terdengar sekali.
-    expect(teriak).toMatch(/PERINGATAN.*audit/is);
+    // The wording follows the source: audit-log migrated to TypeScript and its
+    // warning is now English. What is guarded is unchanged — the failure must be
+    // audible exactly once, not silent.
+    expect(teriak).toMatch(/WARNING.*audit/is);
   });
 });
 
 describe("broker benar-benar memanggilnya", () => {
-  test("host.cjs mempertahankan tiap catatan, bukan cuma menumpuk di memori", () => {
-    const S = fs.readFileSync(
-      require.resolve("../agent/broker/host.cjs"),
-      "utf8",
-    );
+  // host migrated to TypeScript, so the source read here is host.ts.
+  const HOST = () =>
+    fs.readFileSync(require.resolve("../agent/broker/host.ts"), "utf8");
+
+  test("host.ts mempertahankan tiap catatan, bukan cuma menumpuk di memori", () => {
+    const S = HOST();
     const i = S.indexOf("this.audit.push(entry)");
     const j = S.indexOf("catat(entry)", i);
     expect(i).toBeGreaterThan(-1);
@@ -188,10 +192,15 @@ describe("broker benar-benar memanggilnya", () => {
   test("gagal memuat modul audit tidak mematikan broker", () => {
     // Audit yang mati merugikan; broker yang mati fatal. Urutan prioritasnya
     // harus terlihat di kode.
-    const S = fs.readFileSync(
-      require.resolve("../agent/broker/host.cjs"),
-      "utf8",
-    );
-    expect(S).toMatch(/catch \(_\) \{\s*_al = \{ catat\(\) \{\} \};/);
+    //
+    // The shape moved during the TypeScript port: the fallback now assigns a
+    // local `sink` so _auditLog() can declare a non-optional return type, then
+    // caches it. What is guarded is unchanged — a failed require must degrade to
+    // a no-op sink rather than throw. Matching the catch body instead of the old
+    // `_al = { catat() {} }` literal keeps this test about the BEHAVIOUR and not
+    // about which variable happens to hold it.
+    const S = HOST();
+    expect(S).toMatch(/catch \(_\) \{\s*sink = \{ catat\(\) \{\} \};/);
+    expect(S).toMatch(/_al = sink;/);
   });
 });

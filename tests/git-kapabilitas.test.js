@@ -16,14 +16,14 @@
 
 const fs = require("fs");
 const path = require("path");
-const G = require("../agent/tools/git-tool.cjs");
+const G = require("../agent/tools/git-tool.ts");
 
 const AKAR = path.resolve(__dirname, "..");
 jest.setTimeout(90000);
 
 describe("bentuk: kapabilitas bernama, bukan perintah", () => {
   const src = fs.readFileSync(
-    path.join(AKAR, "agent", "tools", "git-tool.cjs"),
+    path.join(AKAR, "agent", "tools", "git-tool.ts"),
     "utf8",
   );
 
@@ -77,14 +77,40 @@ describe("bentuk: kapabilitas bernama, bukan perintah", () => {
   test("persetujuan user diminta untuk operasi TULIS saja", () => {
     // Sebelum tool ini ada, git hanya bisa lewat bash — yang selalu minta
     // persetujuan. Tanpa gerbang ini, tool baru justru jadi jalan memutar.
+    // The gate moved to agent/penjaga-agent.ts so BOTH orchestrators use one
+    // implementation. Both halves are checked: the logic is in the shared
+    // module, AND self_agent delegates rather than keeping a copy. Checking
+    // only the first would stop noticing a second copy growing back — which is
+    // the drift the extraction exists to prevent.
+    const pj = fs.readFileSync(
+      path.join(AKAR, "agent", "penjaga-agent.ts"),
+      "utf8",
+    );
+    expect(pj).toMatch(/git-tool\.(?:cjs|ts)"\)\.OPERASI/);
+    // Argumen yang tak bisa diurai harus gagal ke arah MEMINTA izin.
+    expect(pj).toMatch(/return true;/);
+
     const sa = fs.readFileSync(
-      path.join(AKAR, "agent", "self_agent.cjs"),
+      path.join(AKAR, "agent", "self_agent.ts"),
       "utf8",
     );
     expect(sa).toMatch(/_perluPersetujuan/);
-    expect(sa).toMatch(/git-tool\.cjs"\)\.OPERASI/);
-    // Argumen yang tak bisa diurai harus gagal ke arah MEMINTA izin.
-    expect(sa).toMatch(/catch \(_\) \{\s*\n\s*return true;/);
+    expect(sa).toMatch(/penjaga-agent\.ts/);
+    expect(sa).not.toMatch(/const EXECUTION_TOOLS = \[/);
+
+    // And the decision itself, not just its text: write asks, read does not.
+    require(require("path").join(AKAR, "scripts", "ts-register.cjs"));
+    const G = require(path.join(AKAR, "agent", "penjaga-agent.ts"));
+    expect(
+      G.perluPersetujuan({
+        function: { name: "git", arguments: '{"operasi":"commit"}' },
+      }),
+    ).toBe(true);
+    expect(
+      G.perluPersetujuan({
+        function: { name: "git", arguments: '{"operasi":"status"}' },
+      }),
+    ).toBe(false);
   });
 });
 

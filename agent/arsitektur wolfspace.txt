@@ -3,7 +3,7 @@
 Status   : Diperbarui dari pembacaan langsung kode. 
            TITIK YANG PERLU DICEK DITANDAI [CEK].
 Referensi: server.cjs (5.546 baris), electron/main.js (1.328 baris),
-           agent/self_agent.cjs (3.345 baris), docs/PETA.md.
+           agent/self_agent.ts (3.345 baris), docs/PETA.md.
 
 -------------------- 1. DUA MODE JALAN --------------------
 
@@ -39,7 +39,7 @@ TANPA membuka port. Jadi `curl 127.0.0.1:8090` kosong padahal aplikasi
                              semua rute REST + SSE.
        | agent loop
        v
-    agent/self_agent.cjs  -> loop ReAct (LangGraph StateGraph), HITL,
+    agent/self_agent.ts  -> loop ReAct (LangGraph StateGraph), HITL,
                              MemorySaver di globalThis.
        | tool dispatcher
        v
@@ -68,7 +68,7 @@ TANPA membuka port. Jadi `curl 127.0.0.1:8090` kosong padahal aplikasi
                                         core.js |  server.cjs  |
                                         (isi backend,   |   |
                                          tanpa port)    v   v
-                                              agent/self_agent.cjs
+                                              agent/self_agent.ts
                                                    |   |
                               ------------------ tools -----------------
                               file-tools - disk-tools - exec-tools -
@@ -79,7 +79,7 @@ TANPA membuka port. Jadi `curl 127.0.0.1:8090` kosong padahal aplikasi
                                                    |
                               MCP: agent/mcp-client.cjs -> config/mcp.json
                               Cloud: agent/cloud.cjs -> ~/.wolfspace/cloud-keys.json
-                              Workspace: scripts/ww.cjs (repo git per folder)
+                              Workspace: scripts/ww.ts (repo git per folder)
                               Memori/RAG: agent/rag.cjs -> ~/.wolfspace/rag/<key>/index.json
 
   Komponen sekunder yang hidup terpisah:
@@ -92,7 +92,7 @@ TANPA membuka port. Jadi `curl 127.0.0.1:8090` kosong padahal aplikasi
     jedi_worker.py                    -> worker autocomplete Python (Jedi)
     scripts/langgraph-flow-server.cjs -> server alur LLM standalone
     scripts/mcp-http-bridge.cjs       -> jembatan MCP via HTTP
-    scripts/ww.cjs                    -> manager workspace + git
+    scripts/ww.ts                    -> manager workspace + git
 
 -------------------- 4. SATU LANGKAH AGENT (klik sampai disk) --------------------
 
@@ -100,7 +100,7 @@ TANPA membuka port. Jadi `curl 127.0.0.1:8090` kosong padahal aplikasi
     | streamSelfAgent(payload) --"WOLFSPACE:stream"--> electron/main.js
     |                                                     | core().selfAgentStream
     v                                                     v
-  agent/self_agent.cjs (LangGraph StateGraph)
+  agent/self_agent.ts (LangGraph StateGraph)
     | state di-checkpoint ke MemorySaver (globalThis.__wolfspaceAgentMemory)
     | task_checklist disuntik ulang TIAP langkah
     | panggil tool --> agent/tools/index.cjs (runSelfTool)
@@ -320,7 +320,7 @@ DAFTAR RUTE INLINE server.cjs (dari pembacaan req.url):
 
 -------------------- 6. AGENT (agent/) --------------------
 
-  self_agent.cjs (3.345) - LOOP UTAMA.
+  self_agent.ts (3.345) - LOOP UTAMA.
     - LangGraph dimuat LAZY (lg()) - dependensi termahal (~1 detik / 570
       modul), dibayar hanya saat panggilan agent pertama.
     - MemorySaver DI globalThis (memoriAgen()) supaya checkpointer bertahan
@@ -435,7 +435,6 @@ DAFTAR RUTE INLINE server.cjs (dari pembacaan req.url):
     tak pernah ke disk. Kenapa: broker menolak path di luar cakupan workspace;
     jembatan ini membuat attach hidup tanpa melonggarkan pengurungan.
   jsconfig.json - konfigurasi tsc untuk kode agent.
-  scripts/generate-docs.cjs - bangun docs/prompts.md dari config/prompts.json.
   CATATAN PENTING: banyak file punya komentar header PANJANG yang sengaja
   menjelaskan bug yang pernah terjadi + mengapa desain begini. Itu dokumentasi
   hidup; jangan dihapus ringan saat revisi.
@@ -533,7 +532,7 @@ DAFTAR RUTE INLINE server.cjs (dari pembacaan req.url):
   config/prompts.json - SINGLE SOURCE OF TRUTH system prompt.
     version, updatedAt, description; prompts: self_agent (text + metadata +
     principles), chat_general, chat_coding; bagian routing yang memetakan
-    prompters (prompts.cjs:pickSystem, self_agent.cjs:selfAgentStream,
+    prompters (prompts.cjs:pickSystem, self_agent.ts:selfAgentStream,
     sysprompt_opt.cjs:optimizeInBackground, chat.cjs:chatStream).
   config/mcp.json + mcp.example.json - definisi server MCP (stdio) untuk
     agent/mcp-client.cjs.
@@ -546,7 +545,7 @@ DAFTAR RUTE INLINE server.cjs (dari pembacaan req.url):
   app.cjs        - peluncur Electron untuk npm run app.
   wsl-app.cjs    - peluncur mode WSL (spawn backend di distro + Electron
                    mengarah ke url-nya).
-  ww.cjs         (673) - manager workspace: create/adopt/list/watch.
+  ww.ts         (673) - manager workspace: create/adopt/list/watch.
                    SETIAP folder = repo git INDEPENDEN + branch sendiri
                    (bukan worktree berbagi riwayat). Prototype terintegrasi
                    ke endpoint /ww/* lewat server.cjs.
@@ -558,7 +557,6 @@ DAFTAR RUTE INLINE server.cjs (dari pembacaan req.url):
   kompres-aset.cjs - memproduksi .br/.gz untuk aset.
   setup.ps1/.sh, start-models.ps1/.sh, start.ps1, app.ps1, launch.ps1,
   Wolfspace.cmd - peluncur/persiapan.
-  patch_*.js / build-app.js, ambil-js-debug.cjs - patch ikon/build lain.
   three/, reactflow/, appcontainer/, ikon-bahasa/ - aset vendor/build.
 
 -------------------- 12. FRONTEND (public/) --------------------
@@ -840,7 +838,6 @@ WOLFSPACE/
                     |-- posix.cjs
                     |-- windows.cjs
                 |-- scripts/
-                    |-- generate-docs.cjs
                 |-- tools/
                     |-- appcontainer-jail.cjs
                     |-- arch-tools.cjs
@@ -873,7 +870,7 @@ WOLFSPACE/
                 |-- safe-edit.cjs
                 |-- sandbox.cjs
                 |-- sandbox-policy.cjs
-                |-- self_agent.cjs
+                |-- self_agent.ts
                 |-- skills.cjs
                 |-- snapshot.cjs
                 |-- sysprompt_opt.cjs
@@ -928,7 +925,7 @@ WOLFSPACE/
                 |-- stress.cjs
                 |-- telemetri-ke-n8n.cjs
                 |-- wsl-app.cjs
-                |-- ww.cjs
+                |-- ww.ts
             |-- skills/
                 |-- file-organizer.cjs
             |-- tests/
@@ -1152,7 +1149,6 @@ WOLFSPACE/
         |-- posix.cjs
         |-- windows.cjs
     |-- scripts/
-        |-- generate-docs.cjs
     |-- tools/
         |-- appcontainer-jail.cjs
         |-- arch-tools.cjs
@@ -1188,7 +1184,7 @@ WOLFSPACE/
     |-- safe-edit.cjs
     |-- sandbox.cjs
     |-- sandbox-policy.cjs
-    |-- self_agent.cjs
+    |-- self_agent.ts
     |-- skills.cjs
     |-- snapshot.cjs
     |-- sysprompt_opt.cjs
@@ -1304,7 +1300,6 @@ WOLFSPACE/
                         |-- posix.cjs
                         |-- windows.cjs
                     |-- scripts/
-                        |-- generate-docs.cjs
                     |-- tools/
                         |-- arch-tools.cjs
                         |-- bash-jail.cjs
@@ -1334,7 +1329,7 @@ WOLFSPACE/
                     |-- safe-edit.cjs
                     |-- sandbox.cjs
                     |-- sandbox-policy.cjs
-                    |-- self_agent.cjs
+                    |-- self_agent.ts
                     |-- skills.cjs
                     |-- snapshot.cjs
                     |-- sysprompt_opt.cjs
@@ -1650,7 +1645,7 @@ WOLFSPACE/
                     |-- test.html
                     |-- tsconfig.json
                 |-- scripts/
-                    |-- ww.cjs
+                    |-- ww.ts
                 |-- server/
                     |-- routes/
                         |-- cloud.cjs
@@ -2331,14 +2326,9 @@ WOLFSPACE/
         |-- entry.js
     |-- ambil-js-debug.cjs
     |-- app.cjs
-    |-- build-app.js
     |-- kompres-aset.cjs
     |-- langgraph-flow-server.cjs
     |-- mcp-http-bridge.cjs
-    |-- patch_agent_icon_safe.js
-    |-- patch_app_icon.js
-    |-- patch_app_icon_regex.js
-    |-- patch_fs_icon_safe.js
     |-- profil-beku.cjs
     |-- setup.ps1
     |-- setup.sh
@@ -2347,7 +2337,7 @@ WOLFSPACE/
     |-- stress.cjs
     |-- telemetri-ke-n8n.cjs
     |-- wsl-app.cjs
-    |-- ww.cjs
+    |-- ww.ts
 |-- server/
     |-- routes/
         |-- cloud.cjs
@@ -2522,31 +2512,26 @@ WOLFSPACE/
 |-- .gitignore
 |-- _crash.log
 |-- _memory_anomaly.log
-|-- _webp2png.mjs
 |-- agent-leak-report.md
 |-- agent-load-report.md
 |-- app.ps1
 |-- auto-commit.bat
 |-- auto-commit.ps1
-|-- boot.js
 |-- bun.lock
 |-- config.json
 |-- core.js
 |-- desktop.ini
 |-- electron-load-report.md
-|-- fix-asar.js
 |-- jedi_worker.py
 |-- launch.ps1
 |-- LICENSE
 |-- load-report.md
 |-- package.json
 |-- package-lock.json
-|-- patch-asar.mjs
 |-- playwright.config.cjs
 |-- process-manager.cjs
 |-- README.md
 |-- run.ps1.txt
-|-- scan-modules.js
 |-- server.cjs
 |-- server.log
 |-- server_disk_patch.txt

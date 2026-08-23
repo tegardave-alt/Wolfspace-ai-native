@@ -20,11 +20,11 @@ const os = require("os");
 const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
-const plugins = require("../agent/plugins.cjs");
+const plugins = require("../agent/plugins.ts");
 
 describe("pintu pemasangan bukan milik model", () => {
   const DEF = fs.readFileSync(
-    require.resolve("../agent/tools/tool-definitions.cjs"),
+    require.resolve("../agent/tools/tool-definitions.ts"),
     "utf8",
   );
   // Komentar dibuang supaya catatan sejarah (yang memang menyebut namanya) tak
@@ -41,7 +41,7 @@ describe("pintu pemasangan bukan milik model", () => {
   test("alasannya ikut tertulis, bukan cuma dihapus", () => {
     // Penghapusan tanpa sebab akan dikembalikan orang berikutnya yang merasa
     // tool-nya "hilang".
-    expect(DEF).toMatch(/skill_install DICABUT/);
+    expect(DEF).toMatch(/skill_install is WITHDRAWN/);
     expect(DEF).toMatch(/EXECUTION_TOOLS/);
   });
 
@@ -49,7 +49,7 @@ describe("pintu pemasangan bukan milik model", () => {
     // Yang dicabut pintunya ke model, bukan fungsinya. UI (dan jalur HITL nanti)
     // masih perlu memanggil ini.
     const IDX = fs.readFileSync(
-      require.resolve("../agent/tools/index.cjs"),
+      require.resolve("../agent/tools/index.ts"),
       "utf8",
     );
     expect(IDX).toMatch(/name === "skill_install"/);
@@ -127,11 +127,8 @@ describe("manifest divalidasi, bukan dipercaya", () => {
   });
 
   test("modul ini tak pernah memuat kode plugin", () => {
-    // Inti bedanya dengan skills.cjs, yang me-require plugin ke proses main.
-    const SRC = fs.readFileSync(
-      require.resolve("../agent/plugins.cjs"),
-      "utf8",
-    );
+    // Inti bedanya dengan skills.ts, yang me-require plugin ke proses main.
+    const SRC = fs.readFileSync(require.resolve("../agent/plugins.ts"), "utf8");
     expect(SRC).not.toMatch(/require\(\s*(dir|filePath|entry|p\.dir)/);
     expect(SRC).not.toMatch(/\bnew Function\b|\beval\(/);
   });
@@ -157,17 +154,14 @@ describe("persetujuan user, bukan deklarasi diri", () => {
   test("persetujuan basi tak menghidupkan apa pun", () => {
     // Nama yang disetujui tapi plugin-nya sudah dihapus dari disk harus
     // menghasilkan NOL kapabilitas — syaratnya dua, dan keduanya wajib.
-    const SRC = fs.readFileSync(
-      require.resolve("../agent/plugins.cjs"),
-      "utf8",
-    );
+    const SRC = fs.readFileSync(require.resolve("../agent/plugins.ts"), "utf8");
     expect(SRC).toMatch(/ada\.has\(n\)/);
   });
 });
 
 describe("kapabilitas plugin masuk genesis, sekali, saat dibekukan", () => {
   const CC = fs.readFileSync(
-    require.resolve("../agent/broker/commandchain.cjs"),
+    require.resolve("../agent/broker/commandchain.ts"),
     "utf8",
   );
 
@@ -176,27 +170,30 @@ describe("kapabilitas plugin masuk genesis, sekali, saat dibekukan", () => {
     expect(CC).toMatch(/KOSAKATA_DEFAULT\.concat\(kapPlugin\)/);
   });
 
-  test("kegagalan memuat plugins.cjs -> nol kapabilitas, bukan crash", () => {
+  test("kegagalan memuat plugins.ts -> nol kapabilitas, bukan crash", () => {
     expect(CC).toMatch(/kapPlugin = \[\];/);
   });
 
   test("ruleset sesi tetap BEKU", () => {
-    const cc = require("../agent/broker/commandchain.cjs");
+    const cc = require("../agent/broker/commandchain.ts");
     const rs = cc.sesiRuleset();
     expect(Object.isFrozen(rs)).toBe(true);
     expect(Object.isFrozen(rs.kapabilitas)).toBe(true);
   });
 
   test("plugin yang tak disetujui DITOLAK admission", () => {
-    const cc = require("../agent/broker/commandchain.cjs");
+    const cc = require("../agent/broker/commandchain.ts");
     const rs = cc.buatRuleset({ kapabilitas: ["readFile"] });
     const v = cc.periksa(rs, plugins.kapabilitas("kaggle"));
     expect(v.allow).toBe(false);
-    expect(v.alasan).toMatch(/di luar kosakata genesis/);
+    // Wording follows the source: commandchain migrated to TypeScript and its
+    // messages are English now. What is guarded is unchanged — the denial must
+    // say the capability is outside the frozen genesis vocabulary.
+    expect(v.alasan).toMatch(/outside the genesis vocabulary/);
   });
 
   test("plugin yang disetujui DIIZINKAN", () => {
-    const cc = require("../agent/broker/commandchain.cjs");
+    const cc = require("../agent/broker/commandchain.ts");
     const rs = cc.buatRuleset({ kapabilitas: ["plugin.kaggle"] });
     expect(cc.periksa(rs, "plugin.kaggle").allow).toBe(true);
   });
@@ -294,10 +291,7 @@ describe("pasang & copot: pintu user, dengan penjaga jalur", () => {
   test("pemasangan tak pernah mengunduh atau menyalin kode", () => {
     // skill_install dulu menerima URL. Jalur itu sengaja tak dihidupkan lagi:
     // yang ditulis hanya manifest, yaitu CARA MENJALANKAN sesuatu yang sudah ada.
-    const SRC = fs.readFileSync(
-      require.resolve("../agent/plugins.cjs"),
-      "utf8",
-    );
+    const SRC = fs.readFileSync(require.resolve("../agent/plugins.ts"), "utf8");
     expect(SRC).not.toMatch(/https?:\/\/|fetch\(|https\.get|copyFileSync/);
   });
 });

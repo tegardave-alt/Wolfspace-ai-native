@@ -21,6 +21,15 @@
 const fs = require("fs");
 const path = require("path");
 
+// electron/main.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk: the
+// assertions below describe what the build produces.
+const bangunMain = () => require("../scripts/build-main.cjs").bangun();
+
+// electron/preload.js is generated and NOT committed, so it may not exist in a
+// fresh clone. Building it here is also more honest than reading disk.
+const bangunPreload = () => require("../scripts/build-preload.cjs").bangun();
+
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
@@ -34,7 +43,7 @@ const tanpaKomentar = (t) =>
     .split("\n")
     .filter((b) => !/^\s*(\/\/|\*|\/\*)/.test(b))
     .join("\n");
-const SRC = baca("public/app/usePreviewPanel.jsx");
+const SRC = baca("public/app/usePreviewPanel.tsx");
 
 // Fungsinya DIAMBIL dari sumber lalu dijalankan — bukan ditulis ulang menurut
 // tafsiran, supaya yang diuji memang jalur produksi.
@@ -49,16 +58,29 @@ const ambilConst = (nama) => {
   return SRC.slice(i, SRC.indexOf(";\n", i) + 1);
 };
 
-const tafsirkanAlamat = eval(
+// The extracted source is TRANSPILED first, exactly as index.html loads a .tsx
+// file. Since usePreviewPanel migrated, that source carries type annotations —
+// and a raw eval() stops at the first colon. Transpiling here preserves this
+// file's claim: what runs is the production path, not a reinterpretation.
+globalThis.self = globalThis;
+const Babel = require(
+  require("path").join(__dirname, "..", "public/vendor/babel.min.js"),
+);
+const _sumberGabungan =
   "(function(){" +
-    "const localStorage = undefined;" + // paksa jalur bawaan mesin cari
-    ambilConst("_EKSTENSI_BERKAS") +
-    ambilConst("_BENTUK_HOST") +
-    ambilConst("_BENTUK_LOKAL") +
-    ambilConst("_MESIN_BAWAAN") +
-    ambil("_mesinCari") +
-    ambil("tafsirkanAlamat") +
-    "return tafsirkanAlamat;})()",
+  "const localStorage = undefined;" + // paksa jalur bawaan mesin cari
+  ambilConst("_EKSTENSI_BERKAS") +
+  ambilConst("_BENTUK_HOST") +
+  ambilConst("_BENTUK_LOKAL") +
+  ambilConst("_MESIN_BAWAAN") +
+  ambil("_mesinCari") +
+  ambil("tafsirkanAlamat") +
+  "return tafsirkanAlamat;})()";
+const tafsirkanAlamat = eval(
+  Babel.transform(_sumberGabungan, {
+    presets: ["typescript"],
+    filename: "omnibox.ts",
+  }).code,
 );
 
 describe("berkas tetap menang — fungsi asli panel tak boleh rusak", () => {
@@ -189,9 +211,9 @@ describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
   //   WebContentsView : WebContents penuh, seperti tab browser, dipasang
   //               sebagai lapisan di atas jendela. Tak ada pembatasan frame
   //               yang berlaku padanya.
-  const MAIN = baca("electron/main.js");
-  const PRELOAD = baca("electron/preload.js");
-  const APP = baca("public/app.jsx");
+  const MAIN = bangunMain();
+  const PRELOAD = bangunPreload();
+  const APP = baca("public/app.tsx");
 
   test("dua jalur buntu itu benar-benar sudah dilepas", () => {
     // webviewTag menyala = Electron crash lagi begitu panel dipakai.
@@ -296,7 +318,7 @@ describe("navigate() memakai penafsir ini, bukan cabang lamanya", () => {
 // `try { } catch (_) {}`, jadi kemungkinan (2) hilang tanpa jejak. Berkas ini
 // mengunci agar tiap kemungkinan meninggalkan catatan yang bisa dibaca.
 describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
-  const MAIN2 = baca("electron/main.js");
+  const MAIN2 = bangunMain();
 
   test("tidak ada lagi catch kosong yang menelan sebabnya", () => {
     // Komentar dibuang dulu: catatan tentang KENAPA bentuk itu ditinggalkan
@@ -362,10 +384,18 @@ describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
 //   site isolation dimatikan          -> TETAP GAGAL
 //   sandbox: false pada view ini saja -> berhasil, 2022 karakter ter-render
 describe("kurungan view browser dilonggarkan seperlunya saja", () => {
-  const M = baca("electron/main.js");
+  const M = bangunMain();
   const t = M.slice(
     M.indexOf("function _brBuat()"),
     M.indexOf("function browserAksi("),
+  );
+  // The REASONING lives in electron/main.ts. main.js is built from it by
+  // scripts/build-main.cjs and esbuild strips comments, so asserting the
+  // explanation against the build output would only prove it is absent.
+  const S = baca("electron/main.ts");
+  const ts = S.slice(
+    S.indexOf("function _brBuat()"),
+    S.indexOf("function browserAksi("),
   );
 
   test("sandbox dimatikan HANYA untuk view ini, bukan seluruh aplikasi", () => {
@@ -388,7 +418,7 @@ describe("kurungan view browser dilonggarkan seperlunya saja", () => {
 
   test("alasannya tercatat dengan angkanya, bukan cuma 'tidak jalan'", () => {
     for (const jejak of ["ERR_FAILED", "onErrorOccurred", "site isolation"])
-      expect(t).toContain(jejak);
+      expect(ts).toContain(jejak);
   });
 });
 
@@ -407,7 +437,7 @@ describe("kurungan view browser dilonggarkan seperlunya saja", () => {
 describe("audio panel browser", () => {
   // Komentar dibuang: catatan tentang KENAPA pilihan ini diambil justru harus
   // tetap ada, dan ia mengutip nama-nama saklarnya.
-  const M = tanpaKomentar(baca("electron/main.js"));
+  const M = tanpaKomentar(bangunMain());
 
   test("HANYA ADA SATU appendSwitch disable-features", () => {
     // Ini yang paling mudah salah: panggilan kedua MENIMPA yang pertama, tidak

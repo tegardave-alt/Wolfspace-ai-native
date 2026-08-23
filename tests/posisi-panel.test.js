@@ -35,9 +35,9 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
-const APP = baca("public/app.jsx");
+const APP = baca("public/app.tsx");
 const CSS = baca("public/styles.css");
-const KOMP = baca("public/app/Components.jsx");
+const KOMP = baca("public/app/Components.tsx");
 
 // Dipakai setiap kali asersinya berbentuk "TIDAK boleh ada X". Berkas-berkas
 // ini penuh catatan tentang KENAPA sebuah bentuk ditinggalkan, dan catatan itu
@@ -150,7 +150,9 @@ describe("satu penggeser untuk dua sumbu", () => {
     // Dulu ada dua salinan identik yang keduanya memakai clientX. Begitu panel
     // bisa pindah ke bawah, menggeser pembagi mendatar mengubah ukuran memakai
     // koordinat yang salah sumbu.
-    expect(APP).toMatch(/const geserPembagi = \(sumbu, set\)/);
+    expect(APP).toMatch(
+      /const geserPembagi = \(sumbu(?:: \w+)?, set(?:: \w+)?\)/,
+    );
     expect(APP).toMatch(/sumbu === "x" \? ev\.clientX : ev\.clientY/);
     expect(APP).not.toMatch(/const onPanelDividerDown/);
     expect(APP).not.toMatch(/const onTerminalDividerDown/);
@@ -204,8 +206,8 @@ describe("pilihannya bertahan dan divalidasi", () => {
 // sendiri (state `posisi`, penyimpanan, gaya per-sisi, penggeser dua sumbu)
 // TETAP UTUH dan tetap diuji di atas; yang hilang hanya kontrol yang terlihat.
 //
-// Untuk mengembalikannya: pasang lagi tombol di TopBar (Components.jsx) yang
-// memanggil setPosisi, lalu oper prop `posisi`/`setPosisi` dari app.jsx.
+// Untuk mengembalikannya: pasang lagi tombol di TopBar (Components.tsx) yang
+// memanggil setPosisi, lalu oper prop `posisi`/`setPosisi` dari app.tsx.
 // Sementara ini posisinya bisa diubah lewat:
 //   localStorage.setItem("wolfspace_posisi",
 //     JSON.stringify({ preview: "bawah", terminal: "bawah" }))
@@ -224,7 +226,7 @@ describe("pilihannya bertahan dan divalidasi", () => {
 // Sebelum `align-self: stretch`, menu muncul di y=43 — MENINDIH garis bawah
 // bilah, karena `top: 100%` mengacu ke tinggi TOMBOL (28px), bukan tinggi bilah.
 describe("menu tata letak di bilah atas", () => {
-  const K = baca("public/app/Components.jsx");
+  const K = baca("public/app/Components.tsx");
   const C = baca("public/styles.css");
 
   test("tombolnya putih, tidak diredupkan seperti tetangganya", () => {
@@ -275,7 +277,7 @@ describe("menu tata letak di bilah atas", () => {
     expect(i).toBeGreaterThan(0);
   });
 
-  test("prop-nya dioper lagi dari app.jsx", () => {
+  test("prop-nya dioper lagi dari app.tsx", () => {
     expect(APP).toMatch(/posisi=\{posisi\}/);
     expect(APP).toMatch(/setPosisi=\{setPosisi\}/);
   });
@@ -297,7 +299,7 @@ describe("menu tata letak di bilah atas", () => {
 //    layar hampa, dan pemakai tak punya petunjuk bahwa jalan kembalinya ada di
 //    menu ⋮. Itu jebakan yang dibuat sendiri.
 describe("menyembunyikan chat", () => {
-  const K = baca("public/app/Components.jsx");
+  const K = baca("public/app/Components.tsx");
   const C = baca("public/styles.css");
 
   test("chat-col hanya dirender saat tampil", () => {
@@ -350,8 +352,10 @@ describe("menyembunyikan chat", () => {
     // Code ikut dihitung sejak ia jadi panel sungguhan — kalau tidak,
     // menyembunyikan chat saat HANYA Code terbuka ditolak padahal layarnya
     // tidak akan kosong.
+    // \s+ after "=": prettier splits this declaration across two lines. What is
+    // guarded is all FOUR conditions, not whether they fit on one line.
     expect(K).toMatch(
-      /const buntu = !nilai && !panelOpen && !terminalOpen && !logicOpen/,
+      /const buntu =\s+!nilai && !panelOpen && !terminalOpen && !logicOpen/,
     );
     expect(K).toMatch(/disabled=\{buntu\}/);
     expect(APP).toMatch(
@@ -373,9 +377,9 @@ describe("menyembunyikan chat", () => {
 // berkas hasil agent. Melonggarkan editornya saja tak cukup: tanpa rute tulis,
 // ketikan pemakai hidup di memori lalu hilang begitu berkas lain dibuka.
 describe("panel kode bisa disunting dan disimpan", () => {
-  const APP2 = baca("public/app.jsx");
-  const SRV = baca("server.cjs");
-  const K = baca("public/app/Components.jsx");
+  const APP2 = baca("public/app.tsx");
+  const SRV = baca("server.ts");
+  const K = baca("public/app/Components.tsx");
   const PANE = APP2.slice(
     APP2.indexOf("function LogicCodePane("),
     APP2.indexOf("function bahasaMonaco("),
@@ -420,7 +424,7 @@ describe("panel kode bisa disunting dan disimpan", () => {
     );
     for (const n of [".env", "id.pem", "a.key", "cloud-keys.json"])
       expect(pola.test(n)).toBe(true);
-    expect(pola.test("app.jsx")).toBe(false);
+    expect(pola.test("app.tsx")).toBe(false);
   });
 
   test("perbandingan pakai path.relative, bukan startsWith", () => {
@@ -441,7 +445,7 @@ describe("panel kode bisa disunting dan disimpan", () => {
   });
 
   test("menyimpan lewat fetch path-relatif, BUKAN jalur IPC sendiri", () => {
-    // app.jsx sudah memasang shim yang membelokkan tiap fetch("/…") ke
+    // app.tsx sudah memasang shim yang membelokkan tiap fetch("/…") ke
     // IPC.invoke("api") di desktop. Menulis jalur IPC lagi di sini membuat
     // salinan kedua dari transport yang sama — dan dua salinan itu sempat
     // tidak sepakat soal bentuk balasannya (r.body vs objek biasa).
@@ -479,8 +483,8 @@ describe("panel kode bisa disunting dan disimpan", () => {
 // Dua tombol yang dulu ada di header pohon (Search, Collapse all) tak satu pun
 // punya onClick — mereka hiasan sejak awal.
 describe("berkas baru di pohon Logic", () => {
-  const APP3 = baca("public/app.jsx");
-  const SRV3 = baca("server.cjs");
+  const APP3 = baca("public/app.tsx");
+  const SRV3 = baca("server.ts");
   // Dipotong sampai fungsi BERIKUTNYA sesudahnya. Memakai penanda yang
   // letaknya lebih AWAL di berkas menghasilkan irisan kosong, dan uji yang
   // berbentuk "tidak boleh ada X" lalu lulus tanpa memeriksa apa pun.
@@ -531,8 +535,10 @@ describe("berkas baru di pohon Logic", () => {
   });
 
   test("berkas baru masuk daftar DAN langsung dibuka", () => {
-    expect(APP3).toMatch(/onBuat=\{\(rel\) =>/);
-    const sambung = APP3.slice(APP3.indexOf("onBuat={(rel) =>")).slice(0, 600);
+    expect(APP3).toMatch(/onBuat=\{\(rel(?:: \w+)?\) =>/);
+    const sambung = APP3.slice(
+      APP3.search(/onBuat=\{\(rel(?:: \w+)?\) =>/),
+    ).slice(0, 600);
     expect(sambung).toMatch(/setDevFiles\(/);
     // Membuka berkas kini juga MEMBUKA TAB-nya, bukan sekadar memilihnya.
     expect(sambung).toMatch(/bukaTab\(rel\)/);
@@ -564,8 +570,8 @@ describe("berkas baru di pohon Logic", () => {
 // menutupi seluruh area split. Itulah satu-satunya alasan ia cuma bisa penuh
 // layar dan tak pernah bisa berbagi tempat dengan terminal atau preview.
 describe("Code bisa dibagi tempat dengan panel lain", () => {
-  const A = baca("public/app.jsx");
-  const K2 = baca("public/app/Components.jsx");
+  const A = baca("public/app.tsx");
+  const K2 = baca("public/app/Components.tsx");
   const bersih2 = tanpaKomentar(A);
 
   test("bukan lagi lapisan absolut yang menutupi split", () => {
@@ -617,8 +623,8 @@ describe("Code bisa dibagi tempat dengan panel lain", () => {
 // sebagai `cmd + "\r"` ke /api/terminal/write, dan keluarannya kembali lewat
 // /api/terminal/read berisi teks yang dicetak skripnya.
 describe("Run menjalankan berkas di terminal", () => {
-  const A = baca("public/app.jsx");
-  const SC = baca("public/app/Screens.jsx");
+  const A = baca("public/app.tsx");
+  const SC = baca("public/app/Screens.tsx");
   const bersihA = tanpaKomentar(A);
   const bersihSC = tanpaKomentar(SC);
 
@@ -629,7 +635,7 @@ describe("Run menjalankan berkas di terminal", () => {
     if (i < 0) throw new Error("tak ketemu: " + n);
     return A.slice(i, A.indexOf("\n}", i) + 2);
   };
-  const iPeta = A.indexOf("const _PERINTAH_JALAN =");
+  const iPeta = A.search(/const _PERINTAH_JALAN(?:: [^=]+)? =/);
   const src =
     A.slice(iPeta, A.indexOf("};", iPeta) + 2) +
     "\n" +
@@ -639,7 +645,17 @@ describe("Run menjalankan berkas di terminal", () => {
     "\nperintahJalankan";
   // Namanya dibedakan dari yang di dalam `src`: eval berbagi lingkup dengan
   // blok ini, jadi nama yang sama bertabrakan sebelum satu pun uji jalan.
-  const jalankanCmd = eval(src);
+  // TRANSPILED first, exactly as index.html loads a .tsx file. Since app.jsx
+  // migrated, the extracted source carries type annotations and a raw eval()
+  // stops at the first colon.
+  globalThis.self = globalThis;
+  const Babel = require(
+    require("path").join(__dirname, "..", "public/vendor/babel.min.js"),
+  );
+  const jalankanCmd = eval(
+    Babel.transform(src, { presets: ["typescript"], filename: "jalan.ts" })
+      .code,
+  );
 
   test("perintahnya cocok dengan ekstensinya", () => {
     expect(jalankanCmd("/a/b.js")).toBe('node "/a/b.js"');
@@ -694,7 +710,7 @@ describe("Run menjalankan berkas di terminal", () => {
     // Python dibelokkan ke DAP; sisanya tetap lewat PTY.
     // Sejak js-debug menyusul, yang menentukan bukan lagi satu jenis debugger
     // melainkan peta ekstensi yang punya adapter DAP.
-    expect(j).toMatch(/_ADAPTER_DAP\[ekstensiDari\(pathAbsolut\)\]/);
+    expect(j).toMatch(/_ADAPTER_DAP\[ekstensiDari\(pathAbsolut\)!?\]/);
     expect(j).toMatch(/mulaiDap\(/);
   });
 

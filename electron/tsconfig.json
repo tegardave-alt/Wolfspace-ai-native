@@ -1,0 +1,28 @@
+{
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "node16",
+    // node16, not "node": the latter is now node10 and TypeScript 7.0 drops it.
+    // The editor flags it today (it ships a newer tsc than the 5.9.3 pinned here),
+    // so leaving it means the repo reads as broken in the editor and clean in CI.
+    //
+    // `"ignoreDeprecations": "6.0"` is not an option: TS 5.9.3 rejects the value
+    // (TS5103), so silencing a future error would break the current check.
+    //
+    // Safe to change here because every one of these projects is noEmit: this
+    // moves how types RESOLVE, never what gets emitted — nothing shipped changes.
+    // Verified at 0 errors on each project before the switch.
+    "moduleResolution": "node16",
+    "lib": ["ES2022", "DOM"],
+    "types": ["node"],
+    "strict": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true
+  },
+  // Only the sources. preload.js and main.js are both GENERATED output —
+  // scripts/build-preload.cjs and scripts/build-main.cjs write them — so they are
+  // never type-checked here; their .ts sources are.
+  "include": ["preload.ts", "main.ts"],
+  "exclude": ["node_modules"]
+}

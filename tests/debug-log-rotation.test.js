@@ -20,7 +20,7 @@ const os = require("os");
 const path = require("path");
 
 const ROOT = path.resolve(__dirname, "..");
-const DEBUG = path.join(ROOT, "agent", "debug.cjs").replace(/\\/g, "/");
+const DEBUG = path.join(ROOT, "agent", "debug.ts").replace(/\\/g, "/");
 const LOG = path.join(os.tmpdir(), "WOLFSPACE-debug.log");
 const PREV = LOG + ".1";
 
@@ -46,6 +46,13 @@ describe("rotasi log debug", () => {
     try {
       const r = runProbe(`
         const fs = require("fs");
+        // Diturunkan dari ROOT, bukan ditulis sebagai path absolut.
+        //
+        // Baris ini sempat memuat path mesin penulisnya, yang berjalan mulus di
+        // sana dan gagal di mana pun selain itu — CI menemukannya dengan
+        // "Cannot find module 'c:/Users/dave/WOLFSPACE/...'". Probe ini proses
+        // BARU, jadi hook .ts memang harus dipasang; alamatnya yang salah.
+        require(${JSON.stringify(path.join(ROOT, "scripts", "ts-register.cjs"))});
         const d = require(${JSON.stringify(DEBUG)});
         // config.verbose aktif di repo ini, jadi dlog menulis SETIAP event ke
         // stdout. Dengan 900 x 64KB itu membanjiri buffer proses anak (ENOBUFS)
@@ -87,7 +94,7 @@ describe("rotasi log debug", () => {
   test("penulisan berkas menghormati config.debug (dulu tidak)", () => {
     // Dulu appendFileSync berjalan TANPA SYARAT, sehingga `debug: false` hanya
     // membungkam konsol sementara berkasnya tetap tumbuh 43 MB/hari.
-    const src = fs.readFileSync(path.join(ROOT, "agent", "debug.cjs"), "utf8");
+    const src = fs.readFileSync(path.join(ROOT, "agent", "debug.ts"), "utf8");
     // Cari pemanggilan NYATA (`fs.appendFileSync`), bukan penyebutannya di
     // komentar — versi pertama tes ini mencocokkan teks komentar dan gagal
     // memeriksa apa pun.
@@ -98,11 +105,11 @@ describe("rotasi log debug", () => {
   });
 
   test("hanya SATU module.exports (dulu ada dua, yang kedua menimpa)", () => {
-    const src = fs.readFileSync(path.join(ROOT, "agent", "debug.cjs"), "utf8");
+    const src = fs.readFileSync(path.join(ROOT, "agent", "debug.ts"), "utf8");
     const n = (src.match(/^module\.exports\s*=/gm) || []).length;
     expect(n).toBe(1);
     // VERBOSE dulu tercantum di ekspor pertama lalu hilang tertimpa.
-    expect(require("../agent/debug.cjs")).toHaveProperty("VERBOSE");
+    expect(require("../agent/debug.ts")).toHaveProperty("VERBOSE");
   });
 });
 
@@ -120,7 +127,7 @@ describe("override console tidak menyeret objek console ke tiap baris log", () =
   // 147 baris sebelum perbaikan, 11 baris sesudahnya. Di mode Electron backend
   // hidup di proses MAIN — pemilik jendela — jadi serialisasi 25 properti itu
   // ditanggung di sana, berulang untuk tiap baris.
-  const src = fs.readFileSync(path.join(ROOT, "server.cjs"), "utf8");
+  const src = fs.readFileSync(path.join(ROOT, "server.ts"), "utf8");
 
   test("_writeSafe memperlakukan argumen kedua sebagai KONTEKS, bukan data", () => {
     const i = src.indexOf("const _writeSafe =");

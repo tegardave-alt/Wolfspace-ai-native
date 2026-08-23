@@ -13,7 +13,7 @@
 //    server buatan itu, melainkan backend WOLFSPACE SENDIRI di 8090.
 
 const http = require("http");
-const W = require("../agent/web.cjs");
+const W = require("../agent/web.ts");
 
 const HTML = `<html><body>
 <h1>Daftar</h1>
@@ -105,7 +105,12 @@ describe("penjaga tujuan: web keluar, jaringan dalam ditolak", () => {
   });
 });
 
-describe("webExtract mengambil BAGIAN, bukan seluruh teks", () => {
+// webExtract membaca innerText, dan innerText menuntut halaman yang benar-benar
+// dirender — jadi blok ini butuh browser Playwright, bukan sekadar modulnya.
+// CI memasang Chromium supaya tes ini JALAN di sana, bukan dilewati.
+const { punyaBrowser, describeKalau } = require("./butuh.cjs");
+const dBrowser = describeKalau(punyaBrowser());
+dBrowser("webExtract mengambil BAGIAN, bukan seluruh teks", () => {
   const bebas = process.env.WOLFSPACE_WEB_IZINKAN_LOKAL;
   beforeAll(() => {
     // Jalan keluar yang memang disediakan untuk pengujian lokal.
@@ -172,18 +177,18 @@ describe("webExtract mengambil BAGIAN, bukan seluruh teks", () => {
       tunggu: ".tak-akan-pernah",
       tunggu_ms: 1500,
     });
-    expect(r).toMatch(/tak pernah muncul/i);
+    expect(r).toMatch(/never appeared/i);
   }, 60000);
 });
 
 describe("web_extract terdaftar dan digerbang", () => {
   const fs = require("fs");
   const DEF = fs.readFileSync(
-    require.resolve("../agent/tools/tool-definitions.cjs"),
+    require.resolve("../agent/tools/tool-definitions.ts"),
     "utf8",
   );
   const IDX = fs.readFileSync(
-    require.resolve("../agent/tools/index.cjs"),
+    require.resolve("../agent/tools/index.ts"),
     "utf8",
   );
 

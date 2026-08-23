@@ -43,8 +43,8 @@ const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 const CSS = baca("public/styles.css");
-const KOMP = baca("public/app/Components.jsx");
-const SCR = baca("public/app/Screens.jsx");
+const KOMP = baca("public/app/Components.tsx");
+const SCR = baca("public/app/Screens.tsx");
 const tanpaKomentar = (t) =>
   t
     .split("\n")

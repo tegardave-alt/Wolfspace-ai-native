@@ -25,7 +25,7 @@
 const { spawn, execFileSync } = require("child_process");
 const fs = require("fs");
 const path = require("path");
-const mcp = require("../agent/mcp-client.cjs");
+const mcp = require("../agent/mcp-client.ts");
 
 const ROOT = path.resolve(__dirname, "..");
 const alive = (pid) => {
@@ -179,7 +179,8 @@ describe("pelacakan PID MCP per pemilik", () => {
     const N_PROC = 5;
     const N_PID = 40;
     const kode = `
-      const mcp = require(${JSON.stringify(path.join(ROOT, "agent/mcp-client.cjs"))});
+      require(${JSON.stringify(path.join(ROOT, "scripts/ts-register.cjs"))});
+      const mcp = require(${JSON.stringify(path.join(ROOT, "agent/mcp-client.ts"))});
       const base = Number(process.argv[1]) * 100000;
       for (let i = 0; i < ${N_PID}; i++) mcp._recordPid(base + i);
     `;
@@ -224,7 +225,7 @@ describe("pelacakan PID MCP per pemilik", () => {
     // proses dingin serentak `npx` berebut cache npm dan handshake tak selesai,
     // hasilnya 24/0/24/24 tool dari 50. Satu proses sendirian butuh 13 detik.
     const src = fs.readFileSync(
-      require.resolve("../agent/mcp-client.cjs"),
+      require.resolve("../agent/mcp-client.ts"),
       "utf8",
     );
     const hs = Number(/HANDSHAKE_TIMEOUT_MS\s*=\s*(\d+)/.exec(src)[1]);
@@ -243,7 +244,7 @@ describe("pelacakan PID MCP per pemilik", () => {
     // user (Connect), dan yang menyalakan banyak server sekaligus adalah
     // connectAll(). Di situlah paralelisme sekarang harus dijaga.
     const src = fs.readFileSync(
-      require.resolve("../agent/mcp-client.cjs"),
+      require.resolve("../agent/mcp-client.ts"),
       "utf8",
     );
     const body = src.slice(
@@ -264,7 +265,7 @@ describe("pelacakan PID MCP per pemilik", () => {
     // dalam init() demi kenyamanan, cold start 60 detik itu kembali dan
     // gejalanya (run agent diam di awal) sangat sulit ditelusuri balik ke sini.
     const src = fs.readFileSync(
-      require.resolve("../agent/mcp-client.cjs"),
+      require.resolve("../agent/mcp-client.ts"),
       "utf8",
     );
     const initBody = src.slice(

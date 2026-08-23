@@ -16,7 +16,7 @@
 // yang capability_exec bisa lakukan dengan batas yang benar-benar berlaku.
 // Yang benar-benar butuh proses hanya npm dan PowerShell.
 
-const { SELF_TOOLS } = require("../agent/tools/tool-definitions.cjs");
+const { SELF_TOOLS } = require("../agent/tools/tool-definitions.ts");
 
 const desk = (nama) => {
   const t = SELF_TOOLS.find((x) => x.function && x.function.name === nama);

@@ -38,9 +38,10 @@ function siklus(putaran) {
   const kode = [
     "const path = require('path');",
     "const AKAR = " + JSON.stringify(AKAR) + ";",
-    "const T = path.join(AKAR, 'agent', 'tools', 'index.cjs');",
-    "const AC = path.join(AKAR, 'agent', 'tools', 'appcontainer-jail.cjs');",
-    "const S = path.join(AKAR, 'agent', 'sandbox.cjs');",
+    "require(path.join(AKAR, 'scripts', 'ts-register.cjs'));",
+    "const T = path.join(AKAR, 'agent', 'tools', 'index.ts');",
+    "const AC = path.join(AKAR, 'agent', 'tools', 'appcontainer-jail.ts');",
+    "const S = path.join(AKAR, 'agent', 'sandbox.ts');",
     "const hasil = [];",
     "for (let i = 0; i < " + putaran + "; i++) {",
     "  const t = Date.now();",
@@ -88,13 +89,13 @@ describe("modul tahan terhadap hot-reload", () => {
   test("keadaan tingkat proses hidup di globalThis, bukan lingkup modul", () => {
     const fs = require("fs");
     const ac = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "appcontainer-jail.cjs"),
+      path.join(AKAR, "agent", "tools", "appcontainer-jail.ts"),
       "utf8",
     );
     expect(ac).toMatch(/globalThis\.__wolfspaceAc/);
-    const sb = fs.readFileSync(path.join(AKAR, "agent", "sandbox.cjs"), "utf8");
+    const sb = fs.readFileSync(path.join(AKAR, "agent", "sandbox.ts"), "utf8");
     expect(sb).toMatch(/globalThis\.__wolfspaceSandboxExit/);
-    const sv = fs.readFileSync(path.join(AKAR, "server.cjs"), "utf8");
+    const sv = fs.readFileSync(path.join(AKAR, "server.ts"), "utf8");
     expect(sv).toMatch(/globalThis\.__wolfspaceJejakKeluar/);
   });
 });

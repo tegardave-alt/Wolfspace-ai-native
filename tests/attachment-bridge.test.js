@@ -9,7 +9,7 @@
 // pernah masuk". Bedanya menentukan: yang disembunyikan masih bisa bocor lewat
 // bug; yang tak pernah ada tidak bisa.
 
-const bridge = require("../agent/attachment-bridge.cjs");
+const bridge = require("../agent/attachment-bridge.ts");
 
 beforeEach(() => bridge.bersihkan());
 
@@ -18,9 +18,9 @@ describe("alamat tak pernah masuk, apa pun yang dikirim pemanggil", () => {
     // Penjaga arah, bukan sekadar gaya: begitu ada parameter path, seluruh
     // jaminan modul ini runtuh — dan runtuhnya tak terlihat dari luar.
     const src = require("fs")
-      .readFileSync(require.resolve("../agent/attachment-bridge.cjs"), "utf8")
+      .readFileSync(require.resolve("../agent/attachment-bridge.ts"), "utf8")
       .replace(/\r\n/g, "\n");
-    expect(src).toMatch(/TIDAK ADA parameter path/);
+    expect(src).toMatch(/There is NO path parameter/);
     // Tak ada fs sama sekali: modul ini tak pernah menyentuh disk, jadi tak ada
     // yang bisa dibaca ulang dari lokasi asal.
     expect(src).not.toMatch(/require\("fs"\)/);
@@ -178,14 +178,14 @@ describe("bertahan melewati hot-reload backend", () => {
     // tersentuh — pola yang sama sudah pernah menggigit mcp-client.
     const r = bridge.serahkan({ nama: "a.txt", isi: "bertahan" });
     jest.resetModules();
-    const lagi = require("../agent/attachment-bridge.cjs");
+    const lagi = require("../agent/attachment-bridge.ts");
     expect(lagi.ambil(r.id).isi).toBe("bertahan");
   });
 });
 
 describe("tersambung: agent memakai handle, bukan alamat", () => {
   // Uji END-TO-END lewat runSelfTool — dispatcher yang BENAR-BENAR dipakai
-  // self_agent.cjs, bukan modul jembatan langsung. Pelajaran dari
+  // self_agent.ts, bukan modul jembatan langsung. Pelajaran dari
   // gate-agent-path.test.js: gerbang pernah dipasang di jalur mati dan lulus
   // semua tesnya tanpa pernah mengikat agent sedetik pun.
   const path = require("path");
@@ -262,7 +262,7 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
   });
 
   test("attachment.read ada di kosakata CommandChain dan bisa DIKUNCI", () => {
-    const cc = require("../agent/broker/commandchain.cjs");
+    const cc = require("../agent/broker/commandchain.ts");
     const bebas = cc.buatRuleset({});
     expect(cc.periksa(bebas, "attachment.read").allow).toBe(true);
     // Dikunci per sesi tanpa ikut mematikan pembacaan berkas di worktree —
@@ -273,12 +273,12 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
   });
 
   test("UI mengirim HANDLE ke agent, bukan path — di KEDUA permukaan", () => {
-    // Dua permukaan lagi (Components.jsx + Screens.jsx). Perbaikan yang hanya
+    // Dua permukaan lagi (Components.tsx + Screens.tsx). Perbaikan yang hanya
     // menyentuh satu membuat format lampiran berbeda tergantung layar mana yang
     // dipakai — persis kesalahan yang terjadi pada daftar MCP.
     for (const m of [
-      "../public/app/Components.jsx",
-      "../public/app/Screens.jsx",
+      "../public/app/Components.tsx",
+      "../public/app/Screens.tsx",
     ]) {
       const mentah = require("fs").readFileSync(require.resolve(m), "utf8");
       // Komentar DIBUANG sebelum diperiksa. Catatan "kenapa" di kedua berkas
@@ -336,7 +336,7 @@ describe("tool disk_* benar-benar tak ada — bukan sekadar disembunyikan", () =
   }, 20000);
 
   test("jalur SAH tidak ikut mati: list/glob/grep tetap terkurung ke worktree", async () => {
-    // disk-tools.cjs sendiri TETAP dipakai — diskListA/diskGlobA/diskGrepA
+    // disk-tools.ts sendiri TETAP dipakai — diskListA/diskGlobA/diskGrepA
     // melayani list/glob/grep yang dikurung. Yang dihapus jalur tool-nya, bukan
     // modulnya; kalau ikut terhapus, agent kehilangan kemampuan menjelajah
     // worktree-nya sendiri.
@@ -365,8 +365,10 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
     fs.readFileSync(require.resolve(m), "utf8").replace(/\s+/g, " ");
 
   test("doSend menerima display berupa objek {text, attachments}", () => {
-    const app = baca("../public/app.jsx");
-    expect(app).toContain("const _pesanUser = (content, display)");
+    const app = baca("../public/app.tsx");
+    expect(app).toMatch(
+      /const _pesanUser = \(content(?:: \w+)?, display(?:: \w+)?\)/,
+    );
     // Bentuk string lama HARUS tetap didukung: beberapa pemanggil lain
     // (retry, resume HITL) masih mengirimkannya.
     expect(app).toContain("return { text: display || content };");
@@ -374,25 +376,31 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
     // berlebih, dan tes yang mengunci bentuknya jadi merah karena pemformatan,
     // bukan karena perilaku berubah. (Sudah terjadi dua kali di sesi ini.)
     expect(app).toContain("_pesanUser(content, display)");
-    // Keempat tempat pembentuk pesan user harus lewat helper yang sama —
+    // Setiap tempat pembentuk pesan user harus lewat helper yang sama —
     // kalau satu terlewat, lampiran tampil sebagai teks mentah hanya pada
     // jalur itu, dan bug seperti itu sangat sulit ditelusuri.
-    expect(app.match(/\.\.\._pesanUser\(content, display\)/g)).toHaveLength(4);
+    //
+    // The count went from 4 to 2 when the /openclaw bridge was deleted: two of
+    // the four sites lived inside that handler (its empty-message path and its
+    // send path), and both went away with it. What is guarded is that every
+    // REMAINING construction site funnels through the helper — not that there
+    // are four of them, so the number follows the call sites that still exist.
+    expect(app.match(/\.\.\._pesanUser\(content, display\)/g)).toHaveLength(2);
   });
 
   test("KEDUA permukaan mengirim tampilan terpisah dari teks model", () => {
     // Dua permukaan lagi. Yang pertama Composer, yang kedua layar pemilih
     // proyek — dan pesan PERTAMA sebuah sesi justru lewat yang kedua.
-    expect(baca("../public/app/Components.jsx")).toContain(
+    expect(baca("../public/app/Components.tsx")).toContain(
       "onSend(fullText, { text: v, attachments:",
     );
-    expect(baca("../public/app/Screens.jsx")).toContain(
+    expect(baca("../public/app/Screens.tsx")).toContain(
       "onStart(fullText, chosenPath, { text: v, attachments:",
     );
   });
 
   test("gelembung hanya memuat teks user; lampiran dirender terpisah", () => {
-    const c = baca("../public/app/Components.jsx");
+    const c = baca("../public/app/Components.tsx");
     expect(c).toContain('className="msg-attachments"');
     expect(c).toContain("msg.attachments && msg.attachments.length > 0");
     // Gelembung tak dirender sama sekali bila user hanya melampirkan tanpa
@@ -403,7 +411,7 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
   });
 
   test("lampiran yang GAGAL diserahkan terlihat gagal, bukan diam-diam hilang", () => {
-    const c = baca("../public/app/Components.jsx");
+    const c = baca("../public/app/Components.tsx");
     expect(c).toContain("ok: !!a.attId");
     expect(c).toContain('"msg-att" + (a.ok ? "" : " err")');
     // Dan teks yang dikirim ke model pun menyebutnya, supaya model tak

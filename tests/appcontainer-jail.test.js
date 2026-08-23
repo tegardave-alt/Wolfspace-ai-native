@@ -22,7 +22,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const AC = require("../agent/tools/appcontainer-jail.cjs");
+const AC = require("../agent/tools/appcontainer-jail.ts");
 
 const AKAR = path.resolve(__dirname, "..");
 const SUMBER = path.join(AKAR, "scripts", "appcontainer", "AcLaunch.cs");
@@ -84,7 +84,7 @@ describe("pesan modul", () => {
     // hak berkas repo -- padahal penyebabnya perangkat NUL yang tertutup untuk
     // AppContainer, dan itu tak bisa diperbaiki dengan mengubah hak berkas.
     const isi = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "appcontainer-jail.cjs"),
+      path.join(AKAR, "agent", "tools", "appcontainer-jail.ts"),
       "utf8",
     );
     expect(isi).toMatch(/could not open/);
@@ -93,7 +93,7 @@ describe("pesan modul", () => {
 
   test("dipasang sebagai bawaan di Windows, bukan opt-in", () => {
     const idx = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     // Jalur lain memakai '=== "1"' (harus dinyalakan). Jalur ini kebalikannya:
@@ -110,7 +110,7 @@ describe("pesan modul", () => {
 
 describe("jebakan yang gejalanya menyesatkan", () => {
   const isi = fs.readFileSync(
-    path.join(AKAR, "agent", "tools", "appcontainer-jail.cjs"),
+    path.join(AKAR, "agent", "tools", "appcontainer-jail.ts"),
     "utf8",
   );
 
@@ -128,7 +128,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
     // Yang dituntut hanya kehadirannya, jadi ia diarahkan ke dalam workspace.
     // Nilai aslinya memuat nama akun asli, yang justru sedang disembunyikan
     // oleh pengerasan env di sekitarnya.
-    const AC = require("../agent/tools/appcontainer-jail.cjs");
+    const AC = require("../agent/tools/appcontainer-jail.ts");
     const v = AC.envTambahan("C:\\ada\\workspace").LOCALAPPDATA;
     expect(v.toLowerCase()).toContain("c:\\ada\\workspace");
     expect(v).not.toContain(process.env.USERNAME || "\u0000");
@@ -139,7 +139,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
     // pustaka: exit 0xC0000142, stdout DAN stderr kosong. Tanpa penanganan
     // khusus itu terbaca sebagai "perintah selesai, hasilnya memang kosong" —
     // kesimpulan salah yang tak terbantah oleh apa pun di keluaran.
-    const AC = require("../agent/tools/appcontainer-jail.cjs");
+    const AC = require("../agent/tools/appcontainer-jail.ts");
     expect(AC.jelaskanKode(0xc0000142)).toMatch(/STATUS_DLL_INIT_FAILED/);
     expect(AC.jelaskanKode(0xc0000142)).toMatch(
       /BUKAN berarti hasilnya kosong/,
@@ -149,7 +149,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
   });
 
   test("kegagalan dir/vol dijelaskan sebagai info volume, bukan izin folder", () => {
-    const AC = require("../agent/tools/appcontainer-jail.cjs");
+    const AC = require("../agent/tools/appcontainer-jail.ts");
     expect(AC.jelaskan("Access is denied.", "dir /b")).toMatch(/Get-ChildItem/);
     expect(AC.jelaskan("Access is denied.", "vol")).toMatch(/info volume/);
     // Tidak boleh menempel di perintah lain yang kebetulan ditolak.
@@ -164,7 +164,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
     // membeku tiap perintah) dan melewati AbortController, sehingga pembatalan
     // user dan pembedaan TIMEOUT vs DIBATALKAN ikut hilang.
     const idx = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     expect(idx).toMatch(/_bungkusAc\.bungkus\(cwd, shBin, shArgs\)/);
@@ -175,7 +175,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
     // Perintah dijalankan LEWAT berkas .cmd. Bawaannya temp sistem, yang
     // tertutup untuk container — akibatnya setiap perintah gagal sebelum mulai.
     const idx = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     expect(idx).toMatch(/scriptDir: _dirSkripAc\(cwd\)/);
@@ -193,7 +193,7 @@ describe("satu workspace pada satu waktu", () => {
   // dipakai, "terkurung di satu direktori" diam-diam berubah jadi "terkurung
   // di gabungan semua direktori yang pernah dibuka", dan satu-satunya cara
   // menemukannya adalah memeriksa ACL folder demi folder.
-  const AC = require("../agent/tools/appcontainer-jail.cjs");
+  const AC = require("../agent/tools/appcontainer-jail.ts");
 
   test("hibah dicatat di luar proses, karena ACL tak punya indeks per-subjek", () => {
     // Windows menyimpan ACL PER OBJEK. Tak ada API "folder mana saja yang
@@ -214,13 +214,13 @@ describe("satu workspace pada satu waktu", () => {
 
   test("pencabutan bisa dimatikan SADAR, dan harganya tercatat", () => {
     const isi = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "appcontainer-jail.cjs"),
+      path.join(AKAR, "agent", "tools", "appcontainer-jail.ts"),
       "utf8",
     );
     expect(isi).toMatch(/WOLFSPACE_AC_CABUT/);
     // Harganya nyata (±20 detik untuk workspace 46 ribu berkas) dan tertulis,
     // supaya yang mematikannya tahu persis apa yang sedang ditukar.
-    expect(isi).toMatch(/0,24 ms per/);
+    expect(isi).toMatch(/0\.24 ms per/);
   });
 
   test("siapUntuk ASINKRON, tidak memblokir event loop", () => {
@@ -228,7 +228,7 @@ describe("satu workspace pada satu waktu", () => {
     // workspace besar. Di Electron itu UI yang membeku, bukan sekadar lambat.
     expect(AC.siapUntuk(process.cwd())).toBeInstanceOf(Promise);
     const idx = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "index.cjs"),
+      path.join(AKAR, "agent", "tools", "index.ts"),
       "utf8",
     );
     expect(idx).toMatch(/await _ac\.siapUntuk\(_confineRoot\)/);
@@ -340,7 +340,7 @@ bila("perilaku nyata di dalam container", () => {
 // sudah terkurung. Pola ini sudah pernah muncul di repo ini untuk admission
 // proc.raw, lalu kembali dalam bentuk baru begitu bash dikurung sendirian.
 describe("sandbox_run ikut terkurung, bukan pintu sebelah", () => {
-  const src = fs.readFileSync(path.join(AKAR, "agent", "sandbox.cjs"), "utf8");
+  const src = fs.readFileSync(path.join(AKAR, "agent", "sandbox.ts"), "utf8");
 
   test("spawn-nya dibungkus AppContainer", () => {
     expect(src).toMatch(/_ac\.bungkus\(cmdCwd, shellCmd, shellArgs\)/);
@@ -355,7 +355,7 @@ describe("sandbox_run ikut terkurung, bukan pintu sebelah", () => {
     // Yang diperiksa PANGGILANNYA, bukan penyebutannya: komentar di sana
     // memang menjelaskan kenapa siapUntuk() TIDAK dipakai.
     expect(src).not.toMatch(/\.siapUntuk\(/);
-    const AC = require("../agent/tools/appcontainer-jail.cjs");
+    const AC = require("../agent/tools/appcontainer-jail.ts");
     expect(typeof AC.beriSementara).toBe("function");
   });
 
@@ -371,7 +371,7 @@ describe("sandbox_run ikut terkurung, bukan pintu sebelah", () => {
 // lebih lemah daripada kenyataannya. Salah ke arah ini sama merusaknya dengan
 // salah ke arah sebaliknya: keduanya membuat orang tak bisa memutuskan apa pun.
 describe("deskripsi bash menyatakan batas yang SEBENARNYA", () => {
-  const defs = require("../agent/tools/tool-definitions.cjs");
+  const defs = require("../agent/tools/tool-definitions.ts");
   const daftar = defs.SELF_TOOLS || defs;
   const bash = daftar.find((t) => t.function && t.function.name === "bash");
   const d = bash.function.description;

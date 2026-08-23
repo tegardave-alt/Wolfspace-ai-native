@@ -1,0 +1,51 @@
+{
+  // Type checker for core/ — the pieces the server and the Electron IPC layer
+  // both call, with no HTTP and no window between them.
+  //
+  // WHY THIS FILE EXISTS AT ALL. It did not, and that was a real gap rather than
+  // an oversight worth shrugging at: core/terminal.ts migrated to TypeScript in
+  // phase 7 and was never type-checked by anything. agent/tsconfig.json includes
+  // "**/*.ts" relative to agent/, server/ includes only routes/, electron/ only
+  // preload.ts. core/ fell between all of them.
+  //
+  // The ratchet in tests/kontrak-tipe.test.js did not catch it either, because
+  // what it guards is that a migrated file STAYS TypeScript — it checks the file
+  // exists and ends in .ts. A file can satisfy that while compiling to nothing
+  // anyone ever ran tsc over.
+  //
+  // Calibration follows agent/tsconfig.json for the same reason: these are ports
+  // of long-lived CommonJS, so strictNullChecks stays ON (without it narrowing
+  // on unions does not work and the types stop being worth anything) while
+  // noImplicitAny stays OFF as the next ratchet to tighten.
+  "compilerOptions": {
+    "noEmit": true,
+    "target": "ES2022",
+    "module": "node16",
+    // node16, not "node": the latter is now node10 and TypeScript 7.0 drops it.
+    // The editor flags it today (it ships a newer tsc than the 5.9.3 pinned here),
+    // so leaving it means the repo reads as broken in the editor and clean in CI.
+    //
+    // `"ignoreDeprecations": "6.0"` is not an option: TS 5.9.3 rejects the value
+    // (TS5103), so silencing a future error would break the current check.
+    //
+    // Safe to change here because every one of these projects is noEmit: this
+    // moves how types RESOLVE, never what gets emitted — nothing shipped changes.
+    // Verified at 0 errors on each project before the switch.
+    "moduleResolution": "node16",
+    "resolveJsonModule": true,
+    "types": ["node"],
+    "skipLibCheck": true,
+    "maxNodeModuleJsDepth": 0,
+
+    "strict": false,
+    "noImplicitAny": false,
+    "strictNullChecks": true,
+
+    // These modules require() untyped .cjs siblings; without this every one of
+    // those is an error before a single line has been reviewed.
+    "allowJs": true,
+    "checkJs": false
+  },
+  "include": ["**/*.ts"],
+  "exclude": ["node_modules"]
+}

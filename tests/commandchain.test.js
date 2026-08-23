@@ -21,8 +21,8 @@ function muatSegar(dir) {
   process.env.WOLFSPACE_AUDIT_DIR = dir;
   jest.resetModules(); // Jest punya registry sendiri — delete require.cache tak cukup
   return {
-    cc: require("../agent/broker/commandchain.cjs"),
-    audit: require("../agent/broker/audit-log.cjs"),
+    cc: require("../agent/broker/commandchain.ts"),
+    audit: require("../agent/broker/audit-log.ts"),
   };
 }
 
@@ -204,10 +204,10 @@ describe("Fase 2: bash = proc.raw, on-by-default tapi bisa dikunci", () => {
   });
 
   test("tool bash terpasang ke CommandChain (admission + catat + kurungan)", () => {
-    // Struktural: agent/tools/index.cjs (5000+ baris) tak dimuat utuh di Jest.
+    // Struktural: agent/tools/index.ts (5000+ baris) tak dimuat utuh di Jest.
     // Menjaga bahwa jalur proc.raw benar-benar ada dan lengkap.
     const T = fs.readFileSync(
-      require.resolve("../agent/tools/index.cjs"),
+      require.resolve("../agent/tools/index.ts"),
       "utf8",
     );
     expect(T).toMatch(/periksa\(rs, "proc\.raw"\)/);

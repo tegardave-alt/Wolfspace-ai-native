@@ -19,8 +19,8 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
-const APP = baca("public/app.jsx");
-const SB = baca("public/app/Sidebar.jsx");
+const APP = baca("public/app.tsx");
+const SB = baca("public/app/Sidebar.tsx");
 const CSS = baca("public/styles.css");
 const tanpaKomentar = (t) =>
   t
@@ -51,8 +51,12 @@ describe("keadaan disimpan sebagai kata, dan nilai lama diterjemahkan", () => {
   });
 
   test("siklusnya satu arah, supaya bisa dihafal", () => {
-    expect(APP).toMatch(/const _URUT_SB = \["penuh", "ringkas", "sembunyi"\]/);
-    expect(APP).toMatch(/\(_URUT_SB\.indexOf\(m\) \+ 1\) % _URUT_SB\.length/);
+    expect(APP).toMatch(
+      /const _URUT_SB(?:: [^=]+)? = \["penuh", "ringkas", "sembunyi"\]/,
+    );
+    expect(APP).toMatch(
+      /\(_URUT_SB\.indexOf\(m(?:: \w+)?\) \+ 1\) % _URUT_SB\.length/,
+    );
   });
 });
 

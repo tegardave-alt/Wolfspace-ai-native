@@ -8,7 +8,7 @@ const path = require("path");
 const { spawn } = require("child_process");
 const http = require("http");
 
-const mcp = require("../agent/mcp-client.cjs");
+const mcp = require("../agent/mcp-client.ts");
 
 describe("rahasia tidak ikut tercatat saat server MCP dinyalakan", () => {
   // KENAPA ADA. Argumen server MCP membawa kredensial, dan argumen itu DICATAT
@@ -48,7 +48,7 @@ describe("rahasia tidak ikut tercatat saat server MCP dinyalakan", () => {
 
   test("dipakai di jalur yang benar-benar mencatat", () => {
     const SRC = fs
-      .readFileSync(require.resolve("../agent/mcp-client.cjs"), "utf8")
+      .readFileSync(require.resolve("../agent/mcp-client.ts"), "utf8")
       .replace(/\r\n/g, "\n");
     expect(SRC).toMatch(
       /Memulai server MCP[\s\S]{0,120}args: _argsAman\(conf\.args\)/,
@@ -67,7 +67,7 @@ describe("nama server MCP tidak diturunkan dari URL mentah", () => {
   // log nyata: entri bernama "streamuserTokeneyJhbGciOiJBMjU2S1ci..." — JWT
   // utuh, tersimpan ke config/mcp.json dan tercetak berulang ke berkas debug.
   const SRC = fs
-    .readFileSync(require.resolve("../public/app/Components.jsx"), "utf8")
+    .readFileSync(require.resolve("../public/app/Components.tsx"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("URL -> hanya HOSTNAME yang dipakai", () => {
@@ -101,20 +101,20 @@ describe("jembatan remote bicara Streamable HTTP, bukan cuma SSE lama", () => {
 
   test("berkasnya ada dan dipakai oleh UI", () => {
     expect(fs.existsSync(BRIDGE)).toBe(true);
-    // Resolusi perintah MCP sekarang SATU sumber di Config.jsx. Sebelumnya ia
-    // digandakan di Components.jsx dan Screens.jsx, dan dua salinan itu sudah
+    // Resolusi perintah MCP sekarang SATU sumber di Config.tsx. Sebelumnya ia
+    // digandakan di Components.tsx dan Screens.tsx, dan dua salinan itu sudah
     // melenceng — satu masih memakai sse-bridge.cjs lama. Tes ini dulu menunjuk
     // salah satu salinan; sekarang menunjuk sumbernya.
     const CFG = fs.readFileSync(
-      require.resolve("../public/app/Config.jsx"),
+      require.resolve("../public/app/Config.tsx"),
       "utf8",
     );
     expect(CFG).toContain("scripts/mcp-http-bridge.cjs");
 
     // Dan permukaannya benar-benar memakai resolver itu, bukan menyusun sendiri.
     for (const f of [
-      "../public/app/Components.jsx",
-      "../public/app/Screens.jsx",
+      "../public/app/Components.tsx",
+      "../public/app/Screens.tsx",
     ]) {
       const UI = fs.readFileSync(require.resolve(f), "utf8");
       expect(UI).toMatch(/mcpResolvePerintah\(type\)/);
@@ -245,7 +245,7 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
   // dulu dan handshake boleh sampai HANDSHAKE_TIMEOUT_MS. Ongkos itu dibayar
   // setiap sesi, untuk server yang mungkin tak dipakai sama sekali.
   const SRC = fs
-    .readFileSync(require.resolve("../agent/mcp-client.cjs"), "utf8")
+    .readFileSync(require.resolve("../agent/mcp-client.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
   test("init() TIDAK lagi men-spawn apa pun", () => {
@@ -281,7 +281,7 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
 
   test("backend menyediakan /mcp/connect", () => {
     const S = fs
-      .readFileSync(require.resolve("../server.cjs"), "utf8")
+      .readFileSync(require.resolve("../server.ts"), "utf8")
       .replace(/\r\n/g, "\n");
     expect(S).toMatch(/_path === "\/mcp\/connect" && req\.method === "POST"/);
     // Tanpa `name` -> semua; dengan `name` -> satu saja.
@@ -291,14 +291,14 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
     expect(S).toMatch(/await mcpClient\.connectAll\(\)/);
   });
 
-  // DUA daftar MCP, bukan satu: panel di Composer (Components.jsx) dan layar
-  // pemilih (Screens.jsx). Perubahan pertama hanya menyentuh yang pertama, dan
+  // DUA daftar MCP, bukan satu: panel di Composer (Components.tsx) dan layar
+  // pemilih (Screens.tsx). Perubahan pertama hanya menyentuh yang pertama, dan
   // log run nyata membuktikannya — klik di layar kedua menghasilkan
   // `POST /mcp/toggle`, bukan `POST /mcp/connect`. Keduanya diuji di sini
   // supaya perilaku aplikasi tak bergantung pada layar mana yang dipakai.
   test.each([
-    ["Components.jsx", "../public/app/Components.jsx"],
-    ["Screens.jsx", "../public/app/Screens.jsx"],
+    ["Components.tsx", "../public/app/Components.tsx"],
+    ["Screens.tsx", "../public/app/Screens.tsx"],
   ])("%s memisahkan CONNECT dari toggle enable/disable", (_nama, modul) => {
     const UI = fs
       .readFileSync(require.resolve(modul), "utf8")

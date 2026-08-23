@@ -48,8 +48,41 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # shell: bash memberi -o pipefail, tanpa itu kode keluar jest hilang
+      # ditelan tee dan langkah ini akan HIJAU meski tesnya merah.
+      # Browsernya diunduh TERPISAH dari modul npm. Tanpa langkah ini
+      # tests/render-hidup dan tests/web-extract akan DILEWATI di CI — dan tes
+      # yang tak pernah jalan tak membuktikan apa pun. Chromium saja, karena
+      # itu yang dipakai agent/web.ts.
+      # Renderer dibangun lebih dulu supaya tests/render-hidup memuat apa yang
+      # PRODUKSI sajikan. Tanpa ini index.html jatuh ke jalur cadangan dan
+      # mengompilasi 631 KB dengan Babel DI DALAM browser headless — terukur ~3
+      # detik di mesin cepat, dan tesnya menunggu 5 detik sebelum memeriksa DOM.
+      # Jadi tesnya bukan menguji aplikasi, melainkan kecepatan runner.
+      - name: Bangun renderer
+        run: npm run build:app
+
+      - name: Pasang browser Playwright
+        run: npx playwright install --with-deps chromium
+
       - name: Jest
-        run: npm test
+        shell: bash
+        run: npm test 2>&1 | tee /tmp/jest.log
+
+      # Kegagalan hanya-CI harus bisa didiagnosis tanpa mengunduh log mentah:
+      # log butuh autentikasi, anotasi tidak. Yang diangkat cuma nama suite yang
+      # merah dan baris ringkasannya — cukup untuk tahu ke mana harus melihat.
+      - name: Ringkas kegagalan Jest
+        if: failure()
+        shell: bash
+        run: |
+          # Nama suite saja ternyata tak cukup: ia memberi tahu MANA yang merah
+          # tapi bukan KENAPA, dan tiap siklus CI mahal. Baris Expected/Received
+          # ikut diangkat — itu yang membedakan "bisa diperbaiki" dari "harus
+          # menebak lagi".
+          grep -E '^(FAIL |  ● |Tests: |Test Suites: )|Expected|Received|Cannot find|not a function|ENOENT' /tmp/jest.log \
+            | head -80 \
+            | while IFS= read -r baris; do echo "::error::$baris"; done
 
   build-electron:
     name: Build Electron (windows)
@@ -68,6 +101,13 @@ jobs:
       # mesin dev tanpa toolchain C++. Inilah alasan utama job ini ada.
       - run: npm ci
 
+      # electron/main.js dan electron/preload.js DIBANGUN di sini, bukan di-commit.
+      # electron-builder mengemas pohon berkas apa adanya, jadi tanpa langkah ini
+      # paketnya berisi aplikasi tanpa main process dan tanpa jembatan preload —
+      # buildnya sukses, dan rusaknya baru ketahuan saat dijalankan.
+      - name: Bangun artefak Electron
+        run: npm run build:preload && npm run build:main && npm run build:app
+
       - name: Package (dir saja, tanpa installer)
         run: npx electron-builder --win --dir
 
@@ -83,15 +123,26 @@ jobs:
           UNPACKED="dist-app/win-unpacked/resources/app.asar.unpacked"
           test -d "$UNPACKED" || { echo "::error::$UNPACKED tidak ada"; exit 1; }
           gagal=0
-          # core/terminal.cjs ada di daftar ini karena PERNAH hilang: build.files
+          # core/terminal.ts ada di daftar ini karena PERNAH hilang: build.files
           # menyebut "terminal.cjs" di akar — berkas yang tak pernah ada — sisa dari
           # masa berkas itu belum dipindah ke core/. Selama satu-satunya pemakainya
           # (agent/tools/exec-tools.cjs) membungkus require dalam try/catch, tool
           # terminal cuma mati diam-diam di aplikasi terpaket dan tak ada yang tahu.
           # Begitu server.cjs me-require-nya di tingkat atas, seluruh backend gagal
           # dimuat dan job ini merah.
-          for f in core.js server.cjs core/terminal.cjs scripts/ww.cjs agent/self_agent.cjs \
-                   agent/mcp-client.cjs agent/sandbox-policy.cjs server/routes/terminal.cjs; do
+          # scripts/ts-register.cjs and the .ts files under server/routes/ are on this
+          # list because server.cjs requires them at top level since the gradual
+          # TypeScript migration started. build.files previously named only
+          # "scripts/ww.ts", so without the new entries the whole backend fails to
+          # load in the packaged app — exactly the class of bug this job exists to catch.
+          for f in core.js server.cjs server.ts core/terminal.ts scripts/ww.ts scripts/ts-register.cjs \
+                   agent/self_agent.ts agent/mcp-client.ts \
+                   agent/sandbox.ts agent/sandbox-policy.ts \
+                   agent/broker/zone-worker.cjs agent/broker/zone-process.ts \
+                   agent/broker/host.ts agent/broker/policy.ts \
+                   agent/broker/audit-log.ts agent/broker/commandchain.ts \
+                   server/routes/terminal.ts server/routes/debug.ts server/routes/snapshots.ts \
+                   server/routes/cloud.ts server/routes/dap.ts; do
             if [ -f "$UNPACKED/$f" ]; then
               echo "  ok      $f"
             else
@@ -99,6 +150,31 @@ jobs:
             fi
           done
           [ "$gagal" = "0" ] || exit 1
+
+          # electron/preload.js diperiksa TERPISAH karena ia ada DI DALAM
+          # app.asar, bukan di app.asar.unpacked: electron/** memang tidak
+          # ikut asarUnpack. Ia berkas hasil generate dari preload.ts dan yang
+          # benar-benar dimuat Electron — kalau hilang, jendela terbuka tanpa
+          # window.WOLFSPACE sama sekali dan renderer tak bisa menjangkau apa pun.
+          echo "--- artefak generated di dalam asar ---"
+          node -e "
+            const asar = require('@electron/asar');
+            const isi = asar.extractFile('dist-app/win-unpacked/resources/app.asar',
+                                         'electron/preload.js').toString('utf8');
+            if (!isi.includes('exposeInMainWorld(\"WOLFSPACE\"')) {
+              console.error('::error::preload.js terpaket tapi tak memasang jembatan');
+              process.exit(1);
+            }
+            console.log('  ok      electron/preload.js (' + isi.length + ' bytes)');
+            const utama = asar.extractFile('dist-app/win-unpacked/resources/app.asar',
+                                           'electron/main.js').toString('utf8');
+            if (!utama.includes('GENERATED FILE') || !utama.includes('BrowserWindow')) {
+              console.error('::error::main.js terpaket tapi bukan hasil build yang sah');
+              process.exit(1);
+            }
+            console.log('  ok      electron/main.js (' + utama.length + ' bytes)');
+          "
+
           echo "--- uji rantai require dari hasil paket ---"
           cd "$UNPACKED"
           node -e "

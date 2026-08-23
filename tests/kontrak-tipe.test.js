@@ -26,10 +26,78 @@ const CFG = path.join(AKAR, "agent", "jsconfig.json");
 
 // Daftar ratchet: berkas yang sudah masuk pemeriksaan. Boleh BERTAMBAH, tak
 // boleh berkurang.
-const SUDAH_DIPERIKSA = [
-  "agent/broker/commandchain.cjs",
-  "agent/broker/zone-process.cjs",
-  "agent/attachment-bridge.cjs",
+const SUDAH_DIPERIKSA = ["agent/attachment-bridge.ts"];
+
+// Files that have MIGRATED to TypeScript. The ratchet still applies; only its
+// condition changes: a .ts file is ALWAYS checked by tsc, so what is guarded is
+// no longer a `// @ts-check` line but that the file is still .ts and has not
+// quietly been reverted to an unchecked .cjs.
+const SUDAH_TYPESCRIPT = [
+  "agent/attachment-bridge.ts",
+  "agent/broker/audit-log.ts",
+  "agent/broker/commandchain.ts",
+  "agent/broker/host.ts",
+  "agent/broker/policy.ts",
+  "agent/broker/zone-process.ts",
+  "agent/chat.ts",
+  "agent/cloud.ts",
+  "agent/code-quality.ts",
+  "agent/debug.ts",
+  "agent/dspy_tool.ts",
+  "agent/keys-path.ts",
+  "agent/mcp-client.ts",
+  "agent/penegakan.ts",
+  "agent/penjaga-agent.ts",
+  "agent/perencana-agent.ts",
+  "agent/plugins.ts",
+  "agent/python-agent.ts",
+  "agent/python-worker.ts",
+  "agent/rag.ts",
+  "agent/safe-edit.ts",
+  "agent/sandbox-policy.ts",
+  "agent/sandbox.ts",
+  "agent/self_agent.ts",
+  "agent/skills.ts",
+  "agent/snapshot.ts",
+  "agent/sysprompt_opt.ts",
+  "agent/temuan.ts",
+  "agent/tools/appcontainer-jail.ts",
+  "agent/tools/arch-tools.ts",
+  "agent/tools/bash-jail.ts",
+  "agent/tools/disk-tools.ts",
+  "agent/tools/exec-tools.ts",
+  "agent/tools/file-tools.ts",
+  "agent/tools/gen3d-tools.ts",
+  "agent/tools/git-tool.ts",
+  "agent/tools/index.ts",
+  "agent/tools/net-diag.ts",
+  "agent/tools/sandbox-validator.ts",
+  "agent/tools/skill-tools.ts",
+  "agent/tools/tool-definitions.ts",
+  "agent/tools/web-tools.ts",
+  "agent/tools/wsl-jail.ts",
+  "agent/web.ts",
+  "core/dap-sesi.ts",
+  "core/dap.ts",
+  "core/terminal.ts",
+  "electron/main.ts",
+  "electron/preload.ts",
+  "public/app.tsx",
+  "public/app/AgentSteps.tsx",
+  "public/app/CodeBlocks.tsx",
+  "public/app/Components.tsx",
+  "public/app/Config.tsx",
+  "public/app/Icons.tsx",
+  "public/app/Model3DViewer.tsx",
+  "public/app/PluginsView.tsx",
+  "public/app/Screens.tsx",
+  "public/app/Sidebar.tsx",
+  "public/app/Viewport.tsx",
+  "public/app/Views.tsx",
+  "public/app/VisualTools.tsx",
+  "public/app/usePreviewPanel.tsx",
+  "scripts/ww.ts",
+  "server.ts",
 ];
 
 describe("kontrak tipe jalur kritis", () => {
@@ -40,54 +108,152 @@ describe("kontrak tipe jalur kritis", () => {
     expect(kepala).toMatch(/^\/\/ @ts-check$/m);
   });
 
+  test.each(SUDAH_TYPESCRIPT)("%s masih berupa TypeScript", (rel) => {
+    // Dropping back to .cjs without @ts-check would disable this file's checking
+    // with no trace — the exact failure class as deleting the @ts-check line.
+    expect(fs.existsSync(path.join(AKAR, rel))).toBe(true);
+    expect(/\.tsx?$/.test(rel)).toBe(true);
+  });
+
   test("fungsi vonis memakai UNION, bukan field opsional", () => {
     // Bentuk longgar `{allow:boolean, alasan?:string}` mengizinkan keadaan yang
     // tak boleh ada (izin membawa alasan, tolak tanpa sebab). Union menutupnya
     // di titik deklarasi — itu seluruh gunanya, jadi bentuknya ikut dikunci.
     const cc = fs.readFileSync(
-      path.join(AKAR, "agent/broker/commandchain.cjs"),
+      path.join(AKAR, "agent/broker/commandchain.ts"),
       "utf8",
     );
+    // TypeScript writes union members with semicolons and usually breaks them
+    // across lines, so the pattern is loosened on the SEPARATOR — never on the
+    // shape. What stays pinned is identical: allow:true pairs with alasan:null,
+    // allow:false pairs with alasan of type string.
     expect(cc).toMatch(
-      /\{ allow: true, alasan: null \}\s*\|\s*\{ allow: false, alasan: string \}/,
+      /\{ allow: true;? alasan: null \}\s*\|\s*\{ allow: false;? alasan: string \}/,
     );
 
     const zp = fs.readFileSync(
-      path.join(AKAR, "agent/broker/zone-process.cjs"),
+      path.join(AKAR, "agent/broker/zone-process.ts"),
       "utf8",
     );
     // `alasan` HANYA pada cabang tak-terkurung: itu yang membuat penjaga di
     // laporSekali() terverifikasi mesin.
     expect(zp).toMatch(
-      /transport: "fork", jaringanTerkurung: false, alasan: string/,
+      /transport: "fork"[;,] jaringanTerkurung: false[;,] alasan: string/,
     );
-    expect(zp).not.toMatch(/jaringanTerkurung: true, alasan/);
+    expect(zp).not.toMatch(/jaringanTerkurung: true[;,] alasan/);
   });
 
-  test("tsc bersih pada agent/", () => {
-    let keluaran = "";
-    let gagal = false;
-    try {
-      execFileSync(process.execPath, [TSC, "-p", CFG], {
-        encoding: "utf8",
-        stdio: ["ignore", "pipe", "pipe"],
-        cwd: AKAR,
-      });
-    } catch (e) {
-      gagal = true;
-      keluaran = String(e.stdout || "") + String(e.stderr || "");
+  // TWO configs, and the second is not cosmetic.
+  //
+  // jsconfig.json only covers **/*.cjs and **/*.js. The moment a file migrates
+  // to .ts it leaves that scope — and if this test ran jsconfig alone, a newly
+  // migrated file would stop being checked with no signal at all. That is
+  // precisely the failure class this whole test file exists to prevent, just
+  // through a different door.
+  const CFG_TS = path.join(AKAR, "agent", "tsconfig.json");
+
+  test.each([
+    ["jsconfig (berkas .cjs/.js ber-@ts-check)", CFG],
+    ["tsconfig (berkas .ts hasil migrasi)", CFG_TS],
+  ])(
+    "tsc bersih pada agent/ — %s",
+    (_label, cfg) => {
+      let keluaran = "";
+      let gagal = false;
+      try {
+        execFileSync(process.execPath, [TSC, "-p", cfg], {
+          encoding: "utf8",
+          stdio: ["ignore", "pipe", "pipe"],
+          cwd: AKAR,
+        });
+      } catch (e) {
+        gagal = true;
+        keluaran = String(e.stdout || "") + String(e.stderr || "");
+      }
+      const baris = keluaran.split(/\r?\n/).filter((b) => /error TS/.test(b));
+      if (gagal) {
+        // Tampilkan error aslinya, bukan sekadar "gagal" — supaya yang merah bisa
+        // langsung diperbaiki tanpa menjalankan ulang perkakasnya.
+        throw new Error(
+          "tsc menemukan " +
+            baris.length +
+            " error di agent/:\n  " +
+            baris.slice(0, 15).join("\n  "),
+        );
+      }
+      expect(baris).toEqual([]);
+    },
+    120000,
+  );
+
+  test("tiap berkas migrasi BENAR-BENAR diperiksa suatu project", () => {
+    // Ratchet kedua, dan alasannya konkret: core/terminal.ts lolos ratchet
+    // pertama sejak Fase 7 sementara TAK ADA yang pernah menjalankan tsc
+    // atasnya. agent/tsconfig memuat "**/*.ts" relatif ke agent/, server/
+    // hanya routes/, electron/ hanya preload.ts — core/ jatuh di antaranya.
+    //
+    // "Masih .ts" dan "diperiksa" adalah dua pertanyaan berbeda. Yang pertama
+    // saja membuat berkas bisa bermigrasi, ter-ratchet, dan tak terperiksa.
+    const skrip = JSON.parse(
+      fs.readFileSync(path.join(AKAR, "package.json"), "utf8"),
+    ).scripts.typecheck;
+    const proyek = [...skrip.matchAll(/tsc -p (\S+)/g)].map((m) => m[1]);
+    expect(proyek.length).toBeGreaterThan(0);
+
+    // Kumpulkan berkas yang benar-benar dilihat tiap project. --listFiles
+    // menjawab dari tsc sendiri, bukan dari tafsiran kita atas pola include.
+    const terlihat = new Set();
+    for (const p of proyek) {
+      let keluar = "";
+      try {
+        keluar = execFileSync(
+          process.execPath,
+          [
+            path.join(AKAR, "node_modules", "typescript", "lib", "tsc.js"),
+            "-p",
+            p,
+            "--listFiles",
+            "--noEmit",
+          ],
+          { cwd: AKAR, encoding: "utf8", timeout: 180000, maxBuffer: 1 << 26 },
+        );
+      } catch (e) {
+        // Galat tipe tak menghalangi daftar berkasnya tetap tercetak.
+        keluar = String((e && e.stdout) || "");
+      }
+      for (const baris of keluar.split(/\r?\n/)) {
+        const t = baris.trim();
+        if (t) terlihat.add(path.resolve(t).toLowerCase());
+      }
     }
-    const baris = keluaran.split(/\r?\n/).filter((b) => /error TS/.test(b));
-    if (gagal) {
-      // Tampilkan error aslinya, bukan sekadar "gagal" — supaya yang merah bisa
-      // langsung diperbaiki tanpa menjalankan ulang perkakasnya.
-      throw new Error(
-        "tsc menemukan " +
-          baris.length +
-          " error di agent/:\n  " +
-          baris.slice(0, 15).join("\n  "),
-      );
-    }
-    expect(baris).toEqual([]);
-  }, 120000);
+
+    const tak = SUDAH_TYPESCRIPT.filter(
+      (rel) => !terlihat.has(path.join(AKAR, rel).toLowerCase()),
+    );
+    expect(tak).toEqual([]);
+  }, 600000);
+
+  test("berkas migrasi backend adalah MODUL, bukan skrip global", () => {
+    // Berkas .ts tanpa import maupun export adalah SKRIP bagi TypeScript:
+    // seluruh const tingkat-atasnya berbagi SATU scope global dengan setiap
+    // berkas serupa. Tabrakan baru terjadi kalau DUA berkas kebetulan
+    // mendeklarasikan nama yang sama — itulah kenapa mcp-client.ts bertahan
+    // begitu sejak fase awal tanpa ketahuan, sampai dspy_tool.ts datang dan
+    // keduanya mendeklarasikan `dlog`. Lima berkas ada di keadaan itu,
+    // menunggu nama umum berikutnya.
+    //
+    // public/app/*.tsx DIKECUALIKAN, dan itu bukan celah: berkas-berkas itu
+    // memang digabung jadi satu scope global oleh index.html, dan
+    // app/globals.d.ts mendokumentasikan kontraknya. Menuntutnya jadi modul
+    // justru merusak rancangannya.
+    const skrip = SUDAH_TYPESCRIPT.filter((rel) => {
+      if (rel.startsWith("public/")) return false;
+      if (rel.endsWith(".d.ts")) return false;
+      const isi = fs.readFileSync(path.join(AKAR, rel), "utf8");
+      const adaImport = /^\s*import[\s{*]/m.test(isi);
+      const adaExport = /^\s*export[\s{*=]/m.test(isi);
+      return !adaImport && !adaExport;
+    });
+    expect(skrip).toEqual([]);
+  });
 });

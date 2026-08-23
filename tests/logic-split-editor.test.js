@@ -13,8 +13,8 @@ const fs = require("fs");
 const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
-const APP = fs.readFileSync(path.join(AKAR, "public", "app.jsx"), "utf8");
-const SRV = fs.readFileSync(path.join(AKAR, "server.cjs"), "utf8");
+const APP = fs.readFileSync(path.join(AKAR, "public", "app.tsx"), "utf8");
+const SRV = fs.readFileSync(path.join(AKAR, "server.ts"), "utf8");
 
 describe("split berkas + editor di view Logic", () => {
   test("keduanya dirender berdampingan, pohon dulu baru editor", () => {
@@ -142,7 +142,7 @@ describe("ikon per bahasa di pohon berkas", () => {
       expect(String(svg).startsWith("<svg")).toBe(true);
   });
 
-  test("dimuat SEBELUM app.jsx memakainya", () => {
+  test("dimuat SEBELUM app.tsx memakainya", () => {
     const html = fs.readFileSync(
       path.join(AKAR, "public", "index.html"),
       "utf8",
@@ -162,7 +162,7 @@ describe("ikon per bahasa di pohon berkas", () => {
 
   test("penyorot Monaco terpisah dari ikon", () => {
     // Keduanya menjawab pertanyaan berbeda: "ikon apa" vs "penyorot mana".
-    expect(APP).toMatch(/function bahasaMonaco\(nama\)/);
+    expect(APP).toMatch(/function bahasaMonaco\(nama(?:: \w+)?\)/);
   });
 });
 
@@ -181,11 +181,11 @@ describe("latar editor mengikuti wadahnya", () => {
     "utf8",
   );
   const STEPS = fs.readFileSync(
-    path.join(__dirname, "..", "public", "app", "AgentSteps.jsx"),
+    path.join(__dirname, "..", "public", "app", "AgentSteps.tsx"),
     "utf8",
   );
   const BLOKS = fs.readFileSync(
-    path.join(__dirname, "..", "public", "app", "CodeBlocks.jsx"),
+    path.join(__dirname, "..", "public", "app", "CodeBlocks.tsx"),
     "utf8",
   );
 
@@ -226,7 +226,7 @@ describe("latar editor mengikuti wadahnya", () => {
 });
 
 // Panel berkas di view Logic bisa DIATUR lebarnya, dengan pola yang sama
-// dengan resizer sidebar (public/app/Sidebar.jsx): state localStorage
+// dengan resizer sidebar (public/app/Sidebar.tsx): state localStorage
 // terpisah, batas atas/bawah, kelas "resizing" selama diseret.
 //
 // Disamakan sengaja, bukan kebetulan sama: dua panel yang bisa diatur
@@ -242,7 +242,7 @@ describe("panel berkas Logic bisa diatur lebarnya", () => {
     // Angkanya pindah ke konstanta bernama saat lantainya diturunkan; yang
     // dikunci di sini INVARIANNYA — ada lantai dan ada langit-langit, dan
     // seretan melewati keduanya.
-    expect(APP).toMatch(/const lfBatas = \(w\) =>/);
+    expect(APP).toMatch(/const lfBatas = \(w(?:: \w+)?\) =>/);
     expect(APP).toMatch(/Math\.max\(LF_MIN, Math\.min\(LF_MAKS, w\)\)/);
     expect(APP).toMatch(/setLfWidth\(lfBatas\(startWidth \+ deltaX\)\)/);
   });
@@ -322,11 +322,11 @@ describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => 
     return APP.slice(i, j > i ? j : APP.length);
   })();
   const STEPS = fs.readFileSync(
-    path.join(AKAR, "public", "app", "AgentSteps.jsx"),
+    path.join(AKAR, "public", "app", "AgentSteps.tsx"),
     "utf8",
   );
   const BLOKS = fs.readFileSync(
-    path.join(AKAR, "public", "app", "CodeBlocks.jsx"),
+    path.join(AKAR, "public", "app", "CodeBlocks.tsx"),
     "utf8",
   );
 
@@ -410,12 +410,12 @@ describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => 
 //   diminta 244px -> 244px  tombol x211
 // Tak ada gulir mendatar di header pada satu ukuran pun.
 describe("batas lebar pohon berkas", () => {
-  const APP2 = fs.readFileSync(path.join(AKAR, "public", "app.jsx"), "utf8");
+  const APP2 = fs.readFileSync(path.join(AKAR, "public", "app.tsx"), "utf8");
 
   test("batasnya SATU tempat, bukan tiga salinan", () => {
     expect(APP2).toMatch(/const LF_MIN = 96/);
     expect(APP2).toMatch(/const LF_MAKS = 500/);
-    expect(APP2).toMatch(/const lfBatas = \(w\) =>/);
+    expect(APP2).toMatch(/const lfBatas = \(w(?:: \w+)?\) =>/);
   });
 
   test("ketiga jalur memakai penjepit yang sama", () => {
