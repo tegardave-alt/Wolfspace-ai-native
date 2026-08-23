@@ -3047,7 +3047,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
                 "daftar tool",
                 "definisi tool",
               ],
-              hint: "Tool definitions ada di agent/tools/tool-definitions.cjs",
+              hint: "Tool definitions ada di agent/tools/tool-definitions.ts",
             },
             {
               keywords: [

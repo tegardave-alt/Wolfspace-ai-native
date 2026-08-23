@@ -5,7 +5,7 @@
 // time walks straight through. Measured — a folder was genuinely created on the
 // Desktop from inside a "contained" workspace.
 //
-// Linux namespaces (bash-jail.cjs) give a real boundary, but only on Linux. And
+// Linux namespaces (bash-jail.ts) give a real boundary, but only on Linux. And
 // a WSL distro cannot see Windows files: automount is off, and its kernel has
 // no drvfs.
 //

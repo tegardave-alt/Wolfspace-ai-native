@@ -58,7 +58,7 @@ try {
   fileTools = {};
 }
 try {
-  execTools = require("./exec-tools.cjs");
+  execTools = require("./exec-tools.ts");
 } catch (e) {
   _modLoadErrors["exec-tools"] = e.message;
   execTools = {};
@@ -78,21 +78,21 @@ function lazyDisk() {
 }
 function lazyWeb() {
   return (
-    _webTools || (_webTools = _ensureMod("web-tools", "./web-tools.cjs")) || {}
+    _webTools || (_webTools = _ensureMod("web-tools", "./web-tools.ts")) || {}
   );
 }
 let _archTools = null;
 function lazyArch() {
   return (
     _archTools ||
-    (_archTools = _ensureMod("arch-tools", "./arch-tools.cjs")) ||
+    (_archTools = _ensureMod("arch-tools", "./arch-tools.ts")) ||
     {}
   );
 }
 function lazySkill() {
   return (
     _skillTools ||
-    (_skillTools = _ensureMod("skill-tools", "./skill-tools.cjs")) ||
+    (_skillTools = _ensureMod("skill-tools", "./skill-tools.ts")) ||
     {}
   );
 }
@@ -116,7 +116,7 @@ function lazyCC() {
 }
 
 // Static definitions (pure JSON, never fails)
-const { SELF_TOOLS } = require("./tool-definitions.cjs");
+const { SELF_TOOLS } = require("./tool-definitions.ts");
 
 // Sandbox validator — non-critical, isolated
 let validateOperation = async () => ({
@@ -443,7 +443,7 @@ function _confineBash(cmd, argCwd, confineRoot) {
   return { ok: true, cwd };
 }
 
-const _bashJail = require("./bash-jail.cjs");
+const _bashJail = require("./bash-jail.ts");
 
 // Ubah cwd host jadi path DI DALAM jail. Sama seperti perhitungan `-w` untuk
 // Docker: hanya cwd yang benar-benar di bawah root workspace yang dihormati,
@@ -467,7 +467,7 @@ function _workdirDalamJail(root, cwd) {
 // sama sekali. Sistem read-only + jaringan kosong + /tmp tmpfs + batas pids.
 // Ini menutup celah shell yang tak bisa ditutup regex maupun broker.
 //
-// Dulu dikerjakan kontainer Docker sekali-pakai; kini agent/tools/bash-jail.cjs
+// Dulu dikerjakan kontainer Docker sekali-pakai; kini agent/tools/bash-jail.ts
 // dengan namespace Linux. Jaminannya sama, tapi tanpa daemon yang harus dipasang
 // dan dinyalakan — dan justru ketergantungan itu yang membuat pengurungan
 // terkuat jadi paling jarang aktif: saat daemon mati, yang benar-benar berjalan
@@ -513,7 +513,7 @@ const _penegakanLabel = require("../penegakan.cjs");
 // BUKAN pengurungan sungguhan. Ini menutup satu keluarga pelarian, bukan
 // membuat shell tak bisa menjangkau luar — path absolut yang ditulis terang
 // masih diandalkan pada penjaga regex. Pengurungan sungguhan butuh level OS
-// (bash-jail.cjs di Linux; di Windows padanannya WSL).
+// (bash-jail.ts di Linux; di Windows padanannya WSL).
 const _ENV_BASH_IZIN = [
   "PATH",
   "Path",
@@ -1506,7 +1506,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
           // WOLFSPACE_BASH_WSL yang sengaja dinyalakan orang.
           !process.env.WOLFSPACE_BASH_WSL
         ) {
-          const _ac = require("./appcontainer-jail.cjs");
+          const _ac = require("./appcontainer-jail.ts");
           const siapAc = await _ac.siapUntuk(_confineRoot);
           if (siapAc.siap) {
             _bungkusAc = _ac;
@@ -2087,7 +2087,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
       const ok = term.write(args.id, args.data);
       return { ok, output: ok ? "written" : "session not found: " + args.id };
     }
-    // ACTIVE: terminal_read is registered in tool-definitions.cjs and invoked by the agent
+    // ACTIVE: terminal_read is registered in tool-definitions.ts and invoked by the agent
     // to poll accumulated PTY output. The polling loop (up to 2s) prevents empty reads
     // right after a terminal_write before the shell has produced output.
     if (name === "terminal_read") {
@@ -2192,7 +2192,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
     if (name === "generate_3d") {
       // Text/image-to-3D via Replicate (TRELLIS + flux). Konfinemen keluaran ke
       // workspaceRoot ditangani di dalam modul.
-      const g3 = require("./gen3d-tools.cjs");
+      const g3 = require("./gen3d-tools.ts");
       return await g3.generate3d(args, context);
     }
     // Tool disk_* DIHAPUS — dulu di sini ada disk_list/disk_read/disk_glob/
@@ -2201,7 +2201,7 @@ async function _runSelfToolInner(name, args, emit, context = {}) {
     // sepenuhnya.
     //
     // Mereka sudah lama dicabut dari SELF_TOOLS (lihat catatan di
-    // tool-definitions.cjs), jadi model TIDAK BISA memanggilnya — implementasi
+    // tool-definitions.ts), jadi model TIDAK BISA memanggilnya — implementasi
     // ini kode mati. Tapi kode mati yang menembus pengurungan adalah ranjau:
     // satu baris yang mengembalikannya ke daftar tool sudah cukup untuk
     // membatalkan seluruh pengurungan, tanpa satu pun tes menjadi merah.

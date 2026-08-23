@@ -53,7 +53,7 @@ describe("bash melaporkan tingkat penegakan", () => {
   }, 60000);
 
   test("label COCOK dengan mekanisme yang benar-benar dipakai", async () => {
-    const jail = require("../agent/tools/bash-jail.cjs");
+    const jail = require("../agent/tools/bash-jail.ts");
     const kebijakan = require("../agent/sandbox-policy.ts");
     const pakaiJail =
       process.env.WW_BASH_NATIVE !== "1" &&
@@ -66,7 +66,7 @@ describe("bash melaporkan tingkat penegakan", () => {
     // untuk workspace ini. Diperiksa dengan menanyakan modulnya, bukan dengan
     // menebak dari platform — uji ini harus tetap benar di mesin yang belum
     // memasang profilnya.
-    const ac = require("../agent/tools/appcontainer-jail.cjs");
+    const ac = require("../agent/tools/appcontainer-jail.ts");
     const pakaiAc =
       !pakaiJail &&
       process.platform === "win32" &&

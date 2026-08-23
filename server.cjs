@@ -444,7 +444,7 @@ function readsStdin(lang, code) {
 // memberi kesan ada pengurungan padahal tidak.
 //
 // Pengurungan OS yang AKTIF, tanpa daemon:
-//   bash terkurung workspace -> agent/tools/bash-jail.cjs (namespace Linux)
+//   bash terkurung workspace -> agent/tools/bash-jail.ts (namespace Linux)
 //   zona kapabilitas         -> agent/broker/ (--permission + unshare -n)
 
 // Ã¢â€ â‚¬Ã¢â€ â‚¬ Resolve real Python executable (skips Windows Store alias that errors) Ã¢â€ â‚¬Ã¢â€ â‚¬

@@ -24,7 +24,7 @@ const plugins = require("../agent/plugins.cjs");
 
 describe("pintu pemasangan bukan milik model", () => {
   const DEF = fs.readFileSync(
-    require.resolve("../agent/tools/tool-definitions.cjs"),
+    require.resolve("../agent/tools/tool-definitions.ts"),
     "utf8",
   );
   // Komentar dibuang supaya catatan sejarah (yang memang menyebut namanya) tak
@@ -41,7 +41,7 @@ describe("pintu pemasangan bukan milik model", () => {
   test("alasannya ikut tertulis, bukan cuma dihapus", () => {
     // Penghapusan tanpa sebab akan dikembalikan orang berikutnya yang merasa
     // tool-nya "hilang".
-    expect(DEF).toMatch(/skill_install DICABUT/);
+    expect(DEF).toMatch(/skill_install is WITHDRAWN/);
     expect(DEF).toMatch(/EXECUTION_TOOLS/);
   });
 

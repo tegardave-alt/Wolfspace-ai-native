@@ -1,23 +1,23 @@
 // Execution tools (bash, terminal, workspace)
-const fs = require("fs");
-const path = require("path");
-const { spawn } = require("child_process");
+import * as fs from "fs";
+import * as path from "path";
+import { exec, spawn } from "child_process";
 const { resolveDiskPath } = require("./disk-tools.ts");
 const { QROOT } = require("./file-tools.ts");
 
-// Modul PTY untuk tool terminal_open/write/read/close.
+// The PTY module behind the terminal_open/write/read/close tools.
 //
-// DULU: require('../server.cjs') — mencoba menarik seluruh server hanya untuk
-// mengambil beberapa fungsi terminal. server.cjs MENYALAKAN HTTP server sebagai
-// efek samping saat di-require, jadi pemanggilan itu tak pernah kembali; try/catch
-// tak menangkap apa pun karena bukan exception, melainkan hang/circular. Hasilnya
-// term = null PERMANEN, dan ketiga tool terminal SELALU membalas "terminal
-// unavailable (node-pty is not installed)" — pesan yang menyesatkan, sebab
-// node-pty terpasang baik-baik saja.
+// BEFORE: require('../server.cjs') — pulling in the entire server just to get a
+// few terminal functions. server.cjs STARTS AN HTTP SERVER as a side effect of
+// being required, so that call never returned; try/catch caught nothing because
+// it was not an exception but a hang/circular load. The result was term = null
+// PERMANENTLY, and all three terminal tools ALWAYS replied "terminal
+// unavailable (node-pty is not installed)" — a misleading message, since
+// node-pty was installed perfectly well.
 //
-// SEKARANG: langsung ke core/terminal.ts, yang mengekspor persis API yang
-// dipakai di sini (create/write/readBuffer/destroy) dan termuat tanpa efek samping.
-let term;
+// NOW: straight to core/terminal.ts, which exports exactly the API used here
+// (create/write/readBuffer/destroy) and loads with no side effects.
+let term: any;
 try {
   term = require("../../core/terminal.ts");
 } catch (_) {
@@ -35,12 +35,12 @@ function wsResolve(p) {
     throw new Error("path di luar workspace");
   return dest;
 }
-function wsList(sub) {
+function wsList(sub: any) {
   const root = wsResolve(sub || "");
-  const out = [];
-  (function walk(dir, depth) {
+  const out: any[] = [];
+  (function walk(dir: any, depth: number = 0) {
     if (out.length > 300 || depth > 8) return;
-    let ents;
+    let ents: any;
     try {
       ents = fs.readdirSync(dir, { withFileTypes: true });
     } catch {
@@ -75,7 +75,7 @@ async function runInWorkspace(lang, code) {
   try {
     if (l === "javascript" || l === "js") {
       fs.writeFileSync(path.join(WORKSPACE, "_run.cjs"), code, "utf8");
-      const out = await new Promise((resolve, reject) => {
+      const out = await new Promise<string>((resolve, reject) => {
         exec(
           `"${process.execPath}" _run.cjs`,
           {

@@ -3,7 +3,7 @@
 // HISTORICAL NOTE: containment used to always mean Docker, and the background
 // below was written assuming that. Docker has since been removed from the
 // production path entirely — bash containment uses Linux namespaces
-// (agent/tools/bash-jail.cjs) and capability zones use --permission + unshare -n
+// (agent/tools/bash-jail.ts) and capability zones use --permission + unshare -n
 // (agent/broker/). This module stays alive because what it guards is the
 // DECISION, not the mechanism; that is why its second parameter is named
 // `pengurunganTersedia` ("containment available") rather than `hasDocker`.

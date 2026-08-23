@@ -39,7 +39,7 @@ function siklus(putaran) {
     "const path = require('path');",
     "const AKAR = " + JSON.stringify(AKAR) + ";",
     "const T = path.join(AKAR, 'agent', 'tools', 'index.cjs');",
-    "const AC = path.join(AKAR, 'agent', 'tools', 'appcontainer-jail.cjs');",
+    "const AC = path.join(AKAR, 'agent', 'tools', 'appcontainer-jail.ts');",
     "const S = path.join(AKAR, 'agent', 'sandbox.ts');",
     "const hasil = [];",
     "for (let i = 0; i < " + putaran + "; i++) {",
@@ -88,7 +88,7 @@ describe("modul tahan terhadap hot-reload", () => {
   test("keadaan tingkat proses hidup di globalThis, bukan lingkup modul", () => {
     const fs = require("fs");
     const ac = fs.readFileSync(
-      path.join(AKAR, "agent", "tools", "appcontainer-jail.cjs"),
+      path.join(AKAR, "agent", "tools", "appcontainer-jail.ts"),
       "utf8",
     );
     expect(ac).toMatch(/globalThis\.__wolfspaceAc/);

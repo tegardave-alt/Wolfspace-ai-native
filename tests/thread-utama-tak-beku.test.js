@@ -15,8 +15,8 @@
 //
 //        spawnSync            node:internal/child_process:1128   2025 ms
 //        execFileSync         node:child_process:950
-//        tersedia             agent/tools/appcontainer-jail.cjs
-//        siapUntuk            agent/tools/appcontainer-jail.cjs
+//        tersedia             agent/tools/appcontainer-jail.ts
+//        siapUntuk            agent/tools/appcontainer-jail.ts
 //        runSelfTool          agent/tools/index.cjs
 //
 //      Blok sinkron terpanjang saat perintah bash PERTAMA: 2178 ms. Sesudah
@@ -37,7 +37,7 @@ const AKAR = path.resolve(__dirname, "..");
 const baca = (p) =>
   fs.readFileSync(path.join(AKAR, p), "utf8").replace(/\r\n/g, "\n");
 
-const AC = baca("agent/tools/appcontainer-jail.cjs");
+const AC = baca("agent/tools/appcontainer-jail.ts");
 const MAIN = baca("electron/main.js");
 // Komentar dibuang untuk pemeriksaan "tak ada penugasan langsung": komentar
 // penjelas di main.js justru MENGUTIP bentuk yang salah sebagai contoh.

@@ -96,7 +96,7 @@ describe("kosakata penegakan seragam", () => {
     // pada eksekusi yang benar-benar berhasil dibungkus. Sesudah sandbox_run
     // ikut dibungkus, berpegang pada adapter saja membuat label MEREMEHKAN:
     // "penasihat" untuk proses yang sebenarnya ditolak kernel.
-    const ac = require("../agent/tools/appcontainer-jail.cjs");
+    const ac = require("../agent/tools/appcontainer-jail.ts");
     const pakaiAc =
       process.platform === "win32" &&
       process.env.WOLFSPACE_BASH_AC !== "0" &&

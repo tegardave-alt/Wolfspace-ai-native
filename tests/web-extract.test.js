@@ -179,7 +179,7 @@ describe("webExtract mengambil BAGIAN, bukan seluruh teks", () => {
 describe("web_extract terdaftar dan digerbang", () => {
   const fs = require("fs");
   const DEF = fs.readFileSync(
-    require.resolve("../agent/tools/tool-definitions.cjs"),
+    require.resolve("../agent/tools/tool-definitions.ts"),
     "utf8",
   );
   const IDX = fs.readFileSync(

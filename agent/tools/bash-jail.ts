@@ -1,60 +1,63 @@
-// ── Pengurungan bash lewat namespace Linux (pengganti kontainer Docker) ──
+// ── bash containment through Linux namespaces (replacing the Docker container) ──
 //
-// KENAPA ADA. Pengurungan workspace untuk `bash` sebelumnya hanya punya dua
-// tingkat: kontainer Docker sekali-pakai bila daemon-nya hidup, atau penjaga
-// regex yang kodenya sendiri melabeli "bocor". Docker berarti bergantung pada
-// daemon yang harus dipasang dan dinyalakan — di mesin pengembangan ini ia mati,
-// sehingga yang benar-benar berjalan sehari-hari adalah penjaga regex itu.
+// WHY IT EXISTS. Workspace containment for `bash` used to have only two levels:
+// a single-use Docker container when the daemon was alive, or a regex guard
+// whose own code labelled it "leaky". Docker meant depending on a daemon that
+// has to be installed and running — on this development machine it is off, so
+// what actually ran day to day was that regex guard.
 //
-// Kernel sudah menyediakan bahan yang sama tanpa daemon apa pun. Yang ditiru,
-// satu per satu dari argumen `docker run` yang lama:
+// The kernel already provides the same ingredients with no daemon at all. What
+// is reproduced, one by one, from the old `docker run` arguments:
 //
-//   --network none          -> unshare -n            (namespace jaringan kosong)
-//   -v <ws>:/work           -> mount --bind ws       (hanya folder itu terlihat)
-//   --read-only             -> bind sistem, remount ro
+//   --network none          -> unshare -n            (empty network namespace)
+//   -v <ws>:/work           -> mount --bind ws       (only that folder visible)
+//   --read-only             -> bind system dirs, remount ro
 //   --tmpfs /tmp:size=64m   -> mount -t tmpfs -o size=64m
 //   --pids-limit            -> unshare -p -f + ulimit -u
-//   --memory / --cpus       -> ulimit -v / -t  (perkiraan; lihat CATATAN di bawah)
+//   --memory / --cpus       -> ulimit -v / -t  (approximate; see the NOTE below)
 //
-// Terbukti pada prototipe di WSL2 (kernel 6.18): berkas rahasia host tak
-// terbaca, /etc tak ada sama sekali, `ls /work/../..` hanya memperlihatkan isi
-// jail, /bin read-only, jaringan mati — sementara tulisan di /work tetap sampai
-// ke folder workspace yang asli di host.
+// Proven on a WSL2 prototype (kernel 6.18): host secret files unreadable, /etc
+// absent entirely, `ls /work/../..` showing only the jail's contents, /bin
+// read-only, network dead — while writes in /work still reach the real
+// workspace folder on the host.
 //
-// CATATAN JUJUR: ulimit BUKAN padanan penuh cgroup. `ulimit -v` membatasi ruang
-// alamat virtual per proses, bukan total RSS satu grup proses seperti
-// `--memory`. Untuk menahan pemakaian sumber daya yang benar-benar ketat,
-// cgroup v2 tetap jawabannya. Yang dijamin di sini adalah batas AKSES
-// (berkas & jaringan) — itu yang menjadi alasan pengurungan ini ada.
+// AN HONEST NOTE: ulimit is NOT a full equivalent of cgroups. `ulimit -v` caps
+// virtual address space per process, not the total RSS of a process group as
+// `--memory` does. For genuinely strict resource limits, cgroup v2 remains the
+// answer. What is guaranteed here is the ACCESS boundary (files and network) —
+// which is the reason this containment exists.
 "use strict";
-const fs = require("fs");
-const os = require("os");
-const path = require("path");
-const { spawn, execFileSync } = require("child_process");
+import * as fs from "fs";
+import * as os from "os";
+import * as path from "path";
+import { spawn, execFileSync } from "child_process";
 
-// Direktori sistem yang di-bind READ-ONLY supaya shell punya perkakas tanpa
-// bisa mengubahnya. /etc SENGAJA tidak ikut: isinya sering memuat konfigurasi
-// dan kredensial, dan shell tak membutuhkannya untuk perintah biasa.
+// System directories bound READ-ONLY so the shell has its tools without being
+// able to change them. /etc is DELIBERATELY excluded: it often holds
+// configuration and credentials, and a shell does not need it for ordinary
+// commands.
 const BIND_RO = ["/bin", "/sbin", "/usr", "/lib", "/lib64"];
-// /dev TIDAK di-bind seluruhnya — isinya memuat disk mentah (/dev/sda dsb) yang
-// justru ingin disembunyikan. Hanya node yang benar-benar dibutuhkan shell yang
-// disalin satu per satu. Tanpa ini `cmd > /dev/null` — pola yang sangat lazim —
-// gagal dengan "can't create /dev/null: nonexistent directory", jadi pengurungan
-// yang benar pun jadi tak terpakai karena merusak perintah biasa.
+// /dev is NOT bound wholesale — it contains raw disks (/dev/sda and friends)
+// which are exactly what should stay hidden. Only the nodes a shell genuinely
+// needs are copied in one by one. Without this, `cmd > /dev/null` — an
+// extremely common pattern — fails with "can't create /dev/null: nonexistent
+// directory", so even correct containment ends up unused because it breaks
+// ordinary commands.
 const DEV_NODES = ["null", "zero", "urandom", "random", "tty"];
 const TMPFS_SIZE = "64m";
 const MAX_PROC = 256;
 const MAX_VMEM_KB = 512 * 1024;
 const MAX_CPU_SEC = 60;
 
-let _bisa = null;
+let _bisa: any = null;
 function tersedia() {
   if (_bisa !== null) return _bisa;
   _bisa = false;
   if (process.platform === "linux") {
     try {
-      // Butuh hak untuk membuat mount namespace DAN mem-bind di dalamnya.
-      // Diuji nyata, bukan ditebak dari uid: sekali gagal berarti tak dipakai.
+      // Needs the right to create a mount namespace AND to bind inside it.
+      // Tested for real rather than guessed from the uid: one failure means it
+      // is not used.
       execFileSync("unshare", ["-m", "-n", "true"], {
         stdio: "ignore",
         timeout: 5000,
@@ -77,9 +80,10 @@ function _skripJail(jail, root, workdir, cmd) {
       `[ -d ${d} ] && mkdir -p ${jail}${d} && mount --bind ${d} ${jail}${d} && ` +
       `mount -o remount,ro,bind ${jail}${d}`,
   ).join("\n");
-  // Perintah user diteruskan lewat stdin `sh -s`, TIDAK ditempel ke dalam string
-  // skrip: menempelkannya berarti tanda kutip atau `$(...)` di perintah user bisa
-  // memecah skrip pembungkus ini dan lolos dari chroot sebelum sempat terkurung.
+  // The user's command is fed through `sh -s` on stdin, NOT pasted into the
+  // script string: pasting it would let a quote or a `$(...)` in the user's
+  // command break this wrapper script and escape the chroot before it is
+  // contained.
   const devs = DEV_NODES.map(
     (n) =>
       `[ -e /dev/${n} ] && : > ${jail}/dev/${n} && mount --bind /dev/${n} ${jail}/dev/${n}`,
@@ -104,9 +108,9 @@ __WOLFSPACE_CMD__
 `;
 }
 
-// root    = folder workspace di host yang boleh dilihat
-// workdir = direktori kerja DI DALAM jail ("/work" atau "/work/<sub>")
-function jalankan(cmd, root, opts = {}) {
+// root    = the host workspace folder that may be seen
+// workdir = the working directory INSIDE the jail ("/work" or "/work/<sub>")
+function jalankan(cmd, root, opts: any = {}) {
   const timeoutMs = opts.timeout || 60000;
   const jail = fs.mkdtempSync(path.join(os.tmpdir(), "wolfspace-jail-"));
   const workdir = opts.workdir || "/work";
@@ -125,8 +129,8 @@ function jalankan(cmd, root, opts = {}) {
     child.stderr.on("data", (d) => (err += d));
 
     const bereskan = () => {
-      // Mount hilang sendiri bersama namespace-nya; yang tersisa cuma direktori
-      // kosong. Dihapus agar /tmp tak menumpuk jail bekas.
+      // The mounts vanish with their namespace; all that is left is an empty
+      // directory. Removed so /tmp does not accumulate spent jails.
       try {
         fs.rmSync(jail, { recursive: true, force: true });
       } catch (_) {}

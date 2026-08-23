@@ -51,7 +51,7 @@ describe("penolakan tidak mengklaim pengurungan yang tak ada", () => {
 
   test("deskripsi tool melarang model menyebutnya jaminan", () => {
     const def = fs.readFileSync(
-      path.join(WS, "agent", "tools", "tool-definitions.cjs"),
+      path.join(WS, "agent", "tools", "tool-definitions.ts"),
       "utf8",
     );
     const i = def.indexOf('name: "bash"');

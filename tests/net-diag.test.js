@@ -16,7 +16,7 @@
 
 const N = require("../agent/tools/net-diag.ts");
 const T = require("../agent/tools/index.cjs");
-const { SELF_TOOLS } = require("../agent/tools/tool-definitions.cjs");
+const { SELF_TOOLS } = require("../agent/tools/tool-definitions.ts");
 
 const adaWsl = process.platform === "win32";
 const kalauWsl = adaWsl ? test : test.skip;

@@ -26,15 +26,23 @@ const BERKAS_MIGRASI = [
   "agent/broker/policy.ts",
   "agent/broker/zone-process.ts",
   "agent/mcp-client.ts",
-  "agent/tools/disk-tools.ts",
-  "agent/tools/file-tools.ts",
-  "agent/tools/git-tool.ts",
-  "agent/tools/net-diag.ts",
-  "agent/tools/sandbox-validator.ts",
-  "agent/tools/wsl-jail.ts",
   "agent/sandbox-policy.ts",
   "agent/sandbox.ts",
   "agent/snapshot.ts",
+  "agent/tools/appcontainer-jail.ts",
+  "agent/tools/arch-tools.ts",
+  "agent/tools/bash-jail.ts",
+  "agent/tools/disk-tools.ts",
+  "agent/tools/exec-tools.ts",
+  "agent/tools/file-tools.ts",
+  "agent/tools/gen3d-tools.ts",
+  "agent/tools/git-tool.ts",
+  "agent/tools/net-diag.ts",
+  "agent/tools/sandbox-validator.ts",
+  "agent/tools/skill-tools.ts",
+  "agent/tools/tool-definitions.ts",
+  "agent/tools/web-tools.ts",
+  "agent/tools/wsl-jail.ts",
   "core/terminal.ts",
   "electron/preload.ts",
   "packages/contracts/agent-events.ts",
@@ -48,8 +56,8 @@ const BERKAS_MIGRASI = [
   "public/app/Screens.tsx",
   "public/app/Sidebar.tsx",
   "public/app/Viewport.tsx",
-  "public/app/VisualTools.tsx",
   "public/app/Views.tsx",
+  "public/app/VisualTools.tsx",
   "public/app/globals.d.ts",
   "public/app/usePreviewPanel.tsx",
 ];
@@ -172,15 +180,37 @@ function komentarSaja(isi) {
   return hasil;
 }
 
+/** ALL-CAPS names declared in a source file, so comments can exclude them. */
+function identifierKapital(isi) {
+  const nama = new Set();
+  const re = /\b(?:const|let|var|function|class)\s+([A-Z][A-Z0-9_]{2,})\b/g;
+  let m;
+  while ((m = re.exec(isi))) nama.add(m[1]);
+  return nama;
+}
+
+function hapusIdentifier(teks, isi) {
+  const nama = identifierKapital(isi);
+  if (!nama.size) return teks;
+  return teks.replace(/\b[A-Z][A-Z0-9_]{2,}\b/g, (w) =>
+    nama.has(w) ? " " : w,
+  );
+}
+
 describe("migrated code carries English comments", () => {
   test.each(BERKAS_MIGRASI)("%s has no Indonesian comments", (rel) => {
     const penuh = path.join(AKAR, rel);
     expect(fs.existsSync(penuh)).toBe(true);
-    const temuan = komentarSaja(fs.readFileSync(penuh, "utf8"))
+    const isi = fs.readFileSync(penuh, "utf8");
+    const temuan = komentarSaja(isi)
       // A line marked `verbatim` quotes an Indonesian test name or stored
       // string on purpose — translating it would break the thing it names.
       .filter((k) => !/verbatim/i.test(k.teks))
-      .filter((k) => POLA.test(k.teks))
+      // An ALL-CAPS token that is DECLARED in this file is an identifier, not
+      // prose. TETAP (a constant in appcontainer-jail) matched the word `tetap`
+      // and could never be fixed by translating anything. Indonesian emphasis in
+      // caps (TIDAK, HANYA) is untouched: those are declared nowhere.
+      .filter((k) => POLA.test(hapusIdentifier(k.teks, isi)))
       .map((k) => rel + ":" + k.nomor + " ->" + k.teks.replace(/\s+/g, " "));
     expect(temuan).toEqual([]);
   });

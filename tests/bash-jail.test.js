@@ -27,10 +27,10 @@
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
-const jail = require("../agent/tools/bash-jail.cjs");
+const jail = require("../agent/tools/bash-jail.ts");
 
 const SRC = fs.readFileSync(
-  require.resolve("../agent/tools/bash-jail.cjs"),
+  require.resolve("../agent/tools/bash-jail.ts"),
   "utf8",
 );
 

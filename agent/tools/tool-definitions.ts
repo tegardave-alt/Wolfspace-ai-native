@@ -345,11 +345,11 @@ const SELF_TOOLS = [
       },
     },
   },
-  // Lampiran diserahkan USER lewat jembatan; agent tak punya cara memintanya.
-  // Yang dipegang agent adalah HANDLE (att_...), bukan path — alamat berkasnya
-  // tak pernah masuk ke sistem. Karena itu deskripsinya sengaja menyebut "sudah
-  // dilampirkan": tak ada tool untuk membuka dialog berkas maupun menjelajah
-  // direktori, dan model tak boleh mengira ada.
+  // Attachments are handed over by the USER through the bridge; the agent has no
+  // way to ask for one. What the agent holds is a HANDLE (att_...), not a path —
+  // the file's address never enters the system. So the description deliberately
+  // says "already attached": there is no tool to open a file dialog or browse a
+  // directory, and the model must not assume one exists.
   {
     type: "function",
     function: {
@@ -525,33 +525,33 @@ const SELF_TOOLS = [
       },
     },
   },
-  // skill_install DICABUT dari daftar tool model. Jangan dikembalikan.
+  // skill_install is WITHDRAWN from the model's tool list. Do not restore it.
   //
-  // Dulu deskripsinya berbunyi "Install a new skill from npm, a local .cjs file,
-  // or a URL" — artinya model bisa memasang kode arbitrer untuk dirinya sendiri,
-  // tanpa satu pun persetujuan: tak ada admission CommandChain di cabang skill,
-  // dan EXECUTION_TOOLS (yang memicu HITL) hanya berisi "bash".
+  // Its description used to read "Install a new skill from npm, a local .cjs
+  // file, or a URL" — meaning the model could install arbitrary code for itself
+  // with no approval whatsoever: there was no CommandChain admission on the
+  // skill branch, and EXECUTION_TOOLS (which triggers HITL) contained only
+  // "bash".
   //
-  // Yang membuatnya serius bukan kemungkinan plugin-nya jahat, melainkan JALUR
-  // PEMANGGILANNYA: tool dipilih oleh model, dan model membaca isi berkas,
-  // keluaran tool, serta halaman web — semuanya bisa memuat kalimat yang
-  // berbunyi seperti perintah. Di VS Code tak ada masalah ini karena MANUSIA
-  // yang menekan tombol install.
+  // What makes this serious is not that a plugin might be malicious, but the
+  // CALL PATH: the tool is chosen by the model, and the model reads file
+  // contents, tool output and web pages — any of which can carry a sentence that
+  // reads like an instruction. VS Code does not have this problem because a
+  // HUMAN presses the install button.
   //
-  // Memasang adalah tindakan manusia. Implementasinya sengaja DIBIARKAN hidup di
-  // tools/index.cjs supaya UI (dan jalur HITL nanti) tetap bisa memanggilnya —
-  // yang dicabut hanya pintu ke model.
+  // Installing is a human action. The implementation is deliberately LEFT ALIVE
+  // in tools/index.cjs so the UI (and a future HITL path) can still call it —
+  // only the door to the model is closed.
   //
-  // Kalau suatu saat model perlu MENGUSULKAN pemasangan, jalurnya sudah ada:
-  // tambahkan namanya ke EXECUTION_TOOLS di agent/self_agent.cjs, seperti bash.
-  // Dikunci oleh tests/plugin-pintu-pasang.test.js.
-  // git punya tool sendiri karena ia TIDAK BISA dijalankan lewat bash lagi.
+  // If the model ever needs to PROPOSE an install, the path already exists: add
+  // its name to EXECUTION_TOOLS in agent/self_agent.cjs, as bash is. Locked by
+  // tests/plugin-pintu-pasang.test.js.
+  // git has its own tool because it CAN NO LONGER be run through bash.
   //
-  // Sesudah bash terkurung AppContainer, setiap perintah git mati sebelum
-  // mengerjakan apa pun: git membuka /dev/null (baca+tulis) saat start, dan
-  // perangkat NUL tak bisa dibaca di dalam container. Itu bukan sesuatu yang
-  // bisa ditambal dengan izin, jadi git dipindahkan ke bentuk yang tak butuh
-  // shell sama sekali.
+  // Once bash became AppContainer-contained, every git command died before doing
+  // anything: git opens /dev/null (read+write) at startup, and the NUL device
+  // cannot be read inside the container. That is not something a permission can
+  // patch, so git was moved to a form that needs no shell at all.
   {
     type: "function",
     function: {

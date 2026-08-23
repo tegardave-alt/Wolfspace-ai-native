@@ -265,7 +265,7 @@ class SandboxSession {
     let _ac: any = null;
     if (process.platform === "win32") {
       try {
-        const m = require("./tools/appcontainer-jail.cjs");
+        const m = require("./tools/appcontainer-jail.ts");
         if (
           process.env.WOLFSPACE_BASH_AC !== "0" &&
           process.env.WOLFSPACE_BASH_AC !== "false" &&
