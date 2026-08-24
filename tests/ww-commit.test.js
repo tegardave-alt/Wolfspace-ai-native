@@ -52,7 +52,7 @@ describe("commitAll", () => {
     fs.writeFileSync(path.join(dir, "b.txt"), "dua");
     const r = ww.commitAll(dir, "   ");
     expect(r.ok).toBe(false);
-    expect(r.err).toMatch(/pesan/i);
+    expect(r.err).toMatch(/message/i);
     // Dan tak ada commit yang terlanjur dibuat.
     expect(git(["log", "--oneline"], dir).split("\n")).toHaveLength(1);
   });
@@ -61,7 +61,7 @@ describe("commitAll", () => {
     jadikanRepo();
     const r = ww.commitAll(dir, "tak ada apa-apa");
     expect(r.ok).toBe(false);
-    expect(r.err).toMatch(/tidak ada perubahan/i);
+    expect(r.err).toMatch(/nothing to commit/i);
   });
 
   test("commit berhasil dan working tree jadi bersih", () => {

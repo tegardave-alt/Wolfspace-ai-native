@@ -55,7 +55,7 @@ describe("struktur penanda pengurungan", () => {
     // bergantung padanya.
     expect(SRC).toMatch(/flagPermission\(Number\(v\[1\]\)/);
     // Dan flag pilihannya tetap DIUJI nyata sebelum dipercaya.
-    expect(SRC).toMatch(/menolak \$\{flag\[0\]\}/);
+    expect(SRC).toMatch(/refused \$\{flag\[0\]\}/);
   });
 
   test("flag permission dipilih menurut versi Node, bukan dipatok", () => {

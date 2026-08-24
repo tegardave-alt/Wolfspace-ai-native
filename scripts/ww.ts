@@ -95,8 +95,8 @@ function assertRootNotNested(root) {
     // another one.
     if (!isRepo(root)) {
       die(
-        `Root '${root}' berada di DALAM repo git lain. Tiap folder harus repo terpisah.\n` +
-          `  Pindahkan root ke lokasi yang bukan bagian dari repo mana pun.`,
+        `Root '${root}' is INSIDE another git repo. Every folder must be its own repo.\n` +
+          `  Move the root somewhere that is not part of any repo.`,
       );
     }
   }
@@ -108,7 +108,7 @@ function ensureRoot(root) {
     info(`root dibuat: ${root}`);
   }
   const st = fs.statSync(root);
-  if (!st.isDirectory()) die(`root bukan direktori: ${root}`);
+  if (!st.isDirectory()) die(`root is not a directory: ${root}`);
   assertRootNotNested(root);
 }
 
@@ -118,7 +118,7 @@ function initWorkspace(dir, name, branchArg?) {
 
   if (isRepo(dir)) {
     const cur = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir) || "?";
-    warn(`'${name}' sudah repo (branch: ${cur}) — dilewati.`);
+    warn(`'${name}' already a repo (branch: ${cur}) — skipped.`);
     return { name, dir, branch: cur, skipped: true };
   }
 
@@ -172,22 +172,23 @@ function initWorkspace(dir, name, branchArg?) {
 
 // ── perintah ──────────────────────────────────────────────────────────────────
 function cmdCreate(name, opts) {
-  if (!name) die("pemakaian: ww create <nama> [--branch <b>] [--root <dir>]");
+  if (!name) die("usage: ww create <name> [--branch <b>] [--root <dir>]");
   ensureRoot(opts.root);
   const dir = path.join(opts.root, name);
   if (fs.existsSync(dir) && fs.readdirSync(dir).length && !isRepo(dir)) {
     die(
-      `folder '${name}' sudah ada dan tidak kosong (bukan repo). Pakai 'adopt' bila memang mau dikonversi.`,
+      `folder '${name}' already exists and is not empty (not a repo). Use 'adopt' if you really want to conversi.`,
     );
   }
   initWorkspace(dir, name, opts.branch);
 }
 
 function cmdAdopt(name, opts) {
-  if (!name) die("pemakaian: ww adopt <nama> [--branch <b>] [--root <dir>]");
+  if (!name) die("usage: ww adopt <name> [--branch <b>] [--root <dir>]");
   ensureRoot(opts.root);
   const dir = path.join(opts.root, name);
-  if (!fs.existsSync(dir)) die(`folder '${name}' tidak ada di ${opts.root}`);
+  if (!fs.existsSync(dir))
+    die(`folder '${name}' does not exist at ${opts.root}`);
   initWorkspace(dir, name, opts.branch);
 }
 
@@ -216,7 +217,7 @@ function cmdList(opts) {
     .readdirSync(opts.root, { withFileTypes: true })
     .filter((d) => d.isDirectory() && !isIgnorableName(d.name));
   if (!entries.length) {
-    info(`(kosong) ${opts.root}`);
+    info(`(empty) ${opts.root}`);
     return;
   }
   log(`Workspaces di ${opts.root}:\n`);
@@ -224,7 +225,7 @@ function cmdList(opts) {
     const dir = path.join(opts.root, d.name);
     if (!isRepo(dir)) {
       log(
-        `  \x1b[90m○\x1b[0m ${d.name.padEnd(24)} \x1b[90m(bukan repo)\x1b[0m`,
+        `  \x1b[90m○\x1b[0m ${d.name.padEnd(24)} \x1b[90m(not a repo)\x1b[0m`,
       );
       continue;
     }
@@ -247,7 +248,7 @@ function startWatcher(root, opts: any = {}) {
   if (!fs.existsSync(rootResolved))
     fs.mkdirSync(rootResolved, { recursive: true });
   if (!fs.statSync(rootResolved).isDirectory())
-    throw new Error("root bukan direktori: " + rootResolved);
+    throw new Error("root is not a directory: " + rootResolved);
   if (
     gitTry(["rev-parse", "--is-inside-work-tree"], rootResolved) === "true" &&
     !isRepo(rootResolved)
@@ -281,12 +282,12 @@ function startWatcher(root, opts: any = {}) {
         if (isRepo(dir)) return; // already a repo (created via `create`, say) — ignore
         inFlight.add(dir);
         try {
-          onLog(`folder baru terdeteksi: ${name}`);
+          onLog(`new folder detected: ${name}`);
           const res = initWorkspace(dir, name);
           if (res && res.branch)
             onLog(`'${name}' → repo+branch '${res.branch}' tertanam`);
         } catch (e) {
-          onLog(`gagal adopt '${name}': ${e.message.split("\n")[0]}`);
+          onLog(`failed to adopt '${name}': ${e.message.split("\n")[0]}`);
         } finally {
           inFlight.delete(dir);
         }
@@ -307,10 +308,10 @@ function cmdWatch(opts) {
     die(e.message);
   }
   log(
-    `\x1b[36m▶ ww watch\x1b[0m — memantau folder baru di ${path.resolve(opts.root)}`,
+    `\x1b[36m▶ ww watch\x1b[0m — watching for new folders at ${path.resolve(opts.root)}`,
   );
   log(
-    `  Buat folder di sana (Explorer/mkdir) → otomatis jadi repo + branch. Ctrl+C untuk berhenti.\n`,
+    `  Create a folder there (Explorer/mkdir) → it becomes a repo + branch automatically. Ctrl+C to stop.\n`,
   );
   process.on("SIGINT", () => {
     log("\n\x1b[36m■ watcher dihentikan.\x1b[0m");
@@ -346,16 +347,16 @@ function main() {
     default:
       log("ww — workspace manager (repo+branch per folder)\n");
       log(
-        "  ww create <nama> [--branch <b>] [--root <dir>]   buat folder → repo+branch baru",
+        "  ww create <name> [--branch <b>] [--root <dir>]   create a folder → new repo+branch",
       );
       log(
-        "  ww adopt  <nama> [--branch <b>] [--root <dir>]   konversi folder yang sudah ada",
+        "  ww adopt  <name> [--branch <b>] [--root <dir>]   convert an existing folder",
       );
       log(
         "  ww list                          [--root <dir>]   daftar workspace + branch + status",
       );
       log(
-        "  ww watch                         [--root <dir>]   auto-adopt folder baru (chokidar)",
+        "  ww watch                         [--root <dir>]   auto-adopt new folders (chokidar)",
       );
       log(`\n  root default: ${DEFAULT_ROOT}`);
       if (cmd && cmd !== "help") process.exitCode = 1;
@@ -401,7 +402,7 @@ function gitRun(args, cwd) {
     const err = ((e.stderr || "") + (e.stdout || "") || e.message || "")
       .toString()
       .trim();
-    return { ok: false, err: err || "git gagal" };
+    return { ok: false, err: err || "git failed" };
   }
 }
 
@@ -564,16 +565,16 @@ function listBranches(dir) {
 
 // Switch to another branch (checkout). Fails when a conflict or change blocks it.
 function switchBranch(dir, branch) {
-  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
-  if (!branch) return { ok: false, err: "nama branch kosong" };
+  if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
+  if (!branch) return { ok: false, err: "empty branch name" };
   return gitRun(["checkout", branch], dir);
 }
 
 // Create a new branch (optionally from another branch/ref) and switch to it.
 function createBranch(dir, branch, from) {
-  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const name = toBranch(branch);
-  if (!name) return { ok: false, err: "nama branch tak valid" };
+  if (!name) return { ok: false, err: "invalid branch name" };
   const args = from ? ["checkout", "-b", name, from] : ["checkout", "-b", name];
   const r = gitRun(args, dir);
   return r.ok ? { ok: true, out: r.out, name } : r;
@@ -582,19 +583,19 @@ function createBranch(dir, branch, from) {
 // Rename a branch (git branch -m). When oldName is the active branch it may be
 // omitted.
 function renameBranch(dir, oldName, newName) {
-  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const nn = toBranch(newName);
-  if (!nn) return { ok: false, err: "nama branch baru tak valid" };
+  if (!nn) return { ok: false, err: "invalid new branch name" };
   const r = gitRun(["branch", "-m", oldName, nn], dir);
   return r.ok ? { ok: true, name: nn } : r;
 }
 
 // Delete a local branch (-D, forced). Refuses to delete the active branch.
 function deleteBranch(dir, branch) {
-  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const cur = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
   if (cur === branch)
-    return { ok: false, err: "tak bisa menghapus branch yang sedang aktif" };
+    return { ok: false, err: "cannot delete the currently active branch" };
   return gitRun(["branch", "-D", branch], dir);
 }
 
@@ -609,14 +610,14 @@ function deleteBranch(dir, branch) {
 // That is not a failure the user needs to fear, so it is separated out first and
 // answered clearly.
 function commitAll(dir, message) {
-  if (!isRepo(dir)) return { ok: false, err: "bukan repo git" };
+  if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const pesan = String(message || "").trim();
-  if (!pesan) return { ok: false, err: "pesan commit kosong" };
+  if (!pesan) return { ok: false, err: "empty commit message" };
   // Only the first line becomes the subject; the rest is ignored so `git log
   // --oneline` stays readable. The 200 limit follows git convention, not a rule.
   const subject = pesan.split(/\r?\n/)[0].slice(0, 200);
   const kotor = gitTry(["status", "--porcelain"], dir);
-  if (!kotor) return { ok: false, err: "tidak ada perubahan untuk di-commit" };
+  if (!kotor) return { ok: false, err: "nothing to commit" };
   const staged = gitRun(["add", "-A"], dir);
   if (!staged.ok) return staged;
   const r = gitRun(["commit", "-m", subject], dir);
@@ -631,20 +632,26 @@ function commitAll(dir, message) {
 function renameWorkspaceFolder(dir, newName) {
   try {
     if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory())
-      return { ok: false, err: "folder tak ditemukan" };
+      return { ok: false, err: "folder not found" };
     // Folder name: no path separator, no .., no character Windows forbids.
     const nm = String(newName || "").trim();
     if (!nm || /[\\/:*?"<>|]/.test(nm) || nm === "." || nm === "..")
-      return { ok: false, err: "nama folder tak valid" };
+      return { ok: false, err: "invalid folder name" };
     const marker = path.join(dir, ".ww.json");
     if (!fs.existsSync(marker))
-      return { ok: false, err: "bukan workspace WOLFSPACE (.ww.json tak ada)" };
+      return {
+        ok: false,
+        err: "not a WOLFSPACE workspace (.ww.json is missing)",
+      };
     const parent = path.dirname(dir);
     const newPath = path.join(parent, nm);
     if (path.resolve(newPath) === path.resolve(dir))
       return { ok: true, path: dir, unchanged: true };
     if (fs.existsSync(newPath))
-      return { ok: false, err: "sudah ada folder/berkas bernama itu" };
+      return {
+        ok: false,
+        err: "a folder or file with that name already exists",
+      };
     fs.renameSync(dir, newPath);
     // Update .ww.json (which holds the name/label) when it has that field.
     try {
