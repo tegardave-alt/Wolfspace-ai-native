@@ -66,7 +66,32 @@ async function jalankan(payload) {
   return { dijalankan, peristiwa };
 }
 
-describe("HITL jalur Python: menjeda, lalu dilanjutkan", () => {
+// CI installs npm dependencies and nothing else, so langgraph is absent there
+// and the worker cannot start. These tests are only meaningful against the
+// REAL worker — a version that passed without one would prove nothing — so the
+// whole block is skipped rather than softened.
+//
+// Same guard as tests/python-agent-orkestrasi.test.js. pythonBin() probes each
+// candidate interpreter with `import langgraph`, so this asks the question the
+// worker itself would ask.
+function pythonSiap() {
+  try {
+    require("child_process").execFileSync(
+      W.pythonBin(),
+      ["-c", "import langgraph"],
+      {
+        stdio: "ignore",
+        timeout: 30000,
+      },
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+const d = pythonSiap() ? describe : describe.skip;
+d("HITL jalur Python: menjeda, lalu dilanjutkan", () => {
   test("tanpa persetujuan: bash TIDAK dijalankan, run BERHENTI menunggu", async () => {
     const { dijalankan, peristiwa } = await jalankan({
       history: [{ role: "user", content: "jalankan sesuatu" }],

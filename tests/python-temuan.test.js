@@ -36,7 +36,32 @@ const PY_SRC = fs.readFileSync(
   "utf8",
 );
 
-describe("jurnal temuan: jalur Python akhirnya MEMBACANYA", () => {
+// CI installs npm dependencies and nothing else, so langgraph is absent there
+// and the worker cannot start. These tests are only meaningful against the
+// REAL worker — a version that passed without one would prove nothing — so the
+// whole block is skipped rather than softened.
+//
+// Same guard as tests/python-agent-orkestrasi.test.js. pythonBin() probes each
+// candidate interpreter with `import langgraph`, so this asks the question the
+// worker itself would ask.
+function pythonSiap() {
+  try {
+    require("child_process").execFileSync(
+      W.pythonBin(),
+      ["-c", "import langgraph"],
+      {
+        stdio: "ignore",
+        timeout: 30000,
+      },
+    );
+    return true;
+  } catch (_) {
+    return false;
+  }
+}
+
+const d = pythonSiap() ? describe : describe.skip;
+d("jurnal temuan: jalur Python akhirnya MEMBACANYA", () => {
   test("dimuat sekali per run, dan disuntik ke system message", () => {
     // Comments are stripped: the comment explaining the fix names the very
     // functions being asserted, so raw source would match its own explanation.

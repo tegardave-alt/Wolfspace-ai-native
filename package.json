@@ -81,6 +81,7 @@
     "asarUnpack": [
       "core.js",
       "server.cjs",
+      "server.ts",
       "agent/**",
       "server/**",
       "scripts/ww.ts",
