@@ -234,7 +234,7 @@ describe("pasang & copot: pintu user, dengan penjaga jalur", () => {
     for (const n of ["../keluar", "a/b", "..\naik", "/mutlak"]) {
       const r = plugins.pasang({ nama: n, command: "node" });
       expect(r.ok).toBe(false);
-      expect(r.error).toMatch(/nama tak sah/);
+      expect(r.error).toMatch(/invalid name/);
     }
   });
 
@@ -266,7 +266,7 @@ describe("pasang & copot: pintu user, dengan penjaga jalur", () => {
     expect(plugins.pasang({ nama: N, command: "node" }).ok).toBe(true);
     const r = plugins.pasang({ nama: N, command: "lain" });
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/sudah terpasang/);
+    expect(r.error).toMatch(/already installed/);
   });
 
   test("copot membuang persetujuannya juga", () => {

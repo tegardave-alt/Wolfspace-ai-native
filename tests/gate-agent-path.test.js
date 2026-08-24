@@ -55,7 +55,7 @@ describe("tool write", () => {
   test("MENOLAK berkas baru yang terlalu dalam", async () => {
     const r = await runSelfTool("write", { path: REL, content: jsx(30) }, noop);
     expect(r.ok).toBe(false);
-    expect(String(r.output)).toMatch(/DITOLAK/);
+    expect(String(r.output)).toMatch(/REFUSED/);
     expect(fs.existsSync(ABS)).toBe(false); // tak boleh menyentuh disk
   });
 
@@ -79,7 +79,7 @@ describe("tool edit (ratchet)", () => {
       noop,
     );
     expect(r.ok).toBe(false);
-    expect(String(r.output)).toMatch(/MEMPERDALAM/);
+    expect(String(r.output)).toMatch(/DEEPENS/);
     // Berkas asli harus utuh — bukan cuma panggilannya yang gagal.
     expect(fs.readFileSync(ABS, "utf8")).toContain(indent(8, "<div />"));
   });
@@ -167,7 +167,7 @@ describe("jalur tulis lain (terlewat di audit pertama)", () => {
     );
 
     expect(r.ok).toBe(false);
-    expect(String(r.output)).toMatch(/MEMPERDALAM/);
+    expect(String(r.output)).toMatch(/DEEPENS/);
     // Tool ini punya Verify-Then-Commit SENDIRI yang hanya cek sintaks — tanpa
     // gerbang, edit ini lolos dan commit sukses. Periksa disk, bukan nilai balik.
     expect(fs.readFileSync(ABS, "utf8")).not.toContain(indent(40, "<div />"));

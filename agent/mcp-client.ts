@@ -164,7 +164,7 @@ function _killPids(entries, asal) {
         dlog(
           "mcp",
           "info",
-          `PID ${e.pid} dilewati: nomornya sudah didaur ulang.`,
+          `PID ${e.pid} skipped: the number has already been recycled.`,
           {
             asal,
             dicatat: new Date(e.ts).toISOString(),
@@ -188,7 +188,7 @@ function _killOrphans() {
       const pids = raw
         .map((e) => (typeof e === "number" ? { pid: e, ts: null } : e))
         .filter((e) => e && typeof e.pid === "number");
-      if (pids.length) _killPids(pids, "berkas-lama");
+      if (pids.length) _killPids(pids, "stale-file");
       fs.unlinkSync(LEGACY_PID_FILE);
     }
   } catch (_) {}
@@ -371,7 +371,7 @@ class MCPClient {
       if (fs.existsSync(CONFIG_PATH))
         return JSON.parse(fs.readFileSync(CONFIG_PATH, "utf8"));
     } catch (e) {
-      dlog("mcp", "error", "Gagal memuat mcp.json", { error: e.message });
+      dlog("mcp", "error", "Failed to load mcp.json", { error: e.message });
     }
     return {};
   }
@@ -439,7 +439,10 @@ class MCPClient {
       return vonis;
     } catch (e) {
       // Failing to load the guard = DENY. Deny-by-default, never fail-open.
-      return { allow: false, alasan: "penjaga admission tak dapat dimuat" };
+      return {
+        allow: false,
+        alasan: "the admission guard could not be loaded",
+      };
     }
   }
 
@@ -473,7 +476,7 @@ class MCPClient {
   async connectServer(name) {
     const cfg = this._loadConfig().mcpServers || {};
     const conf = cfg[name];
-    if (!conf) return { ok: false, error: "MCP server tak ada di konfigurasi" };
+    if (!conf) return { ok: false, error: "MCP server is not in the config" };
     if (conf.disabled) return { ok: false, error: "MCP server dinonaktifkan" };
     const ada = this.servers[name];
     if (ada && ada.ready) return { ok: true, already: true };
@@ -557,7 +560,7 @@ class MCPClient {
       });
 
       proc.on("close", (code) => {
-        dlog("mcp", "info", `MCP server ${name} ditutup dengan kode ${code}`);
+        dlog("mcp", "info", `MCP server ${name} closed with code ${code}`);
         // A server that died on its own must have its record dropped too;
         // stopServer alone is not enough, because this path does not go through it.
         if (proc.pid) _forgetPid(proc.pid);
@@ -591,12 +594,12 @@ class MCPClient {
           this._notify(name, "notifications/initialized", {});
           if (this.servers[name]) {
             this.servers[name].ready = true;
-            dlog("mcp", "info", `MCP server ${name} siap.`);
+            dlog("mcp", "info", `MCP server ${name} ready.`);
           }
           resolve();
         })
         .catch((err) => {
-          dlog("mcp", "error", `Gagal inisialisasi MCP server ${name}`, {
+          dlog("mcp", "error", `Failed to initialise MCP server ${name}`, {
             err: err.message,
           });
           reject(err);
@@ -610,7 +613,7 @@ class MCPClient {
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
       fs.writeFileSync(CONFIG_PATH, JSON.stringify(configData, null, 2));
     } catch (e) {
-      dlog("mcp", "error", "Gagal menyimpan mcp.json", { error: e.message });
+      dlog("mcp", "error", "Failed to save mcp.json", { error: e.message });
     }
   }
 
@@ -673,7 +676,7 @@ class MCPClient {
         return {
           ok: false,
           error:
-            `'${name}' adalah plugin, bukan entri config/mcp.json. ` +
+            `'${name}' is a plugin, not a config/mcp.json entry. ` +
             "Beri atau cabut izinnya di halaman Plugins.",
         };
       }
@@ -767,7 +770,7 @@ class MCPClient {
         );
       }
     } catch (e) {
-      dlog("mcp", "warn", `Gagal parsing MCP message dari ${name}`, {
+      dlog("mcp", "warn", `Failed to parse MCP message from ${name}`, {
         text: line,
         err: e.message,
       });
@@ -823,7 +826,7 @@ class MCPClient {
           allTools.push(def);
         }
       } catch (e) {
-        dlog("mcp", "error", `Gagal fetch tools dari ${name}`, {
+        dlog("mcp", "error", `Failed to fetch tools from ${name}`, {
           error: e.message,
         });
       }
@@ -864,14 +867,14 @@ class MCPClient {
           params: { tool: toolName },
           kurungan: {
             enforced: true,
-            mekanisme: "admission genesis — plugin tak disetujui user",
+            mekanisme: "genesis admission — plugin not approved by the user",
           },
         });
       } catch (_) {}
       return {
         ok: false,
         output:
-          `Plugin '${serverName}' tidak disetujui untuk sesi ini: ` +
+          `Plugin '${serverName}' is not approved for this session: ` +
           izin.alasan +
           ". Persetujuan diberikan user di halaman Plugins, dan berlaku mulai sesi berikutnya.",
       };
@@ -917,12 +920,9 @@ class MCPClient {
       this._catat(serverName, true);
       return { ok: true, output: textOutput };
     } catch (e) {
-      dlog(
-        "mcp",
-        "error",
-        `Gagal memanggil tool ${toolName} di ${serverName}`,
-        { error: e.message },
-      );
+      dlog("mcp", "error", `Failed to call tool ${toolName} on ${serverName}`, {
+        error: e.message,
+      });
       this._catat(serverName, false, e.message);
       return { ok: false, output: `Error eksekusi MCP tool: ${e.message}` };
     }

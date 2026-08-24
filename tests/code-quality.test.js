@@ -46,7 +46,7 @@ describe("berkas BARU — batas keras", () => {
   test("menolak yang melebihi batas indentasi", () => {
     const r = q.check("new.jsx", indent(q.NEW_FILE_MAX_INDENT + 2, "x"), null);
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/DITOLAK/);
+    expect(r.error).toMatch(/REFUSED/);
   });
 
   test("menerima yang tepat di batas", () => {
@@ -61,7 +61,7 @@ describe("berkas BARU — batas keras", () => {
       .join("\n");
     const r = q.check("new.jsx", long, null);
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/terlalu panjang/);
+    expect(r.error).toMatch(/too long/);
   });
 });
 
@@ -74,14 +74,14 @@ describe("berkas LAMA — ratchet", () => {
     const worse = dirty + "\n" + indent(42, "lebih-dalam");
     const r = q.check("old.jsx", worse, dirty);
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/MEMPERDALAM/);
+    expect(r.error).toMatch(/DEEPENS/);
   });
 
   test("MEMBLOKIR edit yang menambah jumlah baris sangat dalam", () => {
     const worse = dirty + "\n" + indent(30, "satu-lagi");
     const r = q.check("old.jsx", worse, dirty);
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/sangat dalam/);
+    expect(r.error).toMatch(/very deep/);
   });
 
   // ── Sifat #2: penjaga TIDAK BOLEH menghalangi pekerjaan sah ──

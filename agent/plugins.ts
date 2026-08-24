@@ -70,31 +70,37 @@ function bacaManifest(dir) {
   try {
     mentah = fs.readFileSync(berkas, "utf8");
   } catch (e) {
-    return { ok: false, error: "manifest.json tak terbaca: " + e.message };
+    return { ok: false, error: "manifest.json unreadable: " + e.message };
   }
 
   let m: any;
   try {
     m = JSON.parse(mentah);
   } catch (e) {
-    return { ok: false, error: "manifest.json bukan JSON valid: " + e.message };
+    return {
+      ok: false,
+      error: "manifest.json is not valid JSON: " + e.message,
+    };
   }
 
   const nama = m && m.nama;
   if (!_amanNama(nama)) {
     return {
       ok: false,
-      error: "nama tak sah (huruf/angka/._- , maksimal 64): " + String(nama),
+      error: "invalid name (letters/digits/._- , max 64): " + String(nama),
     };
   }
 
   // command is REQUIRED. A plugin is run, not required — there is no "entry
   // file" path loaded into this process.
   if (!m.command || typeof m.command !== "string") {
-    return { ok: false, error: "field 'command' wajib (perintah server MCP)" };
+    return {
+      ok: false,
+      error: "field 'command' is required (the MCP server command)",
+    };
   }
   if (m.args != null && !Array.isArray(m.args)) {
-    return { ok: false, error: "field 'args' harus array bila ada" };
+    return { ok: false, error: "field 'args' must be an array if present" };
   }
 
   const izin = Array.isArray(m.izin) ? m.izin : [];
@@ -103,9 +109,9 @@ function bacaManifest(dir) {
     return {
       ok: false,
       error:
-        "izin tak dikenal: " +
+        "unknown permission: " +
         asing.join(", ") +
-        " (yang sah: " +
+        " (valid ones: " +
         IZIN_DIKENAL.join(", ") +
         ")",
     };
@@ -231,27 +237,27 @@ function pasang(p) {
     return {
       ok: false,
       error:
-        "nama tak sah: harus diawali huruf/angka, hanya boleh huruf, angka, titik, garis bawah, dan strip",
+        "invalid name: must start with a letter/digit, may only contain letters, digits, dots, underscores, and hyp",
     };
   }
   const command = String((p && p.command) || "").trim();
-  if (!command) return { ok: false, error: "perintah wajib diisi" };
+  if (!command) return { ok: false, error: "a command is required" };
 
   const args = Array.isArray(p && p.args) ? p.args.map(String) : [];
   const izin = Array.isArray(p && p.izin) ? p.izin.map(String) : [];
   const asing = izin.filter((z) => !IZIN_DIKENAL.includes(z));
   if (asing.length) {
-    return { ok: false, error: "izin tak dikenal: " + asing.join(", ") };
+    return { ok: false, error: "unknown permission: " + asing.join(", ") };
   }
 
   const dir = path.join(DIR_PLUGIN, nama);
   // A second guard after _amanNama: confirm the joined result really is inside
   // plugins/. Cheap, and it catches what slips past any regex.
   if (path.relative(DIR_PLUGIN, dir).startsWith("..")) {
-    return { ok: false, error: "jalur keluar dari folder plugins" };
+    return { ok: false, error: "path escapes the plugins folder" };
   }
   if (fs.existsSync(path.join(dir, "manifest.json"))) {
-    return { ok: false, error: "plugin '" + nama + "' sudah terpasang" };
+    return { ok: false, error: "plugin '" + nama + "' is already installed" };
   }
 
   try {
@@ -272,7 +278,7 @@ function pasang(p) {
       ),
     );
   } catch (e) {
-    return { ok: false, error: "gagal menulis manifest: " + e.message };
+    return { ok: false, error: "failed to write the manifest: " + e.message };
   }
   return { ok: true, dir };
 }
@@ -288,10 +294,10 @@ function pasang(p) {
  */
 function copot(nama) {
   const n = String(nama || "").trim();
-  if (!_amanNama(n)) return { ok: false, error: "nama tak sah" };
+  if (!_amanNama(n)) return { ok: false, error: "invalid name" };
   const dir = path.join(DIR_PLUGIN, n);
   if (path.relative(DIR_PLUGIN, dir).startsWith("..")) {
-    return { ok: false, error: "jalur keluar dari folder plugins" };
+    return { ok: false, error: "path escapes the plugins folder" };
   }
   try {
     fs.rmSync(dir, { recursive: true, force: true });

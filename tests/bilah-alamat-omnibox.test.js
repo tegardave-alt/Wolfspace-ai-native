@@ -335,10 +335,10 @@ describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
 
   test("tiap kegagalan sisi main meninggalkan catatan", () => {
     for (const jejak of [
-      "addChildView GAGAL",
-      "setBounds GAGAL",
-      "loadURL DITOLAK",
-      "bounds NOL dari renderer",
+      "addChildView FAILED",
+      "setBounds FAILED",
+      "loadURL REFUSED",
+      "bounds ZERO from renderer",
     ])
       expect(MAIN2).toContain(jejak);
   });
