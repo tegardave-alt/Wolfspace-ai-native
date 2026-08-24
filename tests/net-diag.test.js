@@ -26,7 +26,7 @@ describe("net_diag: bentuknya menutup, bukan penjaganya", () => {
     for (const jahat of ["rm -rf /", "ping; ls", "", "Ping", "../ping"]) {
       const r = await N.jalankan({ operasi: jahat, host: "1.1.1.1" });
       expect(r.ok).toBe(false);
-      expect(String(r.output)).toMatch(/tak dikenal/);
+      expect(String(r.output)).toMatch(/not recognised/);
     }
   });
 
@@ -48,7 +48,7 @@ describe("net_diag: bentuknya menutup, bukan penjaganya", () => {
     for (const h of jahat) {
       const r = await N.jalankan({ operasi: "ping", host: h });
       expect(r.ok).toBe(false);
-      expect(String(r.output)).toMatch(/host tak sah/);
+      expect(String(r.output)).toMatch(/invalid host/);
     }
   });
 
@@ -61,7 +61,7 @@ describe("net_diag: bentuknya menutup, bukan penjaganya", () => {
     for (const p of [0, -1, 70000, 1.5, null, "abc", "1; ls"]) {
       const r = await N.jalankan({ operasi: "port", host: "1.1.1.1", port: p });
       expect(r.ok).toBe(false);
-      expect(String(r.output)).toMatch(/port tak sah/);
+      expect(String(r.output)).toMatch(/invalid port/);
     }
   });
 
@@ -123,7 +123,7 @@ describe("net_diag: bentuknya menutup, bukan penjaganya", () => {
       // Mengembalikan "(tak ada keluaran)" akan membuat tool tampak bekerja
       // sambil tak menjawab pertanyaannya.
       const r = await N.jalankan({ operasi: "port", host: "1.1.1.1", port: 9 });
-      expect(String(r.output)).toMatch(/TERBUKA|tertutup/);
+      expect(String(r.output)).toMatch(/OPEN|closed/);
     },
     60000,
   );

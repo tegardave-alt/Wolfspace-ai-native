@@ -138,7 +138,7 @@ describe("kekokohan klien", () => {
     // dibedakan dari yang sedang bekerja lama; tanpa batas, seluruh alur
     // berhenti tanpa satu pun pesan.
     expect(B).toMatch(/batasMs = 15000/);
-    expect(B).toMatch(/tak ada balasan untuk/);
+    expect(B).toMatch(/no reply for/);
   });
 
   test("adapter yang mati MENGGAGALKAN janji yang menggantung", () => {
@@ -151,7 +151,7 @@ describe("kekokohan klien", () => {
   test("permintaan adapter yang tak didukung DIJAWAB, bukan didiamkan", () => {
     // Membiarkannya menggantung membuat adapter menunggu selamanya dan sesinya
     // seolah macet tanpa sebab.
-    expect(B).toMatch(/tidak didukung: /);
+    expect(B).toMatch(/unsupported: /);
     // Bentuknya kini bergantung pada apakah pemanggil menyanggupi permintaan
     // itu (lihat startDebugging), jadi yang dikunci JAWABANNYA ada — bukan
     // ejaan salah satu cabangnya.
@@ -394,7 +394,7 @@ describe("pengambil js-debug", () => {
     // tak boleh dilakukan aplikasi tanpa diminta.
     const DAP = fs.readFileSync(require.resolve("../core/dap.ts"), "utf8");
     expect(DAP).not.toMatch(/https\.get/);
-    expect(DAP).toMatch(/Jalankan: node scripts\/ambil-js-debug\.cjs/);
+    expect(DAP).toMatch(/Run: node scripts\/ambil-js-debug\.cjs/);
   });
 });
 

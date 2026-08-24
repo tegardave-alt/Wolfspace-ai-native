@@ -113,7 +113,7 @@ class KlienDap extends EventEmitter {
       try {
         pesan = JSON.parse(badan);
       } catch (e) {
-        this.emit("galat-adapter", "badan bukan JSON: " + badan.slice(0, 120));
+        this.emit("galat-adapter", "body is not JSON: " + badan.slice(0, 120));
         continue;
       }
       this._salurkan(pesan);
@@ -129,7 +129,7 @@ class KlienDap extends EventEmitter {
       else
         nunggu.gagal(
           new Error(
-            pesan.message || "permintaan '" + pesan.command + "' ditolak",
+            pesan.message || "request '" + pesan.command + "' was refused",
           ),
         );
       return;
@@ -158,7 +158,7 @@ class KlienDap extends EventEmitter {
         request_seq: pesan.seq,
         success: !!sanggup,
         command: pesan.command,
-        ...(sanggup ? {} : { message: "tidak didukung: " + pesan.command }),
+        ...(sanggup ? {} : { message: "unsupported: " + pesan.command }),
       });
       this.emit("permintaan-adapter", pesan);
     }
@@ -176,7 +176,8 @@ class KlienDap extends EventEmitter {
 
   /** Kirim request, dapatkan janji atas body responsnya. */
   kirim(perintah, argumen, batasMs = 15000) {
-    if (this._mati) return Promise.reject(new Error("adapter sudah berhenti"));
+    if (this._mati)
+      return Promise.reject(new Error("the adapter has already stopped"));
     const seq = this._seq++;
     return new Promise((selesai, gagal) => {
       // A timeout is REQUIRED: an adapter that accepted a request but never
@@ -184,7 +185,7 @@ class KlienDap extends EventEmitter {
       // the whole flow stops with no message at all.
       const jam = setTimeout(() => {
         this._menunggu.delete(seq);
-        gagal(new Error("tak ada balasan untuk '" + perintah + "'"));
+        gagal(new Error("no reply for '" + perintah + "'"));
       }, batasMs);
       this._menunggu.set(seq, {
         selesai: (b) => {
@@ -210,7 +211,7 @@ class KlienDap extends EventEmitter {
     return new Promise((selesai, gagal) => {
       const jam = setTimeout(() => {
         this.off(kejadian, pada);
-        gagal(new Error("kejadian '" + kejadian + "' tak pernah datang"));
+        gagal(new Error("event '" + kejadian + "' never arrived"));
       }, batasMs);
       const pada = (b) => {
         clearTimeout(jam);
@@ -344,7 +345,7 @@ function _bungkusJs(induk, porta, prosesServer) {
     new Promise((selesai, gagal) => {
       const jam = setTimeout(() => {
         muka.off(kejadian, pada);
-        gagal(new Error("kejadian '" + kejadian + "' tak pernah datang"));
+        gagal(new Error("event '" + kejadian + "' never arrived"));
       }, batas);
       const pada = (b) => {
         clearTimeout(jam);
@@ -404,7 +405,10 @@ function _bungkusJs(induk, porta, prosesServer) {
         await anak.kirim("configurationDone", {});
         await janji;
       } catch (e) {
-        muka.emit("galat-adapter", "sesi anak gagal: " + String(e.message));
+        muka.emit(
+          "galat-adapter",
+          "child session failed: " + String(e.message),
+        );
       }
     });
     soket.on("error", (e) =>
@@ -438,7 +442,7 @@ function klienJs(opsi: any = {}) {
   if (!require("fs").existsSync(berkasServer))
     return Promise.reject(
       new Error(
-        "js-debug belum diambil. Jalankan: node scripts/ambil-js-debug.cjs",
+        "js-debug has not been fetched yet. Run: node scripts/ambil-js-debug.cjs",
       ),
     );
   return new Promise((selesai, gagal) => {
@@ -457,7 +461,7 @@ function klienJs(opsi: any = {}) {
       } catch (_) {}
       gagal(
         new Error(
-          "js-debug tak mengumumkan portanya. Keluarannya: " +
+          "js-debug did not announce its port. Its output: " +
             keluaran.slice(0, 200),
         ),
       );
