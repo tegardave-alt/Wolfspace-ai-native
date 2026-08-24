@@ -28,8 +28,8 @@
 //   node scripts/telemetri-ke-n8n.cjs <URL_WEBHOOK> [pilihan]
 //
 // Pilihan:
-//   --hanya-penting   hanya DENY/BLOCKED/gagal — buang derau ALLOW yang ribuan
-//   --sekali          satu putaran lalu keluar (untuk uji)
+//   --only-important  only DENY/BLOCKED/failures — drops the thousands of ALLOW lines
+//   --once            one pass then exit (for testing)
 //   --sertakan-lama   kirim juga riwayat yang sudah ada (bawaan: mulai dari sekarang)
 "use strict";
 
@@ -41,16 +41,19 @@ const AKAR = path.resolve(__dirname, "..");
 const POSISI = path.join(AKAR, ".wolfspace", "audit", ".posisi-n8n.json");
 
 const URL_HOOK = process.argv[2];
-const HANYA_PENTING = process.argv.includes("--hanya-penting");
-const SEKALI = process.argv.includes("--sekali");
+const HANYA_PENTING =
+  process.argv.includes("--only-important") ||
+  process.argv.includes("--hanya-penting"); // old name still accepted
+const SEKALI =
+  process.argv.includes("--once") || process.argv.includes("--sekali");
 const SERTAKAN_LAMA = process.argv.includes("--sertakan-lama");
 const JEDA_MS = Number(process.env.TELEMETRI_JEDA || 5000);
 const MAKS_BATCH = 200;
 
 if (!URL_HOOK || URL_HOOK.startsWith("--")) {
   console.error(
-    "Pakai: node scripts/telemetri-ke-n8n.cjs <URL_WEBHOOK> [--hanya-penting] [--sekali]\n\n" +
-      "Buat dulu workflow n8n dengan node Webhook (POST), lalu salin URL-nya.",
+    "Usage: node scripts/telemetri-ke-n8n.cjs <WEBHOOK_URL> [--only-important] [--once]\n\n" +
+      "Create an n8n workflow with a Webhook (POST) node first, then copy its URL.",
   );
   process.exit(1);
 }
@@ -229,9 +232,7 @@ async function putaran() {
     }
     tulisPosisi(posisi);
     if (!SERTAKAN_LAMA) {
-      console.error(
-        "[telemetri] mulai dari sekarang; riwayat lama tidak dikirim",
-      );
+      console.error("[telemetri] starting from now; old history is not sent");
       return;
     }
   }
@@ -260,7 +261,7 @@ async function putaran() {
     console.error("[telemetri] terkirim " + semua.length + " entri");
   } catch (e) {
     // Posisi SENGAJA tidak dimajukan: n8n mati sebentar tak membuat data hilang.
-    console.error("[telemetri] gagal kirim (dicoba lagi): " + e.message);
+    console.error("[telemetri] send failed (will retry): " + e.message);
   }
 }
 
@@ -273,8 +274,8 @@ async function putaran() {
       " tiap " +
       JEDA_MS / 1000 +
       " detik" +
-      (HANYA_PENTING ? " (hanya DENY/BLOCKED/error)" : "") +
-      ". Ctrl+C untuk berhenti.",
+      (HANYA_PENTING ? " (only DENY/BLOCKED/error)" : "") +
+      ". Ctrl+C to stop.",
   );
   setInterval(() => {
     putaran().catch((e) => console.error("[telemetri] " + e.message));

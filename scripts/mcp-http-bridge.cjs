@@ -104,7 +104,7 @@ async function kirimStreamable(pesan) {
   if (!res.ok) {
     const teks = await res.text().catch(() => "");
     catat(
-      "POST gagal " +
+      "POST failed " +
         res.status +
         " " +
         res.statusText +
@@ -138,7 +138,7 @@ async function kirimStreamable(pesan) {
     if (teks.trim()) keluar(teks.trim());
     return true;
   }
-  catat("content-type tak dikenal: " + ct);
+  catat("unknown content-type: " + ct);
   return false;
 }
 
@@ -153,7 +153,7 @@ async function mulaiSSELama() {
     headers: { Accept: "text/event-stream", ...HEADER_EKSTRA },
   });
   if (!res.ok) {
-    catat("SSE lama juga gagal: " + res.status + " " + res.statusText);
+    catat("legacy SSE failed too: " + res.status + " " + res.statusText);
     process.exit(1);
   }
   catat("memakai transport SSE lama");
@@ -190,7 +190,7 @@ async function mulaiSSELama() {
 
 async function kirimSSELama(pesan) {
   if (!endpointPost) {
-    catat("belum menerima endpoint POST — pesan dibuang");
+    catat("no POST endpoint received yet — message dropped");
     return;
   }
   try {
@@ -199,9 +199,9 @@ async function kirimSSELama(pesan) {
       headers: { "Content-Type": "application/json", ...HEADER_EKSTRA },
       body: pesan,
     });
-    if (!r.ok) catat("POST gagal: " + r.status + " " + r.statusText);
+    if (!r.ok) catat("POST failed: " + r.status + " " + r.statusText);
   } catch (e) {
-    catat("gagal mengirim: " + e.message);
+    catat("failed to send: " + e.message);
   }
 }
 
@@ -223,7 +223,7 @@ async function proses() {
         const ok = await kirimStreamable(pesan);
         if (!ok && !endpointPost) {
           // Streamable ditolak pada pesan PERTAMA -> coba transport lama.
-          catat("Streamable HTTP ditolak, beralih ke SSE lama");
+          catat("Streamable HTTP refused, falling back to legacy SSE");
           mode = "sse";
           mulaiSSELama().catch((e) => {
             catat("fatal: " + e.message);
@@ -237,7 +237,7 @@ async function proses() {
         await kirimSSELama(pesan);
       }
     } catch (e) {
-      catat("gagal memproses pesan: " + e.message);
+      catat("failed to process message: " + e.message);
     }
   }
   sibuk = false;

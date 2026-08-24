@@ -259,7 +259,7 @@ async function jalankan(perintah, opts) {
     return {
       ok: false,
       output: "WSL path unavailable: " + siap.alasan,
-      ..._penegakan.label("penasihat", "unavailable"),
+      ..._penegakan.label("penasihat", "tak-tersedia"),
     };
   }
   const m = pastikanMount();
