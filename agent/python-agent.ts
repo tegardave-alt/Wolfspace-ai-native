@@ -43,11 +43,21 @@
 //                             shared, because they happen inside runSelfTool
 //   transient retry           already inside askCloudTools; NOT duplicated here
 //
-// Nothing is knowingly missing from this list any more. What is still open is a
-// DECISION, not a gap: no caller routes to this path. pythonAgentEnabled() reads
-// WOLFSPACE_AGENT_PY, and nothing reads pythonAgentEnabled() — so setting it does
-// nothing today. The JS agent remains what runs, and pointing /self-agent here is
-// a deliberate step someone still has to take.
+// Nothing is knowingly missing from this list any more.
+//
+// HOW TO ACTUALLY RUN THIS PATH
+//
+//   WOLFSPACE_AGENT_PY=1
+//
+// /self-agent in server.ts asks pythonAgentEnabled() per request and routes
+// here when it says yes. Per REQUEST, not at startup, so the flag can be flipped
+// without a restart — which is what makes comparing the two paths on one machine
+// practical.
+//
+// The JS loop remains the DEFAULT, and that is deliberate rather than pending:
+// it is the path years of real runs have shaped, and an opt-in is how a second
+// orchestrator earns the same standing. If loading this module fails, server.ts
+// falls back to the JS loop rather than failing the request.
 
 import * as path from "path";
 

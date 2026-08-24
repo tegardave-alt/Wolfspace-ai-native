@@ -4225,7 +4225,42 @@ const server = http.createServer(async (req, res) => {
       const {
         selfAgentStream: freshSelfAgentStream,
       } = require("./agent/self_agent.ts");
-      await freshSelfAgentStream(payload, ev, {
+
+      // ── Which orchestrator handles this request ──
+      //
+      // OPT-IN, and the JS loop stays the default. WOLFSPACE_AGENT_PY used to be
+      // read by pythonAgentEnabled() and by nobody else, so setting it did
+      // nothing at all — the Python path was reachable only from its tests. This
+      // is the line that makes the switch real.
+      //
+      // Safe to offer now because the parity gaps are closed rather than merely
+      // listed: the approval gate, evidence check and repeat backstop come from
+      // agent/penjaga-agent.ts, the planner from agent/perencana-agent.ts, HITL
+      // pauses and resumes through the same hitl_response the UI already sends,
+      // and the findings journal is read as well as written. Both paths call the
+      // SAME runSelfTool, so a tool runs in the same AppContainer, the same
+      // broker and the same audit ledger whichever one asked for it.
+      //
+      // Resolved per request, not cached: the flag can be flipped without a
+      // restart, which is what makes comparing the two paths on one machine
+      // practical.
+      let jalankanAgent = freshSelfAgentStream;
+      try {
+        delete require.cache[require.resolve("./agent/python-agent.ts")];
+        const py = require("./agent/python-agent.ts");
+        if (py.pythonAgentEnabled()) {
+          jalankanAgent = py.selfAgentStreamPython;
+          dlog("self", "info", "orkestrator", { jalur: "python" });
+        }
+      } catch (e) {
+        // A broken Python path must not take the agent down with it: the JS loop
+        // is still there, and falling back is better than failing the request.
+        dlog("self", "warn", "python orchestrator unavailable", {
+          error: String((e && e.message) || e).slice(0, 160),
+        });
+      }
+
+      await jalankanAgent(payload, ev, {
         isCancelled: () => cancelled,
         setCurReq: (r) => {
           curReq = r;

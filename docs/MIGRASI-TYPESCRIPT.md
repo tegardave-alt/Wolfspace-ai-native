@@ -137,6 +137,49 @@ Three properties are load-bearing:
 `npm ci` deletes `node_modules` outright, so it self-cleans on every clean
 install.
 
+## Two orchestrators, one set of guarantees
+
+Phase 10 put a LangGraph state machine in `services/agent-python/`. It decides
+which node runs next; everything a node actually DOES stays on the host —
+the model call, the tool call, the sandbox, the broker, the audit ledger.
+
+Both orchestrators call the SAME `runSelfTool`, so a tool runs in the same
+AppContainer, the same broker, and the same ledger whichever one asked. An agent
+whose security boundary depended on which code path invoked it would be no
+boundary at all.
+
+Anything a run relies on lives in ONE module with two callers, never a copy:
+
+| shared                                         | module                                                                   |
+| ---------------------------------------------- | ------------------------------------------------------------------------ |
+| approval gate, evidence check, repeat backstop | `agent/penjaga-agent.ts`                                                 |
+| planner checklist, provider fallback           | `agent/perencana-agent.ts`                                               |
+| findings journal                               | `agent/temuan.ts` — the WRITES were already shared, inside `runSelfTool` |
+
+Two predicates in that set look interchangeable and are not:
+
+- `penjaga.galatSementara` — "retry the SAME provider?" Transport shapes only.
+- `perencana.layakGantiProvider` — "try ANOTHER provider?" Also auth and quota.
+
+A 401 is not worth retrying against the same key, but it is exactly the reason
+to reach for the next one. Collapsing them would silently disable fallback for
+dead keys — on a real run here, 8 of the 10 keys in `CLOUD_KEYS` were dead.
+
+### Running it
+
+```
+WOLFSPACE_AGENT_PY=1
+```
+
+`/self-agent` asks `pythonAgentEnabled()` per REQUEST, so the flag can be
+flipped without a restart. The JS loop is the default and stays it; if the
+Python module fails to load, the request falls back rather than failing.
+
+For a long time that flag did nothing at all: `pythonAgentEnabled()` read it and
+nobody read `pythonAgentEnabled()`. "It is opt-in" was true of the code and
+false of the product — which is its own kind of bug, and the reason
+`tests/agent-pemilihan-orkestrator.test.js` now pins the switch itself.
+
 ## The three ratchets
 
 `tests/kontrak-tipe.test.js` holds one list, `SUDAH_TYPESCRIPT`, and derives
