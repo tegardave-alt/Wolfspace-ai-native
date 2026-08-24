@@ -34,6 +34,7 @@ const SUDAH_DIPERIKSA = ["agent/attachment-bridge.ts"];
 // quietly been reverted to an unchecked .cjs.
 const SUDAH_TYPESCRIPT = [
   "agent/anggaran.ts",
+  "agent/pemantau-blokir.ts",
   "agent/attachment-bridge.ts",
   "agent/broker/audit-log.ts",
   "agent/broker/commandchain.ts",

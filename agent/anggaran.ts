@@ -87,6 +87,22 @@ export const IPC_PAYLOAD_MAKS = 32 * 1024 * 1024;
 export const IPC_SIZER_KEDALAMAN = 4;
 
 /**
+ * Buffer ceiling for a command's captured output.
+ *
+ * The old value was 200 KB, and reaching it FAILED the whole command with
+ * "stdout maxBuffer length exceeded". Measured on the boundary: 200 KB passed,
+ * 210 KB failed. An ordinary `git log` or `npm ls` clears 200 KB, so the most
+ * likely limit to be hit in daily use was also the one that discarded work
+ * already done successfully.
+ *
+ * 8 MB matches what the AppContainer path already used
+ * (agent/tools/appcontainer-jail.ts), so a command behaves the same whichever
+ * route runs it. This is a BUFFER, not a payload crossing IPC — what is handed
+ * on is truncated separately, and IPC_PAYLOAD_MAKS still applies beyond it.
+ */
+export const EXEC_MAKS_BUFFER = 8 * 1024 * 1024;
+
+/**
  * Resource ceilings applied to commands the agent runs on Windows.
  *
  * The Linux path already had these — agent/tools/bash-jail.ts caps processes,

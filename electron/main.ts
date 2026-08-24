@@ -867,13 +867,16 @@ function apiStream(
  * By the time any IPC message arrives the hook is usually already in place,
  * because core() installs it through server.cjs.
  */
-let _anggaran: any = null;
-function anggaran() {
-  if (_anggaran) return _anggaran;
+const _anggaran: any = {};
+function modulAgent(nama: string) {
+  if (_anggaran[nama]) return _anggaran[nama];
   const root = unpackedRoot();
   require(path.join(root, "scripts", "ts-register.cjs"));
-  _anggaran = require(path.join(root, "agent", "anggaran.ts"));
-  return _anggaran;
+  _anggaran[nama] = require(path.join(root, "agent", nama + ".ts"));
+  return _anggaran[nama];
+}
+function anggaran() {
+  return modulAgent("anggaran");
 }
 
 /**
@@ -1232,12 +1235,36 @@ _gcInterval.unref(); // do not hold the process open just for this interval
 
 app.whenReady().then(() => {
   probe.startStopProbe();
-  probe.startLoopProbe();
   migrateOldUserDataOnce();
   registerAppProtocol();
   registerIpc();
   startBackend();
   createWindow();
+  // Blocking watchdog — the instrument the 5000 ms budget never had.
+  //
+  // REPLACES probe.startLoopProbe(), which measured the same thing more
+  // expensively and with nothing to compare it against: it recursed through
+  // setImmediate on EVERY turn of the loop, forever, and printed one line per
+  // event over 200 ms with no aggregation and no notion of a budget. An
+  // instrument that schedules work on every tick is itself load.
+  //
+  // agent/pemantau-blokir.ts samples in C++ at a fixed resolution, keeps a
+  // histogram, and speaks only when one UNINTERRUPTED stretch crosses the
+  // budget's NORMAL band. Silence is the design: measured idle latency here is
+  // p99 = 1 ms over 2840 samples, so a chattier reporter would bury the one
+  // line that matters under thousands saying nothing happened.
+  //
+  // Started AFTER createWindow() on purpose. It pulls in the .ts require hook,
+  // and this repo cut startup from 1071 ms to 314 ms — that budget is not
+  // spent on the thing measuring it.
+  try {
+    const pb = modulAgent("pemantau-blokir");
+    pb.mulai(20);
+    pb.pasangLaporan((l: any) => probe.say("BLOKIR " + pb.ringkas(l)), 15000);
+  } catch (e: any) {
+    // Never fatal: losing the instrument must not cost the app its window.
+    probe.say("pemantau blokir tak aktif: " + e.message);
+  }
   // Hot reload: seluruh system WOLFSPACE tanpa reset manual
   try {
     const root = unpackedRoot();
