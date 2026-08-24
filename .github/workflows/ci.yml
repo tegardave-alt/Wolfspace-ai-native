@@ -48,8 +48,22 @@ jobs:
           node-version: 20
           cache: npm
       - run: npm ci
+      # shell: bash memberi -o pipefail, tanpa itu kode keluar jest hilang
+      # ditelan tee dan langkah ini akan HIJAU meski tesnya merah.
       - name: Jest
-        run: npm test
+        shell: bash
+        run: npm test 2>&1 | tee /tmp/jest.log
+
+      # Kegagalan hanya-CI harus bisa didiagnosis tanpa mengunduh log mentah:
+      # log butuh autentikasi, anotasi tidak. Yang diangkat cuma nama suite yang
+      # merah dan baris ringkasannya — cukup untuk tahu ke mana harus melihat.
+      - name: Ringkas kegagalan Jest
+        if: failure()
+        shell: bash
+        run: |
+          grep -E '^(FAIL |  ● |Tests: |Test Suites: )' /tmp/jest.log \
+            | head -40 \
+            | while IFS= read -r baris; do echo "::error::$baris"; done
 
   build-electron:
     name: Build Electron (windows)
