@@ -298,6 +298,23 @@ function createWindow() {
     backgroundColor: "#0b0d11",
     title: "WOLFSPACE",
     autoHideMenuBar: true,
+    // The native title bar is MERGED into the app's own top bar: the window is
+    // drawn without one, and Windows paints only minimize/maximize/close as an
+    // overlay inside .topbar's row. One bar where there used to be two stacked.
+    //
+    // height MUST track .topbar in public/styles.css (46px). The overlay is
+    // positioned by the OS, not by CSS, so if the two drift apart the buttons
+    // stop lining up with the row they are supposed to sit in.
+    //
+    // color has to be OPAQUE. .topbar is rgba(11,13,17,.72) over a
+    // backdrop-filter, but the overlay strip is painted by Windows and cannot be
+    // translucent, so it reuses the window's own backgroundColor.
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#0b0d11",
+      symbolColor: "#e6edf3",
+      height: 46,
+    },
     icon: path.join(__dirname, "..", "public", "icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),

@@ -508,7 +508,15 @@ select {
   align-items: center;
   gap: 10px;
   height: 46px;
-  padding: 0 14px;
+  padding-left: 14px;
+  /* Reserves the strip Windows paints the window controls into. The
+     env(titlebar-area-*) values exist only while the Window Controls Overlay is
+     active (electron/main.ts titleBarOverlay); the fallbacks collapse this calc
+     to a plain 14px, so a plain browser or a build without the overlay renders
+     exactly as before. */
+  padding-right: calc(
+    14px + 100vw - env(titlebar-area-width, 100vw) - env(titlebar-area-x, 0px)
+  );
   border-bottom: 1px solid var(--line);
   background: rgba(11, 13, 17, 0.72);
   backdrop-filter: blur(14px);
@@ -630,6 +638,29 @@ select {
 }
 .tb-spacer {
   flex: 1;
+  /* Full row height, or the drag region below has ZERO AREA. The bar is
+     align-items:center and this div is empty, so it defaults to 0px tall:
+     wide, invisible, and completely undraggable. Measured — every point along
+     the bar answered HTCLIENT until this line existed. */
+  align-self: stretch;
+  /* The window's drag handle, now that the title bar is merged into this row
+     (electron/main.ts titleBarOverlay). Deliberately this element and NOT
+     .topbar.
+
+     Dragging the whole bar was tried first and it broke the sidebar. In
+     "sembunyi" mode .sidebar has width 0 and .sb-toggle is position:fixed,
+     floating over .topbar's 58px left padding — so the bar's drag rectangle
+     covered a button that still painted normally and could never be clicked.
+
+     Opting that button out with no-drag did not hold either. Measured with
+     WM_NCHITTEST it read HTCLIENT on a freshly launched window and HTCAPTION
+     again after a minimize/restore: app-region on a position:fixed element is
+     not recomputed reliably across layout changes.
+
+     .tb-spacer removes the problem by construction — an ordinary in-flow child
+     that begins AFTER .topbar's left padding, so the strip the floating button
+     lives in is never part of a drag region at all. */
+  -webkit-app-region: drag;
 }
 .status-dot {
   width: 7px;
