@@ -38,15 +38,16 @@
 //   HITL pause and resume     the gate PAUSES the run rather than refusing the
 //                             call; approval returns as hitl_response, the same
 //                             field the JS loop reads and the UI already sends
+//   findings journal          temuan.muat once per run, temuan.blokPrompt into
+//                             the system message — the WRITES were already
+//                             shared, because they happen inside runSelfTool
 //   transient retry           already inside askCloudTools; NOT duplicated here
 //
-//   NOT here yet              why it is not merely missing
-//   -----------               ---------------------------
-//   findings journal          crosses process restarts; a separate extraction
-//
-// So the JS agent stays the default. This path runs when it is asked for, by
-// name — see WOLFSPACE_AGENT_PY in pythonAgentEnabled below. Making it the
-// default is a decision for when the remaining three are closed, not before.
+// Nothing is knowingly missing from this list any more. What is still open is a
+// DECISION, not a gap: no caller routes to this path. pythonAgentEnabled() reads
+// WOLFSPACE_AGENT_PY, and nothing reads pythonAgentEnabled() — so setting it does
+// nothing today. The JS agent remains what runs, and pointing /self-agent here is
+// a deliberate step someone still has to take.
 
 import * as path from "path";
 
@@ -86,8 +87,34 @@ async function pseudoModel(
   args: any,
   toolDefs: any[],
   emit: (e: any) => void,
+  wsRoot?: string | null,
 ): Promise<ToolAnswer> {
-  const messages = args?.messages || [];
+  let messages = args?.messages || [];
+
+  // ── FINDINGS: what is already KNOWN, not what is left to do ──
+  //
+  // The checklist keeps the agent remembering its TASK. This keeps it
+  // remembering its KNOWLEDGE, and those are two different things — of which
+  // only one was being kept on this path.
+  //
+  // Appended to the system message rather than added as a new one: a separate
+  // message would be trimmed away by the same history slicing that lost the
+  // `read` results in the first place.
+  //
+  // Copied, not mutated: `messages` belongs to the graph's state, and editing it
+  // in place would make the journal accumulate into the conversation itself,
+  // once per step.
+  try {
+    const t = require("./temuan.ts");
+    const blok = t.blokPrompt(t.kunciWs(wsRoot ?? null));
+    if (blok && messages.length) {
+      const kepala = { ...messages[0] };
+      kepala.content = String(kepala.content || "") + blok;
+      messages = [kepala, ...messages.slice(1)];
+    }
+  } catch (_) {
+    // A failure to remember must not stop the run.
+  }
 
   // A heartbeat while the model thinks.
   //
@@ -265,6 +292,29 @@ export async function selfAgentStreamPython(
     }
   }
 
+  // ── The findings journal, read once per run ──
+  //
+  // Half of this was already shared and nobody had noticed: the WRITES happen
+  // inside runSelfTool (agent/tools/index.ts), the same function both
+  // orchestrators call, so the Python path has been filling this journal all
+  // along. It simply never read it back.
+  //
+  // What it carries is what the checklist cannot: knowledge across a process
+  // RESTART. The checklist's checkpoint uses MemorySaver, which dies with the
+  // process; the journal is on disk. Measured in a real run ledger (pid 12932):
+  // 246 actions for 22 unique commands, with index.html read 13 times — not a
+  // loop, but history.slice(-16) discarding `read` results (their content is the
+  // longest, so it is trimmed first) and leaving the agent unaware it had read
+  // them at all.
+  try {
+    const t = require("./temuan.ts");
+    const berkas = t.muat(t.kunciWs(wsRoot));
+    if (berkas) dlog("agent-py", "info", "temuan dimuat", { berkas });
+  } catch (_) {
+    // A failure to remember must not stop the run: without this the agent falls
+    // back to its old behaviour rather than failing.
+  }
+
   const agentCtx = { sessionId: threadId, workspaceRoot: wsRoot };
   const cloud = payload?.cloud;
   const toolDefs = [...tools().SELF_TOOLS];
@@ -281,7 +331,8 @@ export async function selfAgentStreamPython(
   const hitungan = new Map<string, number>();
 
   const onTool = async (name: string, args: any): Promise<ToolAnswer> => {
-    if (name === "__model__") return pseudoModel(cloud, args, toolDefs, emit);
+    if (name === "__model__")
+      return pseudoModel(cloud, args, toolDefs, emit, wsRoot);
     if (name === "__validate__") return pseudoValidate(args, bukti);
     if (name === "__plan__") return pseudoPlan(args, cloud);
 
