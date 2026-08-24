@@ -107,7 +107,7 @@ const SEMANTIC_CATEGORIES = {
     action: "warn",
     confidence: 0.82,
     description:
-      "Hasil build/kompilasi — tidak perlu diedit langsung karena auto-generated",
+      "Build/compile output — no need to edit directly, it is auto-generated",
     namePatterns: [
       /\.(?:o|obj|pyc|class|dll|exe|wasm|hex)$/i,
       /(?:bundle|chunk|vendor)\.[a-f0-9]{8,}\./i,
@@ -124,7 +124,7 @@ const SEMANTIC_CATEGORIES = {
     intent: "backup",
     action: "warn",
     confidence: 0.75,
-    description: "File backup — salinan otomatis, bukan source utama",
+    description: "Backup file — an automatic copy, not the primary source",
     namePatterns: [
       /(?:backup|bak|~|\.[0-9]{1,3}$)/i,
       /\.(?:bak|old|orig|backup)$/i,
@@ -142,7 +142,7 @@ const SEMANTIC_CATEGORIES = {
     action: "block",
     confidence: 0.85,
     description:
-      "Konfigurasi sensitif — file konfigurasi yang berisi credential atau rahasia",
+      "Sensitive configuration — a config file holding credentials or secrets",
     namePatterns: [
       /(?:^|[\/\\])\.(?:env|env\.\w+|envrc)$/i,
       /(?:cloud-keys|service-account|google-key)/i,
@@ -419,14 +419,14 @@ function qSemanticSearch(query: any, options: any = {}) {
  */
 function validateBashCommand(cmd) {
   if (!cmd || typeof cmd !== "string")
-    return { safe: false, reason: "perintah kosong" };
+    return { safe: false, reason: "empty command" };
 
   // Lexical check (fast fail)
   for (const pattern of DANGEROUS_PATTERNS) {
     if (pattern.test(cmd)) {
       return {
         safe: false,
-        reason: `perintah berbahaya terdeteksi: ${pattern.source}`,
+        reason: `dangerous command detected: ${pattern.source}`,
       };
     }
   }
@@ -448,7 +448,7 @@ function validateBashCommand(cmd) {
   ) {
     return {
       safe: false,
-      reason: `SEMANTIK: perintah destruktif "${destructiveWords.exec(cmdLower)![0]}" dengan recursive flag menuju system path — ditolak`,
+      reason: `SEMANTIC: destructive command "${destructiveWords.exec(cmdLower)![0]}" with a recursive flag menuju system path — ditolak`,
     };
   }
 
@@ -463,7 +463,7 @@ function validateBashCommand(cmd) {
  */
 function validateFilePath(filePath, contentPreview) {
   if (!filePath || typeof filePath !== "string")
-    return { safe: false, reason: "path kosong" };
+    return { safe: false, reason: "empty path" };
 
   const normalized = filePath.replace(/\\/g, "/");
 
@@ -525,7 +525,7 @@ async function validateEdit(filePath, oldString, newString) {
   try {
     currentContent = fs.readFileSync(absPath, "utf8");
   } catch (e) {
-    return { safe: false, reason: `file tidak bisa dibaca: ${e.message}` };
+    return { safe: false, reason: `file cannot be read: ${e.message}` };
   }
 
   // 2. Check file path with semantic content preview
@@ -557,19 +557,25 @@ async function validateEdit(filePath, oldString, newString) {
         .slice(matchIndex, matchIndex + targetLines.length)
         .join("\n");
     } else {
-      return { safe: false, reason: "old_string tidak ditemukan di file" };
+      return { safe: false, reason: "old_string was not found in the file" };
     }
   }
 
   // 4. Check NOOP
   if (targetToReplace === newString) {
-    return { safe: false, reason: "NOOP: old_string sama dengan new_string" };
+    return {
+      safe: false,
+      reason: "NOOP: old_string is identical to new_string",
+    };
   }
 
   // 5. Apply patch in memory
   const patched = currentContent.replace(targetToReplace, newString);
   if (patched === currentContent) {
-    return { safe: false, reason: "NOOP: replace tidak mengubah konten" };
+    return {
+      safe: false,
+      reason: "NOOP: the replacement does not change the content",
+    };
   }
 
   // 6. Write to temp file and syntax check
@@ -589,7 +595,7 @@ async function validateEdit(filePath, oldString, newString) {
     try {
       fs.unlinkSync(tempPath);
     } catch (_) {}
-    return { safe: false, reason: `gagal validasi sintaks: ${e.message}` };
+    return { safe: false, reason: `syntax validation failed: ${e.message}` };
   }
 
   // 7. Generate diff summary
@@ -615,7 +621,7 @@ async function validateWrite(filePath, content) {
   if (!content || content.trim() === "") {
     return {
       safe: false,
-      reason: "konten kosong — gunakan edit untuk perubahan kecil",
+      reason: "empty content — use edit for small changes",
     };
   }
 
@@ -637,7 +643,7 @@ async function validateWrite(filePath, content) {
     try {
       fs.unlinkSync(tempPath);
     } catch (_) {}
-    return { safe: false, reason: `gagal validasi: ${e.message}` };
+    return { safe: false, reason: `validation failed: ${e.message}` };
   }
 
   return { safe: true };

@@ -26,7 +26,7 @@ function qResolve(p, mustBeEditable) {
     !Q_ALLOWED.test(relNorm) &&
     !Q_ALLOWED.test(relNorm.replace(/\//g, "\\\\"))
   )
-    throw new Error("path tidak boleh ditulis: " + relNorm);
+    throw new Error("path is not writable: " + relNorm);
   return dest;
 }
 function qWalk(filterRe) {
@@ -75,7 +75,7 @@ function qList() {
 
 // ── utils ──
 function qGlob(pattern) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   const re = globToRe(pattern);
   const res: any[] = [];
   const files = qWalk(null);
@@ -160,12 +160,12 @@ function globToRe(pat: any) {
   return new RegExp("^" + out + "$", "i");
 }
 function qRead(absPath, near) {
-  if (!absPath) return "(path kosong)";
+  if (!absPath) return "(empty path)";
   let txt;
   try {
     txt = fs.readFileSync(absPath, "utf8");
   } catch (e) {
-    return "(gagal baca: " + e.message + ")";
+    return "(read failed: " + e.message + ")";
   }
   const lines = txt.split("\n");
   const N = lines.length;
@@ -189,7 +189,7 @@ function qRead(absPath, near) {
 }
 
 function qGrep(pattern: any, options: any = {}) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
 
   let patternsToSearch: any[] = [];
 
@@ -212,7 +212,7 @@ function qGrep(pattern: any, options: any = {}) {
     try {
       re = new RegExp(pattern, "i");
     } catch {
-      return "regex tidak valid: " + pattern;
+      return "invalid regex: " + pattern;
     }
     patternsToSearch = [re];
   }
@@ -237,7 +237,7 @@ function qGrep(pattern: any, options: any = {}) {
       }
     });
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 
 async function qSyntaxOk(absPath) {
@@ -426,7 +426,7 @@ async function qListAsync() {
 }
 
 async function qGlobAsync(pattern) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   const re = globToRe(pattern);
   const files = (await qWalkAsync(null)).filter((f) => re.test(f.rel));
   const res = await _petaBatas(files, 16, async (f) => {
@@ -440,7 +440,7 @@ async function qGlobAsync(pattern) {
 }
 
 async function qGrepAsync(pattern: any, options: any = {}) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   let patternsToSearch: any[] = [];
   if (options.intent || options.semantic) {
     const sv = getSemanticValidator();
@@ -457,7 +457,7 @@ async function qGrepAsync(pattern: any, options: any = {}) {
     try {
       re = new RegExp(pattern, "i");
     } catch {
-      return "regex tidak valid: " + pattern;
+      return "invalid regex: " + pattern;
     }
     patternsToSearch = [re];
   }
@@ -496,7 +496,7 @@ async function qGrepAsync(pattern: any, options: any = {}) {
     }
     if (hits.length >= 150) break;
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 
 async function qBackupAsync() {

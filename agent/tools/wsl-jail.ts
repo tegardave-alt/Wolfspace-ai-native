@@ -79,9 +79,9 @@ const SKRIP_MOUNT = [
   "IP=$(ip route | awk '/^default/{print $3}')",
   "U=$(sed -n 's/^username=//p' " + KRED + ")",
   "P=$(sed -n 's/^password=//p' " + KRED + ")",
-  '[ -n "$U" ] && [ -n "$P" ] || { echo "kredensial kosong atau ' +
+  '[ -n "$U" ] && [ -n "$P" ] || { echo "empty credentials, or ' +
     KRED +
-    ' tak terbaca"; exit 3; }',
+    ' is unreadable"; exit 3; }',
   "mkdir -p " + TITIK,
   // user=/pass=, NOT credentials= — see note (1) in this file's header.
   'mount -t cifs "//$IP/' +
@@ -136,9 +136,9 @@ function _pasangSkrip() {
  */
 function tersedia() {
   if (_siapCache) return _siapCache;
-  _siapCache = { siap: false, alasan: "belum diperiksa" };
+  _siapCache = { siap: false, alasan: "not checked yet" };
   if (process.platform !== "win32") {
-    _siapCache = { siap: false, alasan: "hanya untuk Windows" };
+    _siapCache = { siap: false, alasan: "Windows only" };
     return _siapCache;
   }
   try {
@@ -146,7 +146,10 @@ function tersedia() {
       timeout: 25000,
     });
     if (!String(out).includes("bwrap")) {
-      _siapCache = { siap: false, alasan: "bwrap tak ada di distro " + DISTRO };
+      _siapCache = {
+        siap: false,
+        alasan: "bwrap is missing in distro " + DISTRO,
+      };
       return _siapCache;
     }
     // The MOUNT is checked too, not only its prerequisites.
@@ -162,7 +165,7 @@ function tersedia() {
     // who reads it.
     const m = pastikanMount();
     if (!m.ok) {
-      _siapCache = { siap: false, alasan: "mount /work gagal: " + m.alasan };
+      _siapCache = { siap: false, alasan: "mount /work failed: " + m.alasan };
       return _siapCache;
     }
     _siapCache = { siap: true, alasan: "" };
@@ -172,9 +175,9 @@ function tersedia() {
       alasan:
         "distro " +
         DISTRO +
-        " tak siap atau " +
+        " is not ready, or " +
         KRED +
-        " tak ada (" +
+        " is missing (" +
         String(e.code || e.message).slice(0, 60) +
         ")",
     };
@@ -255,8 +258,8 @@ async function jalankan(perintah, opts) {
   if (!siap.siap) {
     return {
       ok: false,
-      output: "jalur WSL tak tersedia: " + siap.alasan,
-      ..._penegakan.label("penasihat", "tak-tersedia"),
+      output: "WSL path unavailable: " + siap.alasan,
+      ..._penegakan.label("penasihat", "unavailable"),
     };
   }
   const m = pastikanMount();
@@ -266,9 +269,9 @@ async function jalankan(perintah, opts) {
       output:
         "mount " +
         TITIK +
-        " gagal: " +
+        " failed: " +
         m.alasan +
-        "\nJalankan ulang penyiapan share, atau periksa " +
+        "\nRe-run the share setup, or check " +
         KRED,
       ..._penegakan.label("penasihat", "mount-gagal"),
     };
@@ -290,7 +293,7 @@ async function jalankan(perintah, opts) {
       ok: false,
       output:
         (teks || String(e.message)).slice(0, 8000) +
-        (e.killed ? "\n[dihentikan: lewat batas waktu]" : ""),
+        (e.killed ? "\n[stopped: past the time limit]" : ""),
       ..._penegakan.label("kernel", "wsl-bwrap"),
     };
   }

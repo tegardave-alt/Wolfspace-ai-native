@@ -88,14 +88,14 @@ async function urlAman(urlStr) {
   try {
     u = new URL(String(urlStr));
   } catch (_) {
-    return { ok: false, error: "URL tidak valid: " + urlStr };
+    return { ok: false, error: "invalid URL: " + urlStr };
   }
 
   // Other schemes (file:, data:, chrome:) are not "the web", and some read disk.
   if (u.protocol !== "http:" && u.protocol !== "https:") {
     return {
       ok: false,
-      error: "skema tidak diizinkan: " + u.protocol + " (hanya http/https)",
+      error: "scheme not allowed: " + u.protocol + " (http/https only)",
     };
   }
   // An escape hatch for deliberately local testing. Off by default.
@@ -106,7 +106,7 @@ async function urlAman(urlStr) {
   try {
     alamat = await dns.lookup(u.hostname, { all: true });
   } catch (e) {
-    return { ok: false, error: "host tak dapat diresolusi: " + u.hostname };
+    return { ok: false, error: "host could not be resolved: " + u.hostname };
   }
 
   // EVERY resolved address must be public. One private answer is enough to
@@ -117,7 +117,7 @@ async function urlAman(urlStr) {
       return {
         ok: false,
         error:
-          "tujuan jaringan internal ditolak: " +
+          "internal network destination refused: " +
           u.hostname +
           " -> " +
           a.address +
@@ -238,7 +238,7 @@ function _touchIdle() {
 }
 async function _getBrowser() {
   const pw = _loadPw();
-  if (!pw) throw new Error("playwright tidak tersedia");
+  if (!pw) throw new Error("playwright unavailable");
   if (_browser && _browser.isConnected()) {
     _touchIdle();
     return _browser;
@@ -442,7 +442,7 @@ async function webSearch(query) {
 
   return results.length
     ? results.join("\n\n")
-    : `(tidak ada hasil untuk "${query}" — coba query berbeda)`;
+    : `(no results for "${query}" — try a different query)`;
 }
 
 // ── Web Fetch ──
@@ -457,9 +457,7 @@ async function webFetch(urlStr) {
     await new Promise((r) => setTimeout(r, 1000 - (now - lastFetchTime)));
   lastFetchTime = Date.now();
   if (activeFetches >= 3)
-    return Promise.reject(
-      new Error("RATE_LIMIT: Terlalu banyak request (max 3)"),
-    );
+    return Promise.reject(new Error("RATE_LIMIT: too many requests (max 3)"));
   // Checked BEFORE any connection is made, and before the counter is raised.
   const aman = await urlAman(urlStr);
   if (!aman.ok) throw new Error(aman.error);
@@ -492,7 +490,7 @@ async function _fetchWithPlaywright(urlStr) {
       .replace(/\n{3,}/g, "\n\n")
       .replace(/[ \t]+\n/g, "\n")
       .trim();
-    return trunc(text, 8000) || "(konten kosong)";
+    return trunc(text, 8000) || "(empty content)";
   });
 }
 
@@ -502,7 +500,7 @@ function _fetchWithHttp(urlStr) {
     try {
       u = new URL(urlStr);
     } catch (e) {
-      return reject(new Error("URL tidak valid: " + urlStr));
+      return reject(new Error("invalid URL: " + urlStr));
     }
     const transport = u.protocol === "http:" ? http : https;
     const r = transport.get(
@@ -556,11 +554,11 @@ function _fetchWithHttp(urlStr) {
             .replace(/\n{3,}/g, "\n\n")
             .replace(/[ \t]+\n/g, "\n")
             .trim();
-          resolve(trunc(body, 8000) || "(konten kosong)");
+          resolve(trunc(body, 8000) || "(empty content)");
         });
       },
     );
-    r.on("error", (e) => reject(new Error("fetch gagal: " + e.message)));
+    r.on("error", (e) => reject(new Error("fetch failed: " + e.message)));
     r.on("timeout", () => {
       r.destroy();
       reject(new Error("fetch timeout"));
@@ -597,9 +595,7 @@ async function webExtract(opts) {
 
   const pw = _loadPw();
   if (!pw)
-    throw new Error(
-      "playwright tidak tersedia — webExtract butuh browser sungguhan",
-    );
+    throw new Error("playwright unavailable — webExtract needs a real browser");
 
   const tungguSel = o.tunggu ? String(o.tunggu) : null;
   const tungguMs = Math.min(

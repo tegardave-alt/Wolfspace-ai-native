@@ -28,10 +28,10 @@ describe("qResolve", () => {
     );
   });
 
-  // 5. Path yang tidak editable (package.json) dengan mustBeEditable=true harus throw Error "path tidak boleh ditulis"
-  it('melempar Error "path tidak boleh ditulis" untuk package.json dengan mustBeEditable=true', () => {
+  // 5. A non-editable path (package.json) with mustBeEditable=true must throw Error "path is not writable"
+  it('throws Error "path is not writable" for package.json with mustBeEditable=true', () => {
     expect(() => qResolve("package.json", true)).toThrow(
-      /path tidak boleh ditulis/,
+      /path is not writable/,
     );
   });
 
