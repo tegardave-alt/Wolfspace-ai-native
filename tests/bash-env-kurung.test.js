@@ -36,7 +36,16 @@ function siapkanWorktree(nama) {
   return ws;
 }
 
-describe("%VAR% tak lagi menembus penjaga path", () => {
+// cmd.exe dan ekspansi %VAR% adalah semantik WINDOWS. Di Linux perintah yang
+// diuji di sini tidak punya padanan, jadi kegagalannya tak mengatakan apa pun
+// tentang penjaga yang sedang diuji.
+//
+// CATATAN JUJUR: job CI menjalankan jest di ubuntu saja, jadi berkas ini kini
+// TIDAK PERNAH jalan di CI — hanya di mesin Windows. Itu celah nyata, bukan
+// sesuatu yang diselesaikan penjaga ini.
+const { diWindows, describeKalau } = require("./butuh.cjs");
+const d = describeKalau(diWindows());
+d("%VAR% tak lagi menembus penjaga path", () => {
   const NAMA = "rahasia-uji-env.txt";
   const ISI = "INI-RAHASIA-DI-LUAR";
   const RAHASIA = path.join(require("os").tmpdir(), NAMA);
@@ -118,7 +127,7 @@ describe("%VAR% tak lagi menembus penjaga path", () => {
   }, 30000);
 });
 
-describe("pekerjaan SAH tidak ikut mati", () => {
+d("pekerjaan SAH tidak ikut mati", () => {
   // Sisi yang paling mudah rusak dan paling mahal kalau terlewat: penjaga yang
   // mematikan pemakaian wajar lebih buruk daripada tak ada penjaga, karena
   // agent jadi buntu tanpa sebab yang terlihat. Perintahnya diambil dari
@@ -162,7 +171,7 @@ describe("pekerjaan SAH tidak ikut mati", () => {
   );
 });
 
-describe("struktur: allowlist ada, dan jujur soal batasnya", () => {
+d("struktur: allowlist ada, dan jujur soal batasnya", () => {
   const SRC = fs
     .readFileSync(require.resolve("../agent/tools/index.ts"), "utf8")
     .replace(/\r\n/g, "\n");
@@ -215,7 +224,7 @@ describe("struktur: allowlist ada, dan jujur soal batasnya", () => {
   });
 });
 
-describe("perintah yang KELUAR worktree diblokir: temp, shell, powershell", () => {
+d("perintah yang KELUAR worktree diblokir: temp, shell, powershell", () => {
   // Tiga permukaan yang diminta ditutup, diuji sebagai satu kesatuan.
   //
   // Dua mekanisme bekerja bersama, dan keduanya perlu:
@@ -293,7 +302,7 @@ describe("perintah yang KELUAR worktree diblokir: temp, shell, powershell", () =
   );
 });
 
-describe("TANPA proyek dipilih, bash tetap terkurung — ke QROOT", () => {
+d("TANPA proyek dipilih, bash tetap terkurung — ke QROOT", () => {
   // KENAPA ADA. Pengurungan bash dulu OPT-IN: tanpa proyek aktif, _confineRoot
   // bernilai null dan seluruh blok pengurungan — termasuk _confineBash — tak
   // pernah jalan. Bash lalu bebas sepenuhnya.

@@ -105,7 +105,12 @@ describe("penjaga tujuan: web keluar, jaringan dalam ditolak", () => {
   });
 });
 
-describe("webExtract mengambil BAGIAN, bukan seluruh teks", () => {
+// webExtract membaca innerText, dan innerText menuntut halaman yang benar-benar
+// dirender — jadi blok ini butuh browser Playwright, bukan sekadar modulnya.
+// CI memasang Chromium supaya tes ini JALAN di sana, bukan dilewati.
+const { punyaBrowser, describeKalau } = require("./butuh.cjs");
+const dBrowser = describeKalau(punyaBrowser());
+dBrowser("webExtract mengambil BAGIAN, bukan seluruh teks", () => {
   const bebas = process.env.WOLFSPACE_WEB_IZINKAN_LOKAL;
   beforeAll(() => {
     // Jalan keluar yang memang disediakan untuk pengujian lokal.

@@ -50,6 +50,13 @@ jobs:
       - run: npm ci
       # shell: bash memberi -o pipefail, tanpa itu kode keluar jest hilang
       # ditelan tee dan langkah ini akan HIJAU meski tesnya merah.
+      # Browsernya diunduh TERPISAH dari modul npm. Tanpa langkah ini
+      # tests/render-hidup dan tests/web-extract akan DILEWATI di CI — dan tes
+      # yang tak pernah jalan tak membuktikan apa pun. Chromium saja, karena
+      # itu yang dipakai agent/web.ts.
+      - name: Pasang browser Playwright
+        run: npx playwright install --with-deps chromium
+
       - name: Jest
         shell: bash
         run: npm test 2>&1 | tee /tmp/jest.log
