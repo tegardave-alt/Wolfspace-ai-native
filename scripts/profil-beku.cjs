@@ -80,7 +80,7 @@ class Cdp {
     this.ws = new WebSocket(this.wsUrl);
     await new Promise((res, rej) => {
       this.ws.onopen = res;
-      this.ws.onerror = () => rej(new Error("websocket gagal: " + this.nama));
+      this.ws.onerror = () => rej(new Error("websocket failed: " + this.nama));
     });
     this.ws.onmessage = (e) => {
       let m;
@@ -238,8 +238,8 @@ class Awasi {
     const sadar = await this.siapKembali(BATAS_TUNGGU_MS);
     if (!sadar) {
       catat(
-        `[${this.nama}] masih terkunci setelah ${BATAS_TUNGGU_MS / 1000} s — ` +
-          `profil tak bisa diambil dari proses ini`,
+        `[${this.nama}] still locked after ${BATAS_TUNGGU_MS / 1000} s — ` +
+          `a profile cannot be taken from this process`,
       );
       return null;
     }
@@ -248,7 +248,9 @@ class Awasi {
     this.jalan = false;
     const profil = r && r.result && r.result.profile;
     if (!profil) {
-      catat(`[${this.nama}] Profiler.stop gagal walau proses sudah menjawab`);
+      catat(
+        `[${this.nama}] Profiler.stop failed even though the process answered`,
+      );
       await this.mulaiProfil();
       return null;
     }
@@ -259,7 +261,7 @@ class Awasi {
     try {
       fs.writeFileSync(berkas, JSON.stringify(profil));
     } catch (e) {
-      catat(`[${this.nama}] gagal menulis profil: ${e.message}`);
+      catat(`[${this.nama}] failed to write the profile: ${e.message}`);
     }
     const t = tersangka(profil, 5);
     // Dua label berbeda, dan bedanya penting: yang BEKU belum tentu yang sedang
@@ -271,7 +273,7 @@ class Awasi {
     );
     for (const a of t.atas)
       catat(`    tersangka: ${String(a.ms).padStart(6)} ms  ${a.di}`);
-    catat(`    profil: ${path.relative(AKAR, berkas)}`);
+    catat(`    profile: ${path.relative(AKAR, berkas)}`);
     // Langsung mulai lagi — macet berikutnya bisa datang beberapa detik lagi.
     await this.mulaiProfil();
     return t;
@@ -324,7 +326,7 @@ while ($true) {
   const daftarRen = await targetList(PORT_RENDERER);
   if (!daftarMain && !daftarRen) {
     console.error(
-      "Port debug tertutup. Jalankan aplikasinya dengan profil menyala:\n\n" +
+      "The debug port is closed. Run the app with profiling on:\n\n" +
         "  PowerShell:  $env:WOLFSPACE_PROFILE=1; npm run app\n" +
         "  bash:        WOLFSPACE_PROFILE=1 npm run app\n\n" +
         "lalu jalankan lagi:  npm run profil",
@@ -336,7 +338,7 @@ while ($true) {
   const pasang = async (nama, daftar, pilih) => {
     const t = (daftar || []).find(pilih);
     if (!t) {
-      catat(`[${nama}] target tak ditemukan — proses ini TIDAK diawasi`);
+      catat(`[${nama}] target not found — this process is NOT being watched`);
       return;
     }
     const c = new Cdp(nama, t.webSocketDebuggerUrl);
@@ -348,7 +350,7 @@ while ($true) {
         catat(`[${nama}] diawasi — ${String(t.title || t.url).slice(0, 50)}`);
       } else catat(`[${nama}] profiler menolak start`);
     } catch (e) {
-      catat(`[${nama}] gagal menyambung: ${e.message}`);
+      catat(`[${nama}] failed to connect: ${e.message}`);
     }
   };
 
@@ -360,7 +362,7 @@ while ($true) {
   );
 
   if (!awas.length) {
-    console.error("Tak ada satu pun proses yang bisa diawasi.");
+    console.error("Not a single process can be watched.");
     process.exit(1);
   }
 
@@ -384,7 +386,7 @@ while ($true) {
   };
 
   const ps = pantauResponding(
-    (lama, sebab) => void tangkapSemua(lama, sebab, "main/jendela"),
+    (lama, sebab) => void tangkapSemua(lama, sebab, "main/window"),
   );
 
   // Detektor kedua, dari SISI DALAM: berapa lama renderer membalas evaluate
@@ -403,7 +405,11 @@ while ($true) {
       );
       const lama = Date.now() - t;
       if (r === null) {
-        void tangkapSemua(15000, "renderer tak membalas 15 s", "renderer");
+        void tangkapSemua(
+          15000,
+          "renderer did not answer for 15 s",
+          "renderer",
+        );
       } else if (lama >= AMBANG_MS) {
         void tangkapSemua(lama, "renderer lambat membalas", "renderer");
       }
@@ -411,8 +417,8 @@ while ($true) {
   }
 
   console.log("\nMengawasi. Pakai aplikasinya seperti biasa.");
-  console.log("Saat jendela membeku, profilnya ditulis otomatis.");
-  console.log("Ctrl+C untuk berhenti.\n");
+  console.log("When the window freezes, its profile is written automatically.");
+  console.log("Ctrl+C to stop.\n");
 
   const bersih = () => {
     try {

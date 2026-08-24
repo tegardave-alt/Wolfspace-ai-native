@@ -69,7 +69,7 @@ async function replicateRun(
   }
   if (pred.status !== "succeeded")
     throw new Error(
-      `${modelPath} ${pred.status}: ${pred.error || "(tanpa detail)"}`,
+      `${modelPath} ${pred.status}: ${pred.error || "(no detail)"}`,
     );
   return pred.output;
 }
@@ -81,7 +81,7 @@ async function generate3d(args, ctx) {
     return {
       ok: false,
       output:
-        "Replicate API key tak ditemukan (server/cloud-keys.json -> replicate.key).",
+        "Replicate API key not found (server/cloud-keys.json -> replicate.key).",
     };
   const workspace = (ctx && ctx.workspaceRoot) || process.cwd();
   const outRel = args.output || "generated.glb";
@@ -91,7 +91,7 @@ async function generate3d(args, ctx) {
   if (!_inside(workspace, outAbs))
     return {
       ok: false,
-      output: `output '${outRel}' menembus keluar workspace.`,
+      output: `output '${outRel}' breaks out of the workspace.`,
     };
   try {
     fs.mkdirSync(path.dirname(outAbs), { recursive: true });
@@ -117,7 +117,7 @@ async function generate3d(args, ctx) {
             output: `image '${args.image}' di luar workspace.`,
           };
         if (!fs.existsSync(abs))
-          return { ok: false, output: `image tidak ada: ${abs}` };
+          return { ok: false, output: `image does not exist: ${abs}` };
         const ext = (path.extname(abs).slice(1) || "png").toLowerCase();
         imageUrl =
           `data:image/${ext};base64,` + fs.readFileSync(abs).toString("base64");
@@ -141,7 +141,7 @@ async function generate3d(args, ctx) {
         { maxWaitMs, onNote },
       );
       imageUrl = Array.isArray(imgOut) ? imgOut[0] : imgOut;
-      if (!imageUrl) throw new Error("flux-schnell tak mengembalikan gambar.");
+      if (!imageUrl) throw new Error("flux-schnell returned no image.");
     } else {
       return {
         ok: false,
@@ -167,13 +167,14 @@ async function generate3d(args, ctx) {
       out && (out.model_file || (out.output && out.output.model_file));
     if (!glbUrl)
       throw new Error(
-        "TRELLIS tak mengembalikan model_file (GLB). Output: " +
+        "TRELLIS returned no model_file (GLB). Output: " +
           JSON.stringify(out).slice(0, 200),
       );
 
     // 3) Download the GLB into the workspace.
     const glbRes = await fetch(glbUrl);
-    if (!glbRes.ok) throw new Error("Gagal unduh GLB: HTTP " + glbRes.status);
+    if (!glbRes.ok)
+      throw new Error("Failed to download GLB: HTTP " + glbRes.status);
     const buf = Buffer.from(await glbRes.arrayBuffer());
     fs.writeFileSync(outAbs, buf);
 
@@ -195,7 +196,7 @@ async function generate3d(args, ctx) {
     return {
       ok: false,
       output:
-        "generate_3d gagal: " +
+        "generate_3d failed: " +
         e.message +
         (notes.length ? "\n(tahap: " + notes.join(" → ") + ")" : ""),
     };

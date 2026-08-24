@@ -145,7 +145,7 @@ describe("batas dijaga: isinya tinggal di memori proses pemilik jendela", () => 
       isi: Buffer.alloc(bridge.MAKS_PER_BERKAS + 1, 0x61),
     });
     expect(r.ok).toBe(false);
-    expect(r.error).toMatch(/melebihi batas/);
+    expect(r.error).toMatch(/exceeds the limit/);
     expect(bridge.daftar()).toHaveLength(0);
   });
 
@@ -251,7 +251,7 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
       ctx,
     );
     expect(r.ok).toBe(false);
-    expect(r.output).toMatch(/tak dikenal/);
+    expect(r.output).toMatch(/unknown attachment/);
   });
 
   test("kedua tool terdaftar di SELF_TOOLS — kalau tidak, model tak melihatnya", () => {

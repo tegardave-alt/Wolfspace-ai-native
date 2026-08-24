@@ -167,7 +167,7 @@ function BarisPlugin({
           {p.izin.map((z) => (
             <span
               key={z}
-              title="Izin yang diminta plugin ini"
+              title="Permissions this plugin asks for"
               style={{
                 fontSize: "10.5px",
                 fontFamily: "var(--mono, monospace)",
@@ -236,13 +236,13 @@ function BarisPlugin({
             ? "aktif di sesi ini"
             : p.disetujui
               ? "aktif setelah restart"
-              : "tak terjangkau agent"}
+              : "not reachable by the agent"}
         </span>
 
         <button
           onClick={() => onCopot(p.nama)}
           disabled={sibuk}
-          title="Copot — folder dan persetujuannya dihapus"
+          title="Uninstall — the folder and its approval are removed"
           style={{
             background: "none",
             border: "none",
@@ -349,7 +349,7 @@ function DialogPasang({
         onChange={(e: { target: { value: string } }) =>
           setPerintah(e.target.value)
         }
-        placeholder="perintah — mis. npx -y @notionhq/notion-mcp-server"
+        placeholder="command — e.g. npx -y @notionhq/notion-mcp-server"
         style={{ ...gaya, fontFamily: "var(--mono, monospace)" }}
       />
 
@@ -433,7 +433,7 @@ function PluginsView(): JSX.Element {
     try {
       const r = await fetch("/plugins");
       const j: JawabanPlugin = await r.json();
-      if (!j.ok) throw new Error(j.error || "gagal memuat plugin");
+      if (!j.ok) throw new Error(j.error || "failed to load plugins");
       setSemua(j.plugin || []);
       setRusak(j.rusak || []);
       setIzinDikenal(j.izinDikenal || []);
@@ -461,7 +461,7 @@ function PluginsView(): JSX.Element {
           body: JSON.stringify({ nama, setujui }),
         });
         const j = await r.json();
-        if (!j.ok) setGalat(j.error || "gagal mengubah izin");
+        if (!j.ok) setGalat(j.error || "failed to change permissions");
         else await muat();
       } catch (e) {
         setGalat(e instanceof Error ? e.message : String(e));
@@ -488,7 +488,7 @@ function PluginsView(): JSX.Element {
           body: JSON.stringify(p),
         });
         const j = await r.json();
-        if (!j.ok) setGalat(j.error || "gagal memasang");
+        if (!j.ok) setGalat(j.error || "failed to install");
         else {
           setBukaPasang(false);
           setGalat("");
@@ -513,7 +513,7 @@ function PluginsView(): JSX.Element {
           body: JSON.stringify({ nama }),
         });
         const j = await r.json();
-        if (!j.ok) setGalat(j.error || "gagal mencopot");
+        if (!j.ok) setGalat(j.error || "failed to uninstall");
         else await muat();
       } catch (e) {
         setGalat(e instanceof Error ? e.message : String(e));
@@ -612,7 +612,7 @@ function PluginsView(): JSX.Element {
         <button
           className="btn"
           onClick={() => setBukaPasang(!bukaPasang)}
-          title="Memasang plugin adalah tindakan Anda, bukan agent"
+          title="Installing a plugin is your action, not the agent's"
           style={{
             padding: "10px 18px",
             borderRadius: "10px",
@@ -703,8 +703,8 @@ function PluginsView(): JSX.Element {
           }}
         >
           {cari.trim()
-            ? `Tak ada plugin yang cocok dengan “${cari}”.`
-            : "Belum ada plugin. Taruh folder berisi manifest.json di plugins/."}
+            ? `No plugin matches “${cari}”.`
+            : "No plugins yet. Put a folder containing manifest.json in plugins/."}
         </div>
       )}
     </div>

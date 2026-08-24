@@ -54,7 +54,7 @@ try {
   wslSync("true");
 } catch (e) {
   mati(
-    `Distro WSL "${DISTRO}" tak bisa dijalankan. Setel WOLFSPACE_WSL_DISTRO ` +
+    `Distro WSL "${DISTRO}" cannot be started. Set WOLFSPACE_WSL_DISTRO ` +
       `bila namanya berbeda. (${String(e.message).split("\n")[0]})`,
   );
 }
@@ -62,9 +62,9 @@ try {
   wslSync(`test -f ${WSL_DIR}/server.cjs && test -x ${WSL_NODE}`);
 } catch (_) {
   mati(
-    `Backend tak ditemukan di dalam WSL.\n` +
+    `Backend not found inside WSL.\n` +
       `  dicari: ${WSL_DIR}/server.cjs  dan  ${WSL_NODE}\n` +
-      `  Lihat "Running the backend in WSL" di agent/broker/README.md untuk cara menyiapkannya.`,
+      `  Lihat "Running the backend in WSL" di agent/broker/README.md for how to set it up.`,
   );
 }
 
@@ -116,7 +116,7 @@ function rencanaSinkron() {
   }
   const repoWsl = winKeWsl(REPO_WIN);
   if (!repoWsl) {
-    log("lewati sinkronisasi: path repo tak bisa dipetakan ke /mnt/...");
+    log("skipping sync: the repo path cannot be mapped to /mnt/...");
     return null;
   }
   let daftar;
@@ -127,9 +127,7 @@ function rencanaSinkron() {
       maxBuffer: 32 * 1024 * 1024,
     });
   } catch (e) {
-    log(
-      "lewati sinkronisasi: `git ls-files` gagal — " + e.message.split("\n")[0],
-    );
+    log("skipping sync: `git ls-files` failed — " + e.message.split("\n")[0]);
     return null;
   }
   const berkas = daftar.split("\n").filter(Boolean);
@@ -210,12 +208,12 @@ function sinkronkan(rencana) {
       ],
       { stdio: "ignore", timeout: 20000 },
     );
-    log(`sinkron: ${berkas.length} berkas -> ${DISTRO}:${WSL_DIR} (${versi})`);
+    log(`synced: ${berkas.length} files -> ${DISTRO}:${WSL_DIR} (${versi})`);
   } catch (e) {
     mati(
-      "sinkronisasi ke WSL gagal: " +
+      "sync to WSL failed: " +
         String(e.message).split("\n")[0] +
-        "\n  Setel WOLFSPACE_WSL_NO_SYNC=1 untuk memakai salinan yang sudah ada.",
+        "\n  Set WOLFSPACE_WSL_NO_SYNC=1 to use the existing copy.",
     );
   }
 }
@@ -329,7 +327,7 @@ const tunggu = (ms) => new Promise((r) => setTimeout(r, ms));
   if (sehat) {
     if (versiTarget && sehat.version === versiTarget) {
       log(
-        `backend sudah jalan (pid ${sehat.pid}) dan versinya SAMA (${versiTarget}) — dipakai ulang`,
+        `backend already running (pid ${sehat.pid}) and the version is THE SAME (${versiTarget}) — reused`,
       );
       pakaiUlang = true;
     } else {
@@ -338,7 +336,7 @@ const tunggu = (ms) => new Promise((r) => setTimeout(r, ms));
       );
       if (!hentikanBackendLama(sehat.pid))
         log(
-          "  gagal menghentikan lewat PID; lanjut — server baru akan mencoba merebut port",
+          "  failed to stop it by PID; continuing — the new server will try to take the port",
         );
       await tunggu(1500);
     }
@@ -360,14 +358,14 @@ const tunggu = (ms) => new Promise((r) => setTimeout(r, ms));
   if (!ip) {
     bunuhServer();
     mati(
-      `backend tak siap dalam ${SIAP_TIMEOUT_MS / 1000} detik ` +
-        `(ip=${ipDistro() || "tak terdeteksi"}, port=${PORT})`,
+      `backend not ready within ${SIAP_TIMEOUT_MS / 1000} detik ` +
+        `(ip=${ipDistro() || "not detected"}, port=${PORT})`,
     );
   }
 
   const backend = `http://${ip}:${PORT}/`;
   log(
-    `backend siap di ${backend} (versi ${versiTarget || "?"}${pakaiUlang ? ", dipakai ulang" : ""}) — membuka Electron`,
+    `backend ready at ${backend} (versi ${versiTarget || "?"}${pakaiUlang ? ", reused" : ""}) — membuka Electron`,
   );
 
   const env = { ...process.env, WOLFSPACE_BACKEND: backend };
@@ -390,6 +388,6 @@ const tunggu = (ms) => new Promise((r) => setTimeout(r, ms));
   });
   ui.on("error", (e) => {
     bunuhServer();
-    mati("gagal meluncurkan Electron: " + e.message);
+    mati("failed to launch Electron: " + e.message);
   });
 })();

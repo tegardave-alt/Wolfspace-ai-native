@@ -109,14 +109,14 @@ async function chatStream({ history, port, cloud }, emit, ctl) {
       "cloud-keys.json",
     );
     const pesan =
-      "Belum ada API key cloud yang bisa dipakai.\n\n" +
-      `Isi kunci di berkas backend: ${berkas}\n` +
+      "No usable cloud API key yet.\n\n" +
+      `Put the key in the backend file: ${berkas}\n` +
       '  contoh: { "opencode": { "key": "...", "model": "deepseek-v4-flash-free" } }\n\n' +
-      "Menyimpan lewat menu API Key juga bisa, tapi itu hanya mengisi " +
-      "localStorage untuk origin yang sedang dipakai — dan bila backend berjalan " +
+      "Saving through the API Key menu also works, but it only fills " +
+      "localStorage for the origin currently in use — and if the backend runs " +
       "di WSL, IP distro berubah tiap restart sehingga originnya ikut berubah dan " +
-      "kunci itu hilang lagi. Berkas di atas kebal terhadap itu.\n\n" +
-      "Model lokal (llama.cpp/GGUF) sudah dihapus, jadi tidak ada jalur cadangan " +
+      "that key is lost again. The file above is immune to that.\n\n" +
+      "The local model (llama.cpp/GGUF) has been removed, so there is no fallback path " +
       "selain cloud.";
     emit({ t: "err", m: pesan });
     emit({ t: "done" });

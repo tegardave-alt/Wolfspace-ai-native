@@ -109,15 +109,26 @@ describe("pemantau-blokir: pelaporan", () => {
     await new Promise((r) => setTimeout(r, 260)); // quiet windows
     expect(dilihat).toHaveLength(0);
 
-    tahan(300);
-    // Let the histogram write the lateness down BEFORE the reporter reads it.
-    // Without this the two race: under parallel test load the reporter's
-    // interval can fire first, read a max that has not been updated yet, and
-    // ambil(true) then RESETS the window — losing the spike for good. The app
-    // reports every 15 s, so the ordering never matters there; it matters here
-    // because the interval is 120 ms.
-    await nafas();
-    await new Promise((r) => setTimeout(r, 500));
+    // BLOCKED REPEATEDLY, not once — and the reason is a real property of the
+    // reporter, not test tidiness.
+    //
+    // pasangLaporan reads with ambil(true), which RESETS the window. If its
+    // interval happens to fire in the gap between a block ending and the
+    // histogram writing that lateness down, it reads a stale max, reports
+    // nothing, and wipes the spike. That spike is then gone for good: waiting
+    // longer cannot recover it, which is why a single block plus a sleep failed
+    // about one run in five, and why polling for it failed just as often.
+    //
+    // Producing a block in every reporter window removes the coin flip without
+    // weakening the assertion — the rule under test is still "reports only when
+    // a window contains a block past the band".
+    //
+    // The app reports every 15 s, so a block can never straddle the read there.
+    const batas = Date.now() + 5000;
+    while (dilihat.length === 0 && Date.now() < batas) {
+      tahan(150);
+      await new Promise((r) => setTimeout(r, 200));
+    }
     stop();
 
     expect(dilihat.length).toBeGreaterThanOrEqual(1);
