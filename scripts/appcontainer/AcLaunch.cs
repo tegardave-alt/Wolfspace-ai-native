@@ -41,6 +41,24 @@ static class AcLaunch
     const uint HANDLE_FLAG_INHERIT = 1;
     const uint INFINITE = 0xFFFFFFFF;
 
+    // Job Object: resource ceilings for the command being launched.
+    //
+    // The Linux side already had these (agent/tools/bash-jail.ts caps processes,
+    // virtual memory and CPU through the namespace jail). The Windows side had
+    // NO equivalent -- an AppContainer confines what a command can REACH, not
+    // how much it can CONSUME, so one command could take all the RAM and CPU on
+    // the machine while staying perfectly inside its sandbox.
+    //
+    // The values are not decided here. agent/anggaran.ts owns them and passes
+    // them through the environment; this file only enforces what it is given.
+    const uint CREATE_SUSPENDED = 0x00000004;
+    const int JobObjectExtendedLimitInformation = 9;
+    const uint JOB_LIMIT_JOB_TIME = 0x00000004;
+    const uint JOB_LIMIT_ACTIVE_PROCESS = 0x00000008;
+    const uint JOB_LIMIT_PROCESS_MEMORY = 0x00000100;
+    const uint JOB_LIMIT_JOB_MEMORY = 0x00000200;
+    const uint JOB_LIMIT_KILL_ON_JOB_CLOSE = 0x00002000;
+
     [StructLayout(LayoutKind.Sequential, CharSet = CharSet.Unicode)]
     struct STARTUPINFO
     {
@@ -59,6 +77,38 @@ static class AcLaunch
         public IntPtr AppContainerSid, Capabilities;
         public int CapabilityCount, Reserved;
     }
+    [StructLayout(LayoutKind.Sequential)]
+    struct IO_COUNTERS
+    {
+        public ulong ReadOperationCount, WriteOperationCount, OtherOperationCount;
+        public ulong ReadTransferCount, WriteTransferCount, OtherTransferCount;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_BASIC_LIMIT_INFORMATION
+    {
+        public long PerProcessUserTimeLimit;
+        public long PerJobUserTimeLimit;
+        public uint LimitFlags;
+        public UIntPtr MinimumWorkingSetSize;
+        public UIntPtr MaximumWorkingSetSize;
+        public uint ActiveProcessLimit;
+        public UIntPtr Affinity;
+        public uint PriorityClass;
+        public uint SchedulingClass;
+    }
+
+    [StructLayout(LayoutKind.Sequential)]
+    struct JOBOBJECT_EXTENDED_LIMIT_INFORMATION
+    {
+        public JOBOBJECT_BASIC_LIMIT_INFORMATION BasicLimitInformation;
+        public IO_COUNTERS IoInfo;
+        public UIntPtr ProcessMemoryLimit;
+        public UIntPtr JobMemoryLimit;
+        public UIntPtr PeakProcessMemoryUsed;
+        public UIntPtr PeakJobMemoryUsed;
+    }
+
     [StructLayout(LayoutKind.Sequential)]
     struct SECURITY_ATTRIBUTES
     {
@@ -95,6 +145,14 @@ static class AcLaunch
     static extern bool CloseHandle(IntPtr h);
     [DllImport("kernel32.dll")] static extern IntPtr LocalAlloc(uint f, IntPtr n);
     [DllImport("kernel32.dll")] static extern IntPtr LocalFree(IntPtr p);
+    [DllImport("kernel32.dll", SetLastError = true, CharSet = CharSet.Unicode)]
+    static extern IntPtr CreateJobObjectW(IntPtr sa, string name);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool SetInformationJobObject(IntPtr job, int cls, IntPtr info, uint len);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern bool AssignProcessToJobObject(IntPtr job, IntPtr proc);
+    [DllImport("kernel32.dll", SetLastError = true)]
+    static extern uint ResumeThread(IntPtr thread);
 
     static int Main(string[] args)
     {
@@ -241,7 +299,7 @@ static class AcLaunch
         // nama akun asli tak ikut bocor ke perintah yang dijalankan.
         PROCESS_INFORMATION pi;
         bool ok = CreateProcessW(exe, cmd, IntPtr.Zero, IntPtr.Zero, true,
-            EXTENDED_STARTUPINFO_PRESENT, IntPtr.Zero, cwd, ref si, out pi);
+            EXTENDED_STARTUPINFO_PRESENT | CREATE_SUSPENDED, IntPtr.Zero, cwd, ref si, out pi);
         int lastErr = Marshal.GetLastWin32Error();
 
         // Ujung tulis ditutup DI SINI, di induk. Selama induk masih memegangnya,
@@ -259,6 +317,77 @@ static class AcLaunch
             return 7;
         }
 
+        // Resource ceilings, applied while the process is still suspended.
+        //
+        // THE ORDER IS LOAD-BEARING. The process is created suspended so it can
+        // be placed in the job BEFORE its first instruction runs. Resume first
+        // and a fast command can spawn a child in the gap -- and that child is
+        // outside the job, which is exactly the escape the ceilings exist to
+        // prevent.
+        //
+        // A failure here never fails the command. The AppContainer is the
+        // security boundary; this is a resource ceiling sitting on top of it.
+        // What a failure must not be is SILENT, because "ran unbounded" and
+        // "ran within limits" would otherwise look identical to the caller.
+        IntPtr job = IntPtr.Zero;
+        long memMb = EnvLong("WOLFSPACE_JOB_MEM_MB");
+        long maxProc = EnvLong("WOLFSPACE_JOB_MAXPROC");
+        long cpuSec = EnvLong("WOLFSPACE_JOB_CPU_SEC");
+        if (memMb > 0 || maxProc > 0 || cpuSec > 0)
+        {
+            job = CreateJobObjectW(IntPtr.Zero, null);
+            if (job == IntPtr.Zero)
+                Console.Error.WriteLine("PERINGATAN: CreateJobObject gagal (" +
+                    Marshal.GetLastWin32Error() + ") - perintah berjalan TANPA plafon sumber daya");
+            else
+            {
+                var info = new JOBOBJECT_EXTENDED_LIMIT_INFORMATION();
+                uint flags = JOB_LIMIT_KILL_ON_JOB_CLOSE;
+                if (memMb > 0)
+                {
+                    // Both limits, not one. Per-process stops a single runaway;
+                    // per-job stops many small ones summing to the same thing.
+                    UIntPtr b = new UIntPtr((ulong)memMb * 1024UL * 1024UL);
+                    info.ProcessMemoryLimit = b;
+                    info.JobMemoryLimit = b;
+                    flags |= JOB_LIMIT_PROCESS_MEMORY | JOB_LIMIT_JOB_MEMORY;
+                }
+                if (maxProc > 0)
+                {
+                    info.BasicLimitInformation.ActiveProcessLimit = (uint)maxProc;
+                    flags |= JOB_LIMIT_ACTIVE_PROCESS;
+                }
+                if (cpuSec > 0)
+                {
+                    // PerJobUserTimeLimit counts 100-nanosecond units.
+                    info.BasicLimitInformation.PerJobUserTimeLimit = cpuSec * 10000000L;
+                    flags |= JOB_LIMIT_JOB_TIME;
+                }
+                info.BasicLimitInformation.LimitFlags = flags;
+
+                int jobInfoSize = Marshal.SizeOf(typeof(JOBOBJECT_EXTENDED_LIMIT_INFORMATION));
+                IntPtr buf = Marshal.AllocHGlobal(jobInfoSize);
+                Marshal.StructureToPtr(info, buf, false);
+                bool setOk = SetInformationJobObject(job, JobObjectExtendedLimitInformation, buf, (uint)jobInfoSize);
+                Marshal.FreeHGlobal(buf);
+                if (!setOk)
+                    Console.Error.WriteLine("PERINGATAN: SetInformationJobObject gagal (" +
+                        Marshal.GetLastWin32Error() + ") - plafon TIDAK terpasang");
+                else if (!AssignProcessToJobObject(job, pi.hProcess))
+                    Console.Error.WriteLine("PERINGATAN: AssignProcessToJobObject gagal (" +
+                        Marshal.GetLastWin32Error() + ") - plafon TIDAK terpasang");
+            }
+        }
+
+        // Whatever happened above, the process has to run. It was created
+        // suspended, and leaving it that way would hang the caller until its
+        // timeout with no output and nothing to explain the silence.
+        if (ResumeThread(pi.hThread) == 0xFFFFFFFF)
+        {
+            Console.Error.WriteLine("ResumeThread gagal: " + Marshal.GetLastWin32Error());
+            return 8;
+        }
+
         string so = "", se = "";
         var tOut = new Thread(() => { so = Baca(outRd); });
         var tErr = new Thread(() => { se = Baca(errRd); });
@@ -268,12 +397,25 @@ static class AcLaunch
 
         uint code; GetExitCodeProcess(pi.hProcess, out code);
         CloseHandle(pi.hThread); CloseHandle(pi.hProcess);
+        if (job != IntPtr.Zero) CloseHandle(job);
         DeleteProcThreadAttributeList(list); LocalFree(list);
         Marshal.FreeHGlobal(capsPtr);
 
         Console.Out.Write(so);
         Console.Error.Write(se);
         return (int)code;
+    }
+
+    /// Positive integer from the environment, or 0 when unset/invalid -- and 0
+    /// means that particular ceiling is simply not applied. Passing these as
+    /// arguments was not an option: the argv after <exe> is forwarded verbatim
+    /// to the command, so a new flag there would be ambiguous.
+    static long EnvLong(string name)
+    {
+        string v = Environment.GetEnvironmentVariable(name);
+        long n;
+        if (v == null || !long.TryParse(v, out n) || n <= 0) return 0;
+        return n;
     }
 
     static string Baca(IntPtr h)

@@ -1,0 +1,33 @@
+# Apa yang dihitung GitHub sebagai "bahasa" repo ini.
+#
+# Linguist menghitung BYTE dari berkas terlacak, dan tanpa berkas ini ia
+# menghitung public/vendor/ juga — 25,5 MB Monaco, mermaid, three.js, Babel,
+# cytoscape, dan xterm. Hasilnya bilah bahasa membaca 91% JavaScript, yang
+# menggambarkan pustaka yang diunduh, bukan kode yang ditulis di sini.
+#
+# Terukur atas berkas terlacak:
+#
+#   dengan vendor    JavaScript 91,4%   TypeScript  5,6%
+#   tanpa vendor     TypeScript 51,5%   JavaScript 26,1%
+#
+# Angka kedua yang jujur. Dan sisa JavaScript itu bukan utang migrasi: 80%-nya
+# suite uji (tests/*.test.js), sisanya peluncur dan skrip ops yang memang
+# CommonJS by design — lihat docs/MIGRASI-TYPESCRIPT.md.
+
+# ── Vendor: pustaka pihak ketiga, tak ditulis di sini ──
+public/vendor/**       linguist-vendored
+vendor/**              linguist-vendored
+scripts/three/**       linguist-vendored
+scripts/reactflow/**   linguist-vendored
+scripts/ikon-bahasa/** linguist-vendored
+
+# ── Generated: dibangun dari sumber lain ──
+# Ketiganya sudah di-gitignore, tetapi ditandai juga supaya tetap benar kalau
+# suatu hari ada yang meng-commit-nya.
+electron/main.js       linguist-generated
+electron/preload.js    linguist-generated
+public/app.build.js    linguist-generated
+
+# ── Aset terkompres: hasil scripts/kompres-aset.cjs ──
+*.br                   binary linguist-generated
+*.gz                   binary linguist-generated

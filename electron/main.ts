@@ -298,6 +298,23 @@ function createWindow() {
     backgroundColor: "#0b0d11",
     title: "WOLFSPACE",
     autoHideMenuBar: true,
+    // The native title bar is MERGED into the app's own top bar: the window is
+    // drawn without one, and Windows paints only minimize/maximize/close as an
+    // overlay inside .topbar's row. One bar where there used to be two stacked.
+    //
+    // height MUST track .topbar in public/styles.css (46px). The overlay is
+    // positioned by the OS, not by CSS, so if the two drift apart the buttons
+    // stop lining up with the row they are supposed to sit in.
+    //
+    // color has to be OPAQUE. .topbar is rgba(11,13,17,.72) over a
+    // backdrop-filter, but the overlay strip is painted by Windows and cannot be
+    // translucent, so it reuses the window's own backgroundColor.
+    titleBarStyle: "hidden",
+    titleBarOverlay: {
+      color: "#0b0d11",
+      symbolColor: "#e6edf3",
+      height: 46,
+    },
     icon: path.join(__dirname, "..", "public", "icon.ico"),
     webPreferences: {
       preload: path.join(__dirname, "preload.js"),
@@ -833,6 +850,49 @@ function apiStream(
   });
 }
 
+/* ── IPC load ceiling ───────────────────────────────────────────────────────
+ *
+ * Every IPC message is serialised on this thread, and this thread also draws
+ * the window. Measured curve of JSON.stringify + JSON.parse:
+ *
+ *     1 MB ->   18 ms        50 MB -> 1241 ms
+ *    10 MB ->  194 ms       200 MB -> 4486 ms
+ *
+ * One 200 MB message spends 90% of the 5000 ms hang budget by itself, so the
+ * freeze point sits near 220 MB. Nothing stopped one before this.
+ *
+ * The number lives in agent/anggaran.ts with the rest of the budget. Reaching a
+ * .ts module needs the require hook, which this entry cannot install for itself
+ * (see scripts/build-main.cjs) — so it is loaded lazily, the same way core() is.
+ * By the time any IPC message arrives the hook is usually already in place,
+ * because core() installs it through server.cjs.
+ */
+const _anggaran: any = {};
+function modulAgent(nama: string) {
+  if (_anggaran[nama]) return _anggaran[nama];
+  const root = unpackedRoot();
+  require(path.join(root, "scripts", "ts-register.cjs"));
+  _anggaran[nama] = require(path.join(root, "agent", nama + ".ts"));
+  return _anggaran[nama];
+}
+function anggaran() {
+  return modulAgent("anggaran");
+}
+
+/**
+ * Both helpers live in agent/anggaran.ts, next to the number they enforce and
+ * where tests can drive them with real values. This wrapper exists only to
+ * survive the budget being unreachable: a guard must never be the reason IPC
+ * stops working.
+ */
+function lewatBatasIpc(v: any, arah: string): string | null {
+  try {
+    return anggaran().lewatBatasIpc(v, arah);
+  } catch (_: any) {
+    return null;
+  }
+}
+
 function registerIpc() {
   ipcMain.on("WOLFSPACE:probe", (_e: any, d: any) => {
     if (d && d.t === "renderer-stop")
@@ -841,6 +901,8 @@ function registerIpc() {
   ipcMain.handle(
     "WOLFSPACE:invoke",
     async (_e: any, { channel, payload }: any) => {
+      const tolak = lewatBatasIpc(payload, "masuk");
+      if (tolak) return { ok: false, error: tolak };
       if (channel === "ping") return { ok: true, pong: Date.now() };
       // Native folder picker → path absolut ASLI (di C:, D:, Desktop, mana pun).
       // Renderer memanggilnya lewat window.WOLFSPACE.invoke('selectFolder').
@@ -922,11 +984,26 @@ function registerIpc() {
     },
   );
   ipcMain.on("WOLFSPACE:stream", (e: any, { id, channel, payload }: any) => {
+    const tolakMasuk = lewatBatasIpc(payload, "masuk");
+    if (tolakMasuk) {
+      // Reported through the same error chunk the stream already uses, so the
+      // renderer needs no new case to handle it.
+      try {
+        e.sender.send("WOLFSPACE:chunk", {
+          id,
+          data: "data: " + JSON.stringify({ t: "err", m: tolakMasuk }) + "\n\n",
+        });
+      } catch (_: any) {}
+      return;
+    }
     // The channel is kept so the hot-reload guard knows an agent run is alive.
     const st = { cancelled: false, req: null, channel, mulai: Date.now() };
     _streams.set(id, st);
     const emit = (msg: any) => {
       if (st.cancelled) return;
+      const tolakKeluar = lewatBatasIpc(msg, "keluar");
+      if (tolakKeluar)
+        msg = "data: " + JSON.stringify({ t: "err", m: tolakKeluar }) + "\n\n";
       const t0 = performance.now();
       try {
         e.sender.send("WOLFSPACE:chunk", { id, data: msg });
@@ -1158,12 +1235,36 @@ _gcInterval.unref(); // do not hold the process open just for this interval
 
 app.whenReady().then(() => {
   probe.startStopProbe();
-  probe.startLoopProbe();
   migrateOldUserDataOnce();
   registerAppProtocol();
   registerIpc();
   startBackend();
   createWindow();
+  // Blocking watchdog — the instrument the 5000 ms budget never had.
+  //
+  // REPLACES probe.startLoopProbe(), which measured the same thing more
+  // expensively and with nothing to compare it against: it recursed through
+  // setImmediate on EVERY turn of the loop, forever, and printed one line per
+  // event over 200 ms with no aggregation and no notion of a budget. An
+  // instrument that schedules work on every tick is itself load.
+  //
+  // agent/pemantau-blokir.ts samples in C++ at a fixed resolution, keeps a
+  // histogram, and speaks only when one UNINTERRUPTED stretch crosses the
+  // budget's NORMAL band. Silence is the design: measured idle latency here is
+  // p99 = 1 ms over 2840 samples, so a chattier reporter would bury the one
+  // line that matters under thousands saying nothing happened.
+  //
+  // Started AFTER createWindow() on purpose. It pulls in the .ts require hook,
+  // and this repo cut startup from 1071 ms to 314 ms — that budget is not
+  // spent on the thing measuring it.
+  try {
+    const pb = modulAgent("pemantau-blokir");
+    pb.mulai(20);
+    pb.pasangLaporan((l: any) => probe.say("BLOKIR " + pb.ringkas(l)), 15000);
+  } catch (e: any) {
+    // Never fatal: losing the instrument must not cost the app its window.
+    probe.say("pemantau blokir tak aktif: " + e.message);
+  }
   // Hot reload: seluruh system WOLFSPACE tanpa reset manual
   try {
     const root = unpackedRoot();

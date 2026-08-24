@@ -63,6 +63,50 @@ function wsList(sub: any) {
   })(root);
   return out.length ? out.join("\n") : "(workspace kosong)";
 }
+/**
+ * Runs one command in the workspace and resolves with its stdout.
+ *
+ * OVERFLOW IS TRUNCATION, NOT FAILURE. Both branches below used to pass
+ * maxBuffer: 200 * 1024 and reject on overflow, so a command whose only sin was
+ * being talkative returned nothing at all — the output had already been
+ * produced, and it was thrown away for being long. The ceiling now comes from
+ * agent/anggaran.ts, and what still exceeds it comes back cut, with a line
+ * saying so.
+ *
+ * Only the overflow case is softened. Every other failure — non-zero exit, the
+ * 120 s timeout, a missing interpreter — still rejects and is reported, because
+ * those mean the command did not do what was asked.
+ *
+ * NOTE, deliberately not changed here: the javascript branch slices its result
+ * to 4000 chars and the python branch does not. That difference predates this
+ * change and altering it would silently shorten python output that callers may
+ * rely on, so it is named rather than "fixed" in passing.
+ */
+function _jalankan(cmd) {
+  const batas = require("../anggaran.ts").EXEC_MAKS_BUFFER;
+  return new Promise<string>((resolve, reject) => {
+    exec(
+      cmd,
+      { cwd: WORKSPACE, timeout: 120000, encoding: "utf8", maxBuffer: batas },
+      (error: any, stdout: any) => {
+        if (error && /maxBuffer/i.test(String(error.message)))
+          // The notice goes FIRST, not last. The javascript branch slices its
+          // result to the first 4000 chars, so a marker appended to the end of
+          // a multi-megabyte string would be cut off by the very truncation it
+          // was there to announce.
+          return resolve(
+            "[keluaran dipotong: melewati " +
+              Math.round(batas / 1048576) +
+              " MB]\n" +
+              String(stdout || ""),
+          );
+        if (error) return reject(error);
+        resolve(stdout);
+      },
+    );
+  });
+}
+
 let activeExecs = 0;
 async function runInWorkspace(lang, code) {
   if (activeExecs >= 2)
@@ -75,40 +119,12 @@ async function runInWorkspace(lang, code) {
   try {
     if (l === "javascript" || l === "js") {
       fs.writeFileSync(path.join(WORKSPACE, "_run.cjs"), code, "utf8");
-      const out = await new Promise<string>((resolve, reject) => {
-        exec(
-          `"${process.execPath}" _run.cjs`,
-          {
-            cwd: WORKSPACE,
-            timeout: 120000,
-            encoding: "utf8",
-            maxBuffer: 200 * 1024,
-          },
-          (error, stdout, stderr) => {
-            if (error) reject(error);
-            else resolve(stdout);
-          },
-        );
-      });
+      const out = await _jalankan(`"${process.execPath}" _run.cjs`);
       return { ok: true, output: (out || "").slice(0, 4000) };
     }
     if (l === "python" || l === "py") {
       fs.writeFileSync(path.join(WORKSPACE, "_run.py"), code, "utf8");
-      const out = await new Promise((resolve, reject) => {
-        exec(
-          "python _run.py",
-          {
-            cwd: WORKSPACE,
-            timeout: 120000,
-            encoding: "utf8",
-            maxBuffer: 200 * 1024,
-          },
-          (error, stdout, stderr) => {
-            if (error) reject(error);
-            else resolve(stdout);
-          },
-        );
-      });
+      const out = await _jalankan("python _run.py");
       return { ok: true, output: out };
     }
     return {

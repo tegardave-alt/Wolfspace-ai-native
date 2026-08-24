@@ -36,6 +36,10 @@ function startStopProbe() {
   if (t.unref) t.unref();
 }
 
+// NO LONGER STARTED BY THE APP. agent/pemantau-blokir.ts replaced it: this one
+// recurses through setImmediate on every turn of the loop forever, reports each
+// event in isolation, and has no budget to judge them against. Kept because it
+// is still a serviceable one-liner for ad-hoc debugging.
 function startLoopProbe() {
   let last = performance.now();
   const tick = () => {
