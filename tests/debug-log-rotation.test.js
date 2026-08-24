@@ -46,7 +46,13 @@ describe("rotasi log debug", () => {
     try {
       const r = runProbe(`
         const fs = require("fs");
-        require("c:/Users/dave/WOLFSPACE/scripts/ts-register.cjs");
+        // Diturunkan dari ROOT, bukan ditulis sebagai path absolut.
+        //
+        // Baris ini sempat memuat path mesin penulisnya, yang berjalan mulus di
+        // sana dan gagal di mana pun selain itu — CI menemukannya dengan
+        // "Cannot find module 'c:/Users/dave/WOLFSPACE/...'". Probe ini proses
+        // BARU, jadi hook .ts memang harus dipasang; alamatnya yang salah.
+        require(${JSON.stringify(path.join(ROOT, "scripts", "ts-register.cjs"))});
         const d = require(${JSON.stringify(DEBUG)});
         // config.verbose aktif di repo ini, jadi dlog menulis SETIAP event ke
         // stdout. Dengan 900 x 64KB itu membanjiri buffer proses anak (ENOBUFS)
