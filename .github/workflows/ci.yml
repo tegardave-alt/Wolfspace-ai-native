@@ -54,6 +54,14 @@ jobs:
       # tests/render-hidup dan tests/web-extract akan DILEWATI di CI — dan tes
       # yang tak pernah jalan tak membuktikan apa pun. Chromium saja, karena
       # itu yang dipakai agent/web.ts.
+      # Renderer dibangun lebih dulu supaya tests/render-hidup memuat apa yang
+      # PRODUKSI sajikan. Tanpa ini index.html jatuh ke jalur cadangan dan
+      # mengompilasi 631 KB dengan Babel DI DALAM browser headless — terukur ~3
+      # detik di mesin cepat, dan tesnya menunggu 5 detik sebelum memeriksa DOM.
+      # Jadi tesnya bukan menguji aplikasi, melainkan kecepatan runner.
+      - name: Bangun renderer
+        run: npm run build:app
+
       - name: Pasang browser Playwright
         run: npx playwright install --with-deps chromium
 

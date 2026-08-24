@@ -86,29 +86,44 @@ describe("bash melaporkan tingkat penegakan", () => {
   }, 60000);
 });
 
-// Batas yang DIDOKUMENTASIKAN, bukan yang diharapkan. Uji ini hanya berjalan
-// saat penegakannya "heuristik-teks" — kalau suatu hari Windows dapat pengurungan nyata,
-// ia melewatkan diri sendiri alih-alih jadi merah palsu.
-describe("batas jalur regex (didokumentasikan, bukan diinginkan)", () => {
-  test("path yang DITULIS sebagai token memang ditahan", async () => {
-    const r = await bash('ls "C:/Users/dave/Desktop"');
-    if (r.mekanisme !== "heuristik-teks") return; // jail aktif — bukan wilayah uji ini
-    expect(r.ok).toBe(false);
-    expect(String(r.output)).toMatch(/menembus keluar workspace|dilarang/);
-  }, 60000);
+// Batas yang DIDOKUMENTASIKAN, bukan yang diharapkan.
+//
+// DUA penjaga, dan keduanya menolak alasan yang berbeda untuk merah palsu:
+//
+//   WINDOWS saja — masukan ujinya "C:/Users/dave/Desktop", dan itu path host
+//     hanya di Windows. Di Linux ia cuma nama berkas aneh yang tak ada, jadi
+//     `ls` GAGAL alih-alih DITAHAN. Keduanya menghasilkan ok:false dan tes ini
+//     tak bisa membedakannya — ia akan hijau tanpa penjaga yang diuji pernah
+//     berbunyi. Lulus karena alasan yang salah lebih buruk daripada di-skip.
+//
+//   heuristik-teks saja — di dalam tiap tes. Kalau suatu hari jalur ini dapat
+//     pengurungan kernel sungguhan, ia melewatkan diri sendiri alih-alih
+//     menuntut kelemahan yang sudah tak ada.
+const { diWindows, describeKalau } = require("./butuh.cjs");
 
-  test("path yang DIRAKIT saat jalan TIDAK tertahan — inilah alasan labelnya ada", async () => {
-    // Hanya menghitung jumlah entri: membuktikan batasnya lewat, tanpa membaca
-    // isi apa pun.
-    const kode =
-      "const f=require('fs');" +
-      "const p=String.fromCharCode(67,58,47,85,115,101,114,115);" +
-      "console.log('N:'+f.readdirSync(p).length)";
-    const r = await bash('node -e "' + kode + '"');
-    if (r.mekanisme !== "heuristik-teks") return;
-    // Kalau baris ini suatu saat merah, artinya jalur regex BERHASIL menahannya —
-    // kabar baik, dan uji ini yang harus diperbarui, bukan kodenya.
-    expect(r.ok).toBe(true);
-    expect(String(r.output)).toMatch(/N:\d+/);
-  }, 60000);
-});
+describeKalau(diWindows())(
+  "batas jalur regex (didokumentasikan, bukan diinginkan)",
+  () => {
+    test("path yang DITULIS sebagai token memang ditahan", async () => {
+      const r = await bash('ls "C:/Users/dave/Desktop"');
+      if (r.mekanisme !== "heuristik-teks") return; // jail aktif — bukan wilayah uji ini
+      expect(r.ok).toBe(false);
+      expect(String(r.output)).toMatch(/menembus keluar workspace|dilarang/);
+    }, 60000);
+
+    test("path yang DIRAKIT saat jalan TIDAK tertahan — inilah alasan labelnya ada", async () => {
+      // Hanya menghitung jumlah entri: membuktikan batasnya lewat, tanpa membaca
+      // isi apa pun.
+      const kode =
+        "const f=require('fs');" +
+        "const p=String.fromCharCode(67,58,47,85,115,101,114,115);" +
+        "console.log('N:'+f.readdirSync(p).length)";
+      const r = await bash('node -e "' + kode + '"');
+      if (r.mekanisme !== "heuristik-teks") return;
+      // Kalau baris ini suatu saat merah, artinya jalur regex BERHASIL menahannya —
+      // kabar baik, dan uji ini yang harus diperbarui, bukan kodenya.
+      expect(r.ok).toBe(true);
+      expect(String(r.output)).toMatch(/N:\d+/);
+    }, 60000);
+  },
+);

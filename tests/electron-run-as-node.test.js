@@ -43,8 +43,18 @@ const ELECTRON = path.join(
   process.platform === "win32" ? "electron.exe" : "electron",
 );
 
+// Ada BINERNYA belum berarti ia bisa JALAN.
+//
+// Electron membuka jendela. Di Linux tanpa display ia mati saat meluncur, dan
+// tesnya gagal dengan `null` — terbaca seperti bug runInWorkspace, padahal
+// prosesnya tak pernah hidup. Penjaga lama cuma memeriksa berkasnya ada, jadi
+// di CI ubuntu ia lolos lalu gagal.
+//
+// Kelas yang sama dengan penjaga playwright di tests/butuh.cjs: keberadaan
+// bukan kemampuan.
 const adaElectron = fs.existsSync(ELECTRON);
-const jalankan = adaElectron ? describe : describe.skip;
+const adaDisplay = process.platform === "win32" || !!process.env.DISPLAY;
+const jalankan = adaElectron && adaDisplay ? describe : describe.skip;
 
 jalankan("eksekusi JS di dalam Electron (mode desktop)", () => {
   test("runInWorkspace selesai CEPAT dan ok:true, bukan timeout 120 detik", () => {
