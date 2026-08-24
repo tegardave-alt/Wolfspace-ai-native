@@ -108,7 +108,7 @@ describeKalau(diWindows())(
       const r = await bash('ls "C:/Users/dave/Desktop"');
       if (r.mekanisme !== "heuristik-teks") return; // jail aktif — bukan wilayah uji ini
       expect(r.ok).toBe(false);
-      expect(String(r.output)).toMatch(/menembus keluar workspace|dilarang/);
+      expect(String(r.output)).toMatch(/breaks out of the workspace|forbidden/);
     }, 60000);
 
     test("path yang DIRAKIT saat jalan TIDAK tertahan — inilah alasan labelnya ada", async () => {

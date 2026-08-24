@@ -227,7 +227,7 @@ const webExtract = async (...a) => {
   // means there is no browser — and "(web-tools not loaded)" as a RESULT would
   // be read by the model as page content and then reported as a finding.
   if (!m.webExtract)
-    throw new Error("web-tools tidak dapat dimuat (playwright?)");
+    throw new Error("web-tools could not be loaded (playwright?)");
   return m.webExtract(...a);
 };
 const skills = {
@@ -412,7 +412,7 @@ function _confineBash(cmd, argCwd, confineRoot) {
       return { ok: false, reason: `cwd '${argCwd}' di luar workspace ${root}` };
     try {
       if (!fs.statSync(resolved).isDirectory())
-        return { ok: false, reason: `cwd bukan direktori: ${argCwd}` };
+        return { ok: false, reason: `cwd is not a directory: ${argCwd}` };
     } catch {
       return { ok: false, reason: `cwd does not exist: ${argCwd}` };
     }
@@ -425,7 +425,10 @@ function _confineBash(cmd, argCwd, confineRoot) {
       cmd,
     )
   )
-    return { ok: false, reason: `dilarang '..' (traversal keluar workspace)` };
+    return {
+      ok: false,
+      reason: `'..' is forbidden (traversal out of the workspace)`,
+    };
   // 3) every path-shaped token must resolve inside root
   const norm = cmd.replace(/>>|>|<|\|/g, " "); // pisahkan operator redirect/pipe
   for (let tok of norm.split(/\s+/)) {
@@ -442,7 +445,7 @@ function _confineBash(cmd, argCwd, confineRoot) {
     if (!_wwInside(root, abs))
       return {
         ok: false,
-        reason: `path '${tok}' menembus keluar workspace ${root}`,
+        reason: `path '${tok}' breaks out of the workspace ${root}`,
       };
   }
   return { ok: true, cwd };
@@ -758,7 +761,10 @@ async function _brokeredFileOp(name, args, wsRoot) {
         }
       }
       if (target === args.new_string)
-        return { ok: false, output: "NOOP: old_string sama dengan new_string" };
+        return {
+          ok: false,
+          output: "NOOP: old_string is identical to new_string",
+        };
       const patched = old.replace(target, args.new_string);
       await broker.request("writeFile", { path: abs, content: patched });
       return {
@@ -1140,7 +1146,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         } else {
           return {
             ok: false,
-            output: `GAGAL: target_content not found persis di baris ${args.start_line}-${args.end_line}.\n\nTeks asli di baris tersebut:\n${targetBlock}`,
+            output: `FAILED: target_content not found exactly at lines ${args.start_line}-${args.end_line}.\n\nTeks asli di baris tersebut:\n${targetBlock}`,
           };
         }
       }
@@ -1332,8 +1338,8 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         return {
           ok: false,
           output:
-            "DITOLAK: menulis berkas kode lewat bash melewati gerbang kualitas & syntax check. " +
-            'Gunakan tool "write" (berkas baru) atau "edit" (ubah yang ada) — keduanya memverifikasi ' +
+            "REFUSED: writing a source file through bash bypasses the quality gate and syntax check. " +
+            'Use the "write" tool (new file) or "edit" (change an existing one) — both verify ' +
             "sintaks dan struktur sebelum menyentuh disk.",
         };
 
@@ -1361,8 +1367,8 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             mekanisme: enforced
               ? "linux-namespace (bash-jail)"
               : process.platform === "win32"
-                ? "advisory — Windows tanpa namespace"
-                : "tanpa jail",
+                ? "advisory — Windows without namespaces"
+                : "no jail",
           };
           if (!adm.allow) {
             cc.catat({
@@ -1375,7 +1381,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             return {
               ok: false,
               output:
-                "Sesi ini dikunci tanpa eksekusi shell mentah (WOLFSPACE_CC_TANPA=proc.raw). Pakai capability_exec: ia terkurung ke workspace dan tetap bisa membaca/menulis berkasnya lewat request()." +
+                "This session is locked without raw shell execution (WOLFSPACE_CC_TANPA=proc.raw). Use capability_exec: ia terkurung ke workspace dan tetap bisa membaca/menulis berkasnya lewat request()." +
                 "\nAlasan teknis: " +
                 adm.alasan,
             };
@@ -1457,11 +1463,11 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             return {
               ok: false,
               output:
-                `TERKURUNG WORKSPACE: perintah menyebut path host "${bocor}", ` +
-                "yang tidak ada di dalam pengurungan (hanya folder workspace yang " +
+                `WORKSPACE CONFINED: the command names host path "${bocor}", ` +
+                "which does not exist inside the confinement (only the workspace folder is " +
                 "terlihat, sebagai /work).\n" +
                 "Pakai path RELATIF (mis. ./src), atau tool lain: disk_read / " +
-                "disk_list untuk membaca di luar workspace, capability_exec untuk " +
+                "disk_list to read outside the workspace, capability_exec to " +
                 "akses berpolicy + audit.",
             };
           const wd = _workdirDalamJail(_confineRoot, args.cwd);
@@ -1529,7 +1535,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             // gone the boundary drops sharply, and that has to be readable —
             // not merely run more slowly.
             _catatan_ac =
-              "\n[AppContainer tak aktif: " +
+              "\n[AppContainer not active: " +
               siapAc.alasan +
               " — jalankan scripts/appcontainer/pasang.ps1]";
           }
@@ -1576,10 +1582,10 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             ok: false,
             ..._penegakanLabel.label("penasihat", "wsl-tak-siap"),
             output:
-              "WOLFSPACE_BASH_WSL=1 diminta, tapi jalur WSL tak siap: " +
+              "WOLFSPACE_BASH_WSL=1 was requested, but the WSL path is not ready: " +
               siap.alasan +
               "\nSiapkan share + kredensial lebih dulu, atau lepas variabel itu " +
-              "untuk kembali ke jalur Windows (yang batasnya hanya pemeriksaan teks).",
+              "to fall back to the Windows path (whose boundary is only a text scan).",
           };
         }
         // Fallback: the regex guard (leaky, defence-in-depth) when namespaces are
@@ -1635,11 +1641,11 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
               // removed is the claim, not the check — this check is still useful
               // for catching typos, and only for that.
               output:
-                "DITOLAK oleh pemeriksaan teks (BUKAN batas keamanan): " +
+                "REFUSED by the text scan (NOT a security boundary): " +
                 guard.reason +
-                "\nPemeriksaan ini hanya memindai teks perintah, jadi ia MELEWATKAN " +
-                "path yang dirakit saat jalan. Jangan perlakukan sebagai jaminan.\n" +
-                "Pengurungan sungguhan: jalankan dengan `npm run app:wsl` (batas " +
+                "\nThis check only scans the command text, so it MISSES " +
+                "a path assembled at run time. Do not treat it as a guarantee.\n" +
+                "Real confinement: run with `npm run app:wsl` (a boundary " +
                 "kernel), atau pakai capability_exec (akses berpolicy + audit)." +
                 _catatan_ac,
             };
@@ -1714,7 +1720,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             resolve({
               ok: false,
               output:
-                "DIBATALKAN: perintah dihentikan oleh user.\n" +
+                "CANCELLED: the command was stopped by the user.\n" +
                 cmd.slice(0, 200),
             });
           }
@@ -1824,7 +1830,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
               return resolve({
                 ok: false,
                 output:
-                  "DIBATALKAN: perintah dihentikan oleh user.\n" +
+                  "CANCELLED: the command was stopped by the user.\n" +
                   cmd.slice(0, 200),
               });
             return resolve({
@@ -1963,7 +1969,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
       } catch (e) {
         return {
           ok: false,
-          output: "jembatan lampiran tak tersedia: " + e.message,
+          output: "attachment bridge unavailable: " + e.message,
         };
       }
 
@@ -1973,8 +1979,8 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
           return {
             ok: true,
             output:
-              "(belum ada lampiran) — hanya user yang bisa melampirkan berkas; " +
-              "tak ada tool untuk membuka berkas dari direktori.",
+              "(no attachments yet) — only the user can attach a file; " +
+              "there is no tool that opens a file from a directory.",
           };
         return {
           ok: true,
@@ -2003,7 +2009,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         // advisory here) but the complete absence of a path.
         const kurungan = {
           enforced: true,
-          mekanisme: "handle-only — alamat berkas tak pernah masuk ke sistem",
+          mekanisme: "handle-only — a file path never enters the system",
         };
         if (!adm.allow) {
           cc.catat({
@@ -2018,7 +2024,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             output:
               "CommandChain menolak attachment.read: " +
               adm.alasan +
-              ". Sesi ini dikunci tanpa pembacaan lampiran.",
+              ". This session is locked without attachment reading.",
           };
         }
         cc.catat({
@@ -2099,8 +2105,8 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         return {
           ok: false,
           output:
-            "DITOLAK: menulis berkas kode lewat terminal melewati gerbang kualitas & " +
-            'syntax check. Gunakan tool "write" (berkas baru) atau "edit" (ubah yang ada).',
+            "REFUSED: writing a source file through the terminal bypasses the quality gate and " +
+            'syntax check. Use the "write" tool (new file) or "edit" (change an existing one).',
         };
 
       const ok = term.write(args.id, args.data);
@@ -2182,10 +2188,10 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
           kurungan: {
             enforced: true,
             mekanisme:
-              "admission genesis + penjaga tujuan (loopback/privat ditolak)",
+              "genesis admission + destination guard (loopback/private refused)",
           },
         });
-        return { ok: false, output: "web_extract ditolak: " + adm.alasan };
+        return { ok: false, output: "web_extract refused: " + adm.alasan };
       }
       return webExtract(args).then(
         (r) => ({ ok: true, output: r }),
@@ -2320,7 +2326,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             ok: false,
             ..._penegakanLabel.label("penasihat", "admission"),
             output:
-              "Sesi ini dikunci tanpa eksekusi proses mentah (WOLFSPACE_CC_TANPA=proc.raw). Pakai capability_exec (terkurung ke workspace + diaudit) atau tool write/edit." +
+              "This session is locked without raw process execution (WOLFSPACE_CC_TANPA=proc.raw). Use capability_exec (terkurung ke workspace + diaudit) atau tool write/edit." +
               "\nAlasan teknis: " +
               adm.alasan,
           };
@@ -2334,8 +2340,8 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
           ok: false,
           ..._penegakanLabel.label("penasihat", "admission"),
           output:
-            "sandbox_run ditolak: CommandChain tak tersedia untuk memeriksa " +
-            "admission proc.raw, dan tool ini men-spawn proses OS.",
+            "sandbox_run refused: CommandChain is unavailable to check " +
+            "proc.raw admission, and this tool spawns an OS process.",
         };
       }
       // This tool's own description states that the spawned process has "normal
@@ -2348,8 +2354,8 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         return {
           ok: false,
           output:
-            "DITOLAK: menulis berkas kode lewat sandbox_run melewati gerbang kualitas & " +
-            'syntax check. Gunakan tool "write" (berkas baru) atau "edit" (ubah yang ada).',
+            "REFUSED: writing a source file through sandbox_run bypasses the quality gate and " +
+            'syntax check. Use the "write" tool (new file) or "edit" (change an existing one).',
         };
       const opts = { ...sandbox.defaultSandboxOpts() };
       if (args.timeout) opts.timeout = args.timeout;
@@ -2443,9 +2449,9 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         // the expensive one.
         if (z && z.kurungan && !z.kurungan.jaringanTerkurung) {
           bagian.push(
-            "[TANPA PENGURUNGAN JARINGAN] " +
+            "[NO NETWORK CONFINEMENT] " +
               z.kurungan.alasan +
-              " — berkas tetap ditahan --permission, jaringan TIDAK.",
+              " — files are still held by --permission, the network is NOT.",
           );
         }
         return bagian.join("\n");

@@ -164,7 +164,7 @@ try {
 } catch (e) {
   ptyLoadError = e.message;
   console.warn(
-    "[WOLFSPACE] node-pty tak tersedia — fitur terminal dimatikan. " +
+    "[WOLFSPACE] node-pty unavailable — the terminal feature is off. " +
       String(e.message).split("\n")[0],
   );
 }
@@ -1329,7 +1329,7 @@ function wsGrep(pattern) {
   try {
     re = new RegExp(pattern, "i");
   } catch (e) {
-    return "regex tidak valid: " + e.message;
+    return "invalid regex: " + e.message;
   }
   const hits: any[] = [];
   const files = wsList("")
@@ -1435,8 +1435,7 @@ function qResolve(p, mustBeEditable) {
     !Q_ALLOWED.test(relNorm)
   )
     throw new Error(
-      "path tidak boleh ditulis (sumber kode di public/ atau *.cjs): " +
-        relNorm,
+      "path is not writable (source code in public/ or *.cjs): " + relNorm,
     );
   return dest;
 }
@@ -1489,7 +1488,7 @@ function qGlob(pattern) {
   try {
     re = globToRe(unq(pattern) || "*");
   } catch (e) {
-    return "pola tidak valid";
+    return "invalid pattern";
   }
   const hits = qWalk(null)
     .filter((f) => re.test(f.rel) || re.test(f.rel.split("/").pop()))
@@ -1526,7 +1525,7 @@ function qRead(p, near) {
   const head = a > 0 || b < N ? `(baris ${a + 1}-${b} dari ${N} total)\n` : "";
   const tail =
     !Number.isFinite(near) && N > 800
-      ? `\nâ€¦ (${N - 800} baris lagi â€” pakai read dengan near:<nomor baris> untuk bagian lain)`
+      ? `\n... (${N - 800} more lines - use read with near:<line number> for another part)`
       : "";
   return head + shown + tail;
 }
@@ -1548,12 +1547,12 @@ function cleanGrep(arg) {
 // GREP across the whole project's source files (read-only).
 function qGrep(pattern) {
   pattern = cleanGrep(pattern);
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   let re;
   try {
     re = new RegExp(pattern, "i");
   } catch (e) {
-    return "regex tidak valid: " + e.message;
+    return "invalid regex: " + e.message;
   }
   const hits: any[] = [];
   const files = qWalk(/\.(cjs|js|jsx|css|html|json|dart|yaml|md)$/i);
@@ -1629,16 +1628,16 @@ function resolveDiskPath(p) {
   const raw = (p || "").trim().replace(/^[`"']+|[`"']+$/g, "");
   if (/^[A-Za-z]:[\\\/]/.test(raw)) {
     const dest = path.resolve(raw);
-    if (DISK_BLOCKED.test(dest)) throw new Error("path sistem ditolak: " + raw);
+    if (DISK_BLOCKED.test(dest)) throw new Error("system path refused: " + raw);
     return dest;
   }
   if (/^[\/]/.test(raw)) {
     const dest = path.resolve(raw);
-    if (DISK_BLOCKED.test(dest)) throw new Error("path sistem ditolak: " + raw);
+    if (DISK_BLOCKED.test(dest)) throw new Error("system path refused: " + raw);
     return dest;
   }
   const dest = path.resolve(DISK_HOME, raw);
-  if (DISK_BLOCKED.test(dest)) throw new Error("path sistem ditolak: " + raw);
+  if (DISK_BLOCKED.test(dest)) throw new Error("system path refused: " + raw);
   return dest;
 }
 function diskWalk(dir, filterRe, maxDepth?) {
@@ -1679,15 +1678,15 @@ function diskList(p) {
   try {
     st = fs.statSync(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
   const out: any[] = [];
   let ents;
   try {
     ents = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
-    throw new Error("tidak bisa akses: " + p);
+    throw new Error("cannot access: " + p);
   }
   const skipEntry =
     /^(node_modules|\.git|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|target|bower_components|\.terraform|cache)$/i;
@@ -1709,14 +1708,14 @@ function diskGlob(p, pattern) {
   try {
     st = fs.statSync(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
   let re;
   try {
     re = globToRe((pattern || "*").trim());
   } catch {
-    return "pola tidak valid";
+    return "invalid pattern";
   }
   const hits = diskWalk(dir, re).map((f) => f.fp.replace(/\\/g, "/"));
   return hits.length ? hits.slice(0, 200).join("\n") : "(no matching files)";
@@ -1751,21 +1750,21 @@ function diskRead(p, near) {
   return head + shown;
 }
 function diskGrep(p, pattern) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   let re;
   try {
     re = new RegExp(pattern, "i");
   } catch {
-    return "regex tidak valid: " + pattern;
+    return "invalid regex: " + pattern;
   }
   const dir = resolveDiskPath(p || DISK_HOME);
   let st;
   try {
     st = fs.statSync(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
   const hits: any[] = [];
   const files = diskWalk(
     dir,
@@ -1868,7 +1867,7 @@ const SELF_TOOLS = [
     function: {
       name: "read",
       description:
-        "Read a file with line numbers. Pass near=<line> for Â±40 lines context.",
+        "Read a file with line numbers. Pass near=<line> for ±40 lines context.",
       parameters: {
         type: "object",
         properties: { path: { type: "string" }, near: { type: "number" } },
@@ -2038,7 +2037,7 @@ const SELF_TOOLS = [
           path: { type: "string", description: "absolute file path" },
           near: {
             type: "number",
-            description: "line number to center on (Â±40 lines)",
+            description: "line number to center on (±40 lines)",
           },
         },
         required: ["path"],
@@ -2648,7 +2647,7 @@ function openTerminalSession(customCwd, customShell) {
 
   if (!pty) {
     const e = new Error(
-      "Terminal tidak tersedia: node-pty gagal dimuat di platform ini" +
+      "Terminal unavailable: node-pty failed to load on this platform" +
         (ptyLoadError ? " — " + String(ptyLoadError).split("\n")[0] : ""),
     );
     (e as any).code = "PTY_UNAVAILABLE";
@@ -2743,7 +2742,7 @@ function closeTerminalSession(id) {
   if (!session) return;
   terminalSessions.delete(id);
   coreTerminal.killPtyAsync(session.pty).catch((e) =>
-    dlog("terminal", "warn", "gagal menutup PTY " + id, {
+    dlog("terminal", "warn", "failed to close PTY " + id, {
       galat: String((e && e.message) || e),
     }),
   );
@@ -3181,7 +3180,7 @@ const server = http.createServer(async (req, res) => {
             const _catatan = _k
               ? _k.enforced
                 ? ` [terverifikasi, terkurung ke ${_k.root}]`
-                : ` [terverifikasi ok=true, TAPI cakupan advisory (${_k.mekanisme}) — bukan batas yang ditegakkan]`
+                : ` [verified ok=true, BUT advisory scope (${_k.mekanisme}) - not an enforced boundary]`
               : "";
             ev({
               t: "adone",
@@ -3230,7 +3229,7 @@ const server = http.createServer(async (req, res) => {
               const patched = applyHunks(src, act.body); // reuse the precise-patch engine
               if (patched === null)
                 throw new Error(
-                  "hunk ORIGINAL tidak cocok dengan isi file Ã¢â‚¬â€ READ ulang lalu salin baris persis",
+                  "the ORIGINAL hunk does not match the file contents - READ it again and copy the lines exactly",
                 );
               fs.writeFileSync(dest, patched, "utf8");
               result = {
@@ -3263,7 +3262,7 @@ const server = http.createServer(async (req, res) => {
             ev({
               t: "adone",
               steps: step,
-              summary: "Ã¢Å“â€œ Terverifikasi dengan eksekusi (exit 0).",
+              summary: "Verified by execution (exit 0).",
             });
             break;
           }
@@ -3277,7 +3276,7 @@ const server = http.createServer(async (req, res) => {
             ev({
               t: "adone",
               steps: step,
-              summary: "Mencapai batas langkah (" + MAX + ").",
+              summary: "Reached the step limit (" + MAX + ").",
             });
         }
       } catch (e) {
@@ -3355,7 +3354,9 @@ const server = http.createServer(async (req, res) => {
         } catch (e) {
           return tolak(500, e.message);
         }
-        dlog("http", "info", "folder baru dibuat dari pohon", { path: dalam });
+        dlog("http", "info", "new folder created from the tree", {
+          path: dalam,
+        });
         res.writeHead(200, { "Content-Type": "application/json" });
         return res.end(
           JSON.stringify({
@@ -3387,8 +3388,8 @@ const server = http.createServer(async (req, res) => {
         "http",
         "info",
         membuat
-          ? "berkas baru dibuat dari pohon"
-          : "berkas disimpan dari panel kode",
+          ? "new file created from the tree"
+          : "file saved from the code panel",
         { path: dalam, bytes: isi.length },
       );
       res.writeHead(200, { "Content-Type": "application/json" });
@@ -3466,7 +3467,7 @@ const server = http.createServer(async (req, res) => {
         } catch (e) {
           return tolak(500, e.message);
         }
-        dlog("http", "info", "folder dihapus dari pohon", {
+        dlog("http", "info", "folder deleted from the tree", {
           path: dalam,
           jumlah,
         });
@@ -3489,7 +3490,7 @@ const server = http.createServer(async (req, res) => {
       } catch (e) {
         return tolak(500, e.message);
       }
-      dlog("http", "info", "berkas dihapus dari pohon", { path: dalam });
+      dlog("http", "info", "file deleted from the tree", { path: dalam });
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true, path: dalam.replace(/\\/g, "/") }));
     });
@@ -3723,7 +3724,7 @@ const server = http.createServer(async (req, res) => {
                   // Installing does NOT grant permission. Said plainly so the user
                   // does not assume the plugin is immediately usable by the agent.
                   catatan:
-                    "Terpasang. Belum diberi izin — agent belum bisa memanggilnya.",
+                    "Installed. Not yet permitted — the agent cannot call it yet.",
                 }
               : r,
           ),
@@ -3788,7 +3789,7 @@ const server = http.createServer(async (req, res) => {
           res.end(
             JSON.stringify({
               ok: false,
-              error: "plugin tak ditemukan: " + nama,
+              error: "plugin not found: " + nama,
             }),
           );
           return;
@@ -3825,7 +3826,7 @@ const server = http.createServer(async (req, res) => {
             // Honest about when it takes effect. Genesis is frozen once per session,
             // so GRANTING a permission does not touch the ruleset already running.
             catatan: beri
-              ? "Berlaku mulai sesi berikutnya — genesis sesi ini sudah dibekukan."
+              ? "Takes effect from the next session — this session's genesis is already frozen."
               : "Prosesnya dihentikan sekarang; kapabilitasnya hilang dari genesis pada sesi berikutnya.",
           }),
         );
@@ -3971,11 +3972,11 @@ const server = http.createServer(async (req, res) => {
       } catch (_) {}
       if (!p) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "path kosong" }));
+        return res.end(JSON.stringify({ error: "empty path" }));
       }
       try {
         const st = fs.statSync(p);
-        if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+        if (!st.isDirectory()) throw new Error("not a directory: " + p);
         const ww = require("./scripts/ww.ts");
         const r = ww.initWorkspace(p, path.basename(p.replace(/[\\/]+$/, "")));
         res.writeHead(200, { "Content-Type": "application/json" });
@@ -4012,7 +4013,7 @@ const server = http.createServer(async (req, res) => {
       } catch (_) {}
       if (!p) {
         res.writeHead(400, { "Content-Type": "application/json" });
-        return res.end(JSON.stringify({ error: "path kosong" }));
+        return res.end(JSON.stringify({ error: "empty path" }));
       }
       try {
         const resolved = path.resolve(p);
@@ -4578,7 +4579,7 @@ if (_dijalankanLangsung) {
   server.on("error", (err) => {
     if (err.code === "EADDRINUSE") {
       console.error(
-        `\n  Port ${PORT} sudah dipakai. Mencoba matikan proses lama...`,
+        `\n  Port ${PORT} is already in use. Trying to kill the old process...`,
       );
       // NEVER pipe any output straight into `kill`.
       //
@@ -4597,19 +4598,19 @@ if (_dijalankanLangsung) {
         const pid = _pidPemegangPort(PORT);
         if (!pid) {
           console.error(
-            `  Tidak bisa memastikan proses mana yang memegang port ${PORT}, ` +
-              `jadi tidak ada yang dibunuh.\n` +
-              `  Hentikan sendiri, atau jalankan dengan PORT lain: PORT=8091 ...`,
+            `  Cannot determine which process holds port ${PORT}, ` +
+              `so nothing was killed.\n` +
+              `  Stop it yourself, or run with a different PORT: PORT=8091 ...`,
           );
           process.exit(1);
         }
-        console.error(`  Menghentikan PID ${pid} yang memegang port ${PORT}…`);
+        console.error(`  Killing PID ${pid} holding port ${PORT}…`);
         process.kill(pid, "SIGKILL");
         setTimeout(() => server.listen(PORT, HOST), 500);
       } catch (e) {
         console.error(
-          `  Gagal membebaskan port ${PORT}: ${e.message}\n` +
-            `  Jalankan dengan PORT lain, mis. PORT=8091`,
+          `  Failed to free port ${PORT}: ${e.message}\n` +
+            `  Run with a different PORT, e.g. PORT=8091`,
         );
         process.exit(1);
       }
@@ -4640,10 +4641,10 @@ function startWwWatcher() {
       log: (m) => console.log("  [ww] " + m),
     });
     console.log(
-      `  [ww] auto-watcher aktif di ${root} — folder baru otomatis ter-isolasi (repo+branch).`,
+      `  [ww] auto-watcher active at ${root} — new folders are isolated automatically (repo+branch).`,
     );
   } catch (e) {
-    console.log("  [ww] watcher gagal start: " + e.message);
+    console.log("  [ww] watcher failed to start: " + e.message);
   }
 }
 

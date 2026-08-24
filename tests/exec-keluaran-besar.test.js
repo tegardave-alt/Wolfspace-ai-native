@@ -67,6 +67,6 @@ describe("runInWorkspace: keluaran besar", () => {
     // The notice has to survive the branch's own 4000-char slice, which is why
     // it is prepended rather than appended — appended, it would be cut off by
     // the very truncation it announces.
-    expect(String(r.output)).toMatch(/^\[keluaran dipotong: melewati 8 MB\]/);
+    expect(String(r.output)).toMatch(/^\[output truncated: over 8 MB\]/);
   });
 });

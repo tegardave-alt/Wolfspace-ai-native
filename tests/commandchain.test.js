@@ -222,7 +222,7 @@ describe("Fase 2: bash = proc.raw, on-by-default tapi bisa dikunci", () => {
     // bukan meninggalkan pemanggil tanpa pilihan.
     expect(T).toMatch(/capability_exec/);
     // Penanda cakupan jujur: advisory di Windows.
-    expect(T).toMatch(/advisory — Windows tanpa namespace/);
+    expect(T).toMatch(/advisory — Windows without namespaces/);
   });
 });
 

@@ -88,7 +88,7 @@ describe("pesan modul", () => {
       "utf8",
     );
     expect(isi).toMatch(/could not open/);
-    expect(isi).toMatch(/BUKAN soal izin berkas repo/);
+    expect(isi).toMatch(/NOT about repo file permissions/);
   });
 
   test("dipasang sebagai bawaan di Windows, bukan opt-in", () => {
@@ -142,7 +142,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
     const AC = require("../agent/tools/appcontainer-jail.ts");
     expect(AC.jelaskanKode(0xc0000142)).toMatch(/STATUS_DLL_INIT_FAILED/);
     expect(AC.jelaskanKode(0xc0000142)).toMatch(
-      /BUKAN berarti hasilnya kosong/,
+      /does NOT mean the result was empty/,
     );
     expect(AC.jelaskanKode(0)).toBeNull();
     expect(AC.jelaskanKode(1)).toBeNull();
@@ -151,7 +151,9 @@ describe("jebakan yang gejalanya menyesatkan", () => {
   test("kegagalan dir/vol dijelaskan sebagai info volume, bukan izin folder", () => {
     const AC = require("../agent/tools/appcontainer-jail.ts");
     expect(AC.jelaskan("Access is denied.", "dir /b")).toMatch(/Get-ChildItem/);
-    expect(AC.jelaskan("Access is denied.", "vol")).toMatch(/info volume/);
+    expect(AC.jelaskan("Access is denied.", "vol")).toMatch(
+      /volume information/,
+    );
     // Tidak boleh menempel di perintah lain yang kebetulan ditolak.
     expect(AC.jelaskan("Access is denied.", "type rahasia.txt")).toBe(
       "Access is denied.",

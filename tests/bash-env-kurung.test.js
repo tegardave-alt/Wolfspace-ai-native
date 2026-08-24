@@ -78,7 +78,7 @@ d("%VAR% tak lagi menembus penjaga path", () => {
     //   AppContainer   -> "Access is denied" (dijalankan, ditolak KERNEL)
     // Yang kedua lebih kuat, bukan lebih lemah — penolakannya datang dari
     // pemeriksaan akses berkas, bukan dari tebakan atas teks perintah.
-    expect(r.output).toMatch(/menembus keluar workspace|Access is denied/i);
+    expect(r.output).toMatch(/breaks out of the workspace|Access is denied/i);
   }, 30000);
 
   test.each([

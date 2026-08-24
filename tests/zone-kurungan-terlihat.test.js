@@ -140,7 +140,7 @@ describe("penanda sampai ke keluaran yang DIBACA MODEL", () => {
       require.resolve("../agent/tools/index.ts"),
       "utf8",
     );
-    expect(T).toMatch(/TANPA PENGURUNGAN JARINGAN/);
+    expect(T).toMatch(/NO NETWORK CONFINEMENT/);
     expect(T).toMatch(/kurungan && !z\.kurungan\.jaringanTerkurung/);
   });
 });

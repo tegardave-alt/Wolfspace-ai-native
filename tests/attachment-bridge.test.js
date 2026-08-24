@@ -207,8 +207,8 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
     // membuka berkas sendiri, lalu berputar saat tak menemukannya.
     const r = await runSelfTool("attachment_list", {}, noop, ctx);
     expect(r.ok).toBe(true);
-    expect(r.output).toMatch(/hanya user yang bisa melampirkan/i);
-    expect(r.output).toMatch(/tak ada tool untuk membuka berkas/i);
+    expect(r.output).toMatch(/only the user can attach/i);
+    expect(r.output).toMatch(/no tool that opens a file/i);
   });
 
   test("berkas DI LUAR worktree: read ditolak, lampiran diterima", async () => {

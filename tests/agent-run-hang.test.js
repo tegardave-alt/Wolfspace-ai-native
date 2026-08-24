@@ -181,7 +181,7 @@ describe("timeout bash dibedakan dari pembatalan user", () => {
     );
     expect(r.ok).toBe(false);
     expect(r.output).toMatch(/^TIMEOUT \(1\.5s\):/);
-    expect(r.output).not.toMatch(/DIBATALKAN/);
+    expect(r.output).not.toMatch(/CANCELLED/);
   }, 15000);
 
   test("pembatalan user SUNGGUHAN: tetap DIBATALKAN, bukan TIMEOUT", async () => {
@@ -199,7 +199,7 @@ describe("timeout bash dibedakan dari pembatalan user", () => {
     dibatalkan = true;
     const r = await p;
     expect(r.ok).toBe(false);
-    expect(r.output).toMatch(/DIBATALKAN/);
+    expect(r.output).toMatch(/CANCELLED/);
     expect(r.output).not.toMatch(/^TIMEOUT/);
   }, 15000);
 }, 40000);

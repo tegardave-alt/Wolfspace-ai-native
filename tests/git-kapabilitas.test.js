@@ -148,14 +148,14 @@ describe("perilaku nyata di repo ini", () => {
     // `--output=...` sebagai "path" akan diurai git sebagai OPSI, bukan berkas.
     const r = await jalan({ operasi: "diff", berkas: ["--output=/tmp/x"] });
     expect(r.ok).toBe(false);
-    expect(r.output).toMatch(/diawali '-'/);
+    expect(r.output).toMatch(/must not start with '-'/);
   });
 
   test("ref berisi spasi atau opsi DITOLAK", async () => {
     for (const ref of ["--upload-pack=calc", "a b", "-x"]) {
       const r = await jalan({ operasi: "show", ref });
       expect(r.ok).toBe(false);
-      expect(r.output).toMatch(/tak sah/);
+      expect(r.output).toMatch(/is invalid/);
     }
   });
 

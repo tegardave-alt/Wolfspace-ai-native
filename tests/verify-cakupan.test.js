@@ -62,7 +62,7 @@ describe("struktur: verdict membawa cakupan, gerbang DONE menyatakannya", () => 
 
   test("gerbang DONE menyatakan cakupan, tak membiarkan ok=true telanjang", () => {
     expect(SRC).toMatch(/verifiedKurungan/);
-    expect(SRC).toMatch(/cakupan advisory/);
+    expect(SRC).toMatch(/advisory scope/);
     expect(SRC).toMatch(/terkurung ke/);
   });
 
