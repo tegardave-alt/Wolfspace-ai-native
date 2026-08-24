@@ -10,9 +10,9 @@
   "scripts": {
     "start": "node server.cjs",
     "dev": "nodemon server.cjs",
-    "app": "node scripts/build-preload.cjs && node scripts/build-main.cjs && node scripts/build-app.cjs && node scripts/app.cjs",
+    "app": "node scripts/build-aclaunch.cjs && node scripts/build-preload.cjs && node scripts/build-main.cjs && node scripts/build-app.cjs && node scripts/app.cjs",
     "app:wsl": "node scripts/wsl-app.cjs",
-    "dist": "node scripts/build-preload.cjs && node scripts/build-main.cjs && node scripts/build-app.cjs && electron-builder --win",
+    "dist": "node scripts/build-aclaunch.cjs && node scripts/build-preload.cjs && node scripts/build-main.cjs && node scripts/build-app.cjs && electron-builder --win",
     "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles --passWithNoTests",
     "stress": "node scripts/stress.cjs",
@@ -24,7 +24,8 @@
     "build:preload": "node scripts/build-preload.cjs",
     "build:main": "node scripts/build-main.cjs",
     "ww": "node -r ./scripts/ts-register.cjs scripts/ww.ts",
-    "build:app": "node scripts/build-app.cjs"
+    "build:app": "node scripts/build-app.cjs",
+    "build:aclaunch": "node scripts/build-aclaunch.cjs"
   },
   "keywords": [
     "ai",
