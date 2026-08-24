@@ -35,12 +35,13 @@
 //   model heartbeat           model_wait events during a long call
 //   planner checklist         perencana.rencanakan, the SAME call the JS loop
 //                             makes — including its provider fallback
+//   HITL pause and resume     the gate PAUSES the run rather than refusing the
+//                             call; approval returns as hitl_response, the same
+//                             field the JS loop reads and the UI already sends
 //   transient retry           already inside askCloudTools; NOT duplicated here
 //
 //   NOT here yet              why it is not merely missing
 //   -----------               ---------------------------
-//   HITL resume               the graph must carry hitlApproved back in; today
-//                             the call is refused with a reason instead
 //   findings journal          crosses process restarts; a separate extraction
 //
 // So the JS agent stays the default. This path runs when it is asked for, by
@@ -239,6 +240,17 @@ export async function selfAgentStreamPython(
     payload?.thread_id ||
     "thread_" + Date.now() + "_" + Math.random().toString(36).slice(2, 8);
 
+  // Has the user already approved execution for this turn?
+  //
+  // `hitl_response` is the field the UI sends when Allow is pressed
+  // (public/app.tsx), and it is the SAME field the JS loop reads — a resume must
+  // not depend on which orchestrator handled the original request.
+  //
+  // Once set it holds for the whole turn, exactly as hitlApproved does in the JS
+  // graph. It resets on the next user message, because approval is granted for
+  // the work that was shown, not permanently.
+  const disetujui = !!payload?.hitl_response;
+
   // Per-workspace confinement, resolved exactly as the JS agent resolves it: a
   // path that is not a real directory means unconfined, not an error. Diverging
   // here would give the two orchestrators different security scopes for the same
@@ -298,20 +310,24 @@ export async function selfAgentStreamPython(
     // OPERATION, because gating it by name would ask for approval on `status`
     // and an approval asked for something trivial stops being read.
     //
-    // Refused rather than paused, and that limit is deliberate rather than
-    // hidden: the JS loop can collect an approval and re-run the same calls
-    // with hitlApproved, which needs the graph to carry that flag back in.
-    // Until then the model is told plainly why the call did not run, which it
-    // can act on, and the UI is told through the `hitl` event it already
-    // handles.
-    if (penjaga.perluPersetujuan({ name, args })) {
+    // PAUSED, not refused. This used to answer "REFUSED: … cannot collect one
+    // yet", which told the model something it could not act on and quietly made
+    // the Python path weaker than the JS one for the very same request.
+    //
+    // `needs_approval` travels back through the tool result the graph is already
+    // waiting on — no new protocol message. The tools node collects every call
+    // that needs a human, stops the run with stopReason "hitl", and the host asks
+    // the user. Their answer arrives as a NEW request carrying hitl_response,
+    // which is exactly how the JS loop resumes.
+    //
+    // Once approved the flag holds for the turn, so this gate is skipped rather
+    // than asking again for every command in the same batch.
+    if (!disetujui && penjaga.perluPersetujuan({ name, args })) {
       emit({ t: "hitl", kind: name, arg: args, reason: "needs approval" });
       return {
         ok: false,
-        output:
-          "REFUSED: `" +
-          name +
-          "` needs human approval and this orchestrator cannot collect one yet. Use a tool that runs inside the sandbox (sandbox_run) or the broker (capability_exec), or ask the user to run it.",
+        needs_approval: true,
+        output: "`" + name + "` menunggu persetujuan Anda sebelum dijalankan.",
       };
     }
 
@@ -339,6 +355,10 @@ export async function selfAgentStreamPython(
       history: payload?.history || [],
       task_checklist: payload?.task_checklist || [],
       thread_id: threadId,
+      // Carried through so the graph skips the planner on a resumed run — the
+      // planning happened before the pause, and redoing it would discard the
+      // decision the human just made (route_start in graph.py).
+      hitl_approved: disetujui,
     },
     {
       onEvent: (ev: any) => emit(ev),

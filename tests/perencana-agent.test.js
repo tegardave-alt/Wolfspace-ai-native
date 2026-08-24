@@ -112,30 +112,31 @@ describe("perencana: TIDAK PERNAH menggagalkan run", () => {
     // The planner is a convenience; the executor runs the same without one.
     // Before there was a fallback, one dead key in first position killed the
     // ENTIRE run 1-2 seconds in.
-    const cloudPath = require.resolve("../agent/cloud.ts");
-    const asli = require.cache[cloudPath];
-    require.cache[cloudPath] = {
-      id: cloudPath,
-      filename: cloudPath,
-      loaded: true,
-      exports: {
-        askCloudTools: async () => {
-          throw new Error("401 Unauthorized");
-        },
-        CLOUD_KEYS: {},
-        fillCloudKey: () => {},
-      },
+    //
+    // The stub replaces the EXPORT rather than the require.cache entry. A cache
+    // swap looked equivalent and was not: rencanakan() requires cloud.ts at CALL
+    // time, kept getting the real module, and the real network call failed — so
+    // this test passed for the wrong reason, in 3365 ms instead of 6. `dipanggil`
+    // is asserted below precisely so it cannot do that again.
+    const cloudMod = require("../agent/cloud.ts");
+    const asliAsk = cloudMod.askCloudTools;
+    const asliKeys = cloudMod.CLOUD_KEYS;
+    let dipanggil = 0;
+    cloudMod.askCloudTools = async () => {
+      dipanggil++;
+      throw new Error("401 Unauthorized");
     };
+    cloudMod.CLOUD_KEYS = {};
     try {
       const hasil = await perencana.rencanakan(
         { provider: "mati" },
         "buat sesuatu",
       );
+      expect(dipanggil).toBeGreaterThan(0);
       expect(hasil.checklist).toEqual([perencana.RENCANA_FALLBACK]);
-      expect(hasil.checklist.length).toBeGreaterThan(0);
     } finally {
-      if (asli) require.cache[cloudPath] = asli;
-      else delete require.cache[cloudPath];
+      cloudMod.askCloudTools = asliAsk;
+      cloudMod.CLOUD_KEYS = asliKeys;
     }
   });
 });

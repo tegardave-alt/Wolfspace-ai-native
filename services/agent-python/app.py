@@ -128,10 +128,31 @@ def _make_nodes(run: Run):
         edit_log: list[dict[str, Any]] = []
         failed: list[str] = []
 
+        # Calls the host refused because they need a human. Collected rather than
+        # acted on one by one: the run pauses once, with everything that is
+        # waiting, instead of stopping on the first and hiding the rest.
+        perlu_izin: list[dict[str, Any]] = []
+
         for call in last.get("tool_calls") or []:
             name = str(call.get("name") or "")
             result = run.call_tool(name, call.get("args") or {})
             ok = bool(result.get("ok"))
+            if result.get("needs_approval"):
+                perlu_izin.append({"name": name, "args": call.get("args") or {}})
+                # Still emitted, so the timeline SHOWS what is waiting. Skipping
+                # the event would leave the run looking as though it simply
+                # stopped for no reason.
+                emit_event(
+                    run.id,
+                    {
+                        "t": "act",
+                        "kind": name,
+                        "arg": call.get("args"),
+                        "ok": False,
+                        "output": str(result.get("output", "")),
+                    },
+                )
+                continue
             emit_event(
                 run.id,
                 {
@@ -164,6 +185,28 @@ def _make_nodes(run: Run):
             update["editLog"] = edit_log
         if failed:
             update["failedTools"] = failed
+
+        if perlu_izin:
+            # PAUSED, not failed. The host asks the user, and a later run arrives
+            # with hitl_approved set — route_start then sends it straight back to
+            # the executor rather than replanning.
+            #
+            # Tools that did NOT need approval already ran above and their results
+            # are in `messages`, so the work done before the pause is not thrown
+            # away. That mirrors the JS loop, which executes the non-execution
+            # calls (grep, read) so their output is available when the run
+            # resumes.
+            #
+            # The summary deliberately avoids the word HITL: it means nothing to
+            # the user, and the waiting state is already visible from the
+            # approve/reject buttons. What is left is the useful fact — how many
+            # commands.
+            update["stopReason"] = "hitl"
+            update["hitlPending"] = True
+            update["pendingToolCalls"] = perlu_izin
+            update["finalSummary"] = (
+                f"{len(perlu_izin)} perintah perlu persetujuan Anda sebelum dijalankan."
+            )
         return update
 
     def validate(state: AgentState) -> dict[str, Any]:
@@ -197,6 +240,11 @@ def _run_graph(run: Run) -> None:
             "messages": run.payload.get("history") or [],
             "step": 1,
             "task_checklist": run.payload.get("task_checklist") or [],
+            # Carried in from the host so a resumed run skips the planner and goes
+            # straight back to the executor (see route_start in graph.py): the
+            # planning already happened before the pause, and redoing it would
+            # discard the decision the human just made.
+            "hitlApproved": bool(run.payload.get("hitl_approved")),
         }
         final = app.invoke(initial, config=config)
         emit_event(

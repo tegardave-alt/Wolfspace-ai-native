@@ -223,7 +223,10 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     const act = events.find((e) => e.t === "act" && e.kind === "bash");
     expect(act).toBeTruthy();
     expect(act.ok).toBe(false);
-    expect(String(act.output)).toMatch(/REFUSED/);
+    // PAUSED, not refused. The gate used to answer "REFUSED: … cannot collect
+    // one yet", which told the model something it could not act on; the run now
+    // stops and asks, and tests/python-hitl-resume.test.js covers the resume.
+    expect(String(act.output)).toMatch(/menunggu persetujuan Anda/);
   }, 120000);
 
   test("jawaban yang tak berpijak pada bukti tidak langsung diterima", async () => {
