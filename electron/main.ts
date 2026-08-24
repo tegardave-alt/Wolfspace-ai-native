@@ -850,6 +850,46 @@ function apiStream(
   });
 }
 
+/* ── IPC load ceiling ───────────────────────────────────────────────────────
+ *
+ * Every IPC message is serialised on this thread, and this thread also draws
+ * the window. Measured curve of JSON.stringify + JSON.parse:
+ *
+ *     1 MB ->   18 ms        50 MB -> 1241 ms
+ *    10 MB ->  194 ms       200 MB -> 4486 ms
+ *
+ * One 200 MB message spends 90% of the 5000 ms hang budget by itself, so the
+ * freeze point sits near 220 MB. Nothing stopped one before this.
+ *
+ * The number lives in agent/anggaran.ts with the rest of the budget. Reaching a
+ * .ts module needs the require hook, which this entry cannot install for itself
+ * (see scripts/build-main.cjs) — so it is loaded lazily, the same way core() is.
+ * By the time any IPC message arrives the hook is usually already in place,
+ * because core() installs it through server.cjs.
+ */
+let _anggaran: any = null;
+function anggaran() {
+  if (_anggaran) return _anggaran;
+  const root = unpackedRoot();
+  require(path.join(root, "scripts", "ts-register.cjs"));
+  _anggaran = require(path.join(root, "agent", "anggaran.ts"));
+  return _anggaran;
+}
+
+/**
+ * Both helpers live in agent/anggaran.ts, next to the number they enforce and
+ * where tests can drive them with real values. This wrapper exists only to
+ * survive the budget being unreachable: a guard must never be the reason IPC
+ * stops working.
+ */
+function lewatBatasIpc(v: any, arah: string): string | null {
+  try {
+    return anggaran().lewatBatasIpc(v, arah);
+  } catch (_: any) {
+    return null;
+  }
+}
+
 function registerIpc() {
   ipcMain.on("WOLFSPACE:probe", (_e: any, d: any) => {
     if (d && d.t === "renderer-stop")
@@ -858,6 +898,8 @@ function registerIpc() {
   ipcMain.handle(
     "WOLFSPACE:invoke",
     async (_e: any, { channel, payload }: any) => {
+      const tolak = lewatBatasIpc(payload, "masuk");
+      if (tolak) return { ok: false, error: tolak };
       if (channel === "ping") return { ok: true, pong: Date.now() };
       // Native folder picker → path absolut ASLI (di C:, D:, Desktop, mana pun).
       // Renderer memanggilnya lewat window.WOLFSPACE.invoke('selectFolder').
@@ -939,11 +981,26 @@ function registerIpc() {
     },
   );
   ipcMain.on("WOLFSPACE:stream", (e: any, { id, channel, payload }: any) => {
+    const tolakMasuk = lewatBatasIpc(payload, "masuk");
+    if (tolakMasuk) {
+      // Reported through the same error chunk the stream already uses, so the
+      // renderer needs no new case to handle it.
+      try {
+        e.sender.send("WOLFSPACE:chunk", {
+          id,
+          data: "data: " + JSON.stringify({ t: "err", m: tolakMasuk }) + "\n\n",
+        });
+      } catch (_: any) {}
+      return;
+    }
     // The channel is kept so the hot-reload guard knows an agent run is alive.
     const st = { cancelled: false, req: null, channel, mulai: Date.now() };
     _streams.set(id, st);
     const emit = (msg: any) => {
       if (st.cancelled) return;
+      const tolakKeluar = lewatBatasIpc(msg, "keluar");
+      if (tolakKeluar)
+        msg = "data: " + JSON.stringify({ t: "err", m: tolakKeluar }) + "\n\n";
       const t0 = performance.now();
       try {
         e.sender.send("WOLFSPACE:chunk", { id, data: msg });

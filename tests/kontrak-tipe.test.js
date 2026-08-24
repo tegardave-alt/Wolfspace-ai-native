@@ -33,6 +33,7 @@ const SUDAH_DIPERIKSA = ["agent/attachment-bridge.ts"];
 // no longer a `// @ts-check` line but that the file is still .ts and has not
 // quietly been reverted to an unchecked .cjs.
 const SUDAH_TYPESCRIPT = [
+  "agent/anggaran.ts",
   "agent/attachment-bridge.ts",
   "agent/broker/audit-log.ts",
   "agent/broker/commandchain.ts",

@@ -675,7 +675,37 @@ function daftarAkses() {
  * @returns {Record<string, string>}
  */
 function envTambahan(cwd) {
-  return { LOCALAPPDATA: _akarAc(cwd) };
+  return { LOCALAPPDATA: _akarAc(cwd), ..._envJob() };
+}
+
+/**
+ * Resource ceilings for the launched command, handed to AcLaunch.exe.
+ *
+ * An AppContainer confines what a command can REACH, not how much it can
+ * CONSUME — a command could take every byte of RAM and every CPU cycle on the
+ * machine while staying perfectly inside its sandbox. The Linux path never had
+ * that gap: agent/tools/bash-jail.ts caps processes, virtual memory and CPU
+ * through the namespace jail. This closes the same gap on Windows through a Job
+ * Object, applied in scripts/appcontainer/AcLaunch.cs.
+ *
+ * WHY THROUGH THE ENVIRONMENT. Everything after <exe> in AcLaunch's argv is
+ * forwarded verbatim to the command, so a new flag there could not be told
+ * apart from an argument meant for the command itself.
+ *
+ * It rides on envTambahan() rather than being wired separately because all
+ * three spawn paths already spread that one function — jalankan() here, and the
+ * two callers of bungkus() in agent/sandbox.ts and agent/tools/index.ts. Adding
+ * it anywhere else would have left one of them silently unbounded.
+ *
+ * @returns {Record<string, string>}
+ */
+function _envJob() {
+  const A = require("../anggaran.ts");
+  return {
+    [A.JOB_ENV.mem]: String(A.JOB_MEM_MB),
+    [A.JOB_ENV.proses]: String(A.JOB_MAKS_PROSES),
+    [A.JOB_ENV.cpu]: String(A.JOB_CPU_DETIK),
+  };
 }
 
 /**
@@ -746,6 +776,11 @@ async function jalankan(perintah, opts) {
           timeout: o.timeout || 120000,
           windowsHide: true,
           maxBuffer: 8 * 1024 * 1024,
+          // This path used to inherit the environment implicitly. It still
+          // does — process.env is spread first — with the Job Object ceilings
+          // added on top, so a command run through here is bounded exactly like
+          // one run through bungkus().
+          env: { ...process.env, ...envTambahan(cwd) },
         },
         (err, stdout, stderr) => {
           if (err) {
