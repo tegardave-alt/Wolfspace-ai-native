@@ -116,8 +116,8 @@ describe("pemanggil rollback memeriksa hasilnya, dan adone SELALU terkirim", () 
     const { pesan, lempar } = jalankan("snapshot-yang-tidak-pernah-ada");
     expect(lempar).toBeNull();
     const rb = pesan.find((p) => /Auto-Rollback/.test(p.m || ""));
-    expect(rb.m).toMatch(/GAGAL/);
-    expect(rb.m).toMatch(/TIDAK dipulihkan/);
+    expect(rb.m).toMatch(/FAILED/);
+    expect(rb.m).toMatch(/NOT restored/);
     // Sebabnya ikut, supaya user tahu harus memeriksa apa.
     expect(rb.m).toMatch(/tidak ditemukan/i);
   });

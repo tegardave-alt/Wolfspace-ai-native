@@ -128,7 +128,7 @@ describe("guard bash 'tolak edit' — sempit, bukan cocok nama perintah", () => 
         noop,
         {},
       );
-      expect(r.output || "").not.toMatch(/DILARANG edit file via bash/);
+      expect(r.output || "").not.toMatch(/Editing files via bash is FORBIDDEN/);
     },
     // Batas EKSPLISIT, bukan bawaan 5 detik jest.
     //
@@ -155,7 +155,7 @@ describe("guard bash 'tolak edit' — sempit, bukan cocok nama perintah", () => 
         noop,
         {},
       );
-      expect(r.output || "").toMatch(/DILARANG edit file via bash/);
+      expect(r.output || "").toMatch(/Editing files via bash is FORBIDDEN/);
       // Dulu ok:true untuk penolakan ini — bug tersendiri: lolos sebagai "bukti"
       // ke hallucination guard dan tak terhitung gagal oleh gerbang item-macet.
       expect(r.ok).toBe(false);
@@ -443,7 +443,7 @@ describe("run tak lagi ditutup oleh KALIMAT NIAT saat checklist masih terbuka", 
     const i = SRC.indexOf("continue_nudge limit reached");
     expect(i).toBeGreaterThan(-1);
     const blok = SRC.slice(i, i + 500);
-    expect(blok).toMatch(/item checklist BELUM tuntas/);
+    expect(blok).toMatch(/checklist item\(s\) NOT finished/);
   });
 });
 
@@ -488,6 +488,6 @@ describe("respons HAMPA diperlakukan sebagai provider gagal, bukan 'model selesa
     const i = SRC.indexOf("An EMPTY response means a broken provider");
     const blok = SRC.slice(i, i + 2800);
     expect(blok).toMatch(/emit\(\{\s*\n?\s*t: "err"/);
-    expect(blok).toMatch(/membalas kosong/);
+    expect(blok).toMatch(/replied empty/);
   });
 });

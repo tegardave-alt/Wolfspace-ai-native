@@ -232,7 +232,7 @@ function stripThinkBlocks(text) {
     t
       .replace(/^[\s\S]*?<\s*\/\s*think\s*>/i, "") // a closer with no opener: everything before it is leaked reasoning
       .replace(/<\s*think[^>]*>[\s\S]*$/i, ""),
-  ) // opener tanpa closer: sisa stream = reasoning
+  ) // an opener with no closer: the rest of the stream is reasoning
     .trim();
 }
 
@@ -367,27 +367,27 @@ function _ringkasGagalCloud(provider, err, gagal) {
     )
   )
     return (
-      "Semua provider cloud menolak permintaan ini" +
+      "Every cloud provider refused this request" +
       daftar +
-      ". Bukan gangguan sesaat — menunggu tidak akan menolong: kuota/kredit habis " +
-      "atau kunci ditolak. Isi ulang kredit di dasbor providernya, atau tambahkan " +
-      "kunci provider lain.\n\nBalasan terakhir: " +
+      ". This is not a passing glitch — waiting will not help: the quota or credit is spent " +
+      "or the key was rejected. Top up credit in the provider dashboard, or add " +
+      "a key for another provider.\n\nLast reply: " +
       inti
     );
 
   // Rate limit: waiting DOES help.
   if (/\b429\b/.test(pesan) || /rate[ _-]?limit|too many requests/i.test(pesan))
     return (
-      "Semua provider cloud sedang kena batas laju" +
+      "Every cloud provider is rate limiting" +
       daftar +
-      ". Ini sementara — coba lagi sebentar lagi.\n\nBalasan terakhir: " +
+      ". This one is temporary — try again shortly.\n\nLast reply: " +
       inti
     );
 
   return (
-    "Permintaan ke provider cloud gagal" +
+    "The request to the cloud providers failed" +
     daftar +
-    ".\n\nBalasan terakhir: " +
+    ".\n\nLast reply: " +
     inti
   );
 }
@@ -899,7 +899,7 @@ function checklistDenganKegagalan(checklist, fails) {
     return (
       "[!] " +
       teks +
-      " (gagal " +
+      " (failed " +
       g.n +
       "×" +
       (g.sebab.length ? ": " + g.sebab[g.sebab.length - 1] : "") +
@@ -1099,7 +1099,7 @@ async function selfAgentStream(payload, emit, ctl: any = {}) {
     dlog("self", "info", "stop", { reason: "no_cloud_key", depth });
     emit({
       t: "err",
-      m: "Self-agent butuh model cloud yang kuat. Simpan API key di menu API Key dulu (model lokal 3B tidak sanggup mengedit source dengan aman).",
+      m: "The self-agent needs a capable cloud model. Save an API key in the API Key menu first (a local 3B model cannot edit source safely).",
     });
     return finalSummary;
   }
@@ -1295,7 +1295,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       emit({
         t: "model_wait",
         m:
-          "Masih menyiapkan MCP (" +
+          "Still setting up MCP (" +
           Math.round((Date.now() - _mcpT0) / 1000) +
           "s)…",
       });
@@ -1336,7 +1336,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         dlog(
           "self",
           "info",
-          "Hardcode: web_search dinonaktifkan karena tugas MCP terdeteksi.",
+          "Hardcoded: web_search disabled because an MCP task was detected.",
         );
       }
 
@@ -1345,7 +1345,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         "\n\n[CRITICAL MCP RULE]: Anda terhubung ke MCP. Prioritaskan alat 'mcp_'.";
     }
   } catch (e) {
-    dlog("self", "warn", "Gagal memuat tools MCP", { error: e.message });
+    dlog("self", "warn", "Failed to load MCP tools", { error: e.message });
   }
 
   // --- INJEKSI CHAIN-OF-THOUGHT (CoT) ---
@@ -1397,9 +1397,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         emit({
           t: "act",
           kind: "planner",
-          arg: "Menyusun rencana...",
+          arg: "Drafting a plan...",
           ok: true,
-          output: "Sedang membuat checklist singkat",
+          output: "Building a short checklist",
         });
         const lastMsg = state.messages[state.messages.length - 1];
         // The planner lives in agent/perencana-agent.ts so the Python graph can
@@ -1491,11 +1491,11 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               .map((t) => (/^\[[x→\-! ]\] /.test(t) ? t : "- " + t))
               .join("\n") +
             (adaGagal
-              ? "\nItem [!] SUDAH DICOBA dan gagal. JANGAN ulangi pendekatan yang sama — ganti cara, atau jelaskan ke user kenapa item itu tak bisa diselesaikan."
+              ? "\nItem [!] HAS BEEN TRIED and failed. Do NOT repeat the same approach — change tack, or explain to the user why that item cannot be finished."
               : "") +
             (hasStatus
-              ? "\nIni status TERKINI, bukan rencana awal. JANGAN kerjakan ulang item [x]. Kerjakan item [→], lalu lanjut ke [ ] berikutnya, dan perbarui lewat todowrite setiap kali status berubah."
-              : "\nFokus selesaikan item di atas secara berurutan dengan menggunakan tools.");
+              ? "\nThis is the CURRENT status, not the original plan. Do NOT redo [x] items. Work the [→] item, then move to the next [ ], and update through todowrite every time the status changes."
+              : "\nFocus on finishing the items above in order, using the tools.");
           activeMessages[0] = sysMsg;
         }
 
@@ -1554,7 +1554,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           emit({
             t: "model_wait",
             m:
-              "Masih menunggu jawaban model (" +
+              "Still waiting for the model (" +
               Math.round((Date.now() - _askT0) / 1000) +
               "s)…",
             ctxChars: _ctxChars,
@@ -1598,7 +1598,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
                 t: "err",
                 m:
                   cloud.provider +
-                  " gagal: " +
+                  " failed: " +
                   e.message.slice(0, 80) +
                   " — beralih ke " +
                   fb,
@@ -1642,7 +1642,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // returned 0/0/0, and the run died at step 2 with the message below — which
         // blames the model when it was the channel that failed.
         //
-        //   "(tidak ada respons dari model)"   (verbatim: the string emitted)
+        //   "(no response from the model)"   (verbatim: the string emitted)
         // model)" — a message that blames the model when it was the channel that
         // failed.
         //
@@ -1671,7 +1671,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               t: "err",
               m:
                 cloud.provider +
-                " membalas kosong (tanpa teks/tool) — beralih ke " +
+                " replied empty (no text, no tool) — switching to " +
                 fbHampa,
             });
             cloud = {
@@ -1699,14 +1699,14 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           if (state.forceRetryCount < 3) {
             emit({
               t: "force_retry",
-              m: "Model hanya berpikir tanpa jawaban final — meminta ulang...",
+              m: "The model only reasoned and gave no final answer — asking again...",
             });
             return {
               messages: [
                 {
                   role: "user",
                   content:
-                    "Kamu berhenti di tengah proses berpikir tanpa memberikan jawaban final. JANGAN menarasikan rencana atau simulasi. Langsung PANGGIL tool yang dibutuhkan (bash/read/grep/edit) atau berikan jawaban final yang singkat.",
+                    "You stopped mid-reasoning without giving a final answer. Do NOT narrate a plan or a simulation. CALL the tool you need (bash/read/grep/edit) directly, or give a short final answer.",
                 },
               ],
               forceRetryCount: state.forceRetryCount + 1,
@@ -1733,15 +1733,15 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           const salvaged = salvageReasoning(msg.reasoning);
           if (salvaged.jenis === "kesimpulan") {
             msg.content =
-              "_(Model tidak menutup jawabannya; berikut kesimpulan dari proses berpikirnya.)_\n\n" +
+              "_(The model did not close its answer; here is the conclusion from its reasoning.)_\n\n" +
               salvaged.teks;
           } else if (salvaged.jenis === "catatan") {
             msg.content =
-              "_(Model tidak memberikan jawaban final. Berikut CATATAN TERAKHIR dari proses berpikirnya — ini bukan kesimpulan, dan mungkin belum selesai.)_\n\n" +
+              "_(The model gave no final answer. Here is the LAST NOTE from its reasoning — this is not a conclusion, and may be unfinished.)_\n\n" +
               salvaged.teks;
           } else {
             msg.content =
-              "(Model tidak memberikan jawaban final, dan proses berpikirnya tidak memuat kesimpulan yang bisa dipakai. Coba jalankan ulang, atau persempit permintaannya.)";
+              "(The model gave no final answer, and its reasoning held no usable conclusion. Try running it again, or narrow the request.)";
           }
           dlog("self", "info", "reasoning_salvage", {
             step: state.step,
@@ -1797,7 +1797,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               // write_artifact write "undefined" and then report success (a
               // hallucination). Return an error so the model resends valid, compact
               // JSON.
-              const out = `[ERROR: argumen untuk tool "${tc.function.name}" bukan JSON valid (kemungkinan terpotong). JANGAN anggap berhasil. Kirim ulang pemanggilan dengan JSON yang benar; untuk konten panjang, persingkat. Detail: ${(e.message || "").slice(0, 80)}]`;
+              const out = `[ERROR: the arguments for tool "${tc.function.name}" are not valid JSON (probably truncated). Do NOT treat this as success. Resend the call with correct JSON; shorten long content. Detail: ${(e.message || "").slice(0, 80)}]`;
               emit({
                 t: "act",
                 kind: tc.function.name,
@@ -1843,7 +1843,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               stopNote:
                 "tool «" +
                 tc.function.name +
-                "» dipanggil dengan argumen identik " +
+                "» called with identical arguments " +
                 callCounts[sig] +
                 "x (arg: " +
                 (tc.function.arguments || "").slice(0, 80) +
@@ -1935,7 +1935,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             sebabGagalLangkahIni.push(
               tc.function.name +
                 ": " +
-                String(r.output || "gagal")
+                String(r.output || "failed")
                   .trim()
                   .split("\n")[0],
             );
@@ -2029,9 +2029,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               stopNote:
                 "tool «" +
                 tc.function.name +
-                "» dipanggil identik " +
+                "» called identically " +
                 (sess.noProgressBySig[sig] + 1) +
-                "x dengan HASIL SAMA persis (arg: " +
+                "x with EXACTLY THE SAME RESULT (arg: " +
                 (tc.function.arguments || "").slice(0, 80) +
                 "…)",
             };
@@ -2048,23 +2048,23 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               stopNote:
                 "tool «" +
                 tc.function.name +
-                "» GAGAL " +
+                "» FAILED " +
                 sess.failsByName[tc.function.name] +
-                "x beruntun (kegagalan terakhir: " +
+                "x in a row (last failure: " +
                 String(out).replace(/\s+/g, " ").slice(0, 100) +
                 "…)",
             };
           }
           if (_sameResult && sess.noProgressBySig[sig] >= 1)
             out +=
-              "\n[SYSTEM: Panggilan identik diulang dengan HASIL SAMA (" +
+              "\n[SYSTEM: An identical call was repeated with THE SAME RESULT (" +
               (sess.noProgressBySig[sig] + 1) +
-              "x). Jangan ulangi persis — ganti pendekatan, atau read dulu lalu edit SEKALI dengan old_string yang tepat.]";
+              "x). Do not repeat it verbatim — change approach, or read first and then make ONE edit with the right old_string.]";
           if (editFailCount >= 2)
             out +=
-              "\n[SYSTEM: edit gagal " +
+              "\n[SYSTEM: edit failed " +
               editFailCount +
-              "x berturut-turut. BERHENTI mencoba edit. Gunakan tool read untuk membaca baris yang tepat dari file, lalu buat 1 edit dengan old_string yang PERSIS sesuai konten file.]";
+              "x in a row. STOP trying to edit. Use the read tool to read the exact lines from the file, then make 1 edit whose old_string matches the file content EXACTLY.]";
           if (callCountsByName[tc.function.name] > 3)
             out +=
               "\n[SYSTEM: Tool " +
@@ -2132,7 +2132,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
                 out: subSum || ret || "(sub-agent finished without a summary)",
               };
             } catch (e) {
-              return { out: "[sub‑agent gagal: " + e.message + "]" };
+              return { out: "[sub-agent failed: " + e.message + "]" };
             }
           }
           return { out };
@@ -2197,7 +2197,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             thread_id,
             request: {
               title:
-                "Eksekusi perintah (" +
+                "Command execution (" +
                 executionCalls.length +
                 "): " +
                 executionCalls.map((tc) => tc.function.name).join(", "),
@@ -2225,7 +2225,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             // left is the useful fact: how many commands.
             finalSummary:
               executionCalls.length +
-              " perintah perlu persetujuan Anda sebelum dijalankan.",
+              " command(s) need your approval before they run.",
             waitForAnswer: false,
             hitlPending: true,
             pendingToolCalls: executionCalls,
@@ -2308,11 +2308,11 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               stopReason = "repeated_tool_calls";
               localSummary =
                 msg.content ||
-                "Berhenti: panggilan tool berulang tanpa kemajuan" +
+                "Stopped: repeated tool calls with no progress" +
                   (results[i].stopNote
                     ? " — " +
                       results[i].stopNote +
-                      ". Coba: instruksi lebih spesifik, atau pecah tugasnya."
+                      ". Try: a more specific instruction, or split the task up."
                     : ".");
             }
           }
@@ -2320,14 +2320,17 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           // Force-stop notice: inform model to answer now instead of aborting the graph
           if (grepReadSteps >= 5 && isSearch) {
             out +=
-              "\n\n[SYSTEM NOTICE: PENCARIAN SELESAI] Anda sudah melakukan 5 langkah pencarian. DILARANG memanggil tool pencarian lagi. Berikan jawaban/kesimpulan lengkap Anda kepada user SEKARANG berdasarkan hasil yang sudah dikumpulkan.";
+              "\n\n[SYSTEM NOTICE: SEARCH COMPLETE] You have taken 5 search steps. Do NOT call a search tool again. Give the user your full answer or conclusion NOW, based on what has been gathered.";
           }
           if (readFileCount >= 8 && isRead) {
             out +=
-              "\n\n[SYSTEM NOTICE: BACA SELESAI] File sudah dibaca cukup. DILARANG memanggil tool read lagi. Berikan jawaban/kesimpulan lengkap Anda kepada user SEKARANG berdasarkan hasil yang sudah dikumpulkan.";
+              "\n\n[SYSTEM NOTICE: READING COMPLETE] Enough of the file has been read. Do NOT call the read tool again. Give the user your full answer or conclusion NOW, based on what has been gathered.";
           }
           // Auto-convert: bash edit rejection → auto-read file + inject edit instruction
-          if (name === "bash" && out.includes("DILARANG edit file via bash")) {
+          if (
+            name === "bash" &&
+            out.includes("Editing files via bash is FORBIDDEN")
+          ) {
             // Parse file path from bash command (common patterns)
             const cmd = calls[i].function.arguments || "";
             let cmdObj: any = {};
@@ -2358,25 +2361,25 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
                     .split("\n")
                     .slice(0, 300)
                     .join("\n");
-                  out = `DITOLAK edit via bash. File sudah dibaca untuk Anda:\n\n${lines}\n\n[SYSTEM] Gunakan tool "edit" sekarang dengan:\n- path: ${targetFile}\n- old_string: (copy dari file di atas)\n- new_string: "" (kosong untuk hapus)`;
+                  out = `Edit via bash REFUSED. The file has been read for you:\n\n${lines}\n\n[SYSTEM] Use the "edit" tool now with:\n- path: ${targetFile}\n- old_string: (copy from the file above)\n- new_string: "" (empty to delete)`;
                   emit({
                     t: "act",
                     kind: "read",
                     arg: targetFile,
                     ok: true,
-                    output: "Auto-read untuk edit conversion",
+                    output: "Auto-read for edit conversion",
                   });
                 } else {
                   out =
-                    "DITOLAK edit via bash. Baca file dulu dengan read tool, lalu gunakan edit tool.";
+                    "Edit via bash REFUSED. Read the file first with the read tool, then use the edit tool.";
                 }
               } catch (e2) {
                 out =
-                  "DITOLAK edit via bash. Baca file dulu dengan read tool, lalu gunakan edit tool.";
+                  "Edit via bash REFUSED. Read the file first with the read tool, then use the edit tool.";
               }
             } else {
               out =
-                'DITOLAK edit via bash. Gunakan tool "edit" — baca file dulu dengan read tool jika perlu.';
+                'Edit via bash REFUSED. Use the "edit" tool — read the file first if you need to.';
             }
           }
           toolMessages.push({
@@ -2412,11 +2415,11 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             const pertanyaan =
               'Item "' +
               itemSedangDikerjakan +
-              '" sudah gagal ' +
+              '" has already failed ' +
               n +
               "× berturut-turut.\nSebab terakhir: " +
-              (sebab[sebab.length - 1] || "tidak tercatat") +
-              "\n\nSaya berhenti di sini alih-alih mencoba lagi dengan cara yang sama. Bagaimana lanjutnya?";
+              (sebab[sebab.length - 1] || "not recorded") +
+              "\n\nI am stopping here rather than trying the same way again. How would you like to proceed?";
             emit({
               t: "ask",
               question: pertanyaan,
@@ -2431,7 +2434,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             // "menunggu keputusan user" is dropped for the same reason: the choices
             // are already on screen as buttons, so the sentence merely narrates a UI
             // mechanism back at the user.
-            localSummary = "Item checklist gagal " + n + "× berturut-turut.";
+            localSummary = "A checklist item failed " + n + "x in a row.";
           }
         }
 
@@ -2467,7 +2470,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         const hasContent = cleanContent && cleanContent.trim();
         const rawContent = hasContent
           ? cleanContent
-          : "(tidak ada respons dari model)";
+          : "(no response from the model)";
 
         // Anti-tutorial: the model has real execution tools (bash/sandbox_run), so an
         // answer that SIMULATES the result, or gives up with the refusal below, is a
@@ -2502,7 +2505,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               {
                 role: "user",
                 content:
-                  "PERINGATAN SISTEM: Kamu BISA mengeksekusi perintah secara nyata — kamu punya tool bash (PowerShell di host) dan sandbox_run. DILARANG mensimulasikan, mengasumsikan, atau menarasikan output. PANGGIL tool yang sesuai SEKARANG dan laporkan output aslinya.",
+                  "SYSTEM WARNING: you CAN execute commands for real — you have the bash tool (PowerShell on the host) and sandbox_run. Do NOT simulate, assume, or narrate output. CALL the right tool NOW and report its actual output.",
               },
             ],
             forceRetryCount: state.forceRetryCount + 1,
@@ -2527,7 +2530,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         if (lastArchMermaid && !/```mermaid[\s\S]*?```/.test(fallback)) {
           fallback = fallback.replace(/```mermaid[\s\S]*$/i, "").trim(); // buang fence parsial
           fallback =
-            (fallback && fallback !== "(tidak ada respons dari model)"
+            (fallback && fallback !== "(no response from the model)"
               ? fallback + "\n\n"
               : "") + lastArchMermaid;
         }
@@ -2549,13 +2552,13 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             } else {
               emit({
                 t: "force_retry",
-                m: `Belum memenuhi minimal ${SYSTEM_RULES.MIN_FAILED_TOOLS} tool gagal. Coba ${nextTool} selanjutnya...`,
+                m: `Not yet at the minimum of ${SYSTEM_RULES.MIN_FAILED_TOOLS} failed tools. Try ${nextTool} next...`,
               });
               return {
                 messages: [
                   {
                     role: "user",
-                    content: `Anda belum mencoba tool ${nextTool}. Jalankan tool tersebut untuk mencari informasi lebih lanjut sebelum menyimpulkan.`,
+                    content: `You have not tried the ${nextTool} tool yet. Run it to gather more information before concluding.`,
                   },
                 ],
                 forceRetryCount: state.forceRetryCount + 1,
@@ -2572,14 +2575,14 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           } else {
             emit({
               t: "force_retry",
-              m: "Jawaban belum berdasarkan bukti tools, meminta ulang...",
+              m: "The answer is not grounded in tool evidence yet — asking again...",
             });
             return {
               messages: [
                 {
                   role: "user",
                   content:
-                    "Jawaban Anda harus didasarkan pada bukti dari tools yang sudah dijalankan, tetapi DILARANG menyalin ulang log/output tool. Berikan kesimpulan SANGAT SINGKAT (1-2 kalimat) saja, langsung ke inti.",
+                    "Your answer must rest on evidence from the tools already run, but do NOT copy tool logs or output back. Give a VERY SHORT conclusion (1-2 sentences), straight to the point.",
                 },
               ],
               forceRetryCount: state.forceRetryCount + 1,
@@ -2622,7 +2625,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             emit({
               t: "act",
               kind: "verify",
-              arg: "sebagian klaim belum terverifikasi",
+              arg: "some claims are unverified",
               ok: false,
               output:
                 hGuard.hallucinated.length +
@@ -2638,13 +2641,13 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               .join(", ");
             emit({
               t: "force_retry",
-              m: `[HALLUCINATION GUARD] ${hGuard.hallucinated.length} klaim tidak terverifikasi: ${hallucinatedList.slice(0, 120)}`,
+              m: `[HALLUCINATION GUARD] ${hGuard.hallucinated.length} unverified claims: ${hallucinatedList.slice(0, 120)}`,
             });
             return {
               messages: [
                 {
                   role: "user",
-                  content: `PERINGATAN SISTEM: Jawaban Anda mengandung klaim yang TIDAK TERBUKTI dari hasil tool:\n${hallucinatedList}\n\nKamu DILARANG menyebutkan sesuatu yang tidak ada di bukti tool. Baca ulang hasil tool yang ada, lalu berikan jawaban HANYA berdasarkan apa yang BENAR-BENAR ditemukan. Jika tidak ada buktinya, katakan "not found".`,
+                  content: `SYSTEM WARNING: your answer contains claims NOT PROVEN by the tool results:\n${hallucinatedList}\n\nYou must NOT state anything absent from the tool evidence. Re-read the tool results, then answer ONLY from what was ACTUALLY found. If there is no evidence for it, say "not found".`,
                 },
               ],
               forceRetryCount: state.forceRetryCount + 1,
@@ -2688,23 +2691,23 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           emit({
             t: "force_retry",
             m:
-              "Checklist belum tuntas (" +
+              "Checklist not finished (" +
               _sisa.length +
-              " item) — melanjutkan, bukan menutup.",
+              " item(s)) — continuing, not closing.",
           });
           return {
             messages: [
               {
                 role: "user",
                 content:
-                  "JANGAN menutup pekerjaan. Checklist Anda masih punya " +
+                  "Do NOT close out the work. Your checklist still has " +
                   _sisa.length +
-                  " item yang belum tuntas:\n" +
+                  " unfinished item(s):\n" +
                   _sisa.join("\n") +
-                  "\n\nDILARANG menarasikan rencana. PANGGIL tool untuk MENGERJAKAN " +
-                  "item yang bertanda [→] sekarang juga. Kalau item itu sebenarnya " +
-                  "sudah selesai, panggil todowrite untuk menandainya [x] lalu " +
-                  "langsung kerjakan item berikutnya.",
+                  "\n\nDo NOT narrate a plan. CALL a tool and DO " +
+                  "the item marked [→] right now. If that item is in fact " +
+                  "already done, call todowrite to mark it [x] and then " +
+                  "go straight on to the next item.",
               },
             ],
             continueNudge: (state.continueNudge || 0) + 1,
@@ -2720,9 +2723,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           });
           fallback =
             fallback +
-            "\n\n⚠ Run berhenti dengan " +
+            "\n\n⚠ The run stopped with " +
             _sisa.length +
-            " item checklist BELUM tuntas:\n" +
+            " checklist item(s) NOT finished:\n" +
             _sisa.join("\n");
         }
 
@@ -3111,7 +3114,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             }
             if (grepResults.length > 0) {
               let preSearch =
-                "\n\n[PRE-SEARCH — hasil sudah ada. JANGAN grep ulang. Langsung read + edit/jawab]:\n" +
+                "\n\n[PRE-SEARCH — the results are already here. Do NOT grep again. Go straight to read + edit/answer]:\n" +
                 grepResults.join("\n\n");
               if (routingHint) preSearch += "\n\n[ROUTE] " + routingHint;
               messages[0].content += preSearch;
@@ -3202,8 +3205,8 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       finalSummary =
         `Dijeda di langkah ${finalState.step} — ${activity}. ` +
         (sisa.length
-          ? `Belum selesai:\n${sisa.join("\n")}\n`
-          : "Belum selesai; ") +
+          ? `Not finished:\n${sisa.join("\n")}\n`
+          : "Not finished; ") +
         `"Lanjutkan" menambah plafon ke ${nextBudget} langkah.`;
       emit({
         t: "adone",
@@ -3270,8 +3273,8 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       });
       finalSummary =
         (edits || 0) > 0
-          ? `Dijeda: mencapai batas putaran internal (${edits} file sudah diedit). Minta "lanjutkan" untuk meneruskan.`
-          : 'Dijeda: mencapai batas putaran internal sebelum selesai. Minta "lanjutkan" atau perjelas tugasnya.';
+          ? `Paused: reached the internal round limit (${edits} file(s) already edited). Ask to "continue" to carry on.`
+          : 'Paused: reached the internal round limit before finishing. Ask to "continue", or make the task clearer.';
       emit({
         t: "adone",
         steps: 0,
@@ -3304,7 +3307,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       // The report is now honest: success is called success, failure is called
       // failure ALONG WITH its cause — which is exactly when the user most needs to
       // know, because their work may genuinely not be back.
-      let pulih = { ok: false, error: "rollback tidak dijalankan" };
+      let pulih = { ok: false, error: "rollback was not run" };
       try {
         pulih = rollback(sessionSnapshotId) || pulih;
       } catch (errRb) {
@@ -3313,8 +3316,8 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       emit({
         t: "err",
         m: pulih.ok
-          ? `[Auto-Rollback] Agen crash internal. Proyek dipulihkan (Snapshot: ${sessionSnapshotId}).`
-          : `[Auto-Rollback GAGAL] Agen crash internal dan proyek TIDAK dipulihkan: ${pulih.error} (Snapshot: ${sessionSnapshotId}). Periksa berkas Anda sebelum melanjutkan.`,
+          ? `[Auto-Rollback] The agent crashed internally. The project was restored (Snapshot: ${sessionSnapshotId}).`
+          : `[Auto-Rollback FAILED] The agent crashed internally and the project was NOT restored: ${pulih.error} (Snapshot: ${sessionSnapshotId}). Check your files before continuing.`,
       });
     }
     if (!isCancelled()) emit({ t: "err", m: e.message });

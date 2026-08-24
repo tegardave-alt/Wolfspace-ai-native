@@ -632,7 +632,7 @@ function renameWorkspaceFolder(dir, newName) {
   try {
     if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory())
       return { ok: false, err: "folder tak ditemukan" };
-    // Nama folder: tanpa pemisah path / .. / karakter ilegal Windows.
+    // Folder name: no path separator, no .., no character Windows forbids.
     const nm = String(newName || "").trim();
     if (!nm || /[\\/:*?"<>|]/.test(nm) || nm === "." || nm === "..")
       return { ok: false, err: "nama folder tak valid" };

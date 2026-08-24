@@ -483,7 +483,7 @@ function netnsWrapper() {
       });
       _netnsCache = "unshare";
     } catch (_) {
-      _netnsCache = null; // butuh CAP_SYS_ADMIN / user-ns — jalan tanpa pengurungan
+      _netnsCache = null; // needs CAP_SYS_ADMIN / user-ns — runs unconfined
     }
   }
   return _netnsCache;

@@ -54,22 +54,22 @@ describe("kuota/kredit habis TIDAK disuruh menunggu", () => {
     ["403 terlarang", "gemini 403: PERMISSION_DENIED"],
   ])("%s -> bilang menunggu tidak menolong", (_n, galat) => {
     const t = ringkas("puter", new Error(galat), ["opencode", "github"]);
-    expect(t).toMatch(/menunggu tidak akan menolong/i);
+    expect(t).toMatch(/waiting will not help/i);
     expect(t).not.toMatch(/coba lagi (sebentar|dalam beberapa detik)/i);
   });
 
   test("menyebut apa yang harus dilakukan, bukan cuma menolak", () => {
     const t = ringkas("puter", new Error(GALAT_402_KREDIT), ["custom"]);
-    expect(t).toMatch(/kredit|dasbor/i);
+    expect(t).toMatch(/credit|dashboard/i);
   });
 });
 
 describe("batas laju MEMANG sementara", () => {
   test("429 -> menyuruh mencoba lagi", () => {
     const t = ringkas("opencode", new Error(GALAT_429), ["opencode"]);
-    expect(t).toMatch(/sementara/i);
-    expect(t).toMatch(/coba lagi/i);
-    expect(t).not.toMatch(/menunggu tidak akan menolong/i);
+    expect(t).toMatch(/temporary/i);
+    expect(t).toMatch(/try again/i);
+    expect(t).not.toMatch(/waiting will not help/i);
   });
 });
 
@@ -80,7 +80,7 @@ describe("pesan asli provider tidak pernah hilang", () => {
     ["500", "github 500: internal server error", "internal server error"],
   ])("%s membawa balasan aslinya", (_n, galat, jejak) => {
     const t = ringkas("x", new Error(galat), []);
-    expect(t).toContain("Balasan terakhir:");
+    expect(t).toContain("Last reply:");
     expect(t).toContain(jejak);
   });
 
@@ -98,7 +98,7 @@ describe("pesan asli provider tidak pernah hilang", () => {
 
   test("tanpa daftar provider pun tetap terbaca", () => {
     const t = ringkas(null, new Error("boom"), []);
-    expect(t).toContain("Balasan terakhir:");
+    expect(t).toContain("Last reply:");
     expect(t).not.toContain("(dicoba: )");
   });
 });

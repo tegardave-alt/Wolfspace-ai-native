@@ -22,14 +22,14 @@ class WindowsAdapter extends PlatformAdapter {
     };
   }
 
-  // opts.scriptDir mengarahkan berkas skrip sementara ke tempat lain.
+  // opts.scriptDir points the temporary script file somewhere else.
   //
-  // Ini bukan kenyamanan. Saat perintah dijalankan di dalam AppContainer,
-  // temp sistem TIDAK terbaca oleh container -- dan karena perintahnya
-  // dijalankan LEWAT berkas skrip, setiap perintah gagal sebelum sempat mulai
-  // (CreateProcessW mengembalikan kode yang tak menyebut berkas sama sekali).
-  // Membuka temp sistem untuk container bukan jawabannya: itu direktori yang
-  // bisa ditulis proses lain, dan isinya justru yang kita eksekusi.
+  // This is not a convenience. When a command runs inside an AppContainer the
+  // system temp directory is NOT readable by the container -- and because the
+  // command is executed THROUGH a script file, every command fails before it
+  // can start (CreateProcessW returns a code that names no file at all).
+  // Opening system temp to the container is not the answer: it is a directory
+  // other processes can write to, and its contents are what we execute.
   shellFor(command, opts = {}) {
     // Passing `command` directly as a single `/c` argument requires it to
     // survive TWO layers of reparsing (Node's Windows spawn-arg escaping,
@@ -78,15 +78,15 @@ class WindowsAdapter extends PlatformAdapter {
     }
   }
 
-  // Versi TAK-MEMBLOKIR dari killTree, untuk pemanggil yang berjalan di thread
-  // utama Electron. taskkill /F /T lewat execSync terukur MENGUNCI thread
-  // 1076 ms (terburuk 1507 ms) tiap kali panel terminal ditutup — dan seluruh
-  // server.cjs memang berjalan di dalam proses utama, jadi angka itu adalah
-  // jendela benar-benar membeku.
+  // The NON-BLOCKING version of killTree, for callers running on Electron's
+  // main thread. taskkill /F /T through execSync was measured HOLDING that
+  // thread for 1076 ms (worst case 1507 ms) every time a terminal panel was
+  // closed — and the whole of server.cjs does run inside the main process, so
+  // that number is the window genuinely frozen.
   //
-  // Yang sinkron TETAP ADA dan tetap dipakai sandbox agent: di sana urutan
-  // "mati dulu, baru lanjut" memang dijaminnya, dan ia tidak berjalan di thread
-  // yang menggambar jendela.
+  // The synchronous one STAYS and is still used by the agent sandbox: there the
+  // "die first, then continue" ordering is exactly what it guarantees, and it
+  // does not run on the thread that draws the window.
   killTreeAsync(child) {
     return new Promise((selesai) => {
       if (!child || !child.pid) {

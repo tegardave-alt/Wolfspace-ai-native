@@ -78,7 +78,7 @@ describe("kegagalan TERLIHAT di checklist yang disuntik", () => {
   test("item gagal ditandai [!] dengan jumlah dan sebab", () => {
     const f = a.catatGagalItem({}, "bug X", "edit: tak cocok");
     const out = a.checklistDenganKegagalan(["[→] bug X"], f);
-    expect(out[0]).toMatch(/^\[!\] bug X \(gagal 1×: edit: tak cocok\)/);
+    expect(out[0]).toMatch(/^\[!\] bug X \(failed 1×: edit: tak cocok\)/);
   });
 
   test("item lain TIDAK ikut berubah", () => {

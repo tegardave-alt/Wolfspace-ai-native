@@ -387,7 +387,7 @@ describe("deskripsi bash menyatakan batas yang SEBENARNYA", () => {
     // semua paket aplikasi supaya DLL sistem bisa dimuat. Menyembunyikannya
     // akan membuat klaim "semua di luar workspace terblokir" jadi bohong.
     expect(d).toMatch(/Windows/);
-    expect(d).toMatch(/BISA DIBACA/);
+    expect(d).toMatch(/REMAIN READABLE/);
   });
 
   test("menyebut perintah yang memang tak jalan di dalam kurungan", () => {

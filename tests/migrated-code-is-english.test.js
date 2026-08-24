@@ -22,6 +22,7 @@ const AKAR = path.join(__dirname, "..");
 const BERKAS_MIGRASI = [
   "agent/attachment-bridge.ts",
   "agent/broker/audit-log.ts",
+  "agent/broker/zone-worker.cjs",
   "agent/broker/commandchain.ts",
   "agent/broker/host.ts",
   "agent/broker/policy.ts",
@@ -34,6 +35,7 @@ const BERKAS_MIGRASI = [
   "agent/keys-path.ts",
   "agent/mcp-client.ts",
   "agent/penegakan.ts",
+  "agent/platform/windows.cjs",
   "agent/penjaga-agent.ts",
   "agent/perencana-agent.ts",
   "agent/plugins.ts",
@@ -155,6 +157,7 @@ const KATA_INDONESIA = [
   "maka",
   "oleh",
   "ke",
+  "tanpa",
 ];
 const POLA = new RegExp("\\b(" + KATA_INDONESIA.join("|") + ")\\b", "i");
 
@@ -223,6 +226,34 @@ function hapusIdentifier(teks, isi) {
   );
 }
 
+/**
+ * Blank out lowercase identifiers that a comment is QUOTING rather than using
+ * as prose.
+ *
+ * The word `tanpa` was missing from the list above, and its absence let three
+ * genuinely Indonesian comment lines survive in files this test declares clean
+ * (agent/safe-edit.ts:55, electron/main.ts, scripts/ww.ts). It was almost
+ * certainly left out on purpose: `tanpa` is also an API option name, and eight
+ * English comments cite it —
+ *
+ *     buatRuleset({ tanpa: ["proc.raw"] })
+ *     lockdown with tanpa:["proc.raw"]
+ *     opts.tanpa : revoke specific capabilities
+ *
+ * so adding the word would have failed files whose comments are already
+ * English. hapusIdentifier only handles ALL-CAPS names, which does not reach a
+ * lowercase option like this one.
+ *
+ * Two shapes are enough to tell citation from prose, and neither occurs in
+ * ordinary English or Indonesian sentences: a member access (`opts.tanpa`) and
+ * a property whose value follows (`tanpa: [`, `{ tanpa: "`).
+ */
+function hapusKutipanKode(teks) {
+  return teks
+    .replace(/\.\w+/g, " ") // opts.tanpa
+    .replace(/\b\w+\s*:\s*[[{"'`]/g, " "); // tanpa:["x"]  /  { tanpa: "
+}
+
 describe("migrated code carries English comments", () => {
   test.each(BERKAS_MIGRASI)("%s has no Indonesian comments", (rel) => {
     const penuh = path.join(AKAR, rel);
@@ -236,7 +267,7 @@ describe("migrated code carries English comments", () => {
       // prose. TETAP (a constant in appcontainer-jail) matched the word `tetap`
       // and could never be fixed by translating anything. Indonesian emphasis in
       // caps (TIDAK, HANYA) is untouched: those are declared nowhere.
-      .filter((k) => POLA.test(hapusIdentifier(k.teks, isi)))
+      .filter((k) => POLA.test(hapusKutipanKode(hapusIdentifier(k.teks, isi))))
       .map((k) => rel + ":" + k.nomor + " ->" + k.teks.replace(/\s+/g, " "));
     expect(temuan).toEqual([]);
   });

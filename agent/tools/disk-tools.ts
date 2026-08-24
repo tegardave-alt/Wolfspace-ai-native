@@ -13,16 +13,16 @@ function resolveDiskPath(p) {
   const raw = (p || "").trim().replace(/^[`"']+|[`"']+$/g, "");
   if (/^[A-Za-z]:[\\\/]/.test(raw)) {
     const dest = path.resolve(raw);
-    if (DISK_BLOCKED.test(dest)) throw new Error("path sistem ditolak: " + raw);
+    if (DISK_BLOCKED.test(dest)) throw new Error("system path refused: " + raw);
     return dest;
   }
   if (/^[\/]/.test(raw)) {
     const dest = path.resolve(raw);
-    if (DISK_BLOCKED.test(dest)) throw new Error("path sistem ditolak: " + raw);
+    if (DISK_BLOCKED.test(dest)) throw new Error("system path refused: " + raw);
     return dest;
   }
   const dest = path.resolve(DISK_HOME, raw);
-  if (DISK_BLOCKED.test(dest)) throw new Error("path sistem ditolak: " + raw);
+  if (DISK_BLOCKED.test(dest)) throw new Error("system path refused: " + raw);
   return dest;
 }
 
@@ -65,15 +65,15 @@ function diskList(p: any) {
   try {
     st = fs.statSync(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
   const out: any[] = [];
   let ents;
   try {
     ents = fs.readdirSync(dir, { withFileTypes: true });
   } catch {
-    throw new Error("tidak bisa akses: " + p);
+    throw new Error("cannot access: " + p);
   }
   const skipEntry =
     /^(\.git|node_modules|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|target|bower_components|\.terraform|cache)$/i;
@@ -96,9 +96,9 @@ function diskGlob(p: any, pattern: any, options: any = {}) {
   try {
     st = fs.statSync(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
   // ── Semantic mode ──
   if (options.intent) {
     const sv = getSemanticValidator();
@@ -123,7 +123,7 @@ function diskGlob(p: any, pattern: any, options: any = {}) {
   try {
     re = globToRe((pattern || "*").trim());
   } catch {
-    return "pola tidak valid";
+    return "invalid pattern";
   }
   const hits = diskWalk(dir, re).map((f) => f.fp.replace(/\\/g, "/"));
   return hits.length ? hits.slice(0, 200).join("\n") : "(no matching file)";
@@ -135,7 +135,7 @@ function diskRead(p, near) {
   try {
     st = fs.statSync(fp);
   } catch {
-    throw new Error("file tidak ada: " + p);
+    throw new Error("file does not exist: " + p);
   }
   if (st.isDirectory())
     return (
@@ -159,12 +159,12 @@ function diskRead(p, near) {
 }
 
 function diskGrep(p: any, pattern: any, options: any = {}) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   let re;
   try {
     re = new RegExp(pattern, "i");
   } catch {
-    return "regex tidak valid: " + pattern;
+    return "invalid regex: " + pattern;
   }
   const patternsToSearch = [re];
 
@@ -173,9 +173,9 @@ function diskGrep(p: any, pattern: any, options: any = {}) {
   try {
     st = fs.statSync(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
 
   // --- SMART FILTERING (SEMANTIC REASONING) ---
   let extRegex;
@@ -220,7 +220,7 @@ function diskGrep(p: any, pattern: any, options: any = {}) {
       }
     });
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 
 // ── The ASYNCHRONOUS version of the disk walker ──
@@ -297,14 +297,14 @@ async function diskListAsync(p: any) {
   try {
     st = await fspDisk.stat(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
   let ents;
   try {
     ents = await fspDisk.readdir(dir, { withFileTypes: true });
   } catch {
-    throw new Error("tidak bisa akses: " + p);
+    throw new Error("cannot access: " + p);
   }
   const skipEntry =
     /^(\.git|node_modules|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|target|bower_components|\.terraform|cache)$/i;
@@ -330,9 +330,9 @@ async function diskGlobAsync(p: any, pattern: any, options: any = {}) {
   try {
     st = await fspDisk.stat(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
   if (options.intent) {
     const sv = getSemanticValidator();
     if (sv && sv.qSemanticSearch) {
@@ -356,7 +356,7 @@ async function diskGlobAsync(p: any, pattern: any, options: any = {}) {
   try {
     re = globToRe((pattern || "*").trim());
   } catch {
-    return "pola tidak valid";
+    return "invalid pattern";
   }
   const hits = (await diskWalkAsync(dir, re)).map((f) =>
     f.fp.replace(/\\/g, "/"),
@@ -365,12 +365,12 @@ async function diskGlobAsync(p: any, pattern: any, options: any = {}) {
 }
 
 async function diskGrepAsync(p: any, pattern: any, options: any = {}) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   let re;
   try {
     re = new RegExp(pattern, "i");
   } catch {
-    return "regex tidak valid: " + pattern;
+    return "invalid regex: " + pattern;
   }
 
   const dir = resolveDiskPath(p || DISK_HOME);
@@ -378,9 +378,9 @@ async function diskGrepAsync(p: any, pattern: any, options: any = {}) {
   try {
     st = await fspDisk.stat(dir);
   } catch {
-    throw new Error("path tidak ada: " + p);
+    throw new Error("path does not exist: " + p);
   }
-  if (!st.isDirectory()) throw new Error("bukan direktori: " + p);
+  if (!st.isDirectory()) throw new Error("not a directory: " + p);
 
   let extRegex;
   if (options.include_extensions) {
@@ -425,7 +425,7 @@ async function diskGrepAsync(p: any, pattern: any, options: any = {}) {
     }
     if (hits.length >= 150) break;
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 
 module.exports = {

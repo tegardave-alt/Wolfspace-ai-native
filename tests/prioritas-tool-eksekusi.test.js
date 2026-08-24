@@ -27,7 +27,7 @@ const desk = (nama) => {
 describe("pembingkaian tool eksekusi", () => {
   test("capability_exec diperkenalkan sebagai PILIHAN PERTAMA", () => {
     const d = desk("capability_exec");
-    expect(d).toMatch(/PILIHAN PERTAMA/i);
+    expect(d).toMatch(/THE FIRST CHOICE/i);
     // Dan tidak lagi sebagai alternatif bersyarat.
     expect(d).not.toMatch(/Use this instead of sandbox_run when/i);
   });
@@ -48,7 +48,7 @@ describe("pembingkaian tool eksekusi", () => {
 
   test("sandbox_run tidak terbaca setara dengan capability_exec", () => {
     const d = desk("sandbox_run");
-    expect(d).toMatch(/BUKAN pilihan pertama/i);
+    expect(d).toMatch(/NOT the first choice/i);
     // Kejujuran yang sama seperti pada bash: ia mengisolasi CRASH, bukan
     // menahan kode yang berusaha keluar.
     expect(d).toMatch(/crash|hang/i);
@@ -67,7 +67,7 @@ describe("pembingkaian tool eksekusi", () => {
     // Yang dikunci sekarang maksudnya, bukan kalimatnya: deskripsi harus
     // menahan model dari MELEBIH-LEBIHKAN, dan harus menyuruhnya membaca
     // medan yang menyatakan keadaan sebenarnya.
-    expect(d).toMatch(/jangan (katakan|bilang|menyatakan)/i);
+    expect(d).toMatch(/do not (say|claim|state)/i);
     expect(d).toMatch(/penegakan|terkurungOs/);
   });
 });

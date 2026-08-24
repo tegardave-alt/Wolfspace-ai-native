@@ -63,11 +63,11 @@ describe("penolakan tidak mengklaim pengurungan yang tak ada", () => {
     // terkurung") cocok saat batasnya memang cuma pemindaian teks; sesudah
     // kurungan kernel terpasang ia berbalik jadi meremehkan. Yang harus tetap
     // ada: larangan MELEBIH-LEBIHKAN, dan perintah membaca medan penegakan.
-    expect(blok).toMatch(/jangan (katakan|bilang|menyatakan)/i);
+    expect(blok).toMatch(/do not (say|claim|state)/i);
     expect(blok).toMatch(/terkurungOs|penegakan/);
     // Dan klaim "semuanya di luar workspace terblokir" harus DITOLAK terang-
     // terangan, karena C:\Windows memang masih terbaca.
-    expect(blok).toMatch(/BISA DIBACA/);
+    expect(blok).toMatch(/REMAIN READABLE/);
   });
 
   test("label tetap konsisten dengan pesannya", async () => {

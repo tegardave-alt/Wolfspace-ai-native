@@ -42,14 +42,14 @@ const SELF_TOOLS = [
     function: {
       name: "architecture_map",
       description:
-        "Peta arsitektur: analisis dependensi require() NYATA antar modul di sebuah scope, lalu hasilkan diagram Mermaid (dirender inline di UI). Pakai saat user minta menggambar/memetakan arsitektur, struktur, atau dependensi kode. Sertakan blok ```mermaid dari output verbatim di jawaban.",
+        "Architecture map: analyses the REAL require() dependencies between modules in a scope, then produces a Mermaid diagram (rendered inline in the UI). Use it when the user asks to draw or map architecture, structure, or code dependencies. Include the ```mermaid block from the output verbatim in your answer.",
       parameters: {
         type: "object",
         properties: {
           scope: {
             type: "string",
             description:
-              "folder yang dipetakan: 'agent' (default) | 'server' | 'all' | subfolder lain",
+              "folder to map: 'agent' (default) | 'server' | 'all' | another subfolder",
           },
         },
       },
@@ -133,7 +133,7 @@ const SELF_TOOLS = [
     function: {
       name: "edit",
       description:
-        "PRIMARY tool untuk edit/hapus kode. WAJIB pakai ini untuk modifikasi file. Untuk HAPUS: set new_string kosong. Untuk GANTI: set new_string kode baru. Baca file dulu dengan read untuk dapat old_string yang exact.",
+        "PRIMARY tool for editing/deleting code. You MUST use this to modify a file. To DELETE: set new_string empty. To REPLACE: set new_string to the new code. Read the file first with read so old_string is exact.",
       parameters: {
         type: "object",
         properties: {
@@ -213,7 +213,7 @@ const SELF_TOOLS = [
     function: {
       name: "bash",
       description:
-        'Jalankan perintah shell. DILARANG pakai untuk edit/hapus file — gunakan edit tool. Hanya untuk: install package, run script, cek status sistem. BATASNYA, dan jangan menyatakan lebih maupun kurang dari ini: di Windows perintah berjalan DI DALAM AppContainer, jadi penolakan berkas datang dari KERNEL, bukan dari pemindaian teks — path yang dirakit saat jalan pun ditolak. Terukur dari 16 direktori: MENULIS di luar workspace ditolak seluruhnya, dan MEMBACA data pengguna (Desktop, Documents, Downloads, profil, AppData, .wolfspace) juga ditolak. JARINGAN KELUAR JUGA TERTUTUP: DNS gagal, HTTP timeout, TCP ditolak AccessDenied, loopback ditolak -- profil container dibuat tanpa kapabilitas jaringan, dan di model AppContainer jaringan memang sebuah kapabilitas. Pakai tool `web_search`/`webExtract` untuk kebutuhan jaringan, bukan curl lewat bash. TAPI C:\Windows, C:\Program Files, dan C:\langs TETAP BISA DIBACA (baca-saja): folder sistem memberi hak baca ke semua paket aplikasi, dan itu sifat AppContainer yang tak bisa dicabut lewat tool ini. Jadi jangan bilang "semua di luar workspace terblokir" — yang benar: tak ada yang bisa DITULIS di luar workspace, dan data pengguna tak bisa dibaca. Beberapa perintah TIDAK jalan di dalam kurungan dan itu bukan tanda kerusakan: git (pakai tool `git`), `dir` dan `vol` (pakai Get-ChildItem), `del` (pakai Remove-Item), serta ls/grep/sed dari Git for Windows. Selalu periksa medan `penegakan` dan `terkurungOs` pada hasil — keduanya menyatakan keadaan sebenarnya, dan kalau `penegakan` bukan "kernel" maka batasnya memang hanya pemindaian teks.',
+        'Run a shell command. Do NOT use it to edit or delete files — use the edit tool. Only for: installing packages, running scripts, checking system state. THE LIMITS, and do not claim more or less than this: on Windows the command runs INSIDE an AppContainer, so a file refusal comes from the KERNEL, not from scanning text — even a path assembled at run time is refused. Measured across 16 directories: WRITING outside the workspace is refused entirely, and READING user data (Desktop, Documents, Downloads, the profile, AppData, .wolfspace) is refused too. OUTBOUND NETWORK IS CLOSED AS WELL: DNS fails, HTTP times out, TCP is refused with AccessDenied, loopback is refused -- the container profile is created with no network capability, and in the AppContainer model the network IS a capability. Use the `web_search`/`webExtract` tools when you need the network, not curl through bash. BUT C:\\Windows, C:\\Program Files and C:\\langs REMAIN READABLE (read-only): system folders grant read access to every application package, and that is a property of AppContainer this tool cannot revoke. So do not say "everything outside the workspace is blocked" — what is true is: nothing outside the workspace can be WRITTEN, and user data cannot be read. Some commands do NOT work inside the confinement and that is not a sign of breakage: git (use the `git` tool), `dir` and `vol` (use Get-ChildItem), `del` (use Remove-Item), and ls/grep/sed from Git for Windows. Always check the `penegakan` and `terkurungOs` fields on the result — they state what is actually true, and if `penegakan` is not "kernel" then the boundary really is only a text scan.',
       parameters: {
         type: "object",
         properties: {
@@ -261,50 +261,49 @@ const SELF_TOOLS = [
     function: {
       name: "web_extract",
       description:
-        "Ambil BAGIAN TERTENTU dari halaman web dengan browser sungguhan (Playwright). " +
-        "Pakai ini — BUKAN web_fetch — bila datanya dimuat oleh JavaScript, ada di dalam tabel/daftar, " +
-        "butuh atribut seperti href, atau ada jauh di bawah halaman. " +
-        "web_fetch mengembalikan innerText seluruh halaman dan memotongnya di 8KB, sehingga struktur hilang " +
-        "dan isi yang dimuat belakangan terbaca kosong.",
+        "Pull a SPECIFIC PART out of a web page with a real browser (Playwright). " +
+        "Use this — NOT web_fetch — when the data is loaded by JavaScript, sits inside a table or list, " +
+        "needs an attribute such as href, or lives far down the page. " +
+        "web_fetch returns the whole page innerText and cuts it at 8KB, so structure is lost " +
+        "and anything loaded later reads as empty.",
       parameters: {
         type: "object",
         properties: {
-          url: { type: "string", description: "URL lengkap (http/https)" },
+          url: { type: "string", description: "full URL (http/https)" },
           selector: {
             type: "string",
             description:
-              "Selector CSS bagian yang diambil, mis. 'table.harga', 'article h2', '.item'. Default 'body'.",
+              "CSS selector of the part to take, e.g. 'table.harga', 'article h2', '.item'. Default 'body'.",
           },
           mode: {
             type: "string",
             enum: ["teks", "tabel", "tautan", "atribut", "html"],
             description:
-              "teks=innerText per elemen; tabel=baris/kolom sebagai array; tautan=teks+href; atribut=nilai satu atribut; html=outerHTML",
+              "teks=innerText per element; tabel=rows/columns as arrays; tautan=text+href; atribut=one attribute's value; html=outerHTML",
           },
           atribut: {
             type: "string",
             description:
-              "Nama atribut bila mode='atribut' (mis. href, src, data-id)",
+              "Attribute name when mode='atribut' (e.g. href, src, data-id)",
           },
           tunggu: {
             type: "string",
             description:
-              "Selector yang DITUNGGU sampai muncul sebelum mengambil. Pakai ini untuk konten yang dimuat JS — jauh lebih andal daripada menunggu waktu.",
+              "Selector to WAIT for before extracting. Use this for JS-loaded content — far more reliable than waiting on a timer.",
           },
           tunggu_ms: {
             type: "number",
             description:
-              "Batas menunggu selector, 1000-45000 ms (default 15000)",
+              "How long to wait for the selector, 1000-45000 ms (default 15000)",
           },
           gulir: {
             type: "number",
             description:
-              "Berapa kali menggulir satu layar sebelum mengambil, 0-20. Untuk daftar lazy-load.",
+              "How many screens to scroll before extracting, 0-20. For lazy-loaded lists.",
           },
           batas: {
             type: "number",
-            description:
-              "Maksimal elemen yang dikembalikan, 1-2000 (default 200)",
+            description: "Maximum elements returned, 1-2000 (default 200)",
           },
         },
         required: ["url"],
@@ -316,17 +315,17 @@ const SELF_TOOLS = [
     function: {
       name: "retrieve",
       description:
-        'Ambil PENGETAHUAN dari memori proyek & dokumen (semantic recall) — keputusan/rangkuman run sebelumnya, gotcha berulang, dan docs library/API yang TIDAK ada di repo. Pakai untuk pertanyaan konseptual/historis ("kenapa dulu kita pilih X?", "cara pakai API Y"). JANGAN pakai untuk mencari lokasi kode di repo — itu tugas grep/glob/read.',
+        'Pull KNOWLEDGE out of project memory and documents (semantic recall) — decisions and summaries from earlier runs, recurring gotchas, and library/API docs that are NOT in the repo. Use it for conceptual or historical questions ("why did we pick X back then?", "how do I use API Y"). Do NOT use it to find where code lives in the repo — that is what grep/glob/read are for.',
       parameters: {
         type: "object",
         properties: {
           query: {
             type: "string",
-            description: "apa yang ingin diingat/dicari secara semantik",
+            description: "what to recall or search for semantically",
           },
           k: {
             type: "number",
-            description: "jumlah hasil teratas (default 5)",
+            description: "how many top results (default 5)",
           },
           kind: {
             type: "string",
@@ -363,7 +362,7 @@ const SELF_TOOLS = [
     function: {
       name: "attachment_list",
       description:
-        "Daftar berkas yang SUDAH dilampirkan user pada percakapan ini (nama, ukuran, id). Tidak bisa membuka berkas baru — hanya user yang bisa melampirkan.",
+        "Lists the files the user has ALREADY attached to this conversation (name, size, id). It cannot open new files — only the user can attach.",
       parameters: { type: "object", properties: {} },
     },
   },
@@ -372,7 +371,7 @@ const SELF_TOOLS = [
     function: {
       name: "attachment_read",
       description:
-        "Baca isi berkas yang sudah dilampirkan user, memakai id dari attachment_list atau dari pesan user (format att_...). Hanya berkas teks; berkas biner mengembalikan keterangan saja.",
+        "Read the contents of a file the user has attached, using an id from attachment_list or from the user's message (att_... form). Text files only; a binary file returns a description instead.",
       parameters: {
         type: "object",
         properties: {
@@ -565,16 +564,16 @@ const SELF_TOOLS = [
     function: {
       name: "git",
       description:
-        "Operasi git BERNAMA di dalam workspace. TIDAK menerima perintah git " +
-        "bebas — argv dibangun tool ini sendiri dari parameter yang sudah " +
-        "divalidasi, setiap path wajib berada di dalam workspace, dan repo lain " +
-        "tak bisa disasar. Pakai ini untuk semua kebutuhan git: menjalankan git " +
-        "lewat bash SELALU gagal, karena bash terkurung AppContainer dan git " +
-        "tak bisa membuka /dev/null di sana. TIDAK ADA operasi jaringan " +
-        "(push/pull/fetch/clone) — itu di luar cakupan tool ini. Operasi baca: " +
-        "status, diff, log, show, berkas, cabang, kepala, blame. Operasi tulis " +
-        "(tambah, commit, pulihkan, cabang_baru, pindah) menjalankan hook milik " +
-        "repo, jadi ia minta persetujuan user dan tercatat di ledger.",
+        "NAMED git operations inside the workspace. It does NOT accept free-form " +
+        "git commands — the argv is built by this tool from validated " +
+        "parameters, every path must lie inside the workspace, and another repo " +
+        "cannot be targeted. Use this for anything git: running git through bash " +
+        "ALWAYS fails, because bash is confined by AppContainer and git cannot " +
+        "open /dev/null in there. There are NO network operations " +
+        "(push/pull/fetch/clone) — those are outside this tool. Read operations: " +
+        "status, diff, log, show, berkas, cabang, kepala, blame. Write operations " +
+        "(tambah, commit, pulihkan, cabang_baru, pindah) run the repo's own hooks, " +
+        "so they ask the user for approval and are recorded in the ledger.",
       parameters: {
         type: "object",
         properties: {
@@ -600,19 +599,22 @@ const SELF_TOOLS = [
             type: "array",
             items: { type: "string" },
             description:
-              "path relatif terhadap workspace; di luar workspace ditolak",
+              "path relative to the workspace; outside the workspace is refused",
           },
           ref: {
             type: "string",
             description:
-              "nama cabang atau commit; tanpa spasi, tak diawali '-'",
+              "branch or commit name; no spaces, must not start with '-'",
           },
-          pesan: { type: "string", description: "pesan commit" },
+          pesan: { type: "string", description: "commit message" },
           bertahap: {
             type: "boolean",
-            description: "diff: tampilkan yang sudah di-stage",
+            description: "diff: show what is already staged",
           },
-          jumlah: { type: "number", description: "log: jumlah commit (1-200)" },
+          jumlah: {
+            type: "number",
+            description: "log: how many commits (1-200)",
+          },
         },
         required: ["operasi"],
       },
@@ -623,15 +625,15 @@ const SELF_TOOLS = [
     function: {
       name: "net_diag",
       description:
-        "Diagnostik jaringan yang dijalankan DI DALAM distro WSL. TIDAK menerima " +
-        "perintah bebas — hanya operasi bernama dari daftar tetap, dan argv-nya " +
-        "dibangun tool ini sendiri dari parameter yang sudah divalidasi. Karena " +
-        "tak ada teks perintah yang perlu dipindai, tak ada yang bisa dirakit " +
-        "untuk lolos; batasnya sifat dari bentuk datanya, bukan tebakan atas " +
-        "string. Operasi: ping (4 paket ICMP), rute (tabel rute), antarmuka " +
-        "(ip addr), jejak (traceroute), port (cek satu port TCP), kepala (header " +
-        "HTTP saja, tanpa mengunduh isi). Pakai ini alih-alih bash untuk " +
-        "pertanyaan jaringan — bash di Windows batasnya cuma pemindaian teks.",
+        "Network diagnostics run INSIDE the WSL distro. It does NOT accept " +
+        "free-form commands — only named operations from a fixed list, with the " +
+        "argv built by this tool from validated parameters. Because there is no " +
+        "command text to scan, there is nothing to assemble your way past; the " +
+        "boundary is a property of the data's shape, not a guess about a string. " +
+        "Operations: ping (4 ICMP packets), rute (routing table), antarmuka " +
+        "(ip addr), jejak (traceroute), port (check one TCP port), kepala (HTTP " +
+        "headers only, without downloading the body). Use this instead of bash " +
+        "for network questions — on Windows bash is bounded only by a text scan.",
       parameters: {
         type: "object",
         properties: {
@@ -641,11 +643,11 @@ const SELF_TOOLS = [
           },
           host: {
             type: "string",
-            description: "nama domain atau IP; tanpa skema, tanpa path",
+            description: "domain name or IP; no scheme, no path",
           },
           port: {
             type: "number",
-            description: "1-65535, hanya untuk operasi 'port'",
+            description: "1-65535, only for the 'port' operation",
           },
         },
         required: ["operasi"],
@@ -657,7 +659,7 @@ const SELF_TOOLS = [
     function: {
       name: "sandbox_run",
       description:
-        "Jalankan perintah shell di direktori sementara, dengan timeout yang membunuh pohon proses dan pembersihan otomatis. BUKAN pilihan pertama: untuk kode yang kamu tulis sendiri, pakai capability_exec yang batasnya ditegakkan. Tool ini berguna untuk mengisolasi CRASH dan HANG, bukan untuk menahan kode yang berusaha keluar. Good for isolating crashes/hangs from the host. CATATAN BATAS, dan ini sudah berubah: readRoots/writeRoots/network hanya menggerbang helper JS milik tool ini sendiri. Prosesnya DULU punya akses filesystem OS normal -- terukur, ia berhasil menulis ke Desktop dan membaca Documents saat bash sudah tak bisa. Sekarang di Windows ia dibungkus AppContainer yang SAMA dengan bash, jadi tulis di luar workspace ditolak kernel dan data pengguna tak terbaca. Yang tetap berlaku: jaringan TIDAK terkurung, dan readRoots/writeRoots bukan batas keamanan bagi kode yang sengaja mencoba keluar -- yang menahan adalah AppContainer, bukan medan-medan itu. Use capability_exec instead when the code needs to read/write files outside its own scratch dir or make network calls and that access should be policy-checked and audited.",
+        "Run a shell command in a temporary directory, with a timeout that kills the process tree and automatic cleanup. NOT the first choice: for code you write yourself, use capability_exec, whose limits are enforced. This tool is useful for isolating CRASHES and HANGS, not for holding back code that is trying to get out. Good for isolating crashes/hangs from the host. LIMITS, and these have changed: readRoots/writeRoots/network gate only this tool's own JS helpers. The process USED TO have ordinary OS filesystem access -- measured, it successfully wrote to Desktop and read Documents at a time when bash already could not. On Windows it is now wrapped in the SAME AppContainer as bash, so a write outside the workspace is refused by the kernel and user data cannot be read. What still holds: the network is NOT confined, and readRoots/writeRoots are not a security boundary against code deliberately trying to escape -- what holds it is the AppContainer, not those fields. Use capability_exec instead when the code needs to read/write files outside its own scratch dir or make network calls and that access should be policy-checked and audited.",
       parameters: {
         type: "object",
         properties: {
@@ -696,7 +698,7 @@ const SELF_TOOLS = [
     function: {
       name: "capability_exec",
       description:
-        'Execute JS task code with ZERO ambient filesystem/network access, run in a separate process with Node\'s --permission flag (no --allow-fs-read/write grants at all). The code\'s ONLY way to affect the outside world is `await request(capability, params)` -- e.g. `await request("readFile", {path})`, `await request("writeFile", {path, content})`, `await request("fetch", {url})` -- each validated by a deny-by-default policy (scoped to the current workspace dir for files, known cloud-provider hosts for fetch) and logged to an audit trail. PILIHAN PERTAMA untuk menjalankan kode. Coba ini DULU untuk apa pun yang kamu akan tulis sebagai `node -e`. Terukur: tugas di sini BISA membaca dan menulis berkas workspace lewat request(), sementara fs langsung dan child_process ke luar workspace sama-sama mengembalikan ERR_ACCESS_DENIED. Jadi ia bukan versi bash yang lebih lemah — ia bisa mengerjakan hal yang sama untuk kode, dengan batas yang benar-benar ditegakkan. Pakai bash hanya bila kamu butuh MEMANGGIL PROGRAM yang sudah ada (npm, git, compiler), bukan untuk menjalankan kode yang kamu tulis sendiri.',
+        'Execute JS task code with ZERO ambient filesystem/network access, run in a separate process with Node\'s --permission flag (no --allow-fs-read/write grants at all). The code\'s ONLY way to affect the outside world is `await request(capability, params)` -- e.g. `await request("readFile", {path})`, `await request("writeFile", {path, content})`, `await request("fetch", {url})` -- each validated by a deny-by-default policy (scoped to the current workspace dir for files, known cloud-provider hosts for fetch) and logged to an audit trail. THE FIRST CHOICE for running code. Try this BEFORE anything you were about to write as `node -e`. Measured: a task here CAN read and write workspace files through request(), while direct fs and child_process outside the workspace both return ERR_ACCESS_DENIED. So it is not a weaker bash — it can do the same work for code, with limits that are actually enforced. Use bash only when you need to INVOKE AN EXISTING PROGRAM (npm, git, a compiler), not to run code you wrote yourself.',
       parameters: {
         type: "object",
         properties: {
@@ -752,23 +754,23 @@ const SELF_TOOLS = [
     function: {
       name: "generate_3d",
       description:
-        "Generate model 3D BERKUALITAS dari TEKS atau GAMBAR via Replicate (model open-source TRELLIS + flux). Alur: prompt -> gambar bersih (flux-schnell) -> mesh 3D bertekstur (TRELLIS) -> GLB. Bila `image` diberikan (path lokal/URL), langsung gambar->3D. Cocok untuk objek kompleks (mobil, karakter, furnitur). Hasil GLB bisa ditampilkan di viewer. Butuh Replicate API key di cloud-keys.json.",
+        "Generate a HIGH-QUALITY 3D model from TEXT or an IMAGE via Replicate (the open-source TRELLIS + flux models). Flow: prompt -> clean image (flux-schnell) -> textured 3D mesh (TRELLIS) -> GLB. If `image` is given (local path or URL), it goes straight from image to 3D. Suits complex objects (cars, characters, furniture). The resulting GLB can be shown in the viewer. Needs a Replicate API key in cloud-keys.json.",
       parameters: {
         type: "object",
         properties: {
           prompt: {
             type: "string",
             description:
-              'deskripsi objek yang dibuat (mis. "kursi kayu vintage merah")',
+              'description of the object to build (e.g. "red vintage wooden chair")',
           },
           image: {
             type: "string",
             description:
-              "path gambar lokal (dalam workspace) atau URL — jika ada, lewati tahap teks->gambar",
+              "local image path (inside the workspace) or a URL — when present, the text->image stage is skipped",
           },
           output: {
             type: "string",
-            description: "nama file GLB keluaran (default generated.glb)",
+            description: "output GLB filename (default generated.glb)",
           },
           texture_size: {
             type: "number",

@@ -218,7 +218,7 @@ function killPty(ptyProcess) {
   _matikanPohon(ptyProcess.pid);
   _bungkamPendaftarKonsol(ptyProcess);
   try {
-    ptyProcess.kill(); // TANPA argumen — lihat catatan di atas
+    ptyProcess.kill(); // NO argument — see the note above
   } catch (_) {}
   _tutupPipa(ptyProcess);
 }

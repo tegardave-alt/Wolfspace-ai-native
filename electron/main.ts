@@ -1265,7 +1265,7 @@ app.whenReady().then(() => {
     // Never fatal: losing the instrument must not cost the app its window.
     probe.say("pemantau blokir tak aktif: " + e.message);
   }
-  // Hot reload: seluruh system WOLFSPACE tanpa reset manual
+  // Hot reload: the whole of WOLFSPACE, with no manual restart
   try {
     const root = unpackedRoot();
     const backendDirs = ["agent", "electron", "scripts"];

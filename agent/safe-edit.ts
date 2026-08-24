@@ -52,7 +52,7 @@ function _pythonBin() {
   return "python";
 }
 
-// ── Validasi sintaks tanpa menjalankan kode penuh ──
+// ── Syntax validation without executing the code ──
 function _syntaxCheck(content, lang) {
   const tmp = path.join(os.tmpdir(), `_wf_check_${Date.now()}`);
   try {

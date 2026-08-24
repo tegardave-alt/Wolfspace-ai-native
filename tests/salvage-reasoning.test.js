@@ -131,9 +131,9 @@ describe("pemanggil memakai label yang sesuai jenisnya", () => {
     expect(blok).toMatch(/salvaged\.jenis === "kesimpulan"/);
     expect(blok).toMatch(/salvaged\.jenis === "catatan"/);
     // Cabang catatan HARUS menyangkal dirinya kesimpulan.
-    expect(blok).toMatch(/ini bukan kesimpulan/i);
+    expect(blok).toMatch(/this is not a conclusion/i);
     // Cabang kosong tak boleh diam-diam menampilkan apa pun.
-    expect(blok).toMatch(/tidak memuat kesimpulan yang bisa dipakai/i);
+    expect(blok).toMatch(/no usable conclusion/i);
   });
 
   test("jenis ikut tercatat di dlog, supaya bisa dilacak", () => {

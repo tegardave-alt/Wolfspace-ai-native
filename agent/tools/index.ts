@@ -1318,7 +1318,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         return {
           ok: false,
           output:
-            'DILARANG edit file via bash. Gunakan tool "edit" now with parameters: path=file, old_string=the removed code, new_string="" (kosong untuk hapus). JANGAN coba bash lagi.',
+            'Editing files via bash is FORBIDDEN. Use the "edit" tool now with parameters: path=file, old_string=the removed code, new_string="" (empty to delete). Do NOT try bash again.',
         };
 
       // ── Close the shell bypass around the quality gate ──
