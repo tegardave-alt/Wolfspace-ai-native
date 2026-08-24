@@ -68,8 +68,12 @@ jobs:
         if: failure()
         shell: bash
         run: |
-          grep -E '^(FAIL |  ● |Tests: |Test Suites: )' /tmp/jest.log \
-            | head -40 \
+          # Nama suite saja ternyata tak cukup: ia memberi tahu MANA yang merah
+          # tapi bukan KENAPA, dan tiap siklus CI mahal. Baris Expected/Received
+          # ikut diangkat — itu yang membedakan "bisa diperbaiki" dari "harus
+          # menebak lagi".
+          grep -E '^(FAIL |  ● |Tests: |Test Suites: )|Expected|Received|Cannot find|not a function|ENOENT' /tmp/jest.log \
+            | head -80 \
             | while IFS= read -r baris; do echo "::error::$baris"; done
 
   build-electron:
