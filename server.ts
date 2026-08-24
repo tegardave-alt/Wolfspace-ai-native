@@ -233,22 +233,57 @@ function dlog(cat, level, msg, data?) {
   try {
     fs.appendFileSync(LOG_FILE, JSON.stringify(e) + "\n");
   } catch (_) {}
-  if (VERBOSE) {
+  // The prefix is an ARGUMENT, and console is the CONTEXT.
+  //
+  // These three calls used to pass the prefix where `ctx` belongs, so
+  // fn.apply(prefix, args) silently dropped it — and worse, the trailing ""
+  // argument made console print "msg " with a trailing space.
+  //
+  // In Electron that second, prefix-less line was picked up by the console
+  // interception below, fed back into dlog, printed again with ANOTHER space,
+  // and so on. Measured in the real app before this fix: 65 genuine block
+  // events produced 86,040 log lines (1,323x), and 11 genuine STOP events
+  // produced 138,694 (12,608x) — a 40 MB log grown out of 76 events. Each copy
+  // carried one more trailing space than the last, which is what made the loop
+  // identifiable at all.
+  //
+  // The comment on _writeSafe already stated the rule; only the helper had been
+  // fixed, not these callers.
+  // A "console" event was ALREADY printed by the console.log that produced it,
+  // so echoing it here prints every line twice. That second copy is what the
+  // amplification fed on: in Electron it is picked up again, echoed again, and
+  // each round adds one more trailing space.
+  //
+  // Other categories are not double-printed — they only reach the terminal
+  // through this branch — so only "console" is skipped.
+  if (VERBOSE && cat !== "console") {
     const prefix = `[WOLFSPACE:${cat}]`;
     if (level === "error")
-      _writeSafe(_origError, prefix, msg, data && data.error ? data.error : "");
+      _writeSafe(
+        _origError,
+        console,
+        prefix,
+        msg,
+        ...(data && data.error ? [data.error] : []),
+      );
     else
       _writeSafe(
         _origLog,
+        console,
         prefix,
         msg,
-        data ? JSON.stringify(data, null, 0) : "",
+        ...(data ? [JSON.stringify(data, null, 0)] : []),
       );
-  } else if (DEBUG_ON && level === "error") {
+  } else if (DEBUG_ON && level === "error" && cat !== "console") {
+    // The cat !== "console" guard belongs on BOTH branches. It was added to the
+    // VERBOSE one first and this one was missed, which kept console.error
+    // double-printing while console.log had stopped — the kind of half-fix that
+    // reads as "no longer reproducible" until someone uses the other level.
     _writeSafe(
       _origError,
+      console,
       `[WOLFSPACE:${cat}] ${msg}`,
-      data && data.error ? data.error : "",
+      ...(data && data.error ? [data.error] : []),
     );
   }
   return e;
