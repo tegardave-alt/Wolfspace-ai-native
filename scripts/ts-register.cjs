@@ -41,6 +41,28 @@ const OPSI = {
   sourcemap: "inline",
 };
 
+// Writes into the blocking watchdog's ledger (agent/pemantau-blokir.ts) through
+// the shared global it keeps, so this file needs no import from a .ts module it
+// is itself responsible for making loadable.
+//
+// The threshold matches CATAT_MIN_MS there. It is duplicated rather than
+// imported for exactly the same reason, and it is a constant that only ever
+// decides whether something is noise — a drift of a millisecond changes nothing.
+function _catatBlok(label, ms) {
+  if (!(ms >= 5)) return;
+  try {
+    if (!globalThis.__wolfspaceBukuBlok)
+      globalThis.__wolfspaceBukuBlok = new Map();
+    const b = globalThis.__wolfspaceBukuBlok;
+    const e = b.get(label) || { ms: 0, n: 0 };
+    e.ms += ms;
+    e.n++;
+    b.set(label, e);
+  } catch (_) {
+    // An instrument must never be the reason a require fails.
+  }
+}
+
 // TWO caches, because there are two different things to survive.
 //
 // IN MEMORY, on globalThis — survives a require.cache drop.
@@ -127,10 +149,16 @@ if (!require.extensions[".ts"]) {
       }
 
       if (code === undefined) {
+        // Attributed to the blocking watchdog. Written straight to the shared
+        // ledger on globalThis rather than through agent/pemantau-blokir.ts,
+        // because this file INSTALLS the .ts require hook — it runs before any
+        // .ts module can be imported, so it cannot import that one.
+        const _t0 = process.hrtime.bigint();
         code = esbuild.transformSync(source, {
           ...OPSI,
           sourcefile: filename,
         }).code;
+        _catatBlok("transpile-ts", Number(process.hrtime.bigint() - _t0) / 1e6);
         if (berkas) {
           // NOT awaited, and that is the point. Writing the 30 files a cold
           // start compiles measured 435 ms of blocked startup — the cache made

@@ -1,33 +1,35 @@
-// Panel bisa dipindah sisi — dan geometrinya harus benar di SETIAP kombinasi.
+// Panels can be moved from side to side — and the geometry has to be right in
+// EVERY combination.
 //
-// Sekarang ada TIGA panel (terminal, preview, Code), jadi 8 kombinasi sisi.
-// Ketiganya diukur di harness geometri Playwright, bukan di sini: berkas ini
-// mengunci rumus yang menghasilkan angkanya.
+// There are now THREE panels (terminal, preview, Code), so 8 side combinations.
+// All three are measured in the Playwright geometry harness, not here: this
+// file locks down the formula that produces those numbers.
 //
-// CARA KERJANYA. .chat-split membungkus (flex-wrap), jadi panel yang lebarnya
-// 100% otomatis turun ke baris berikutnya — itulah "bawah". Yang lebarnya
-// sebagian tetap di baris pertama — itulah "kanan". Urutan visual diatur
-// `order`, bukan urutan di sumber. Dipilih begini supaya blok preview yang
-// panjangnya ~590 baris tak perlu dipotong-tempel hanya untuk pindah posisi.
+// HOW IT WORKS. .chat-split wraps (flex-wrap), so a panel that is 100% wide
+// drops to the next row by itself — that is "bottom". One that is only partly
+// wide stays in the first row — that is "right". Visual order is set with
+// `order`, not by the order in the source. It was done this way so the preview
+// block, about 590 lines long, does not have to be cut and pasted merely to
+// change a POSITION.
 //
-// YANG SUDAH TERBUKTI RUSAK, dan itu sebabnya berkas ini ada. Versi pertama
-// memberi chat `flex: 1 1 <lebarAtas>%`. Baris pertama lalu diukur sebagai
-//   chat 65% + preview 35% + pembagi 6px = 1006px di layar 1000px
-// dan di wadah yang membungkus, kelebihan sekecil apa pun mendorong panel yang
-// diminta di KANAN turun ke baris berikutnya. Terukur di harness geometri
-// Playwright: preview diminta di kanan, mendarat di x=0 y=420. Tiga dari empat
-// kombinasi salah, dan TAK SATU PUN gagal saat dikompilasi — yang keliru cuma
-// angkanya.
+// WHAT WAS PROVEN BROKEN, and why this file exists. The first version gave chat
+// `flex: 1 1 <topWidth>%`. The first row then measured as
+//   chat 65% + preview 35% + divider 6px = 1006px on a 1000px screen
+// and in a wrapping container, an overflow of any size at all pushes the panel
+// asked for on the RIGHT down to the next row. Measured in the Playwright
+// geometry harness: preview was asked for on the right and landed at x=0 y=420.
+// Three of the four combinations were wrong, and NOT ONE of them failed to
+// compile — only the numbers were wrong.
 //
-// Dua invarian yang menyembuhkannya dikunci di sini:
-//   1. chat berbasis SISA (flex: 1 1 0%), bukan persentase
-//   2. tiap panel menanggung 6px pembaginya sendiri (calc(x% - 6px))
+// The two invariants that cure it are locked here:
+//   1. chat is REMAINDER-based (flex: 1 1 0%), not a percentage
+//   2. each panel carries its own 6px divider (calc(x% - 6px))
 //
-// Sesudah itu, keempat kombinasi terukur benar:
-//   preview kanan, terminal bawah : chat 650x420  term 1000x174  prev 344x420
-//   preview kanan, terminal kanan : chat 350x600  term  294x600  prev 344x600
-//   preview bawah, terminal bawah : chat 1000x210 term 1000x174  prev 1000x204
-//   preview bawah, terminal kanan : chat 700x390  term  294x390  prev 1000x204
+// After that, all four combinations measure correctly:
+//   preview right, terminal bottom : chat 650x420  term 1000x174  prev 344x420
+//   preview right, terminal right  : chat 350x600  term  294x600  prev 344x600
+//   preview bottom, terminal bottom: chat 1000x210 term 1000x174  prev 1000x204
+//   preview bottom, terminal right : chat 700x390  term  294x390  prev 1000x204
 
 const fs = require("fs");
 const path = require("path");
@@ -39,10 +41,10 @@ const APP = baca("public/app.tsx");
 const CSS = baca("public/styles.css");
 const KOMP = baca("public/app/Components.tsx");
 
-// Dipakai setiap kali asersinya berbentuk "TIDAK boleh ada X". Berkas-berkas
-// ini penuh catatan tentang KENAPA sebuah bentuk ditinggalkan, dan catatan itu
-// mengutip bentuknya — jadi tanpa penyaring ini, komentar yang benar justru
-// menggagalkan ujinya.
+// Used whenever an assertion takes the form "X must NOT be present". These
+// files are full of notes about WHY a shape was abandoned, and those notes
+// quote the shape — so without this filter, a correct comment is exactly what
+// fails the test.
 const tanpaKomentar = (t) =>
   t
     .split("\n")
@@ -57,8 +59,8 @@ describe("wadahnya membungkus, dan urutannya ditentukan order", () => {
   });
 
   test("pembagi mendatar punya kursor yang benar", () => {
-    // Tanpa row-resize, pemakai tak punya petunjuk bahwa pembagi bawah bisa
-    // digeser — dan arah gesernya berbeda dari yang di kanan.
+    // Without row-resize the user has no hint that the bottom divider can be
+    // dragged at all — and it drags along a different axis than the right one.
     const i = CSS.indexOf(".split-divider-h {");
     expect(i).toBeGreaterThan(0);
     expect(CSS.slice(i, CSS.indexOf("}", i))).toMatch(/cursor:\s*row-resize/);
@@ -67,11 +69,11 @@ describe("wadahnya membungkus, dan urutannya ditentukan order", () => {
 
 describe("dua invarian yang mencegah panel terdorong turun", () => {
   test("chat berbasis SISA, bukan persentase", () => {
-    // `flex: 1 1 <lebarAtas>%` adalah bentuk yang rusak: basisnya ikut dihitung
-    // saat menentukan pembungkusan baris.
+    // `flex: 1 1 <lebarAtas>%` is the broken shape: its basis counts towards
+    // the decision about whether the row wraps.
     expect(APP).toMatch(/flex: "1 1 0%"/);
     expect(APP).not.toMatch(/flex: "1 1 " \+ lebarAtas/);
-    // lebarAtas tetap dipakai — sebagai lebar MINIMUM, supaya chat tak diperas.
+    // lebarAtas is still used — as a MINIMUM width, so chat is not squeezed.
     expect(APP).toMatch(/minWidth: lebarAtas \+ "%"/);
   });
 
@@ -89,16 +91,16 @@ describe("dua invarian yang mencegah panel terdorong turun", () => {
   });
 
   test("sisi menentukan sumbu: bawah pakai tinggi, kanan pakai lebar", () => {
-    // Dipotong dengan panjang tetap, bukan sampai "return (": penanda itu
-    // muncul lebih dulu di berkas ini (komponen lain), jadi irisannya kosong
-    // dan ujinya lulus tanpa memeriksa apa pun.
+    // Sliced by a FIXED LENGTH, not up to "return (": that marker appears
+    // earlier in this file (a different component), so the slice came out empty
+    // and the test passed without checking anything at all.
     const t = APP.slice(
       APP.indexOf("const gayaPanel ="),
       APP.indexOf("const gayaPanel =") + 900,
     );
-    expect(t).toMatch(/width: "100%"/); // bawah -> memenuhi baris, memaksa wrap
-    // Urutannya kini datang dari _orderPanel/_orderPembagi, bukan angka
-    // sebaris — lihat tests/posisi-kiri.test.js untuk tabelnya.
+    expect(t).toMatch(/width: "100%"/); // bottom -> fills the row, forcing a wrap
+    // The order now comes from _orderPanel/_orderPembagi rather than an inline
+    // number — see tests/posisi-kiri.test.js for the table.
     expect(t).toMatch(/order: _orderPanel\(sisi\)/);
   });
 });
@@ -110,20 +112,20 @@ describe("ukuran dihitung per sumbu, tidak saling potong", () => {
   );
 
   test("lebar hanya dikurangi panel KANAN, tinggi hanya panel BAWAH", () => {
-    // Memakai satu angka untuk dua sumbu membuat chat menyusut dua kali padahal
-    // cuma satu panel yang terbuka.
+    // Using one number for both axes made chat shrink twice when only a single
+    // panel was open.
     expect(T).toMatch(/const _jumlahBawah = _jumlahGrup\("bawah"\)/);
     expect(T).toMatch(/100 - _jumlahGrup\("mendatar"\)/);
-    // Penjumlahannya menyaring per SUMBU: kiri dan kanan sama-sama memakan
-    // lebar, jadi menghitungnya terpisah membuat panel kiri tak ikut
-    // mengurangi lebar chat.
+    // The sum filters PER AXIS: left and right both consume width, so counting
+    // them separately is what stopped a left panel from taking width away from
+    // chat.
     expect(T).toMatch(/_grup\(p\.sisi\) === g \? p\.pct : 0/);
   });
 
   test("panel DIDAFTAR, tidak dihitung satu per satu", () => {
-    // Bentuk lamanya menyebut tiap panel di empat rumus terpisah. Panel ketiga
-    // (Code) berarti menyunting keempatnya dan berharap tak ada yang terlewat —
-    // dan yang terlewat di sini tak gagal saat dikompilasi, cuma salah angkanya.
+    // The old shape named each panel in four separate formulas. A third panel
+    // (Code) meant editing all four and hoping none was missed — and a miss
+    // here does not fail to compile, it just produces the wrong number.
     expect(T).toMatch(
       /terminalOpen && \{ sisi: posisi\.terminal, pct: terminalPct \}/,
     );
@@ -136,10 +138,10 @@ describe("ukuran dihitung per sumbu, tidak saling potong", () => {
   });
 
   test("jumlah per sisi dibatasi supaya tidak melebihi layar", () => {
-    // Tiap pembagi dibatasi 12–75% SENDIRI-SENDIRI. Dengan tiga panel di sisi
-    // yang sama, jumlahnya bisa 225% tanpa satu pun melanggar batasnya — dan di
-    // wadah yang membungkus, kelebihan sekecil apa pun mendorong panel terakhir
-    // turun ke baris berikutnya.
+    // Each divider is clamped to 12–75% INDIVIDUALLY. With three panels on the
+    // same side, the total can reach 225% without any one of them breaking its
+    // own limit — and in a wrapping container, an overflow of any size at all
+    // pushes the last panel down to the next row.
     expect(T).toMatch(/const _JATAH = chatVisible \? 80 : 100/);
     expect(T).toMatch(/if \(jml > _JATAH\) return _JATAH \/ jml/);
   });
@@ -147,9 +149,9 @@ describe("ukuran dihitung per sumbu, tidak saling potong", () => {
 
 describe("satu penggeser untuk dua sumbu", () => {
   test("sumbu mengikuti posisi panel, bukan dipatok clientX", () => {
-    // Dulu ada dua salinan identik yang keduanya memakai clientX. Begitu panel
-    // bisa pindah ke bawah, menggeser pembagi mendatar mengubah ukuran memakai
-    // koordinat yang salah sumbu.
+    // There used to be two identical copies, both using clientX. Once a panel
+    // could move to the bottom, dragging the horizontal divider resized using a
+    // coordinate from the wrong axis.
     expect(APP).toMatch(
       /const geserPembagi = \(sumbu(?:: \w+)?, set(?:: \w+)?\)/,
     );
@@ -172,8 +174,8 @@ describe("pilihannya bertahan dan divalidasi", () => {
   });
 
   test("nilai dari localStorage DIVALIDASI, bukan dipercaya", () => {
-    // Posisi yang tak dikenal membuat panelnya tak dirender di mana pun —
-    // panel hilang tanpa jejak, dan penyebabnya ada di localStorage, bukan kode.
+    // An unrecognised position leaves the panel rendered nowhere at all — it
+    // vanishes without a trace, and the cause is in localStorage, not the code.
     const t = APP.slice(
       APP.indexOf("const [posisi, setPosisi]"),
       APP.indexOf(
@@ -184,7 +186,8 @@ describe("pilihannya bertahan dan divalidasi", () => {
   });
 
   test("sisi KIRI ikut divalidasi", () => {
-    // Nilai lama tanpa "kiri" tetap sah; yang tak dikenal jatuh ke bawaannya.
+    // Old values without "kiri" stay valid; unrecognised ones fall back to the
+    // default.
     const t = APP.slice(
       APP.indexOf("const [posisi, setPosisi]"),
       APP.indexOf("const sah =") + 200,
@@ -194,61 +197,63 @@ describe("pilihannya bertahan dan divalidasi", () => {
   });
 
   test("bawaannya mengikuti kebiasaan: preview kanan, terminal bawah", () => {
-    // Terminal dulu di KANAN bersama preview. Untuk keluaran perintah yang
-    // berbentuk baris panjang, kolom sempit memaksanya membungkus terus.
+    // The terminal used to sit on the RIGHT alongside preview. For command
+    // output, which comes as long lines, a narrow column wraps it endlessly.
     expect(APP).toMatch(/preview: "kanan"/);
     expect(APP).toMatch(/terminal: "bawah"/);
   });
 });
 
-// Tombol pindah di TopBar DILEPAS SEMENTARA atas permintaan pemakai, dan
-// karena itu ujinya ikut dilepas — bukan dibiarkan gagal. Mesin tata letaknya
-// sendiri (state `posisi`, penyimpanan, gaya per-sisi, penggeser dua sumbu)
-// TETAP UTUH dan tetap diuji di atas; yang hilang hanya kontrol yang terlihat.
+// The move buttons in TopBar were REMOVED FOR NOW at the user's request, and
+// their tests were removed with them rather than left failing. The layout
+// engine itself (the `posisi` state, persistence, per-side styles, the
+// two-axis dragger) is STILL INTACT and still tested above; only the visible
+// control is gone.
 //
-// Untuk mengembalikannya: pasang lagi tombol di TopBar (Components.tsx) yang
-// memanggil setPosisi, lalu oper prop `posisi`/`setPosisi` dari app.tsx.
-// Sementara ini posisinya bisa diubah lewat:
+// To bring it back: put the buttons back in TopBar (Components.tsx) calling
+// setPosisi, then pass the `posisi`/`setPosisi` props down from app.tsx.
+// For now the position can be changed through:
 //   localStorage.setItem("wolfspace_posisi",
 //     JSON.stringify({ preview: "bawah", terminal: "bawah" }))
 
-// ── Menu ⋮ di ujung kiri bilah atas ──
+// ── The ⋮ menu at the far left of the top bar ──
 //
-// Opsi tata letak sempat dipasang sebagai dua tombol TERPISAH di bilah atas dan
-// dilepas lagi karena terlalu ramai: bilah itu tempat tindakan sehari-hari,
-// sementara memindahkan panel dilakukan sekali lalu dilupakan. Menu
-// menyembunyikannya tanpa menghilangkannya.
+// The layout options were once mounted as two SEPARATE buttons in the top bar
+// and taken out again for being too busy: that bar is for everyday actions,
+// while moving a panel is done once and then forgotten. The menu hides them
+// without removing them.
 //
-// Geometrinya diukur dengan CSS produksi (harness Playwright):
-//   bilah   1000x47
-//   tombol  22x28 @14,9   warna rgb(255,255,255)
+// The geometry was measured with production CSS (Playwright harness):
+//   bar     1000x47
+//   button  22x28 @14,9   colour rgb(255,255,255)
 //   menu    208x103 @14,52
-// Sebelum `align-self: stretch`, menu muncul di y=43 — MENINDIH garis bawah
-// bilah, karena `top: 100%` mengacu ke tinggi TOMBOL (28px), bukan tinggi bilah.
+// Before `align-self: stretch` the menu appeared at y=43 — OVERLAPPING the
+// bar's bottom border, because `top: 100%` refers to the BUTTON's height
+// (28px), not the bar's.
 describe("menu tata letak di bilah atas", () => {
   const K = baca("public/app/Components.tsx");
   const C = baca("public/styles.css");
 
   test("tombolnya putih, tidak diredupkan seperti tetangganya", () => {
-    // .panel-toggle-btn adalah SAKLAR yang keadaannya sudah terbaca dari panel
-    // yang muncul, jadi ia boleh redup. Ini pintu ke sesuatu yang tersembunyi —
-    // kalau ikut diredupkan, menunya tak akan pernah ditemukan.
+    // .panel-toggle-btn is a SWITCH whose state is already visible from the
+    // panel it opens, so it is allowed to be dim. This is a door to something
+    // hidden — dimmed the same way, the menu would never be found.
     const i = C.indexOf(".tb-menu-btn {");
     expect(i).toBeGreaterThan(0);
     expect(C.slice(i, C.indexOf("}", i))).toMatch(/color:\s*#fff/);
   });
 
   test("ikonnya tiga GARIS mendatar, bukan tiga titik", () => {
-    // ⋮ di bilah atas lebih lazim berarti "aksi untuk baris ini"; ☰ dibaca
-    // sebagai menu utama, dan itu memang isinya. Digambar dengan <line>, bukan
-    // teks "☰": karakter itu tebal dan jaraknya ikut font yang kebetulan
-    // terpasang, jadi bentuknya berubah-ubah antar mesin.
+    // In a top bar, ⋮ more commonly means "actions for this row"; ☰ reads as
+    // the main menu, and that is what this contains. Drawn with <line> rather
+    // than the text "☰": that character is heavy and its spacing follows
+    // whichever font happens to be installed, so its shape varies by machine.
     const i = K.indexOf('className={"tb-menu-btn"');
     expect(i).toBeGreaterThan(0);
     const blok = K.slice(i, i + 1400);
     expect((blok.match(/<line /g) || []).length).toBe(3);
     expect(blok).not.toMatch(/<circle /);
-    // Tiga garis harus benar-benar SEJAJAR — x yang sama, y yang berbeda.
+    // The three lines must be genuinely PARALLEL — same x, different y.
     const xs = [...blok.matchAll(/x1="([^"]+)" y1="([^"]+)" x2="([^"]+)"/g)];
     expect(xs.length).toBe(3);
     expect(new Set(xs.map((m) => m[1])).size).toBe(1); // x1 sama semua
@@ -256,14 +261,14 @@ describe("menu tata letak di bilah atas", () => {
   });
 
   test("pembungkusnya membentang setinggi bilah", () => {
-    // Kalau tidak, `top: 100%` mengacu ke tinggi tombol dan menunya menindih
-    // garis bawah bilah.
+    // Otherwise `top: 100%` refers to the button's height and the menu
+    // overlaps the bar's bottom border.
     const i = C.indexOf(".tb-menu-bungkus {");
     expect(C.slice(i, C.indexOf("}", i))).toMatch(/align-self:\s*stretch/);
   });
 
   test("menu ditutup oleh klik luar DAN Escape", () => {
-    // Hanya salah satunya membuat menu terasa macet.
+    // Only one of the two makes the menu feel stuck.
     expect(K).toMatch(/document\.addEventListener\("mousedown", klik\)/);
     expect(K).toMatch(/e\.key === "Escape" && setMenuOpen\(false\)/);
     expect(K).toMatch(/removeEventListener\("mousedown", klik\)/);
@@ -271,7 +276,7 @@ describe("menu tata letak di bilah atas", () => {
   });
 
   test("pilihan yang SEDANG berlaku ditandai", () => {
-    // Tanpa itu menu hanya menawarkan tindakan, tak memberi tahu keadaan.
+    // Without it the menu only offers actions; it never reports state.
     expect(K).toMatch(/posisi && posisi\[apa\] === ke \? " aktif" : ""/);
     const i = C.indexOf(".tb-menu-opsi.aktif {");
     expect(i).toBeGreaterThan(0);
@@ -283,10 +288,10 @@ describe("menu tata letak di bilah atas", () => {
   });
 });
 
-// ── Chat bisa disembunyikan ──
+// ── Chat can be hidden ──
 //
-// Gunanya memberi panel preview seluruh layar tanpa menutup chat dan kehilangan
-// tempatnya. Dua hal yang mudah salah, keduanya dikunci di sini.
+// The point is to give the preview panel the whole screen without closing chat
+// and losing your place. Two things are easy to get wrong; both are locked here.
 //
 // 1. LUBANG. Persentase panel selama ini berarti "bagian layar yang tidak
 //    dipakai chat". Begitu chat hilang, angka itu tak berarti apa-apa lagi:

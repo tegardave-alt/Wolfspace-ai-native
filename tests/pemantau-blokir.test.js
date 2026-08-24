@@ -144,3 +144,79 @@ describe("pemantau-blokir: pelaporan", () => {
     expect(s).toContain(String(A.AMBANG_HANG_MS));
   });
 });
+
+// ── Attribution: the block report has to say WHAT, not only how big ──
+//
+// The gap this closes was real and observed. A 1214 ms block was reported in
+// the running app, traced by hand through the logs to a burst of five failed
+// model requests — and the fallback handler then turned out to be pure object
+// lookups with no synchronous work in it at all. The correlation was wrong and
+// the cause stayed unknown. A number nobody can attribute cannot be acted on.
+describe("pemantau-blokir: atribusi", () => {
+  test("ukur() mengembalikan nilainya apa adanya", async () => {
+    await siap();
+    expect(P.ukur("uji", () => 42)).toBe(42);
+  });
+
+  test("ukur() TIDAK menelan lemparan — dan tetap mencatatnya", async () => {
+    await siap();
+    // An instrument that changes behaviour is worse than no instrument; work
+    // that ends in an exception still held the thread and still counts.
+    expect(() =>
+      P.ukur("uji-lempar", () => {
+        tahan(20);
+        throw new Error("sengaja");
+      }),
+    ).toThrow("sengaja");
+    expect(P.penyumbang().some((p) => p.label === "uji-lempar")).toBe(true);
+  });
+
+  test("kerja di bawah ambang TIDAK dicatat", async () => {
+    await siap();
+    P.catat("terlalu-kecil", P.CATAT_MIN_MS - 1);
+    expect(P.penyumbang().some((p) => p.label === "terlalu-kecil")).toBe(false);
+  });
+
+  test("penyumbang terurut dari yang TERBESAR", async () => {
+    await siap();
+    P.catat("kecil", 10);
+    P.catat("besar", 90);
+    P.catat("sedang", 40);
+    const urut = P.penyumbang().map((p) => p.label);
+    expect(urut.slice(0, 3)).toEqual(["besar", "sedang", "kecil"]);
+  });
+
+  test("panggilan berulang dijumlahkan, bukan menimpa", async () => {
+    await siap();
+    P.catat("berulang", 30);
+    P.catat("berulang", 20);
+    const e = P.penyumbang().find((p) => p.label === "berulang");
+    expect(e.ms).toBe(50);
+    expect(e.n).toBe(2);
+  });
+
+  test("buku dibersihkan saat mulai() — jendela dan buku seumur", async () => {
+    // Measured while building this: the first report paired a 34 ms block with
+    // "transpile-ts 154 ms", because the ledger had been accumulating since the
+    // process started while the histogram had not. Two numbers that cannot both
+    // be true of one window make a reader distrust both.
+    P.henti();
+    P.catat("sebelum-mulai", 80);
+    await siap();
+    expect(P.penyumbang().some((p) => p.label === "sebelum-mulai")).toBe(false);
+  });
+
+  test("ambil(reset) membersihkan buku bersama histogramnya", async () => {
+    await siap();
+    P.catat("sekali", 50);
+    expect(P.ambil(true).penyumbang.length).toBeGreaterThan(0);
+    expect(P.ambil().penyumbang).toEqual([]);
+  });
+
+  test("ringkas() menyebut penyumbang, dan mengaku saat tak tahu", async () => {
+    await siap();
+    expect(P.ringkas(P.ambil())).toContain("(tak terlacak)");
+    P.catat("sesuatu", 60);
+    expect(P.ringkas(P.ambil())).toContain("sesuatu 60ms");
+  });
+});

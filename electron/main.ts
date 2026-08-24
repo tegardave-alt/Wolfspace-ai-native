@@ -1241,11 +1241,46 @@ _gcInterval.unref(); // do not hold the process open just for this interval
 
 app.whenReady().then(() => {
   probe.startStopProbe();
-  migrateOldUserDataOnce();
-  registerAppProtocol();
-  registerIpc();
-  startBackend();
-  createWindow();
+  // The startup steps are attributed individually.
+  //
+  // WHY THESE. With only transpile/playwright/snapshot instrumented, the first
+  // two block reports from the running app came back unattributed (the report
+  // says "(tak terlacak)" — verbatim, it is the label's own text) at 259 ms and
+  // 353 ms, from somewhere with no instrument on it. That is what the label is
+  // for, and it pointed here: every one of these runs synchronously on the
+  // thread that is about to draw the window.
+  //
+  // startBackend is the heavy suspect — it pulls in core.js, which pulls in
+  // server.cjs and the whole agent tree. Transpiling that is already measured
+  // separately, but EXECUTING each module's top level is not, and a warm
+  // transpile cache hides none of that cost.
+  // WATCHING STARTS FIRST, and that is load-bearing rather than tidy.
+  //
+  // mulai() clears the attribution ledger so the ledger and the histogram
+  // describe the same window. Started after these steps — as it was — it would
+  // wipe every boot: entry they had just recorded, and the startup blocks would
+  // stay unattributed forever while looking instrumented — worse than having no
+  // instrument at all.
+  //
+  // The old note here said watching began after createWindow() to keep the .ts
+  // require hook off the startup budget. Attributing the steps loads that hook
+  // on the first one anyway, so the reason no longer holds; what is left is a
+  // few ms of module load against startup blocks that were otherwise invisible.
+  try {
+    modulAgent("pemantau-blokir").mulai(20);
+  } catch (_: any) {}
+  const _langkah = (nama: string, fn: () => void) => {
+    try {
+      modulAgent("pemantau-blokir").ukur("boot:" + nama, fn);
+    } catch (_: any) {
+      fn(); // losing the instrument must never cost a startup step
+    }
+  };
+  _langkah("migrasi-userdata", migrateOldUserDataOnce);
+  _langkah("daftar-protokol", registerAppProtocol);
+  _langkah("daftar-ipc", registerIpc);
+  _langkah("mulai-backend", startBackend);
+  _langkah("buat-jendela", createWindow);
   // Blocking watchdog — the instrument the 5000 ms budget never had.
   //
   // REPLACES probe.startLoopProbe(), which measured the same thing more
@@ -1260,12 +1295,11 @@ app.whenReady().then(() => {
   // p99 = 1 ms over 2840 samples, so a chattier reporter would bury the one
   // line that matters under thousands saying nothing happened.
   //
-  // Started AFTER createWindow() on purpose. It pulls in the .ts require hook,
-  // and this repo cut startup from 1071 ms to 314 ms — that budget is not
-  // spent on the thing measuring it.
+  // mulai() already ran above, before the startup steps, so their attribution
+  // survives. Only the periodic reporter is attached here — there is nothing to
+  // report until the window exists.
   try {
     const pb = modulAgent("pemantau-blokir");
-    pb.mulai(20);
     pb.pasangLaporan((l: any) => probe.say("BLOKIR " + pb.ringkas(l)), 15000);
   } catch (e: any) {
     // Never fatal: losing the instrument must not cost the app its window.

@@ -219,11 +219,18 @@ let _pw: any = null,
 
 function _loadPw() {
   if (_pw !== null) return _pw;
-  try {
-    _pw = require("playwright");
-  } catch (_) {
-    _pw = false;
-  }
+  // Attributed: require("playwright") is SYNCHRONOUS and was measured at 629 ms
+  // on a warm cache — 12.6% of the 5000 ms hang budget, paid on the main thread
+  // the first time any web tool is used. It is cached above, so this is a
+  // one-off, but a one-off that used to be invisible in a block report.
+  const P = require("./pemantau-blokir.ts");
+  P.ukur("muat-playwright", () => {
+    try {
+      _pw = require("playwright");
+    } catch (_) {
+      _pw = false;
+    }
+  });
   return _pw;
 }
 function _touchIdle() {
