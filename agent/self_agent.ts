@@ -1468,7 +1468,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 
         emit({ t: "step", n: state.step });
 
-        const activeMessages = [...state.messages];
+        let activeMessages = [...state.messages];
         if (state.task_checklist && state.task_checklist.length > 0) {
           const sysMsg = { ...activeMessages[0] };
           // Lines from todowrite already carry status ("[x] ...", "[→] ..."); lines
@@ -1521,6 +1521,44 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         } catch (_) {
           // A failure to remember must not stop the run: without this block the agent
           // falls back to the old behaviour rather than failing.
+        }
+
+        // COMPACTION. The array built above is the ENTIRE run: `messages` is an
+        // append-only channel on both sides of the graph, and nothing between the
+        // first step and this line ever shortens it. The incident recorded a few
+        // lines below — four Notion pages pulled, the context ballooned, the run
+        // stopped without a single event — is what that costs. cloud.ts has no
+        // handler for the 400 a context-length refusal returns, so a long run does
+        // not degrade gracefully; it dies.
+        //
+        // Deliberately placed AFTER the checklist and findings blocks. Both write
+        // into activeMessages[0], and the digest merges into that same message, so
+        // the two anchors survive compaction instead of being folded away by it.
+        //
+        // Also before _ctxChars below, so the size that gets logged and shown to
+        // the user is the size actually sent.
+        try {
+          const _pad = require("./pemadatan.ts");
+          const _h = _pad.padatkan(activeMessages);
+          if (_h) {
+            activeMessages = _h.pesan;
+            dlog("self", "info", "history compacted", {
+              step: state.step,
+              dropped: _h.dibuang,
+              charBefore: _h.charSebelum,
+              charAfter: _h.charSesudah,
+            });
+            emit({
+              t: "thought",
+              m:
+                "History compacted: " +
+                _h.dibuang +
+                " messages folded into a summary.",
+            });
+          }
+        } catch (_) {
+          // Same stance as the findings block above: failing to compact must not
+          // end the run. Without this the agent behaves exactly as it did before.
         }
 
         let msg;

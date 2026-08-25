@@ -126,6 +126,37 @@ async function pseudoModel(
     // A failure to remember must not stop the run.
   }
 
+  // COMPACTION — the SECOND caller of agent/pemadatan.ts, never a copy of it.
+  //
+  // The Python graph's `messages` channel is `operator.add` (see
+  // services/agent-python/models.py), so it grows exactly the way the JS graph's
+  // does. The model call happens HERE, on the host, so this is the only place on
+  // the Python path where the assembled array can be measured and shortened.
+  //
+  // Both orchestrators must behave the same for the same run, which is why this
+  // calls the shared module rather than re-deriving the rule — the same reason
+  // docs/MIGRASI-TYPESCRIPT.md gives for penjaga-agent and perencana-agent.
+  //
+  // After the findings block, for the same reason as on the JS path: the digest
+  // merges into the system message, so the anchor survives rather than being
+  // folded into the summary.
+  try {
+    const pad = require("./pemadatan.ts");
+    const h = pad.padatkan(messages);
+    if (h) {
+      messages = h.pesan;
+      emit({
+        t: "thought",
+        m:
+          "History compacted: " +
+          h.dibuang +
+          " messages folded into a summary.",
+      });
+    }
+  } catch (_) {
+    // Failing to compact must not end the run.
+  }
+
   // A heartbeat while the model thinks.
   //
   // Without it a long call is indistinguishable from a hang. Measured on the JS
