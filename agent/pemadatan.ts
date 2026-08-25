@@ -154,7 +154,11 @@ function _targetTool(tc: any): string {
  * shorter and more actionable than a sentence about having examined the file,
  * and it is the same signal that exposed the repetition bug in the first place.
  */
-function _blokRingkas(buang: Pesan[], mulaiIdx: number): string {
+function _blokRingkas(
+  buang: Pesan[],
+  mulaiIdx: number,
+  penanda = "[RIWAYAT DIPADATKAN]",
+): string {
   const hitung = new Map<string, number>();
   const target = new Map<string, number>();
   let gagal = 0;
@@ -185,14 +189,18 @@ function _blokRingkas(buang: Pesan[], mulaiIdx: number): string {
     [...m.entries()].sort((a, b) => b[1] - a[1]);
 
   const baris: string[] = [];
+  // Bracket marker in Indonesian, instruction in English — the convention the
+  // TASK CHECKLIST block in self_agent.ts already follows.
   baris.push(
-    "\n\n[RIWAYAT DIPADATKAN] " +
+    "\n\n" +
+      penanda +
+      " " +
       buang.length +
-      " pesan (indeks " +
+      " messages (index " +
       mulaiIdx +
       "-" +
       (mulaiIdx + buang.length - 1) +
-      ") diringkas. Isi lengkapnya tidak lagi dikirim, tetapi yang berikut BENAR terjadi:",
+      ") are no longer sent in full. The following DID happen:",
   );
 
   const alat = urut(hitung);
@@ -215,15 +223,16 @@ function _blokRingkas(buang: Pesan[], mulaiIdx: number): string {
           .join(", "),
     );
   }
-  if (gagal) baris.push("  hasil tool yang tampak gagal: " + gagal);
-  if (teksAsisten) baris.push("  balasan teks tanpa tool: " + teksAsisten);
+  if (gagal) baris.push("  tool results that looked like failures: " + gagal);
+  if (teksAsisten)
+    baris.push("  text replies with no tool call: " + teksAsisten);
   baris.push(
-    "  Jangan ulangi pekerjaan di atas hanya karena rinciannya tidak terlihat lagi.",
+    "  Do NOT redo the work above just because its detail is no longer visible.",
   );
 
   const s = baris.join("\n");
   return s.length > anggaran.PADAT_BLOK_MAKS
-    ? s.slice(0, anggaran.PADAT_BLOK_MAKS) + "\n  [ringkasan dipotong]"
+    ? s.slice(0, anggaran.PADAT_BLOK_MAKS) + "\n  [digest truncated]"
     : s;
 }
 
@@ -280,9 +289,77 @@ export function padatkan(
   };
 }
 
+/**
+ * Replaces the BLIND trim that starts every run.
+ *
+ *     const slicedHistory = history.slice(-effortMaxTurns);   self_agent.ts
+ *
+ * That line is the one agent/temuan.ts names as the cause of the repetition
+ * measured in run pid 12932 — 246 actions for 22 unique commands, index.html
+ * read 13 times, longest consecutive repeat only 4. Not a loop: the agent asked
+ * again because the answer had been trimmed away. `read` results are the longest
+ * messages in the array, so a tail trim drops them FIRST.
+ *
+ * TWO LIMITS, NOT ONE, and that is the whole point of not simply calling
+ * padatkan() here. The old line bounded the COUNT (6/16/40) and ignored size, so
+ * sixteen huge messages still blew the budget. padatkan() bounds SIZE and ignores
+ * count, so two hundred tiny messages would all be sent — more expensive and
+ * slower than the line it replaced. A replacement has to respect both, or it
+ * trades one regression for another.
+ *
+ * WHAT IS ACTUALLY DIFFERENT is not how much is kept — it is that what gets
+ * dropped now leaves a receipt. The kept window can stay exactly as small as it
+ * was, because the digest says which tools already ran against which targets.
+ * That is the cheap half of the fix; agent/temuan.ts carries the expensive half
+ * (what the files actually contained).
+ *
+ * The digest is returned SEPARATELY rather than merged, because `history` has no
+ * system message of its own — the caller builds one straight after and appends
+ * this to it, alongside everything else it already appends there.
+ */
+export function pangkasRiwayat(
+  riwayat: Pesan[],
+  opts?: { maksPesan?: number; ambang?: number },
+): { pesan: Pesan[]; blok: string; dibuang: number } {
+  const kosong = { pesan: [] as Pesan[], blok: "", dibuang: 0 };
+  if (!Array.isArray(riwayat) || riwayat.length === 0) return kosong;
+
+  const maksPesan = opts?.maksPesan ?? anggaran.PADAT_SISA_EKOR;
+  const ambang = opts?.ambang ?? anggaran.PADAT_AMBANG_CHAR;
+
+  // Under both limits: hand it back untouched, and say so with dibuang: 0. The
+  // common case, and it must cost nothing but one character count.
+  if (riwayat.length <= maksPesan && ukuranChar(riwayat) <= ambang) {
+    return { pesan: riwayat, blok: "", dibuang: 0 };
+  }
+
+  // The count limit first, then tightened further while the kept slice is still
+  // over the size limit.
+  let mulai = Math.max(0, riwayat.length - maksPesan);
+  while (mulai < riwayat.length && ukuranChar(riwayat.slice(mulai)) > ambang) {
+    mulai++;
+  }
+
+  // Then loosened BACKWARD to a safe boundary. This can put the slice slightly
+  // back over the size limit — by at most one tool group — and that is the right
+  // trade: an orphaned tool message is a hard 400 from strict providers, while a
+  // few thousand characters over budget is not.
+  mulai = _awalAman(riwayat, mulai, 0);
+
+  const buang = riwayat.slice(0, mulai);
+  if (buang.length === 0) return { pesan: riwayat, blok: "", dibuang: 0 };
+
+  return {
+    pesan: riwayat.slice(mulai),
+    blok: _blokRingkas(buang, 0, "[RIWAYAT SEBELUMNYA DIRINGKAS]"),
+    dibuang: buang.length,
+  };
+}
+
 module.exports = {
   ukuranChar,
   taksirToken,
   perluPadat,
   padatkan,
+  pangkasRiwayat,
 };

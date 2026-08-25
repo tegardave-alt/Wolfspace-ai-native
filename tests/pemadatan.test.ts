@@ -139,3 +139,69 @@ describe("pemadatan", () => {
     expect(P.padatkan(pesan, { ambang: 10 })).not.toBeNull();
   });
 });
+
+// pangkasRiwayat replaces `history.slice(-effortMaxTurns)`, which bounded the
+// COUNT and ignored size. A replacement that bounded only size would send two
+// hundred tiny messages where sixteen used to go -- trading one regression for
+// another -- so both limits are asserted independently here.
+describe("pangkasRiwayat", () => {
+  /** Prior turns as the caller passes them: no system message of its own. */
+  function riwayat(n, isi = 100) {
+    return buatRiwayat(n, isi).slice(2);
+  }
+
+  test("hands back an empty history untouched", () => {
+    expect(P.pangkasRiwayat([]).dibuang).toBe(0);
+    expect(P.pangkasRiwayat(null).dibuang).toBe(0);
+  });
+
+  test("under both limits, nothing is dropped and no digest is made", () => {
+    const r = riwayat(4, 10);
+    const h = P.pangkasRiwayat(r, { maksPesan: 16, ambang: 100000 });
+    expect(h.dibuang).toBe(0);
+    expect(h.blok).toBe("");
+    expect(h.pesan).toBe(r);
+  });
+
+  test("over the COUNT limit it trims, even when the size is tiny", () => {
+    const h = P.pangkasRiwayat(riwayat(40, 10), {
+      maksPesan: 16,
+      ambang: 100000,
+    });
+    expect(h.dibuang).toBeGreaterThan(0);
+    expect(h.pesan.length).toBeLessThanOrEqual(17); // 16, plus the tool-group walk
+    expect(h.blok).not.toBe("");
+  });
+
+  test("over the SIZE limit it trims further than the count alone would", () => {
+    const r = riwayat(40, 5000);
+    const longgar = P.pangkasRiwayat(r, { maksPesan: 16, ambang: 1000000 });
+    const ketat = P.pangkasRiwayat(r, { maksPesan: 16, ambang: 20000 });
+    expect(ketat.pesan.length).toBeLessThan(longgar.pesan.length);
+    expect(ketat.dibuang).toBeGreaterThan(longgar.dibuang);
+  });
+
+  test("the digest says which tools ran against which targets", () => {
+    const h = P.pangkasRiwayat(riwayat(40, 100), { maksPesan: 8 });
+    expect(h.blok).toContain("[RIWAYAT SEBELUMNYA DIRINGKAS]");
+    expect(h.blok).toMatch(/tool: /);
+    expect(h.blok).toMatch(/read|bash/);
+    expect(h.blok).toMatch(/berkas\d\.ts/);
+    expect(h.blok).toMatch(/Do NOT redo/);
+  });
+
+  test("never orphans a tool result, at any count limit", () => {
+    // Same sweep as padatkan, for the same reason: an off-by-one here lands the
+    // cut inside a tool group, which strict providers reject outright.
+    for (let maks = 1; maks <= 24; maks++) {
+      const h = P.pangkasRiwayat(riwayat(40, 100), { maksPesan: maks });
+      assertValidSequence(h.pesan);
+    }
+  });
+
+  test("keeps the MOST RECENT turns, not the oldest", () => {
+    const r = riwayat(40, 100);
+    const h = P.pangkasRiwayat(r, { maksPesan: 6 });
+    expect(h.pesan[h.pesan.length - 1]).toBe(r[r.length - 1]);
+  });
+});

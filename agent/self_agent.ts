@@ -1181,8 +1181,45 @@ async function selfAgentStream(payload, emit, ctl: any = {}) {
   const effortModeName =
     effortLevel === 0 ? "LOW" : effortLevel === 2 ? "HIGH" : "MEDIUM";
 
-  const slicedHistory =
-    history && Array.isArray(history) ? history.slice(-effortMaxTurns) : [];
+  // THE BLIND TRIM, replaced.
+  //
+  // This used to be `history.slice(-effortMaxTurns)` — cut from the tail, keep
+  // the last 6/16/40, and say nothing about the rest. agent/temuan.ts names that
+  // line as the cause of the repetition measured in run pid 12932: 246 actions
+  // for 22 unique commands, index.html read 13 times, longest consecutive repeat
+  // only 4. Not a loop — the agent asked again because the answer had been cut.
+  // `read` results are the LONGEST messages in the array, so a tail trim drops
+  // them first, and it drops them silently.
+  //
+  // The window is not made bigger here. What changed is that whatever falls
+  // outside it now leaves a receipt: which tools ran, against which targets, how
+  // many results looked like failures. Cheap, and it is the specific fact the
+  // agent was missing when it re-read a file it had already read.
+  //
+  // The digest is appended to the system message below rather than sent as its
+  // own message, so it cannot be trimmed away by the very mechanism it exists to
+  // survive — the same reasoning the findings journal already uses.
+  // Annotated: an empty initialiser infers never[], and every assignment below
+  // then fails the tsc gate in tests/kontrak-tipe.test.ts.
+  let slicedHistory: any[] = [];
+  let blokRiwayat = "";
+  if (history && Array.isArray(history)) {
+    try {
+      const _pad = require("./pemadatan.ts");
+      const _r = _pad.pangkasRiwayat(history, { maksPesan: effortMaxTurns });
+      slicedHistory = _r.pesan;
+      blokRiwayat = _r.blok;
+      if (_r.dibuang) {
+        dlog("self", "info", "history trimmed", {
+          dropped: _r.dibuang,
+          kept: _r.pesan.length,
+        });
+      }
+    } catch (_) {
+      // Falls back to the exact behaviour this replaced, rather than to nothing.
+      slicedHistory = history.slice(-effortMaxTurns);
+    }
+  }
   const messages = [
     { role: "system", content: currentSysPrompt },
     ...slicedHistory,
@@ -1198,6 +1235,10 @@ async function selfAgentStream(payload, emit, ctl: any = {}) {
 
 [MODE EFFORT AKTIF: ${effortModeName} (Context Token Budget: ~${effortTokenBudget} tokens | History Limit: ${effortMaxTurns} msgs)]
 ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab langsung ke inti." : effortLevel === 2 ? "Fokus pada analisis mendalam, RCA secara kritis, dan verifikasi silang semua bukti." : "Lakukan investigasi standar secara terukur."}`;
+  // Appended AFTER the effort block so the digest sits closest to the messages
+  // it describes. Empty string when nothing was trimmed, which is the common
+  // case and costs nothing.
+  messages[0].content += blokRiwayat;
   const MAX_STEPS = effortLevel === 0 ? 6 : effortLevel === 2 ? 20 : 14;
   let edits = 0;
   // The Mermaid diagram from architecture_map: THE DIAGRAM IS the answer. The prompt
