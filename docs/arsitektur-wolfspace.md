@@ -72,6 +72,24 @@ electron/main.js
                                               (tidak listen port)
 ```
 
+Tiap langkah `whenReady` di atas **diukur** oleh watchdog (§6.5) dengan label
+`boot:*`. Terukur di mesin ini: `buat-jendela` 102 ms — konstruksi
+`BrowserWindow` milik Chromium — sementara `mulai-backend` hanya 6 ms, karena
+`core()` malas dan baru benar-benar memuat saat IPC pertama.
+
+**`server.cjs` sekarang PELUNCUR, bukan aplikasinya.** Isinya 18 baris:
+
+```
+server.cjs  →  require("./scripts/ts-register.cjs")   pasang hook .ts
+            →  module.exports = require("./server.ts") aplikasinya
+```
+
+Sebuah entry point tak bisa memasang hook untuk dirinya sendiri — Node sudah
+memutuskan cara memuatnya. Namanya sengaja tetap `.cjs`: sekitar tiga puluh
+tempat menyebut path itu (`package.json`, spawn di `electron/main.ts`,
+`build.files`, `core.js`, playwright config), dan peluncur memang yang
+disediakan CommonJS di pembagian bahasa repo ini.
+
 ### 2.3 Rantai HTTP murni
 
 ```
@@ -102,7 +120,7 @@ http.createServer(handler) → listen
 | `config/mcp.json`                   | definisi server MCP                                 |
 | `config/.mcp-pids/`                 | jejak PID child MCP                                 |
 | `plugins/_disetujui.json`           | capability plugin yang disetujui                    |
-| keys lewat `agent/keys-path.cjs`    | API key di luar tree proyek                         |
+| keys lewat `agent/keys-path.ts`     | API key di luar tree proyek                         |
 | `~/.wolfspace/…`                    | rag, migrasi, data user                             |
 | `.wolfspace/snapshots` / quarantine | jejak safe-edit                                     |
 
@@ -186,20 +204,20 @@ Modul rute terpisah (`server/routes/*`) didaftarkan dulu, sisanya inline di `ser
 | Kelompok     | Path utama                                           | Piston berikutnya                        |
 | ------------ | ---------------------------------------------------- | ---------------------------------------- |
 | Health       | `GET /healthz`                                       | status proses                            |
-| Chat         | `POST /chat`                                         | `agent/chat.cjs`                         |
+| Chat         | `POST /chat`                                         | `agent/chat.ts`                          |
 | Self-agent   | `POST /self-agent`                                   | `agent/self_agent.ts`                    |
 | Agent lama   | `POST /agent`                                        | loop WRITE/RUN di server (jalur warisan) |
 | Workspace ww | `/ww/*`                                              | `scripts/ww.ts` + fs (lihat §5)          |
-| MCP          | `/mcp`, `/mcp/status`, `/mcp/connect`, `/mcp/toggle` | `agent/mcp-client.cjs`                   |
-| Plugin       | `/plugins`, pasang/copot/setujui                     | `agent/plugins.cjs`                      |
-| Cloud keys   | `/cloud-save`, `/detect-key`, `/cloud-providers`     | `server/routes/cloud.cjs`, `keys-path`   |
-| Terminal     | `/api/terminal/*`                                    | `server/routes/terminal.cjs` → node-pty  |
-| DAP/debug    | `/dap/*`, `/debug/*`                                 | `server/routes/dap.cjs`, `core/dap*.cjs` |
+| MCP          | `/mcp`, `/mcp/status`, `/mcp/connect`, `/mcp/toggle` | `agent/mcp-client.ts`                    |
+| Plugin       | `/plugins`, pasang/copot/setujui                     | `agent/plugins.ts`                       |
+| Cloud keys   | `/cloud-save`, `/detect-key`, `/cloud-providers`     | `server/routes/cloud.ts`, `keys-path`    |
+| Terminal     | `/api/terminal/*`                                    | `server/routes/terminal.ts` → node-pty   |
+| DAP/debug    | `/dap/*`, `/debug/*`                                 | `server/routes/dap.ts`, `core/dap*.cjs`  |
 | Preview      | `/preview-file`, `/preview-file-assets/*`            | baca HTML/aset dari disk                 |
-| RAG          | `/rag/ingest`, `/rag/retrieve`                       | `agent/rag.cjs`                          |
-| Snapshot     | `/api/snapshots`, `/api/rollback`                    | `agent/snapshot.cjs`                     |
+| RAG          | `/rag/ingest`, `/rag/retrieve`                       | `agent/rag.ts`                           |
+| Snapshot     | `/api/snapshots`, `/api/rollback`                    | `agent/snapshot.ts`                      |
 | Complete     | `/complete`, `/pycomplete`                           | ghost text / Jedi                        |
-| Attach       | `/attach`, `/upload`                                 | `attachment-bridge.cjs`                  |
+| Attach       | `/attach`, `/upload`                                 | `attachment-bridge.ts`                   |
 | Flow         | `POST /flow/http`                                    | node HTTP di logic canvas                |
 | Static       | `GET /*`                                             | `public/` (+ `.br`/`.gz` bila ada)       |
 
@@ -295,10 +313,10 @@ kopling: IPC.stream("self-agent")  ATAU  POST /self-agent
    ▼
 starter: agent/self_agent.ts :: selfAgentStream
    ├─ prompts (config/prompts.json, sysprompt_opt, rules)
-   ├─ cloud.cjs          → model BYOK (OpenAI/Claude/Gemini/… )
+   ├─ cloud.ts          → model BYOK (OpenAI/Claude/Gemini/… )
    ├─ LangGraph (lazy)   → loop langkah
-   ├─ tools.cjs → tools/index.cjs :: runSelfTool
-   ├─ temuan.cjs         → ingat fakta lintas history terpotong
+   ├─ tools.cjs → tools/index.ts :: runSelfTool
+   ├─ temuan.ts         → ingat fakta lintas history terpotong
    ├─ pseudo-tag-filter  → selamatkan tool-call berbentuk teks
    ├─ snapshot / safe-edit hooks
    ├─ mcp-client         → tool dinamis bila MCP connect
@@ -307,25 +325,25 @@ starter: agent/self_agent.ts :: selfAgentStream
 
 Jalur paralel:
 
-- `POST /chat` → `agent/chat.cjs` (lebih sederhana; bisa tetap sentuh tools)
+- `POST /chat` → `agent/chat.ts` (lebih sederhana; bisa tetap sentuh tools)
 - `POST /agent` → loop lama di `server.cjs`
 
-### 6.2 Piston tools (katalog ≈ `tools/tool-definitions.cjs`)
+### 6.2 Piston tools (katalog ≈ `tools/tool-definitions.ts`)
 
-| Keluarga tool                               | Implementasi / kabel                                         |
-| ------------------------------------------- | ------------------------------------------------------------ |
-| list, glob, read, grep, edit, write, …      | `file-tools.cjs` + `safe-edit` + `code-quality` + `snapshot` |
-| bash                                        | `bash-jail`, appcontainer/WSL jail, env quarantine           |
-| sandbox_run                                 | `sandbox.cjs` + `sandbox-policy` + `penegakan`               |
-| capability_exec                             | `broker/*` (policy deny-by-default, zone, audit)             |
-| web_search / fetch / extract                | `web.cjs` (+ Playwright extract)                             |
-| git                                         | `git-tool.cjs`                                               |
-| skill_list / skill_run                      | `skills.cjs` + `skills/*.cjs`                                |
-| terminal_*                                  | sesi PTY (`core/terminal.cjs` / server sessions)             |
-| retrieve                                    | `rag.cjs`                                                    |
-| attachment_*                                | `attachment-bridge.cjs`                                      |
-| architecture_map, gen3d, dspy, todowrite, … | tool khusus di index                                         |
-| tool MCP                                    | digabung runtime lewat `mcp-client.cjs`                      |
+| Keluarga tool                               | Implementasi / kabel                                        |
+| ------------------------------------------- | ----------------------------------------------------------- |
+| list, glob, read, grep, edit, write, …      | `file-tools.ts` + `safe-edit` + `code-quality` + `snapshot` |
+| bash                                        | `bash-jail`, appcontainer/WSL jail, env quarantine          |
+| sandbox_run                                 | `sandbox.ts` + `sandbox-policy` + `penegakan`               |
+| capability_exec                             | `broker/*` (policy deny-by-default, zone, audit)            |
+| web_search / fetch / extract                | `web.ts` (+ Playwright extract)                             |
+| git                                         | `git-tool.ts`                                               |
+| skill_list / skill_run                      | `skills.ts` + `skills/*.cjs`                                |
+| terminal_*                                  | sesi PTY (`core/terminal.ts` / server sessions)             |
+| retrieve                                    | `rag.ts`                                                    |
+| attachment_*                                | `attachment-bridge.ts`                                      |
+| architecture_map, gen3d, dspy, todowrite, … | tool khusus di index                                        |
+| tool MCP                                    | digabung runtime lewat `mcp-client.ts`                      |
 
 ### 6.3 Rem & oli (isolasi) — urutan kasar
 
@@ -340,26 +358,84 @@ runSelfTool
 
 ### 6.4 Modul agent pendukung
 
-| File                                | Peran                                 |
-| ----------------------------------- | ------------------------------------- |
-| `cloud.cjs`                         | stream multi-provider                 |
-| `keys-path.cjs`                     | lokasi aman API key                   |
-| `mcp-client.cjs`                    | hidupkan MCP stdio                    |
-| `plugins.cjs`                       | pasang plugin → MCP + izin            |
-| `safe-edit.cjs`                     | snapshot → quality → tulis/quarantine |
-| `snapshot.cjs`                      | rollback titik aman                   |
-| `code-quality.cjs`                  | ratchet kualitas suntingan            |
-| `prompts.cjs` / `sysprompt_opt.cjs` | prompt                                |
-| `rag.cjs`                           | indeks per proyek                     |
-| `web.cjs`                           | jaringan keluar (dengan cek)          |
-| `temuan.cjs`                        | memori temuan                         |
-| `attachment-bridge.cjs`             | lampiran tanpa bocor path host        |
-| `debug.cjs` / `trace.cjs`           | bus debug / jejak                     |
-| `penegakan.cjs`                     | kosakata penegakan seragam            |
-| `platform/*`                        | adaptor Windows vs POSIX              |
-| `broker/*`                          | gerbang capability host               |
+| File                               | Peran                                  |
+| ---------------------------------- | -------------------------------------- |
+| `cloud.ts`                         | stream multi-provider                  |
+| `keys-path.ts`                     | lokasi aman API key                    |
+| `mcp-client.ts`                    | hidupkan MCP stdio                     |
+| `plugins.ts`                       | pasang plugin → MCP + izin             |
+| `safe-edit.ts`                     | snapshot → quality → tulis/quarantine  |
+| `snapshot.ts`                      | rollback titik aman                    |
+| `code-quality.ts`                  | ratchet kualitas suntingan             |
+| `prompts.cjs` / `sysprompt_opt.ts` | prompt                                 |
+| `rag.ts`                           | indeks per proyek                      |
+| `web.ts`                           | jaringan keluar (dengan cek)           |
+| `temuan.ts`                        | memori temuan                          |
+| `attachment-bridge.ts`             | lampiran tanpa bocor path host         |
+| `debug.ts` / `trace.cjs`           | bus debug / jejak                      |
+| `penegakan.ts`                     | kosakata penegakan seragam             |
+| `anggaran.ts`                      | plafon beban + asal-usul tiap angka    |
+| `pemantau-blokir.ts`               | watchdog blokir thread utama           |
+| `perencana-agent.ts`               | perencana, dipakai orkestrator JS & Py |
+| `penjaga-agent.ts`                 | penjaga anti-halu & loop macet         |
+| `platform/*`                       | adaptor Windows vs POSIX               |
+| `broker/*`                         | gerbang capability host                |
 
 Bridge MCP HTTP→stdio: `scripts/mcp-http-bridge.cjs`.
+
+---
+
+## 6.5 Rem mesin — anggaran beban & watchdog
+
+Bagian ini **bukan analogi**: ia satu angka yang diukur, dan segala sesuatu
+menggantung padanya.
+
+**Ambang 5.000 ms.** Windows menandai jendela _Not Responding_ setelah 5 detik
+antrian pesannya tak terkuras. Diukur di mesin ini tiga kali (5011 / 5028 /
+5034 ms) dengan memblokir thread UI jendela sungguhan dan menanyai
+`IsHungAppWindow` sampai berbalik.
+
+Dua sifatnya menentukan semua yang lain:
+
+- **BERURUTAN, bukan kumulatif.** Hitungannya reset tiap kali antrian terkuras.
+  Tiga puluh suntingan 150 ms tak membekukan apa pun; satu rentang 5 detik
+  membekukan.
+- **Dibelanjakan BACKEND.** Di mode desktop backend berjalan _in-process_ di
+  proses utama Electron, jadi kerja sinkron di `agent/` menahan thread yang
+  sama yang menggambar jendela.
+
+```
+agent/anggaran.ts        satu sumber untuk semua plafon + asal-usulnya
+  ├─ AMBANG_HANG_MS      5000   (terukur, bukan dikutip)
+  ├─ BLOKIR_NORMAL_MS     100 / BLOKIR_WASPADA_MS 1000
+  ├─ IPC_PAYLOAD_MAKS    32 MB  (kurva: 200 MB -> 4486 ms)
+  ├─ EXEC_MAKS_BUFFER     8 MB  (dulu 200 KB, dan itu MENGGAGALKAN perintah)
+  └─ JOB_MEM_MB / JOB_MAKS_PROSES / JOB_CPU_DETIK   512 / 256 / 60
+
+agent/pemantau-blokir.ts watchdog + atribusi
+  ├─ histogram perf_hooks   berapa lama loop ditahan
+  ├─ buku besar globalThis  APA yang menahannya
+  └─ lapor tiap 15 dtk      hanya bila melewati pita NORMAL
+```
+
+Laporannya berbentuk:
+
+```
+BLOKIR blokir maks 272 ms (naik) p99 51 ms, jendela 15 dtk, anggaran 5000 ms
+  — boot:buat-jendela 102ms, boot:daftar-protokol 11ms, boot:mulai-backend 6ms
+```
+
+`(tak terlacak)` adalah jawaban yang sah, bukan kekosongan: ia berarti blokirnya
+datang dari tempat yang belum dipasangi instrumen — dan itu hal pertama yang
+perlu diketahui saat memutuskan di mana memasang berikutnya.
+
+Buku besarnya hidup di `globalThis` karena `scripts/ts-register.cjs` **memasang**
+hook `.ts`, jadi ia berjalan sebelum modul `.ts` mana pun bisa diimpor.
+
+**Plafon Windows.** `scripts/appcontainer/AcLaunch.cs` menaruh tiap perintah di
+Job Object: proses dibuat `CREATE_SUSPENDED`, dimasukkan ke job, **baru**
+`ResumeThread` — kalau dibalik, perintah cepat sempat melahirkan cucu yang lolos.
+Nilainya menyamai jail Linux di `tools/bash-jail.ts`, bukan mengarang.
 
 ---
 
@@ -371,18 +447,21 @@ Bridge MCP HTTP→stdio: `scripts/mcp-http-bridge.cjs`.
 saklar: buka panel terminal
   UI: Screens.jsx VSCodeTerminal (xterm)
     ├─ Electron: window.WOLFSPACE.terminal.* → IPC → sesi node-pty
-    └─ HTTP: /api/terminal/* → server/routes/terminal.cjs
-Agent tool terminal_* bisa pakai jalur PTY terpisah (core/terminal.cjs)
-Worker: terminal-worker.cjs (varian worker_thread)
+    └─ HTTP: /api/terminal/* → server/routes/terminal.ts
+Agent tool terminal_* bisa pakai jalur PTY terpisah (core/terminal.ts)
 ```
+
+> Varian `terminal-worker.cjs` (worker_thread) yang dulu disebut di sini **sudah
+> tidak ada** — tak ada satu pun rujukan tersisa di kode. PTY dijalankan
+> langsung lewat `core/terminal.ts`.
 
 ### 7.2 DAP / debug
 
 ```
 saklar: tombol Run/Debug di Logic / permintaan debug
   → /dap/mulai|aksi|titik-henti|tutup + GET keadaan
-  → server/routes/dap.cjs
-  → core/dap-sesi.cjs → core/dap.cjs
+  → server/routes/dap.ts
+  → core/dap-sesi.ts → core/dap.ts
   → adapter: debugpy / js-debug / dlv / …
 GET /debug/tersedia → debugger apa yang terpasang
 ```
@@ -425,7 +504,7 @@ GET /debug/tersedia → debugger apa yang terpasang
                                 │
 ┌───────────────────────────────▼──────────────────────────────────────────┐
 │ POROS (server.cjs + server/routes/*)                                      │
-│  /chat → chat.cjs          /self-agent → self_agent.ts                   │
+│  /chat → chat.ts          /self-agent → self_agent.ts                   │
 │  /ww/* → ww.ts + fs       /mcp/* → mcp-client                            │
 │  /api/terminal/*           /dap/* → dap-sesi → dap                        │
 │  /preview-file             /plugins/*  /rag/*  /cloud-*  /debug*          │
@@ -454,7 +533,7 @@ GET /debug/tersedia → debugger apa yang terpasang
 | Buka app desktop                 | `npm run app`           | app.cjs → main.js → app:// UI + core in-process                    |
 | Pilih / attach folder            | picker / attach         | `selectFolder` dan/atau `POST /ww/attach` → ww → `selectedProject` |
 | Kirim tugas agent                | Composer submit         | stream `self-agent` → self_agent → tools → AgentSteps              |
-| Kirim chat biasa                 | mode chat               | stream `chat` → chat.cjs → cloud/local                             |
+| Kirim chat biasa                 | mode chat               | stream `chat` → chat.ts → cloud/local                              |
 | Agent menulis file               | tool write/edit         | disk + safe-edit → event `wolfspace_agent_act` → `devFiles` → tree |
 | Simpan di Logic                  | Ctrl+S / save Monaco    | `POST /ww/tulis-berkas` (kurung di server)                         |
 | Buat/hapus file di tree          | menu pohon              | `/ww/buat-berkas` / `/ww/hapus-berkas`                             |
@@ -474,16 +553,21 @@ GET /debug/tersedia → debugger apa yang terpasang
 
 Hal-hal yang **ada di mesin** tapi perilaku/kabelnya perlu dibaca hati-hati:
 
-| Item                    | Kenyataan                                                                                              |
-| ----------------------- | ------------------------------------------------------------------------------------------------------ |
-| `GET /ww/tree`          | Hidup di `server.cjs`; pohon Logic utama memakai `buildDevTree(devFiles)`, bukan full walk tiap render |
-| Tab "Changes" di Logic  | Dihapus secara sadar — dulu tak tersambung data nyata                                                  |
-| Auto-run setiap jawaban | Pipeline lama dihapus; verifikasi = agent memanggil tool run sendiri                                   |
-| `POST /agent`           | Jalur warisan; jalur produk agent = `/self-agent`                                                      |
-| Kata `explorer` di grep | Hampir selalu Windows Explorer, bukan komponen UI                                                      |
-| Dua manajer terminal    | Sesi UI di server vs tool agent di `core/terminal.cjs` — mirip tapi tidak identik                      |
-| `services/api.js`       | Bukan satu-satunya client; `app.jsx` sudah memegang jalur utama                                        |
-| `boot.js`               | Bukan cara normal menyalakan app                                                                       |
+| Item                    | Kenyataan                                                                                                    |
+| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
+| `GET /ww/tree`          | Hidup di `server.cjs`; pohon Logic utama memakai `buildDevTree(devFiles)`, bukan full walk tiap render       |
+| Tab "Changes" di Logic  | Dihapus secara sadar — dulu tak tersambung data nyata                                                        |
+| Auto-run setiap jawaban | Pipeline lama dihapus; verifikasi = agent memanggil tool run sendiri                                         |
+| `POST /agent`           | Jalur warisan; jalur produk agent = `/self-agent`                                                            |
+| Kata `explorer` di grep | Hampir selalu Windows Explorer, bukan komponen UI                                                            |
+| Dua manajer terminal    | Sesi UI di server vs tool agent di `core/terminal.ts` — mirip tapi tidak identik                             |
+| `services/api.js`       | Bukan satu-satunya client; `app.jsx` sudah memegang jalur utama                                              |
+| `boot.js`               | Bukan cara normal menyalakan app                                                                             |
+| `server.cjs`            | Peluncur 18 baris, bukan aplikasinya — isinya ada di `server.ts` (§2.2)                                      |
+| `.cjs` yang tersisa     | Bukan sisa migrasi: peluncur & worker memang CommonJS. Lihat `docs/MIGRASI-TYPESCRIPT.md`                    |
+| `electron/main.js`      | Hasil build dari `main.ts`, ada di `.gitignore` — jangan disunting langsung                                  |
+| `AcLaunch.exe`          | Juga di `.gitignore`; dibangun ulang otomatis saat basi oleh `scripts/build-aclaunch.cjs`                    |
+| Nilai enum Indonesia    | `penegakan`/`mekanisme`, operasi git (`berkas`, `cabang`), rute `/ww/*` — kontrak, sengaja tak diterjemahkan |
 
 ---
 
@@ -503,15 +587,17 @@ Hal-hal yang **ada di mesin** tapi perilaku/kabelnya perlu dibaca hati-hati:
 
 ### 11.1 Tes sebagai “uji jalan mesin”
 
-| Cluster nama file                                            | Menguji             |
-| ------------------------------------------------------------ | ------------------- |
-| `broker-*`, `bash-*`, `wsl-*`, `zone-*`, `appcontainer-*`    | rem isolasi jujur   |
-| `mcp-*`, `plugin-*`                                          | kabel MCP/plugin    |
-| `ww-*`, `git-*`, `file-tools*`, `gate-agent-path`            | workspace + file    |
-| `electron-*`, `hot-reload-*`, `rollback-*`                   | nyala desktop & HMR |
-| `dap-*`, `debug-*`                                           | debug               |
-| `sidebar-*`, `tab-editor*`, `monaco-*`, `composer-*`         | kabbin UI           |
-| `temuan*`, `salvage-*`, `agent-run-hang*`, `prioritas-tool*` | kualitas loop agent |
+| Cluster nama file                                                  | Menguji             |
+| ------------------------------------------------------------------ | ------------------- |
+| `broker-*`, `bash-*`, `wsl-*`, `zone-*`, `appcontainer-*`          | rem isolasi jujur   |
+| `mcp-*`, `plugin-*`                                                | kabel MCP/plugin    |
+| `ww-*`, `git-*`, `file-tools*`, `gate-agent-path`                  | workspace + file    |
+| `electron-*`, `hot-reload-*`, `rollback-*`                         | nyala desktop & HMR |
+| `dap-*`, `debug-*`                                                 | debug               |
+| `sidebar-*`, `tab-editor*`, `monaco-*`, `composer-*`               | kabbin UI           |
+| `temuan*`, `salvage-*`, `agent-run-hang*`, `prioritas-tool*`       | kualitas loop agent |
+| `anggaran*`, `pemantau-blokir*`, `job-plafon-*`, `exec-keluaran-*` | rem beban (§6.5)    |
+| `kontrak-tipe*`, `migrated-code-is-english*`, `tanpa-path-mesin*`  | ratchet migrasi     |
 
 ---
 
@@ -532,7 +618,7 @@ Hal-hal yang **ada di mesin** tapi perilaku/kabelnya perlu dibaca hati-hati:
 4. `public/app/Sidebar.jsx`
 5. `server.cjs` (blok `/ww/*`, `/self-agent`, static) + `server/routes/*`
 6. `scripts/ww.ts`
-7. `agent/self_agent.ts` → `agent/tools.cjs` / `tools/index.cjs`
+7. `agent/self_agent.ts` → `agent/tools.cjs` / `tools/index.ts`
 8. `core.js` (apa yang diekspor ke Electron)
 
 ---
