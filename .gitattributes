@@ -1,33 +1,46 @@
-# Apa yang dihitung GitHub sebagai "bahasa" repo ini.
+# What GitHub counts as this repository's "language".
 #
-# Linguist menghitung BYTE dari berkas terlacak, dan tanpa berkas ini ia
-# menghitung public/vendor/ juga — 25,5 MB Monaco, mermaid, three.js, Babel,
-# cytoscape, dan xterm. Hasilnya bilah bahasa membaca 91% JavaScript, yang
-# menggambarkan pustaka yang diunduh, bukan kode yang ditulis di sini.
+# Linguist counts BYTES of tracked files. Without this file it counts
+# public/vendor/ as well -- 25.5 MB of Monaco, mermaid, three.js, Babel,
+# cytoscape and xterm. The language bar then describes the libraries that were
+# downloaded here, not the code that was written here.
 #
-# Terukur atas berkas terlacak:
+# Measured over tracked files, grouped the way Linguist groups them
+# (.tsx counts as TypeScript; .cjs, .mjs and .jsx count as JavaScript):
 #
-#   dengan vendor    JavaScript 91,4%   TypeScript  5,6%
-#   tanpa vendor     TypeScript 51,5%   JavaScript 26,1%
+#   with vendor                 JavaScript 87.2%   TypeScript  7.8%
+#   without vendor + generated  TypeScript 65.2%   JavaScript  4.3%
 #
-# Angka kedua yang jujur. Dan sisa JavaScript itu bukan utang migrasi: 80%-nya
-# suite uji (tests/*.test.js), sisanya peluncur dan skrip ops yang memang
-# CommonJS by design — lihat docs/MIGRASI-TYPESCRIPT.md.
+# The second pair is the honest one.
+#
+# JavaScript fell from 26.1% to 4.3% when the 91 test suites were renamed from
+# .test.js to .test.ts -- 693 KB moved from one column to the other, with the
+# suite unchanged at 91 passing files and 1221 passing tests. What remains is
+# the .cjs launchers, platform shims and ops scripts, which are CommonJS by
+# design and are not migration debt -- see docs/MIGRASI-TYPESCRIPT.md.
+#
+# Note for anyone reading the bar: Linguist marks languages of type `data`
+# (JSON, JSON Lines) and `prose` (Markdown, Text) as not detectable, so those
+# do not appear in the bar at all even though they are a large share of the
+# bytes here. The bar shows only the programming and markup subset.
 
-# ── Vendor: pustaka pihak ketiga, tak ditulis di sini ──
+# -- Vendor: third-party libraries, not written here --
 public/vendor/**       linguist-vendored
 vendor/**              linguist-vendored
 scripts/three/**       linguist-vendored
 scripts/reactflow/**   linguist-vendored
 scripts/ikon-bahasa/** linguist-vendored
 
-# ── Generated: dibangun dari sumber lain ──
-# Ketiganya sudah di-gitignore, tetapi ditandai juga supaya tetap benar kalau
-# suatu hari ada yang meng-commit-nya.
-electron/main.js       linguist-generated
-electron/preload.js    linguist-generated
-public/app.build.js    linguist-generated
+# -- Generated: built from another source --
+# The first three are gitignored as well, but are marked here so the accounting
+# stays correct if anyone ever commits them.
+electron/main.js         linguist-generated
+electron/preload.js      linguist-generated
+public/app.build.js      linguist-generated
+# Emitted by scripts/ikon-bahasa/build.cjs from material-icon-theme; its own
+# first line says DO NOT EDIT BY HAND. 22 KB of icon data, not authored code.
+public/app/IkonBahasa.jsx linguist-generated
 
-# ── Aset terkompres: hasil scripts/kompres-aset.cjs ──
+# -- Compressed assets: output of scripts/kompres-aset.cjs --
 *.br                   binary linguist-generated
 *.gz                   binary linguist-generated
