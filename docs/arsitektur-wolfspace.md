@@ -9,14 +9,14 @@ Tujuan: saat membaca kode (termasuk buatan AI), kamu selalu tahu **siapa yang me
 
 ```
 UI (public/)  ⇄  Electron IPC  ATAU  HTTP :8090
-                    ⇄  core.js → server.cjs
+                    ⇄  core.js → server.cjs → server.ts
                          ⇄  agent/* + core/* + scripts/ww.ts
 ```
 
 - **Jalur produk utama:** `npm run app` → desktop Electron (backend **in-process**, UI lewat `app://`).
 - **Jalur sekunder:** `npm start` → server HTTP di `127.0.0.1:8090`.
 
-Satu **mesin logika** (`server.cjs` lewat `core.js`), dua **cara menyalakan kabel** (IPC vs HTTP).
+Satu **mesin logika** (`server.ts`, dicapai lewat peluncur `server.cjs` dan `core.js`), dua **cara menyalakan kabel** (IPC vs HTTP).
 
 ---
 
@@ -26,8 +26,8 @@ Satu **mesin logika** (`server.cjs` lewat `core.js`), dua **cara menyalakan kabe
 | --------------------------- | ------------------------------------------------------------------------------- |
 | **Saklar / starter**        | `npm run app`, klik UI, route API, event, IPC channel                           |
 | **Kunci kontak / baterai**  | `config.json`, API keys (`keys-path`), `config/prompts.json`, `config/mcp.json` |
-| **Mesin utama**             | `server.cjs` (+ `core.js` untuk Electron tanpa port)                            |
-| **Kabbin / dashboard**      | UI React di `public/` (`index.html` → modul → `app.jsx`)                        |
+| **Mesin utama**             | `server.ts` (lewat peluncur `server.cjs`; `core.js` untuk Electron tanpa port)  |
+| **Kabbin / dashboard**      | UI React di `public/` (`index.html` → modul → `app.tsx`)                        |
 | **Piston**                  | Modul/fungsi yang benar-benar dipanggil                                         |
 | **Kabel / rantai timing**   | `import`/`require`, `fetch`, IPC, SSE/stream, `CustomEvent`, callback           |
 | **Kopling**                 | Transport: Electron IPC **atau** HTTP — memutus/menghubungkan UI ↔ server       |
@@ -106,10 +106,10 @@ http.createServer(handler) → listen
 
 ### 2.4 Shim terkait
 
-| File                                         | Peran motor                                                |
-| -------------------------------------------- | ---------------------------------------------------------- |
-| `core.js`                                    | Adaptor: ekspor logika `server.cjs` untuk IPC (tanpa port) |
-| `Wolfspace.cmd` / `start.ps1` / `launch.ps1` | Saklar OS di luar npm                                      |
+| File                                         | Peran motor                                               |
+| -------------------------------------------- | --------------------------------------------------------- |
+| `core.js`                                    | Adaptor: ekspor logika `server.ts` untuk IPC (tanpa port) |
+| `Wolfspace.cmd` / `start.ps1` / `launch.ps1` | Saklar OS di luar npm                                     |
 
 ### 2.5 Kunci kontak (`config` & rahasia)
 
@@ -134,7 +134,7 @@ http.createServer(handler) → listen
 public/index.html
   ├─ vendor: react, babel, monaco, xterm, mermaid, cytoscape, three…
   ├─ loadApp():
-  │    fetch APP_MODULES (urutan tetap) + /app.jsx
+  │    fetch APP_MODULES (urutan tetap) + /app.tsx
   │    Babel.transform per modul → satu <script> global
   │    pin build bagus ke localStorage (rollback jika crash)
   └─ styles: public/styles.css
@@ -142,37 +142,42 @@ public/index.html
 
 **Urutan APP_MODULES** (kabel wajib: yang di atas harus ada sebelum `App` render):
 
-1. `app/Config.jsx`
+1. `app/Config.tsx`
 2. `app/IkonBahasa.jsx`
-3. `app/Viewport.jsx`
-4. `app/Icons.jsx`
-5. `app/Model3DViewer.jsx`
-6. `app/VisualTools.jsx`
-7. `app/CodeBlocks.jsx`
-8. `app/Views.jsx`
+3. `app/Viewport.tsx`
+4. `app/Icons.tsx`
+5. `app/Model3DViewer.tsx`
+6. `app/VisualTools.tsx`
+7. `app/CodeBlocks.tsx`
+8. `app/Views.tsx`
 9. `app/PluginsView.tsx` (opsional)
-10. `app/Components.jsx` — TopBar, Composer, Message, TodoPanel, …
-11. `app/Screens.jsx` — ProjectPicker, VSCodeTerminal, …
-12. `app/Sidebar.jsx`
-13. `app/AgentSteps.jsx`
-14. `app/usePreviewPanel.jsx`
-15. lalu **`public/app.jsx`** — `function App()` = dashboard utama
+10. `app/Components.tsx` — TopBar, Composer, Message, TodoPanel, …
+11. `app/Screens.tsx` — ProjectPicker, VSCodeTerminal, …
+12. `app/Sidebar.tsx`
+13. `app/AgentSteps.tsx`
+14. `app/usePreviewPanel.tsx`
+15. lalu **`public/app.tsx`** — `function App()` = dashboard utama
+
+> `IkonBahasa.jsx` satu-satunya yang masih `.jsx`, dan itu disengaja: isinya
+> data ikon yang dihasilkan (`scripts/ikon-bahasa/`), bukan komponen yang
+> ditulis tangan. Daftar ini **harus cocok persis** dengan `APP_MODULES` di
+> `public/index.html` — di sanalah sumber kebenarannya, dan `scripts/build-app.cjs`
+> membaca urutannya dari situ juga.
 
 ### 3.2 Piston UI → siapa menggerakkan siapa
 
 | Piston                                        | Saklar khas                   | Menyambung ke                                            |
 | --------------------------------------------- | ----------------------------- | -------------------------------------------------------- |
-| `App()` di `app.jsx`                          | mount / state global          | semua panel; stream agent/chat; Logic; terminal; preview |
-| `Sidebar.jsx`                                 | buka app, pilih workspace     | `/ww/list`, git, branch, delete, `selectedProject`       |
-| `Composer` (`Components.jsx`)                 | kirim pesan                   | `streamSelfAgent` / `streamChat`                         |
-| `AgentSteps.jsx`                              | event langkah agent           | tampilan tool call / HITL                                |
-| `LogicFileTree` + `LogicCodePane` (`app.jsx`) | panel Logic / klik file       | `devFiles`, `/ww/tulis-berkas`, `/preview-file?raw=1`    |
-| `VSCodeTerminal` (`Screens.jsx`)              | buka terminal                 | IPC `terminal` atau `/api/terminal/*`                    |
-| `usePreviewPanel.jsx`                         | agent tulis `.html` / omnibox | `/preview-file` atau IPC `browser`                       |
-| `VisualTools.jsx`                             | mode picker/gambar            | DOM UI + iframe same-origin                              |
-| `Views.jsx`                                   | navigasi history              | riwayat chat penuh                                       |
+| `App()` di `app.tsx`                          | mount / state global          | semua panel; stream agent/chat; Logic; terminal; preview |
+| `Sidebar.tsx`                                 | buka app, pilih workspace     | `/ww/list`, git, branch, delete, `selectedProject`       |
+| `Composer` (`Components.tsx`)                 | kirim pesan                   | `streamSelfAgent` / `streamChat`                         |
+| `AgentSteps.tsx`                              | event langkah agent           | tampilan tool call / HITL                                |
+| `LogicFileTree` + `LogicCodePane` (`app.tsx`) | panel Logic / klik file       | `devFiles`, `/ww/tulis-berkas`, `/preview-file?raw=1`    |
+| `VSCodeTerminal` (`Screens.tsx`)              | buka terminal                 | IPC `terminal` atau `/api/terminal/*`                    |
+| `usePreviewPanel.tsx`                         | agent tulis `.html` / omnibox | `/preview-file` atau IPC `browser`                       |
+| `VisualTools.tsx`                             | mode picker/gambar            | DOM UI + iframe same-origin                              |
+| `Views.tsx`                                   | navigasi history              | riwayat chat penuh                                       |
 | `PluginsView` / settings                      | pasang plugin, MCP, key       | `/plugins/*`, `/mcp/*`, `/cloud-*`                       |
-| `services/api.js`                             | opsional                      | alternatif client; jalur utama sudah di `app.jsx`        |
 
 ### 3.3 Kopling transport UI ↔ mesin
 
@@ -186,7 +191,7 @@ window.WOLFSPACE.ipc ada?  (Electron default)
     fetch("/chat"), fetch("/self-agent"), SSE, …
 ```
 
-Shim `fetch` di `app.jsx`: path relatif `"/…"` di Electron → IPC `api`, supaya **satu call-site** untuk desktop dan browser.
+Shim `fetch` di `app.tsx`: path relatif `"/…"` di Electron → IPC `api`, supaya **satu call-site** untuk desktop dan browser.
 
 ---
 
@@ -268,7 +273,7 @@ Sidebar / Screens
   GET  /ww/git|branches  → status git
   POST /ww/branch/*|commit|rename → mutasi git + folder
 
-Logic editor (app.jsx)
+Logic editor (app.tsx)
   POST /ww/tulis-berkas  → simpan Monaco
   POST /ww/buat-berkas   → file/folder baru
   POST /ww/hapus-berkas  → hapus (folder butuh folder:true)
@@ -292,7 +297,7 @@ Alur file muncul di pohon Logic:
 
 ```
 agent sukses write/edit/create
-  → app.jsx dispatch CustomEvent "wolfspace_agent_act"
+  → app.tsx dispatch CustomEvent "wolfspace_agent_act"
   → setDevFiles(...)
   → LogicFileTree = buildDevTree(devFiles, root, devFolders)
   → klik → bukaTab → LogicCodePane → /preview-file?raw=1
@@ -445,7 +450,7 @@ Nilainya menyamai jail Linux di `tools/bash-jail.ts`, bukan mengarang.
 
 ```
 saklar: buka panel terminal
-  UI: Screens.jsx VSCodeTerminal (xterm)
+  UI: Screens.tsx VSCodeTerminal (xterm)
     ├─ Electron: window.WOLFSPACE.terminal.* → IPC → sesi node-pty
     └─ HTTP: /api/terminal/* → server/routes/terminal.ts
 Agent tool terminal_* bisa pakai jalur PTY terpisah (core/terminal.ts)
@@ -496,7 +501,7 @@ GET /debug/tersedia → debugger apa yang terpasang
                                 │
 ┌───────────────────────────────▼──────────────────────────────────────────┐
 │ KABBIN (renderer)                                                         │
-│  index.html → Babel(APP_MODULES + app.jsx) → App()                        │
+│  index.html → Babel(APP_MODULES + app.tsx) → App()                        │
 │    Sidebar │ Composer │ Messages/AgentSteps │ Logic tree+Monaco           │
 │    Terminal │ Preview │ VisualTools │ Plugins/Settings │ Todo             │
 │  kopling: IPC (default desktop) ATAU fetch/SSE                            │
@@ -553,21 +558,20 @@ GET /debug/tersedia → debugger apa yang terpasang
 
 Hal-hal yang **ada di mesin** tapi perilaku/kabelnya perlu dibaca hati-hati:
 
-| Item                    | Kenyataan                                                                                                    |
-| ----------------------- | ------------------------------------------------------------------------------------------------------------ |
-| `GET /ww/tree`          | Hidup di `server.cjs`; pohon Logic utama memakai `buildDevTree(devFiles)`, bukan full walk tiap render       |
-| Tab "Changes" di Logic  | Dihapus secara sadar — dulu tak tersambung data nyata                                                        |
-| Auto-run setiap jawaban | Pipeline lama dihapus; verifikasi = agent memanggil tool run sendiri                                         |
-| `POST /agent`           | Jalur warisan; jalur produk agent = `/self-agent`                                                            |
-| Kata `explorer` di grep | Hampir selalu Windows Explorer, bukan komponen UI                                                            |
-| Dua manajer terminal    | Sesi UI di server vs tool agent di `core/terminal.ts` — mirip tapi tidak identik                             |
-| `services/api.js`       | Bukan satu-satunya client; `app.jsx` sudah memegang jalur utama                                              |
-| `boot.js`               | Bukan cara normal menyalakan app                                                                             |
-| `server.cjs`            | Peluncur 18 baris, bukan aplikasinya — isinya ada di `server.ts` (§2.2)                                      |
-| `.cjs` yang tersisa     | Bukan sisa migrasi: peluncur & worker memang CommonJS. Lihat `docs/MIGRASI-TYPESCRIPT.md`                    |
-| `electron/main.js`      | Hasil build dari `main.ts`, ada di `.gitignore` — jangan disunting langsung                                  |
-| `AcLaunch.exe`          | Juga di `.gitignore`; dibangun ulang otomatis saat basi oleh `scripts/build-aclaunch.cjs`                    |
-| Nilai enum Indonesia    | `penegakan`/`mekanisme`, operasi git (`berkas`, `cabang`), rute `/ww/*` — kontrak, sengaja tak diterjemahkan |
+| Item                          | Kenyataan                                                                                                            |
+| ----------------------------- | -------------------------------------------------------------------------------------------------------------------- |
+| `GET /ww/tree`                | Hidup di `server.cjs`; pohon Logic utama memakai `buildDevTree(devFiles)`, bukan full walk tiap render               |
+| Tab "Changes" di Logic        | Dihapus secara sadar — dulu tak tersambung data nyata                                                                |
+| Auto-run setiap jawaban       | Pipeline lama dihapus; verifikasi = agent memanggil tool run sendiri                                                 |
+| `POST /agent`                 | Jalur warisan; jalur produk agent = `/self-agent`                                                                    |
+| Kata `explorer` di grep       | Hampir selalu Windows Explorer, bukan komponen UI                                                                    |
+| Dua manajer terminal          | Sesi UI di server vs tool agent di `core/terminal.ts` — mirip tapi tidak identik                                     |
+| `services/api.js` / `boot.js` | **Sudah tidak ada.** Dulu tercantum di sini sebagai "ada tapi bukan jalur normal"; keduanya kini terhapus dari pohon |
+| `server.cjs`                  | Peluncur 18 baris, bukan aplikasinya — isinya ada di `server.ts` (§2.2)                                              |
+| `.cjs` yang tersisa           | Bukan sisa migrasi: peluncur & worker memang CommonJS. Lihat `docs/MIGRASI-TYPESCRIPT.md`                            |
+| `electron/main.js`            | Hasil build dari `main.ts`, ada di `.gitignore` — jangan disunting langsung                                          |
+| `AcLaunch.exe`                | Juga di `.gitignore`; dibangun ulang otomatis saat basi oleh `scripts/build-aclaunch.cjs`                            |
+| Nilai enum Indonesia          | `penegakan`/`mekanisme`, operasi git (`berkas`, `cabang`), rute `/ww/*` — kontrak, sengaja tak diterjemahkan         |
 
 ---
 
@@ -614,8 +618,8 @@ Hal-hal yang **ada di mesin** tapi perilaku/kabelnya perlu dibaca hati-hati:
 
 1. `package.json` (scripts)
 2. `scripts/app.cjs` → `electron/main.js` → `electron/preload.js`
-3. `public/index.html` → `public/app.jsx` (wwApi, App state, Logic*)
-4. `public/app/Sidebar.jsx`
+3. `public/index.html` → `public/app.tsx` (wwApi, App state, Logic*)
+4. `public/app/Sidebar.tsx`
 5. `server.cjs` (blok `/ww/*`, `/self-agent`, static) + `server/routes/*`
 6. `scripts/ww.ts`
 7. `agent/self_agent.ts` → `agent/tools.cjs` / `tools/index.ts`
