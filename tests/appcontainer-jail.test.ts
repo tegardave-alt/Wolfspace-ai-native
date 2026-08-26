@@ -182,7 +182,7 @@ describe("jebakan yang gejalanya menyesatkan", () => {
     );
     expect(idx).toMatch(/scriptDir: _dirSkripAc\(cwd\)/);
     const win = fs.readFileSync(
-      path.join(AKAR, "agent", "platform", "windows.cjs"),
+      path.join(AKAR, "agent", "platform", "windows.ts"),
       "utf8",
     );
     expect(win).toMatch(/opts\.scriptDir \|\| os\.tmpdir\(\)/);

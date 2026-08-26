@@ -53,7 +53,11 @@ class PlatformAdapter {
   }
 
   // Kill the entire process tree rooted at the given child process object.
-  killTree(/* child */) {
+  // `child` was written as `/* child */` while this file was JavaScript — a
+  // comment marking the argument subclasses receive. TypeScript reads that as
+  // zero parameters, so killTreeAsync below could no longer pass anything to it.
+  // Declared for real now; the base still refuses, subclasses still override.
+  killTree(child?: any) {
     throw new Error(`${this.name}: killTree() not implemented`);
   }
 
@@ -63,7 +67,7 @@ class PlatformAdapter {
   // 1076 ms median, 1507 ms worst, on every terminal close). Falls back to the
   // synchronous form so an adapter that has not overridden it still works.
   killTreeAsync(child) {
-    return new Promise((done) => {
+    return new Promise<void>((done) => {
       try {
         this.killTree(child);
       } catch (_) {}

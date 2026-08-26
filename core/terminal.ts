@@ -5,7 +5,7 @@
  */
 
 import * as os from "os";
-const { getPlatformAdapter } = require("../agent/platform/index.cjs");
+const { getPlatformAdapter } = require("../agent/platform/index.ts");
 
 // Guarded for the same reason as in server.cjs: node-pty is a NATIVE module and
 // may be unavailable (Alpine/musl with no linux prebuild and no toolchain to

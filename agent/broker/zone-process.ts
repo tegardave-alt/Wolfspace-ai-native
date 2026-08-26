@@ -46,7 +46,7 @@ type StatusKurungan =
 
 import { fork, spawn, execFileSync } from "child_process";
 import * as path from "path";
-const { getPlatformAdapter } = require("../platform/index.cjs");
+const { getPlatformAdapter } = require("../platform/index.ts");
 
 const WORKER = path.join(__dirname, "zone-worker.cjs");
 

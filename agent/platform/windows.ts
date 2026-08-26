@@ -6,7 +6,7 @@ const fs = require("fs");
 const os = require("os");
 const crypto = require("crypto");
 const { execSync, exec } = require("child_process");
-const { PlatformAdapter } = require("./adapter.cjs");
+const { PlatformAdapter } = require("./adapter.ts");
 
 class WindowsAdapter extends PlatformAdapter {
   get name() {
@@ -30,7 +30,7 @@ class WindowsAdapter extends PlatformAdapter {
   // can start (CreateProcessW returns a code that names no file at all).
   // Opening system temp to the container is not the answer: it is a directory
   // other processes can write to, and its contents are what we execute.
-  shellFor(command, opts = {}) {
+  shellFor(command, opts: any = {}) {
     // Passing `command` directly as a single `/c` argument requires it to
     // survive TWO layers of reparsing (Node's Windows spawn-arg escaping,
     // then cmd.exe's own quote handling). Proven to mis-handle embedded
@@ -88,7 +88,7 @@ class WindowsAdapter extends PlatformAdapter {
   // "die first, then continue" ordering is exactly what it guarantees, and it
   // does not run on the thread that draws the window.
   killTreeAsync(child) {
-    return new Promise((selesai) => {
+    return new Promise<void>((selesai) => {
       if (!child || !child.pid) {
         try {
           child && child.kill("SIGKILL");

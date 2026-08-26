@@ -104,7 +104,7 @@ describe("jalur HTTP/UI memakai pembunuh PTY yang SAMA", () => {
     expect(kp).not.toMatch(/kill\(\s*["']SIG/);
     // Adapter Windows-nya memakai exec, bukan execSync.
     const WIN = fs.readFileSync(
-      require.resolve("../agent/platform/windows.cjs"),
+      require.resolve("../agent/platform/windows.ts"),
       "utf8",
     );
     const ka = WIN.slice(WIN.indexOf("killTreeAsync(child)"));

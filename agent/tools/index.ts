@@ -21,7 +21,7 @@ function atomicWrite(dest, content) {
   }
 }
 import { spawn } from "child_process";
-const { getPlatformAdapter } = require("../platform/index.cjs");
+const { getPlatformAdapter } = require("../platform/index.ts");
 const { dlog } = require("../debug.ts");
 // The structural quality gate. REQUIRED in THIS module, not only in
 // safe-edit.ts: self_agent.ts uses ./tools.cjs -> tools/index.ts, while
