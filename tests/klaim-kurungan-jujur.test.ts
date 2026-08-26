@@ -27,25 +27,63 @@ const bash = (command) =>
   T.runSelfTool("bash", { command, cwd: WS }, () => {}, ctx);
 
 describe("penolakan tidak mengklaim pengurungan yang tak ada", () => {
+  // THE TEXT-SCAN PATH IS FORCED, on every platform.
+  //
+  // What this file is about is the refusal produced when there is NO OS
+  // confinement — that is the only case where the message could overclaim. On
+  // Windows AppContainer is available, so terkurungOs came back true and every
+  // test below returned before asserting anything. The suite was green here and
+  // red in CI for two days, and the difference was never the code: it was that
+  // these assertions only ever executed on Linux.
+  //
+  // WOLFSPACE_BASH_AC=0 is the switch the tool itself reads (see
+  // agent/tools/index.ts), so this exercises the real branch rather than a
+  // simulation of it. The early returns below are kept as belt and braces for a
+  // platform that confines some other way.
+  const _acAsli = process.env.WOLFSPACE_BASH_AC;
+  beforeAll(() => {
+    process.env.WOLFSPACE_BASH_AC = "0";
+  });
+  afterAll(() => {
+    if (_acAsli === undefined) delete process.env.WOLFSPACE_BASH_AC;
+    else process.env.WOLFSPACE_BASH_AC = _acAsli;
+  });
+
+  // THESE POLAS ARE ENGLISH NOW, and that is not cosmetic — it is the bug that
+  // turned CI red for two days while the suite stayed green on Windows.
+  //
+  // The refusal message was translated with the rest of the application strings.
+  // These assertions were not, so they went on matching Indonesian text the app
+  // no longer produces. Nobody noticed locally because of the early return
+  // below: on Windows AppContainer IS available, terkurungOs is true, and every
+  // test here returns before asserting anything at all. On Linux there is no
+  // AppContainer, the assertions actually run, and they failed.
+  //
+  // A test that returns early on the developer's platform and only executes in
+  // CI is not a slow test — it is an unrun one, and it stays unrun until
+  // something else makes it speak.
   test("pesan penolakan TIDAK memakai kata yang berarti terkurung", async () => {
     const r = await bash("ls ../Desktop");
     expect(r.ok).toBe(false);
     if (r.terkurungOs) return; // jail aktif — klaim "terkurung" memang sah di sana
     const pesan = String(r.output);
-    // "TERKURUNG" adalah kata yang dulu dipakai dan yang diteruskan agent
-    // sebagai "diblokir oleh sistem keamanan".
-    expect(pesan).not.toMatch(/TERKURUNG/i);
-    expect(pesan).not.toMatch(/sistem keamanan/i);
+    // The word this used to use, and that the agent then relayed as "blocked by
+    // the security system". Both spellings are checked: the Indonesian one so a
+    // revert cannot pass silently, the English one because that is what the
+    // message would say today if the claim ever came back.
+    expect(pesan).not.toMatch(/TERKURUNG|CONFINED/i);
+    expect(pesan).not.toMatch(/sistem keamanan|security system/i);
   }, 60000);
 
   test("pesan MENYEBUTKAN batasnya sendiri", async () => {
     const r = await bash("ls ../Desktop");
     if (r.terkurungOs) return;
     const pesan = String(r.output);
-    // Harus mengatakan dua hal: ini bukan batas keamanan, dan ia bisa dilewati.
-    expect(pesan).toMatch(/BUKAN batas keamanan/i);
-    expect(pesan).toMatch(/dirakit saat jalan/i);
-    // Dan menunjuk ke jalan yang benar-benar mengurung.
+    // Two things it must say: this is not a security boundary, and it can be
+    // walked past.
+    expect(pesan).toMatch(/NOT a security boundary/i);
+    expect(pesan).toMatch(/assembled at run time/i);
+    // And it must point at something that really does confine.
     expect(pesan).toMatch(/app:wsl|capability_exec/);
   }, 60000);
 

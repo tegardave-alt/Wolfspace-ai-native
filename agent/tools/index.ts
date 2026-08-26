@@ -1645,8 +1645,9 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
                 guard.reason +
                 "\nThis check only scans the command text, so it MISSES " +
                 "a path assembled at run time. Do not treat it as a guarantee.\n" +
-                "Real confinement: run with `npm run app:wsl` (a boundary " +
-                "kernel), atau pakai capability_exec (akses berpolicy + audit)." +
+                "Real confinement: run with `npm run app:wsl` (a kernel " +
+                "boundary), or use capability_exec (policy-gated access with " +
+                "an audit trail)." +
                 _catatan_ac,
             };
           cwd = guard.cwd;
