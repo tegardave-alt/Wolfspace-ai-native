@@ -24,7 +24,7 @@ import { spawn } from "child_process";
 const { getPlatformAdapter } = require("../platform/index.ts");
 const { dlog } = require("../debug.ts");
 // The structural quality gate. REQUIRED in THIS module, not only in
-// safe-edit.ts: self_agent.ts uses ./tools.cjs -> tools/index.ts, while
+// safe-edit.ts: self_agent.ts uses ./tools.ts -> tools/index.ts, while
 // safeWriteFile is only called by server.cjs, whose agent path is no longer in
 // use. A gate there never touches the agent at all.
 const codeQuality = require("../code-quality.ts");
@@ -98,7 +98,7 @@ function lazySkill() {
 }
 function lazyBroker() {
   return (
-    _broker || (_broker = _ensureMod("broker", "../broker/index.cjs")) || {}
+    _broker || (_broker = _ensureMod("broker", "../broker/index.ts")) || {}
   );
 }
 

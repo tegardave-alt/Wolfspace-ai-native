@@ -14,7 +14,7 @@ const AKAR = path.resolve(__dirname, "..");
 require(path.join(AKAR, "scripts", "ts-register.cjs"));
 
 const A = require(path.join(AKAR, "agent", "python-agent.ts"));
-const T = require(path.join(AKAR, "agent", "tools.cjs"));
+const T = require(path.join(AKAR, "agent", "tools.ts"));
 const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
 const perencana = require(path.join(AKAR, "agent", "perencana-agent.ts"));
 const W = require(path.join(AKAR, "agent", "python-worker.ts"));

@@ -1,5 +1,5 @@
 const path = require("path");
-const { qResolve, QROOT } = require("../agent/tools.cjs");
+const { qResolve, QROOT } = require("../agent/tools.ts");
 
 describe("qResolve", () => {
   // 1. A valid path inside QROOT resolves to an absolute path
@@ -36,10 +36,10 @@ describe("qResolve", () => {
   });
 
   // 6. An editable .cjs path resolves under mustBeEditable=true
-  it("mengembalikan path absolut untuk agent/tools.cjs dengan mustBeEditable=true", () => {
-    const result = qResolve("agent/tools.cjs", true);
+  it("mengembalikan path absolut untuk agent/tools.ts dengan mustBeEditable=true", () => {
+    const result = qResolve("agent/tools.ts", true);
     expect(path.isAbsolute(result)).toBe(true);
-    expect(result).toBe(path.resolve(QROOT, "agent/tools.cjs"));
+    expect(result).toBe(path.resolve(QROOT, "agent/tools.ts"));
   });
 
   // 7. public/app.tsx resolves under mustBeEditable=true. THIS is the case

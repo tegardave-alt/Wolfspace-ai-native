@@ -73,7 +73,7 @@ describe("tak ada path mesin yang ter-hardcode", () => {
     expect(contoh.match(REQUIRE_ABSOLUT)).toBeTruthy();
     // And it must not fire on the ordinary shapes this repo uses everywhere.
     expect('require("./debug.ts")'.match(REQUIRE_ABSOLUT)).toBeNull();
-    expect('require("../agent/tools.cjs")'.match(REQUIRE_ABSOLUT)).toBeNull();
+    expect('require("../agent/tools.ts")'.match(REQUIRE_ABSOLUT)).toBeNull();
     expect(
       'require(path.join(AKAR, "x.cjs"))'.match(REQUIRE_ABSOLUT),
     ).toBeNull();

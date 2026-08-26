@@ -1,5 +1,5 @@
-// Jest tests for bash tool security filter in agent/tools.cjs
-const { runSelfTool } = require("../agent/tools.cjs");
+// Jest tests for bash tool security filter in agent/tools.ts
+const { runSelfTool } = require("../agent/tools.ts");
 
 describe("bash tool security filter", () => {
   it('menolak "rm -rf /"', async () => {

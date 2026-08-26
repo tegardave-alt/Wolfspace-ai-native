@@ -32,7 +32,7 @@ const {
   Policy,
   Broker,
   runInCapabilityZone,
-} = require("../agent/broker/index.cjs");
+} = require("../agent/broker/index.ts");
 
 const zona = (code, opts) =>
   runInCapabilityZone(code, new Broker(new Policy({})), {

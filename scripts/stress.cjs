@@ -22,7 +22,7 @@ const mode = process.argv[2];
 // ── Beban broker ──────────────────────────────────────────────────────────────
 async function stresBroker(konkuren, total) {
   const { Policy, Broker, runInCapabilityZone } = require(
-    path.join(ROOT, "agent/broker/index.cjs"),
+    path.join(ROOT, "agent/broker/index.ts"),
   );
 
   const WS = path.join(os.tmpdir(), "wolfspace-stres");

@@ -1,5 +1,5 @@
-// Jest tests for qGlob, qGrep, qRead from agent/tools.cjs
-const { qGlob, qGrep, qRead } = require("../agent/tools.cjs");
+// Jest tests for qGlob, qGrep, qRead from agent/tools.ts
+const { qGlob, qGrep, qRead } = require("../agent/tools.ts");
 
 describe("qGlob", () => {
   it("*agent* should return a string containing agent-related files", () => {

@@ -229,7 +229,7 @@ describe("Fase 2: bash = proc.raw, on-by-default tapi bisa dikunci", () => {
 describe("terpasang di broker", () => {
   test("request() menolak kapabilitas di luar kosakata SEBELUM policy", async () => {
     const { audit } = muatSegar(dir);
-    const { Policy, Broker } = require("../agent/broker/index.cjs");
+    const { Policy, Broker } = require("../agent/broker/index.ts");
     const b = new Broker(new Policy({ readFile: { roots: ["/x"] } }));
     // Kapabilitas yang tak ada di kosakata genesis mana pun.
     await expect(b.request("kapabilitas.tak.ada", {})).rejects.toThrow(

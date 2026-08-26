@@ -70,7 +70,7 @@ const penjaga = require("./penjaga-agent.ts");
 // captured at load would keep calling into the module instance that was
 // discarded — stale code that only shows up after an edit. This is the same
 // reason appcontainer-jail keeps its state on globalThis.
-const tools = () => require("./tools.cjs");
+const tools = () => require("./tools.ts");
 const cloud_ = () => require("./cloud.ts");
 const { dlog } = require("./debug.ts");
 

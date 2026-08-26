@@ -62,7 +62,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // The model is replaced; runSelfTool is NOT. What it does with the call —
     // confinement, audit — is exactly what happens on the JS path.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
-    const T = require(path.join(AKAR, "agent", "tools.cjs"));
+    const T = require(path.join(AKAR, "agent", "tools.ts"));
     const asli = T.runSelfTool;
     T.runSelfTool = async (name, args, emit, ctx) => {
       dilihatRunSelfTool.push({ name, ctx });
@@ -132,7 +132,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // the same request to the same security scope. A divergence here would be
     // the one difference that must never exist.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
-    const T = require(path.join(AKAR, "agent", "tools.cjs"));
+    const T = require(path.join(AKAR, "agent", "tools.ts"));
     const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const asli = T.runSelfTool;
     const askAsli = cloudMod.askCloudTools;
@@ -179,7 +179,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // asks a human. A Python path that ran it anyway would not be a weaker
     // agent — it would be a removed boundary.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
-    const T = require(path.join(AKAR, "agent", "tools.cjs"));
+    const T = require(path.join(AKAR, "agent", "tools.ts"));
     const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const asli = T.runSelfTool;
     const askAsli = cloudMod.askCloudTools;
@@ -235,7 +235,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // something else. It sends the graph back rather than failing the run:
     // throwing away work that was mostly right helps nobody.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
-    const T = require(path.join(AKAR, "agent", "tools.cjs"));
+    const T = require(path.join(AKAR, "agent", "tools.ts"));
     const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const asli = T.runSelfTool;
     const askAsli = cloudMod.askCloudTools;
@@ -298,7 +298,7 @@ d("orkestrasi Python menjalankan tool SUNGGUHAN", () => {
     // slips past every other check. It punishes stalling, not volume: the
     // threshold is the same one the JS loop uses.
     const A = require(path.join(AKAR, "agent", "python-agent.ts"));
-    const T = require(path.join(AKAR, "agent", "tools.cjs"));
+    const T = require(path.join(AKAR, "agent", "tools.ts"));
     const cloudMod = require(path.join(AKAR, "agent", "cloud.ts"));
     const asli = T.runSelfTool;
     const askAsli = cloudMod.askCloudTools;

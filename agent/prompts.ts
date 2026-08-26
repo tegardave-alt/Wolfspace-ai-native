@@ -2,13 +2,13 @@
 // Extracted from server.cjs to a dedicated module.
 
 // Load prompts from config/prompts.json (single source of truth)
-const fs = require('fs');
-const path = require('path');
-const PROMPTS_CFG_PATH = path.join(__dirname, '..', 'config', 'prompts.json');
+const fs = require("fs");
+const path = require("path");
+const PROMPTS_CFG_PATH = path.join(__dirname, "..", "config", "prompts.json");
 
 function loadPrompts() {
   try {
-    const cfg = JSON.parse(fs.readFileSync(PROMPTS_CFG_PATH, 'utf8'));
+    const cfg = JSON.parse(fs.readFileSync(PROMPTS_CFG_PATH, "utf8"));
     return {
       SYS: cfg.prompts.chat_general.text,
       CODE_SYS: cfg.prompts.chat_coding.text,
@@ -16,15 +16,17 @@ function loadPrompts() {
   } catch (e) {
     // Fallback defaults if config unavailable
     return {
-      SYS: 'You are WOLFSPACE, a friendly assistant. Chat naturally and answer in plain text.',
-      CODE_SYS: 'You are WOLFSPACE, an expert programming assistant. Write clean, correct code.',
+      SYS: "You are WOLFSPACE, a friendly assistant. Chat naturally and answer in plain text.",
+      CODE_SYS:
+        "You are WOLFSPACE, an expert programming assistant. Write clean, correct code.",
     };
   }
 }
 
 // Regular expression to detect a coding‑related request.
 // Only true coding keywords — removed generic words like "buat", "tulis", "hitung" that appear in normal chat
-const CODE_HINT = /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|implement|debug|fix|refactor|optimi[sz]e|parse|regex|api|loop|array|variable|debug|compile|execute|run|jalankan|kode|script|code)\b/i;
+const CODE_HINT =
+  /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|implement|debug|fix|refactor|optimi[sz]e|parse|regex|api|loop|array|variable|debug|compile|execute|run|jalankan|kode|script|code)\b/i;
 
 /**
  * Determine whether the most recent user message is a coding task.
@@ -33,8 +35,8 @@ const CODE_HINT = /\b(code|coding|program|script|function|fungsi|kelas|class|alg
  */
 function isCodingTask(work) {
   for (let i = work.length - 1; i >= 0; i--) {
-    if (work[i].role === 'user') {
-      return CODE_HINT.test(work[i].content || '');
+    if (work[i].role === "user") {
+      return CODE_HINT.test(work[i].content || "");
     }
   }
   return false;
@@ -53,6 +55,5 @@ function pickSystem(work) {
 module.exports = {
   isCodingTask,
   pickSystem,
-  loadPrompts // Exported in case other modules need it directly
+  loadPrompts, // Exported in case other modules need it directly
 };
-

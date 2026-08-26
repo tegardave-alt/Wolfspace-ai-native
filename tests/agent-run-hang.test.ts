@@ -108,7 +108,7 @@ describe("MCP getTools() tak lagi diam tanpa tanda selama sampai 60 detik", () =
 });
 
 describe("guard bash 'tolak edit' — sempit, bukan cocok nama perintah", () => {
-  const { runSelfTool } = require("../agent/tools.cjs");
+  const { runSelfTool } = require("../agent/tools.ts");
   const noop = () => {};
 
   const KASUS_LOLOS = [
@@ -165,7 +165,7 @@ describe("guard bash 'tolak edit' — sempit, bukan cocok nama perintah", () => 
 }, 30000);
 
 describe("timeout bash dibedakan dari pembatalan user", () => {
-  const { runSelfTool } = require("../agent/tools.cjs");
+  const { runSelfTool } = require("../agent/tools.ts");
   const noop = () => {};
 
   test("perintah yang kelamaan: TIMEOUT, bukan DIBATALKAN", async () => {
@@ -213,7 +213,7 @@ describe("cache grep benar-benar mencegah pemindaian ulang, bukan cuma menyimpan
   let runSelfTool;
   beforeEach(() => {
     jest.resetModules();
-    ({ runSelfTool } = require("../agent/tools.cjs"));
+    ({ runSelfTool } = require("../agent/tools.ts"));
   });
 
   const intipBaca = () => jest.spyOn(require("fs").promises, "readFile");

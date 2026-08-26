@@ -1,4 +1,4 @@
-const { runSelfTool } = require("../agent/tools.cjs");
+const { runSelfTool } = require("../agent/tools.ts");
 
 describe("runSelfTool dispatcher", () => {
   it('tool "list" returns {ok:true, output:string} containing ".cjs"', async () => {

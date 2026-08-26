@@ -19,7 +19,7 @@ const {
   SELF_TOOLS,
   qBackup,
   qBackupAsync,
-} = require("./tools.cjs");
+} = require("./tools.ts");
 // Guards shared with the Python orchestrator — ONE implementation, two callers.
 // They used to be defined inline further down; two copies of a security gate is
 // the drift this repo has been bitten by before, and the copy is always the one
@@ -31,10 +31,7 @@ const _perencana = require("./perencana-agent.ts");
 // {ok:true, info:"auto-run disabled"}, which used to be emitted as the `run`
 // field on the done event. Real verification lives in the agent tools.
 const { getOptimized, optimizeInBackground } = require("./sysprompt_opt.ts");
-const {
-  parsePseudoCalls,
-  stripPseudoTags,
-} = require("./pseudo-tag-filter.cjs");
+const { parsePseudoCalls, stripPseudoTags } = require("./pseudo-tag-filter.ts");
 const os = require("os");
 // ── langgraph is loaded WHEN USED, not when this module is read ──
 //
@@ -803,7 +800,7 @@ function makePhaseEmitter(rawEmit) {
   };
 }
 
-// parsePseudoCalls / stripPseudoTags now live in ./pseudo-tag-filter.cjs (shared with
+// parsePseudoCalls / stripPseudoTags now live in ./pseudo-tag-filter.ts (shared with
 // chat.ts so the plain-chat path gets the same protection).
 
 // --- LANGGRAPH STATE DEFINITION ---

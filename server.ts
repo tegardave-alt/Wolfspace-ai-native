@@ -207,7 +207,7 @@ const LOG_MAX = 800;
 const debugSubs = new Set<any>(); // live SSE writers
 
 // Precision debugging via trace system
-const trace = require("./agent/trace.cjs");
+const trace = require("./agent/trace.ts");
 // sandbox-policy is NO LONGER required here: its only user was the Docker sandbox
 // gate for code execution, which has been removed. The module itself is still
 // alive and used by agent/tools/index.ts to gate namespace-based bash

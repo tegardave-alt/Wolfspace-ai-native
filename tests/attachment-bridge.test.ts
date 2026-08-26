@@ -191,7 +191,7 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
   const path = require("path");
   const os = require("os");
   const fsn = require("fs");
-  const { runSelfTool } = require("../agent/tools.cjs");
+  const { runSelfTool } = require("../agent/tools.ts");
 
   const WS = path.join(os.tmpdir(), "wolf-uji-lampiran-worktree");
   const noop = () => {};
@@ -255,7 +255,7 @@ describe("tersambung: agent memakai handle, bukan alamat", () => {
   });
 
   test("kedua tool terdaftar di SELF_TOOLS — kalau tidak, model tak melihatnya", () => {
-    const { SELF_TOOLS } = require("../agent/tools.cjs");
+    const { SELF_TOOLS } = require("../agent/tools.ts");
     const nama = SELF_TOOLS.map((t) => t.function.name);
     expect(nama).toContain("attachment_list");
     expect(nama).toContain("attachment_read");
@@ -313,7 +313,7 @@ describe("tool disk_* benar-benar tak ada — bukan sekadar disembunyikan", () =
   const path = require("path");
   const os = require("os");
   const fsn = require("fs");
-  const { runSelfTool, SELF_TOOLS } = require("../agent/tools.cjs");
+  const { runSelfTool, SELF_TOOLS } = require("../agent/tools.ts");
   const MATI = ["disk_read", "disk_list", "disk_glob", "disk_grep"];
 
   test("tidak terekspos ke model", () => {

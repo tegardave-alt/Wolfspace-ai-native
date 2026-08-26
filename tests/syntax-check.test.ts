@@ -1,4 +1,4 @@
-const { qSyntaxOk } = require("../agent/tools.cjs");
+const { qSyntaxOk } = require("../agent/tools.ts");
 const fs = require("fs");
 const os = require("os");
 const path = require("path");
@@ -26,7 +26,7 @@ function tmpFile(ext, content) {
 
 describe("qSyntaxOk", () => {
   it("file JS valid return { ok: true }", async () => {
-    const res = await qSyntaxOk(path.resolve(__dirname, "../agent/tools.cjs"));
+    const res = await qSyntaxOk(path.resolve(__dirname, "../agent/tools.ts"));
     expect(res.ok).toBe(true);
     expect(res.error).toBeUndefined();
   });

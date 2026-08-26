@@ -31,7 +31,7 @@ const {
   Policy,
   Broker,
   runInCapabilityZone,
-} = require("../agent/broker/index.cjs");
+} = require("../agent/broker/index.ts");
 
 const SRC = fs.readFileSync(
   require.resolve("../agent/broker/zone-process.ts"),

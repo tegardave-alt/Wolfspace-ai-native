@@ -20,7 +20,7 @@ const CALL_RE =
 // stripPseudoTags to remove instead, so it disappears rather than misfires.
 function parsePseudoCalls(text) {
   if (!text || text.indexOf("<function") < 0) return [];
-  const out = [];
+  const out: any[] = [];
   const seen = new Set();
   let m;
   CALL_RE.lastIndex = 0;

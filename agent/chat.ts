@@ -3,19 +3,19 @@
 import * as http from "http";
 import * as https from "https";
 const { dlog } = require("./debug.ts");
-const { pickSystem } = require("./prompts.cjs");
+const { pickSystem } = require("./prompts.ts");
 // runners.cjs was REMOVED along with runByLang/detectLang/extractCode: all
 // three were imported here but NEVER called — each appeared exactly once, on
 // that import line. Code execution goes through the agent tools (sandbox_run /
 // capability_exec), not through a language dispatcher.
-const { runSelfTool, SELF_TOOLS } = require("./tools.cjs");
+const { runSelfTool, SELF_TOOLS } = require("./tools.ts");
 const {
   askCloudStream,
   fillCloudKey,
   loadCloudKeys,
   CLOUD_KEYS,
 } = require("./cloud.ts");
-const { createPseudoTagStreamFilter } = require("./pseudo-tag-filter.cjs");
+const { createPseudoTagStreamFilter } = require("./pseudo-tag-filter.ts");
 
 /**
  * Stream a chat completion to the client.

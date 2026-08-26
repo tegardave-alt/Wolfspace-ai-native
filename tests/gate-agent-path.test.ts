@@ -3,12 +3,12 @@
 // KENAPA BERKAS INI ADA, TERPISAH DARI code-quality.test.js.
 // Versi pertama gerbang ini dipasang di agent/safe-edit.ts, diuji lewat
 // safeWriteFile langsung, lulus, dan saya nyatakan bekerja. Padahal
-// self_agent.ts memakai ./tools.cjs -> agent/tools/index.ts, yang punya
+// self_agent.ts memakai ./tools.ts -> agent/tools/index.ts, yang punya
 // implementasi edit/write SENDIRI dan tak pernah menyentuh safeWriteFile.
 // Gerbangnya ada di jalur mati; agent tak pernah tunduk padanya sedetik pun.
 // Tes unit tak bisa menangkap itu — hanya tes yang memakai jalur nyata bisa.
 //
-// Jadi setiap kasus di sini memanggil runSelfTool dari agent/tools.cjs, persis
+// Jadi setiap kasus di sini memanggil runSelfTool dari agent/tools.ts, persis
 // seperti self_agent.ts, dan memeriksa DISK sesudahnya — bukan cuma nilai balik.
 
 // Zona kapabilitas di berkas ini dipaksa ke transport fork.
@@ -27,7 +27,7 @@ process.env.WOLFSPACE_ZONE_WSL = "0";
 
 const fs = require("fs");
 const path = require("path");
-const { runSelfTool } = require("../agent/tools.cjs");
+const { runSelfTool } = require("../agent/tools.ts");
 
 const ROOT = path.join(__dirname, "..");
 const REL = "public/_gate_test_probe.jsx";

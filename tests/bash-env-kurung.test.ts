@@ -22,7 +22,7 @@
 
 const fs = require("fs");
 const path = require("path");
-const { runSelfTool } = require("../agent/tools.cjs");
+const { runSelfTool } = require("../agent/tools.ts");
 
 const noop = () => {};
 const AKAR = process.env.LOCALAPPDATA || require("os").tmpdir();
