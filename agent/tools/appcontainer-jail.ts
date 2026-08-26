@@ -136,9 +136,14 @@ function _tersediaMurah() {
     return {
       siap: false,
       alasan:
+        // Points at the npm script rather than build.cmd, because that is the
+        // one every other path uses: `npm run app`, `npm run dist`, ci.yml and
+        // the release workflow all call build:aclaunch. build.cmd still works,
+        // but sending someone to the route nothing else takes is how a message
+        // ends up describing a build that no longer exists.
         "AcLaunch.exe has not been compiled (" +
         EXE +
-        ") — jalankan scripts/appcontainer/build.cmd",
+        ") — jalankan `npm run build:aclaunch`",
     };
   return null; // perlu uji nyata
 }
