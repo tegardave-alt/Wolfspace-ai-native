@@ -138,11 +138,13 @@
   "jest": {
     "modulePathIgnorePatterns": [
       "<rootDir>/_agent_backups/",
-      "<rootDir>/artifacts/"
+      "<rootDir>/artifacts/",
+      "<rootDir>/.wolfspace/"
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "<rootDir>/_agent_backups/"
+      "<rootDir>/_agent_backups/",
+      "<rootDir>/.wolfspace/"
     ],
     "setupFiles": [
       "<rootDir>/tests/setup-jest.cjs"

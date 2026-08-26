@@ -2,26 +2,26 @@ const path = require("path");
 const { qResolve, QROOT } = require("../agent/tools.cjs");
 
 describe("qResolve", () => {
-  // 1. Path valid di dalam QROOT harus return path absolut
+  // 1. A valid path inside QROOT resolves to an absolute path
   it("mengembalikan path absolut untuk file valid di dalam QROOT (config.json)", () => {
     const result = qResolve("config.json", false);
     expect(path.isAbsolute(result)).toBe(true);
     expect(result).toBe(path.resolve(QROOT, "config.json"));
   });
 
-  // 2. Path di luar QROOT harus throw Error "path di luar root"
+  // 2. A path outside QROOT is refused as outside the root
   it('melempar Error "path di luar root" untuk path di luar QROOT', () => {
     expect(() => qResolve("../../etc/passwd", false)).toThrow(
       /path di luar root/,
     );
   });
 
-  // 3. Path terlarang seperti "cloud-keys.json" harus throw Error "path terlarang"
+  // 3. A forbidden path such as "cloud-keys.json" is refused
   it('melempar Error "path terlarang" untuk cloud-keys.json', () => {
     expect(() => qResolve("cloud-keys.json", false)).toThrow(/path terlarang/);
   });
 
-  // 4. Path terlarang seperti "node_modules/foo.cjs" harus throw Error "path terlarang"
+  // 4. A forbidden path such as "node_modules/foo.cjs" is refused
   it('melempar Error "path terlarang" untuk node_modules/foo.cjs', () => {
     expect(() => qResolve("node_modules/foo.cjs", false)).toThrow(
       /path terlarang/,
@@ -35,21 +35,24 @@ describe("qResolve", () => {
     );
   });
 
-  // 6. Path .cjs yang editable (agent/tools.cjs) dengan mustBeEditable=true harus return path absolut
+  // 6. An editable .cjs path resolves under mustBeEditable=true
   it("mengembalikan path absolut untuk agent/tools.cjs dengan mustBeEditable=true", () => {
     const result = qResolve("agent/tools.cjs", true);
     expect(path.isAbsolute(result)).toBe(true);
     expect(result).toBe(path.resolve(QROOT, "agent/tools.cjs"));
   });
 
-  // 7. Path public/app.tsx dengan mustBeEditable=true harus return path absolut
+  // 7. public/app.tsx resolves under mustBeEditable=true. THIS is the case
+  //    that would have caught Q_ALLOWED losing .ts/.tsx in the migration --
+  //    see agent/tools/file-tools.ts. It never ran, because the file was
+  //    named .test.cjs and jest's testMatch only covers [tj]s.
   it("mengembalikan path absolut untuk public/app.tsx dengan mustBeEditable=true", () => {
     const result = qResolve("public/app.tsx", true);
     expect(path.isAbsolute(result)).toBe(true);
     expect(result).toBe(path.resolve(QROOT, "public/app.tsx"));
   });
 
-  // 8. Path dengan backticks/quotes di awal/akhir harus di-trim dan resolve dengan benar
+  // 8. Leading/trailing backticks and quotes are trimmed before resolving
   it("mem-trim backticks/quotes di awal/akhir dan resolve dengan benar", () => {
     const result = qResolve("`config.json`", false);
     expect(path.isAbsolute(result)).toBe(true);

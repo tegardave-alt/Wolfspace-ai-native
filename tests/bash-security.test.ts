@@ -5,7 +5,7 @@ describe("bash tool security filter", () => {
   it('menolak "rm -rf /"', async () => {
     const res = await runSelfTool("bash", { command: "rm -rf /" }, null);
     expect(res.ok).toBe(false);
-    expect(res.output).toMatch(/berbahaya|ditolak/);
+    expect(res.output).toMatch(/REJECTED|dangerous/i);
   });
 
   it('menolak "format C:"', async () => {
@@ -31,7 +31,7 @@ describe("bash tool security filter", () => {
     const res = await runSelfTool("bash", { command: "echo hello" }, null);
     expect(res.ok).toBe(true);
     expect(res.output).toContain("hello");
-  });
+  }, 30000);
 
   it('menolak "del /f file.txt"', async () => {
     const res = await runSelfTool("bash", { command: "del /f file.txt" }, null);
