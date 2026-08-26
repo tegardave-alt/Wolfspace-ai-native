@@ -80,14 +80,14 @@ describe("pelacakan PID MCP per pemilik", () => {
     const bertuan = bonekaHidup();
     boneka.push(yatim, bertuan);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       tulisBerkasPemilik(999999, [yatim.pid]); // pemilik tak ada -> yatim
       tulisBerkasPemilik(process.pid, [bertuan.pid]); // pemilik = tes ini
 
       expect(alive(yatim.pid)).toBe(true);
       expect(alive(bertuan.pid)).toBe(true);
 
-      mcp._killOrphans();
+      await mcp._killOrphans();
 
       setTimeout(() => {
         expect(alive(yatim.pid)).toBe(false);
@@ -114,14 +114,14 @@ describe("pelacakan PID MCP per pemilik", () => {
     const asing = bonekaHidup(); // proses nyata, hidup, bukan milik kita
     boneka.push(asing);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       // Catatan seolah dibuat KEMARIN oleh pemilik yang sudah mati: bentuk
       // persis yang tertinggal sesudah WOLFSPACE mati mendadak.
       tulisBerkasPemilik(999999, [
         { pid: asing.pid, ts: Date.now() - 24 * 3600 * 1000 },
       ]);
 
-      mcp._killOrphans();
+      await mcp._killOrphans();
 
       setTimeout(() => {
         expect(alive(asing.pid)).toBe(true); // INTI: proses asing selamat
@@ -134,11 +134,11 @@ describe("pelacakan PID MCP per pemilik", () => {
     const yatim = bonekaHidup();
     boneka.push(yatim);
 
-    setTimeout(() => {
+    setTimeout(async () => {
       // ts sekarang: waktu-mulai proses cocok, jadi ia memang milik kita.
       tulisBerkasPemilik(999999, [{ pid: yatim.pid, ts: Date.now() }]);
 
-      mcp._killOrphans();
+      await mcp._killOrphans();
 
       setTimeout(() => {
         expect(alive(yatim.pid)).toBe(false);
@@ -209,11 +209,11 @@ describe("pelacakan PID MCP per pemilik", () => {
     });
   }, 30000);
 
-  test("berkas format LAMA dimigrasi lalu dibuang", () => {
+  test("berkas format LAMA dimigrasi lalu dibuang", async () => {
     // Tanpa jejak pemilik, isinya tak bisa diklaim siapa pun -> yatim.
     fs.mkdirSync(path.dirname(mcp.LEGACY_PID_FILE), { recursive: true });
     fs.writeFileSync(mcp.LEGACY_PID_FILE, JSON.stringify([999997, 999998]));
-    mcp._killOrphans();
+    await mcp._killOrphans();
     expect(fs.existsSync(mcp.LEGACY_PID_FILE)).toBe(false);
   });
 

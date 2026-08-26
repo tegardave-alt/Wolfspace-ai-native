@@ -258,8 +258,15 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
   });
 
   test("connectServer idempoten — yang sudah siap tak di-spawn ulang", () => {
+    // Diiris sampai AKHIR fungsi, sama seperti tes di bawah, dan karena alasan
+    // yang sama. Jendela 900 karakter yang dipakai sebelumnya membuat tes ini
+    // merah begitu sebuah komentar di dalam connectServer bertambah panjang —
+    // sifat yang dijaga tak berubah sedikit pun, hanya jarak ke sana yang
+    // bertambah. Pelajaran itu sudah dicatat di tes berikutnya; yang ini
+    // terlewat.
     const i = SRC.indexOf("async connectServer");
-    const blok = SRC.slice(i, i + 900);
+    const j = SRC.indexOf("\n  }", i);
+    const blok = SRC.slice(i, j > i ? j : i + 2400);
     expect(blok).toMatch(
       /if \(ada && ada\.ready\) return \{ ok: true, already: true \}/,
     );
