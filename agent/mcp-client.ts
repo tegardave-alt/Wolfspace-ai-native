@@ -173,6 +173,52 @@ function _bukanMilikKita(entri, mulai) {
   return t > entri.ts + TOLERANSI_MULAI_MS;
 }
 
+/**
+ * Resolves a bare command against PATH and PATHEXT, the way CreateProcess does.
+ *
+ * WHY IT EXISTS. _startServer used to pass `shell: true` on Windows for EVERY
+ * command, and Node warns about that for good reason (DEP0190): with a shell,
+ * arguments are not escaped, only concatenated into one command line. MCP
+ * commands and their arguments come from config/mcp.json and from plugin
+ * manifests, so a `&` or `|` in an argument is a second command, not a string.
+ *
+ * The shell was not gratuitous: `npx` on Windows is `npx.cmd`, and Node refuses
+ * to spawn .cmd/.bat without one. So the fix is not to drop the shell — it is to
+ * stop reaching for it when the target is a real executable.
+ *
+ * Returns the resolved path, or null when nothing matches. Null is not a
+ * failure: the caller then keeps the old behaviour rather than turning a working
+ * configuration into a broken one.
+ */
+function _cariExe(cmd: string, env: any): string | null {
+  if (!cmd) return null;
+  if (cmd.includes("/") || cmd.includes("\\")) {
+    try {
+      return fs.statSync(cmd).isFile() ? cmd : null;
+    } catch (_) {
+      return null;
+    }
+  }
+  const exts =
+    process.platform === "win32"
+      ? String(env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+          .split(";")
+          .filter(Boolean)
+      : [""];
+  const dirs = String(env.PATH || env.Path || "")
+    .split(path.delimiter)
+    .filter(Boolean);
+  for (const d of dirs) {
+    for (const e of exts) {
+      const p = path.join(d, cmd + e);
+      try {
+        if (fs.statSync(p).isFile()) return p;
+      } catch (_) {}
+    }
+  }
+  return null;
+}
+
 async function _killPids(entries, asal) {
   const hidup = entries.filter((e) => _alive(e.pid));
   if (!hidup.length) return;
@@ -565,9 +611,30 @@ class MCPClient {
       // never there. It also made the `cwd` written by plugins.ts konfigMcp()
       // useless: relative args in a plugin manifest resolved from the parent
       // process's cwd rather than from the repo root.
-      const proc = spawn(cmd, conf.args || [], {
+      // SHELL ONLY WHEN THE TARGET NEEDS ONE.
+      //
+      // This was `shell: process.platform === "win32"` — unconditionally, for
+      // every command. Node flags it as DEP0190 because with a shell the
+      // arguments are concatenated into one command line rather than escaped, so
+      // a `&` or `|` inside an argument stops being text and becomes a second
+      // command. Those arguments come from config/mcp.json and from plugin
+      // manifests, which is close enough to input to be worth closing.
+      //
+      // Dropping the shell outright is not an option: `npx` on Windows is
+      // npx.cmd, and Node refuses to spawn .cmd/.bat without one. So the command
+      // is resolved first — a real .exe is spawned directly with the arguments
+      // passed as a vector, and only .cmd/.bat still go through cmd.exe.
+      //
+      // An unresolvable command keeps the OLD behaviour rather than failing. The
+      // point is to shrink the surface, not to break a configuration that works
+      // today for a resolver that guessed wrong.
+      const tersolusi = _cariExe(cmd, env);
+      const perluShell =
+        process.platform === "win32" &&
+        (!tersolusi || /\.(cmd|bat)$/i.test(tersolusi));
+      const proc = spawn(perluShell ? cmd : tersolusi || cmd, conf.args || [], {
         env,
-        shell: process.platform === "win32",
+        shell: perluShell,
         cwd: conf.cwd || undefined,
       });
 
@@ -1073,6 +1140,11 @@ if (Object.getPrototypeOf(mcpClient) !== MCPClient.prototype) {
 // init(), which spawns real MCP servers through `npx` — slow, network-bound,
 // and it obscures the very thing under test: the kill/keep decision.
 mcpClient._killOrphans = _killOrphans;
+
+// Test hook, same reason. _cariExe decides whether a spawn goes through a shell,
+// and that decision is what closes DEP0190 — reaching it only through
+// _startServer would mean starting a real server to check a lookup.
+mcpClient._cariExe = _cariExe;
 mcpClient._recordPid = _recordPid;
 mcpClient._forgetPid = _forgetPid;
 mcpClient._readOwn = _readOwn;
