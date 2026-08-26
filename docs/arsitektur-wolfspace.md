@@ -13,10 +13,10 @@ UI (public/)  ⇄  Electron IPC  ATAU  HTTP :8090
                          ⇄  agent/* + core/* + scripts/ww.ts
 ```
 
-- **Jalur produk utama:** `npm run app` → desktop Electron (backend **in-process**, UI lewat `app://`).
-- **Jalur sekunder:** `npm start` → server HTTP di `127.0.0.1:8090`.
+- **Satu jalur:** `npm run app` → desktop Electron (backend **in-process**, UI lewat `app://`, **nol port terbuka**).
+- Mode HTTP masih ada di `server.cjs` tetapi tidak lagi punya skrip npm; jalankan `node server.cjs` bila memang dibutuhkan.
 
-Satu **mesin logika** (`server.ts`, dicapai lewat peluncur `server.cjs` dan `core.js`), dua **cara menyalakan kabel** (IPC vs HTTP).
+Satu **mesin logika** (`server.ts`, dicapai lewat peluncur `server.cjs` dan `core.js`), dua **cara menyalakan kabel** (IPC vs HTTP) — dan hanya yang pertama yang dipakai produk.
 
 ---
 
@@ -42,16 +42,14 @@ Satu **mesin logika** (`server.ts`, dicapai lewat peluncur `server.cjs` dan `cor
 
 ### 2.1 Saklar di `package.json`
 
-| Saklar            | Starter                    | Yang ikut hidup                    |
-| ----------------- | -------------------------- | ---------------------------------- |
-| `npm run app`     | `node scripts/app.cjs`     | Electron + backend in-process      |
-| `npm run app:wsl` | `scripts/wsl-app.cjs`      | Backend WSL + URL eksternal        |
-| `npm start`       | `node server.cjs`          | HTTP listen (default `:8090`)      |
-| `npm run dev`     | nodemon → `server.cjs`     | sama + auto-reload                 |
-| `npm run dist`    | electron-builder           | paket; `main` → `electron/main.js` |
-| `npm test`        | Jest                       | `tests/*`                          |
-| `npm run live`    | browser-sync proxy `:8090` | hot UI statis                      |
-| `npm run profil`  | `scripts/profil-beku.cjs`  | attach inspect                     |
+| Saklar            | Starter                   | Yang ikut hidup                    |
+| ----------------- | ------------------------- | ---------------------------------- |
+| `npm run app`     | `node scripts/app.cjs`    | Electron + backend in-process      |
+| `npm run app:wsl` | `scripts/wsl-app.cjs`     | Backend WSL + URL eksternal        |
+| `npm run dist`    | electron-builder          | paket; `main` → `electron/main.js` |
+| `npm test`        | Jest                      | `tests/*`                          |
+| `node server.cjs` | (tanpa skrip npm)         | HTTP listen `:8090`, bila perlu    |
+| `npm run profil`  | `scripts/profil-beku.cjs` | attach inspect                     |
 
 ### 2.2 Rantai desktop (produk)
 
@@ -93,7 +91,7 @@ disediakan CommonJS di pembagian bahasa repo ini.
 ### 2.3 Rantai HTTP murni
 
 ```
-saklar:  npm start  (node server.cjs, require.main === module)
+saklar:  node server.cjs  (require.main === module; tanpa skrip npm)
    │
    ▼
 config.json → HOST/PORT
@@ -489,7 +487,7 @@ GET /debug/tersedia → debugger apa yang terpasang
 ┌──────────────────────────────────────────────────────────────────────────┐
 │ SAKLAR NYALA                                                              │
 │   npm run app → scripts/app.cjs → electron/main.js                        │
-│   npm start   → server.cjs listen :8090                                   │
+│   node server.cjs → listen :8090 (opsional, tanpa skrip npm)              │
 └───────────────────────────────┬──────────────────────────────────────────┘
                                 │
         ┌───────────────────────┴────────────────────────┐
@@ -630,7 +628,7 @@ Hal-hal yang **ada di mesin** tapi perilaku/kabelnya perlu dibaca hati-hati:
 ## 13. Ringkas satu halaman
 
 ```
-SAKLAR        npm run app | npm start | klik UI
+SAKLAR        npm run app | node server.cjs | klik UI
    ↓
 STARTER       app.cjs/main.js | server.cjs | App()/Composer
    ↓

@@ -14,7 +14,6 @@ langsung dari repo, bukan dari ingatan.
 
 | Perintah          | Yang terjadi                                                    |
 | ----------------- | --------------------------------------------------------------- |
-| `npm start`       | `server.cjs` sebagai proses utama → HTTP di `127.0.0.1:8090`    |
 | `npm run app`     | Electron. UI lewat `app://`, backend **dalam proses yang sama** |
 | `npm run app:wsl` | Sama, tapi seluruh backend dijalankan di dalam WSL              |
 | `npm test`        | Jest, 18 suite                                                  |
@@ -24,11 +23,21 @@ langsung dari repo, bukan dari ingatan.
 > PowerShell memilih `npm.ps1` sebelum `npm.cmd`, dan kebijakan bawaan
 > (`Restricted`) memblokir `.ps1`.
 
-**Dua mode, dua jalur berbeda.** `npm start` benar-benar membuka port.
-`npm run app` **tidak** — `core.js` hanya me-`require` `server.cjs`, dan
-`server.cjs` hanya memanggil `listen()` bila ia modul utama. Di Electron,
-renderer bicara lewat IPC, bukan HTTP. Ini sering menyesatkan saat menelusuri
+**Satu jalur, dan ia tidak membuka port.** `npm run app` menjalankan backend
+di dalam proses Electron: `core.js` me-`require` `server.cjs`, dan `server.cjs`
+hanya memanggil `listen()` bila ia modul utama — yang di sini tidak terjadi.
+Renderer bicara lewat IPC, bukan HTTP. Ini sering menyesatkan saat menelusuri
 masalah: `curl` ke 8090 tak menjawab apa pun padahal aplikasinya jalan normal.
+
+Mode HTTP masih ADA tetapi tidak lagi punya skrip npm. `npm start`, `npm run
+dev`, dan `npm run live` dihapus karena lima cara menjalankan satu aplikasi
+adalah beban, bukan pilihan. Kalau memang perlu server HTTP-nya — untuk
+`playwright.config.cjs`, atau untuk memeriksa satu rute dengan `curl` —
+jalankan langsung:
+
+```
+node server.cjs        # HTTP di 127.0.0.1:8090
+```
 
 ---
 
