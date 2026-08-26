@@ -27,6 +27,28 @@
   // still find it.
   "search.exclude": {},
 
+  // NOT WATCHED. The file watcher is why a build artefact cannot be deleted
+  // while VS Code is open: it holds a handle on everything it watches, and
+  // dist-app/ is a 178 MB app.asar. Windows Restart Manager named the holder
+  // outright — "Visual Studio Code" — after a delete, a force-delete and even a
+  // rename were all refused.
+  //
+  // None of these are sources and none are edited by hand, so watching them buys
+  // nothing and costs handles, CPU and locks. .wolfspace/ matters especially:
+  // the snapshot engine writes a directory there before EVERY agent edit, and
+  // there were 51 of them.
+  //
+  // node_modules is already excluded by VS Code's defaults; it is repeated here
+  // because a default is a thing that can change, and this one is load-bearing.
+  "files.watcherExclude": {
+    "**/dist-app/**": true,
+    "**/node_modules/**": true,
+    "**/.wolfspace/**": true,
+    "**/_agent_backups/**": true,
+    "**/artifacts/**": true,
+    "**/.git/objects/**": true
+  },
+
   // Nothing here is a source file, so an accidental save must not reformat one
   // and make the staleness check disagree with the builder.
   "files.readonlyInclude": {
