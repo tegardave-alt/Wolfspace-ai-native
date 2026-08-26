@@ -233,6 +233,38 @@ function _loadPw() {
   });
   return _pw;
 }
+/**
+ * Closes the shared browser NOW instead of waiting out BROWSER_IDLE_MS.
+ *
+ * WHY THIS EXISTS. The idle timer is unref'd, so it never holds the event loop
+ * — but the Chromium process it eventually closes DOES, for the full three
+ * minutes. Anything that finishes sooner and expects to exit is left waiting on
+ * a browser nobody is using.
+ *
+ * That was not theoretical. Jest reported "A worker process has failed to exit
+ * gracefully" on every full run of this repo's suite. `--detectOpenHandles` was
+ * already enabled in `npm test` and never named it, because that flag forces
+ * --runInBand and therefore removes the very workers being diagnosed. Bisecting
+ * 99 suites narrowed it to tests/web-extract, which is clean on its own and only
+ * leaks alongside others — the shape of a module-level singleton, not of a test.
+ *
+ * The module owns the process, so the module owns the way to release it.
+ */
+async function tutupBrowser() {
+  if (_idleTimer) {
+    clearTimeout(_idleTimer);
+    _idleTimer = null;
+  }
+  const b = _browser;
+  _browser = null;
+  _browserPromise = null;
+  if (b) {
+    try {
+      await b.close();
+    } catch (_) {}
+  }
+}
+
 function _touchIdle() {
   if (_idleTimer) clearTimeout(_idleTimer);
   _idleTimer = setTimeout(() => {
@@ -709,4 +741,11 @@ async function webExtract(opts) {
   });
 }
 
-module.exports = { webSearch, webFetch, webExtract, urlAman, MODE_EKSTRAK };
+module.exports = {
+  webSearch,
+  webFetch,
+  webExtract,
+  urlAman,
+  MODE_EKSTRAK,
+  tutupBrowser,
+};

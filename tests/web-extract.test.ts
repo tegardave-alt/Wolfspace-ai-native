@@ -37,6 +37,15 @@ beforeAll(async () => {
 });
 afterAll(async () => {
   if (srv) await new Promise((r) => srv.close(r));
+  // The browser tests below launch a real headless Chromium, and agent/web.ts
+  // keeps it as a module singleton for BROWSER_IDLE_MS (3 minutes). Its idle
+  // timer is unref'd, so it never holds the loop — the Chromium PROCESS does.
+  // Jest waits a moment, gives up, and prints "a worker process has failed to
+  // exit gracefully" for the whole run. Closing it here is the teardown that was
+  // missing; the module owns the process, so it exports the way to release it.
+  try {
+    await require("../agent/web.ts").tutupBrowser();
+  } catch (_) {}
 });
 
 const url = () => `http://127.0.0.1:${PORT}/`;
