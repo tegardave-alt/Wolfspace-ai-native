@@ -602,6 +602,29 @@ class MCPClient {
           dlog("mcp", "error", `Failed to initialise MCP server ${name}`, {
             err: err.message,
           });
+          // The process is stopped HERE, not left for the next attempt.
+          //
+          // Without this the child survived a failed handshake. It was cleaned up
+          // eventually — connectServer() calls stopServer() when it finds a
+          // half-started record — but only when the user pressed Connect again,
+          // and in the meantime the process kept running.
+          //
+          // That gap is not harmless, because of what these processes are: the
+          // handshake timeout is 60 s and the reason it has to be that wide is
+          // `npx` instances fighting over the npm cache during cold start (see
+          // HANDSHAKE_TIMEOUT_MS — a 25 s attempt produced 24/0/24/24 tools out
+          // of 50). A leaked `npx` from a FAILED attempt is one more contender in
+          // exactly that fight, so each failure made the next one likelier. That
+          // is the shape of the symptom users report: connecting works, then
+          // "sometimes" it does not, and the sometimes gets worse over a session.
+          //
+          // stopServer() rather than proc.kill() so this path drops the PID
+          // record and the tools cache the same way every other failure path
+          // does — a PID left recorded after death is a candidate victim of
+          // number reuse, which _bukanMilikKita() exists to prevent.
+          try {
+            this.stopServer(name);
+          } catch (_) {}
           reject(err);
         });
     });
