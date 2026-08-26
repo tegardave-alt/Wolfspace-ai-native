@@ -37,6 +37,10 @@ type Laporan = {
   sampel: number;
   jendelaMs: number;
   vonis: "normal" | "naik" | "waspada" | "over";
+  /** What the window was spent on, largest first. Empty when nothing crossed
+   *  CATAT_MIN_MS — which is the normal case and is itself informative: the
+   *  block came from somewhere that is not instrumented. */
+  penyumbang: { label: string; ms: number; n: number }[];
 };
 
 let _h: any = null;
@@ -61,6 +65,13 @@ export function mulai(resolusiMs = 10): boolean {
   _h = monitorEventLoopDelay({ resolution: resolusiMs });
   _h.enable();
   _sejak = Date.now();
+  // The ledger starts WITH the histogram, or the two describe different spans.
+  // The ledger lives on globalThis and is written to from the moment the
+  // process starts — including the .ts transpiles that happen while modules are
+  // still loading. Without this line the first report paired a 34 ms block with
+  // "transpile-ts 154 ms", which is not just noisy: the two numbers cannot both
+  // be true of the same window, and a reader would rightly stop trusting either.
+  buku().clear();
   return true;
 }
 
@@ -72,6 +83,77 @@ export function henti(): void {
 
 export function berjalan(): boolean {
   return !!_h;
+}
+
+/* ── Attribution: what the block was SPENT ON ──────────────────────────────
+ *
+ * WHY THIS EXISTS. The watchdog above answers "when" and "how big" and stops
+ * there. That gap is not theoretical: a real 1214 ms block was observed, traced
+ * by hand through the logs to a burst of five failed model requests, and the
+ * fallback handler then turned out to be pure object lookups with no
+ * synchronous work in it at all. So the correlation was wrong and the cause is
+ * still unknown. A number nobody can attribute cannot be acted on.
+ *
+ * THE LEDGER LIVES ON globalThis, and that is not laziness. scripts/
+ * ts-register.cjs installs the .ts require hook, so it runs BEFORE any .ts
+ * module can be imported — it cannot import this one. Several other writers are
+ * .cjs for the same reason. A well-known global lets any of them contribute
+ * without an import and without caring about load order, which this repo has
+ * been bitten by before.
+ *
+ * ONLY REAL WORK IS RECORDED. Anything under CATAT_MIN_MS is dropped: an
+ * instrument that logs every 0.2 ms call would cost more than the thing it
+ * measures, and would bury the entry that matters.
+ */
+const KUNCI_BUKU = "__wolfspaceBukuBlok";
+
+type Entri = { ms: number; n: number };
+
+/** Smallest single call worth attributing. Below this it is noise. */
+export const CATAT_MIN_MS = 5;
+
+function buku(): Map<string, Entri> {
+  const g = globalThis as any;
+  if (!g[KUNCI_BUKU]) g[KUNCI_BUKU] = new Map<string, Entri>();
+  return g[KUNCI_BUKU];
+}
+
+/** Records that `label` held the thread for `ms`. Safe to call from anywhere,
+ *  including before this module is loadable. */
+export function catat(label: string, ms: number): void {
+  if (!(ms >= CATAT_MIN_MS)) return;
+  const b = buku();
+  const e = b.get(label) || { ms: 0, n: 0 };
+  e.ms += ms;
+  e.n++;
+  b.set(label, e);
+}
+
+/**
+ * Times one synchronous call and attributes it.
+ *
+ * The result is returned untouched and a throw still propagates — an
+ * instrument that changes behaviour is worse than no instrument. The timing is
+ * taken in `finally`, so work that ends in an exception is still attributed
+ * rather than silently vanishing from the ledger.
+ */
+export function ukur<T>(label: string, fn: () => T): T {
+  const t0 = process.hrtime.bigint();
+  try {
+    return fn();
+  } finally {
+    catat(label, Number(process.hrtime.bigint() - t0) / 1e6);
+  }
+}
+
+/** The window's contributors, largest first. */
+export function penyumbang(
+  batas = 3,
+): { label: string; ms: number; n: number }[] {
+  return [...buku().entries()]
+    .map(([label, e]) => ({ label, ms: Math.round(e.ms), n: e.n }))
+    .sort((a, b) => b.ms - a.ms)
+    .slice(0, batas);
 }
 
 /**
@@ -90,10 +172,14 @@ export function ambil(reset = false): Laporan | null {
     sampel: _h.count || 0,
     jendelaMs: Date.now() - _sejak,
     vonis: anggaran.vonisBlokir(ms(_h.max)),
+    penyumbang: penyumbang(),
   };
   if (reset) {
     _h.reset();
     _sejak = Date.now();
+    // The ledger is cleared WITH the histogram, or a report would pair this
+    // window's block with contributors accumulated since the process started.
+    buku().clear();
   }
   return lap;
 }
@@ -126,6 +212,14 @@ export function pasangLaporan(
 
 /** One-line form for logs: the numbers plus the verdict they earn. */
 export function ringkas(l: Laporan): string {
+  // "(tak terlacak)" is a real answer, not a missing one: it says the block came
+  // from somewhere with no instrument on it, which is the first thing worth
+  // knowing when deciding where to add one.
+  const jejak = l.penyumbang.length
+    ? l.penyumbang
+        .map((p) => p.label + " " + p.ms + "ms" + (p.n > 1 ? " x" + p.n : ""))
+        .join(", ")
+    : "(tak terlacak)";
   return (
     "blokir maks " +
     l.maksMs +
@@ -137,6 +231,7 @@ export function ringkas(l: Laporan): string {
     Math.round(l.jendelaMs / 1000) +
     " dtk, anggaran " +
     anggaran.AMBANG_HANG_MS +
-    " ms"
+    " ms — " +
+    jejak
   );
 }

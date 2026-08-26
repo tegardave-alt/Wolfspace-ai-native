@@ -8,12 +8,9 @@
     "WOLFSPACE": "server.cjs"
   },
   "scripts": {
-    "start": "node server.cjs",
-    "dev": "nodemon server.cjs",
     "app": "node scripts/build-aclaunch.cjs && node scripts/build-preload.cjs && node scripts/build-main.cjs && node scripts/build-app.cjs && node scripts/app.cjs",
     "app:wsl": "node scripts/wsl-app.cjs",
     "dist": "node scripts/build-aclaunch.cjs && node scripts/build-preload.cjs && node scripts/build-main.cjs && node scripts/build-app.cjs && electron-builder --win",
-    "live": "browser-sync start --proxy localhost:8090 --files \"public/**/*\" --no-open",
     "test": "jest --verbose --detectOpenHandles --passWithNoTests",
     "stress": "node scripts/stress.cjs",
     "test:watch": "jest --watch --verbose",
@@ -48,13 +45,11 @@
     "@dagrejs/dagre": "^3.0.0",
     "@playwright/test": "^1.61.1",
     "@xyflow/react": "^12.11.2",
-    "browser-sync": "^3.0.4",
     "electron": "^33.4.11",
     "electron-builder": "25.1.8",
     "husky": "^9.1.7",
     "jest": "^29.7.0",
     "lint-staged": "^17.0.8",
-    "nodemon": "^3.1.14",
     "prettier": "^3.8.4"
   },
   "trustedDependencies": [
@@ -138,11 +133,13 @@
   "jest": {
     "modulePathIgnorePatterns": [
       "<rootDir>/_agent_backups/",
-      "<rootDir>/artifacts/"
+      "<rootDir>/artifacts/",
+      "<rootDir>/.wolfspace/"
     ],
     "testPathIgnorePatterns": [
       "/node_modules/",
-      "<rootDir>/_agent_backups/"
+      "<rootDir>/_agent_backups/",
+      "<rootDir>/.wolfspace/"
     ],
     "setupFiles": [
       "<rootDir>/tests/setup-jest.cjs"

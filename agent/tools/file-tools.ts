@@ -7,8 +7,28 @@ const execP = util.promisify(exec);
 
 // ── WOLFSPACE source root + guardrails ──
 const QROOT = path.resolve(__dirname, "..", "..");
+// What the agent is allowed to WRITE. Reading is governed separately.
+//
+// `ts` and `tsx` were MISSING here until this line was fixed, and the effect was
+// not small: after the TypeScript migration moved nearly the whole codebase to
+// .ts/.tsx, every one of those paths was refused as "path is not writable" —
+// agent/anggaran.ts, public/app.tsx, public/app/Config.tsx, all of it. The agent
+// could still edit .cjs and .jsx, which by then was almost nothing. So it had
+// quietly lost the ability to edit its own source.
+//
+// It came from commit 1ff40be, the phase that moved this file to TypeScript and
+// carried the regex across unchanged. The extension list was the one thing in it
+// that the migration invalidated.
+//
+// tests/qresolve.test.ts asserts exactly this and WOULD have caught it — but it
+// was named .test.cjs, and jest's testMatch only covers [tj]s, so it had never
+// run. A test that stops running is worse than no test: it still looks like
+// protection.
+//
+// The shape of the boundary is unchanged — same directories, same depth. Only
+// the extension lists gained the migrated forms.
 const Q_ALLOWED =
-  /^(server\.cjs|[\w-]+(?:\.[\w-]+)*\.cjs|[\w-]+(?:\.[\w-]+)*[\\/][\w-]+(?:\.[\w-]+)*\.cjs|agent[\\/][\w-]+(?:\.[\w-]+)*[\\/][\w-]+(?:\.[\w-]+)*\.cjs|config\.json|config[\\/][\w-]+(?:\.[\w-]+)*\.json|public[\\/].+\.(jsx|css|html|js|json))$/;
+  /^(server\.cjs|[\w-]+(?:\.[\w-]+)*\.(cjs|ts)|[\w-]+(?:\.[\w-]+)*[\\/][\w-]+(?:\.[\w-]+)*\.(cjs|ts)|agent[\\/][\w-]+(?:\.[\w-]+)*[\\/][\w-]+(?:\.[\w-]+)*\.(cjs|ts)|config\.json|config[\\/][\w-]+(?:\.[\w-]+)*\.json|public[\\/].+\.(jsx|tsx|css|html|js|ts|json))$/;
 const Q_FORBID =
   /(^|[\\/])(cloud-keys\.json|node_modules|_agent_backups|dist-app|build|\.dart_tool|workspace)([\\/]|$)/;
 function qResolve(p, mustBeEditable) {
@@ -26,7 +46,7 @@ function qResolve(p, mustBeEditable) {
     !Q_ALLOWED.test(relNorm) &&
     !Q_ALLOWED.test(relNorm.replace(/\//g, "\\\\"))
   )
-    throw new Error("path tidak boleh ditulis: " + relNorm);
+    throw new Error("path is not writable: " + relNorm);
   return dest;
 }
 function qWalk(filterRe) {
@@ -75,7 +95,7 @@ function qList() {
 
 // ── utils ──
 function qGlob(pattern) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   const re = globToRe(pattern);
   const res: any[] = [];
   const files = qWalk(null);
@@ -160,12 +180,12 @@ function globToRe(pat: any) {
   return new RegExp("^" + out + "$", "i");
 }
 function qRead(absPath, near) {
-  if (!absPath) return "(path kosong)";
+  if (!absPath) return "(empty path)";
   let txt;
   try {
     txt = fs.readFileSync(absPath, "utf8");
   } catch (e) {
-    return "(gagal baca: " + e.message + ")";
+    return "(read failed: " + e.message + ")";
   }
   const lines = txt.split("\n");
   const N = lines.length;
@@ -189,7 +209,7 @@ function qRead(absPath, near) {
 }
 
 function qGrep(pattern: any, options: any = {}) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
 
   let patternsToSearch: any[] = [];
 
@@ -212,7 +232,7 @@ function qGrep(pattern: any, options: any = {}) {
     try {
       re = new RegExp(pattern, "i");
     } catch {
-      return "regex tidak valid: " + pattern;
+      return "invalid regex: " + pattern;
     }
     patternsToSearch = [re];
   }
@@ -237,7 +257,7 @@ function qGrep(pattern: any, options: any = {}) {
       }
     });
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 
 async function qSyntaxOk(absPath) {
@@ -426,7 +446,7 @@ async function qListAsync() {
 }
 
 async function qGlobAsync(pattern) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   const re = globToRe(pattern);
   const files = (await qWalkAsync(null)).filter((f) => re.test(f.rel));
   const res = await _petaBatas(files, 16, async (f) => {
@@ -440,7 +460,7 @@ async function qGlobAsync(pattern) {
 }
 
 async function qGrepAsync(pattern: any, options: any = {}) {
-  if (!pattern) return "pola kosong";
+  if (!pattern) return "empty pattern";
   let patternsToSearch: any[] = [];
   if (options.intent || options.semantic) {
     const sv = getSemanticValidator();
@@ -457,7 +477,7 @@ async function qGrepAsync(pattern: any, options: any = {}) {
     try {
       re = new RegExp(pattern, "i");
     } catch {
-      return "regex tidak valid: " + pattern;
+      return "invalid regex: " + pattern;
     }
     patternsToSearch = [re];
   }
@@ -496,7 +516,7 @@ async function qGrepAsync(pattern: any, options: any = {}) {
     }
     if (hits.length >= 150) break;
   }
-  return hits.length ? hits.join("\n") : "(tidak ada kecocokan)";
+  return hits.length ? hits.join("\n") : "(no matches)";
 }
 
 async function qBackupAsync() {

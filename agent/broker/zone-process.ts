@@ -46,7 +46,7 @@ type StatusKurungan =
 
 import { fork, spawn, execFileSync } from "child_process";
 import * as path from "path";
-const { getPlatformAdapter } = require("../platform/index.cjs");
+const { getPlatformAdapter } = require("../platform/index.ts");
 
 const WORKER = path.join(__dirname, "zone-worker.cjs");
 
@@ -188,7 +188,7 @@ function siapkanWorker(distro: string) {
   try {
     isi = require("fs").readFileSync(WORKER);
   } catch (e) {
-    _wslAlasan = `worker tak terbaca di sisi Windows (${WORKER}): ${e.code || e.message}`;
+    _wslAlasan = `worker unreadable on the Windows side (${WORKER}): ${e.code || e.message}`;
     return null;
   }
   const sha = require("crypto").createHash("sha1").update(isi).digest("hex");
@@ -213,7 +213,7 @@ function siapkanWorker(distro: string) {
       /* cannot write here — try the next location */
     }
   }
-  _wslAlasan = `worker tak bisa disalin ke dalam distro "${distro}" — /opt dan /tmp keduanya tak bisa ditulis`;
+  _wslAlasan = `worker could not be copied into distro "${distro}" — both /opt and /tmp are not wisa ditulis`;
   return null;
 }
 
@@ -232,7 +232,7 @@ function wslZona() {
   if (_wslCache !== undefined) return _wslCache;
   _wslCache = null;
   if (process.platform !== "win32") {
-    _wslAlasan = "bukan Windows";
+    _wslAlasan = "not Windows";
     return _wslCache;
   }
   if (process.env.WOLFSPACE_ZONE_WSL === "0") {
@@ -249,13 +249,13 @@ function wslZona() {
   // different actions. Still a single wsl.exe call, so it costs no more.
   const SEBAB = {
     11: () =>
-      `Node tak ada / tak bisa dieksekusi di ${nodeWsl} (di dalam distro "${distro}")`,
+      `Node is missing / not executable at ${nodeWsl} (inside distro "${distro}")`,
     12: () =>
       `worker hilang dari dalam WSL di ${workerWsl} setelah sempat disiapkan — distro mungkin di-restart di tengah jalan`,
     13: () =>
-      `Node di ${nodeWsl} ada tapi flag permission-nya ditolak — biner rusak, atau bukan Node sungguhan`,
+      `Node at ${nodeWsl} exists but its permission flag was refused — a corrupt binary, or not real Noden`,
     14: () =>
-      `unshare tak bisa membuat network namespace di distro "${distro}"`,
+      `unshare could not create a network namespace in distro "${distro}"`,
   };
   // There is no code 15: the version check moved to the JS side after the
   // probe, because the shell no longer computes it. A dead entry in this table
@@ -298,13 +298,13 @@ function wslZona() {
     );
     const v = /NODEV(\d+)\./.exec(keluar || "");
     if (!v) {
-      _wslAlasan = `${nodeWsl} di distro "${distro}" keluar bersih tapi bukan Node — tak mencetak versi apa pun`;
+      _wslAlasan = `${nodeWsl} in distro "${distro}" exited cleanly but is not Node — it printed no versi apa pun`;
       return _wslCache;
     }
     const flag = flagPermission(Number(v[1]), workerWsl);
     if (!flag) {
       _wslAlasan =
-        `Node ${v[1]}.x di ${nodeWsl} terlalu tua — model permission butuh Node >= 20 ` +
+        `Node ${v[1]}.x at ${nodeWsl} is too old — the permission model needs Node >= 20 ` +
         `(v20-v22: --experimental-permission, v23+: --permission)`;
       return _wslCache;
     }
@@ -318,7 +318,7 @@ function wslZona() {
         { stdio: "ignore", timeout: 20000 },
       );
     } catch (_) {
-      _wslAlasan = `Node ${v[1]}.x di ${nodeWsl} menolak ${flag[0]} — biner rusak atau bukan Node sungguhan`;
+      _wslAlasan = `Node ${v[1]}.x at ${nodeWsl} refused ${flag[0]} — a corrupt binary or not real Nodeguhan`;
       return _wslCache;
     }
     _wslCache = {
@@ -333,7 +333,7 @@ function wslZona() {
     // discarded.
     _wslCache = null;
     if (e.code === "ETIMEDOUT" || /timed? ?out/i.test(String(e.message))) {
-      _wslAlasan = `distro "${distro}" tak menjawab dalam 20 detik`;
+      _wslAlasan = `distro "${distro}" did not answer within 20 seconds`;
     } else if (SEBAB[e.status]) {
       _wslAlasan = SEBAB[e.status]();
     } else {
@@ -348,8 +348,8 @@ function wslZona() {
       // to whoever reads it, so it is normalised.
       const kode = e.status === 4294967295 ? -1 : e.status;
       _wslAlasan =
-        `wsl.exe gagal menjalankan distro "${distro}" (kode ${kode}) — ` +
-        (se || "distro kemungkinan tak terdaftar; cek `wsl -l -v`");
+        `wsl.exe failed to run distro "${distro}" (code ${kode}) — ` +
+        (se || "the distro is probably not registered; check `wsl -l -v`");
     }
   }
   return _wslCache;
@@ -428,11 +428,11 @@ function statusKurungan(
     };
   let alasan;
   if (matiSengaja) alasan = "dimatikan pemanggil (opts.netns=false)";
-  else if (process.platform === "win32") alasan = _wslAlasan || "WSL tak siap";
+  else if (process.platform === "win32") alasan = _wslAlasan || "WSL not ready";
   else if (process.platform === "linux")
     alasan =
-      "unshare tak bisa membuat namespace — butuh CAP_SYS_ADMIN atau user namespace";
-  else alasan = `platform ${process.platform} tak punya network namespace`;
+      "unshare could not create a namespace — needs CAP_SYS_ADMIN or a user namespace";
+  else alasan = `platform ${process.platform} has no network namespace`;
   return { transport: "fork", jaringanTerkurung: false, alasan };
 }
 
@@ -450,13 +450,13 @@ function laporSekali(st: StatusKurungan) {
   _sudahLapor = true;
   try {
     process.stderr.write(
-      "[WOLFSPACE:broker] PERINGATAN: zona kapabilitas berjalan TANPA pengurungan " +
-        "jaringan.\n" +
+      "[WOLFSPACE:broker] WARNING: the capability zone is running WITHOUT network " +
+        "confinement.\n" +
         "  alasan   : " +
         st.alasan +
         "\n" +
-        "  akibat   : kode di dalam zona bisa menghubungi jaringan langsung; " +
-        "berkas TETAP ditahan --permission.\n" +
+        "  effect   : code inside the zone can reach the network directly; " +
+        "files are STILL held by --permission.\n" +
         (process.platform === "win32"
           ? "  perbaikan: pastikan distro WSL hidup dan Node >= 23 ada di dalamnya " +
             "(WOLFSPACE_WSL_DISTRO / WOLFSPACE_WSL_NODE).\n"
@@ -483,7 +483,7 @@ function netnsWrapper() {
       });
       _netnsCache = "unshare";
     } catch (_) {
-      _netnsCache = null; // butuh CAP_SYS_ADMIN / user-ns — jalan tanpa pengurungan
+      _netnsCache = null; // needs CAP_SYS_ADMIN / user-ns — runs unconfined
     }
   }
   return _netnsCache;
@@ -571,10 +571,10 @@ function runInCapabilityZone(
       return reject(
         Object.assign(
           new Error(
-            `Node ${process.versions.node} tak mendukung model permission — ` +
+            `Node ${process.versions.node} does not support the permission model — ` +
               "capability_exec butuh Node >= 20 (v20-v22: --experimental-permission, " +
-              "v23+: --permission). Zona TIDAK dijalankan, karena tanpa flag itu " +
-              "kode tugas akan berjalan dengan akses berkas penuh.",
+              "v23+: --permission). The zone is NOT run, because without that flag " +
+              "the task code would run with full file access.",
           ),
           { kurungan, stdout: "", stderr: "" },
         ),

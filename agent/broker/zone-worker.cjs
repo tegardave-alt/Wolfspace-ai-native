@@ -15,26 +15,27 @@
 
 const vm = require("vm");
 
-// ── Pelapor jaringan (BUKAN penjaga) ──
+// ── Network reporter (NOT a guard) ──
 //
-// Modul jaringan diganti stub yang MELAPORKAN percobaan ke broker lalu melempar
-// error yang menjelaskan jalan yang benar. Ini sengaja BUKAN batas keamanan:
-// diuji langsung, `require('node:https')` menembusnya (kunci cache berbeda) dan
-// `process.binding('tcp_wrap')` menembusnya (di bawah lapisan modul) — 2 dari 5
-// percobaan, sekali coba. Yang menahan tetap network namespace di kernel.
+// The network modules are replaced with stubs that REPORT the attempt to the
+// broker and then throw an error naming the correct route. This is deliberately
+// not a security boundary: tested directly, `require('node:https')` walks past
+// it (different cache key) and `process.binding('tcp_wrap')` walks past it
+// (below the module layer) — 2 out of 5 attempts, on the first try. What
+// actually holds is the kernel's network namespace.
 //
-// Gunanya melengkapi netns, bukan menggantikannya. Tanpa ini, kode yang nyasar
-// ke jaringan mati dengan EAI_AGAIN dan meninggalkan **0 entri audit** — jadi ia
-// terhenti tapi tak terlihat. Dengan ini, percobaan yang lewat jalur modul biasa
-// jadi tercatat; yang menyelinap lewat celah di atas tetap mati di kernel, hanya
-// tak tercatat. Lebih baik sebagian terlihat daripada tak satu pun.
-// Dicegat di Module._load, BUKAN dengan menimpa require.cache.
+// Its job is to COMPLETE netns, not replace it. Without it, code that wanders
+// towards the network dies with EAI_AGAIN and leaves **0 audit entries** — so it
+// is stopped but invisible. With it, attempts taking the ordinary module route
+// get recorded; the ones slipping through the gaps above still die in the
+// kernel, just unrecorded. Partly visible beats not at all.
+// Intercepted at Module._load, NOT by overwriting require.cache.
 //
-// Menimpa cache hanya menangkap `require("https")`. Bentuk `require("node:https")`
-// lolos, karena modul builtin ber-prefix `node:` tak pernah melewati
-// require.cache sama sekali — diukur langsung: bentuk polos menghasilkan 1 entri
-// audit, bentuk `node:` menghasilkan 0. Module._load adalah titik yang dilewati
-// KEDUANYA.
+// Overwriting the cache only catches `require("https")`. The
+// `require("node:https")` form escapes it, because a builtin with the `node:`
+// prefix never goes through require.cache at all — measured directly: the plain
+// form produced 1 audit entry, the `node:` form produced 0. Module._load is the
+// one point BOTH forms pass through.
 const MODUL_JARINGAN = new Set(["http", "https", "net", "tls", "dgram"]);
 function pasangPelaporJaringan() {
   const Module = require("module");
@@ -69,23 +70,23 @@ function pasangPelaporJaringan() {
   };
 }
 
-// ── Kanal ke broker: IPC fd ATAU stdio ──
+// ── Channel to the broker: IPC fd OR stdio ──
 //
-// IPC fd (socketpair) dipakai saat worker di-fork langsung — cepat, dan
-// selamat melewati `unshare -n` karena socketpair sudah terbuka sebelum proses
-// masuk namespace.
+// The IPC fd (socketpair) is used when the worker is forked directly — fast,
+// and it survives `unshare -n` because the socketpair is already open before the
+// process enters the namespace.
 //
-// Tapi fd warisan TIDAK menyeberangi `wsl.exe`. Itu jadi penghalang ketika broker
-// hidup di Windows sementara zona harus berjalan di Linux agar netns berlaku.
-// Jembatan TCP mustahil di situ: zona di bawah `unshare -n` tak punya rute
-// jaringan sama sekali, termasuk ke host — jadi ia tak bisa menelepon balik.
-// Pipa stdio BUKAN jaringan dan diteruskan wsl.exe, jadi itulah satu-satunya
-// kanal yang selamat. Diuji: ping/pong lewat, dan jaringan di dalam zona tetap
-// EAI_AGAIN.
+// But an inherited fd does NOT cross `wsl.exe`. That became the obstacle when
+// the broker lives on Windows while the zone has to run on Linux for netns to
+// apply at all. A TCP bridge is impossible there: a zone under `unshare -n` has
+// no network route whatsoever, not even to the host — so it cannot call back.
+// An stdio pipe is NOT network and wsl.exe forwards it, which makes it the only
+// channel that survives. Tested: ping/pong gets through, and the network inside
+// the zone still answers EAI_AGAIN.
 //
-// TOKEN memisahkan protokol dari keluaran user di stdout yang sama. Acak per
-// eksekusi, jadi kode zona tak bisa memalsukan baris protokol dengan mencetak
-// prefiks yang ditebak — pola yang sama seperti heredoc di bash-jail.
+// TOKEN separates the protocol from user output on that same stdout. It is
+// random per execution, so zone code cannot forge a protocol line by printing a
+// guessed prefix — the same pattern as the heredoc in bash-jail.
 const TOKEN = process.env.WOLFSPACE_ZONE_TOKEN || "";
 const PAKAI_STDIO = !!TOKEN;
 
@@ -99,12 +100,12 @@ function kirim(msg, sesudah) {
   process.send(msg, sesudah);
 }
 
-// Lepas kanal supaya proses keluar sendiri — bukan process.exit(), yang memotong
-// tulisan stdout yang masih mengantre (itu justru menghilangkan keluaran zona
-// yang sedang kita usahakan utuh).
+// Release the channel so the process exits on its own — NOT process.exit(),
+// which cuts off stdout writes still queued (losing exactly the zone output we
+// are trying to keep intact).
 //
-// Di mode stdio, yang menahan event loop adalah stdin yang di-resume; di mode IPC,
-// kanal socketpair-nya. Keduanya harus dilepas dengan cara masing-masing.
+// In stdio mode what holds the event loop is the resumed stdin; in IPC mode it
+// is the socketpair. Each has to be released its own way.
 function tutupKanal() {
   if (PAKAI_STDIO) {
     try {
@@ -131,11 +132,11 @@ function tanganiPesan(msg) {
     return;
   }
   if (msg.type === "run") {
-    // Pelapor dipasang SAAT run, bukan saat modul dimuat, supaya bisa dimatikan
-    // per-eksekusi. Dibutuhkan uji netns: dengan pelapor aktif, stub melempar
-    // lebih dulu sehingga uji akan LULUS meski network namespace-nya mati —
-    // buktinya jadi palsu. Mematikannya membuat percobaan benar-benar sampai ke
-    // kernel, dan itulah yang harus diuji.
+    // The reporter is installed AT run time, not at module load, so it can be
+    // switched off per execution. The netns test needs that: with the reporter
+    // active the stub throws first, so the test would PASS even with the network
+    // namespace dead — proof that proves nothing. Switching it off lets the
+    // attempt actually reach the kernel, which is the thing under test.
     if (msg.pelapor !== false) pasangPelaporJaringan();
     runTask(msg.code);
   }
@@ -183,14 +184,15 @@ async function runTask(code) {
       { filename: "capability-task.js" },
     );
     const result = await fn(request, require);
-    // Lepas kanal IPC SETELAH pesan benar-benar terkirim. Kanal itu satu-satunya
-    // handle yang menahan event loop proses ini; begitu dilepas, proses keluar
-    // sendiri, stdout ter-flush, dan induk menerima 'close' seketika.
+    // Release the IPC channel AFTER the message has actually been sent. That
+    // channel is the only handle holding this process's event loop; once it goes,
+    // the process exits by itself, stdout flushes, and the parent gets 'close'
+    // immediately.
     //
-    // Tanpa ini induk harus menunggu jaring pengaman DRAIN_MS sampai habis pada
-    // SETIAP eksekusi (terukur: ~3,1 detik per zona). process.exit() bukan
-    // gantinya — ia memotong tulisan stdout yang masih mengantre, yang justru
-    // kehilangan keluaran yang sedang kita usahakan.
+    // Without this the parent has to wait out the DRAIN_MS safety net on EVERY
+    // execution (measured: ~3.1 s per zone). process.exit() is not a substitute —
+    // it cuts off stdout writes still queued, losing the very output we are
+    // trying to keep.
     kirim({ type: "done", result }, tutupKanal);
   } catch (e) {
     kirim({ type: "error", message: e.message, code: e.code }, tutupKanal);

@@ -131,12 +131,12 @@ function _pembukaCwd(cwd) {
 // asynchronous paths use exactly the same judgement.
 function _tersediaMurah() {
   if (process.platform !== "win32")
-    return { siap: false, alasan: "hanya untuk Windows" };
+    return { siap: false, alasan: "Windows only" };
   if (!fs.existsSync(EXE))
     return {
       siap: false,
       alasan:
-        "AcLaunch.exe belum dikompilasi (" +
+        "AcLaunch.exe has not been compiled (" +
         EXE +
         ") — jalankan scripts/appcontainer/build.cmd",
     };
@@ -148,13 +148,14 @@ const _ARGV_UJI = () => [
   PS,
   "-NoProfile",
   "-Command",
-  "'siap'",
+  "'ready'",
 ];
 function _nilaiUji(out) {
-  if (!String(out).includes("siap"))
+  if (!String(out).includes("ready"))
     return {
       siap: false,
-      alasan: "container menjawab tak terduga: " + String(out).slice(0, 80),
+      alasan:
+        "the container answered unexpectedly: " + String(out).slice(0, 80),
     };
   return { siap: true, alasan: "" };
 }
@@ -280,10 +281,10 @@ function _jelaskan(teks: any, perintah?: any) {
   ) {
     return (
       teks +
-      "\n\n[WOLFSPACE] `del` dan `erase` TIDAK bisa menghapus berkas di dalam " +
-      "AppContainer, bahkan berkas yang baru saja dibuat sendiri. Ini bukan " +
-      "soal hak berkas: `rmdir` bisa, dan `Remove-Item` pada berkas yang sama " +
-      "juga bisa.\n" +
+      "\n\n[WOLFSPACE] `del` and `erase` CANNOT delete a file inside " +
+      "an AppContainer, not even one it just created itself. This is not " +
+      "about file permissions: `rmdir` works, and `Remove-Item` on the same file " +
+      "works too.\n" +
       'Pakai: powershell -NoProfile -Command "Remove-Item -LiteralPath ' +
       "'<jalur>' -Force\""
     );
@@ -291,25 +292,25 @@ function _jelaskan(teks: any, perintah?: any) {
   if (perintah && _POLA_VOL.test(perintah) && /Access is denied/i.test(teks)) {
     return (
       teks +
-      "\n\n[WOLFSPACE] `dir` dan `vol` TIDAK bisa jalan di dalam AppContainer: " +
-      "cmd.exe membaca info volume drive untuk keduanya, dan itu perangkat yang " +
-      "tertutup untuk container. Foldernya sendiri terbaca dengan baik.\n" +
-      "Pakai `Get-ChildItem` (PowerShell) untuk melihat isi folder — terbukti " +
-      "bekerja pada path yang sama."
+      "\n\n[WOLFSPACE] `dir` and `vol` CANNOT run inside an AppContainer: " +
+      "cmd.exe reads drive volume information for both, and that is a device " +
+      "closed to the container. The folder itself reads perfectly well.\n" +
+      "Use `Get-ChildItem` (PowerShell) to list a folder — proven to " +
+      "work on the very same path."
     );
   }
   if (!_POLA_NUL.test(teks)) return teks;
   return (
     teks +
-    "\n\n[WOLFSPACE] Ini BUKAN soal izin berkas repo, dan mengubah hak berkas " +
-    "tidak akan menolong. git selalu membuka /dev/null (baca+tulis) saat start, " +
-    "dan perangkat NUL tidak terbuka untuk baca bagi AppContainer -- menulis ke " +
-    "NUL bisa, membacanya tidak. Jadi git tak bisa jalan di dalam kurungan ini " +
-    "sama sekali, perintah git apa pun.\n" +
+    "\n\n[WOLFSPACE] This is NOT about repo file permissions, and changing them " +
+    "will not help. git always opens /dev/null (read+write) at start-up, " +
+    "and the NUL device is not open for reading to an AppContainer -- writing to " +
+    "NUL works, reading it does not. So git cannot run inside this confinement " +
+    "at all, for any git command.\n" +
     "PAKAI TOOL `git`. Ia menyediakan operasi bernama (status, diff, log, show, " +
     "berkas, cabang, kepala, blame, tambah, commit, pulihkan, cabang_baru, " +
-    "pindah) dengan argv yang dibangun sendiri dan path yang wajib berada di " +
-    "dalam workspace. Mengulang perintah ini lewat bash tidak akan pernah " +
+    "pindah) with an argv it builds itself and paths that must lie " +
+    "inside the workspace. Repeating this command through bash will never " +
     "berhasil, seberapa pun berbedanya cara penulisannya."
   );
 }
@@ -330,18 +331,18 @@ const KODE_DLL_GAGAL = 0xc0000142;
 function jelaskanKode(kode) {
   if (kode >>> 0 !== KODE_DLL_GAGAL) return null;
   return (
-    "Program gagal dimuat di dalam AppContainer (0xC0000142, " +
-    "STATUS_DLL_INIT_FAILED) dan tidak menghasilkan keluaran apa pun. " +
-    "Keluaran kosong di sini BUKAN berarti hasilnya kosong.\n" +
-    "Dua sebab, dan hanya satu yang bisa diperbaiki:\n" +
-    "  1. DLL-nya ada di folder yang belum dibuka untuk container — beri hak " +
-    "baca pada folder runtime-nya lewat scripts/appcontainer/pasang.ps1.\n" +
+    "The program failed to load inside the AppContainer (0xC0000142, " +
+    "STATUS_DLL_INIT_FAILED) and produced no output at all. " +
+    "Empty output here does NOT mean the result was empty.\n" +
+    "Two causes, and only one of them can be fixed:\n" +
+    "  1. The DLL sits in a folder not yet opened to the container — grant read " +
+    "access to its runtime folder through scripts/appcontainer/pasang.ps1.\n" +
     "  2. Programnya memakai runtime MSYS/Cygwin (ls, grep, sed, dan " +
     "kawan-kawan dari Git for Windows). Runtime itu butuh objek kernel " +
-    "bersama yang ditutup AppContainer, jadi ia gagal WALAU berkasnya sudah " +
-    "bisa dibaca penuh — terukur, sesudah hak baca diberikan. Tak ada izin " +
-    "yang bisa memperbaikinya.\n" +
-    "Yang setara dan bekerja: perintah bawaan cmd/PowerShell, node, dan biner " +
+    "shared component AppContainer closes off, so it fails EVEN when the file is " +
+    "fully readable — measured, after read access was granted. No permission " +
+    "can fix it.\n" +
+    "What works instead: cmd/PowerShell built-ins, node, and binaries " +
     "non-MSYS (curl dari mingw64 terbukti jalan)."
   );
 }
@@ -438,7 +439,8 @@ async function siapUntuk(root) {
   const dasar = await tersediaAsync();
   if (!dasar.siap) return dasar;
   const s = await sidAsync();
-  if (!s) return { siap: false, alasan: "SID container tak bisa diturunkan" };
+  if (!s)
+    return { siap: false, alasan: "the container SID could not be derived" };
   const r = path.resolve(root || process.cwd());
   const kunci = r.toLowerCase();
   if (_G.diberi.has(kunci)) return { siap: true, alasan: "" };
@@ -460,7 +462,7 @@ async function siapUntuk(root) {
     return {
       siap: false,
       alasan:
-        "container tak bisa diberi akses ke " +
+        "the container could not be granted access to " +
         r +
         ": " +
         String(e.stderr || e.message)
@@ -749,7 +751,7 @@ async function jalankan(perintah, opts) {
   if (!siap.siap) {
     return {
       ok: false,
-      output: "AppContainer tak siap: " + siap.alasan,
+      output: "AppContainer not ready: " + siap.alasan,
       ..._penegakan.label("penasihat", "ac-tak-siap"),
     };
   }
@@ -794,7 +796,7 @@ async function jalankan(perintah, opts) {
     });
     return {
       ok: true,
-      output: _jelaskan(String(out).slice(0, 8000)) || "(tak ada keluaran)",
+      output: _jelaskan(String(out).slice(0, 8000)) || "(no output)",
       ..._penegakan.label("kernel", "appcontainer"),
     };
   } catch (e) {
@@ -805,7 +807,7 @@ async function jalankan(perintah, opts) {
       ok: false,
       output:
         (teks || String(e.message)).slice(0, 8000) +
-        (e.killed ? "\n[dihentikan: lewat batas waktu]" : ""),
+        (e.killed ? "\n[stopped: past the time limit]" : ""),
       ..._penegakan.label("kernel", "appcontainer"),
     };
   }

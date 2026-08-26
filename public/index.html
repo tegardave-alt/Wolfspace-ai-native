@@ -79,14 +79,74 @@
   </head>
   <body>
     <div id="root"></div>
+    <!-- ── Vendor cost meter ──────────────────────────────────────────────
+         Every <script src> below is RENDER-BLOCKING: no defer, no async, no
+         type=module. So the browser fetches, compiles AND executes each one in
+         order before a single pixel is painted, and 8.5 MB of that runs on
+         every start regardless of whether the session ever opens a diagram or
+         a 3D file.
+
+         Guessing which of them is expensive is not possible from the file
+         sizes: a first attempt to measure them with vm.Script in Node reported
+         0 ms for all of them, because V8 defers compilation until a function
+         is first called. What actually costs is TOP-LEVEL EXECUTION — mermaid
+         registering its diagram parsers, three building its class hierarchy —
+         and that only happens in a real browser.
+
+         So it is measured here, in the place where it actually happens. An
+         inline <script> runs immediately after the external script above it
+         finishes executing, so each delta below IS that script's full cost.
+
+         Reported through console.log because electron/main.ts already forwards
+         renderer console messages to the main log (see the console-message
+         handler there). No IPC, no preload bridge, no contract to keep in sync.
+         Ten performance.now() calls cost nothing worth measuring. -->
+    <script>
+      window.__vt = (function () {
+        var titik = [];
+        var last = performance.now();
+        var awal = last;
+        return function (nama) {
+          var n = performance.now();
+          titik.push([nama, n - last]);
+          last = n;
+          if (nama !== "__selesai") return;
+          try {
+            var berat = titik
+              .filter(function (x) {
+                return x[1] >= 1;
+              })
+              .sort(function (a, b) {
+                return b[1] - a[1];
+              })
+              .map(function (x) {
+                return x[0] + " " + Math.round(x[1]) + "ms";
+              });
+            console.log(
+              "[probe] VENDOR " +
+                Math.round(n - awal) +
+                "ms total — " +
+                (berat.length ? berat.join(", ") : "semua di bawah 1ms"),
+            );
+          } catch (e) {}
+        };
+      })();
+      __vt("__mulai");
+    </script>
     <!-- xterm.js — fullscreen terminal for Agent Runner -->
     <script src="/vendor/xterm/xterm.js"></script>
     <script src="/vendor/xterm/addon-fit.js"></script>
     <script src="/vendor/xterm/addon-webgl.js"></script>
+    <script>
+      __vt("xterm");
+    </script>
     <!-- Mermaid JS (lokal, v11) — render diagram. Dulu dari CDN (gagal offline di
        Electron) DAN tak terpakai karena UI memakai parser SVG custom. Sekarang lokal
        + dipakai MermaidBlock. IIFE esbuild menaruh API di global internal; normalkan. -->
     <script src="/vendor/mermaid.min.js"></script>
+    <script>
+      __vt("mermaid");
+    </script>
     <script>
       try {
         var _m =
@@ -97,15 +157,31 @@
     </script>
     <!-- Cytoscape.js — kanvas graph interaktif (Graph Canvas) -->
     <script src="/vendor/cytoscape.min.js"></script>
+    <script>
+      __vt("cytoscape");
+    </script>
     <!-- React + Babel bundled locally for full offline use -->
     <script src="/vendor/react.production.min.js"></script>
     <script src="/vendor/react-dom.production.min.js"></script>
+    <script>
+      __vt("react");
+    </script>
     <!-- three.js + loader GLB/STL + OrbitControls (viewer 3D attachment).
          Ekspos window.WOLFSPACE3D.{THREE,GLTFLoader,STLLoader,OrbitControls}. -->
     <script src="/vendor/three3d.bundle.js"></script>
+    <script>
+      __vt("three3d");
+    </script>
     <script src="/vendor/babel.min.js"></script>
+    <script>
+      __vt("babel");
+    </script>
     <!-- Monaco (VS Code editor) — bundled locally, real highlighting + autocomplete -->
     <script src="/vendor/monaco/vs/loader.js"></script>
+    <script>
+      __vt("monaco-loader");
+      __vt("__selesai");
+    </script>
     <script>
       var MB = location.origin;
       window.MonacoEnvironment = {

@@ -68,12 +68,13 @@ const OPERASI: Record<string, Operasi> = {
   port: {
     butuhHost: true,
     butuhPort: true,
-    jelas: "cek satu port TCP terbuka atau tidak",
+    jelas: "check whether one TCP port is open",
     argv: (a) => ["nc", "-z", "-w", "4", String(a.host), String(a.port)],
   },
   kepala: {
     butuhHost: true,
-    jelas: "ambil header HTTP saja (wget --spider), tanpa mengunduh isi",
+    jelas:
+      "fetch HTTP headers only (wget --spider), without downloading the body",
     argv: (a) => [
       "wget",
       "--spider",
@@ -106,9 +107,9 @@ function jalankan(args) {
       output:
         'operasi "' +
         nama +
-        '" tak dikenal. Yang tersedia: ' +
+        '" is not recognised. Available: ' +
         Object.keys(OPERASI).join(", ") +
-        ". Tool ini TIDAK menerima perintah bebas — hanya operasi bernama.",
+        ". This tool does NOT accept free-form commands — only named operations.",
       ..._penegakan.label("kernel", "wsl-daftar-tetap"),
     });
   }
@@ -118,9 +119,9 @@ function jalankan(args) {
     return Promise.resolve({
       ok: false,
       output:
-        'host tak sah: "' +
+        'invalid host: "' +
         host +
-        '". Harus nama domain atau IP tanpa spasi/skema/path.',
+        '". Must be a domain name or IP with no spaces/scheme/path.',
       ..._penegakan.label("kernel", "wsl-daftar-tetap"),
     });
   }
@@ -128,7 +129,7 @@ function jalankan(args) {
   if (spek.butuhPort && !PORT_SAH(port)) {
     return Promise.resolve({
       ok: false,
-      output: "port tak sah: " + String(args && args.port) + " (1-65535)",
+      output: "invalid port: " + String(args && args.port) + " (1-65535)",
       ..._penegakan.label("kernel", "wsl-daftar-tetap"),
     });
   }
@@ -156,13 +157,13 @@ function jalankan(args) {
             ":" +
             String(port) +
             " " +
-            (terbuka ? "TERBUKA" : "tertutup atau tak menjawab dalam 4 detik") +
+            (terbuka ? "OPEN" : "closed or not answering within 4 seconds") +
             (teks.trim() ? "\n" + teks.trim() : "");
         }
         resolve({
           ok: !err || !!teks.trim(),
           output:
-            (teks.trim() || "(tak ada keluaran)").slice(0, MAKS_KELUARAN) +
+            (teks.trim() || "(no output)").slice(0, MAKS_KELUARAN) +
             (err && err.killed
               ? "\n[dihentikan: lewat " + BATAS_MS + " ms]"
               : ""),

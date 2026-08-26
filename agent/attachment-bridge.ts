@@ -88,7 +88,7 @@ function _namaAman(nama) {
   s = s.split(/[\\/]/).pop() || ""; // ambil segmen TERAKHIR saja
   s = s.replace(/^\.+/, ""); // ".." / ".hidden" -> buang titik depan
   s = s.replace(/[\x00-\x1f]/g, "").trim();
-  return s.slice(0, 120) || "tanpa-nama";
+  return s.slice(0, 120) || "unnamed";
 }
 
 function _totalByte() {
@@ -112,7 +112,7 @@ function _totalByte() {
 function serahkan(b) {
   const nama = _namaAman(b && b.nama);
   const mentah = b && b.isi;
-  if (mentah == null) return { ok: false, error: "isi kosong" };
+  if (mentah == null) return { ok: false, error: "empty content" };
 
   const isi = Buffer.isBuffer(mentah)
     ? mentah
@@ -124,14 +124,17 @@ function serahkan(b) {
     return {
       ok: false,
       error:
-        "berkas " +
+        "file " +
         Math.round(isi.length / 1024) +
-        " KB melebihi batas " +
+        " KB exceeds the limit " +
         MAKS_PER_BERKAS / 1024 / 1024 +
         " MB",
     };
   if (_simpan.size >= MAKS_JUMLAH)
-    return { ok: false, error: "lampiran sesi sudah " + MAKS_JUMLAH };
+    return {
+      ok: false,
+      error: "session attachments already at " + MAKS_JUMLAH,
+    };
   if (_totalByte() + isi.length > MAKS_TOTAL)
     return {
       ok: false,
@@ -177,7 +180,7 @@ function _tampakBiner(buf) {
  */
 function ambil(id) {
   const a = _simpan.get(String(id || ""));
-  if (!a) return { ok: false, error: "lampiran tak dikenal: " + id };
+  if (!a) return { ok: false, error: "unknown attachment: " + id };
   if (_tampakBiner(a.isi))
     return {
       ok: false,
@@ -185,11 +188,11 @@ function ambil(id) {
       nama: a.nama,
       bytes: a.isi.length,
       error:
-        "berkas biner (" +
+        "binary file (" +
         a.nama +
         ", " +
         a.isi.length +
-        " byte) — tak bisa dibaca sebagai teks",
+        " bytes) — cannot be read as text",
     };
   return {
     ok: true,

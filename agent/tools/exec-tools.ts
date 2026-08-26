@@ -95,7 +95,7 @@ function _jalankan(cmd) {
           // a multi-megabyte string would be cut off by the very truncation it
           // was there to announce.
           return resolve(
-            "[keluaran dipotong: melewati " +
+            "[output truncated: over " +
               Math.round(batas / 1048576) +
               " MB]\n" +
               String(stdout || ""),

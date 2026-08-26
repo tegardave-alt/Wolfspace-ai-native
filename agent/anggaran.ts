@@ -197,3 +197,62 @@ export function lewatBatasIpc(v: any, arah: string): string | null {
     "Not Responding di 5000 ms. Kirim bertahap, jangan sekaligus."
   );
 }
+
+/* ── Conversation compaction ───────────────────────────────────────────────
+ *
+ * WHY THIS EXISTS. The agent's message array has two different size behaviours,
+ * pulling in opposite directions, and both were unbounded in their own way:
+ *
+ *   across turns   agent/self_agent.ts:1185  history.slice(-effortMaxTurns)
+ *                  A BLIND tail trim at 6/16/40 messages. What it drops first
+ *                  is whatever is longest, which is `read` results — so the
+ *                  agent forgot what it already knew. Measured in a real run
+ *                  ledger (pid 12932, 88 min): 246 actions for 22 unique
+ *                  commands, index.html read 13x, app.js 12x, longest
+ *                  consecutive repeat only 4. Not a loop — amnesia.
+ *                  agent/temuan.ts was built to answer that half.
+ *
+ *   within a run   agent/self_agent.ts:1471  [...state.messages]
+ *                  No trim at all. The array grows for the whole run, and
+ *                  agent/cloud.ts has NO handler for a context-length refusal,
+ *                  so a long run walks into a provider 400 and dies there.
+ *
+ * This budget governs the SECOND one.
+ *
+ * PROVENANCE, stated plainly because it differs from the other numbers in this
+ * file: 5000 ms was measured, 8 MB was matched to an existing limit. This
+ * number is CHOSEN, not measured — reproducing a real context overflow needs a
+ * long live run against a real provider, which has not been done here. It is
+ * set below the smallest context window this repo's providers commonly offer
+ * (128k tokens), with wide margin, and above anything a short run produces so
+ * it does not fire spuriously. Override and re-measure rather than trusting it.
+ */
+export const PADAT_AMBANG_CHAR = Number(
+  process.env.WOLFSPACE_PADAT_AMBANG || 200_000,
+);
+
+/**
+ * Characters per token, for turning a measured character count into a token
+ * estimate. A heuristic, not a tokenizer: ~4 is the usual figure for mixed
+ * English and code. It is only ever used to REPORT an estimate — every decision
+ * in agent/pemadatan.ts is made on the character count, which is exact.
+ */
+export const PADAT_CHAR_PER_TOKEN = 4;
+
+/**
+ * How many of the most recent messages survive compaction verbatim.
+ *
+ * The tail is where the work actually is: the last tool results, the error just
+ * hit, the half-finished edit. 12 is deliberately larger than the 6 of LOW
+ * effort so compaction never leaves a run with less recent context than the
+ * blind trim would have.
+ *
+ * The real boundary is moved EARLIER than this when it would land on a tool
+ * result, so the true count is 12 or more, never fewer — see _awalAman().
+ */
+export const PADAT_SISA_EKOR = 12;
+
+/** Longest digest injected into the system message. Beyond this the digest
+ *  starts costing more context than the messages it replaced, which would
+ *  defeat the point. */
+export const PADAT_BLOK_MAKS = 2000;

@@ -88,10 +88,14 @@ commands, and you see the real output.
 **Requirements:** [Node.js](https://nodejs.org) 18+. Python is optional (the agent uses it if
 your task does). No build step — the UI is served as-is.
 
-### `npm start`: server only, no window
+### Server only, no window
+
+There is no npm script for this any more: one application had five ways to
+start it, which was a cost rather than a choice. Run the launcher directly when
+you actually need the HTTP surface — `playwright.config.cjs` does exactly this.
 
 ```bash
-npm start                      # -> http://127.0.0.1:8090
+node server.cjs                # -> http://127.0.0.1:8090
 ```
 
 This starts the same backend as a plain HTTP server and serves the UI in your browser. It is
@@ -123,7 +127,7 @@ npm run dist                   # electron-builder --win -> dist-app/
 Produces an NSIS installer plus an unpacked build under `dist-app/win-unpacked/`. The
 packaged app's Electron entry point is rewritten by `build.extraMetadata.main` to
 `electron/main.js` — `package.json`'s own `main` field says `server.cjs`, which is correct
-for `npm start` but would be wrong for the packaged app.
+for `node server.cjs` but would be wrong for the packaged app.
 
 The installer is **not code-signed**, so Windows SmartScreen will warn on first run —
 choose _More info → Run anyway_.
@@ -234,8 +238,8 @@ graph TD
     Broker --> Platform
 ```
 
-The desktop shell and the plain `npm start` server run the same core — Electron hosts the
-UI in a native window, the server serves it over HTTP.
+The desktop shell and the plain `node server.cjs` server run the same core — Electron hosts
+the UI in a native window and opens no port at all; the server serves it over HTTP.
 
 **On the "no build step" claim and TypeScript.** The UI is still served as-is: the
 vendored Babel in the browser strips the types at load time, so `.tsx` files need no
@@ -274,7 +278,6 @@ still open — see **[docs/PETA.md](docs/PETA.md)**.
 
 ```bash
 npm test                       # jest
-npm run dev                    # nodemon
 npm run typecheck              # tsc --noEmit over agent/ and public/ (no emit, no build)
 npm run stress                 # broker/agent leak + concurrency check
 npm run profil                 # CPU profile a freeze; writes a .cpuprofile you can attach

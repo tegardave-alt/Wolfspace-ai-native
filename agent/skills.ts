@@ -160,7 +160,7 @@ async function runSkill(name, args, sandboxRunner) {
   if (!skill)
     return {
       ok: false,
-      output: `Skill '${name}' tidak ditemukan. Gunakan skill_list untuk lihat yang tersedia.`,
+      output: `Skill '${name}' not found. Use skill_list to see what is available.`,
     };
   const ctx = makeContext(sandboxRunner);
   try {
@@ -195,7 +195,7 @@ async function installFromNpm(packageName) {
       output: `npm install ${packageName} selesai.\n${stdout.slice(-500)}`,
     };
   } catch (e) {
-    return { ok: false, output: `npm install gagal: ${e.message}` };
+    return { ok: false, output: `npm install failed: ${e.message}` };
   }
 }
 
@@ -214,24 +214,24 @@ function installFromFile(sourcePath) {
     }
     return {
       ok: false,
-      output: `File disalin ke ${dest} tapi gagal load sebagai skill.`,
+      output: `The file was copied to ${dest} but failed to load as a skill.`,
     };
   } catch (e) {
-    return { ok: false, output: `Install dari file gagal: ${e.message}` };
+    return { ok: false, output: `Install from file failed: ${e.message}` };
   }
 }
 
 // ── Uninstall a skill ──
 function uninstallSkill(name) {
   const skill = registry.get(name);
-  if (!skill) return { ok: false, output: `Skill '${name}' tidak ditemukan.` };
+  if (!skill) return { ok: false, output: `Skill '${name}' not found.` };
   try {
     fs.unlinkSync(skill.file);
     registry.delete(name);
     dlog("skill", "info", "Skill uninstalled", { name });
     return { ok: true, output: `Skill '${name}' dihapus.` };
   } catch (e) {
-    return { ok: false, output: `Gagal hapus skill: ${e.message}` };
+    return { ok: false, output: `Failed to delete skill: ${e.message}` };
   }
 }
 

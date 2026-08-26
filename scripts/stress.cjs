@@ -22,7 +22,7 @@ const mode = process.argv[2];
 // ── Beban broker ──────────────────────────────────────────────────────────────
 async function stresBroker(konkuren, total) {
   const { Policy, Broker, runInCapabilityZone } = require(
-    path.join(ROOT, "agent/broker/index.cjs"),
+    path.join(ROOT, "agent/broker/index.ts"),
   );
 
   const WS = path.join(os.tmpdir(), "wolfspace-stres");
@@ -52,12 +52,12 @@ async function stresBroker(konkuren, total) {
     },
     {
       nama: "baca-luar-policy",
-      harus: "ditolak",
+      harus: "refused",
       kode: 'return await request("readFile", { path: "/etc/hostname" });',
     },
     {
       nama: "fs-langsung",
-      harus: "ditolak",
+      harus: "refused",
       kode: 'require("fs").readFileSync("/etc/hostname"); return "TEMBUS";',
     },
     {
@@ -77,14 +77,14 @@ async function stresBroker(konkuren, total) {
       const z = await runInCapabilityZone(j.kode, broker, { timeout: 25000 });
       const r = String(z.result);
       if (j.harus === "diblokir")
-        status = /TEMBUS/.test(r) ? "GAGAL-tembus" : "ok";
+        status = /TEMBUS/.test(r) ? "FAIL-breached" : "ok";
       else if (j.harus === "utuh")
-        status = z.outBytes >= 300000 ? "ok" : "GAGAL-terpotong";
-      else if (j.harus === "ditolak") status = "GAGAL-lolos";
+        status = z.outBytes >= 300000 ? "ok" : "FAIL-truncated";
+      else if (j.harus === "refused") status = "FAIL-slipped-through";
       else status = "ok";
       detail = r.slice(0, 40) + (j.harus === "utuh" ? ` (${z.outBytes}B)` : "");
     } catch (e) {
-      status = j.harus === "ditolak" ? "ok" : "GAGAL-error";
+      status = j.harus === "refused" ? "ok" : "FAIL-error";
       detail = (e.code || "") + " " + String(e.message).slice(0, 40);
     }
     hasil.push({ jenis: j.nama, status, ms: Date.now() - t0, detail });
@@ -120,7 +120,7 @@ async function stresAgent(host, konkuren, total) {
       model: process.env.WOLFSPACE_MODEL || k[prov].model,
     };
   } catch (e) {
-    console.error(`  tak bisa membaca kunci di ${keysPath}: ${e.message}`);
+    console.error(`  cannot read the key at ${keysPath}: ${e.message}`);
     process.exit(1);
   }
 
@@ -209,7 +209,7 @@ async function stresAgent(host, konkuren, total) {
     if (r.error) {
       hasil.push({
         jenis: "agent",
-        status: "GAGAL-" + r.error,
+        status: "FAIL-" + r.error,
         ms,
         detail: "",
       });
@@ -218,7 +218,7 @@ async function stresAgent(host, konkuren, total) {
     const s = String((r.adone || {}).summary || "");
     hasil.push({
       jenis: "agent",
-      status: t.tanda.test(s) ? "ok" : "GAGAL-jawaban",
+      status: t.tanda.test(s) ? "ok" : "FAIL-answer",
       ms,
       detail: s.replace(/\s+/g, " ").slice(0, 50),
     });
@@ -254,13 +254,13 @@ function cekBocor() {
     fd = fs.readdirSync(`/proc/${process.pid}/fd`).length;
   } catch (_) {}
   console.log(`  pid            : ${process.pid}`);
-  console.log(`  RSS            : ${rss ? rss + " kB" : "(bukan Linux)"}`);
+  console.log(`  RSS            : ${rss ? rss + " kB" : "(not Linux)"}`);
   console.log(`  fd terbuka     : ${fd}`);
   try {
     const dir = path.join(ROOT, "config", ".mcp-pids");
-    console.log(`  berkas pid MCP : ${fs.readdirSync(dir).length}`);
+    console.log(`  MCP pid files : ${fs.readdirSync(dir).length}`);
   } catch (_) {
-    console.log("  berkas pid MCP : 0");
+    console.log("  MCP pid files : 0");
   }
 }
 
@@ -279,12 +279,12 @@ function laporkan(hasil, total, konkuren, ms, satuan) {
     const p50 = v.ms[Math.floor(v.ms.length / 2)];
     const p95 = v.ms[Math.min(v.ms.length - 1, Math.floor(v.ms.length * 0.95))];
     console.log(
-      `    ${nama.padEnd(19)} ok=${String(v.ok).padStart(3)} gagal=${v.gagal}` +
+      `    ${nama.padEnd(19)} ok=${String(v.ok).padStart(3)} failed=${v.gagal}` +
         `  p50=${String(p50).padStart(5)}ms p95=${String(p95).padStart(5)}ms`,
     );
   }
   const gagal = hasil.filter((h) => h.status !== "ok");
-  console.log(`  TOTAL GAGAL: ${gagal.length} / ${total}`);
+  console.log(`  TOTAL FAILED: ${gagal.length} / ${total}`);
   for (const g of gagal.slice(0, 5))
     console.log(`    ! ${g.jenis}: ${g.status} — ${g.detail}`);
   process.exitCode = gagal.length ? 1 : 0;
@@ -311,7 +311,7 @@ function laporkan(hasil, total, konkuren, ms, satuan) {
     cekBocor();
   } else {
     console.log(
-      "Pakai:\n" +
+      "Usage:\n" +
         "  node scripts/stress.cjs broker [konkurensi] [total]\n" +
         "  node scripts/stress.cjs agent <host> [konkurensi] [total]\n" +
         "  node scripts/stress.cjs leak",

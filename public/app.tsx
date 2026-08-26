@@ -3929,9 +3929,19 @@ function App() {
                       flexDirection: "column",
                     }}
                   >
+                    {/* 38px, matching the editor's tab strip (see the header at
+                        the top of the editor column). The two columns sit side
+                        by side, so their headers being different heights left
+                        the content starting on two different lines — this bar
+                        was 46px against the tab strip's 38px.
+
+                        The left padding stays 36px: the panel-menu button below
+                        is absolutely positioned at left 10px and is 18px wide,
+                        so 36px is the clearance it needs, unrelated to height.
+                        Its own 28px height still centres inside 38px. */}
                     <div
                       style={{
-                        height: "46px",
+                        height: "38px",
                         borderBottom: "1px solid var(--line)",
                         padding: "0 14px 0 36px",
                         display: "flex",

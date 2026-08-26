@@ -92,23 +92,35 @@ function dlog(cat, level, msg, data) {
       fn(...a);
     } catch (_) {}
   };
-  if (VERBOSE) {
+  // Two defects lived here, and the same pair lived in server.ts's copy of dlog:
+  //
+  //   1. A "console" event was ALREADY printed by the console.log that produced
+  //      it, so echoing it again prints every line twice.
+  //   2. `${msg} ${text}` appends a space even when text is empty. That trailing
+  //      space is what let each re-emission grow by one character — which is the
+  //      only reason the amplification was identifiable at all.
+  //
+  // Measured in the running app before this fix: 65 genuine block events had
+  // produced 86,040 log lines (1,323x) and 11 genuine STOP events 138,694
+  // (12,608x) — a 40 MB log grown out of 76 events.
+  const _ekor = (v: any) => (v ? " " + v : "");
+  if (VERBOSE && cat !== "console") {
     const prefix = `[WOLFSPACE:${cat}]`;
     const text = data ? JSON.stringify(data, null, 0) : "";
     if (level === "error")
       _ws(
         process.stderr.write.bind(process.stderr),
-        `${prefix} ${msg} ${data && data.error ? data.error : ""}\n`,
+        `${prefix} ${msg}${_ekor(data && data.error ? data.error : "")}\n`,
       );
     else
       _ws(
         process.stdout.write.bind(process.stdout),
-        `${prefix} ${msg} ${text}\n`,
+        `${prefix} ${msg}${_ekor(text)}\n`,
       );
-  } else if (DEBUG_ON && level === "error") {
+  } else if (DEBUG_ON && level === "error" && cat !== "console") {
     _ws(
       process.stderr.write.bind(process.stderr),
-      `[WOLFSPACE:${cat}] ${msg} ${data && data.error ? data.error : ""}\n`,
+      `[WOLFSPACE:${cat}] ${msg}${_ekor(data && data.error ? data.error : "")}\n`,
     );
   }
   return e;

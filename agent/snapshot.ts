@@ -52,6 +52,17 @@ function _ensureDir(dir: string): void {
  * @returns {{ id: string, dir: string, files: string[], ts: number }}
  */
 function createSnapshot(filePaths: string[], label = ""): HasilSnapshot {
+  // Attributed. This is the synchronous snapshot, taken before every edit, and
+  // it copies files — so its cost scales with what is being edited rather than
+  // with anything this module controls. The asynchronous variant below is
+  // deliberately NOT wrapped: it does not hold the thread, so it cannot appear
+  // in a block and instrumenting it would only add noise.
+  return require("./pemantau-blokir.ts").ukur("snapshot", () =>
+    _createSnapshot(filePaths, label),
+  );
+}
+
+function _createSnapshot(filePaths: string[], label = ""): HasilSnapshot {
   _ensureDir(SNAP_DIR);
 
   const ts = Date.now();

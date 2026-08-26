@@ -52,19 +52,27 @@ function _pythonBin() {
   return "python";
 }
 
-// ── Validasi sintaks tanpa menjalankan kode penuh ──
+// ── Syntax validation without executing the code ──
 function _syntaxCheck(content, lang) {
   const tmp = path.join(os.tmpdir(), `_wf_check_${Date.now()}`);
   try {
     if (lang === "python") {
-      const src = tmp + ".py";
-      fs.writeFileSync(src, content, "utf8");
-      execSync(`${_pythonBin()} -m py_compile "${src}"`, {
-        timeout: 8000,
-        stdio: "pipe",
+      // Attributed separately from the javascript branch, and the split is the
+      // point: this one still spawns a process (measured ~175 ms fully blocked)
+      // while the javascript branch was moved in-process and costs ~2 ms. A
+      // block report that lumped them together would hide which language was
+      // being edited when the window froze.
+      const P = require("./pemantau-blokir.ts");
+      return P.ukur("cek-sintaks-python", () => {
+        const src = tmp + ".py";
+        fs.writeFileSync(src, content, "utf8");
+        execSync(`${_pythonBin()} -m py_compile "${src}"`, {
+          timeout: 8000,
+          stdio: "pipe",
+        });
+        fs.rmSync(src, { force: true });
+        return { ok: true };
       });
-      fs.rmSync(src, { force: true });
-      return { ok: true };
     }
     if (lang === "javascript") {
       // Parsed IN PROCESS. This used to be `execSync("node --check <tmp>")`,

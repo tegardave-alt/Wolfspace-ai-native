@@ -48,7 +48,7 @@ app.setName("WOLFSPACE");
     const isolated = path.join(app.getPath("appData"), "WOLFSPACE-" + tag);
     app.setPath("userData", isolated);
   } catch (e: any) {
-    console.warn("[userData] isolasi gagal, pakai default:", e.message);
+    console.warn("[userData] isolation failed, using default:", e.message);
   }
 })();
 
@@ -132,9 +132,9 @@ async function servePreviewFile(reqPath: any, injectBase: any) {
       return new Response(
         '<html><body style="background:#0c1219;color:#8fb3ff;font-family:system-ui;padding:40px;text-align:center;display:flex;flex-direction:column;justify-content:center;height:100vh;margin:0;box-sizing:border-box;">' +
           '<div style="font-size:48px;margin-bottom:16px;">⏳</div>' +
-          '<h3 style="margin:0 0 8px 0;color:#dce4f0;">File Belum Tersedia</h3>' +
+          '<h3 style="margin:0 0 8px 0;color:#dce4f0;">File Not Available Yet</h3>' +
           '<p style="margin:0;color:#8b949e;font-size:14px;line-height:1.5;">' +
-          "File ini mungkin sedang dibuat oleh agent atau path-nya tidak ditemukan.<br/><br/>" +
+          "This file may still be written by the agent, or the path was not found.<br/><br/>" +
           '<span style="font-family:monospace;font-size:11px;background:#131922;padding:4px 8px;border-radius:4px;border:1px solid #212a36;word-break:break-all;">' +
           resolved +
           "</span></p>" +
@@ -427,7 +427,7 @@ function _tundaSelagiSibuk(label: any, fn: any) {
     // Only the LAST one is kept: stacking reloads achieves nothing, all that is
     // needed is a single reload once everything has settled.
     _reloadTertunda = { label, fn };
-    console.log("[hot-reload] ditunda, agent sedang berjalan:", label);
+    console.log("[hot-reload] deferred, agent still running:", label);
     return;
   }
   fn();
@@ -436,11 +436,17 @@ function _lepasReloadTertunda() {
   if (!_reloadTertunda || _agentSibuk()) return;
   const { label, fn } = _reloadTertunda;
   _reloadTertunda = null;
-  console.log("[hot-reload] agent selesai, menjalankan yang ditunda:", label);
+  console.log(
+    "[hot-reload] agent finished, running the deferred reload:",
+    label,
+  );
   try {
     fn();
   } catch (err: any) {
-    console.error("[hot-reload] gagal menjalankan yang ditunda:", err.message);
+    console.error(
+      "[hot-reload] failed to run the deferred reload:",
+      err.message,
+    );
   }
 }
 
@@ -642,7 +648,7 @@ function browserAksi(p: any) {
       try {
         _br.win.contentView.removeChildView(_br.tampil);
       } catch (e: any) {
-        _brLog("removeChildView GAGAL", { pesan: e.message });
+        _brLog("removeChildView FAILED", { pesan: e.message });
       }
     }
     return { ok: true };
@@ -653,7 +659,7 @@ function browserAksi(p: any) {
         _br.win.contentView.removeChildView(_br.tampil);
         _br.tampil.webContents.close();
       } catch (e: any) {
-        _brLog("buang GAGAL", { pesan: e.message });
+        _brLog("dispose FAILED", { pesan: e.message });
       }
       _br = null;
     }
@@ -667,8 +673,8 @@ function browserAksi(p: any) {
     return { ok: false, error: "buat view: " + e.message };
   }
   if (!b) {
-    _brLog("_brBuat mengembalikan null — tak ada jendela");
-    return { ok: false, error: "tak ada jendela" };
+    _brLog("_brBuat returned null — no window");
+    return { ok: false, error: "no window" };
   }
 
   // ZERO bounds is one of the easiest causes of "blank" to miss: the view exists,
@@ -683,11 +689,11 @@ function browserAksi(p: any) {
       height: Math.max(0, Math.round(r.height)),
     };
     if (!kotak.width || !kotak.height)
-      _brLog("bounds NOL dari renderer", kotak);
+      _brLog("bounds ZERO from renderer", kotak);
     try {
       b.tampil.setBounds(kotak);
     } catch (e: any) {
-      _brLog("setBounds GAGAL", { kotak, pesan: e.message });
+      _brLog("setBounds FAILED", { kotak, pesan: e.message });
       return { ok: false, error: "setBounds: " + e.message };
     }
   }
@@ -707,7 +713,7 @@ function browserAksi(p: any) {
     } catch (e: any) {
       // This used to be swallowed by `catch (_) {}` — if mounting the layer was the
       // thing that failed, the symptom was "blank" with not one trace behind it.
-      _brLog("addChildView GAGAL", { pesan: e.message });
+      _brLog("addChildView FAILED", { pesan: e.message });
       return { ok: false, error: "addChildView: " + e.message };
     }
   }
@@ -716,14 +722,14 @@ function browserAksi(p: any) {
     if (aksi === "buka" && p.url) {
       _brLog("loadURL", { url: String(p.url).slice(0, 80) });
       b.tampil.webContents.loadURL(p.url).catch((e: any) => {
-        _brLog("loadURL DITOLAK", { pesan: e.message });
+        _brLog("loadURL REFUSED", { pesan: e.message });
       });
     }
     if (aksi === "muat-ulang") b.tampil.webContents.reload();
     if (aksi === "mundur" && b.tampil.webContents.navigationHistory.canGoBack())
       b.tampil.webContents.navigationHistory.goBack();
   } catch (e: any) {
-    _brLog("navigasi GAGAL", { aksi, pesan: e.message });
+    _brLog("navigation FAILED", { aksi, pesan: e.message });
     return { ok: false, error: "navigasi: " + e.message };
   }
 
@@ -912,7 +918,7 @@ function registerIpc() {
           BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
         const r = await dialog.showOpenDialog(win, {
           properties: ["openDirectory"],
-          title: "Pilih folder workspace",
+          title: "Choose workspace folder",
         });
         if (r.canceled || !r.filePaths || !r.filePaths.length)
           return { canceled: true };
@@ -1133,7 +1139,7 @@ function migrateOldUserDataOnce() {
       newDir,
     );
   } catch (e: any) {
-    console.log("[userData] migrasi gagal (non-fatal):", e.message);
+    console.log("[userData] migration failed (non-fatal):", e.message);
   }
 }
 
@@ -1235,11 +1241,46 @@ _gcInterval.unref(); // do not hold the process open just for this interval
 
 app.whenReady().then(() => {
   probe.startStopProbe();
-  migrateOldUserDataOnce();
-  registerAppProtocol();
-  registerIpc();
-  startBackend();
-  createWindow();
+  // The startup steps are attributed individually.
+  //
+  // WHY THESE. With only transpile/playwright/snapshot instrumented, the first
+  // two block reports from the running app came back unattributed (the report
+  // says "(tak terlacak)" — verbatim, it is the label's own text) at 259 ms and
+  // 353 ms, from somewhere with no instrument on it. That is what the label is
+  // for, and it pointed here: every one of these runs synchronously on the
+  // thread that is about to draw the window.
+  //
+  // startBackend is the heavy suspect — it pulls in core.js, which pulls in
+  // server.cjs and the whole agent tree. Transpiling that is already measured
+  // separately, but EXECUTING each module's top level is not, and a warm
+  // transpile cache hides none of that cost.
+  // WATCHING STARTS FIRST, and that is load-bearing rather than tidy.
+  //
+  // mulai() clears the attribution ledger so the ledger and the histogram
+  // describe the same window. Started after these steps — as it was — it would
+  // wipe every boot: entry they had just recorded, and the startup blocks would
+  // stay unattributed forever while looking instrumented — worse than having no
+  // instrument at all.
+  //
+  // The old note here said watching began after createWindow() to keep the .ts
+  // require hook off the startup budget. Attributing the steps loads that hook
+  // on the first one anyway, so the reason no longer holds; what is left is a
+  // few ms of module load against startup blocks that were otherwise invisible.
+  try {
+    modulAgent("pemantau-blokir").mulai(20);
+  } catch (_: any) {}
+  const _langkah = (nama: string, fn: () => void) => {
+    try {
+      modulAgent("pemantau-blokir").ukur("boot:" + nama, fn);
+    } catch (_: any) {
+      fn(); // losing the instrument must never cost a startup step
+    }
+  };
+  _langkah("migrasi-userdata", migrateOldUserDataOnce);
+  _langkah("daftar-protokol", registerAppProtocol);
+  _langkah("daftar-ipc", registerIpc);
+  _langkah("mulai-backend", startBackend);
+  _langkah("buat-jendela", createWindow);
   // Blocking watchdog — the instrument the 5000 ms budget never had.
   //
   // REPLACES probe.startLoopProbe(), which measured the same thing more
@@ -1254,18 +1295,17 @@ app.whenReady().then(() => {
   // p99 = 1 ms over 2840 samples, so a chattier reporter would bury the one
   // line that matters under thousands saying nothing happened.
   //
-  // Started AFTER createWindow() on purpose. It pulls in the .ts require hook,
-  // and this repo cut startup from 1071 ms to 314 ms — that budget is not
-  // spent on the thing measuring it.
+  // mulai() already ran above, before the startup steps, so their attribution
+  // survives. Only the periodic reporter is attached here — there is nothing to
+  // report until the window exists.
   try {
     const pb = modulAgent("pemantau-blokir");
-    pb.mulai(20);
     pb.pasangLaporan((l: any) => probe.say("BLOKIR " + pb.ringkas(l)), 15000);
   } catch (e: any) {
     // Never fatal: losing the instrument must not cost the app its window.
-    probe.say("pemantau blokir tak aktif: " + e.message);
+    probe.say("blocking watchdog not active: " + e.message);
   }
-  // Hot reload: seluruh system WOLFSPACE tanpa reset manual
+  // Hot reload: the whole of WOLFSPACE, with no manual restart
   try {
     const root = unpackedRoot();
     const backendDirs = ["agent", "electron", "scripts"];

@@ -45,26 +45,26 @@ function csc() {
 }
 
 function perluBangun() {
-  if (!fs.existsSync(EXE)) return "belum ada";
+  if (!fs.existsSync(EXE)) return "missing";
   try {
     const src = fs.statSync(SRC).mtimeMs;
     const exe = fs.statSync(EXE).mtimeMs;
-    if (src > exe) return "sumber lebih baru";
+    if (src > exe) return "source is newer";
   } catch (_) {
-    return "status berkas tak terbaca";
+    return "file status unreadable";
   }
   return null;
 }
 
 function bangun() {
-  if (process.platform !== "win32") return { dilewati: "bukan Windows" };
-  if (!fs.existsSync(SRC)) return { dilewati: "AcLaunch.cs tak ada" };
+  if (process.platform !== "win32") return { dilewati: "not Windows" };
+  if (!fs.existsSync(SRC)) return { dilewati: "AcLaunch.cs is missing" };
 
   const alasan = perluBangun();
   if (!alasan) return { terkini: true };
 
   const bin = csc();
-  if (!bin) return { dilewati: "csc.exe tak ditemukan" };
+  if (!bin) return { dilewati: "csc.exe not found" };
 
   execFileSync(
     bin,
@@ -81,18 +81,18 @@ if (require.main === module) {
     const r = bangun();
     if (r.dibangun)
       console.log(
-        "[build-aclaunch] AcLaunch.exe dibangun (" +
+        "[build-aclaunch] AcLaunch.exe built (" +
           r.alasan +
           ", " +
           r.byte +
-          " byte)",
+          " bytes)",
       );
-    else if (r.terkini) console.log("[build-aclaunch] AcLaunch.exe terkini");
-    else console.log("[build-aclaunch] dilewati: " + r.dilewati);
+    else if (r.terkini) console.log("[build-aclaunch] AcLaunch.exe up to date");
+    else console.log("[build-aclaunch] skipped: " + r.dilewati);
   } catch (e) {
     // A failure here must not stop the app from starting: without the binary
     // the bash tool falls back to the text-scanning guard, which is weaker but
     // working, and appcontainer-jail.ts says so in its enforcement label.
-    console.error("[build-aclaunch] GAGAL: " + (e.stdout || e.message));
+    console.error("[build-aclaunch] FAILED: " + (e.stdout || e.message));
   }
 }

@@ -81,11 +81,11 @@ function check(filePath, newContent, oldContent) {
         ok: false,
         metrics: after,
         error:
-          `DITOLAK — berkas baru terlalu dalam bersarang: indentasi ${after.maxIndent} spasi ` +
-          `(batas ${NEW_FILE_MAX_INDENT} = ${NEW_FILE_MAX_INDENT / 2} level).\n` +
-          `PERBAIKI DENGAN: ekstrak bagian terdalam jadi komponen/fungsi terpisah, ` +
-          `lalu panggil dari sini. Jangan menulis ulang dengan indentasi dipadatkan — ` +
-          `yang diukur adalah struktur, bukan spasi.`,
+          `REFUSED — the new file is nested too deeply: indentation of ${after.maxIndent} spaces ` +
+          `(limit ${NEW_FILE_MAX_INDENT} = ${NEW_FILE_MAX_INDENT / 2} levels).\n` +
+          `FIX BY: extracting the deepest part into a separate component/function, ` +
+          `then call it from here. Do not rewrite it with flattened indentation — ` +
+          `what is measured is structure, not whitespace.`,
       };
     }
     if (after.lineCount > NEW_FILE_MAX_LINES) {
@@ -93,9 +93,9 @@ function check(filePath, newContent, oldContent) {
         ok: false,
         metrics: after,
         error:
-          `DITOLAK — berkas baru terlalu panjang: ${after.lineCount} baris ` +
-          `(batas ${NEW_FILE_MAX_LINES}).\n` +
-          `PERBAIKI DENGAN: pecah jadi beberapa modul menurut tanggung jawabnya.`,
+          `REFUSED — the new file is too long: ${after.lineCount} lines ` +
+          `(limit ${NEW_FILE_MAX_LINES}).\n` +
+          `FIX BY: splitting it into several modules by responsibility.`,
       };
     }
     return { ok: true, metrics: after };
@@ -109,11 +109,11 @@ function check(filePath, newContent, oldContent) {
       ok: false,
       metrics: { before, after },
       error:
-        `DITOLAK — edit ini MEMPERDALAM sarang: ${before.maxIndent} → ${after.maxIndent} spasi.\n` +
-        `Berkas ini memang sudah dalam, dan itu boleh dipertahankan — yang dilarang ` +
-        `adalah menambahnya.\n` +
-        `PERBAIKI DENGAN: ekstrak blok yang kamu tambahkan jadi komponen/fungsi ` +
-        `sendiri di level atas, lalu sisipkan pemanggilnya (satu baris) di posisi ini.`,
+        `REFUSED — this edit DEEPENS the nesting: ${before.maxIndent} -> ${after.maxIndent} spaces.\n` +
+        `This file is already deep, and that is fine to leave as is — what is forbidden ` +
+        `is making it deeper.\n` +
+        `FIX BY: extracting the block you added into its own component/function ` +
+        `at the top level, then insert a one-line call to it in this spot.`,
     };
   }
 
@@ -122,10 +122,10 @@ function check(filePath, newContent, oldContent) {
       ok: false,
       metrics: { before, after },
       error:
-        `DITOLAK — edit ini menambah baris sangat dalam (≥28 spasi): ` +
+        `REFUSED — this edit adds very deep lines (>=28 spaces): ` +
         `${before.deepLines} → ${after.deepLines}.\n` +
-        `PERBAIKI DENGAN: pindahkan blok baru ke fungsi/komponen terpisah ` +
-        `alih-alih menyisipkannya ke dalam pohon yang sudah dalam.`,
+        `FIX BY: moving the new block into a separate function/component ` +
+        `instead of inserting it into a tree that is already deep.`,
     };
   }
 

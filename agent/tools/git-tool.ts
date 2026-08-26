@@ -58,7 +58,7 @@ const OPERASI = {
     argv: () => ["status", "--porcelain=v1", "--branch"],
   },
   diff: {
-    jelas: "perubahan; pakai bertahap:true untuk yang sudah di-stage",
+    jelas: "changes; pass bertahap:true for what is already staged",
     argv: (a) => [
       "diff",
       ...(a.bertahap ? ["--staged"] : []),
@@ -81,30 +81,33 @@ const OPERASI = {
     jelas: "isi satu commit (ringkasan perubahan)",
     argv: (a) => ["show", "--stat", "--no-color", a.ref || "HEAD"],
   },
-  berkas: { jelas: "berkas yang dilacak git", argv: () => ["ls-files"] },
+  berkas: { jelas: "files tracked by git", argv: () => ["ls-files"] },
   cabang: {
     jelas: "daftar cabang lokal",
     argv: () => ["branch", "--list", "--no-color"],
   },
-  kepala: { jelas: "commit HEAD saat ini", argv: () => ["rev-parse", "HEAD"] },
+  kepala: {
+    jelas: "the current HEAD commit",
+    argv: () => ["rev-parse", "HEAD"],
+  },
   blame: {
-    jelas: "siapa mengubah tiap baris satu berkas",
+    jelas: "who changed each line of one file",
     argv: (a) => ["blame", "--no-color", "--", a.berkas[0]],
   },
 
   tambah: {
     tulis: true,
-    jelas: "stage berkas (setara git add)",
+    jelas: "stage files (equivalent to git add)",
     argv: (a) => ["add", "--", ...a.berkas],
   },
   commit: {
     tulis: true,
-    jelas: "commit yang sudah di-stage; hook repo IKUT JALAN",
+    jelas: "commit what is staged; the repo hooks DO RUN",
     argv: (a) => ["commit", "-m", String(a.pesan)],
   },
   pulihkan: {
     tulis: true,
-    jelas: "buang perubahan pada berkas (setara git restore)",
+    jelas: "discard changes to files (equivalent to git restore)",
     argv: (a) => ["restore", "--", ...a.berkas],
   },
   cabang_baru: {
@@ -114,7 +117,7 @@ const OPERASI = {
   },
   pindah: {
     tulis: true,
-    jelas: "pindah ke cabang yang sudah ada; hook checkout IKUT JALAN",
+    jelas: "switch to an existing branch; the checkout hooks DO RUN",
     argv: (a) => ["checkout", String(a.ref)],
   },
 };
@@ -153,9 +156,9 @@ function _validasiBerkas(daftar, ws) {
   const keluar: string[] = [];
   for (const p of daftar) {
     if (typeof p !== "string" || !p.trim())
-      return { ok: false, alasan: "path kosong" };
+      return { ok: false, alasan: "empty path" };
     if (p.startsWith("-"))
-      return { ok: false, alasan: "path tak boleh diawali '-': " + p };
+      return { ok: false, alasan: "a path must not start with '-': " + p };
     const abs = path.resolve(ws, p);
     const rel = path.relative(ws, abs);
     if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel))
@@ -181,7 +184,7 @@ async function jalankan(args, workspace) {
       output:
         "operasi '" +
         nama +
-        "' tak dikenal. Yang ada:\n" +
+        "' is not recognised. Available:\n" +
         Object.entries(OPERASI)
           .map(([k, v]) => "  " + k.padEnd(13) + v.jelas)
           .join("\n") +
@@ -197,7 +200,7 @@ async function jalankan(args, workspace) {
       return {
         ok: false,
         ..._penegakan.label("penasihat", "kapabilitas-git"),
-        output: "DITOLAK: " + v.alasan,
+        output: "REFUSED: " + v.alasan,
       };
     b.berkas = v.berkas;
   }
@@ -205,13 +208,14 @@ async function jalankan(args, workspace) {
     return {
       ok: false,
       ..._penegakan.label("penasihat", "kapabilitas-git"),
-      output: "blame butuh tepat satu berkas",
+      output: "blame needs exactly one file",
     };
   if (a.ref !== undefined && !REF_SAH.test(String(a.ref)))
     return {
       ok: false,
       ..._penegakan.label("penasihat", "kapabilitas-git"),
-      output: "ref '" + a.ref + "' tak sah (tanpa spasi, tak diawali '-')",
+      output:
+        "ref '" + a.ref + "' is invalid (no spaces, must not start with '-')",
     };
   if (nama === "commit" && !String(a.pesan || "").trim())
     return {
@@ -223,7 +227,7 @@ async function jalankan(args, workspace) {
     return {
       ok: false,
       ..._penegakan.label("penasihat", "kapabilitas-git"),
-      output: ws + " bukan repo git (tak ada .git)",
+      output: ws + " is not a git repo (no .git)",
     };
 
   // WRITE operations can run the repo's hooks, and a hook is a file the agent
@@ -255,9 +259,9 @@ async function jalankan(args, workspace) {
             ok: false,
             ...label,
             output:
-              "git gagal: " +
+              "git failed: " +
               String(err.message).slice(0, 300) +
-              (err.killed ? "\n[dihentikan: lewat batas waktu]" : ""),
+              (err.killed ? "\n[stopped: past the time limit]" : ""),
           });
         }
         res({
@@ -266,7 +270,7 @@ async function jalankan(args, workspace) {
           // is still returned as is.
           ok: !err,
           ...label,
-          output: teks.trim().slice(0, MAKS_KELUARAN) || "(tak ada keluaran)",
+          output: teks.trim().slice(0, MAKS_KELUARAN) || "(no output)",
         });
       },
     );
@@ -294,9 +298,9 @@ function _admission(nama) {
         ok: false,
         ..._penegakan.label("penasihat", "admission"),
         output:
-          "Sesi ini dikunci tanpa eksekusi proses mentah, dan operasi git '" +
+          "This session is locked without raw process execution, and the git operation '" +
           nama +
-          "' bisa menjalankan hook repo di luar kurungan.\nAlasan teknis: " +
+          "' can run repo hooks outside the confinement.\nTechnical reason: " +
           adm.alasan,
       };
     }
@@ -308,8 +312,8 @@ function _admission(nama) {
       output:
         "git '" +
         nama +
-        "' ditolak: CommandChain tak tersedia untuk memeriksa admission, dan " +
-        "operasi ini bisa menjalankan hook repo di luar kurungan.",
+        "' refused: CommandChain is unavailable to check admission, and " +
+        "this operation can run repo hooks outside the confinement.",
     };
   }
 }

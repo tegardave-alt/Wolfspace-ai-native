@@ -16,7 +16,7 @@ import * as util from "util";
 
 const execP = util.promisify(exec);
 const { dlog } = require("./debug.ts");
-const { getPlatformAdapter } = require("./platform/index.cjs");
+const { getPlatformAdapter } = require("./platform/index.ts");
 
 /** Read/write permission over specific directory trees. */
 interface OpsiKapabilitas {
