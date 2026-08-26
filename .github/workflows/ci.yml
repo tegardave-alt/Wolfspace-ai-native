@@ -108,6 +108,13 @@ jobs:
       - name: Bangun artefak Electron
         run: npm run build:preload && npm run build:main && npm run build:app
 
+      # AcLaunch.exe is GITIGNORED: a clone has the C# source and no binary. It
+      # is on the verification list below, so it has to exist before packaging.
+      # csc.exe ships with the .NET Framework already on Windows, and the compile
+      # takes under a second.
+      - name: Bangun peluncur AppContainer
+        run: npm run build:aclaunch
+
       - name: Package (dir saja, tanpa installer)
         run: npx electron-builder --win --dir
 
@@ -142,7 +149,7 @@ jobs:
                    agent/broker/host.ts agent/broker/policy.ts \
                    agent/broker/audit-log.ts agent/broker/commandchain.ts \
                    server/routes/terminal.ts server/routes/debug.ts server/routes/snapshots.ts \
-                   server/routes/cloud.ts server/routes/dap.ts; do
+                   server/routes/cloud.ts server/routes/dap.ts                    scripts/appcontainer/AcLaunch.exe; do
             if [ -f "$UNPACKED/$f" ]; then
               echo "  ok      $f"
             else
