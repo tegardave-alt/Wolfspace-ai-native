@@ -132,6 +132,83 @@
         };
       })();
       __vt("__mulai");
+
+      // ── Pemuat vendor SESUAI PERMINTAAN ──
+      //
+      // Diukur di aplikasi yang berjalan, bukan ditaksir:
+      //
+      //   VENDOR 11795ms total — mermaid 8904, three3d 1266, xterm 705,
+      //   babel 580, react 238, monaco-loader 74, cytoscape 28
+      //
+      // Sebelas koma delapan detik memblokir render sebelum satu piksel
+      // tergambar — lebih dari dua kali ambang 5000 ms yang membuat Windows
+      // menandai jendela tak merespons. Mermaid sendirian 75% dari itu.
+      //
+      // Tiga yang terbesar tidak dibutuhkan saat start: mermaid hanya saat ada
+      // diagram di chat, three3d hanya saat pratinjau 3D dibuka, babel hanya
+      // saat agent menyunting sumber UI-nya sendiri (jalur normal memakai
+      // app.build.js yang sudah dibangun). Ketiganya kini dimuat saat pertama
+      // dipakai.
+      //
+      // Biayanya PINDAH, bukan hilang dari pandangan: tiap pemuatan malas
+      // mencetak barisnya sendiri, supaya jeda saat fitur pertama dibuka tetap
+      // bisa diukur alih-alih jadi misteri.
+      window.__muatVendor = (function () {
+        var tertunda = {};
+        return function (nama, src, sesudah) {
+          if (tertunda[nama]) return tertunda[nama];
+          var t0 = performance.now();
+          tertunda[nama] = new Promise(function (ok, gagal) {
+            var s = document.createElement("script");
+            s.src = src;
+            s.onload = function () {
+              try {
+                if (sesudah) sesudah();
+              } catch (e) {}
+              try {
+                console.log(
+                  "[probe] VENDOR-LAZY " +
+                    nama +
+                    " " +
+                    Math.round(performance.now() - t0) +
+                    "ms",
+                );
+              } catch (e) {}
+              ok();
+            };
+            s.onerror = function () {
+              // Ditolak, bukan digantung: pemanggilnya punya jalur cadangan
+              // (MermaidBlock jatuh ke parser SVG sendiri), dan promise yang
+              // tak pernah selesai akan membekukan jalur itu selamanya.
+              tertunda[nama] = null;
+              gagal(new Error("gagal memuat " + nama));
+            };
+            document.head.appendChild(s);
+          });
+          return tertunda[nama];
+        };
+      })();
+
+      window.__muatMermaid = function () {
+        return window.__muatVendor(
+          "mermaid",
+          "/vendor/mermaid.min.js",
+          function () {
+            // IIFE esbuild menaruh API-nya di global internal; normalkan —
+            // dulu dilakukan tag <script> inline tepat setelah muat.
+            var _m =
+              window.__esbuild_esm_mermaid_nm &&
+              window.__esbuild_esm_mermaid_nm.mermaid;
+            if (_m) window.mermaid = _m.default || _m;
+          },
+        );
+      };
+      window.__muatThree = function () {
+        return window.__muatVendor("three3d", "/vendor/three3d.bundle.js");
+      };
+      window.__muatBabel = function () {
+        return window.__muatVendor("babel", "/vendor/babel.min.js");
+      };
     </script>
     <!-- xterm.js — fullscreen terminal for Agent Runner -->
     <script src="/vendor/xterm/xterm.js"></script>
@@ -139,21 +216,6 @@
     <script src="/vendor/xterm/addon-webgl.js"></script>
     <script>
       __vt("xterm");
-    </script>
-    <!-- Mermaid JS (lokal, v11) — render diagram. Dulu dari CDN (gagal offline di
-       Electron) DAN tak terpakai karena UI memakai parser SVG custom. Sekarang lokal
-       + dipakai MermaidBlock. IIFE esbuild menaruh API di global internal; normalkan. -->
-    <script src="/vendor/mermaid.min.js"></script>
-    <script>
-      __vt("mermaid");
-    </script>
-    <script>
-      try {
-        var _m =
-          window.__esbuild_esm_mermaid_nm &&
-          window.__esbuild_esm_mermaid_nm.mermaid;
-        if (_m) window.mermaid = _m.default || _m;
-      } catch (e) {}
     </script>
     <!-- Cytoscape.js — kanvas graph interaktif (Graph Canvas) -->
     <script src="/vendor/cytoscape.min.js"></script>
@@ -165,16 +227,6 @@
     <script src="/vendor/react-dom.production.min.js"></script>
     <script>
       __vt("react");
-    </script>
-    <!-- three.js + loader GLB/STL + OrbitControls (viewer 3D attachment).
-         Ekspos window.WOLFSPACE3D.{THREE,GLTFLoader,STLLoader,OrbitControls}. -->
-    <script src="/vendor/three3d.bundle.js"></script>
-    <script>
-      __vt("three3d");
-    </script>
-    <script src="/vendor/babel.min.js"></script>
-    <script>
-      __vt("babel");
     </script>
     <!-- Monaco (VS Code editor) — bundled locally, real highlighting + autocomplete -->
     <script src="/vendor/monaco/vs/loader.js"></script>
@@ -431,6 +483,17 @@
             name: "/app.tsx",
             src: await (await fetch("/app.tsx?v=" + Date.now())).text(),
           });
+
+          // BABEL DIMUAT DI SINI, bukan saat aplikasi start.
+          //
+          // Terukur 580 ms dari 11795 ms total vendor, dan dibayar pada SETIAP
+          // start — padahal baris ini hanya tercapai lewat HMR (agent menyunting
+          // sumber UI-nya sendiri) atau ketika app.build.js tak ada. Jalur normal
+          // memakai berkas prebuilt dan `return` jauh sebelum sampai ke sini.
+          //
+          // Ditunggu, bukan ditembak-dan-lupakan: baris berikutnya memanggil
+          // Babel.transform secara langsung.
+          if (window.__muatBabel) await window.__muatBabel();
 
           try {
             // Transpile PER-MODUL lalu gabung hasilnya (di-inject sbagai SATU <script>,

@@ -78,7 +78,6 @@ describe("vendor cost meter", () => {
           "/vendor/xterm/addon-webgl.js",
         ],
       },
-      { tanda: "mermaid", vendor: ["/vendor/mermaid.min.js"] },
       { tanda: "cytoscape", vendor: ["/vendor/cytoscape.min.js"] },
       {
         tanda: "react",
@@ -87,8 +86,6 @@ describe("vendor cost meter", () => {
           "/vendor/react-dom.production.min.js",
         ],
       },
-      { tanda: "three3d", vendor: ["/vendor/three3d.bundle.js"] },
-      { tanda: "babel", vendor: ["/vendor/babel.min.js"] },
       { tanda: "monaco-loader", vendor: ["/vendor/monaco/vs/loader.js"] },
       { tanda: "__selesai", vendor: [] },
     ];
@@ -104,6 +101,54 @@ describe("vendor cost meter", () => {
     }
     expect(bucket).toEqual([]); // nothing trailing past the final marker
     expect(nyata).toEqual(DIHARAPKAN);
+  });
+
+  // THE THREE HEAVY ONES MUST STAY LAZY.
+  //
+  // Measured in the running app, before this changed:
+  //
+  //   VENDOR 11795ms total — mermaid 8904, three3d 1266, xterm 705,
+  //   babel 580, react 238, monaco-loader 74, cytoscape 28
+  //
+  // Eleven point eight seconds of blocked render, twice the 5000 ms after which
+  // Windows marks a window unresponsive, and mermaid alone was 75% of it. None
+  // of the three is needed to show the first screen: mermaid only when a chat
+  // message carries a diagram, three3d only when a 3D preview opens, babel only
+  // on the HMR path.
+  //
+  // The list above no longer names them, so an eager <script> tag for one of
+  // them would already fail that comparison. This asserts the other half: that
+  // each still has a loader, and that the loader is actually reachable by name.
+  test("mermaid, three3d dan babel dimuat SESUAI PERMINTAAN, bukan saat start", () => {
+    const html = HTML;
+    for (const src of [
+      "/vendor/mermaid.min.js",
+      "/vendor/three3d.bundle.js",
+      "/vendor/babel.min.js",
+    ]) {
+      // No eager tag anywhere. A plain string, deliberately: the tag being
+      // matched is written one exact way in index.html, and a regex here would
+      // only add escaping layers for nothing.
+      expect(html).not.toContain('<script src="' + src + '"');
+      // But the loader still knows where to find it.
+      expect(html).toContain('"' + src + '"');
+    }
+    for (const fn of ["__muatMermaid", "__muatThree", "__muatBabel"]) {
+      expect(html).toContain("window." + fn + " =");
+    }
+    // And the consumers actually call them — a loader nobody invokes is the
+    // same as no loader, except that it looks fine.
+    const cb = fs.readFileSync(
+      path.join(__dirname, "..", "public", "app", "CodeBlocks.tsx"),
+      "utf8",
+    );
+    expect(cb).toMatch(/__muatMermaid\(\)/);
+    const m3 = fs.readFileSync(
+      path.join(__dirname, "..", "public", "app", "Model3DViewer.tsx"),
+      "utf8",
+    );
+    expect(m3).toMatch(/__muatThree\(\)/);
+    expect(html).toMatch(/await window\.__muatBabel\(\)/);
   });
 
   test("marker names are unique, so a copy-paste cannot hide a bundle", () => {

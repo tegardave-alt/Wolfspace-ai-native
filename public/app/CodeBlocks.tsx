@@ -879,54 +879,84 @@ function MermaidBlock({ code, onInteractive }: any) {
   const ref = useRef<any>(null);
   const [failed, setFailed] = useState(false);
   useEffect(() => {
-    const m = typeof window !== "undefined" ? window.mermaid : null;
-    if (!m || !m.render) {
-      setFailed(true);
-      return;
-    }
     let cancelled = false;
-    try {
-      if (!window.__mermaidInit) {
-        m.initialize({
-          startOnLoad: false,
-          securityLevel: "loose",
-          theme: "base",
-          themeVariables: {
-            background: "#0d1117",
-            primaryColor: "#1c2634",
-            primaryBorderColor: "#c8d3e0",
-            primaryTextColor: "#eaf0f7",
-            lineColor: "#8fb3ff",
-            secondaryColor: "#161b22",
-            tertiaryColor: "#0d1117",
-            clusterBkg: "#12161d",
-            clusterBorder: "#2b3546",
-            edgeLabelBackground: "#0d1117",
-            fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
-            fontSize: "15px",
-          },
-          flowchart: {
-            curve: "basis",
-            htmlLabels: true,
-            nodeSpacing: 46,
-            rankSpacing: 54,
-            padding: 10,
-            useMaxWidth: true,
-          },
-        });
-        window.__mermaidInit = true;
+
+    // MERMAID IS LOADED WHEN IT IS USED, not when the app starts.
+    //
+    // Measured in the running app: loading it up front cost 8904 ms of an
+    // 11795 ms vendor total — 75% of it, all of it blocking the render before a
+    // single pixel was drawn. Most sessions never show a diagram at all, so
+    // that was paid for something never used.
+    //
+    // The old `!m` branch went straight to setFailed(true), which means the
+    // fallback renderer. That was right when mermaid was never going to exist;
+    // now it merely does not exist YET, and giving up there would show the
+    // degraded diagram on every first diagram.
+    const jalankan = (m: any) => {
+      try {
+        if (!window.__mermaidInit) {
+          m.initialize({
+            startOnLoad: false,
+            securityLevel: "loose",
+            theme: "base",
+            themeVariables: {
+              background: "#0d1117",
+              primaryColor: "#1c2634",
+              primaryBorderColor: "#c8d3e0",
+              primaryTextColor: "#eaf0f7",
+              lineColor: "#8fb3ff",
+              secondaryColor: "#161b22",
+              tertiaryColor: "#0d1117",
+              clusterBkg: "#12161d",
+              clusterBorder: "#2b3546",
+              edgeLabelBackground: "#0d1117",
+              fontFamily: "system-ui, -apple-system, Segoe UI, sans-serif",
+              fontSize: "15px",
+            },
+            flowchart: {
+              curve: "basis",
+              htmlLabels: true,
+              nodeSpacing: 46,
+              rankSpacing: 54,
+              padding: 10,
+              useMaxWidth: true,
+            },
+          });
+          window.__mermaidInit = true;
+        }
+        const id = "mmd-" + Math.random().toString(36).slice(2, 9);
+        Promise.resolve(m.render(id, code))
+          .then(({ svg }: any) => {
+            if (!cancelled && ref.current) ref.current.innerHTML = svg;
+          })
+          .catch(() => {
+            if (!cancelled) setFailed(true);
+          });
+      } catch (e) {
+        setFailed(true);
       }
-      const id = "mmd-" + Math.random().toString(36).slice(2, 9);
-      Promise.resolve(m.render(id, code))
-        .then(({ svg }: any) => {
-          if (!cancelled && ref.current) ref.current.innerHTML = svg;
+    };
+
+    const siap = typeof window !== "undefined" ? window.mermaid : null;
+    if (siap && siap.render) {
+      jalankan(siap);
+    } else if (typeof window !== "undefined" && (window as any).__muatMermaid) {
+      (window as any)
+        .__muatMermaid()
+        .then(() => {
+          if (cancelled) return;
+          const m = (window as any).mermaid;
+          if (m && m.render) jalankan(m);
+          else setFailed(true);
         })
         .catch(() => {
+          // The loader rejects rather than hanging, so this really is reached.
           if (!cancelled) setFailed(true);
         });
-    } catch (e) {
+    } else {
       setFailed(true);
     }
+
     return () => {
       cancelled = true;
     };

@@ -23,15 +23,47 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
   const [playing, setPlaying] = useState(true);
   const [activeClip, setActiveClip] = useState(0);
 
+  // three.js IS LOADED WHEN THE VIEWER OPENS, not when the app starts.
+  //
+  // Measured in the running app: 1266 ms of an 11795 ms vendor total, paid on
+  // EVERY start even though most sessions never open a model. This viewer is
+  // its only consumer.
+  const [libSiap, setLibSiap] = useState(
+    typeof window !== "undefined" &&
+      !!(window.WOLFSPACE3D && window.WOLFSPACE3D.THREE),
+  );
+
+  useEffect(() => {
+    if (libSiap) return;
+    let batal = false;
+    const w: any = typeof window !== "undefined" ? window : null;
+    if (w && w.__muatThree) {
+      w.__muatThree()
+        .then(() => {
+          if (!batal) setLibSiap(true);
+        })
+        .catch(() => {
+          if (batal) return;
+          setStatus("error");
+          setErrMsg("3D library (three.js) failed to load.");
+        });
+    } else {
+      setStatus("error");
+      setErrMsg("3D library (three.js) is not loaded.");
+    }
+    return () => {
+      batal = true;
+    };
+  }, [libSiap]);
+
   useEffect(() => {
     const lib = typeof window !== "undefined" && window.WOLFSPACE3D;
     const mount = mountRef.current;
     if (!mount) return;
-    if (!lib || !lib.THREE) {
-      setStatus("error");
-      setErrMsg("3D library (three.js) is not loaded.");
-      return;
-    }
+    // NOT an error when it is absent — only not there yet. The effect above is
+    // fetching it and will re-run this one through libSiap. Setting "error"
+    // here would show a failure for the second of loading that is normal.
+    if (!lib || !lib.THREE) return;
     const { THREE, GLTFLoader, STLLoader, OrbitControls, RoomEnvironment } =
       lib;
     let raf = 0;
@@ -274,7 +306,7 @@ function Model3DViewer({ url, name }: { url?: string; name?: string }) {
         renderer.domElement.parentNode.removeChild(renderer.domElement);
       }
     };
-  }, [url, name]);
+  }, [url, name, libSiap]);
 
   // Pause/play by freezing the mixer's timeScale (0 = frozen, 1 = normal).
   const togglePlay = () => {
