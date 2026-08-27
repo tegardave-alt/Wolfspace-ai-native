@@ -105,6 +105,32 @@ describe("paket: yang diperiksa CI benar-benar bisa ada di sana", () => {
     }
   });
 
+  // DEPENDENSI RUNTIME HARUS IKUT, dan ini bukan kehati-hatian teoretis.
+  //
+  // build.files adalah ALLOWLIST. Ia tak pernah menyebut node_modules, jadi
+  // installer v0.1.0 terkirim TANPA satu pun dependensi produksi: memeriksa
+  // app.asar hasil rilis menunjukkan NOL paket node_modules di dalamnya.
+  // Aplikasi terpasang mati dengan "Cannot find module '@langchain/langgraph'"
+  // dan agentnya tak bisa jalan sama sekali.
+  //
+  // Job packaging di CI HIJAU sepanjang itu, karena ia memeriksa keberadaan
+  // BERKAS — bukan apakah sebuah modul bisa diselesaikan. Pemeriksa yang
+  // memverifikasi hal yang salah menghasilkan keyakinan, bukan jawaban.
+  //
+  // asarUnpack ikut diperiksa, bukan hanya files: agent/** sudah ter-unpack,
+  // dan resolusi require dari app.asar.unpacked/agent/ TIDAK bisa melihat ke
+  // dalam app.asar. Berada di dalam arsip sama tak berartinya dengan absen.
+  test("SETIAP dependency produksi tercakup files DAN asarUnpack", () => {
+    const deps = Object.keys(PKG.dependencies || {});
+    expect(deps.length).toBeGreaterThan(0);
+    const luput = deps.filter(
+      (d) =>
+        !tercakup("node_modules/" + d, PKG.build.files) ||
+        !tercakup("node_modules/" + d, PKG.build.asarUnpack),
+    );
+    expect(luput).toEqual([]);
+  });
+
   test("peluncur dan aplikasinya ada di SISI YANG SAMA", () => {
     // server.cjs does require("./server.ts"), resolved relative to itself. If one
     // is unpacked and the other is not, that require cannot find its target — the
