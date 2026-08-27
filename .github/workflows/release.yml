@@ -111,6 +111,33 @@ jobs:
           fi
           ls -la "$EXE"
 
+      # A package that cannot LOAD is worse than one missing a file, because
+      # nothing about it looks wrong until someone installs it. v0.1.0 shipped
+      # with zero production dependencies — build.files is an allowlist and never
+      # named node_modules — and the agent died on "Cannot find module
+      # '@langchain/langgraph'". Every file check passed the whole time.
+      #
+      # So the chain is pulled all the way to a module that actually uses a
+      # third-party dependency, with a real require(): what failed on the user's
+      # machine was RESOLUTION, and a file sitting inside app.asar cannot be
+      # resolved from app.asar.unpacked.
+      - name: Check the packaged backend loads
+        shell: bash
+        run: |
+          set -e
+          cd dist-app/win-unpacked/resources/app.asar.unpacked
+          node -e "
+            const core = require('./core.js');
+            if (!core || !core.server) { console.error('::error::core.server missing'); process.exit(1); }
+            console.log('  ok  core.js (exports: ' + Object.keys(core).length + ')');
+            const sa = require('./agent/self_agent.ts');
+            if (typeof sa.selfAgentStream !== 'function') {
+              console.error('::error::self_agent packaged but selfAgentStream is gone');
+              process.exit(1);
+            }
+            console.log('  ok  agent/self_agent.ts (and its dependencies)');
+          "
+
       # A release whose asset is missing is worse than no release: the page looks
       # finished. Fail here instead.
       - name: Check the installer exists

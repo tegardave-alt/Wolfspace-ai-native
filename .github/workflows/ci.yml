@@ -184,8 +184,25 @@ jobs:
 
           echo "--- uji rantai require dari hasil paket ---"
           cd "$UNPACKED"
+          # core.js SAJA tidak cukup, dan itu terbukti mahal. Pemeriksaan ini
+          # sudah ada saat installer v0.1.0 dirilis TANPA satu pun dependensi
+          # produksi, dan ia tetap hijau: core.js -> server.cjs -> server.ts
+          # tidak pernah menyentuh @langchain/langgraph, yang di-require
+          # self_agent. Aplikasi terpasang mati dengan "Cannot find module".
+          #
+          # Jadi rantainya ditarik sampai ke modul yang benar-benar memakai
+          # dependensi pihak ketiga. require() nyata, bukan test-keberadaan
+          # berkas: yang gagal di mesin pengguna adalah RESOLUSI, dan sebuah
+          # berkas yang ada di dalam app.asar tak bisa diresolusi dari
+          # app.asar.unpacked.
           node -e "
             const core = require('./core.js');
-            if (!core || !core.server) { console.error('core.server tidak tersedia'); process.exit(1); }
-            console.log('core.js OK, ekspor:', Object.keys(core).length);
+            if (!core || !core.server) { console.error('::error::core.server tidak tersedia'); process.exit(1); }
+            console.log('  ok      core.js (ekspor: ' + Object.keys(core).length + ')');
+            const sa = require('./agent/self_agent.ts');
+            if (typeof sa.selfAgentStream !== 'function') {
+              console.error('::error::self_agent terpaket tapi selfAgentStream hilang');
+              process.exit(1);
+            }
+            console.log('  ok      agent/self_agent.ts (+ dependensinya)');
           "
