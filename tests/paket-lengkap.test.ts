@@ -131,6 +131,34 @@ describe("paket: yang diperiksa CI benar-benar bisa ada di sana", () => {
     expect(luput).toEqual([]);
   });
 
+  // KREDENSIAL TIDAK BOLEH IKUT TERPAKET.
+  //
+  // server/cloud-keys.json berisi dua kunci API sungguhan dan BENAR
+  // di-gitignore, jadi ia tak pernah bocor lewat repo. Tapi electron-builder
+  // TIDAK MEMBACA .gitignore — ia memakai build.files, dan build.files memuat
+  // "server/**". Kuncinya ikut ke installer v0.1.0, v0.1.1 dan v0.1.2,
+  // ketiganya terbit publik.
+  //
+  // Dua sistem pengecualian yang tak saling bicara: satu melindungi repo, satu
+  // menyusun paket, dan berkas yang aman di mata yang pertama tetap terkirim
+  // oleh yang kedua.
+  //
+  // Ini menjaga POLA-nya. Penjaga yang lebih kuat ada di ci.yml dan
+  // release.yml: keduanya memindai paket YANG SUDAH JADI, karena sepanjang
+  // sesi ini pelajarannya berulang — konfigurasi bisa lolos sementara isinya
+  // berbeda.
+  test("pola build.files menolak berkas kredensial", () => {
+    const wajib = [
+      "!**/cloud-keys.json",
+      "!**/.wolfspace/**",
+      "!**/.env",
+      "!**/*.pem",
+      "!**/*.key",
+    ];
+    const hilang = wajib.filter((p) => !PKG.build.files.includes(p));
+    expect(hilang).toEqual([]);
+  });
+
   test("peluncur dan aplikasinya ada di SISI YANG SAMA", () => {
     // server.cjs does require("./server.ts"), resolved relative to itself. If one
     // is unpacked and the other is not, that require cannot find its target — the

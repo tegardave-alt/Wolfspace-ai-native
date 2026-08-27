@@ -1,6 +1,6 @@
 {
   "name": "WOLFSPACE",
-  "version": "0.1.2",
+  "version": "0.1.3",
   "description": "An open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
   "main": "server.cjs",
   "type": "commonjs",
@@ -74,7 +74,13 @@
       "public/**",
       "config.json",
       "package.json",
-      "node_modules/**"
+      "node_modules/**",
+      "!**/cloud-keys.json",
+      "!**/.wolfspace/**",
+      "!**/.env",
+      "!**/.env.*",
+      "!**/*.pem",
+      "!**/*.key"
     ],
     "asarUnpack": [
       "core.js",

@@ -138,6 +138,45 @@ jobs:
             console.log('  ok  agent/self_agent.ts (and its dependencies)');
           "
 
+      # KREDENSIAL TIDAK BOLEH ADA DI DALAM PAKET.
+      #
+      # server/cloud-keys.json berisi kunci API sungguhan dan BENAR di-gitignore.
+      # Tapi electron-builder tidak membaca .gitignore — ia memakai build.files,
+      # yang memuat "server/**" — jadi kuncinya ikut ke installer v0.1.0, v0.1.1
+      # dan v0.1.2, ketiganya terbit publik.
+      #
+      # Dua sistem pengecualian yang tak saling bicara. Yang satu melindungi repo,
+      # yang lain menyusun paket, dan berkas yang aman di mata yang pertama tetap
+      # dikirim oleh yang kedua.
+      #
+      # Memindai HASILNYA, bukan konfigurasinya: pola tolak yang salah ketik akan
+      # lolos uji konfigurasi dan tetap mengirim kuncinya. Di dalam asar ikut
+      # diperiksa — sebuah berkas tak perlu ter-unpack untuk bisa dibaca orang.
+      - name: Tak ada kredensial di dalam paket
+        shell: bash
+        run: |
+          set -e
+          POLA='cloud-keys\.json$|\.pem$|\.key$|(^|/)\.env($|\.)|(^|/)\.wolfspace/'
+          gagal=0
+          echo "--- app.asar.unpacked ---"
+          if find dist-app/win-unpacked/resources/app.asar.unpacked -type f 2>/dev/null                | grep -nE "$POLA"; then
+            echo "::error::berkas kredensial ada di app.asar.unpacked"; gagal=1
+          fi
+          echo "--- di dalam app.asar ---"
+          node -e "
+            const asar = require('@electron/asar');
+            const re = /cloud-keys\.json\$|\.pem\$|\.key\$|(^|\/)\.env(\$|\.)|(^|\/)\.wolfspace\//;
+            const isi = asar.listPackage('dist-app/win-unpacked/resources/app.asar');
+            const buruk = isi.filter((f) => re.test(f));
+            if (buruk.length) {
+              for (const f of buruk) console.error('::error::kredensial di dalam asar: ' + f);
+              process.exit(1);
+            }
+            console.log('  ok      tak ada kredensial di dalam asar (' + isi.length + ' entri diperiksa)');
+          "
+          [ "$gagal" = "0" ] || exit 1
+          echo "  ok      paket bersih dari kredensial"
+
       # A release whose asset is missing is worse than no release: the page looks
       # finished. Fail here instead.
       - name: Check the installer exists
