@@ -3124,10 +3124,27 @@ function App() {
             cloud.provider !== pick.provider ||
             cloud.model !== pick.model
           ) {
+            // MARKED AS AUTOMATIC, and that mark is the whole point.
+            //
+            // Written without it, this entry is byte-for-byte what an explicit
+            // choice looks like: a provider and a model, no key. A fresh
+            // install then reads back as already configured, and there is no
+            // way — for the user or for the code — to tell the difference.
+            //
+            // Not writing at all was the first idea and it is wrong: the server
+            // cannot resolve a provider on its own. agent/cloud.ts derives it
+            // from cloud.provider or from a key, and with neither it gives up
+            // (`cloud.provider || (cloud.key ? detectProvider(cloud.key) : null)`).
+            // So this value is load-bearing for anyone whose keys live
+            // server-side; dropping it would break their chat entirely.
+            //
+            // An explicit save overwrites this object WITHOUT `otomatis`, so
+            // choosing a provider by hand clears the mark by construction.
             cloud = {
               provider: pick.provider,
               name: pick.name,
               model: pick.model,
+              otomatis: true,
             };
             setCloudLS(cloud);
           }

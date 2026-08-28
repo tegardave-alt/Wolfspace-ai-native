@@ -227,7 +227,16 @@ function SettingsView({
   onSaved: () => void;
   onCloudChanged: () => void;
 }) {
-  const stored = getCloud();
+  const tersimpan = getCloud();
+  // AN AUTOMATIC ENTRY IS NOT A CHOICE, so this screen does not present it as
+  // one. loadModels() in app.tsx hydrates a provider from whatever the SERVER
+  // holds keys for, and marks it `otomatis` — see the comment there for why it
+  // has to be written at all.
+  //
+  // Reading it back as if the user had picked it is what made a clean install
+  // look pre-configured: a provider and a model on screen, no key beside them,
+  // and no way to tell it apart from something typed in by hand.
+  const stored = tersimpan && tersimpan.otomatis ? null : tersimpan;
   const [key, setKey] = useState("");
   const [provider, setProvider] = useState(
     stored ? (stored.baseUrl ? "custom" : stored.provider) : "auto",
@@ -243,7 +252,11 @@ function SettingsView({
           " � " +
           (stored.key ? stored.key.slice(-4) : "server") +
           " � active"
-      : "Paste an API key, then auto-detect or pick a provider.",
+      : tersimpan && tersimpan.otomatis
+        ? "Using " +
+          (tersimpan.name || tersimpan.provider) +
+          " from a key stored on the server. Paste your own key to override it."
+        : "Paste an API key, then auto-detect or pick a provider.",
   );
 
   const detect = async () => {
