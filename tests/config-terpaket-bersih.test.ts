@@ -80,6 +80,16 @@ describe("config.json yang dikirim tidak membawa keadaan satu mesin", () => {
     expect(PKG.build.files).toContain("!public/uploads/**");
   });
 
+  test("dokumentasi tidak ikut terpaket", () => {
+    // 107 KB catatan arsitektur internal ikut ke installer, dan di dalamnya
+    // ada modelDir:"C:/llama-cpp" pada potongan contoh. Tak ada kode yang
+    // membacanya — ia murni dokumen. Dokumen internal bukan bagian dari
+    // aplikasi yang dikirim, dan setiap berkas yang ikut adalah satu tempat
+    // lagi yang harus diperiksa isinya.
+    expect(PKG.build.files).toContain("!agent/**/*.md");
+    expect(PKG.build.files).toContain("!agent/**/*.txt");
+  });
+
   test("tak ada blok runners", () => {
     // Delapan jalur toolchain yang TAK DIBACA SIAPA PUN sejak compileRun
     // dihapus (lihat server.ts). Ia hanya ikut terkirim.
