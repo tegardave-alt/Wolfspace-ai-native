@@ -75,3 +75,36 @@ describe("hidrasi cloud otomatis dibedakan dari pilihan pengguna", () => {
     expect(src).toMatch(/from a key stored on the server/i);
   });
 });
+
+describe("pemilih model ikut menghormati tanda otomatis", () => {
+  // Perbaikan pertama hanya setengah. Tanda `otomatis` dipasang, dan LAYAR
+  // SETELAN memakainya — tapi loadModels tak pernah melihatnya. Entri yang
+  // sama lalu terbaca sebagai "belum dipilih" di satu layar dan sebagai model
+  // pilihan pemakai di layar lain.
+  //
+  // Yang dilihat pemakai pada pemasangan baru: sebuah nama model terpampang
+  // tanpa satu pun kunci di belakangnya. Persis rupa "semuanya sudah
+  // terpasang".
+  test("label menyebut kuncinya milik server, bukan pilihan pemakai", () => {
+    const src = baca("public/app.tsx");
+    const i = src.indexOf('value: "cloud",');
+    expect(i).toBeGreaterThan(-1);
+    const blok = src.slice(i, i + 1400);
+    expect(blok).toMatch(/cloud\.otomatis/);
+    expect(blok).toMatch(/server key/);
+  });
+
+  test("entrinya TIDAK dibuang — kunci server itu nyata", () => {
+    // Menjatuhkannya akan mematahkan chat bagi siapa pun yang kuncinya memang
+    // di server: agent/cloud.ts butuh cloud.provider untuk menjangkaunya.
+    const src = baca("public/app.tsx");
+    expect(src).toMatch(
+      /const hasCloud = cloud && \(cloud\.key \|\| cloud\.provider\)/,
+    );
+  });
+
+  test("kunci milik pemakai sendiri tetap ditandai empat digit", () => {
+    const src = baca("public/app.tsx");
+    expect(src).toMatch(/cloud\.key\.slice\(-4\)/);
+  });
+});

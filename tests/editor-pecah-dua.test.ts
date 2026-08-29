@@ -170,7 +170,12 @@ describe("umur model bersama", () => {
   test("setiap editor hidup terdaftar", () => {
     // Tanpa daftar ini, pelepasan tak punya cara menemukan pane lain yang
     // masih memegang model yang akan dibuang.
-    expect(APP).toMatch(/const _editorHidup = new Set\(\)/);
+    expect(APP).toMatch(
+      // Bertipe. Sebagai `new Set()` polos, anggotanya keluar sebagai
+      // `unknown` dan ed.getModel() di atasnya adalah error tsc — yang
+      // lolos selama ini karena esbuild membuang tipe tanpa memeriksanya.
+      /const _editorHidup = new Set<any>\(\)/,
+    );
     expect(PANE).toMatch(/_editorHidup\.add\(edRef\.current\)/);
   });
 

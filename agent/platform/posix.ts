@@ -3,6 +3,7 @@
 
 const { execSync } = require("child_process");
 const { PlatformAdapter } = require("./adapter.ts");
+const { ukurBlok } = require("../ukur-blok.ts");
 
 class PosixAdapter extends PlatformAdapter {
   get name() {
@@ -40,7 +41,8 @@ class PosixAdapter extends PlatformAdapter {
       process.kill(-child.pid, "SIGKILL");
     } catch (_) {
       try {
-        execSync(`pkill -KILL -P ${child.pid}`);
+        // No timeout: unbounded on the calling thread if pkill hangs.
+        ukurBlok("posix:pkill", () => execSync(`pkill -KILL -P ${child.pid}`));
       } catch (__) {}
       try {
         child.kill("SIGKILL");
@@ -94,7 +96,10 @@ class LinuxAdapter extends PosixAdapter {
     const key = "__probe_" + bin;
     if (this[key] === undefined) {
       try {
-        execSync(`which ${bin}`, { stdio: "ignore" });
+        // No timeout, and this runs once per binary looked up.
+        ukurBlok("posix:which", () =>
+          execSync(`which ${bin}`, { stdio: "ignore" }),
+        );
         this[key] = true;
       } catch (_) {
         this[key] = false;

@@ -1574,8 +1574,12 @@ function Composer({
                       Switch model...
                     </span>
                     <span className="am-item-right">
+                      {/* Not "Sonnet". A model name hard-coded on the
+                          fallback path shows up even when nothing is
+                          configured at all, and that reads as an app already
+                          set up when it is not. */}
                       {models.find((m: any) => m.value === modelVal)?.label ||
-                        "Sonnet"}
+                        "No model"}
                     </span>
                   </button>
                   {showModelMenu && (
@@ -1586,41 +1590,56 @@ function Composer({
                       >
                         Select a model
                       </div>
-                      {models.map((m: any) => (
-                        <button
-                          key={m.value}
-                          className="am-item"
-                          style={{ padding: "8px 12px" }}
-                          onClick={(e: any) => {
-                            e.stopPropagation();
-                            if (setModelVal) setModelVal(m.value);
-                            setShowModelMenu(false);
-                            // Keep main + menu open so user can continue configuring other options
-                          }}
-                        >
-                          <div
-                            style={{
-                              display: "flex",
-                              flexDirection: "column",
-                              gap: "4px",
-                              width: "100%",
+                      {/* The placeholder is FILTERED OUT, as it already was
+                          in Screens.tsx. Without this, "No models yet" renders
+                          as a model of its own, description and all — so a
+                          screen with no model still shows a line describing
+                          one. */}
+                      {models
+                        .filter((m: any) => !m.disabled)
+                        .map((m: any) => (
+                          <button
+                            key={m.value}
+                            className="am-item"
+                            style={{ padding: "8px 12px" }}
+                            onClick={(e: any) => {
+                              e.stopPropagation();
+                              if (setModelVal) setModelVal(m.value);
+                              setShowModelMenu(false);
+                              // Keep main + menu open so user can continue configuring other options
                             }}
                           >
-                            <span
+                            <div
                               style={{
                                 display: "flex",
-                                justifyContent: "space-between",
+                                flexDirection: "column",
+                                gap: "4px",
+                                width: "100%",
                               }}
                             >
-                              {m.label}
-                              {m.value === modelVal && <span>✓</span>}
-                            </span>
-                            <span className="am-item-desc">
-                              Efficient for routine tasks
-                            </span>
-                          </div>
-                        </button>
-                      ))}
+                              <span
+                                style={{
+                                  display: "flex",
+                                  justifyContent: "space-between",
+                                }}
+                              >
+                                {m.label}
+                                {m.value === modelVal && <span>✓</span>}
+                              </span>
+                              <span className="am-item-desc">
+                                Efficient for routine tasks
+                              </span>
+                            </div>
+                          </button>
+                        ))}
+                      {!models.some((m: any) => !m.disabled) && (
+                        <div
+                          className="am-item-desc"
+                          style={{ padding: "8px 12px" }}
+                        >
+                          No model configured yet — add an API key in Settings.
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>

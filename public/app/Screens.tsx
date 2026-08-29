@@ -870,8 +870,12 @@ function ProjectPickerScreen({
                     Switch model...
                   </span>
                   <span className="am-item-right">
+                    {/* Not "Sonnet". A model name hard-coded on the fallback
+                        path shows up even when nothing is configured at all,
+                        and that reads as an app already set up when it is
+                        not. */}
                     {models.find((m: any) => m.value === modelVal)?.label ||
-                      "Sonnet"}
+                      "No model"}
                   </span>
                 </button>
                 {showModelMenu && (
@@ -917,6 +921,14 @@ function ProjectPickerScreen({
                           </div>
                         </button>
                       ))}
+                    {!models.some((m: any) => !m.disabled) && (
+                      <div
+                        className="am-item-desc"
+                        style={{ padding: "8px 12px" }}
+                      >
+                        No model configured yet — add an API key in Settings.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

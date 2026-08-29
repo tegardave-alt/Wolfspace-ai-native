@@ -758,7 +758,10 @@ const _kotorBerkas = new Map(); // rel -> unsaved?
 // OTHER than the one releasing it: disposing a model an editor still holds
 // throws "Model is disposed!" from inside Monaco on its next layout, and that
 // takes the whole renderer down through the error boundary.
-const _editorHidup = new Set();
+// Typed, because the members are read back. Left as a bare `new Set()` the
+// elements come out as `unknown`, and calling ed.getModel() on them is a type
+// error that `npm run typecheck` catches while esbuild happily strips it.
+const _editorHidup = new Set<any>();
 
 function LogicCodePane({
   root,
@@ -1230,7 +1233,13 @@ function LogicCodePane({
     const tekan = (e: any) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
-        simpan();
+        // simpan() reports its OWN failures through setSaveState and resolves
+        // to false, so this is not the silent-save case. What it does not
+        // cover is a throw before its internal try — and that one would have
+        // left the editor showing "saving…" for ever.
+        simpan().catch((e2: any) =>
+          setSaveState("failed: " + String((e2 && e2.message) || e2)),
+        );
       } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         jalankan();
@@ -3398,11 +3407,28 @@ function App() {
     if (hasCloud)
       opts.push({
         value: "cloud",
+        // The `otomatis` mark is honoured HERE too, and that was missing.
+        //
+        // The settings screen already treats an auto-hydrated entry as "not
+        // chosen" — but this picker did not look at the mark at all, so the
+        // same entry read as an unconfigured provider on one screen and as a
+        // model the user had picked on the other. What a fresh install showed
+        // was a model name sitting there with no key behind it, which is
+        // exactly what "everything is already set up" looks like.
+        //
+        // The entry is NOT dropped: the key really does exist, server-side,
+        // and agent/cloud.ts needs cloud.provider to reach it. What changes is
+        // that the label stops claiming to be the user's own choice.
         label:
           (cloud.model || cloud.name || cloud.provider || "").replace(
             /-/g,
             " ",
-          ) + (cloud.key ? " •" + cloud.key.slice(-4) : ""),
+          ) +
+          (cloud.key
+            ? " •" + cloud.key.slice(-4)
+            : cloud.otomatis
+              ? " (server key)"
+              : ""),
       });
     if (!opts.length)
       opts.push({ value: "", label: "No models yet", disabled: true });

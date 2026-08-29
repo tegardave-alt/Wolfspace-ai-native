@@ -32,6 +32,7 @@ import {
 } from "child_process";
 import * as fs from "fs";
 import * as path from "path";
+const { ukurBlok } = require("./ukur-blok.ts");
 
 const ROOT = path.resolve(__dirname, "..");
 const APP = path.join(ROOT, "services", "agent-python", "app.py");
@@ -87,11 +88,16 @@ export function pythonBin(): string {
   const candidates = ["python", "python3", bundled].filter(Boolean) as string[];
   for (const bin of candidates) {
     try {
-      execFileSync(bin, ["-c", "import langgraph"], {
-        stdio: "ignore",
-        timeout: 30000,
-        windowsHide: true,
-      });
+      // 30000 ms on the thread that draws the window. Probing an interpreter
+      // costs Python startup plus an import, and this runs once PER CANDIDATE
+      // binary — a machine with several Pythons pays it more than once.
+      ukurBlok("python:probe-langgraph", () =>
+        execFileSync(bin, ["-c", "import langgraph"], {
+          stdio: "ignore",
+          timeout: 30000,
+          windowsHide: true,
+        }),
+      );
       _binCache = bin;
       return bin;
     } catch (_) {

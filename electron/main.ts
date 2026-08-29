@@ -1419,7 +1419,13 @@ app.whenReady().then(() => {
       const pubDir = path.join(root, "public");
       if (fs.existsSync(pubDir)) await _seedHashes(pubDir, 0, 20, null);
     };
-    _seedAll();
+    // Rejection here runs in the MAIN process, where an unhandled one takes
+    // the whole app down before a window is ever shown. Seeding hashes is a
+    // best-effort warm-up: failing it must cost the watcher its baseline, not
+    // the application.
+    _seedAll().catch((e: any) =>
+      console.error("[watch] seed hash gagal:", (e && e.message) || e),
+    );
     const _watchStart = Date.now();
     // Mengaktifkan kembali Hot Reload
     if (fs.existsSync(root) && !process.env.ELECTRON_RUN_AS_NODE) {

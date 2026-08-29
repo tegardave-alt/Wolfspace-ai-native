@@ -7,6 +7,7 @@ const os = require("os");
 const crypto = require("crypto");
 const { execSync, exec } = require("child_process");
 const { PlatformAdapter } = require("./adapter.ts");
+const { ukurBlok } = require("../ukur-blok.ts");
 
 class WindowsAdapter extends PlatformAdapter {
   get name() {
@@ -67,10 +68,12 @@ class WindowsAdapter extends PlatformAdapter {
     // child.kill() would only kill cmd.exe; taskkill /T terminates the whole
     // tree (e.g. the `node hang.js` grandchild), /F forces it.
     try {
-      execSync(`taskkill /F /T /PID ${child.pid}`, {
-        stdio: "ignore",
-        timeout: 4000,
-      });
+      ukurBlok("windows:taskkill", () =>
+        execSync(`taskkill /F /T /PID ${child.pid}`, {
+          stdio: "ignore",
+          timeout: 4000,
+        }),
+      );
     } catch (_) {
       try {
         child.kill("SIGKILL");

@@ -141,7 +141,12 @@ async function buka({ program, cwd, titikHenti, python }) {
     s.terpasang.push({ baris: t.line, sah: !!t.verified });
   });
   klien.on("stopped", (b) => {
-    _tarikKeadaan(s, b);
+    // _tarikKeadaan is async and this is an event handler, so nothing was
+    // waiting on it: a rejection had no catch anywhere above it. A debug
+    // adapter that answers badly would have taken the process with it.
+    _tarikKeadaan(s, b).catch((e) =>
+      console.error("[dap] gagal menarik keadaan:", (e && e.message) || e),
+    );
   });
   // `continued` is not sent by every adapter, so the "running again" state is
   // also set when an action is sent (see aksi()). Both are needed: one for the

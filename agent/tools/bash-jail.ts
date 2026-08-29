@@ -31,6 +31,7 @@ import * as fs from "fs";
 import * as os from "os";
 import * as path from "path";
 import { spawn, execFileSync } from "child_process";
+const { ukurBlok } = require("../ukur-blok.ts");
 
 // System directories bound READ-ONLY so the shell has its tools without being
 // able to change them. /etc is DELIBERATELY excluded: it often holds
@@ -58,13 +59,18 @@ function tersedia() {
       // Needs the right to create a mount namespace AND to bind inside it.
       // Tested for real rather than guessed from the uid: one failure means it
       // is not used.
-      execFileSync("unshare", ["-m", "-n", "true"], {
-        stdio: "ignore",
-        timeout: 5000,
-      });
-      execFileSync("sh", ["-c", "command -v chroot >/dev/null"], {
-        stdio: "ignore",
-        timeout: 5000,
+      // Two probes, 5000 ms each: back to back they reach twice the freeze
+      // threshold. One label, because they answer one capability question and
+      // splitting it would split the blame for a single stall.
+      ukurBlok("bash-jail:probe-kapabilitas", () => {
+        execFileSync("unshare", ["-m", "-n", "true"], {
+          stdio: "ignore",
+          timeout: 5000,
+        });
+        execFileSync("sh", ["-c", "command -v chroot >/dev/null"], {
+          stdio: "ignore",
+          timeout: 5000,
+        });
       });
       _bisa = true;
     } catch (_) {

@@ -138,7 +138,16 @@ function tanganiPesan(msg) {
     // namespace dead — proof that proves nothing. Switching it off lets the
     // attempt actually reach the kernel, which is the thing under test.
     if (msg.pelapor !== false) pasangPelaporJaringan();
-    runTask(msg.code);
+    // runTask reports its own failures back over the channel
+    // (kirim({type:"error"})), so this is not a lost-result bug. The window
+    // left open is a throw inside that catch: this worker is long-lived, and
+    // an unhandled rejection would take it down mid-execution with the caller
+    // still waiting.
+    runTask(msg.code).catch((e) => {
+      try {
+        kirim({ type: "error", message: (e && e.message) || String(e) });
+      } catch (_) {}
+    });
   }
 }
 

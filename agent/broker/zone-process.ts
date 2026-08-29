@@ -47,6 +47,7 @@ type StatusKurungan =
 import { fork, spawn, execFileSync } from "child_process";
 import * as path from "path";
 const { getPlatformAdapter } = require("../platform/index.ts");
+const { ukurBlok } = require("../ukur-blok.ts");
 
 const WORKER = path.join(__dirname, "zone-worker.cjs");
 
@@ -166,11 +167,13 @@ const _MAJOR_LOKAL = Number(String(process.versions.node).split(".")[0]);
 // processes.
 function siapkanWorker(distro: string) {
   const jalankan = (perintah: string, input?: string | Buffer) =>
-    execFileSync("wsl.exe", ["-d", distro, "--", "sh", "-c", perintah], {
-      stdio: input === undefined ? "ignore" : ["pipe", "ignore", "ignore"],
-      ...(input === undefined ? {} : { input }),
-      timeout: 20000,
-    });
+    ukurBlok("zona:wsl-siapkan", () =>
+      execFileSync("wsl.exe", ["-d", distro, "--", "sh", "-c", perintah], {
+        stdio: input === undefined ? "ignore" : ["pipe", "ignore", "ignore"],
+        ...(input === undefined ? {} : { input }),
+        timeout: 20000,
+      }),
+    );
 
   // The /mnt path is still tried first when it is mounted: zero copying, and
   // it always follows the file on disk with nothing in between.
@@ -267,34 +270,40 @@ function wslZona() {
     // then declare containment active when it is not. Proven while testing
     // this. So Node is asked to PRINT its version — only Node can — and that
     // number also decides which flag is used later.
-    const keluar = execFileSync(
-      "wsl.exe",
-      [
-        "-d",
-        distro,
-        "--",
-        "sh",
-        "-c",
-        // The version is read FIRST with no flags at all; the matching flag is
-        // only tried on the second call. The reverse order is impossible —
-        // using --permission to detect the version would fail on Node 20,
-        // precisely on the distros that are actually supported.
-        //
-        // NO `$(...)`: command substitution does not survive the trip through
-        // wsl.exe (measured: `sh: syntax error: unexpected "("`). So the
-        // version is printed directly by Node and parsed on the JS side.
-        `test -x ${nodeWsl} || exit 11; test -f ${workerWsl} || exit 12; ` +
-          `unshare -n true || exit 14; ` +
-          // bwrap is CHECKED, not assumed — the same pattern as _hasBwrap() in
-          // LinuxAdapter. Its absence is not a failure: the zone still runs
-          // with unshare -n alone, just without file containment. The marker
-          // is printed so the JS side knows which guarantee it actually got.
-          `if bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp ` +
-          `--tmpfs /mnt --unshare-net --die-with-parent true 2>/dev/null; ` +
-          `then printf BWRAPYA; else printf BWRAPTIDAK; fi; ` +
-          `${nodeWsl} -e 'process.stdout.write("NODEV"+process.versions.node)' || exit 13`,
-      ],
-      { stdio: ["ignore", "pipe", "pipe"], timeout: 20000, encoding: "utf8" },
+    // NO TIMEOUT on this one, unlike its siblings — so it blocks the
+    // window-drawing thread for as long as WSL takes to answer, with no upper
+    // bound at all. Labelled here; the missing timeout is a separate decision,
+    // because adding one turns a slow answer into a failed one.
+    const keluar = ukurBlok("zona:wsl-versi-node", () =>
+      execFileSync(
+        "wsl.exe",
+        [
+          "-d",
+          distro,
+          "--",
+          "sh",
+          "-c",
+          // The version is read FIRST with no flags at all; the matching flag is
+          // only tried on the second call. The reverse order is impossible —
+          // using --permission to detect the version would fail on Node 20,
+          // precisely on the distros that are actually supported.
+          //
+          // NO `$(...)`: command substitution does not survive the trip through
+          // wsl.exe (measured: `sh: syntax error: unexpected "("`). So the
+          // version is printed directly by Node and parsed on the JS side.
+          `test -x ${nodeWsl} || exit 11; test -f ${workerWsl} || exit 12; ` +
+            `unshare -n true || exit 14; ` +
+            // bwrap is CHECKED, not assumed — the same pattern as _hasBwrap() in
+            // LinuxAdapter. Its absence is not a failure: the zone still runs
+            // with unshare -n alone, just without file containment. The marker
+            // is printed so the JS side knows which guarantee it actually got.
+            `if bwrap --ro-bind / / --dev /dev --proc /proc --tmpfs /tmp ` +
+            `--tmpfs /mnt --unshare-net --die-with-parent true 2>/dev/null; ` +
+            `then printf BWRAPYA; else printf BWRAPTIDAK; fi; ` +
+            `${nodeWsl} -e 'process.stdout.write("NODEV"+process.versions.node)' || exit 13`,
+        ],
+        { stdio: ["ignore", "pipe", "pipe"], timeout: 20000, encoding: "utf8" },
+      ),
     );
     const v = /NODEV(\d+)\./.exec(keluar || "");
     if (!v) {
@@ -312,10 +321,12 @@ function wslZona() {
     // This is the check that once caught /bin/echo passing as "Node"; removing
     // it means going back to trusting a guess.
     try {
-      execFileSync(
-        "wsl.exe",
-        ["-d", distro, "--", nodeWsl, ...flag, "-e", "0"],
-        { stdio: "ignore", timeout: 20000 },
+      ukurBlok("zona:wsl-uji-flag", () =>
+        execFileSync(
+          "wsl.exe",
+          ["-d", distro, "--", nodeWsl, ...flag, "-e", "0"],
+          { stdio: "ignore", timeout: 20000 },
+        ),
       );
     } catch (_) {
       _wslAlasan = `Node ${v[1]}.x at ${nodeWsl} refused ${flag[0]} — a corrupt binary or not real Nodeguhan`;
@@ -477,10 +488,12 @@ function netnsWrapper() {
   _netnsCache = null;
   if (process.platform === "linux") {
     try {
-      execFileSync("unshare", ["-n", "true"], {
-        stdio: "ignore",
-        timeout: 3000,
-      });
+      ukurBlok("zona:probe-netns", () =>
+        execFileSync("unshare", ["-n", "true"], {
+          stdio: "ignore",
+          timeout: 3000,
+        }),
+      );
       _netnsCache = "unshare";
     } catch (_) {
       _netnsCache = null; // needs CAP_SYS_ADMIN / user-ns — runs unconfined
@@ -679,7 +692,21 @@ function runInCapabilityZone(
           sisa = sisa.slice(i + 1);
           if (baris.startsWith(token)) {
             try {
-              tanganiPesanZona(JSON.parse(baris.slice(token.length)));
+              // tanganiPesanZona is ASYNC (see its declaration below), so the
+              // try/catch around it only ever caught JSON.parse. A rejection
+              // from the handler itself walked straight past this block and
+              // became an unhandled rejection — which terminates the process
+              // on Node 15 and later. The catch READ like protection while the
+              // leak sat in the middle of it.
+              const p = tanganiPesanZona(JSON.parse(baris.slice(token.length)));
+              if (p && typeof p.catch === "function") {
+                p.catch((e) =>
+                  console.error(
+                    "[zona] handler pesan gagal:",
+                    (e && e.message) || e,
+                  ),
+                );
+              }
             } catch (_) {}
           } else {
             out.push(baris + "\n");

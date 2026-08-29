@@ -38,6 +38,8 @@
 //      that would not stick — neither of which exists in C#.
 "use strict";
 
+const { ukurBlok } = require("../ukur-blok.ts");
+
 import { execFile, execFileSync } from "child_process";
 import * as fs from "fs";
 import * as os from "os";
@@ -181,12 +183,16 @@ function tersedia() {
     // A real test, not an assumption: if the container profile has not been
     // created or its ACLs are not installed, this fails here rather than on the
     // agent's first command.
+    // 30000 ms on the window-drawing thread. Named so a freeze here stops
+    // being anonymous.
     _G.cache = _nilaiUji(
-      execFileSync(EXE, _ARGV_UJI(), {
-        encoding: "utf8",
-        timeout: 30000,
-        windowsHide: true,
-      }),
+      ukurBlok("appcontainer:uji-kapabilitas", () =>
+        execFileSync(EXE, _ARGV_UJI(), {
+          encoding: "utf8",
+          timeout: 30000,
+          windowsHide: true,
+        }),
+      ),
     );
   } catch (e) {
     _G.cache = _nilaiGagal(e);
@@ -380,11 +386,13 @@ function sid() {
   if (_G.sid !== null) return _G.sid || null;
   try {
     _G.sid = String(
-      execFileSync(EXE, ["--sid", CONTAINER], {
-        encoding: "utf8",
-        timeout: 15000,
-        windowsHide: true,
-      }),
+      ukurBlok("appcontainer:sid", () =>
+        execFileSync(EXE, ["--sid", CONTAINER], {
+          encoding: "utf8",
+          timeout: 15000,
+          windowsHide: true,
+        }),
+      ),
     ).trim();
   } catch (_) {
     _G.sid = "";

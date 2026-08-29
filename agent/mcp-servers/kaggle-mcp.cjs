@@ -142,7 +142,27 @@ function handleMessage(msg) {
   } else if (method === "tools/list") {
     sendMessage({ jsonrpc: "2.0", id, result: { tools } });
   } else if (method === "tools/call") {
-    handleToolCall(id, params.name, params.arguments || {});
+    // handleToolCall answers with a JSON-RPC error result of its own, so a
+    // failing tool is already reported. This guards the narrower case: a throw
+    // inside that catch would end the server process, and the client would see
+    // a dead pipe instead of an error it can read.
+    handleToolCall(id, params.name, params.arguments || {}).catch((err) => {
+      try {
+        sendMessage({
+          jsonrpc: "2.0",
+          id,
+          result: {
+            content: [
+              {
+                type: "text",
+                text: "handler gagal: " + ((err && err.message) || err),
+              },
+            ],
+            isError: true,
+          },
+        });
+      } catch (_) {}
+    });
   } else if (method === "ping") {
     sendMessage({ jsonrpc: "2.0", id, result: {} });
   }

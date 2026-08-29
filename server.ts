@@ -684,7 +684,13 @@ function jediComplete(reqObj) {
     }
   });
 }
-startJedi();
+// startJedi() catches its own failures, so this is not a silent-start bug. What
+// it does not cover is a throw INSIDE that catch — and this call sits at module
+// top level in a long-lived process, where an unhandled rejection ends the
+// process on Node 15 and later. One line closes the window.
+startJedi().catch((e) =>
+  console.error("[jedi] gagal dimulai:", (e && e.message) || e),
+);
 
 const RUNNABLE = new Set([
   "python",
@@ -4570,7 +4576,12 @@ function _pidPemegangPort(port) {
   const { execSync } = require("child_process");
   const jalankan = (cmd) => {
     try {
-      return execSync(cmd, { encoding: "utf8", timeout: 5000 });
+      // 5000 ms is EXACTLY the point at which Windows marks the window Not
+      // Responding, so a command that runs to this timeout freezes it by
+      // definition rather than by accident.
+      return require("./agent/ukur-blok.ts").ukurBlok("server:pid-port", () =>
+        execSync(cmd, { encoding: "utf8", timeout: 5000 }),
+      );
     } catch (_) {
       return "";
     }

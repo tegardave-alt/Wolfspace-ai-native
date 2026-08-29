@@ -58,6 +58,8 @@
 // deliberately.
 "use strict";
 
+const { ukurBlok } = require("../ukur-blok.ts");
+
 import { execFileSync } from "child_process";
 const _penegakan = require("../penegakan.ts");
 
@@ -96,13 +98,19 @@ let _siapCache: SiapWsl | null = null;
 let _skripTerpasang = false;
 
 function _wsl(args, opts) {
-  return execFileSync("wsl.exe", ["-d", DISTRO, "--", ...args], {
-    encoding: "utf8",
-    timeout: (opts && opts.timeout) || 30000,
-    windowsHide: true,
-    stdio: ["ignore", "pipe", "pipe"],
-    ...opts,
-  });
+  // Labelled: this is the single busiest synchronous child process in the
+  // jail path, and its default budget is 30000 ms — six times the 5000 ms at
+  // which Windows calls the window dead. A timeout that large is not a safety
+  // net; it is the size of the freeze it permits.
+  return ukurBlok("wsl:exec", () =>
+    execFileSync("wsl.exe", ["-d", DISTRO, "--", ...args], {
+      encoding: "utf8",
+      timeout: (opts && opts.timeout) || 30000,
+      windowsHide: true,
+      stdio: ["ignore", "pipe", "pipe"],
+      ...opts,
+    }),
+  );
 }
 
 // The script is installed as a FILE through stdin, then run with `sh /path`.
@@ -116,15 +124,17 @@ const JALUR_SKRIP = "/tmp/wolfspace-mount.sh";
 
 function _pasangSkrip() {
   if (_skripTerpasang) return;
-  execFileSync(
-    "wsl.exe",
-    ["-d", DISTRO, "--", "sh", "-c", "cat > " + JALUR_SKRIP],
-    {
-      input: SKRIP_MOUNT,
-      timeout: 25000,
-      windowsHide: true,
-      stdio: ["pipe", "ignore", "pipe"],
-    },
+  ukurBlok("wsl:pasang-skrip", () =>
+    execFileSync(
+      "wsl.exe",
+      ["-d", DISTRO, "--", "sh", "-c", "cat > " + JALUR_SKRIP],
+      {
+        input: SKRIP_MOUNT,
+        timeout: 25000,
+        windowsHide: true,
+        stdio: ["pipe", "ignore", "pipe"],
+      },
+    ),
   );
   _skripTerpasang = true;
 }
