@@ -92,3 +92,27 @@ electron/preload.js
 # as the Electron artefacts above: built by CI before packaging, and index.html
 # falls back to compiling from source when it is absent.
 public/app.build.js
+
+# ── Keluaran electron-builder yang mendarat di AKAR repo ──
+#
+# `electron-builder --dir` menulis ke dist-app/, TAPI menjalankannya dengan
+# konfigurasi tertentu juga meninggalkan salinan runtime Electron di akar:
+# WOLFSPACE.exe, resources/ (berisi app.asar.unpacked dengan SELURUH sumber
+# lagi), locales/, dan sekitar 135 MB DLL serta blob.
+#
+# Tak satu pun terlacak, jadi ia tak pernah ikut ke commit selama berkas
+# ditambahkan satu per satu. Satu `git add -A` mengirim semuanya ke repo
+# publik -- termasuk salinan kedua dari setiap berkas sumber.
+/WOLFSPACE.exe
+/Uninstall WOLFSPACE.exe
+/resources/
+/locales/
+/resources.pak
+/chrome_*.pak
+/*.dll
+/snapshot_blob.bin
+/v8_context_snapshot.bin
+/icudtl.dat
+/vk_swiftshader_icd.json
+/LICENSE.electron.txt
+/LICENSES.chromium.html
