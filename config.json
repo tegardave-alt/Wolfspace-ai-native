@@ -3,20 +3,10 @@
     "host": "127.0.0.1",
     "port": 8090
   },
-  "runners": {
-    "c": "C:/langs/mingw64/bin/gcc.exe",
-    "cpp": "C:/langs/mingw64/bin/g++.exe",
-    "go": "C:/langs/go/bin/go.exe",
-    "java": "C:/langs/jdk-21.0.11+10/bin/java.exe",
-    "javac": "C:/langs/jdk-21.0.11+10/bin/javac.exe",
-    "php": "C:/langs/php/php.exe",
-    "rust": "C:/Users/dave/.cargo/bin/rustc.exe",
-    "kotlinc": "C:/langs/kotlinc/bin/kotlinc.bat"
-  },
   "ww": {
     "watch": false,
-    "root": "C:/Users/dave/Desktop/project",
-    "_note": "Isolasi kini dipicu saat folder DIPASANG ke WOLFSPACE (POST /ww/attach), bukan lewat watcher root-tetap — folder bebas di mana saja. Set watch:true hanya jika mau auto-isolasi setiap folder baru di 'root'."
+    "root": "",
+    "_note": "Isolation is triggered when a folder is ATTACHED to WOLFSPACE (POST /ww/attach), not by a fixed-root watcher — a folder can live anywhere. Set watch:true only if you want every new folder under 'root' isolated automatically. Leave 'root' empty to use the default; this file SHIPS IN THE INSTALLER, so a path here becomes every user's default."
   },
   "verbose": true,
   "eraser": {
