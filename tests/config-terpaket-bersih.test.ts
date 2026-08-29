@@ -67,6 +67,19 @@ describe("config.json yang dikirim tidak membawa keadaan satu mesin", () => {
     expect(buruk.map((x) => x.jalur + " = " + x.nilai)).toEqual([]);
   });
 
+  test("direktori unggahan pemakai TIDAK ikut terpaket", () => {
+    // public/** ada di allowlist, dan public/uploads adalah tempat unggahan
+    // BERJALAN — tangkapan layar, diagram, model 3D. Ia digitignore justru
+    // karena bukan sumber, tapi electron-builder mengemas direktori kerja,
+    // bukan pohon git: build lokal mengirim 12 berkas milik pemakai ke dalam
+    // installer. Rilis dari runner tak terkena (runner cuma punya isi git),
+    // tapi installer yang dibangun di mesin sendiri terkena.
+    //
+    // Aman dibuang: server.ts membuat direktorinya lewat mkdirSync recursive
+    // pada unggahan pertama.
+    expect(PKG.build.files).toContain("!public/uploads/**");
+  });
+
   test("tak ada blok runners", () => {
     // Delapan jalur toolchain yang TAK DIBACA SIAPA PUN sejak compileRun
     // dihapus (lihat server.ts). Ia hanya ikut terkirim.

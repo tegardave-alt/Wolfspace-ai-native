@@ -21,6 +21,7 @@
     "build:preload": "node scripts/build-preload.cjs",
     "build:main": "node scripts/build-main.cjs",
     "ww": "node -r ./scripts/ts-register.cjs scripts/ww.ts",
+    "periksa:paket": "node scripts/periksa-paket.cjs",
     "build:app": "node scripts/build-app.cjs",
     "build:aclaunch": "node scripts/build-aclaunch.cjs"
   },
@@ -75,6 +76,7 @@
       "config.json",
       "package.json",
       "node_modules/**",
+      "!public/uploads/**",
       "!**/cloud-keys.json",
       "!**/.wolfspace/**",
       "!**/.env",

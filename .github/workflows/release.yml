@@ -177,6 +177,21 @@ jobs:
           [ "$gagal" = "0" ] || exit 1
           echo "  ok      paket bersih dari kredensial"
 
+      # KREDENSIAL BUKAN SATU-SATUNYA YANG TAK BOLEH IKUT.
+      #
+      # Langkah di atas memindai NAMA BERKAS, dan itu lulus dengan jujur untuk
+      # v0.2.0 sementara installernya membawa config.json berisi jalur mesin
+      # pembuatnya (ww.root, delapan runners.*). config.json berkas konfigurasi
+      # yang sah — tak ada aturan nama yang bisa menangkapnya. Yang salah
+      # ISINYA.
+      #
+      # Jadi langkah ini membuka paket yang benar-benar dihasilkan dan membaca
+      # nilai di dalam setiap JSON yang dikirim. Ia juga menolak
+      # public/uploads, yang di build LOKAL ikut membawa tangkapan layar dan
+      # diagram milik pembuatnya.
+      - name: Paket tak membawa keadaan satu mesin
+        run: node scripts/periksa-paket.cjs
+
       # A release whose asset is missing is worse than no release: the page looks
       # finished. Fail here instead.
       - name: Check the installer exists
