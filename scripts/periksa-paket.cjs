@@ -92,6 +92,84 @@ for (const f of json) {
 }
 
 console.log("json diperiksa isinya : " + json.length);
+
+// 3. RAHASIA BERBENTUK KUNCI, di berkas APA PUN — bukan hanya JSON.
+//
+// Diuji dan terbukti perlu: sebuah kunci ditanam di agent/rag.ts, paket dikemas
+// ulang, dan pemeriksa ini menyatakannya bersih. Pemeriksaan isi JSON menutup
+// kebocoran cloud-keys.json yang asli, tapi kunci yang tertulis di berkas KODE
+// lolos begitu saja — dan agent ini menulis kode ke repo pemakainya.
+const POLA_RAHASIA = [
+  ["OpenAI/Anthropic", /sk-[A-Za-z0-9_-]{20,}/],
+  ["GitHub token", /gh[pousr]_[A-Za-z0-9]{20,}/],
+  ["GitHub PAT", /github_pat_[A-Za-z0-9_]{20,}/],
+  ["Google API", /AIza[A-Za-z0-9_-]{30,}/],
+  ["xAI", /xai-[A-Za-z0-9]{20,}/],
+  ["HuggingFace", /hf_[A-Za-z0-9]{20,}/],
+  ["NVIDIA", /nvapi-[A-Za-z0-9_-]{20,}/],
+  ["Tavily", /tvly-[A-Za-z0-9_-]{16,}/],
+  ["AWS access key", /AKIA[A-Z0-9]{16}/],
+  ["Slack", /xox[baprs]-[A-Za-z0-9-]{20,}/],
+];
+// node_modules DILEWATI untuk pola. Ia berisi fixture dan dokumentasi pihak
+// ketiga yang memuat kunci contoh, dan sebuah penjaga yang selalu merah adalah
+// penjaga yang akan dimatikan orang. Ia TETAP diperiksa oleh pencocokan nilai
+// di bawah, yang tak mungkin salah tuduh.
+for (const f of milik) {
+  let isi;
+  try {
+    isi = asar.extractFile(ASAR, f).toString("latin1");
+  } catch (e) {
+    continue;
+  }
+  for (const [nama, pola] of POLA_RAHASIA) {
+    const m = isi.match(pola);
+    if (m) {
+      galat.push(
+        f +
+          " memuat sesuatu berbentuk " +
+          nama +
+          " (" +
+          m[0].slice(0, 6) +
+          "…)",
+      );
+    }
+  }
+}
+console.log("berkas dipindai pola  : " + milik.length);
+
+// 4. NILAI KREDENSIAL NYATA, kalau mesin ini memilikinya.
+//
+// Tak berlaku di runner (berkasnya tak pernah ada di sana), dan itu memang
+// benar: ini pengaman untuk installer yang dibangun DI MESIN SENDIRI, yang
+// justru jalur kebocoran aslinya. Dicocokkan sebagai NILAI, jadi ia tak bisa
+// salah tuduh, dan karena itu ia mencakup node_modules sekalian.
+const fsx = require("fs");
+const nilaiNyata = new Set();
+for (const kf of ["server/cloud-keys.json", ".wolfspace/cloud-keys.json"]) {
+  try {
+    const d = JSON.parse(fsx.readFileSync(kf, "utf8"));
+    for (const x of nilaiBersarang(d, "")) {
+      if (/key|token|secret/i.test(x.jalur) && x.nilai.length >= 20) {
+        nilaiNyata.add(x.nilai);
+      }
+    }
+  } catch (e) {}
+}
+if (nilaiNyata.size) {
+  const mentah = fsx.readFileSync(ASAR).toString("latin1");
+  let cocok = 0;
+  for (const v of nilaiNyata) if (mentah.includes(v)) cocok++;
+  console.log(
+    "kunci mesin ini dicek : " + nilaiNyata.size + " nilai, cocok " + cocok,
+  );
+  if (cocok) {
+    galat.push(cocok + " kunci NYATA dari mesin ini ada di dalam paket");
+  }
+} else {
+  console.log("kunci mesin ini dicek : 0 (tak ada cloud-keys.json di sini)");
+}
+
 if (galat.length) {
   console.log("");
   for (const g of galat) console.error("::error::" + g);

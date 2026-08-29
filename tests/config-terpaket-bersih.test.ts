@@ -101,3 +101,49 @@ describe("config.json yang dikirim tidak membawa keadaan satu mesin", () => {
     expect(SRV).toMatch(/CONFIG\.ww\.root \|\| ww\.DEFAULT_ROOT/);
   });
 });
+
+describe("pemeriksa paket mencari rahasia, bukan cuma nama berkas", () => {
+  const SKRIP = fs.readFileSync(
+    path.join(AKAR, "scripts/periksa-paket.cjs"),
+    "utf8",
+  );
+
+  test("ia dipanggil sebelum penerbitan, bukan sesudah", () => {
+    // Kalau ia berjalan setelah rilis terbit, ia bukan penjaga — ia laporan.
+    const WF = fs.readFileSync(
+      path.join(AKAR, ".github/workflows/release.yml"),
+      "utf8",
+    );
+    const iPeriksa = WF.indexOf("scripts/periksa-paket.cjs");
+    const iTerbit = WF.indexOf("gh release create");
+    expect(iPeriksa).toBeGreaterThan(-1);
+    expect(iTerbit).toBeGreaterThan(-1);
+    expect(iPeriksa).toBeLessThan(iTerbit);
+  });
+
+  test("memindai SEMUA berkas, bukan hanya JSON", () => {
+    // Diuji dan terbukti perlu: kunci ditanam di agent/rag.ts lolos dari versi
+    // yang hanya membaca JSON, dan agent ini menulis kode ke repo pemakainya.
+    expect(SKRIP).toMatch(/POLA_RAHASIA/);
+    expect(SKRIP).toMatch(/berkas dipindai pola/);
+  });
+
+  test("mengenali bentuk kunci yang lazim", () => {
+    for (const p of ["sk-", "gh[pousr]_", "AIza", "AKIA", "tvly-"]) {
+      expect(SKRIP).toContain(p);
+    }
+  });
+
+  test("mencocokkan NILAI kunci nyata bila mesinnya punya", () => {
+    // Pencocokan nilai tak bisa salah tuduh, jadi ia mencakup node_modules
+    // sekalian — dan ia menjaga jalur kebocoran yang ASLI: installer yang
+    // dibangun di mesin sendiri, bukan di runner.
+    expect(SKRIP).toMatch(/cloud-keys\.json/);
+    expect(SKRIP).toMatch(/kunci NYATA dari mesin ini/);
+  });
+
+  test("node_modules dilewati untuk POLA, dan alasannya ditulis", () => {
+    // Penjaga yang selalu merah adalah penjaga yang akan dimatikan orang.
+    expect(SKRIP).toMatch(/node_modules DILEWATI untuk pola/);
+  });
+});
