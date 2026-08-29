@@ -1112,8 +1112,15 @@ function migrateOldUserDataOnce() {
       ".wolfspace",
       "claim-legacy-ui",
     );
-    const names = ["quantum", "Electron"];
-    if (fs.existsSync(claimLegacyUi)) names.unshift("WOLFSPACE");
+    // "Electron" IS GUARDED BY THE MARKER TOO — no longer imported outright.
+    //
+    // That name does not belong to this app: %APPDATA%\Electron is the DEFAULT
+    // profile of every Electron application run unpackaged. Importing it
+    // unconditionally copies another app's Local Storage into this profile —
+    // and on the developer's machine that is exactly what put an API key into
+    // an installation that should have been empty.
+    const names = ["quantum"];
+    if (fs.existsSync(claimLegacyUi)) names.unshift("WOLFSPACE", "Electron");
     const candidates = names
       .map((n) => path.join(roaming, n))
       .filter(

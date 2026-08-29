@@ -48,6 +48,28 @@
         };
       })();
 
+      // KREDENSIAL WARISAN DIBUANG SETIAP KALI, tanpa syarat.
+      //
+      // Blok rebrand di bawah dijaga penanda wolfspace_key_migrated, dan
+      // penanda itu IKUT TERSALIN ketika profil lama dimigrasi — jadi ia keluar
+      // lebih awal dan quantum_cloud tetap duduk di localStorage bersama kunci
+      // API di dalamnya. Terukur di profil yang benar-benar kosong: pemilih
+      // model sudah bersih, tapi kuncinya masih ada di sana.
+      //
+      // Sebuah kunci yang diwarisi dari profil lain bukan kunci yang dipilih
+      // orang untuk pemasangan ini, jadi ia tak pernah punya alasan untuk
+      // bertahan. Pemeriksaan ini murah dan berjalan di setiap start.
+      (function () {
+        try {
+          for (var i = localStorage.length - 1; i >= 0; i--) {
+            var k = localStorage.key(i);
+            if (k && k.indexOf("quantum_") === 0 && /_cloud$/.test(k)) {
+              localStorage.removeItem(k);
+            }
+          }
+        } catch (e) {}
+      })();
+
       // Rebrand: rename kunci localStorage quantum_* -> wolfspace_* SEKALI, sambil
       // MEMBAWA datanya (chat, config, daftar project tak hilang). Jalan sebelum app
       // dimuat, jadi kode yang sudah pakai wolfspace_* langsung menemukan datanya.
@@ -57,6 +79,22 @@
           for (var i = localStorage.length - 1; i >= 0; i--) {
             var k = localStorage.key(i);
             if (k && k.indexOf("quantum_") === 0) {
+              // KREDENSIAL TIDAK IKUT DIBAWA. Entri *_cloud memuat kunci API,
+              // dan kunci yang diwarisi dari profil lama bukan kunci yang
+              // dipilih orang untuk pemasangan INI.
+              //
+              // Terukur di profil yang benar-benar kosong: aplikasi terpasang
+              // memunculkan quantum_cloud berisi kunci sk- sungguhan, lalu blok
+              // ini menamainya wolfspace_cloud — dan pemilih model membuka
+              // dengan model beserta empat digit kunci di sebelahnya, seolah
+              // pemakainya pernah mengaturnya. Ia tak pernah.
+              //
+              // Dibuang, bukan disaring isinya: tanpa kunci, provider dan model
+              // di dalamnya tak berarti apa-apa.
+              if (k === "quantum_cloud" || /_cloud$/.test(k)) {
+                localStorage.removeItem(k);
+                continue;
+              }
               var nk = "wolfspace_" + k.slice("quantum_".length);
               if (localStorage.getItem(nk) === null)
                 localStorage.setItem(nk, localStorage.getItem(k));
