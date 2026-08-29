@@ -6,8 +6,8 @@
 // for v0.2.0 while the installer shipped config.json containing the author's
 // own machine paths:
 //
-//     ww.root     "C:/Users/dave/Desktop/project"
-//     runners.c   "C:/langs/mingw64/bin/gcc.exe"    (and seven more)
+//     ww.root     "C:/Users/<pembuat>/Desktop/project"
+//     runners.c   "C:/langs/<toolchain>/bin/gcc.exe"    (and seven more)
 //
 // config.json is a legitimate config file, so no filename rule could have
 // caught it. What was wrong was its CONTENTS. A local build was worse still:

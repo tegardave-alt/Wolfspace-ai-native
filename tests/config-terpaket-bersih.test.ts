@@ -3,8 +3,8 @@
 // APA YANG TERJADI. build.files di package.json menyebut "config.json", jadi
 // berkas itu masuk ke installer apa adanya. Isinya waktu itu:
 //
-//     ww.root     "C:/Users/dave/Desktop/project"
-//     runners.c   "C:/langs/mingw64/bin/gcc.exe"      (dan tujuh lainnya)
+//     ww.root     "C:/Users/<pembuat>/Desktop/project"
+//     runners.c   "C:/langs/<toolchain>/bin/gcc.exe"      (dan tujuh lainnya)
 //
 // Artinya setiap orang yang memasang installer mendapat jalur mesin PEMBUAT
 // sebagai bawaannya. Pemakai yang menemukannya: "saya instal versi terbarunya,
