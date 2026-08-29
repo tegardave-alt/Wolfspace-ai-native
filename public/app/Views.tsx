@@ -44,174 +44,203 @@ function HistoryView({
     });
 
   return (
-    <div
-      style={{
-        padding: "40px 60px",
-        maxWidth: "920px",
-        margin: "0 auto",
-        width: "100%",
-        color: "#e2e8f0",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: "20px",
-          fontWeight: 600,
-          color: "#f3f4f6",
-          marginBottom: "24px",
-        }}
-      >
-        Conversation History
-      </h1>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "32px",
-        }}
-      >
+    // .hub / .hub-header / .hub-body is the layout every hub page is meant to
+    // have; SettingsView already had it and this one did not. Two things ride
+    // on that header, and neither is visible on its own:
+    //
+    //   1. `.app.sb-sembunyi .hub-header` is what reserves 58px for the
+    //      floating sidebar toggle. With no header, nothing on this page knew
+    //      the button was there.
+    //   2. `.tb-spacer` IS the window's drag handle. With no header there was
+    //      no drag region at all, so the window could not be moved while this
+    //      page was open.
+    //
+    // Both are inherited from the shared classes now rather than restated
+    // here, so the next page that copies this structure gets them too.
+    <div className="hub">
+      <header className="hub-header">
+        <span className="tb-divider" />
+        <div className="hub-title-group">
+          <span
+            className="hub-hf-mark"
+            style={{ background: "rgba(167,139,250,.14)", color: "#a78bfa" }}
+          >
+            {SB.history({ width: 16, height: 16 })}
+          </span>
+          <span className="hub-title">Conversation History</span>
+        </div>
+        {/* Drag handle. Same element, same reason, as in the top bar. */}
+        <div className="tb-spacer" />
+      </header>
+      <div className="hub-body">
         <div
           style={{
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            background: "#181b20",
-            border: "1px solid rgba(255, 255, 255, 0.08)",
-            borderRadius: "10px",
-            padding: "10px 16px",
-            gap: "10px",
+            maxWidth: "920px",
+            margin: "0 auto",
+            width: "100%",
+            color: "#e2e8f0",
           }}
         >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke="#6b7280"
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
-          >
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input
-            type="text"
-            placeholder="Search conversations..."
-            value={searchQuery}
-            onChange={(e: any) => setSearchQuery(e.target.value)}
-            style={{
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "#e2e8f0",
-              fontSize: "14px",
-              width: "100%",
-              fontFamily: "inherit",
-            }}
-          />
-        </div>
-      </div>
-
-      <div
-        style={{
-          fontSize: "11px",
-          fontWeight: 700,
-          letterSpacing: "0.8px",
-          color: "#6b7280",
-          textTransform: "uppercase",
-          marginBottom: "12px",
-        }}
-      >
-        ALL CONVERSATIONS
-      </div>
-
-      <div style={{ display: "flex", flexDirection: "column" }}>
-        {filteredChats.length === 0 ? (
           <div
             style={{
-              padding: "40px 0",
-              textAlign: "center",
-              color: "#6b7280",
-              fontSize: "14px",
+              display: "flex",
+              gap: "12px",
+              alignItems: "center",
+              marginBottom: "32px",
             }}
           >
-            No saved conversation history yet.
-          </div>
-        ) : (
-          filteredChats.map((chat) => (
             <div
-              key={chat.id}
-              onClick={() => onSelect(chat)}
               style={{
+                flex: 1,
                 display: "flex",
-                justifyContent: "space-between",
                 alignItems: "center",
-                padding: "16px 12px",
-                borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
-                cursor: "pointer",
-                borderRadius: "8px",
-                transition: "background 0.15s",
+                background: "#181b20",
+                border: "1px solid rgba(255, 255, 255, 0.08)",
+                borderRadius: "10px",
+                padding: "10px 16px",
+                gap: "10px",
               }}
-              onMouseEnter={(e: any) =>
-                (e.currentTarget.style.background = "rgba(255, 255, 255, 0.02)")
-              }
-              onMouseLeave={(e: any) =>
-                (e.currentTarget.style.background = "transparent")
-              }
             >
-              <div
-                style={{ display: "flex", flexDirection: "column", gap: "4px" }}
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="#6b7280"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                <div
-                  style={{
-                    fontSize: "15px",
-                    fontWeight: 500,
-                    color: "#e2e8f0",
-                  }}
-                >
-                  {chat.title || "Chat"}
-                </div>
-                <div style={{ fontSize: "13px", color: "#6b7280" }}>
-                  {chat.project || "WOLFSPACE"}
-                </div>
-              </div>
-              <div
-                style={{ display: "flex", alignItems: "center", gap: "16px" }}
-              >
-                <span style={{ fontSize: "13px", color: "#6b7280" }}>
-                  {formatTimeAgo(chat.savedAt)}
-                </span>
-                <button
-                  className="btn-reset"
-                  title="Delete"
-                  onClick={(e: any) => {
-                    e.stopPropagation();
-                    onDelete(chat.id);
-                  }}
-                  style={{
-                    color: "#6b7280",
-                    fontSize: "16px",
-                    padding: "4px 8px",
-                    borderRadius: "4px",
-                  }}
-                  onMouseEnter={(e: any) => {
-                    e.currentTarget.style.color = "#ef4444";
-                    e.currentTarget.style.background = "rgba(239, 68, 68, 0.1)";
-                  }}
-                  onMouseLeave={(e: any) => {
-                    e.currentTarget.style.color = "#6b7280";
-                    e.currentTarget.style.background = "transparent";
-                  }}
-                >
-                  ×
-                </button>
-              </div>
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                type="text"
+                placeholder="Search conversations..."
+                value={searchQuery}
+                onChange={(e: any) => setSearchQuery(e.target.value)}
+                style={{
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: "#e2e8f0",
+                  fontSize: "14px",
+                  width: "100%",
+                  fontFamily: "inherit",
+                }}
+              />
             </div>
-          ))
-        )}
+          </div>
+
+          <div
+            style={{
+              fontSize: "11px",
+              fontWeight: 700,
+              letterSpacing: "0.8px",
+              color: "#6b7280",
+              textTransform: "uppercase",
+              marginBottom: "12px",
+            }}
+          >
+            ALL CONVERSATIONS
+          </div>
+
+          <div style={{ display: "flex", flexDirection: "column" }}>
+            {filteredChats.length === 0 ? (
+              <div
+                style={{
+                  padding: "40px 0",
+                  textAlign: "center",
+                  color: "#6b7280",
+                  fontSize: "14px",
+                }}
+              >
+                No saved conversation history yet.
+              </div>
+            ) : (
+              filteredChats.map((chat) => (
+                <div
+                  key={chat.id}
+                  onClick={() => onSelect(chat)}
+                  style={{
+                    display: "flex",
+                    justifyContent: "space-between",
+                    alignItems: "center",
+                    padding: "16px 12px",
+                    borderBottom: "1px solid rgba(255, 255, 255, 0.04)",
+                    cursor: "pointer",
+                    borderRadius: "8px",
+                    transition: "background 0.15s",
+                  }}
+                  onMouseEnter={(e: any) =>
+                    (e.currentTarget.style.background =
+                      "rgba(255, 255, 255, 0.02)")
+                  }
+                  onMouseLeave={(e: any) =>
+                    (e.currentTarget.style.background = "transparent")
+                  }
+                >
+                  <div
+                    style={{
+                      display: "flex",
+                      flexDirection: "column",
+                      gap: "4px",
+                    }}
+                  >
+                    <div
+                      style={{
+                        fontSize: "15px",
+                        fontWeight: 500,
+                        color: "#e2e8f0",
+                      }}
+                    >
+                      {chat.title || "Chat"}
+                    </div>
+                    <div style={{ fontSize: "13px", color: "#6b7280" }}>
+                      {chat.project || "WOLFSPACE"}
+                    </div>
+                  </div>
+                  <div
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "16px",
+                    }}
+                  >
+                    <span style={{ fontSize: "13px", color: "#6b7280" }}>
+                      {formatTimeAgo(chat.savedAt)}
+                    </span>
+                    <button
+                      className="btn-reset"
+                      title="Delete"
+                      onClick={(e: any) => {
+                        e.stopPropagation();
+                        onDelete(chat.id);
+                      }}
+                      style={{
+                        color: "#6b7280",
+                        fontSize: "16px",
+                        padding: "4px 8px",
+                        borderRadius: "4px",
+                      }}
+                      onMouseEnter={(e: any) => {
+                        e.currentTarget.style.color = "#ef4444";
+                        e.currentTarget.style.background =
+                          "rgba(239, 68, 68, 0.1)";
+                      }}
+                      onMouseLeave={(e: any) => {
+                        e.currentTarget.style.color = "#6b7280";
+                        e.currentTarget.style.background = "transparent";
+                      }}
+                    >
+                      ×
+                    </button>
+                  </div>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
       </div>
     </div>
   );

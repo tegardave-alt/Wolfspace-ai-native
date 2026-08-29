@@ -218,7 +218,9 @@ describe("menulis konfigurasi memakai isi berkas, bukan gabungan", () => {
     const i = SRC_MCP.indexOf("async toggleServer(");
     const blok = SRC_MCP.slice(i, i + 1100);
     expect(blok).toMatch(/_dariPlugin\(name\)/);
-    expect(blok).toMatch(/halaman Plugins/);
+    // Sama seperti di atas: kalimatnya kini bahasa Inggris, tuntutannya tidak
+    // berubah — penolakan harus MENUNJUK ke tempat izin itu diberikan.
+    expect(blok).toMatch(/Plugins page/);
   });
 
   test("_loadConfigMentah TIDAK menyentuh plugin", () => {

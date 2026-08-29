@@ -215,7 +215,7 @@ describe("pemantau-blokir: atribusi", () => {
 
   test("ringkas() menyebut penyumbang, dan mengaku saat tak tahu", async () => {
     await siap();
-    expect(P.ringkas(P.ambil())).toContain("(tak terlacak)");
+    expect(P.ringkas(P.ambil())).toContain("(untracked)");
     P.catat("sesuatu", 60);
     expect(P.ringkas(P.ambil())).toContain("sesuatu 60ms");
   });

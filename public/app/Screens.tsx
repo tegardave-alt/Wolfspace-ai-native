@@ -303,7 +303,7 @@ function ProjectPickerScreen({
     const envVars = pickerMcpInputToken.trim();
 
     if (!type) {
-      setPickerMcpInputError("Jenis MCP wajib diisi.");
+      setPickerMcpInputError("MCP type is required.");
       return;
     }
 
@@ -1314,7 +1314,7 @@ function ProjectPickerScreen({
                                   setPickerMcpInputError("");
                                 }
                               }}
-                              placeholder="Jenis MCP (contoh: github, brave-search, sqlite)"
+                              placeholder="MCP type (e.g. github, brave-search, sqlite)"
                               style={{
                                 width: "100%",
                                 background: "rgba(255,255,255,0.04)",
@@ -1442,7 +1442,7 @@ function ProjectPickerScreen({
                                 fontFamily: "inherit",
                               }}
                             >
-                              Batal
+                              Cancel
                             </button>
                             <button
                               onClick={handlePickerMcpCodeConnect}

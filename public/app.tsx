@@ -490,9 +490,9 @@ if (
       for (const k of keys) localStorage.setItem(k, (data as any)[k]);
       localStorage.setItem("wolfspace_migrated", "1");
       console.log(
-        "[ww] auto-migrasi localStorage: " +
+        "[ww] localStorage auto-migration: " +
           keys.length +
-          " kunci diimpor — reload…",
+          " keys imported — reloading…",
       );
       location.reload();
     })
@@ -742,6 +742,24 @@ function buildDevTree(paths: any, root: any, folders: any) {
    Recreating the editor on every click stacks Monaco observers, and that is
    precisely the path that has blown up in this repo before (see
    tests/monaco-dekat-layar.test.js). */
+// ── One Monaco model per FILE, shared by every editor pane ──
+//
+// Panes can show the same file at the same time, and a model per pane would
+// mean two independent buffers over one path: type in one, save from the
+// other, and the first pane's work is overwritten with nothing said. VS Code
+// shares the text model between editor groups for exactly this reason.
+//
+// Sharing also gets the rest for free — an edit shows in both panes at once,
+// and the dirty mark is a property of the FILE, not of the pane you happen to
+// be looking at.
+const _modelBerkas = new Map(); // rel -> monaco model
+const _kotorBerkas = new Map(); // rel -> unsaved?
+// Every live editor. Needed because a shared model may be attached to a pane
+// OTHER than the one releasing it: disposing a model an editor still holds
+// throws "Model is disposed!" from inside Monaco on its next layout, and that
+// takes the whole renderer down through the error boundary.
+const _editorHidup = new Set();
+
 function LogicCodePane({
   root,
   rel,
@@ -751,10 +769,21 @@ function LogicCodePane({
   setTitikHenti,
   barisAktif,
   tabs,
+  // Every file open across ALL groups. Only used to decide which shared Monaco
+  // models may be released; this pane never displays it.
+  tabsSemua,
   onPilihTab,
   onTutupTab,
   onGeserTab,
   onKotorBerubah,
+  // ── Editor-group props ──
+  // fokus: this is the group a click in the file tree opens into.
+  fokus,
+  onFokus,
+  onPecah,
+  bisaPecah,
+  banyakGrup,
+  gaya,
 }: any) {
   const hostRef = React.useRef<any>(null);
   const edRef = React.useRef<any>(null);
@@ -772,9 +801,9 @@ function LogicCodePane({
   // meaning a Run pressed after typing would still see "clean" and
   // melewatkan simpan tanpa satu pun tanda.
   const kotorRef = React.useRef(false);
-  // Dirty state PER FILE. A single flag only describes the active file, and the
-  // tab strip has to mark every file that has unsaved work.
-  const kotorPerBerkas = React.useRef(new Map());
+  // Dirty state per file now lives in _kotorBerkas at module scope, beside the
+  // shared models: a file is dirty or not, and which pane you are looking
+  // through does not change the answer.
   const [saveState, setSaveState] = React.useState("");
   // relRef holds the file whose contents are CURRENTLY in the editor. The `rel`
   // prop has already changed to the new file before its contents arrive, so
@@ -907,6 +936,7 @@ function LogicCodePane({
       // checked is the target's TYPE, not its coordinates: the line number and
       // the glyph lane sit side by side, and guessing from x makes a click on
       // ikut memasang titik henti.
+      _editorHidup.add(edRef.current);
       edRef.current.onMouseDown((e: any) => {
         const T = monaco.editor.MouseTargetType;
         if (
@@ -921,8 +951,15 @@ function LogicCodePane({
     return () => {
       dibuang = true;
       if (edRef.current) {
-        const m = edRef.current.getModel();
-        if (m) m.dispose();
+        // The model is NOT disposed here any more, and that is the whole
+        // point. It belongs to _modelBerkas and may still be on screen in the
+        // other pane — this cleanup used to destroy it and leave a dead entry
+        // in the shared map, which is exactly the "Model is disposed!" crash.
+        // Detach, drop the editor, leave the buffer alone.
+        try {
+          edRef.current.setModel(null);
+        } catch (_) {}
+        _editorHidup.delete(edRef.current);
         edRef.current.dispose();
         edRef.current = null;
       }
@@ -946,36 +983,53 @@ function LogicCodePane({
   // So models are cached by path and only disposed when their tab is closed.
   // That is also what makes undo history, cursor position and scroll offset
   // survive a switch — the thing that makes tabs feel like tabs.
-  const modelRef = React.useRef(new Map()); // rel -> monaco model
-  React.useEffect(() => {
-    const peta = modelRef.current;
-    return () => {
-      for (const m of peta.values()) {
-        try {
-          m.dispose();
-        } catch (_) {}
-      }
-      peta.clear();
-    };
-  }, []);
+  // No unmount disposal any more. The models are SHARED (see _modelBerkas
+  // above), so a pane that closes must not destroy buffers the surviving pane
+  // is still showing. Release is driven by tabsSemua below instead: a model
+  // dies when no pane has the file open.
 
   // Models for files whose tab was closed are released here. Doing it inside
   // the close handler would be wrong: the handler lives in the parent and has
   // no access to this editor's models.
   React.useEffect(() => {
-    if (!Array.isArray(tabs)) return;
-    const hidup = new Set(tabs);
-    for (const [k, m] of modelRef.current) {
+    // tabsSemua, not tabs: the union across every pane. Keyed on this pane's
+    // own tabs it would dispose a model the OTHER pane is still displaying,
+    // and that pane would go blank mid-edit.
+    if (!Array.isArray(tabsSemua)) return;
+    const hidup = new Set(tabsSemua);
+    for (const [k, m] of _modelBerkas) {
       if (hidup.has(k)) continue;
+      // Detach from every live editor FIRST. Whichever pane's effect runs
+      // first would otherwise dispose a model the other pane is still
+      // displaying, and Monaco throws on that pane's next layout.
+      for (const ed of _editorHidup) {
+        try {
+          if (ed.getModel() === m) ed.setModel(null);
+        } catch (_) {}
+      }
       try {
         m.dispose();
       } catch (_) {}
-      modelRef.current.delete(k);
+      _modelBerkas.delete(k);
+      _kotorBerkas.delete(k);
     }
-  }, [tabs]);
+  }, [tabsSemua]);
 
   React.useEffect(() => {
-    if (!rel) return;
+    if (!rel) {
+      // Closing the last tab leaves this pane with no file. Returning early
+      // here left the editor holding the model that the release effect above
+      // had just disposed — the crash was not the close itself but the next
+      // layout after it.
+      const ed = edRef.current;
+      if (ed) {
+        try {
+          ed.setModel(null);
+        } catch (_) {}
+      }
+      relRef.current = "";
+      return;
+    }
     let dibatalkan = false;
     setGalat("");
 
@@ -987,7 +1041,7 @@ function LogicCodePane({
       // contents really do belong to this file. Setting it earlier makes a save
       // mid-load write the old file's contents to the new file's name.
       relRef.current = rel;
-      const kotorSekarang = !!(kotorPerBerkas.current.get(rel) || false);
+      const kotorSekarang = !!(_kotorBerkas.get(rel) || false);
       setKotor(kotorSekarang);
       kotorRef.current = kotorSekarang;
       setSaveState("");
@@ -996,7 +1050,14 @@ function LogicCodePane({
       } catch (_) {}
     };
 
-    const sudahAda = modelRef.current.get(rel);
+    let sudahAda = _modelBerkas.get(rel);
+    // The store now outlives any single pane, so a stale entry can survive a
+    // disposal that happened elsewhere. Handing that straight to setModel is
+    // the same crash by another route; drop it and fetch again instead.
+    if (sudahAda && sudahAda.isDisposed && sudahAda.isDisposed()) {
+      _modelBerkas.delete(rel);
+      sudahAda = undefined;
+    }
     if (sudahAda) {
       setMuat(false);
       pasang(sudahAda);
@@ -1017,7 +1078,7 @@ function LogicCodePane({
         if (!edRef.current || !window.monaco) return;
         const model = window.monaco.editor.createModel(teks, bahasaMonaco(rel));
         model.onDidChangeContent(() => {
-          kotorPerBerkas.current.set(rel, true);
+          _kotorBerkas.set(rel, true);
           if (relRef.current === rel) {
             setKotor(true);
             kotorRef.current = true;
@@ -1025,7 +1086,7 @@ function LogicCodePane({
           }
           if (onKotorBerubah) onKotorBerubah(rel, true);
         });
-        modelRef.current.set(rel, model);
+        _modelBerkas.set(rel, model);
         pasang(model);
       })
       .catch((e: any) => {
@@ -1069,7 +1130,7 @@ function LogicCodePane({
         throw new Error((hasil && hasil.error) || "could not save");
       setKotor(false);
       kotorRef.current = false;
-      kotorPerBerkas.current.set(target, false);
+      _kotorBerkas.set(target, false);
       if (onKotorBerubah) onKotorBerubah(target, false);
       setSaveState("saved");
       return true;
@@ -1173,19 +1234,30 @@ function LogicCodePane({
       } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
         e.preventDefault();
         jalankan();
+      } else if ((e.ctrlKey || e.metaKey) && e.key === "\\") {
+        // Ctrl+\ splits, the same key VS Code uses. Bound on the editor host
+        // rather than the window: a shortcut this generic must not fire while
+        // the user is typing in the chat box on another page.
+        e.preventDefault();
+        if (bisaPecah && onPecah) onPecah();
       }
     };
     el.addEventListener("keydown", tekan);
     return () => el.removeEventListener("keydown", tekan);
-  }, [simpan, jalankan]);
+  }, [simpan, jalankan, bisaPecah, onPecah]);
 
   return (
     <div
+      // Capture, not bubble: the press must claim focus for this group BEFORE
+      // the thing it landed on acts, or a click straight onto a tab in the
+      // unfocused pane would open the file into the OTHER pane.
+      onMouseDownCapture={() => onFokus && onFokus()}
       style={{
         flex: 1,
         minWidth: 0,
         display: "flex",
         flexDirection: "column",
+        ...(gaya || {}),
         // The SAME colour as the file panel to its left. The Monaco editor
         // itself has a transparent background (the wolfspace-dark theme), so
         // this is the colour actually seen — the two read as one surface rather
@@ -1201,7 +1273,11 @@ function LogicCodePane({
           alignItems: "center",
           gap: "8px",
           padding: "0 12px",
-          borderBottom: "1px solid #212a36",
+          // With one group there is nothing to distinguish, so the accent only
+          // appears once the area is actually split — a permanent highlight on
+          // a single pane says nothing and just adds noise.
+          borderBottom:
+            banyakGrup && fokus ? "1px solid #3b82f6" : "1px solid #212a36",
           fontSize: "12px",
           color: "#768390",
           fontFamily: "ui-monospace, monospace",
@@ -1256,9 +1332,7 @@ function LogicCodePane({
                 type="button"
                 className={
                   "tab-tutup" +
-                  (kotorPerBerkas.current.get(t) || (t === rel && kotor)
-                    ? " kotor"
-                    : "")
+                  (_kotorBerkas.get(t) || (t === rel && kotor) ? " kotor" : "")
                 }
                 aria-label={"Close " + t}
                 title={"Close " + t}
@@ -1292,6 +1366,32 @@ function LogicCodePane({
             </span>
           )}
         </div>
+        {/* Split. Hidden rather than disabled once the area is already split:
+            a permanently greyed-out control teaches nothing and occupies the
+            row for as long as the split lasts. */}
+        {bisaPecah && (
+          <button
+            type="button"
+            className="tab-pecah"
+            title="Split editor (Ctrl+\)"
+            aria-label="Split editor"
+            onClick={() => onPecah && onPecah()}
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.8"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <rect x="3" y="4" width="18" height="16" rx="2" />
+              <line x1="12" y1="4" x2="12" y2="20" />
+            </svg>
+          </button>
+        )}
         {muat && <span style={{ opacity: 0.6 }}>loading…</span>}
         {galat && <span style={{ color: "#f85149" }}>{galat}</span>}
         {saveState && (
@@ -2310,8 +2410,13 @@ function LogicFileTree({
             <div
               key={i}
               title={n.rel || n.name}
-              onClick={() =>
-                n.type !== "folder" && onPilih && onPilih(n.rel || n.name)
+              onClick={(e: any) =>
+                n.type !== "folder" &&
+                onPilih &&
+                // Alt is "open to the side", as in VS Code. The flag is passed
+                // up rather than handled here: the tree has no idea groups
+                // exist, and it should not learn.
+                onPilih(n.rel || n.name, e.altKey)
               }
               onContextMenu={(e: any) => {
                 e.preventDefault();
@@ -2548,9 +2653,16 @@ function App() {
   }, []);
   // Web Dev Live Browser: state, auto-preview when the agent writes .html, and
   // ref iframe kini satu hook di public/app/usePreviewPanel.tsx.
+  // Declared HERE rather than with the other view state further down:
+  // usePreviewPanel needs it, and a const cannot be read above its own
+  // declaration.
+  const [view, setView] = useState("chat");
   const preview = usePreviewPanel({
     selectedProject,
     onAutoOpen: () => setPanelOpen(true),
+    // The Live Browser floats above the window and does not fade out with
+    // the chat page, so it has to be told when that page stops showing.
+    halamanTampil: view === "chat",
   });
   const getPreviewDoc = preview.getDoc;
 
@@ -2568,29 +2680,155 @@ function App() {
   // The file open in the Logic view's code panel (a path RELATIVE to the project
   // root). Held here rather than inside LogicFileTree because two panels use it:
   // the tree to mark the active row, the editor to load it.
-  const [logicBerkas, setLogicBerkas] = useState("");
-  // ── Open editor tabs ──
+  // ── Editor groups ──
   //
-  // Order matters and is the user's, so this is an array, not a Set.
-  const [logicTabs, setLogicTabs] = useState<any[]>([]);
+  // VS Code's shape: the code area can be split, each half keeps its OWN tab
+  // strip and its own active file, and both read from one file tree. Exactly
+  // one group has focus, and that is the one a click in the tree opens into.
+  //
+  // Held as an ARRAY so "split" is a push and "close the last tab" is a filter,
+  // and neither operation has to know how many groups exist. Capped at two:
+  // that is what was asked for, and an untested third path is worse than a
+  // missing one.
+  const MAKS_GRUP = 2;
+  const [logicGrup, setLogicGrup] = useState<any[]>([{ tabs: [], aktif: "" }]);
+  const [grupFokus, setGrupFokus] = useState(0);
   const [logicKotor, setLogicKotor] = useState<any>({}); // rel -> unsaved?
-  const bukaTab = useCallback((rel: any) => {
-    if (!rel) return;
-    setLogicTabs((t: any) => (t.includes(rel) ? t : t.concat(rel)));
-    setLogicBerkas(rel);
+
+  // The focused group's file. Derived rather than stored: the file tree marks
+  // it and the debug panel reads it, and neither of those knows what a group
+  // is. Two sources of truth for "the current file" is how the old single-pane
+  // code would have rotted here.
+  const logicBerkas =
+    (logicGrup[grupFokus] && logicGrup[grupFokus].aktif) || "";
+
+  // Every file open in ANY group. The editor needs this to decide which shared
+  // Monaco models may be released — see _modelBerkas. Keyed on one group's tabs
+  // it would dispose a buffer the other group is still showing.
+  const logicTabsSemua = useMemo(() => {
+    const set = new Set<string>();
+    logicGrup.forEach((g: any) =>
+      (g.tabs || []).forEach((t: string) => set.add(t)),
+    );
+    return Array.from(set);
+  }, [logicGrup]);
+
+  // ── The divider between the two groups ──
+  //
+  // A percentage, not pixels: the code area changes width whenever the file
+  // tree is dragged or the window is resized, and a pixel split would drift or
+  // push a pane off the edge.
+  const [pecahPct, setPecahPct] = useState(50);
+  const [pecahGeser, setPecahGeser] = useState(false);
+  const mulaiGeserPecah = useCallback((e: any) => {
+    e.preventDefault();
+    e.stopPropagation();
+    const baris = e.currentTarget.parentElement;
+    if (!baris) return;
+    const kotak = baris.getBoundingClientRect();
+    if (!kotak.width) return;
+    setPecahGeser(true);
+    const gerak = (ev: any) => {
+      const p = ((ev.clientX - kotak.left) / kotak.width) * 100;
+      // Clamped so neither pane can be dragged away to nothing — a pane at 0%
+      // is unreachable, and the only way back would be to close the split.
+      setPecahPct(Math.max(15, Math.min(85, p)));
+    };
+    const lepas = () => {
+      setPecahGeser(false);
+      window.removeEventListener("mousemove", gerak);
+      window.removeEventListener("mouseup", lepas);
+    };
+    window.addEventListener("mousemove", gerak);
+    window.addEventListener("mouseup", lepas);
   }, []);
-  const tutupTab = useCallback((rel: any) => {
-    setLogicTabs((t: any) => {
-      const i = t.indexOf(rel);
-      if (i < 0) return t;
-      const sisa = t.filter((x: any) => x !== rel);
-      // Closing the ACTIVE tab has to hand focus to a neighbour — the one on
-      // the right, falling back to the left, as every editor does. Leaving the
-      // pane blank instead makes closing feel like losing your place.
-      setLogicBerkas((aktif: any) =>
-        aktif !== rel ? aktif : sisa[i] || sisa[i - 1] || "",
-      );
-      return sisa;
+
+  // Open a file. `grup` defaults to the focused one, which is what a plain
+  // click in the tree does.
+  const bukaTab = useCallback(
+    (rel: any, grup: number = grupFokus) => {
+      if (!rel) return;
+      setLogicGrup((gs: any[]) => {
+        const i = gs[grup] ? grup : 0;
+        return gs.map((g: any, k: number) =>
+          k === i
+            ? {
+                tabs: g.tabs.includes(rel) ? g.tabs : g.tabs.concat(rel),
+                aktif: rel,
+              }
+            : g,
+        );
+      });
+      setGrupFokus((f: number) => (logicGrup[grup] ? grup : f));
+    },
+    [grupFokus, logicGrup],
+  );
+
+  // "Open to the side" — Alt+click in the tree, and what the Split button does
+  // once there is somewhere to split into.
+  const bukaDiSamping = useCallback(
+    (rel: any) => {
+      if (!rel) return;
+      setLogicGrup((gs: any[]) => {
+        if (gs.length < MAKS_GRUP) {
+          setGrupFokus(gs.length);
+          return gs.concat({ tabs: [rel], aktif: rel });
+        }
+        const lain = grupFokus === 0 ? 1 : 0;
+        setGrupFokus(lain);
+        return gs.map((g: any, k: number) =>
+          k === lain
+            ? {
+                tabs: g.tabs.includes(rel) ? g.tabs : g.tabs.concat(rel),
+                aktif: rel,
+              }
+            : g,
+        );
+      });
+    },
+    [grupFokus],
+  );
+
+  // Split the focused group. VS Code copies the active editor into the new
+  // group rather than opening it empty, so the split lands on something.
+  const pecahGrup = useCallback(() => {
+    setLogicGrup((gs: any[]) => {
+      if (gs.length >= MAKS_GRUP) return gs;
+      const asal = gs[grupFokus] || gs[0];
+      const rel = (asal && asal.aktif) || "";
+      setGrupFokus(gs.length);
+      return gs.concat({ tabs: rel ? [rel] : [], aktif: rel });
+    });
+  }, [grupFokus]);
+
+  // Close a tab. `grup` undefined means EVERY group — that is the deletion
+  // case: a file gone from disk must not survive as a tab anywhere, in either
+  // half, or it stays as a row that loads a 404.
+  const tutupTab = useCallback((rel: any, grup?: number) => {
+    setLogicGrup((gs: any[]) => {
+      const hasil = gs.map((g: any, k: number) => {
+        if (typeof grup === "number" && k !== grup) return g;
+        const i = g.tabs.indexOf(rel);
+        if (i < 0) return g;
+        const sisa = g.tabs.filter((x: any) => x !== rel);
+        return {
+          tabs: sisa,
+          // Closing the ACTIVE tab hands focus to a neighbour — the one on the
+          // right, falling back to the left, as every editor does. Leaving the
+          // pane blank instead makes closing feel like losing your place.
+          aktif: g.aktif !== rel ? g.aktif : sisa[i] || sisa[i - 1] || "",
+        };
+      });
+      // A group with no tabs left closes and the survivor takes the width,
+      // again as VS Code does. The last group always stays: dropping it would
+      // leave the editor area gone with no way to bring it back.
+      const bersih =
+        hasil.length > 1 ? hasil.filter((g: any) => g.tabs.length > 0) : hasil;
+      const akhir = bersih.length ? bersih : [hasil[0]];
+      if (akhir.length !== gs.length) {
+        setGrupFokus((f: number) => Math.min(f, akhir.length - 1));
+      }
+      return akhir;
     });
     setLogicKotor((k: any) => {
       if (!(rel in k)) return k;
@@ -2599,21 +2837,26 @@ function App() {
       return n;
     });
   }, []);
-  const geserTab = useCallback((dari: any, ke: any) => {
-    setLogicTabs((t: any) => {
-      const a = t.indexOf(dari);
-      const b = t.indexOf(ke);
-      if (a < 0 || b < 0 || a === b) return t;
-      const n = t.slice();
-      n.splice(b, 0, n.splice(a, 1)[0]);
-      return n;
-    });
+
+  const geserTab = useCallback((dari: any, ke: any, grup: number = 0) => {
+    setLogicGrup((gs: any[]) =>
+      gs.map((g: any, k: number) => {
+        if (k !== grup) return g;
+        const a = g.tabs.indexOf(dari);
+        const b = g.tabs.indexOf(ke);
+        if (a < 0 || b < 0 || a === b) return g;
+        const n = g.tabs.slice();
+        n.splice(b, 0, n.splice(a, 1)[0]);
+        return { ...g, tabs: n };
+      }),
+    );
   }, []);
+
   const tandaiKotor = useCallback((rel: any, kotor: any) => {
     setLogicKotor((k: any) => (k[rel] === kotor ? k : { ...k, [rel]: kotor }));
   }, []);
+
   const [status, setStatus] = useState("Loading models…");
-  const [view, setView] = useState("chat");
   // ── The sidebar has THREE states, not two ──
   //
   //   "penuh"    232px, label terlihat
@@ -4401,7 +4644,7 @@ function App() {
                         >
                           <div style={{ fontSize: "34px" }}>🚫</div>
                           <h3 style={{ margin: 0, color: "#dce4f0" }}>
-                            Halaman gagal dimuat
+                            Page failed to load
                           </h3>
                           {/* The reason comes from the did-fail-load event
                               webview rather than invented. An earlier version
@@ -4432,7 +4675,7 @@ function App() {
                               cursor: "pointer",
                             }}
                           >
-                            Buka di browser sistem
+                            Open in system browser
                           </button>
                           <code
                             style={{
@@ -4582,7 +4825,9 @@ function App() {
                         root={webProjectRoot(preview.url, selectedProject)}
                         active={!!preview.url}
                         terpilih={logicBerkas}
-                        onPilih={bukaTab}
+                        onPilih={(rel: any, keSamping: any) =>
+                          keSamping ? bukaDiSamping(rel) : bukaTab(rel)
+                        }
                         onHapus={(rel: any) => {
                           // The file is gone from disk, so both the list and its
                           // tab have to go with it. Leaving either behind means a
@@ -4622,27 +4867,69 @@ function App() {
                           bukaTab(rel);
                         }}
                       />
-                      <LogicCodePane
-                        root={webProjectRoot(preview.url, selectedProject)}
-                        rel={logicBerkas}
-                        tabs={logicTabs}
-                        onPilihTab={setLogicBerkas}
-                        onTutupTab={tutupTab}
-                        onGeserTab={geserTab}
-                        onKotorBerubah={tandaiKotor}
-                        onRun={jalankanDiTerminal}
-                        onDaftarDebug={setPemicuDebug}
-                        titikHenti={titikHenti}
-                        setTitikHenti={setTitikHenti}
-                        barisAktif={
-                          dapKeadaan && dapKeadaan.berhenti
-                            ? {
-                                berkas: logicBerkas,
-                                baris: dapKeadaan.berhenti.baris,
+                      {/* ── The editor groups ──
+                          One row holding every group and the dividers between
+                          them. Measured separately from the file tree so the
+                          split percentage means "of the code area", not "of
+                          the window". */}
+                      <div
+                        className="editor-grup-baris"
+                        style={{ flex: 1, display: "flex", minWidth: 0 }}
+                      >
+                        {logicGrup.map((g: any, i: number) => (
+                          <React.Fragment key={i}>
+                            {i > 0 && (
+                              <div
+                                className={
+                                  "editor-split-resizer" +
+                                  (pecahGeser ? " resizing" : "")
+                                }
+                                onMouseDown={mulaiGeserPecah}
+                                title="Drag to resize"
+                              />
+                            )}
+                            <LogicCodePane
+                              root={webProjectRoot(
+                                preview.url,
+                                selectedProject,
+                              )}
+                              rel={g.aktif}
+                              tabs={g.tabs}
+                              tabsSemua={logicTabsSemua}
+                              fokus={i === grupFokus}
+                              banyakGrup={logicGrup.length > 1}
+                              bisaPecah={logicGrup.length < MAKS_GRUP}
+                              onFokus={() => setGrupFokus(i)}
+                              onPecah={pecahGrup}
+                              gaya={
+                                logicGrup.length > 1 && i === 0
+                                  ? { flex: "0 0 " + pecahPct + "%" }
+                                  : undefined
                               }
-                            : null
-                        }
-                      />
+                              onPilihTab={(rel: any) => bukaTab(rel, i)}
+                              onTutupTab={(rel: any) => tutupTab(rel, i)}
+                              onGeserTab={(dari: any, ke: any) =>
+                                geserTab(dari, ke, i)
+                              }
+                              onKotorBerubah={tandaiKotor}
+                              onRun={jalankanDiTerminal}
+                              onDaftarDebug={setPemicuDebug}
+                              titikHenti={titikHenti}
+                              setTitikHenti={setTitikHenti}
+                              barisAktif={
+                                dapKeadaan &&
+                                dapKeadaan.berhenti &&
+                                i === grupFokus
+                                  ? {
+                                      berkas: g.aktif,
+                                      baris: dapKeadaan.berhenti.baris,
+                                    }
+                                  : null
+                              }
+                            />
+                          </React.Fragment>
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </>

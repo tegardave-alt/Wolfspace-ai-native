@@ -62,7 +62,7 @@ describe("split berkas + editor di view Logic", () => {
     // berkas dan baru dilepas saat tabnya ditutup. Membuangnya di sini justru
     // yang dulu menghancurkan suntingan yang belum tersimpan.
     expect(blok).not.toMatch(/lama\.dispose\(\)/);
-    expect(blok).toMatch(/modelRef\.current\.set\(rel, model\)/);
+    expect(blok).toMatch(/_modelBerkas\.set\(rel, model\)/);
   });
 
   test("node pohon membawa path, bukan cuma nama", () => {
@@ -72,9 +72,10 @@ describe("split berkas + editor di view Logic", () => {
   });
 
   test("berkas hanya bisa diklik kalau ia berkas, bukan folder", () => {
-    expect(APP).toMatch(
-      /n\.type !== "folder" && onPilih && onPilih\(n\.rel \|\| n\.name\)/,
-    );
+    // Argumen kedua adalah e.altKey — "buka di pane sebelah", seperti VS Code.
+    // Pohonnya sendiri tak tahu grup editor itu apa, dan memang tak perlu
+    // tahu: ia cuma meneruskan tombol yang ditekan.
+    expect(APP).toMatch(/onPilih\(n\.rel \|\| n\.name, e\.altKey\)/);
   });
 
   test("berkas aktif ditandai TETAP, bukan cuma saat hover", () => {
@@ -87,11 +88,18 @@ describe("split berkas + editor di view Logic", () => {
 
   test("state berkas terpilih dipegang bersama, bukan di dalam pohon", () => {
     // Dua panel memakainya: pohon untuk menandai, editor untuk memuat.
+    //
+    // Sekarang TURUNAN, bukan state tersendiri. Berkas aktif = berkas milik
+    // grup yang sedang fokus. Menyimpannya terpisah berarti dua sumber
+    // kebenaran untuk "berkas yang mana", dan keduanya akan menyimpang begitu
+    // layar dipecah.
+    expect(APP).toMatch(/const logicBerkas =/);
     expect(APP).toMatch(
-      /const \[logicBerkas, setLogicBerkas\] = useState\(""\)/,
+      /\(logicGrup\[grupFokus\] && logicGrup\[grupFokus\]\.aktif\) \|\| ""/,
     );
     expect(APP).toMatch(/terpilih=\{logicBerkas\}/);
-    expect(APP).toMatch(/rel=\{logicBerkas\}/);
+    // Tiap pane memuat berkas GRUPNYA sendiri.
+    expect(APP).toMatch(/rel=\{g\.aktif\}/);
   });
 });
 

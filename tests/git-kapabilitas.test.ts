@@ -163,7 +163,10 @@ describe("perilaku nyata di repo ini", () => {
     const r = await jalan({ operasi: "rm -rf" });
     expect(r.ok).toBe(false);
     expect(r.output).toMatch(/status/);
-    expect(r.output).toMatch(/TIDAK ADA operasi jaringan/);
+    // Pesannya diterjemahkan ke Inggris bersama sisa teks yang dibaca agent;
+    // yang dijaga tetap sama — daftar operasi HARUS menyebut bahwa tool ini
+    // tak punya jalur jaringan sama sekali.
+    expect(r.output).toMatch(/NO network operations/);
   });
 
   test("commit tanpa pesan ditolak sebelum apa pun dijalankan", async () => {

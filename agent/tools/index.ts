@@ -1340,7 +1340,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
           output:
             "REFUSED: writing a source file through bash bypasses the quality gate and syntax check. " +
             'Use the "write" tool (new file) or "edit" (change an existing one) — both verify ' +
-            "sintaks dan struktur sebelum menyentuh disk.",
+            "syntax and structure before touching the disk.",
         };
 
       // ── CommandChain: bash is the proc.raw capability ──
@@ -1381,8 +1381,8 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             return {
               ok: false,
               output:
-                "This session is locked without raw shell execution (WOLFSPACE_CC_TANPA=proc.raw). Use capability_exec: ia terkurung ke workspace dan tetap bisa membaca/menulis berkasnya lewat request()." +
-                "\nAlasan teknis: " +
+                "This session is locked without raw shell execution (WOLFSPACE_CC_TANPA=proc.raw). Use capability_exec: it is confined to the workspace and can still read and write its files through request()." +
+                "\nTechnical reason: " +
                 adm.alasan,
             };
           }
@@ -1465,10 +1465,10 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
               output:
                 `WORKSPACE CONFINED: the command names host path "${bocor}", ` +
                 "which does not exist inside the confinement (only the workspace folder is " +
-                "terlihat, sebagai /work).\n" +
-                "Pakai path RELATIF (mis. ./src), atau tool lain: disk_read / " +
+                "visible, as /work).\n" +
+                "Use a RELATIVE path (e.g. ./src), or another tool: disk_read / " +
                 "disk_list to read outside the workspace, capability_exec to " +
-                "akses berpolicy + audit.",
+                "for policied, audited access.",
             };
           const wd = _workdirDalamJail(_confineRoot, args.cwd);
           const hasilJail = await _bashJail.jalankan(cmd, _confineRoot, {
@@ -1584,7 +1584,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             output:
               "WOLFSPACE_BASH_WSL=1 was requested, but the WSL path is not ready: " +
               siap.alasan +
-              "\nSiapkan share + kredensial lebih dulu, atau lepas variabel itu " +
+              "\nSet up the share and credentials first, or drop that variable " +
               "to fall back to the Windows path (whose boundary is only a text scan).",
           };
         }
@@ -2094,7 +2094,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
     }
     if (name === "terminal_write") {
       if (!term) return { ok: false, output: "terminal unavailable" };
-      if (!args.id) return { ok: false, output: "parameter id wajib" };
+      if (!args.id) return { ok: false, output: "parameter id is required" };
 
       // A PTY is a FULL shell — anything typed into it executes without passing
       // the bash guard or the quality gate. While this tool was broken
@@ -2118,7 +2118,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
     // right after a terminal_write before the shell has produced output.
     if (name === "terminal_read") {
       if (!term) return { ok: false, output: "terminal unavailable" };
-      if (!args.id) return { ok: false, output: "parameter id wajib" };
+      if (!args.id) return { ok: false, output: "parameter id is required" };
       // Wait briefly for output (up to 2s) so agent doesn't read empty buffer immediately after write
       return new Promise((resolve) => {
         let waited = 0;
@@ -2138,7 +2138,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
     }
     if (name === "terminal_close") {
       if (!term) return { ok: false, output: "terminal unavailable" };
-      if (!args.id) return { ok: false, output: "parameter id wajib" };
+      if (!args.id) return { ok: false, output: "parameter id is required" };
       const ok = term.destroy(args.id);
       return {
         ok,
@@ -2327,8 +2327,8 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             ok: false,
             ..._penegakanLabel.label("penasihat", "admission"),
             output:
-              "This session is locked without raw process execution (WOLFSPACE_CC_TANPA=proc.raw). Use capability_exec (terkurung ke workspace + diaudit) atau tool write/edit." +
-              "\nAlasan teknis: " +
+              "This session is locked without raw process execution (WOLFSPACE_CC_TANPA=proc.raw). Use capability_exec (confined to the workspace and audited) or the write/edit tool." +
+              "\nTechnical reason: " +
               adm.alasan,
           };
         }

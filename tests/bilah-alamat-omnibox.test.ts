@@ -253,8 +253,16 @@ describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
   test("disembunyikan saat panel tak lagi menampilkan alamat luar", () => {
     // Kalau tidak, ia menutupi UI aplikasi — ia bukan bagian dari DOM dan
     // tak tunduk pada CSS mana pun.
-    const t = SRC.slice(SRC.indexOf("if (!ipc || !alamatLuar)"));
-    expect(t).toMatch(/aksi: "sembunyi"/);
+    //
+    // Anchored on the START of the condition rather than its whole text. The
+    // condition GREW — leaving the chat page now hides the view too, since a
+    // page that stops showing does not unmount and the view would otherwise
+    // float on over whatever replaced it. Matching the full line made this test
+    // fail for a reason it does not care about, and the slice(-1) it produced
+    // then asserted against a single character.
+    const i = SRC.indexOf("if (!ipc || !alamatLuar");
+    expect(i).toBeGreaterThan(-1);
+    expect(SRC.slice(i)).toMatch(/aksi: "sembunyi"/);
   });
 
   test("proses main yang belum diperbarui gagal dengan ANGGUN", () => {

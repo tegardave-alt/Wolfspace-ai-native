@@ -1056,7 +1056,7 @@ async function selfAgentStream(payload, emit, ctl: any = {}) {
       kind: "workspace",
       arg: _wsRoot,
       ok: true,
-      output: "🔒 agent terkurung ke workspace: " + _wsRoot,
+      output: "🔒 agent confined to the workspace: " + _wsRoot,
     });
   const isCancelled = ctl.isCancelled || (() => false);
   const setCurReq = ctl.setCurReq || (() => {});
@@ -3320,9 +3320,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // the only one that knows which provider failed and why.
         finalSummary =
           finalState.finalSummary ||
-          "Cloud API error — coba lagi dalam beberapa detik.";
+          "Cloud API error — try again in a few seconds.";
       } else if (finalState.stopReason === "cancelled") {
-        finalSummary = "Dibatalkan oleh user.";
+        finalSummary = "Cancelled by the user.";
       } else {
         finalSummary = finalState.finalSummary || "Selesai.";
       }

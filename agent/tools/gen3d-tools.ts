@@ -145,7 +145,7 @@ async function generate3d(args, ctx) {
     } else {
       return {
         ok: false,
-        output: "Butuh 'prompt' (teks) atau 'image' (path/URL).",
+        output: "Needs 'prompt' (text) or 'image' (path/URL).",
       };
     }
 
@@ -182,7 +182,7 @@ async function generate3d(args, ctx) {
       ok: true,
       path: outAbs,
       output:
-        "Model 3D dibuat: " +
+        "3D model created: " +
         outAbs +
         " (" +
         (buf.length / 1024 / 1024).toFixed(2) +

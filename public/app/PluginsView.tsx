@@ -212,8 +212,8 @@ function BarisPlugin({
           disabled={sibuk}
           title={
             p.disetujui
-              ? "Cabut izin — prosesnya dihentikan sekarang"
-              : "Beri izin — berlaku mulai sesi berikutnya"
+              ? "Revoke — the process is stopped right away"
+              : "Approve — takes effect from the next session"
           }
           style={{
             padding: "6px 14px",
@@ -222,7 +222,7 @@ function BarisPlugin({
             opacity: sibuk ? 0.5 : 1,
           }}
         >
-          {p.disetujui ? "Cabut izin" : "Beri izin"}
+          {p.disetujui ? "Revoke" : "Approve"}
         </button>
 
         {/* disetujui is not the same as active this session. The difference is
@@ -233,9 +233,9 @@ function BarisPlugin({
           style={{ fontSize: "10.5px", color: p.aktifSesi ? HIJAU : REDUP }}
         >
           {p.aktifSesi
-            ? "aktif di sesi ini"
+            ? "active this session"
             : p.disetujui
-              ? "aktif setelah restart"
+              ? "active after restart"
               : "not reachable by the agent"}
         </span>
 
@@ -253,7 +253,7 @@ function BarisPlugin({
             textDecoration: "underline",
           }}
         >
-          copot
+          uninstall
         </button>
       </div>
     </div>
@@ -322,7 +322,7 @@ function DialogPasang({
       }}
     >
       <div style={{ fontSize: "14px", fontWeight: 600, color: "#f3f4f6" }}>
-        Pasang plugin
+        Install plugin
       </div>
 
       <div style={{ display: "flex", gap: "10px" }}>
@@ -331,7 +331,7 @@ function DialogPasang({
           onChange={(e: { target: { value: string } }) =>
             setNama(e.target.value)
           }
-          placeholder="nama (mis. kaggle)"
+          placeholder="name (e.g. kaggle)"
           style={{ ...gaya, flex: 1 }}
         />
         <input
@@ -339,7 +339,7 @@ function DialogPasang({
           onChange={(e: { target: { value: string } }) =>
             setKet(e.target.value)
           }
-          placeholder="keterangan singkat"
+          placeholder="short description"
           style={{ ...gaya, flex: 2 }}
         />
       </div>
@@ -355,7 +355,7 @@ function DialogPasang({
 
       <div>
         <div style={{ fontSize: "12px", color: REDUP, marginBottom: "7px" }}>
-          Izin yang diminta plugin ini:
+          Permissions this plugin asks for:
         </div>
         <div style={{ display: "flex", flexWrap: "wrap", gap: "6px" }}>
           {izinDikenal.map((z) => {
@@ -388,7 +388,7 @@ function DialogPasang({
 
       <div style={{ display: "flex", gap: "10px", justifyContent: "flex-end" }}>
         <button className="btn" onClick={onBatal} style={{ fontSize: "12px" }}>
-          Batal
+          Cancel
         </button>
         <button
           className="btn"
@@ -407,13 +407,13 @@ function DialogPasang({
             opacity: sibuk || !nama.trim() || potong.length === 0 ? 0.5 : 1,
           }}
         >
-          Pasang
+          Install
         </button>
       </div>
 
       <div style={{ fontSize: "11px", color: REDUP, lineHeight: 1.5 }}>
-        Memasang tidak memberi izin. Sesudah terpasang, plugin masih harus Anda
-        setujui — dan agent baru bisa memanggilnya pada sesi berikutnya.
+        Installing does not grant permission. Once installed you still have to
+        approve it — and the agent can only call it from the next session on.
       </div>
     </div>
   );
@@ -531,182 +531,204 @@ function PluginsView(): JSX.Element {
   });
 
   return (
-    <div
-      style={{
-        padding: "40px 60px",
-        maxWidth: "920px",
-        margin: "0 auto",
-        width: "100%",
-        color: "#e2e8f0",
-      }}
-    >
-      <h1
-        style={{
-          fontSize: "20px",
-          fontWeight: 600,
-          color: "#f3f4f6",
-          marginBottom: "6px",
-        }}
-      >
-        Plugins
-      </h1>
-      <p
-        style={{
-          fontSize: "13px",
-          color: REDUP,
-          marginBottom: "24px",
-          lineHeight: 1.6,
-        }}
-      >
-        Tiap plugin berjalan sebagai proses terpisah. Pemasangan dilakukan oleh
-        Anda — agent tidak bisa memasang sendiri.
-      </p>
-
-      <div
-        style={{
-          display: "flex",
-          gap: "12px",
-          alignItems: "center",
-          marginBottom: "28px",
-        }}
-      >
-        <div
-          style={{
-            ...KARTU,
-            flex: 1,
-            display: "flex",
-            alignItems: "center",
-            padding: "10px 16px",
-            gap: "10px",
-          }}
-        >
-          <svg
-            width="16"
-            height="16"
-            viewBox="0 0 24 24"
-            fill="none"
-            stroke={REDUP}
-            strokeWidth="2"
-            strokeLinecap="round"
-            strokeLinejoin="round"
+    // .hub / .hub-header / .hub-body is the layout every hub page is meant to
+    // have; SettingsView already had it and this one did not. Two things ride
+    // on that header, and neither is visible on its own:
+    //
+    //   1. `.app.sb-sembunyi .hub-header` is what reserves 58px for the
+    //      floating sidebar toggle. With no header, nothing on this page knew
+    //      the button was there.
+    //   2. `.tb-spacer` IS the window's drag handle. With no header there was
+    //      no drag region at all, so the window could not be moved while this
+    //      page was open.
+    //
+    // Both are inherited from the shared classes now rather than restated
+    // here, so the next page that copies this structure gets them too.
+    <div className="hub">
+      <header className="hub-header">
+        <span className="tb-divider" />
+        <div className="hub-title-group">
+          <span
+            className="hub-hf-mark"
+            style={{ background: "rgba(96,165,250,.14)", color: "#60a5fa" }}
           >
-            <circle cx="11" cy="11" r="8"></circle>
-            <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-          </svg>
-          <input
-            value={cari}
-            onChange={(e: { target: { value: string } }) =>
-              setCari(e.target.value)
-            }
-            placeholder="Saring plugin terpasang…"
+            <IkonColokan ukuran={16} />
+          </span>
+          <span className="hub-title">Plugins</span>
+        </div>
+        {/* Drag handle. Same element, same reason, as in the top bar. */}
+        <div className="tb-spacer" />
+      </header>
+      <div className="hub-body">
+        <div
+          style={{
+            maxWidth: "920px",
+            margin: "0 auto",
+            width: "100%",
+            color: "#e2e8f0",
+          }}
+        >
+          <p
             style={{
-              flex: 1,
-              background: "transparent",
-              border: "none",
-              outline: "none",
-              color: "#e2e8f0",
               fontSize: "13px",
+              color: REDUP,
+              marginBottom: "24px",
+              lineHeight: 1.6,
             }}
-          />
-        </div>
-        <button
-          className="btn"
-          onClick={() => setBukaPasang(!bukaPasang)}
-          title="Installing a plugin is your action, not the agent's"
-          style={{
-            padding: "10px 18px",
-            borderRadius: "10px",
-            fontSize: "13px",
-            fontWeight: 500,
-            whiteSpace: "nowrap",
-          }}
-        >
-          + Install Plugin
-        </button>
-      </div>
+          >
+            Every plugin runs as its own process. Installing one is your action
+            — the agent cannot install anything by itself.
+          </p>
 
-      {bukaPasang ? (
-        <DialogPasang
-          izinDikenal={izinDikenal}
-          onBatal={() => setBukaPasang(false)}
-          onPasang={pasang}
-          sibuk={sibuk}
-        />
-      ) : null}
+          <div
+            style={{
+              display: "flex",
+              gap: "12px",
+              alignItems: "center",
+              marginBottom: "28px",
+            }}
+          >
+            <div
+              style={{
+                ...KARTU,
+                flex: 1,
+                display: "flex",
+                alignItems: "center",
+                padding: "10px 16px",
+                gap: "10px",
+              }}
+            >
+              <svg
+                width="16"
+                height="16"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke={REDUP}
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
+              >
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+              <input
+                value={cari}
+                onChange={(e: { target: { value: string } }) =>
+                  setCari(e.target.value)
+                }
+                placeholder="Filter installed plugins…"
+                style={{
+                  flex: 1,
+                  background: "transparent",
+                  border: "none",
+                  outline: "none",
+                  color: "#e2e8f0",
+                  fontSize: "13px",
+                }}
+              />
+            </div>
+            <button
+              className="btn"
+              onClick={() => setBukaPasang(!bukaPasang)}
+              title="Installing a plugin is your action, not the agent's"
+              style={{
+                padding: "10px 18px",
+                borderRadius: "10px",
+                fontSize: "13px",
+                fontWeight: 500,
+                whiteSpace: "nowrap",
+              }}
+            >
+              + Install Plugin
+            </button>
+          </div>
 
-      {galat ? (
-        <div
-          style={{
-            ...KARTU,
-            borderColor: "rgba(248,113,113,0.35)",
-            padding: "16px 18px",
-            marginBottom: "10px",
-            fontSize: "12.5px",
-            color: "#f8b4b4",
-          }}
-        >
-          Gagal memuat daftar plugin: {galat}
-        </div>
-      ) : null}
-
-      {/* A broken manifest is SHOWN, not dropped silently. A plugin vanishing
-          without a trace is exactly how skills.cjs came to be forgotten until
-          it eventually became a security hole. */}
-      {rusak.map((r) => (
-        <div
-          key={r.dir}
-          style={{
-            ...KARTU,
-            borderColor: "rgba(210,153,34,0.35)",
-            padding: "14px 18px",
-            marginBottom: "10px",
-            fontSize: "12.5px",
-            color: "#d9b168",
-          }}
-        >
-          <b>plugins/{r.dir}</b> — manifest tak sah: {r.error}
-        </div>
-      ))}
-
-      {memuat ? (
-        <div
-          style={{
-            ...KARTU,
-            padding: "28px",
-            textAlign: "center",
-            fontSize: "13px",
-            color: REDUP,
-          }}
-        >
-          Memuat…
-        </div>
-      ) : daftar.length > 0 ? (
-        <div style={{ display: "flex", flexDirection: "column", gap: "10px" }}>
-          {daftar.map((p) => (
-            <BarisPlugin
-              key={p.nama}
-              p={p}
-              onUbah={ubahIzin}
-              onCopot={copot}
+          {bukaPasang ? (
+            <DialogPasang
+              izinDikenal={izinDikenal}
+              onBatal={() => setBukaPasang(false)}
+              onPasang={pasang}
               sibuk={sibuk}
             />
+          ) : null}
+
+          {galat ? (
+            <div
+              style={{
+                ...KARTU,
+                borderColor: "rgba(248,113,113,0.35)",
+                padding: "16px 18px",
+                marginBottom: "10px",
+                fontSize: "12.5px",
+                color: "#f8b4b4",
+              }}
+            >
+              Failed to load the plugin list: {galat}
+            </div>
+          ) : null}
+
+          {/* A broken manifest is SHOWN, not dropped silently. A plugin vanishing
+          without a trace is exactly how skills.cjs came to be forgotten until
+          it eventually became a security hole. */}
+          {rusak.map((r) => (
+            <div
+              key={r.dir}
+              style={{
+                ...KARTU,
+                borderColor: "rgba(210,153,34,0.35)",
+                padding: "14px 18px",
+                marginBottom: "10px",
+                fontSize: "12.5px",
+                color: "#d9b168",
+              }}
+            >
+              <b>plugins/{r.dir}</b> — manifest tak sah: {r.error}
+            </div>
           ))}
+
+          {memuat ? (
+            <div
+              style={{
+                ...KARTU,
+                padding: "28px",
+                textAlign: "center",
+                fontSize: "13px",
+                color: REDUP,
+              }}
+            >
+              Loading…
+            </div>
+          ) : daftar.length > 0 ? (
+            <div
+              style={{ display: "flex", flexDirection: "column", gap: "10px" }}
+            >
+              {daftar.map((p) => (
+                <BarisPlugin
+                  key={p.nama}
+                  p={p}
+                  onUbah={ubahIzin}
+                  onCopot={copot}
+                  sibuk={sibuk}
+                />
+              ))}
+            </div>
+          ) : (
+            <div
+              style={{
+                ...KARTU,
+                padding: "28px",
+                textAlign: "center",
+                fontSize: "13px",
+                color: REDUP,
+              }}
+            >
+              {cari.trim()
+                ? `No plugin matches “${cari}”.`
+                : "No plugins yet. Put a folder containing manifest.json in plugins/."}
+            </div>
+          )}
         </div>
-      ) : (
-        <div
-          style={{
-            ...KARTU,
-            padding: "28px",
-            textAlign: "center",
-            fontSize: "13px",
-            color: REDUP,
-          }}
-        >
-          {cari.trim()
-            ? `No plugin matches “${cari}”.`
-            : "No plugins yet. Put a folder containing manifest.json in plugins/."}
-        </div>
-      )}
+      </div>
     </div>
   );
 }

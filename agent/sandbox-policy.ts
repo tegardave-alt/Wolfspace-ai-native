@@ -92,7 +92,7 @@ export function shouldSandbox(
 // undefined, because config.json has no "sandbox" key at all — never counted as
 // cached, so the file was re-read from disk on every single call. The comment
 // above claimed "read once" while the code did the opposite.
-const BELUM_DIBACA = Symbol("belum dibaca");
+const BELUM_DIBACA = Symbol("not read yet");
 let _cfgCache: ConfigSandbox | typeof BELUM_DIBACA = BELUM_DIBACA;
 
 export function configSandbox(): ConfigSandbox {

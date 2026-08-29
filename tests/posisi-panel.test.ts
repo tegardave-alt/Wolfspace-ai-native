@@ -462,9 +462,7 @@ describe("panel kode bisa disunting dan disimpan", () => {
   test("perubahan yang belum tersimpan terlihat, dan gagal TIDAK dibersihkan", () => {
     expect(PANE).toMatch(/setKotor\(true\)/);
     // Penanda kotor pindah ke dalam TAB-nya, satu per berkas.
-    expect(PANE).toMatch(
-      /kotorPerBerkas\.current\.get\(t\) \|\| \(t === rel && kotor\)/,
-    );
+    expect(PANE).toMatch(/_kotorBerkas\.get\(t\) \|\| \(t === rel && kotor\)/);
     // Pada kegagalan, penanda kotor harus tetap menyala.
     const gagal = PANE.slice(PANE.indexOf("} catch (e) {"));
     expect(gagal.slice(0, 400)).not.toMatch(/setKotor\(false\)/);

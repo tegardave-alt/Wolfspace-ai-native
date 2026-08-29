@@ -826,7 +826,7 @@ function Composer({
     const envVars = mcpInputToken.trim();
 
     if (!type) {
-      setMcpInputError("Jenis MCP wajib diisi.");
+      setMcpInputError("MCP type is required.");
       return;
     }
 
@@ -1279,7 +1279,7 @@ function Composer({
   }, [menu]);
   const notYet = (name: any) => {
     setMenu(false);
-    setSoon(name + " segera hadir.");
+    setSoon(name + " is coming soon.");
     setTimeout(() => setSoon(""), 2600);
   };
   return (
@@ -2039,7 +2039,7 @@ function Composer({
                                     setMcpInputError("");
                                   }
                                 }}
-                                placeholder="Jenis MCP (contoh: github, brave-search, sqlite)"
+                                placeholder="MCP type (e.g. github, brave-search, sqlite)"
                                 style={{
                                   width: "100%",
                                   background: "rgba(255,255,255,0.04)",
@@ -2166,7 +2166,7 @@ function Composer({
                                   fontFamily: "inherit",
                                 }}
                               >
-                                Batal
+                                Cancel
                               </button>
                               <button
                                 onClick={handleMcpCodeConnect}

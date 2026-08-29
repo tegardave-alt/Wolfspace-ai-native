@@ -185,9 +185,9 @@ function retrieve(projectRef, query, opts: any = {}) {
 // Format the results for the agent to read (as tool output) — with citations.
 function retrieveFormatted(projectRef, query, opts: any = {}) {
   const r = retrieve(projectRef, query, opts);
-  if (!r.ok) return "retrieve gagal: " + r.err;
+  if (!r.ok) return "retrieve failed: " + r.err;
   if (!r.results.length)
-    return "Tak ada memori/dokumen relevan (" + (r.total || 0) + " tersimpan).";
+    return "No relevant memory or document (" + (r.total || 0) + " stored).";
   return r.results
     .map(
       (x, i) =>

@@ -212,14 +212,14 @@ export function pasangLaporan(
 
 /** One-line form for logs: the numbers plus the verdict they earn. */
 export function ringkas(l: Laporan): string {
-  // "(tak terlacak)" is a real answer, not a missing one: it says the block came
+  // "(untracked)" is a real answer, not a missing one: it says the block came
   // from somewhere with no instrument on it, which is the first thing worth
   // knowing when deciding where to add one.
   const jejak = l.penyumbang.length
     ? l.penyumbang
         .map((p) => p.label + " " + p.ms + "ms" + (p.n > 1 ? " x" + p.n : ""))
         .join(", ")
-    : "(tak terlacak)";
+    : "(untracked)";
   return (
     "blokir maks " +
     l.maksMs +

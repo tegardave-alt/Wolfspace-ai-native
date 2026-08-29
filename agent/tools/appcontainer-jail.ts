@@ -316,7 +316,7 @@ function _jelaskan(teks: any, perintah?: any) {
     "berkas, cabang, kepala, blame, tambah, commit, pulihkan, cabang_baru, " +
     "pindah) with an argv it builds itself and paths that must lie " +
     "inside the workspace. Repeating this command through bash will never " +
-    "berhasil, seberapa pun berbedanya cara penulisannya."
+    "succeed, however differently it is spelled."
   );
 }
 
@@ -342,13 +342,13 @@ function jelaskanKode(kode) {
     "Two causes, and only one of them can be fixed:\n" +
     "  1. The DLL sits in a folder not yet opened to the container — grant read " +
     "access to its runtime folder through scripts/appcontainer/pasang.ps1.\n" +
-    "  2. Programnya memakai runtime MSYS/Cygwin (ls, grep, sed, dan " +
-    "kawan-kawan dari Git for Windows). Runtime itu butuh objek kernel " +
+    "  2. The program uses the MSYS/Cygwin runtime (ls, grep, sed and " +
+    "friends from Git for Windows). That runtime needs a kernel object the " +
     "shared component AppContainer closes off, so it fails EVEN when the file is " +
     "fully readable — measured, after read access was granted. No permission " +
     "can fix it.\n" +
     "What works instead: cmd/PowerShell built-ins, node, and binaries " +
-    "non-MSYS (curl dari mingw64 terbukti jalan)."
+    "that are not MSYS (curl from mingw64 is proven to work)."
   );
 }
 

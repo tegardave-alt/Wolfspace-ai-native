@@ -172,6 +172,24 @@ select {
    "sidebar"), tapi perilaku dan warnanya sengaja disamakan: dua panel yang
    bisa diatur lebarnya dengan cara berbeda akan terasa seperti dua aplikasi
    berbeda. */
+/* Divider between the two editor groups. Same 7px grab width as the file
+   tree's resizer: a 1px line is what you SEE, and anything that thin is a
+   target you miss. */
+.editor-split-resizer {
+  flex: 0 0 auto;
+  width: 7px;
+  margin: 0 -3px;
+  cursor: col-resize;
+  background: transparent;
+  border-left: 1px solid var(--line, #212a36);
+  z-index: 5;
+  transition: background 0.15s ease;
+}
+.editor-split-resizer:hover,
+.editor-split-resizer.resizing {
+  background: rgba(96, 165, 250, 0.4);
+}
+
 .logic-filetree-resizer {
   position: absolute;
   top: 0;
@@ -661,6 +679,41 @@ select {
      that begins AFTER .topbar's left padding, so the strip the floating button
      lives in is never part of a drag region at all. */
   -webkit-app-region: drag;
+}
+
+/* A page that is NOT showing must not contribute window chrome.
+ *
+ * WHAT WENT WRONG. Every page stays mounted; only the class changes. The one
+ * you left keeps `transform: translateX(-8%)` with opacity 0 and
+ * pointer-events: none — invisible and inert to the mouse. But Chromium builds
+ * the window's DRAGGABLE REGION from the layout tree, and neither opacity nor
+ * pointer-events removes an element from it. The transform does not remove it
+ * either; it MOVES it.
+ *
+ * Measured on the Plugins page with the sidebar hidden. The chat page's spacer
+ * normally starts after .topbar's 58px left padding, clear of the floating
+ * sidebar button at x=10..46. Shifted by -8% of a 1200px container it landed
+ * at:
+ *
+ *     .page.chat-page.exit .tb-spacer   x = -38..1050, y = 0..45, drag
+ *
+ * — straight over that button. WM_NCHITTEST answered HTCAPTION across the
+ * whole button rectangle (y=8..39), so the renderer never saw a mouse event
+ * there: no hover, no click, and a press dragged or resized the window
+ * instead. On the chat page itself the geometry is correct, which is why only
+ * the other pages were affected.
+ *
+ * Proven by removal and then by remedy: display:none on the exited page turned
+ * the rectangle HTCLIENT, and so did this rule with the page left in place.
+ * Re-checked after a minimize/restore, because app-region has failed to
+ * survive one before — that earlier case was a position:fixed element; this is
+ * an ordinary in-flow child and it holds.
+ *
+ * Written as :not(.active) rather than by listing .exit and .enter: exactly
+ * one page carries .active, so this stays correct for pages that do not exist
+ * yet. */
+.page:not(.active) .tb-spacer {
+  -webkit-app-region: no-drag;
 }
 .status-dot {
   width: 7px;
@@ -4478,14 +4531,29 @@ img.ar-fs-icon {
 .sidebar.sembunyi .sb-toggle {
   position: fixed;
   left: 10px;
-  /* SEJAJAR dengan tombol panel kanan di bilah atas.
+  /* NOT top: 0, and NOT a 46px box.
    *
-   * Diikat ke tinggi bilah (46px) lewat kotak setinggi itu + align-items:
-   * center, bukan dipatok satu angka `top`. Angka tetap akan meleset begitu
-   * tinggi bilahnya berubah — dan melesetnya beberapa piksel, yaitu jenis
-   * ketidaksejajaran yang terlihat tapi sulit ditunjuk sebabnya. */
-  top: 0;
-  height: 46px;
+   * The window keeps its native resizable frame: titleBarStyle "hidden" in
+   * electron/main.ts removes the title BAR, not the FRAME. So Windows owns a
+   * resize band along every edge and answers WM_NCHITTEST there before the
+   * page ever sees the click. Measured on this machine:
+   *
+   *     SM_CYSIZEFRAME 4 + SM_CXPADDEDBORDER 4 = 8px
+   *
+   * and probed directly: y=0..6 answered HTTOP, HTTOPLEFT at the left end,
+   * while y=8 was the first row to answer HTCLIENT.
+   *
+   * A button at top: 0 spanning 46px therefore gave its top 8px away. Pressing
+   * there did not toggle the sidebar — it started a WINDOW RESIZE, because the
+   * OS had already claimed the pixel. The button looked dead or the whole app
+   * suddenly changed size, depending on whether the press turned into a drag.
+   *
+   * The box below is the one this button ALREADY occupies in flow, so floating
+   * it changes nothing visually: .sb-head is 46px, the icon 19px, the padding
+   * 6px, so a 31px box centred in the bar starts at 7.5px. Rounded to 8 it
+   * clears the band and still sits on the bar's centre line. */
+  top: 8px;
+  height: 31px;
   display: flex;
   align-items: center;
   z-index: 40;
@@ -4572,6 +4640,34 @@ img.ar-fs-icon {
 /* One slot holds both marks. The dot shows while there are unsaved changes and
    gives way to the × on hover, so the tab never changes width and the row never
    shifts under the pointer mid-click. */
+/* Split-editor button, at the end of the tab strip. Dimmed like the other
+   chrome in this row and only lit on hover: it sits beside file names, and a
+   bright control there reads as a tab. */
+.tab-pecah {
+  flex: 0 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: #768390;
+  cursor: pointer;
+  opacity: 0.65;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease,
+    opacity 0.12s ease;
+}
+.tab-pecah:hover {
+  background: #141c26;
+  color: #e6edf3;
+  opacity: 1;
+}
+
 .tab-tutup {
   position: relative;
   flex-shrink: 0;

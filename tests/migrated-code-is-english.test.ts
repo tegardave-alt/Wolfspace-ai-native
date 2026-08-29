@@ -20,6 +20,12 @@ const AKAR = path.join(__dirname, "..");
 // Every file that has completed migration. A file only belongs here once its
 // comments are English; adding one is the last step of migrating it.
 const BERKAS_MIGRASI = [
+  // Added after a sweep found these in NO list at all: unguarded, and clean
+  // only by luck rather than by anything checking.
+  "agent/anggaran.ts",
+  "agent/pemadatan.ts",
+  "agent/pemantau-blokir.ts",
+  "agent/mcp-servers/kaggle-mcp.cjs",
   "agent/attachment-bridge.ts",
   "agent/broker/audit-log.ts",
   "agent/broker/zone-worker.cjs",
@@ -257,9 +263,20 @@ function hapusIdentifier(teks, isi) {
  * a property whose value follows (`tanpa: [`, `{ tanpa: "`).
  */
 function hapusKutipanKode(teks) {
-  return teks
-    .replace(/\.\w+/g, " ") // opts.tanpa
-    .replace(/\b\w+\s*:\s*[[{"'`]/g, " "); // tanpa:["x"]  /  { tanpa: "
+  return (
+    teks
+      .replace(/\.\w+/g, " ") // opts.tanpa
+      .replace(/\b\w+\s*:\s*[[{"'`]/g, " ") // tanpa:["x"]  /  { tanpa: "
+      // A QUOTED RUN is a citation, not prose.
+      //
+      // English comments in this repo quote Indonesian literals on purpose:
+      // the strings the agent matches against a model's Indonesian reply, error
+      // text already stored on disk, a test name repeated word for word. Those
+      // must STAY Indonesian — translating them would make the comment lie
+      // about what the code compares — so a comment that names one is not an
+      // unmigrated comment.
+      .replace(/"[^"]*"/g, " ")
+  );
 }
 
 describe("migrated code carries English comments", () => {

@@ -19,9 +19,19 @@
 function usePreviewPanel({
   selectedProject,
   onAutoOpen,
+  halamanTampil = true,
 }: {
   selectedProject?: unknown;
   onAutoOpen?: () => void;
+  // Whether the page this panel lives on is the one being SHOWN.
+  //
+  // The panel belongs to the chat page, but pages are not unmounted when you
+  // leave them — they keep their layout and fade to opacity 0. A DOM panel
+  // disappears with its page. This one does not: it is a WebContentsView owned
+  // by the main process, floating above the window, and it obeys the bounds it
+  // is given and nothing else. Opening Plugins while a site was loaded left the
+  // browser sitting on top of it.
+  halamanTampil?: boolean;
 }) {
   const [url, setUrl] = useState("");
   const [inputUrl, setInputUrl] = useState("");
@@ -125,7 +135,10 @@ function usePreviewPanel({
   // above the window, so it does not move when the panel is resized, the sidebar
   // opens, or the window changes size. One observer covers all three.
   useEffect(() => {
-    if (!ipc || !alamatLuar) {
+    // halamanTampil is part of the CONDITION, not just a one-off hide. The
+    // heartbeat below re-sends "tampil" every 400ms, so hiding once and leaving
+    // the effect running would put the view straight back on screen.
+    if (!ipc || !alamatLuar || !halamanTampil) {
       if (ipc) ipc.invoke("browser", { aksi: "sembunyi" }).catch(() => {});
       return;
     }
@@ -196,7 +209,7 @@ function usePreviewPanel({
       window.removeEventListener("resize", onResize);
       ipc.invoke("browser", { aksi: "sembunyi" }).catch(() => {});
     };
-  }, [ipc, alamatLuar, url, refreshKey]);
+  }, [ipc, alamatLuar, url, refreshKey, halamanTampil]);
 
   // State arrives over IPC, not from the DOM: the view lives in another process.
   useEffect(() => {

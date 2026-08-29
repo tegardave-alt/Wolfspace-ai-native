@@ -481,7 +481,7 @@ function GroupedActionRow({ group, expanded, setExpanded }: any) {
                         color: "#f85149",
                       }}
                     >
-                      gagal
+                      failed
                     </span>
                   )}
                 </div>

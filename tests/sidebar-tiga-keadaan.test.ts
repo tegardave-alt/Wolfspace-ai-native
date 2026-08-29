@@ -90,19 +90,43 @@ describe("keadaan ketiga menyisakan tepat satu hal", () => {
     expect(b).toMatch(/z-index: 40/);
   });
 
-  test("sejajar dengan tombol panel kanan, lewat tinggi bilah", () => {
-    // Diikat ke tinggi bilah atas (46px) + align-items: center, bukan dipatok
-    // satu angka `top`. Angka tetap meleset begitu tinggi bilahnya berubah —
-    // dan melesetnya beberapa piksel, yaitu ketidaksejajaran yang terlihat
-    // tapi sulit ditunjuk sebabnya.
+  test("sejajar dengan tombol panel kanan, lewat garis tengah bilah", () => {
+    // The INTENT of this test has not changed: the floating button must line
+    // up with the right-panel button in the top bar. The MECHANISM had to.
     //
-    // Terukur: pusat kiri 23.0, pusat kanan 22.5 -> selisih 0.5 px.
+    // It used to assert top: 0 together with height: 46px — span the whole bar
+    // and centre the icon inside it. That is exactly what put the button's top
+    // 8px inside the WINDOW'S RESIZE BAND. titleBarStyle "hidden" removes the
+    // title bar and keeps the resizable frame, so Windows answers
+    // WM_NCHITTEST along every edge first. Measured: SM_CYSIZEFRAME 4 +
+    // SM_CXPADDEDBORDER 4 = 8px, and probed HTTOP through y=6 with HTCLIENT
+    // first appearing at y=8.
+    //
+    // Pressing the top of the button therefore started a window resize instead
+    // of showing the sidebar. This test passed the whole time, because it was
+    // asserting the mechanism that caused it.
+    //
+    // Alignment is now checked against the bar's CENTRE LINE, which is what
+    // "aligned" actually means and which no longer forces the box to touch the
+    // edge. The band itself is guarded in
+    // tests/sb-toggle-luar-pita-resize.test.ts.
     const b = aturan(".sidebar.sembunyi .sb-toggle");
-    expect(b).toMatch(/top: 0/);
-    expect(b).toMatch(/height: 46px/);
     expect(b).toMatch(/align-items: center/);
-    // Tingginya harus benar-benar sama dengan bilahnya.
+    // The bar's own height still has to be the reference.
     expect(aturan(".topbar")).toMatch(/height: 46px/);
+
+    const angka = (blok: string, prop: string): number => {
+      const bersih = blok.replace(/\/\*[\s\S]*?\*\//g, "");
+      for (const baris of bersih.split("\n")) {
+        const t = baris.trim();
+        if (t.startsWith(prop + ":")) {
+          return parseFloat(t.slice(prop.length + 1).trim());
+        }
+      }
+      throw new Error("declaration not found: " + prop);
+    };
+    const pusat = angka(b, "top") + angka(b, "height") / 2;
+    expect(Math.abs(pusat - 46 / 2)).toBeLessThanOrEqual(1);
   });
 
   test("transparan, seperti tombol bilah atas lainnya", () => {

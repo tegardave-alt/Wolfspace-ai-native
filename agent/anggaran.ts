@@ -192,9 +192,9 @@ export function lewatBatasIpc(v: any, arah: string): string | null {
     mb(n) +
     " MB melewati batas " +
     mb(IPC_PAYLOAD_MAKS) +
-    " MB. Satu pesan sebesar itu memblokir thread yang " +
-    "menggambar jendela — pada 200 MB terukur 4486 ms, dan Windows menandai " +
-    "Not Responding di 5000 ms. Kirim bertahap, jangan sekaligus."
+    " MB. A message that size blocks the thread that draws the " +
+    "window — measured at 4486 ms for 200 MB, and Windows marks a window Not " +
+    "Responding at 5000 ms. Send it in chunks, not in one go."
   );
 }
 

@@ -801,7 +801,7 @@ class MCPClient {
           ok: false,
           error:
             `'${name}' is a plugin, not a config/mcp.json entry. ` +
-            "Beri atau cabut izinnya di halaman Plugins.",
+            "Grant or revoke its permission on the Plugins page.",
         };
       }
       return { ok: false, error: "MCP server not found in configuration" };
@@ -1000,7 +1000,7 @@ class MCPClient {
         output:
           `Plugin '${serverName}' is not approved for this session: ` +
           izin.alasan +
-          ". Persetujuan diberikan user di halaman Plugins, dan berlaku mulai sesi berikutnya.",
+          ". The user grants approval on the Plugins page, and it takes effect from the next session.",
       };
     }
 

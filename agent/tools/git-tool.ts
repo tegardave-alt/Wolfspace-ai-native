@@ -188,7 +188,7 @@ async function jalankan(args, workspace) {
         Object.entries(OPERASI)
           .map(([k, v]) => "  " + k.padEnd(13) + v.jelas)
           .join("\n") +
-        "\nTIDAK ADA operasi jaringan (push/pull/fetch/clone) di tool ini.",
+        "\nNO network operations (push/pull/fetch/clone) in this tool.",
     };
   }
 

@@ -483,7 +483,7 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
             <code style="display:block; padding:8px; background:var(--surface-2, #f1f3f5); border:1px solid var(--border, #e9ecef); border-radius:4px; font-size:11px; color:var(--text-secondary, #495057); word-break:break-all; font-family:monospace; white-space: normal;">${escapedDom}</code>
             <button class="vd-copy-btn" style="background: var(--text-primary, #212529); color: white; border: none; height: 34px; border-radius: 4px; font-weight: 500; font-size: 13px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#000'" onmouseout="this.style.background='var(--text-primary, #212529)'">
               <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style="margin-right:4px; vertical-align:text-bottom"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-              Salin Struktur DOM
+              Copy DOM Structure
             </button>
           </div>
         `;

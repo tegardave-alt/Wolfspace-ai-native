@@ -38,8 +38,16 @@ const aturan = (sel) => {
 
 describe("model tidak dibuang saat pindah tab", () => {
   test("ada cache model per berkas", () => {
-    expect(B).toMatch(/const modelRef = React\.useRef\(new Map\(\)\)/);
-    expect(B).toMatch(/const sudahAda = modelRef\.current\.get\(rel\)/);
+    // The cache moved from a per-instance ref to MODULE scope when the editor
+    // area learned to split. Panes can show the same file at once, and a model
+    // per pane means two buffers over one path: type in one, save from the
+    // other, and the first pane's work is gone without a word.
+    expect(B).toMatch(/const _modelBerkas = new Map\(\)/);
+    // `let`, not `const`: the shared map outlives any single pane, so an entry
+    // disposed elsewhere can still be sitting in it. That case is cleared and
+    // refetched rather than handed to setModel — which is the crash the
+    // ErrorBoundary reported as "Model is disposed!".
+    expect(B).toMatch(/let sudahAda = _modelBerkas\.get\(rel\)/);
   });
 
   test("model lama TIDAK dibuang saat berpindah", () => {
@@ -50,22 +58,36 @@ describe("model tidak dibuang saat pindah tab", () => {
     expect(blok).not.toMatch(/lama\.dispose\(\)/);
   });
 
-  test("dibuang hanya saat tabnya DITUTUP", () => {
+  test("dibuang hanya saat tabnya DITUTUP di SEMUA grup", () => {
     // Tanpa ini, membuka banyak berkas menumpuk model tanpa pernah melepasnya.
-    expect(B).toMatch(/const hidup = new Set\(tabs\)/);
-    expect(B).toMatch(/modelRef\.current\.delete\(k\)/);
+    //
+    // tabsSemua, bukan tabs: gabungan dari setiap grup editor. Kalau ditambat
+    // ke tab milik satu grup saja, model yang masih ditampilkan grup sebelah
+    // ikut dibuang dan pane itu mendadak kosong di tengah suntingan.
+    expect(B).toMatch(/const hidup = new Set\(tabsSemua\)/);
+    expect(B).toMatch(/_modelBerkas\.delete\(k\)/);
   });
 
-  test("dan saat panelnya sendiri dilepas", () => {
-    const i = B.indexOf("const modelRef = React.useRef(new Map())");
-    expect(B.slice(i, i + 500)).toMatch(/peta\.clear\(\)/);
+  test("TIDAK dibuang saat satu panelnya dilepas", () => {
+    // Kebalikan dari yang dulu dituntut di sini, dan sengaja.
+    //
+    // Dulu panel membuang seluruh modelnya saat dilepas, dan itu benar selama
+    // panelnya cuma satu. Begitu layar bisa dipecah dua, panel yang ditutup
+    // akan menghancurkan buffer yang masih dipakai panel yang bertahan. Jadi
+    // pelepasan sekarang dikemudikan oleh tabsSemua di atas: model mati kalau
+    // tak ada satu pun grup yang membukanya.
+    expect(B).not.toMatch(/peta\.clear\(\)/);
+    expect(B).toMatch(/_modelBerkas\.delete\(k\)/);
   });
 });
 
 describe("keadaan tab", () => {
   test("urutannya milik pemakai, jadi array bukan Set", () => {
+    // Tab tak lagi satu daftar untuk seluruh editor: tiap GRUP punya
+    // daftarnya sendiri, seperti VS Code. Yang dijaga tetap sama — urutannya
+    // milik pemakai, jadi array.
     expect(B).toMatch(
-      /const \[logicTabs, setLogicTabs\] = useState(?:<[^>]*>)?\(\[\]\)/,
+      /const \[logicGrup, setLogicGrup\] = useState(?:<[^>]*>)?\(\[\{ tabs: \[\], aktif: "" \}\]\)/,
     );
   });
 
@@ -73,8 +95,8 @@ describe("keadaan tab", () => {
     // Kanan dulu, lalu kiri — seperti editor mana pun. Membiarkan panel kosong
     // membuat menutup terasa seperti kehilangan tempat.
     expect(B).toMatch(/sisa\[i\] \|\| sisa\[i - 1\] \|\| ""/);
-    // Dan hanya kalau yang ditutup memang yang aktif.
-    expect(B).toMatch(/aktif !== rel \? aktif :/);
+    // Dan hanya kalau yang ditutup memang yang aktif. Sekarang per grup.
+    expect(B).toMatch(/g\.aktif !== rel \? g\.aktif :/);
   });
 
   test("menggeser memindahkan, bukan menukar", () => {
@@ -85,9 +107,11 @@ describe("keadaan tab", () => {
   test("kotor dilacak PER BERKAS", () => {
     // Satu penanda hanya menggambarkan berkas aktif, sementara bilah tab harus
     // menandai setiap berkas yang punya suntingan belum tersimpan.
-    expect(B).toMatch(/const kotorPerBerkas = React\.useRef\(new Map\(\)\)/);
-    expect(B).toMatch(/kotorPerBerkas\.current\.set\(rel, true\)/);
-    expect(B).toMatch(/kotorPerBerkas\.current\.set\(target, false\)/);
+    // Ikut naik ke module scope bersama modelnya: berkas itu kotor atau tidak,
+    // dan lewat pane mana Anda melihatnya tak mengubah jawabannya.
+    expect(B).toMatch(/const _kotorBerkas = new Map\(\)/);
+    expect(B).toMatch(/_kotorBerkas\.set\(rel, true\)/);
+    expect(B).toMatch(/_kotorBerkas\.set\(target, false\)/);
   });
 });
 
