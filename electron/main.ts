@@ -912,6 +912,11 @@ function lewatBatasIpc(v: any, arah: string): string | null {
 let _backendHost: any = null;
 let _backendGagal = false;
 const _backendMenunggu = new Map<number, (m: any) => void>();
+/** Streams in flight inside the host: id -> the emit/finish pair owned by main. */
+const _aliranHost = new Map<
+  any,
+  { emit: (d: any) => void; finish: () => void }
+>();
 let _backendId = 0;
 
 function backendHost() {
@@ -925,6 +930,17 @@ function backendHost() {
       stdio: "inherit",
     });
     _backendHost.on("message", (m: any) => {
+      // Streams answer many times, so they are routed before the one-shot map.
+      if (m && (m.kind === "chunk" || m.kind === "end")) {
+        const al = _aliranHost.get(m.id);
+        if (!al) return;
+        if (m.kind === "chunk") al.emit(m.data);
+        else {
+          _aliranHost.delete(m.id);
+          al.finish();
+        }
+        return;
+      }
       const tunggu = _backendMenunggu.get(m && m.id);
       if (tunggu) {
         _backendMenunggu.delete(m.id);
@@ -939,6 +955,17 @@ function backendHost() {
         tunggu({ ok: false, error: "backend-host berhenti" });
       }
       _backendMenunggu.clear();
+      // A stream left open would keep the renderer waiting for a chunk that can
+      // no longer arrive, so each one is ended rather than abandoned.
+      for (const [, al] of _aliranHost) {
+        try {
+          al.emit({ t: "err", m: "backend-host berhenti" });
+        } catch (_e: any) {}
+        try {
+          al.finish();
+        } catch (_e: any) {}
+      }
+      _aliranHost.clear();
     });
     probe.say("backend-host dijalankan");
   } catch (e: any) {
@@ -1134,6 +1161,28 @@ function registerIpc() {
         st.req = r;
       },
     };
+    // ── Streaming through backend-host ──
+    //
+    // Tried FIRST, and this is where the isolation actually earns its keep: the
+    // agent loop and the model stream are the longest-running work in the app,
+    // so they are the work most likely to hold a thread. Everything the renderer
+    // sees is unchanged — main forwards the host's chunks verbatim.
+    //
+    // Falls through to the in-process path below when the host is unavailable.
+    const hostAliran = backendHost();
+    if (hostAliran && (channel === "chat" || channel === "self-agent")) {
+      _aliranHost.set(id, { emit, finish });
+      try {
+        hostAliran.postMessage({ id, kind: "stream", channel, payload });
+        return;
+      } catch (err: any) {
+        _aliranHost.delete(id);
+        probe.say(
+          "backend-host stream gagal, memakai in-process: " + err.message,
+        );
+      }
+    }
+
     let fn = null;
     try {
       const c = core();
@@ -1184,6 +1233,11 @@ function registerIpc() {
         } catch (_: any) {}
       }
     }
+    // The stream may live in the host, so the cancel has to reach it there too.
+    try {
+      const h = backendHost();
+      if (h) h.postMessage({ id, kind: "cancel" });
+    } catch (_e: any) {}
   });
 }
 

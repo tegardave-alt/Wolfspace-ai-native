@@ -55,6 +55,76 @@ async function tanganiInvoke(channel, payload) {
   throw new Error("unknown invoke channel: " + channel);
 }
 
+// ── Streaming ──
+//
+// The contract the main process already uses is fn(payload, emit, ctl), so it is
+// kept verbatim rather than redesigned; only the transport changes. emit() now
+// posts a chunk up the parent port instead of straight to the renderer, and
+// main.ts forwards it unchanged.
+//
+// ctl.setCurReq stays HERE. It holds the in-flight HTTP request so a cancel can
+// abort it, and that request belongs to this process — sending it across the
+// port would be meaningless even if it could be serialised.
+/** One place that knows the SSE frame shape, so the escape is written once. */
+function bingkaiGalat(pesan) {
+  return "data: " + JSON.stringify({ t: "err", m: pesan }) + "\n\n";
+}
+
+const _aliran = new Map();
+
+function tanganiStream(id, channel, payload) {
+  const c = core();
+  const fn =
+    channel === "chat"
+      ? c.chatStream
+      : channel === "self-agent"
+        ? c.selfAgentStream
+        : null;
+  if (!fn) {
+    kirim({
+      id,
+      kind: "chunk",
+      data: bingkaiGalat("unknown stream channel: " + channel),
+    });
+    kirim({ id, kind: "end" });
+    return;
+  }
+  const st = { batal: false, req: null };
+  _aliran.set(id, st);
+  const emit = (msg) => {
+    if (st.batal) return;
+    kirim({ id, kind: "chunk", data: msg });
+  };
+  const selesai = () => {
+    _aliran.delete(id);
+    kirim({ id, kind: "end" });
+  };
+  const ctl = {
+    isCancelled: () => st.batal,
+    setCurReq: (r) => {
+      st.req = r;
+    },
+  };
+  Promise.resolve()
+    .then(() => fn(payload, emit, ctl))
+    .then(selesai, (err) => {
+      emit({ t: "err", m: (err && err.message) || String(err) });
+      selesai();
+    });
+}
+
+function batalkan(id) {
+  const st = _aliran.get(id);
+  if (!st) return;
+  st.batal = true;
+  // The same two-step the main process used: ask the request to abort, then let
+  // the stream's own end path run.
+  try {
+    if (st.req && typeof st.req.destroy === "function") st.req.destroy();
+    else if (st.req && typeof st.req.abort === "function") st.req.abort();
+  } catch (_) {}
+}
+
 process.parentPort.on("message", (e) => {
   const msg = e.data || {};
   const { id, kind } = msg;
@@ -71,6 +141,23 @@ process.parentPort.on("message", (e) => {
             error: (err && err.message) || String(err),
           }),
       );
+    return;
+  }
+  if (kind === "stream") {
+    try {
+      tanganiStream(id, msg.channel, msg.payload);
+    } catch (err) {
+      kirim({
+        id,
+        kind: "chunk",
+        data: bingkaiGalat((err && err.message) || String(err)),
+      });
+      kirim({ id, kind: "end" });
+    }
+    return;
+  }
+  if (kind === "cancel") {
+    batalkan(id);
     return;
   }
   if (kind === "siap") {
