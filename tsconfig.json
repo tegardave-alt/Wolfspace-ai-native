@@ -1,0 +1,20 @@
+{
+  // Editor-facing entry point for the files at the repository ROOT.
+  //
+  // WHY IT EXISTS. server.ts sits at the root and was covered ONLY by
+  // tsconfig.server.json. `npm run typecheck` names that file explicitly, so
+  // the command line was always right — but an editor looks for a file called
+  // exactly "tsconfig.json", walking up from the source. Finding none, VS Code
+  // fell back to an inferred project whose defaults are STRICTER than the
+  // project's own settings, and reported 189 TS7006 plus TS7017/7019/7034 in a
+  // file the build considers clean.
+  //
+  // Reproduced from the command line: dropping -p and passing --noImplicitAny
+  // --strictNullChecks gives exactly those codes, in those counts.
+  //
+  // This adds no new strictness and changes no build. It only points the editor
+  // at the settings the project already uses, so both agree.
+  "extends": "./tsconfig.server.json",
+  "include": ["server.ts", "scripts/ww.ts"],
+  "exclude": ["node_modules"]
+}
