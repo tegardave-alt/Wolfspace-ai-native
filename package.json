@@ -100,7 +100,8 @@
       "config.json",
       "node_modules/esbuild/**",
       "node_modules/@esbuild/**",
-      "node_modules/**"
+      "node_modules/**",
+      "electron/backend-host.cjs"
     ],
     "extraMetadata": {
       "main": "electron/main.js"

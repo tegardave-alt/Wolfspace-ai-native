@@ -899,6 +899,84 @@ function lewatBatasIpc(v: any, arah: string): string | null {
   }
 }
 
+// ── The backend, moved OFF the window thread ──
+//
+// electron/backend-host.cjs runs core.js in a utilityProcess. See that file for
+// why: the main process owns the window, so its event loop is the one Windows
+// watches, and every synchronous call in the backend was a candidate freeze.
+//
+// Spawned LAZILY and with a FALLBACK. If the process cannot start, callers fall
+// back to the in-process core() they used before — losing the isolation must
+// never cost the feature. That is the same rule the block watchdog and the .ts
+// hook already follow here.
+let _backendHost: any = null;
+let _backendGagal = false;
+const _backendMenunggu = new Map<number, (m: any) => void>();
+let _backendId = 0;
+
+function backendHost() {
+  if (_backendHost || _backendGagal) return _backendHost;
+  try {
+    const { utilityProcess } = require("electron");
+    const entri = path.join(unpackedRoot(), "electron", "backend-host.cjs");
+    if (!fs.existsSync(entri)) throw new Error("backend-host.cjs tidak ada");
+    _backendHost = utilityProcess.fork(entri, [], {
+      serviceName: "wolfspace-backend",
+      stdio: "inherit",
+    });
+    _backendHost.on("message", (m: any) => {
+      const tunggu = _backendMenunggu.get(m && m.id);
+      if (tunggu) {
+        _backendMenunggu.delete(m.id);
+        tunggu(m);
+      }
+    });
+    _backendHost.on("exit", (kode: any) => {
+      probe.say("backend-host keluar, kode " + kode);
+      _backendHost = null;
+      // Every caller still waiting would otherwise hang for ever.
+      for (const [, tunggu] of _backendMenunggu) {
+        tunggu({ ok: false, error: "backend-host berhenti" });
+      }
+      _backendMenunggu.clear();
+    });
+    probe.say("backend-host dijalankan");
+  } catch (e: any) {
+    _backendGagal = true;
+    _backendHost = null;
+    probe.say("backend-host gagal, memakai jalur in-process: " + e.message);
+  }
+  return _backendHost;
+}
+
+/** Send to backend-host. null means the caller must fall back to core(). */
+function backendInvoke(channel: string, payload: any, batasMs = 30000) {
+  const h = backendHost();
+  if (!h) return null;
+  const id = ++_backendId;
+  return new Promise<any>((resolve) => {
+    const jam = setTimeout(() => {
+      if (_backendMenunggu.delete(id)) {
+        resolve({
+          ok: false,
+          error: "backend-host tak menjawab dalam " + batasMs + " ms",
+        });
+      }
+    }, batasMs);
+    _backendMenunggu.set(id, (m: any) => {
+      clearTimeout(jam);
+      resolve(m);
+    });
+    try {
+      h.postMessage({ id, kind: "invoke", channel, payload });
+    } catch (e: any) {
+      clearTimeout(jam);
+      _backendMenunggu.delete(id);
+      resolve({ ok: false, error: e.message });
+    }
+  });
+}
+
 function registerIpc() {
   ipcMain.on("WOLFSPACE:probe", (_e: any, d: any) => {
     if (d && d.t === "renderer-stop")
@@ -943,7 +1021,25 @@ function registerIpc() {
           return { ok: false, error: e.message };
         }
       }
+      // browser STAYS here: WebContentsView is a main-process API and cannot be
+      // reached from a utilityProcess.
       if (channel === "browser") return browserAksi(payload);
+
+      // ── The first two channels routed to backend-host ──
+      //
+      // Deliberately the two simplest ones rather than all of them at once:
+      // both only read and neither streams, so a wrong path shows up
+      // immediately instead of surfacing as a chat that stalls halfway. The
+      // rest follow once this route is proven.
+      //
+      // Falls back to core() when the host is unavailable — losing the
+      // isolation must never cost the feature.
+      if (channel === "api" || channel === "cloudKeys") {
+        const lewatHost = await backendInvoke(channel, payload);
+        if (lewatHost && lewatHost.ok) return lewatHost.value;
+        if (lewatHost)
+          probe.say("backend-host gagal " + channel + ": " + lewatHost.error);
+      }
       if (channel === "api") return apiCall(payload); // generic in-process HTTP-handler proxy
       const c = core();
       if (channel === "cloudKeys") return Object.keys(c.getCloudKeys()); // names only, no secrets
