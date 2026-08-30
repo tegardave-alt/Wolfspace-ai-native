@@ -29,17 +29,17 @@ const DEFAULT_ROOT = path.join(
 );
 
 // ── util ──────────────────────────────────────────────────────────────────────
-const log = (...a) => console.log(...a);
-const ok = (m) => log("  \x1b[32m✓\x1b[0m " + m);
-const info = (m) => log("  \x1b[36m•\x1b[0m " + m);
-const warn = (m) => log("  \x1b[33m!\x1b[0m " + m);
-const die = (m) => {
+const log = (...a: any[]) => console.log(...a);
+const ok = (m: any) => log("  \x1b[32m✓\x1b[0m " + m);
+const info = (m: any) => log("  \x1b[36m•\x1b[0m " + m);
+const warn = (m: any) => log("  \x1b[33m!\x1b[0m " + m);
+const die = (m: any) => {
   console.error("\x1b[31m✗ " + m + "\x1b[0m");
   process.exit(1);
 };
 
 // Run git inside cwd. Return stdout (trimmed). Throws on failure.
-function git(args, cwd) {
+function git(args: any, cwd: any) {
   return execFileSync("git", args, {
     cwd,
     encoding: "utf8",
@@ -47,7 +47,7 @@ function git(args, cwd) {
   }).trim();
 }
 // The non-throwing version (for probing) — returns null on failure.
-function gitTry(args, cwd) {
+function gitTry(args: any, cwd: any) {
   try {
     return git(args, cwd);
   } catch {
@@ -56,7 +56,7 @@ function gitTry(args, cwd) {
 }
 
 // Turn a folder name into a valid git branch name.
-function toBranch(name) {
+function toBranch(name: any) {
   let b = String(name)
     .trim()
     .replace(/[^\w.\-/]+/g, "-") // karakter ilegal → '-'
@@ -67,12 +67,12 @@ function toBranch(name) {
 }
 
 // A folder is already a git repo when it has a .git subfolder.
-function isRepo(dir) {
+function isRepo(dir: any) {
   return fs.existsSync(path.join(dir, ".git"));
 }
 
 // Folder names the watcher must ignore (temporary/hidden/system).
-function isIgnorableName(name) {
+function isIgnorableName(name: any) {
   return (
     !name ||
     name.startsWith(".") ||
@@ -88,7 +88,7 @@ function isIgnorableName(name) {
 
 // Make sure the root is not inside another git repo (so each folder really is a
 // separate repo rather than an accidental subdirectory of a parent one).
-function assertRootNotNested(root) {
+function assertRootNotNested(root: any) {
   const inside = gitTry(["rev-parse", "--is-inside-work-tree"], root);
   if (inside === "true") {
     // The root itself may well NOT be a repo; the danger is the root being INSIDE
@@ -102,7 +102,7 @@ function assertRootNotNested(root) {
   }
 }
 
-function ensureRoot(root) {
+function ensureRoot(root: any) {
   if (!fs.existsSync(root)) {
     fs.mkdirSync(root, { recursive: true });
     info(`root dibuat: ${root}`);
@@ -113,7 +113,7 @@ function ensureRoot(root) {
 }
 
 // ── inti: jadikan sebuah folder repo independen + branch sendiri ───────────────
-function initWorkspace(dir, name, branchArg?) {
+function initWorkspace(dir: any, name: any, branchArg?: any) {
   const branch = toBranch(branchArg || name);
 
   if (isRepo(dir)) {
@@ -171,7 +171,7 @@ function initWorkspace(dir, name, branchArg?) {
 }
 
 // ── perintah ──────────────────────────────────────────────────────────────────
-function cmdCreate(name, opts) {
+function cmdCreate(name: any, opts: any) {
   if (!name) die("usage: ww create <name> [--branch <b>] [--root <dir>]");
   ensureRoot(opts.root);
   const dir = path.join(opts.root, name);
@@ -183,7 +183,7 @@ function cmdCreate(name, opts) {
   initWorkspace(dir, name, opts.branch);
 }
 
-function cmdAdopt(name, opts) {
+function cmdAdopt(name: any, opts: any) {
   if (!name) die("usage: ww adopt <name> [--branch <b>] [--root <dir>]");
   ensureRoot(opts.root);
   const dir = path.join(opts.root, name);
@@ -194,13 +194,13 @@ function cmdAdopt(name, opts) {
 
 // Return the workspaces under the root as DATA (for the server/UI). The disk is
 // the truth.
-function listWorkspaces(root) {
+function listWorkspaces(root: any) {
   const r = path.resolve(root || DEFAULT_ROOT);
   if (!fs.existsSync(r)) return [];
   return fs
     .readdirSync(r, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !isIgnorableName(d.name))
-    .map((d) => {
+    .filter((d: any) => d.isDirectory() && !isIgnorableName(d.name))
+    .map((d: any) => {
       const dir = path.join(r, d.name);
       const repo = isRepo(dir);
       const branch = repo
@@ -211,11 +211,11 @@ function listWorkspaces(root) {
     });
 }
 
-function cmdList(opts) {
+function cmdList(opts: any) {
   ensureRoot(opts.root);
   const entries = fs
     .readdirSync(opts.root, { withFileTypes: true })
-    .filter((d) => d.isDirectory() && !isIgnorableName(d.name));
+    .filter((d: any) => d.isDirectory() && !isIgnorableName(d.name));
   if (!entries.length) {
     info(`(empty) ${opts.root}`);
     return;
@@ -242,7 +242,7 @@ function cmdList(opts) {
 // (auto-start). Returns the chokidar handle (the caller closes it with .close()).
 // It THROWS rather than dying, so it is safe to call inside the server process.
 // opts.log(msg) is optional, for event reporting.
-function startWatcher(root, opts: any = {}) {
+function startWatcher(root: any, opts: any = {}) {
   const rootResolved = path.resolve(root || DEFAULT_ROOT);
   // Validate the root without killing the process (throw, not die).
   if (!fs.existsSync(rootResolved))
@@ -267,7 +267,7 @@ function startWatcher(root, opts: any = {}) {
     awaitWriteFinish: false,
   });
 
-  watcher.on("addDir", (dir) => {
+  watcher.on("addDir", (dir: any) => {
     if (path.resolve(dir) === rootResolved) return; // root sendiri
     const name = path.basename(dir);
     if (isIgnorableName(name)) return;
@@ -294,15 +294,15 @@ function startWatcher(root, opts: any = {}) {
       }, 900),
     );
   });
-  watcher.on("error", (e) => onLog("watcher error: " + e.message));
+  watcher.on("error", (e: any) => onLog("watcher error: " + e.message));
   return watcher;
 }
 
-function cmdWatch(opts) {
-  let watcher;
+function cmdWatch(opts: any) {
+  let watcher: any;
   try {
     watcher = startWatcher(opts.root, {
-      log: (m) => log(`  \x1b[35m↳\x1b[0m ${m}`),
+      log: (m: any) => log(`  \x1b[35m↳\x1b[0m ${m}`),
     });
   } catch (e) {
     die(e.message);
@@ -320,7 +320,7 @@ function cmdWatch(opts) {
 }
 
 // ── argumen ────────────────────────────────────────────────────────────────────
-function parseArgs(argv) {
+function parseArgs(argv: any) {
   const positional: any[] = [];
   const opts = { root: DEFAULT_ROOT, branch: null };
   for (let i = 0; i < argv.length; i++) {
@@ -367,7 +367,7 @@ function main() {
 // A read-only git summary for ONE workspace folder (used by the UI to show the
 // branch and dirty/clean status in the sidebar). Never throws — a folder that is
 // not yet a repo returns { repo:false }.
-function gitInfo(dir) {
+function gitInfo(dir: any) {
   if (!dir || !fs.existsSync(dir)) return { repo: false, error: "not-found" };
   if (!isRepo(dir)) return { repo: false };
   const branch = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir) || "?";
@@ -377,7 +377,7 @@ function gitInfo(dir) {
   const dirtyCount =
     porcelain == null
       ? 0
-      : porcelain.split("\n").filter((l) => l.trim()).length;
+      : porcelain.split("\n").filter((l: any) => l.trim()).length;
   // The last commit: short hash + subject + relative time. null when there is none.
   const last = gitTry(["log", "-1", "--format=%h%s%cr"], dir);
   let lastCommit: any = null;
@@ -390,7 +390,7 @@ function gitInfo(dir) {
 
 // Run git and capture its result/error cleanly (for actions that must report
 // success or failure).
-function gitRun(args, cwd) {
+function gitRun(args: any, cwd: any) {
   try {
     const out = execFileSync("git", args, {
       cwd,
@@ -457,19 +457,19 @@ const CACHE_MS = 1500;
 const _cacheGit = new Map(); // kunci -> { dir, waktu, nilai }
 const _jalanGit = new Map(); // key -> the promise currently in flight
 
-function _bersamaGit(jenis, dir, buat) {
+function _bersamaGit(jenis: any, dir: any, buat: any) {
   const kunci = jenis + "|" + dir;
   const c = _cacheGit.get(kunci);
   if (c && Date.now() - c.waktu < CACHE_MS) return Promise.resolve(c.nilai);
   const berjalan = _jalanGit.get(kunci);
   if (berjalan) return berjalan;
   const janji = buat()
-    .then((nilai) => {
+    .then((nilai: any) => {
       _cacheGit.set(kunci, { dir, waktu: Date.now(), nilai });
       _jalanGit.delete(kunci);
       return nilai;
     })
-    .catch((e) => {
+    .catch((e: any) => {
       // Failures are NOT cached: one git that failed because the folder was locked
       // would freeze the wrong answer in place for the next 1.5 seconds.
       _jalanGit.delete(kunci);
@@ -480,23 +480,24 @@ function _bersamaGit(jenis, dir, buat) {
 }
 
 /** Drops the cache for one folder. Called after git has been CHANGED. */
-function lupakanGit(dir) {
+function lupakanGit(dir: any) {
   const cari = String(dir || "");
   for (const [k, v] of [..._cacheGit.entries()])
     if (v.dir === cari) _cacheGit.delete(k);
 }
 
-function gitTryAsync(args, cwd): Promise<any> {
-  return new Promise((selesai) => {
+function gitTryAsync(args: any, cwd: any): Promise<any> {
+  return new Promise((selesai: any) => {
     execFile(
       "git",
       args,
       { cwd, encoding: "utf8", windowsHide: true },
-      (galat, keluar) => selesai(galat ? null : String(keluar).trim()),
+      (galat: any, keluar: any) =>
+        selesai(galat ? null : String(keluar).trim()),
     );
   });
 }
-async function _gitInfoTarik(dir) {
+async function _gitInfoTarik(dir: any) {
   if (!dir || !fs.existsSync(dir)) return { repo: false, error: "not-found" };
   if (!isRepo(dir)) return { repo: false };
   const [cabang, porcelain, terakhir] = await Promise.all([
@@ -507,7 +508,7 @@ async function _gitInfoTarik(dir) {
   const dirtyCount =
     porcelain == null
       ? 0
-      : porcelain.split("\n").filter((l) => l.trim()).length;
+      : porcelain.split("\n").filter((l: any) => l.trim()).length;
   let lastCommit: any = null;
   if (terakhir) {
     const [hash, subject, when] = terakhir.split("\x1f");
@@ -521,7 +522,7 @@ async function _gitInfoTarik(dir) {
     lastCommit,
   };
 }
-async function _listBranchesTarik(dir) {
+async function _listBranchesTarik(dir: any) {
   if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
   const [current, daftar] = await Promise.all([
     gitTryAsync(["rev-parse", "--abbrev-ref", "HEAD"], dir),
@@ -532,22 +533,22 @@ async function _listBranchesTarik(dir) {
   ]);
   const branches = (daftar || "")
     .split("\n")
-    .map((s) => s.trim())
+    .map((s: any) => s.trim())
     .filter(Boolean);
   return { repo: true, current: current || null, branches };
 }
 
 // The wrapper: ONE git request per folder per 1.5 seconds, however many callers
 // arrive at once.
-function gitInfoAsync(dir) {
+function gitInfoAsync(dir: any) {
   return _bersamaGit("info", dir, () => _gitInfoTarik(dir));
 }
-function listBranchesAsync(dir) {
+function listBranchesAsync(dir: any) {
   return _bersamaGit("branches", dir, () => _listBranchesTarik(dir));
 }
 
 // The local branches plus the active one. Does not throw.
-function listBranches(dir) {
+function listBranches(dir: any) {
   if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
   const current = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
   const r = gitRun(
@@ -557,21 +558,21 @@ function listBranches(dir) {
   const branches = r.ok
     ? r.out
         .split("\n")
-        .map((s) => s.trim())
+        .map((s: any) => s.trim())
         .filter(Boolean)
     : [];
   return { repo: true, current: current || null, branches };
 }
 
 // Switch to another branch (checkout). Fails when a conflict or change blocks it.
-function switchBranch(dir, branch) {
+function switchBranch(dir: any, branch: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   if (!branch) return { ok: false, err: "empty branch name" };
   return gitRun(["checkout", branch], dir);
 }
 
 // Create a new branch (optionally from another branch/ref) and switch to it.
-function createBranch(dir, branch, from) {
+function createBranch(dir: any, branch: any, from: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const name = toBranch(branch);
   if (!name) return { ok: false, err: "invalid branch name" };
@@ -582,7 +583,7 @@ function createBranch(dir, branch, from) {
 
 // Rename a branch (git branch -m). When oldName is the active branch it may be
 // omitted.
-function renameBranch(dir, oldName, newName) {
+function renameBranch(dir: any, oldName: any, newName: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const nn = toBranch(newName);
   if (!nn) return { ok: false, err: "invalid new branch name" };
@@ -591,7 +592,7 @@ function renameBranch(dir, oldName, newName) {
 }
 
 // Delete a local branch (-D, forced). Refuses to delete the active branch.
-function deleteBranch(dir, branch) {
+function deleteBranch(dir: any, branch: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const cur = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
   if (cur === branch)
@@ -609,7 +610,7 @@ function deleteBranch(dir, branch) {
 // When nothing has changed, `git commit` exits non-zero with "nothing to commit".
 // That is not a failure the user needs to fear, so it is separated out first and
 // answered clearly.
-function commitAll(dir, message) {
+function commitAll(dir: any, message: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const pesan = String(message || "").trim();
   if (!pesan) return { ok: false, err: "empty commit message" };
@@ -629,7 +630,7 @@ function commitAll(dir, message) {
 // Rename a workspace FOLDER on disk (fs.rename) and update .ww.json. Safe: only
 // folders with a .ww.json (a legitimate ww workspace), only when the target does
 // not exist, and only for a valid name.
-function renameWorkspaceFolder(dir, newName) {
+function renameWorkspaceFolder(dir: any, newName: any) {
   try {
     if (!dir || !fs.existsSync(dir) || !fs.statSync(dir).isDirectory())
       return { ok: false, err: "folder not found" };

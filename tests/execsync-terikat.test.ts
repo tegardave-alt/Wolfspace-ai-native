@@ -155,7 +155,9 @@ describe("rute git tidak membekukan thread utama", () => {
     //
     // Sesudah berbagi + cache 1,5 detik: 32 serentak -> 1705 rps, p99 38 ms.
     // Terbukti pula 50 pemanggil bersamaan hanya melahirkan 3 proses git.
-    expect(WW).toMatch(/function _bersamaGit\(jenis, dir, buat\)/);
+    expect(WW).toMatch(
+      /function _bersamaGit\(jenis: any, dir: any, buat: any\)/,
+    );
     expect(WW).toMatch(/_bersamaGit\("info", dir/);
     expect(WW).toMatch(/_bersamaGit\("branches", dir/);
     expect(WW).toMatch(/const CACHE_MS = 1500/);
@@ -195,8 +197,8 @@ describe("rute git tidak membekukan thread utama", () => {
   });
 
   test("versi sinkron TETAP ADA — berkas ini juga dipakai sebagai CLI", () => {
-    expect(WW).toMatch(/^function gitInfo\(dir\)/m);
-    expect(WW).toMatch(/^function listBranches\(dir\)/m);
+    expect(WW).toMatch(/^function gitInfo\(dir: any\)/m);
+    expect(WW).toMatch(/^function listBranches\(dir: any\)/m);
     expect(WW).toMatch(/if \(require\.main === module\) main\(\)/);
   });
 

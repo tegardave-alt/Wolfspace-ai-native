@@ -532,7 +532,7 @@ describe("berkas baru di pohon Logic", () => {
 
   test("kurungan path dipakai bersama, bukan disalin per rute", () => {
     // Dua salinan aturan keamanan yang sama pasti akan menyimpang.
-    expect(SRV3).toMatch(/function _kurungDiAkar\(root, p\)/);
+    expect(SRV3).toMatch(/function _kurungDiAkar\(root: any, p: any\)/);
     const jumlah = (SRV3.match(/_kurungDiAkar\(/g) || []).length;
     expect(jumlah).toBeGreaterThanOrEqual(2); // definisi + minimal satu pemakai
   });

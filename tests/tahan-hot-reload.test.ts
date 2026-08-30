@@ -96,6 +96,6 @@ describe("modul tahan terhadap hot-reload", () => {
     const sb = fs.readFileSync(path.join(AKAR, "agent", "sandbox.ts"), "utf8");
     expect(sb).toMatch(/globalThis\.__wolfspaceSandboxExit/);
     const sv = fs.readFileSync(path.join(AKAR, "server.ts"), "utf8");
-    expect(sv).toMatch(/globalThis\.__wolfspaceJejakKeluar/);
+    expect(sv).toMatch(/(globalThis|_g)\.__wolfspaceJejakKeluar/);
   });
 });

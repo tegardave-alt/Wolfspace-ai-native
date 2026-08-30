@@ -133,7 +133,7 @@ describe("override console tidak menyeret objek console ke tiap baris log", () =
     const i = src.indexOf("const _writeSafe =");
     expect(i).toBeGreaterThan(-1);
     const fn = src.slice(i, i + 200);
-    expect(fn).toMatch(/\(fn, ctx, \.\.\.args\)/);
+    expect(fn).toMatch(/\(fn: any, ctx: any, \.\.\.args: any\[\]\)/);
     expect(fn).toMatch(/fn\.apply\(ctx, args\)/);
     // Bentuk lama yang menjadikan konteks sebagai argumen cetak.
     expect(fn).not.toMatch(/fn\(\.\.\.args\)/);

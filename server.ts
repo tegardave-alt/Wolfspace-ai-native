@@ -1,6 +1,6 @@
 "use strict";
 // DEBUG: capture full stack for Maximum call stack errors
-process.on("uncaughtException", (err) => {
+process.on("uncaughtException", (err: any) => {
   try {
     require("fs").appendFileSync(
       require("path").join(__dirname, "_crash.log"),
@@ -45,8 +45,12 @@ process.on("uncaughtException", (err) => {
   //
   // The cost is not only waste: a single departure would then write ONE LINE PER
   // LOAD, and the trace meant to explain things becomes noise instead.
-  if (globalThis.__wolfspaceJejakKeluar) return;
-  globalThis.__wolfspaceJejakKeluar = true;
+  // globalThis carries no index signature, and this latch is ours rather than
+  // the platform's. Cast at the two use sites instead of widening the global
+  // type for everyone.
+  const _g = globalThis as any;
+  if (_g.__wolfspaceJejakKeluar) return;
+  _g.__wolfspaceJejakKeluar = true;
 
   const _fs = require("fs");
   const _path = require("path");
@@ -54,7 +58,7 @@ process.on("uncaughtException", (err) => {
   const MULAI = Date.now();
   let sudah = false;
 
-  const tulis = (sebab, rinci) => {
+  const tulis = (sebab: any, rinci: any) => {
     if (sudah) return; // one line per departure, not one per handler
     sudah = true;
     try {
@@ -79,7 +83,7 @@ process.on("uncaughtException", (err) => {
 
   // Synchronous: by 'exit' the event loop has stopped, so only synchronous calls
   // still finish. appendFileSync is exactly for this case.
-  process.on("exit", (kode) => tulis("exit", "kode=" + kode));
+  process.on("exit", (kode: any) => tulis("exit", "kode=" + kode));
 
   // An unhandled promise rejection was logged by NO handler before this one. The
   // process is not stopped here — the behaviour is left exactly as it was, only
@@ -191,7 +195,7 @@ const JS_RUNTIME = process.execPath;
 const mcpClient = require("./agent/mcp-client.ts");
 mcpClient
   .init()
-  .catch((e) => console.error("Failed to preload MCP:", e.message));
+  .catch((e: any) => console.error("Failed to preload MCP:", e.message));
 
 // Ã¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢ÂÃ¢â€¢Â
 // Debug bus Ã¢â‚¬â€ a single event log wired through ALL of WOLFSPACE's logic.
@@ -213,7 +217,7 @@ const trace = require("./agent/trace.ts");
 // alive and used by agent/tools/index.ts to gate namespace-based bash
 // confinement.
 let _evSeq = 0;
-function dlog(cat, level, msg, data?) {
+function dlog(cat: any, level: any, msg: any, data?: any) {
   const e = {
     seq: ++_evSeq,
     t: Date.now(),
@@ -308,13 +312,13 @@ const _origWarn = console.warn;
 // Visible in `npm run app` stdout on every message, and in Electron mode the
 // backend runs in the MAIN process — so the owner of the window pays that
 // serialisation cost, once per log line.
-const _writeSafe = (fn, ctx, ...args) => {
+const _writeSafe = (fn: any, ctx: any, ...args: any[]) => {
   try {
     fn.apply(ctx, args);
   } catch (_) {}
 };
 let _qLogReentrant = false;
-console.log = function (...args) {
+console.log = function (...args: any[]) {
   _writeSafe(_origLog, console, ...args);
   if (_qLogReentrant) return;
   _qLogReentrant = true;
@@ -323,14 +327,14 @@ console.log = function (...args) {
       "console",
       "info",
       args
-        .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+        .map((a: any) => (typeof a === "string" ? a : JSON.stringify(a)))
         .join(" "),
     );
   } finally {
     _qLogReentrant = false;
   }
 };
-console.error = function (...args) {
+console.error = function (...args: any[]) {
   _writeSafe(_origError, console, ...args);
   if (_qLogReentrant) return;
   _qLogReentrant = true;
@@ -339,14 +343,14 @@ console.error = function (...args) {
       "console",
       "error",
       args
-        .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+        .map((a: any) => (typeof a === "string" ? a : JSON.stringify(a)))
         .join(" "),
     );
   } finally {
     _qLogReentrant = false;
   }
 };
-console.warn = function (...args) {
+console.warn = function (...args: any[]) {
   _writeSafe(_origWarn, console, ...args);
   if (_qLogReentrant) return;
   _qLogReentrant = true;
@@ -355,7 +359,7 @@ console.warn = function (...args) {
       "console",
       "warn",
       args
-        .map((a) => (typeof a === "string" ? a : JSON.stringify(a)))
+        .map((a: any) => (typeof a === "string" ? a : JSON.stringify(a)))
         .join(" "),
     );
   } finally {
@@ -377,7 +381,7 @@ const STRONG_LANG: [string, RegExp][] = [
   ["cpp", /#include\s*<(iostream|vector|string|algorithm)/],
   ["c", /#include\s*<(stdio|stdlib|math)\.h>/],
 ];
-function strongLang(code) {
+function strongLang(code: any) {
   for (const [l, re] of STRONG_LANG) if (re.test(code || "")) return l;
   return null;
 }
@@ -386,7 +390,7 @@ function strongLang(code) {
 // body unambiguously contradicts the tag, correct the runtime so it still runs.
 // Conservative: only override when one language's signals are present and the
 // other's are absent.
-function reconcileLang(lang, code) {
+function reconcileLang(lang: any, code: any) {
   const src = code || "";
   const sl = strongLang(src);
   if (sl && sl !== lang) return sl; // unmistakable signature wins over the fence tag
@@ -405,13 +409,13 @@ function reconcileLang(lang, code) {
 
 // Error text helpers. Tracebacks put the ACTUAL error on the LAST line, so naive
 // head-truncation hides it. These keep the meaningful tail (and a bit of head).
-function errTail(e) {
+function errTail(e: any) {
   const s = (e || "").trim();
   if (!s) return "";
   const lines = s.split("\n").filter(Boolean);
   return lines.slice(-2).join(" | ").slice(-240);
 }
-function errForModel(e) {
+function errForModel(e: any) {
   const s = (e || "").trim();
   if (!s) return "";
   return s.length <= 700 ? s : s.slice(0, 160) + "\nÃ¢â‚¬Â¦\n" + s.slice(-520);
@@ -419,7 +423,7 @@ function errForModel(e) {
 // Detect code that launches an external process / interactive shell / REPL.
 // Such code can pop up a SEPARATE window (e.g. an interactive Python `>>>`),
 // so we don't auto-run it in the verify loop.
-function launchesShell(code) {
+function launchesShell(code: any) {
   const s = code || "";
   // Only block code that literally opens an interactive shell/REPL or spawns a
   // visible terminal. subprocess.run/call/check_output are fine (non-interactive).
@@ -439,7 +443,7 @@ function launchesShell(code) {
 // Detect code that reads stdin. The sandbox runs without stdin, so interactive
 // programs (REPL calculators, menu loops) spin on null/EOF until the timeout
 // kills them Ã¢â‚¬â€ detect up front and ask the model for a non-interactive version.
-function readsStdin(lang, code) {
+function readsStdin(lang: any, code: any) {
   const s = code || "";
   switch (lang) {
     case "kotlin":
@@ -557,7 +561,7 @@ async function findPythonAsync() {
 // Apply <<<<ORIGINAL/====/>>>> hunks by literal string replacement; null on any miss.
 const { fillCloudKey } = require("./agent/cloud.ts");
 const { resolveKeysPath } = require("./agent/keys-path.ts");
-function applyHunks(src, reply) {
+function applyHunks(src: any, reply: any) {
   const re = new RegExp(
     "<<<<ORIGINAL\\r?\\n([\\s\\S]*?)\\r?\\n====\\r?\\n([\\s\\S]*?)\\r?\\n>>>>",
     "g",
@@ -575,7 +579,7 @@ function applyHunks(src, reply) {
   return out;
 }
 // String/comment-aware brace+paren balance Ã¢â‚¬â€  catches patches that bisect a class/method.
-function braceProfile(s) {
+function braceProfile(s: any) {
   let c = 0,
     p = 0,
     q = null,
@@ -647,7 +651,7 @@ async function startJedi() {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
-    jediProc.stdout.on("data", (d) => {
+    jediProc.stdout.on("data", (d: any) => {
       jediBuf += d.toString();
       let i;
       while ((i = jediBuf.indexOf("\n")) >= 0) {
@@ -667,10 +671,10 @@ async function startJedi() {
     jediProc = null;
   }
 }
-function jediComplete(reqObj) {
-  return new Promise((resolve) => {
+function jediComplete(reqObj: any) {
+  return new Promise((resolve: any) => {
     if (!jediProc) return resolve([]);
-    jediQueue.push((line) => {
+    jediQueue.push((line: any) => {
       try {
         resolve(JSON.parse(line));
       } catch {
@@ -688,7 +692,7 @@ function jediComplete(reqObj) {
 // it does not cover is a throw INSIDE that catch — and this call sits at module
 // top level in a long-lived process, where an unhandled rejection ends the
 // process on Node 15 and later. One line closes the window.
-startJedi().catch((e) =>
+startJedi().catch((e: any) =>
   console.error("[jedi] gagal dimulai:", (e && e.message) || e),
 );
 
@@ -703,7 +707,7 @@ const RUNNABLE = new Set([
   "rust",
   "kotlin",
 ]);
-const ALIAS = {
+const ALIAS: Record<string, string> = {
   py: "python",
   js: "javascript",
   node: "javascript",
@@ -739,14 +743,14 @@ const CODE_SYS = [
 ].join(" ");
 const CODE_HINT =
   /\b(code|coding|program|script|function|fungsi|kelas|class|algorithm|algoritma|buat(?:kan)?|tulis(?:kan)?|implement|debug|fix|refactor|optimi[sz]e|sort|parse|regex|api|loop|array|string|hitung|kalkulator)\b/i;
-function isCodingTask(work) {
+function isCodingTask(work: any) {
   // Guard: if work is not an array there is nothing to check
   if (!Array.isArray(work) || work.length === 0) return false;
   for (let i = work.length - 1; i >= 0; i--)
     if (work[i].role === "user") return CODE_HINT.test(work[i].content || "");
   return false;
 }
-function pickSystem(work) {
+function pickSystem(work: any) {
   return isCodingTask(work) ? CODE_SYS : SYS;
 }
 // Web Dev (Canvas) mode: every reply MUST be ONE A2UI JSON spec inside a
@@ -796,7 +800,7 @@ const WEBDEV_SYS = [
   "Outside the JSON block: at most one short sentence. Never output Dart or HTML, never split into multiple blocks. Output valid JSON (double quotes, no trailing commas, no comments).",
   "FINAL REMINDER: Your response MUST start with ```json and end with ```. Do NOT write Dart code. Do NOT write Python code. ONLY JSON.",
 ].join(" ");
-function buildPrompt(hist) {
+function buildPrompt(hist: any) {
   let p = `<|im_start|>system\n${SYS}<|im_end|>\n`;
   for (const t of hist) p += `<|im_start|>${t.role}\n${t.content}<|im_end|>\n`;
   return p + `<|im_start|>assistant\n`;
@@ -809,7 +813,7 @@ function buildPrompt(hist) {
 //    (that's the "full program" variant), otherwise concatenate in order
 const MAIN_RE =
   /\bfun\s+main\s*\(|\bif\s+__name__\s*==|\bpublic\s+static\s+void\s+main\b|\bfunc\s+main\s*\(|\bint\s+main\s*\(/;
-function extractCode(text) {
+function extractCode(text: any) {
   const blocks: any[] = [];
   const re = /```(\w*)[^\n]*\n([\s\S]*?)```/g;
   let m;
@@ -817,17 +821,17 @@ function extractCode(text) {
     blocks.push({ lang: (m[1] || "").toLowerCase(), code: m[2].trim() });
   if (!blocks.length) return null;
   const first =
-    blocks.find((b) => RUNNABLE.has(ALIAS[b.lang] || b.lang)) || blocks[0];
+    blocks.find((b: any) => RUNNABLE.has(ALIAS[b.lang] || b.lang)) || blocks[0];
   const lang = ALIAS[first.lang] || first.lang;
   const same = blocks.filter(
-    (b) => (ALIAS[b.lang] || b.lang) === lang && b.code,
+    (b: any) => (ALIAS[b.lang] || b.lang) === lang && b.code,
   );
   if (same.length <= 1) return { lang: first.lang, code: first.code };
   // drop snippet blocks fully contained in a bigger block, and exact duplicates
   const kept = same.filter(
-    (b, i) =>
+    (b: any, i: any) =>
       !same.some(
-        (o, j) =>
+        (o: any, j: any) =>
           j !== i && o.code.length > b.code.length && o.code.includes(b.code),
       ),
   );
@@ -840,9 +844,9 @@ function extractCode(text) {
     }
   }
   if (uniq.length === 1) return { lang: first.lang, code: uniq[0].code };
-  const withMain = uniq.filter((b) => MAIN_RE.test(b.code));
+  const withMain = uniq.filter((b: any) => MAIN_RE.test(b.code));
   if (withMain.length > 1) {
-    const longest = uniq.reduce((a, b) =>
+    const longest = uniq.reduce((a: any, b: any) =>
       b.code.length > a.code.length ? b : a,
     );
     dlog(
@@ -857,11 +861,11 @@ function extractCode(text) {
     blocks: uniq.length,
     lang,
   });
-  return { lang: first.lang, code: uniq.map((b) => b.code).join("\n\n") };
+  return { lang: first.lang, code: uniq.map((b: any) => b.code).join("\n\n") };
 }
 // Ã¢â€â‚¬Ã¢â€â‚¬ Cloud models (bring-your-own API key) Ã¢â€â‚¬Ã¢â€â‚¬
 // The provider is auto-detected from the key's prefix; the user pastes any key.
-const CLOUD = {
+const CLOUD: Record<string, any> = {
   anthropic: {
     host: "api.anthropic.com",
     path: "/v1/messages",
@@ -919,7 +923,7 @@ const CLOUD = {
   },
 };
 // Short, friendly model names Ã¢â€ â€™ full provider model IDs. Type "llama", get the real ID.
-const MODEL_ALIASES = {
+const MODEL_ALIASES: Record<string, any> = {
   anthropic: {
     claude: "claude-opus-4-8",
     opus: "claude-opus-4-8",
@@ -969,7 +973,7 @@ const MODEL_ALIASES = {
     qwen: "qwen/qwen2.5-coder-32b-instruct",
   },
 };
-const PROVIDER_NAMES = {
+const PROVIDER_NAMES: Record<string, string> = {
   anthropic: "Claude",
   openai: "OpenAI",
   openrouter: "OpenRouter",
@@ -998,7 +1002,7 @@ function loadCloudKeys() {
   }
 }
 loadCloudKeys();
-function detectProvider(key) {
+function detectProvider(key: any) {
   key = (key || "").trim();
   if (key.startsWith("nvapi-")) return "nvidia";
   if (key.startsWith("github_pat_") || key.startsWith("ghp_")) return "github";
@@ -1012,7 +1016,7 @@ function detectProvider(key) {
 }
 // Ã¢â€â‚¬Ã¢â€â‚¬ Real provider detection: probe the key against each candidate's /models Ã¢â€â‚¬Ã¢â€â‚¬
 // Prefix narrows the candidates; an actual authenticated request confirms the owner.
-const PROBE = {
+const PROBE: Record<string, any> = {
   openai: { host: "api.openai.com", path: "/v1/models", auth: "bearer" },
   deepseek: { host: "api.deepseek.com", path: "/models", auth: "bearer" },
   qwen: {
@@ -1044,7 +1048,7 @@ const PROBE = {
     auth: "bearer",
   },
 };
-function candidatesFor(key) {
+function candidatesFor(key: any) {
   key = (key || "").trim();
   if (key.startsWith("github_pat_") || key.startsWith("ghp_"))
     return ["github"];
@@ -1065,12 +1069,15 @@ function candidatesFor(key) {
     "gemini",
   ];
 }
-function httpsStatus(opts) {
-  return new Promise((resolve) => {
-    const r = https.request({ ...opts, method: "GET", timeout: 8000 }, (s) => {
-      s.resume();
-      resolve(s.statusCode || 0);
-    });
+function httpsStatus(opts: any) {
+  return new Promise((resolve: any) => {
+    const r = https.request(
+      { ...opts, method: "GET", timeout: 8000 },
+      (s: any) => {
+        s.resume();
+        resolve(s.statusCode || 0);
+      },
+    );
     r.on("error", () => resolve(0));
     r.on("timeout", () => {
       r.destroy();
@@ -1079,7 +1086,7 @@ function httpsStatus(opts) {
     r.end();
   });
 }
-async function probeProvider(provider, key): Promise<any> {
+async function probeProvider(provider: any, key: any): Promise<any> {
   const t = PROBE[provider];
   if (!t) return 0;
   let path = t.path;
@@ -1092,7 +1099,7 @@ async function probeProvider(provider, key): Promise<any> {
     path = path.replace("KEY", encodeURIComponent(key));
   return httpsStatus({ hostname: t.host, path, headers });
 }
-async function detectKey(key) {
+async function detectKey(key: any) {
   const cands = candidatesFor(key);
   for (const p of cands) {
     const st = await probeProvider(p, key);
@@ -1107,8 +1114,8 @@ async function detectKey(key) {
 }
 
 // Streams a cloud model's reply, forwarding tokens via onToken.
-function _askCloudStreamOnce(cloud, work, onToken, reg) {
-  return new Promise((resolve, reject) => {
+function _askCloudStreamOnce(cloud: any, work: any, onToken: any, reg: any) {
+  return new Promise((resolve: any, reject: any) => {
     const provider = cloud.provider || detectProvider(cloud.key);
     const cfg = CLOUD[provider] || CLOUD.openai;
     // Guard: never let an API key leak into the model field; resolve short aliases.
@@ -1121,9 +1128,12 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
     let host = cfg.host,
       path = cfg.path,
       port: any = null,
-      headers = { "content-type": "application/json" },
-      body,
-      extract;
+      // Typed as a record: the object starts with one key and every provider
+      // branch adds its own (authorization, x-api-key, anthropic-version,
+      // content-length). A literal type freezes it at the first key.
+      headers: Record<string, string> = { "content-type": "application/json" },
+      body: any,
+      extract: any;
     const openaiCompatible = () => {
       headers["authorization"] = "Bearer " + cloud.key;
       const mt = /deepseek|reason/i.test(model) ? 16384 : 8192;
@@ -1133,7 +1143,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
         max_tokens: mt,
         messages: [{ role: "system", content: sys }, ...work],
       });
-      extract = (j) => {
+      extract = (j: any) => {
         try {
           const d = j.choices[0].delta;
           return d.content || d.reasoning_content || "";
@@ -1163,9 +1173,9 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
         system: sys,
         stream: true,
         thinking: { type: "adaptive" },
-        messages: work.map((m) => ({ role: m.role, content: m.content })),
+        messages: work.map((m: any) => ({ role: m.role, content: m.content })),
       });
-      extract = (j) =>
+      extract = (j: any) =>
         j.type === "content_block_delta" &&
         j.delta &&
         j.delta.type === "text_delta"
@@ -1175,15 +1185,15 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       path = `/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(cloud.key)}`;
       body = JSON.stringify({
         systemInstruction: { parts: [{ text: sys }] },
-        contents: work.map((m) => ({
+        contents: work.map((m: any) => ({
           role: m.role === "assistant" ? "model" : "user",
           parts: [{ text: m.content }],
         })),
       });
-      extract = (j) => {
+      extract = (j: any) => {
         try {
           return j.candidates[0].content.parts
-            .map((p) => p.text || "")
+            .map((p: any) => p.text || "")
             .join("");
         } catch {
           return "";
@@ -1193,7 +1203,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       // openai-compatible: openai / openrouter / groq / qwen
       openaiCompatible();
     }
-    headers["content-length"] = Buffer.byteLength(body);
+    headers["content-length"] = String(Buffer.byteLength(body || ""));
     const t0 = Date.now();
     dlog("cloud", "info", "cloud model start", { provider, model, host });
     if (VERBOSE)
@@ -1213,12 +1223,12 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       timeout: 600000,
     };
     if (port) reqOpts.port = port;
-    const r = reqFn(reqOpts, (s) => {
+    const r = reqFn(reqOpts, (s: any) => {
       let acc = "",
         buf = "",
         errBody = "";
       if (s.statusCode >= 400) {
-        s.on("data", (c) => (errBody += c));
+        s.on("data", (c: any) => (errBody += c));
         s.on("end", () => {
           dlog("cloud", "error", "cloud model http error", {
             provider,
@@ -1232,7 +1242,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
         });
         return;
       }
-      s.on("data", (chunk) => {
+      s.on("data", (chunk: any) => {
         buf += chunk.toString();
         const lines = buf.split("\n");
         buf = lines.pop()!;
@@ -1264,7 +1274,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
         resolve(acc);
       });
     });
-    r.on("error", (e) => {
+    r.on("error", (e: any) => {
       dlog("cloud", "error", "cloud model error", {
         provider,
         error: e.message,
@@ -1283,10 +1293,10 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
 }
 
 // Retry transient network failures Ã¢â‚¬â€ but only before any token streamed (avoid dup output).
-async function askCloudStream(cloud, work, onToken, reg) {
+async function askCloudStream(cloud: any, work: any, onToken: any, reg: any) {
   let seen = 0,
     last;
-  const wrapped = (t) => {
+  const wrapped = (t: any) => {
     seen++;
     onToken(t);
   };
@@ -1297,7 +1307,7 @@ async function askCloudStream(cloud, work, onToken, reg) {
       last = e;
       if (seen > 0 || !_TRANSIENT.test(e.message || "") || attempt === 3)
         throw e;
-      await new Promise((r) => setTimeout(r, 400 * attempt));
+      await new Promise((r: any) => setTimeout(r, 400 * attempt));
     }
   }
   throw last;
@@ -1310,14 +1320,14 @@ try {
 } catch {}
 
 // Resolve a path inside the workspace; throws on traversal outside it.
-function wsResolve(p) {
+function wsResolve(p: any) {
   const dest = path.resolve(WORKSPACE, p || "");
   if (dest !== WORKSPACE && !dest.startsWith(WORKSPACE + path.sep))
     throw new Error("path di luar workspace");
   return dest;
 }
 // Recursively list workspace files (skips node_modules/.git, caps count).
-function wsList(sub) {
+function wsList(sub: any) {
   const root = wsResolve(sub || "");
   const out: any[] = [];
   // `depth` arrives undefined from the single-argument call at the end of this
@@ -1325,7 +1335,7 @@ function wsList(sub) {
   // DEAD, and has been. Left as it stands rather than fixed in passing — the
   // count cap above still bounds the walk, and switching the depth cap on would
   // change what wsList returns for deep trees. Flagged so it is a decision.
-  (function walk(dir, depth?: any) {
+  (function walk(dir: any, depth?: any) {
     if (out.length > 300 || depth > 8) return;
     let ents;
     try {
@@ -1351,13 +1361,13 @@ function wsList(sub) {
   return out.length ? out.join("\n") : "(workspace is empty)";
 }
 // Read a file with 1-based line numbers (capped).
-function wsRead(p) {
+function wsRead(p: any) {
   const fp = wsResolve(p);
   const txt = fs.readFileSync(fp, "utf8");
   const lines = txt.split("\n");
   const shown = lines
     .slice(0, 400)
-    .map((l, i) => i + 1 + "\t" + l)
+    .map((l: any, i: any) => i + 1 + "\t" + l)
     .join("\n");
   return (
     shown +
@@ -1365,7 +1375,7 @@ function wsRead(p) {
   );
 }
 // Grep a regex across workspace files; returns file:line: match (capped).
-function wsGrep(pattern) {
+function wsGrep(pattern: any) {
   let re;
   try {
     re = new RegExp(pattern, "i");
@@ -1375,8 +1385,8 @@ function wsGrep(pattern) {
   const hits: any[] = [];
   const files = wsList("")
     .split("\n")
-    .map((l) => l.replace(/ \(\d+b\)$/, ""))
-    .filter((f) => f && f !== "(workspace is empty)");
+    .map((l: any) => l.replace(/ \(\d+b\)$/, ""))
+    .filter((f: any) => f && f !== "(workspace is empty)");
   for (const rel of files) {
     if (hits.length > 80) break;
     let txt;
@@ -1385,7 +1395,7 @@ function wsGrep(pattern) {
     } catch {
       continue;
     }
-    txt.split("\n").forEach((l, i) => {
+    txt.split("\n").forEach((l: any, i: any) => {
       if (hits.length <= 80 && re.test(l))
         hits.push(`${rel}:${i + 1}: ${l.trim().slice(0, 160)}`);
     });
@@ -1411,7 +1421,7 @@ const Q_RAHASIA =
 // Confinement for routes that WRITE to the workspace on the renderer's orders. One
 // function serves every write route: two copies of the same rule will certainly
 // diverge, and what diverges here is a security boundary.
-function _kurungDiAkar(root, p) {
+function _kurungDiAkar(root: any, p: any) {
   if (!root || !p) return { kode: 400, galat: "root and path are required" };
   const akar = path.resolve(String(root));
   const berkas = path.resolve(String(p));
@@ -1424,13 +1434,13 @@ function _kurungDiAkar(root, p) {
     return { kode: 403, galat: "protected file" };
   return { akar, berkas, dalam };
 }
-function qWalk(filterRe) {
+function qWalk(filterRe: any) {
   const skip =
     /^(node_modules|\.git|_agent_backups|dist-app|workspace|build|\.dart_tool|vendor)$/;
   // NEVER expose secrets via LIST/GREP/GLOB Ã¢â‚¬â€ these read file *contents*.
   const secret = Q_RAHASIA;
   const out: any[] = [];
-  (function walk(dir, depth) {
+  (function walk(dir: any, depth: any) {
     if (out.length > 600 || depth > 5) return;
     let ents;
     try {
@@ -1456,13 +1466,13 @@ function qWalk(filterRe) {
 // no-match string below, forever.
 //
 //   "tidak ada kecocokan"   (verbatim: the string returned)
-function unq(s) {
+function unq(s: any) {
   return (s || "")
     .trim()
     .replace(/^[`"']+|[`"']+$/g, "")
     .trim();
 }
-function qResolve(p, mustBeEditable) {
+function qResolve(p: any, mustBeEditable: any) {
   const rel = unq(p).replace(/^[\\/]+/, "");
   const dest = path.resolve(QROOT, rel);
   if (dest !== QROOT && !dest.startsWith(QROOT + path.sep))
@@ -1483,7 +1493,7 @@ function qResolve(p, mustBeEditable) {
 function qList() {
   return qWalk(null)
     .slice(0, 400)
-    .map((f) => {
+    .map((f: any) => {
       let sz = 0;
       try {
         sz = fs.statSync(f.fp).size;
@@ -1495,8 +1505,8 @@ function qList() {
 // GLOB: find files by wildcard over the relative path. Proper ** handling:
 //   **/ Ã¢â€ â€™ zero-or-more directories (so public/**/*.jsx matches public/app.jsx)
 //   **  Ã¢â€ â€™ any chars incl. /     *  Ã¢â€ â€™ any chars except /     ? Ã¢â€ â€™ one non-/
-function globToRe(p) {
-  const esc = (c) => c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
+function globToRe(p: any) {
+  const esc = (c: any) => c.replace(/[.+^${}()|[\]\\]/g, "\\$&");
   let rx = "",
     i = 0;
   while (i < p.length) {
@@ -1524,7 +1534,7 @@ function globToRe(p) {
   }
   return new RegExp("^" + rx + "$", "i");
 }
-function qGlob(pattern) {
+function qGlob(pattern: any) {
   let re;
   try {
     re = globToRe(unq(pattern) || "*");
@@ -1532,11 +1542,11 @@ function qGlob(pattern) {
     return "invalid pattern";
   }
   const hits = qWalk(null)
-    .filter((f) => re.test(f.rel) || re.test(f.rel.split("/").pop()))
-    .map((f) => f.rel);
+    .filter((f: any) => re.test(f.rel) || re.test(f.rel.split("/").pop()))
+    .map((f: any) => f.rel);
   return hits.length ? hits.slice(0, 200).join("\n") : "(no matching files)";
 }
-function qRead(p, near) {
+function qRead(p: any, near: any) {
   const fp = qResolve(p, false);
   let st;
   try {
@@ -1561,7 +1571,7 @@ function qRead(p, near) {
   }
   const shown = lines
     .slice(a, b)
-    .map((l, i) => a + i + 1 + "\t" + l)
+    .map((l: any, i: any) => a + i + 1 + "\t" + l)
     .join("\n");
   const head = a > 0 || b < N ? `(baris ${a + 1}-${b} dari ${N} total)\n` : "";
   const tail =
@@ -1571,7 +1581,7 @@ function qRead(p, near) {
   return head + shown + tail;
 }
 // Strip grep-style flags the model adds out of habit (-A 2, -B 2, -C 2, -i, -n, Ã¢â‚¬Â¦)
-function cleanGrep(arg) {
+function cleanGrep(arg: any) {
   const toks = (arg || "").trim().split(/\s+/);
   const out: any[] = [];
   for (let i = 0; i < toks.length; i++) {
@@ -1586,7 +1596,7 @@ function cleanGrep(arg) {
   return unq(out.join(" "));
 }
 // GREP across the whole project's source files (read-only).
-function qGrep(pattern) {
+function qGrep(pattern: any) {
   pattern = cleanGrep(pattern);
   if (!pattern) return "empty pattern";
   let re;
@@ -1605,7 +1615,7 @@ function qGrep(pattern) {
     } catch {
       continue;
     }
-    txt.split("\n").forEach((l, i) => {
+    txt.split("\n").forEach((l: any, i: any) => {
       if (hits.length < 150 && re.test(l))
         hits.push(`${f.rel}:${i + 1}: ${l.trim().slice(0, 160)}`);
     });
@@ -1614,7 +1624,7 @@ function qGrep(pattern) {
 }
 // Syntax-gate: validate a file after an edit. .cjs/.js via `node --check`,
 // .jsx via the bundled Babel. Returns {ok, error}.
-async function qSyntaxOk(absPath) {
+async function qSyntaxOk(absPath: any) {
   const ext = path.extname(absPath).toLowerCase();
   try {
     if (ext === ".cjs" || ext === ".js") {
@@ -1665,7 +1675,7 @@ function qBackup() {
 const DISK_HOME = os.homedir();
 const DISK_BLOCKED =
   /^[A-Za-z]:[\\\/](Windows|Program Files|Program Files \(x86\)|ProgramData|System Volume Information|\$Recycle\.Bin)/i;
-function resolveDiskPath(p) {
+function resolveDiskPath(p: any) {
   const raw = (p || "").trim().replace(/^[`"']+|[`"']+$/g, "");
   if (/^[A-Za-z]:[\\\/]/.test(raw)) {
     const dest = path.resolve(raw);
@@ -1681,13 +1691,13 @@ function resolveDiskPath(p) {
   if (DISK_BLOCKED.test(dest)) throw new Error("system path refused: " + raw);
   return dest;
 }
-function diskWalk(dir, filterRe, maxDepth?) {
+function diskWalk(dir: any, filterRe: any, maxDepth?: any) {
   const skip =
     /^(node_modules|\.git|_agent_backups|dist-app|build|\.dart_tool|vendor|__pycache__|\.cache|\.vs|\.nuget|packages|Debug|Release|obj|bin|\.next|\.nuxt|target|bower_components|\.terraform|cache)$/i;
   const secret =
     /(\.env|\.pem$|\.key$|\.secret|credentials?|token|cloud-keys|\.lock$)/i;
   const out: any[] = [];
-  (function walk(d, depth) {
+  (function walk(d: any, depth: any) {
     if (out.length > 800 || depth > (maxDepth || 7)) return;
     let ents;
     try {
@@ -1713,7 +1723,7 @@ function diskWalk(dir, filterRe, maxDepth?) {
   })(dir, 0);
   return out;
 }
-function diskList(p) {
+function diskList(p: any) {
   const dir = resolveDiskPath(p || DISK_HOME);
   let st;
   try {
@@ -1743,7 +1753,7 @@ function diskList(p) {
   }
   return out.join("\n");
 }
-function diskGlob(p, pattern) {
+function diskGlob(p: any, pattern: any) {
   const dir = resolveDiskPath(p || DISK_HOME);
   let st;
   try {
@@ -1758,10 +1768,10 @@ function diskGlob(p, pattern) {
   } catch {
     return "invalid pattern";
   }
-  const hits = diskWalk(dir, re).map((f) => f.fp.replace(/\\/g, "/"));
+  const hits = diskWalk(dir, re).map((f: any) => f.fp.replace(/\\/g, "/"));
   return hits.length ? hits.slice(0, 200).join("\n") : "(no matching files)";
 }
-function diskRead(p, near) {
+function diskRead(p: any, near: any) {
   const fp = resolveDiskPath(p);
   let st;
   try {
@@ -1785,12 +1795,12 @@ function diskRead(p, near) {
   }
   const shown = lines
     .slice(a, b)
-    .map((l, i) => a + i + 1 + "\t" + l)
+    .map((l: any, i: any) => a + i + 1 + "\t" + l)
     .join("\n");
   const head = a > 0 || b < N ? `(baris ${a + 1}-${b} dari ${N})\n` : "";
   return head + shown;
 }
-function diskGrep(p, pattern) {
+function diskGrep(p: any, pattern: any) {
   if (!pattern) return "empty pattern";
   let re;
   try {
@@ -1819,7 +1829,7 @@ function diskGrep(p, pattern) {
     } catch {
       continue;
     }
-    txt.split("\n").forEach((l, i) => {
+    txt.split("\n").forEach((l: any, i: any) => {
       if (hits.length < 150 && re.test(l))
         hits.push(
           f.fp.replace(/\\/g, "/") +
@@ -2167,7 +2177,7 @@ const AGENT_SYS = [
   "After each action you will see its result, then take the next step. Keep prose outside the block minimal.",
 ].join("\n");
 
-function buildPromptWith(sys, hist) {
+function buildPromptWith(sys: any, hist: any) {
   let p = `<|im_start|>system\n${sys}<|im_end|>\n`;
   for (const t of hist) p += `<|im_start|>${t.role}\n${t.content}<|im_end|>\n`;
   return p + `<|im_start|>assistant\n`;
@@ -2176,7 +2186,7 @@ function buildPromptWith(sys, hist) {
 // Parse the first fenced block as an agent action. Tolerant: the verb may be in
 // the fence info string OR on the first body line (weak models do the latter).
 const VERBS = ["LIST", "GLOB", "READ", "GREP", "WRITE", "EDIT", "RUN", "DONE"];
-function parseAction(text): any {
+function parseAction(text: any): any {
   // closed fence preferred; fall back to an UNCLOSED trailing fence (```GLOB ... <eof>)
   let m = text.match(/```([^\n]*)\n([\s\S]*?)```/);
   if (!m) m = text.match(/```([^\n]*)\n([\s\S]*)$/);
@@ -2228,10 +2238,10 @@ function parseAction(text): any {
 // Tolerant fallback: weaker models write the action as plain text ("READ public/app.jsx")
 // instead of a fenced block. Detect a bare no-body command in the last few lines so the
 // agent keeps moving instead of stalling (treated as DONE) Ã¢â‚¬â€ like other IDE agents.
-function parseBareAction(text) {
+function parseBareAction(text: any) {
   const lines = (text || "")
     .split("\n")
-    .map((s) =>
+    .map((s: any) =>
       s
         .trim()
         .replace(/^`+|`+$/g, "")
@@ -2308,14 +2318,14 @@ function _envVerifikasi() {
   return sisa;
 }
 
-async function runInWorkspace(lang, code) {
+async function runInWorkspace(lang: any, code: any) {
   const l = (lang || "").toLowerCase();
   const kurungan = _cakupanVerifikasi();
   const env = _envVerifikasi();
   try {
     if (l === "javascript" || l === "js" || l === "node") {
       fs.writeFileSync(path.join(WORKSPACE, "_run.cjs"), code, "utf8");
-      const out = await new Promise<any>((resolve, reject) => {
+      const out = await new Promise<any>((resolve: any, reject: any) => {
         exec(
           `"${JS_RUNTIME}" "_run.cjs"`,
           {
@@ -2342,7 +2352,7 @@ async function runInWorkspace(lang, code) {
             // ignored, so the `npm start` path is unchanged.
             env: { ...env, ELECTRON_RUN_AS_NODE: "1" },
           },
-          (error, stdout, stderr) => {
+          (error: any, stdout: any, stderr: any) => {
             if (error) reject(error);
             else resolve(stdout);
           },
@@ -2352,7 +2362,7 @@ async function runInWorkspace(lang, code) {
     }
     if (l === "python" || l === "py") {
       fs.writeFileSync(path.join(WORKSPACE, "_run.py"), code, "utf8");
-      const out = await new Promise<any>((resolve, reject) => {
+      const out = await new Promise<any>((resolve: any, reject: any) => {
         exec(
           `python "_run.py"`,
           {
@@ -2366,7 +2376,7 @@ async function runInWorkspace(lang, code) {
             // JS branch.
             env,
           },
-          (error, stdout, stderr) => {
+          (error: any, stdout: any, stderr: any) => {
             if (error) reject(error);
             else resolve(stdout);
           },
@@ -2390,17 +2400,17 @@ async function runInWorkspace(lang, code) {
 }
 
 // Ã¢â€â‚¬Ã¢â€â‚¬ HuggingFace model browser / downloader Ã¢â€â‚¬Ã¢â€â‚¬
-function hfGetJson(p): Promise<any> {
-  return new Promise((resolve, reject) => {
+function hfGetJson(p: any): Promise<any> {
+  return new Promise((resolve: any, reject: any) => {
     const r = https.request(
       {
         hostname: "huggingface.co",
         path: p,
         headers: { "User-Agent": "WOLFSPACE" },
       },
-      (s) => {
+      (s: any) => {
         let d = "";
-        s.on("data", (c) => (d += c));
+        s.on("data", (c: any) => (d += c));
         s.on("end", () => {
           try {
             resolve(JSON.parse(d));
@@ -2415,7 +2425,7 @@ function hfGetJson(p): Promise<any> {
   });
 }
 const AVATAR_CACHE = new Map(); // author -> avatarUrl|null
-async function hfAvatar(name) {
+async function hfAvatar(name: any) {
   if (AVATAR_CACHE.has(name)) return AVATAR_CACHE.get(name);
   let url: any = null;
   for (const ep of [
@@ -2433,9 +2443,9 @@ async function hfAvatar(name) {
   AVATAR_CACHE.set(name, url);
   return url;
 }
-function hfDownload(urlStr, dest, onProgress, reg) {
-  return new Promise<void>((resolve, reject) => {
-    const get = (u) => {
+function hfDownload(urlStr: any, dest: any, onProgress: any, reg: any) {
+  return new Promise<void>((resolve: any, reject: any) => {
+    const get = (u: any) => {
       let o;
       try {
         o = new URL(u);
@@ -2448,7 +2458,7 @@ function hfDownload(urlStr, dest, onProgress, reg) {
           path: o.pathname + o.search,
           headers: { "User-Agent": "WOLFSPACE" },
         },
-        (s) => {
+        (s: any) => {
           if (s.statusCode >= 300 && s.statusCode < 400 && s.headers.location) {
             s.resume();
             const loc = s.headers.location;
@@ -2463,7 +2473,7 @@ function hfDownload(urlStr, dest, onProgress, reg) {
           const total = parseInt(s.headers["content-length"] || "0", 10);
           let got = 0;
           const f = fs.createWriteStream(dest);
-          s.on("data", (c) => {
+          s.on("data", (c: any) => {
             got += c.length;
             onProgress(got, total);
           });
@@ -2534,7 +2544,7 @@ const _dapRoutes = require("./server/routes/dap.ts");
 
 // Recover tool calls that a model wrote as plain text instead of real tool_calls,
 // e.g. `<function=read={"path":"x"}>` or `<function=list>` (groq/llama quirk).
-function parsePseudoCalls(text) {
+function parsePseudoCalls(text: any) {
   if (!text || text.indexOf("<function") < 0) return [];
   const out: any[] = [];
   const re =
@@ -2583,7 +2593,7 @@ function generateTerminalId() {
 // asset changed but was never recompressed: the user would receive the OLD
 // version, with no sign at all that this is what happened — the most confusing
 // failure this layer could possibly produce.
-function _pilihKompresi(req, berkasAsli) {
+function _pilihKompresi(req: any, berkasAsli: any) {
   // ONLY for requests arriving over a real socket.
   //
   // In the desktop app, electron/main.ts builds SYNTHETIC req/res and reads the
@@ -2636,7 +2646,7 @@ function _pilihKompresi(req, berkasAsli) {
 //
 // What `where` actually does is walk PATH. fs.existsSync can do that: no process is
 // spawned, and it measures under 1 ms.
-function _adaDiPath(nama) {
+function _adaDiPath(nama: any) {
   const dirs = String(process.env.PATH || "").split(path.delimiter);
   // The bare name is tried FIRST, then each PATHEXT suffix. Without that, checking
   // for "python" or "dlv" on Windows always answers "not present": what actually
@@ -2678,7 +2688,7 @@ function detectShell() {
 }
 
 // Open a new PTY session rooted at the workspace directory.
-function openTerminalSession(customCwd, customShell) {
+function openTerminalSession(customCwd: any, customShell: any) {
   const id = generateTerminalId();
   const shell = customShell || detectShell();
   const cwd = customCwd || WORKSPACE;
@@ -2718,7 +2728,7 @@ function openTerminalSession(customCwd, customShell) {
   terminalSessions.set(id, session);
 
   // Forward PTY output to all registered listeners + buffer
-  ptyProcess.onData((data) => {
+  ptyProcess.onData((data: any) => {
     session.outputBuffer += data;
     if (session.outputBuffer.length > TERM_OUTPUT_MAX)
       session.outputBuffer = session.outputBuffer.slice(-TERM_OUTPUT_MAX);
@@ -2740,14 +2750,14 @@ function openTerminalSession(customCwd, customShell) {
 }
 
 // Write data to an open PTY session (stdin).
-function writeToTerminal(id, data) {
+function writeToTerminal(id: any, data: any) {
   const session = terminalSessions.get(id);
   if (!session) throw new Error("terminal session not found: " + id);
   session.pty.write(data);
 }
 
 // Resize the PTY dimensions.
-function resizeTerminal(id, cols, rows) {
+function resizeTerminal(id: any, cols: any, rows: any) {
   const session = terminalSessions.get(id);
   if (!session) throw new Error("terminal session not found: " + id);
   session.pty.resize(cols || 100, rows || 30);
@@ -2778,18 +2788,18 @@ function resizeTerminal(id, cols, rows) {
 // oversight: once it is removed nothing can write to or read from that PTY, so
 // /api/terminal/list is immediately honest — whereas waiting for taskkill only
 // holds up the answer without changing anything visible.
-function closeTerminalSession(id) {
+function closeTerminalSession(id: any) {
   const session = terminalSessions.get(id);
   if (!session) return;
   terminalSessions.delete(id);
-  coreTerminal.killPtyAsync(session.pty).catch((e) =>
+  coreTerminal.killPtyAsync(session.pty).catch((e: any) =>
     dlog("terminal", "warn", "failed to close PTY " + id, {
       galat: String((e && e.message) || e),
     }),
   );
 }
 
-const server = http.createServer(async (req, res) => {
+const server = http.createServer(async (req: any, res: any) => {
   // Healthcheck — BEFORE everything else, deliberately.
   // A container host (Railway/Render/Fly) probes this endpoint continuously. With no
   // dedicated path the probe would hit "/" and serve ~16KB of index.html every few
@@ -2888,7 +2898,7 @@ const server = http.createServer(async (req, res) => {
   if (_path === "/mcp/connect" && req.method === "POST") {
     const mcpClient = require("./agent/mcp-client.ts");
     let body = "";
-    req.on("data", (c) => (body += c.toString()));
+    req.on("data", (c: any) => (body += c.toString()));
     req.on("end", async () => {
       try {
         const payload = JSON.parse(body || "{}");
@@ -2908,7 +2918,7 @@ const server = http.createServer(async (req, res) => {
   if (_path === "/mcp/toggle" && req.method === "POST") {
     const mcpClient = require("./agent/mcp-client.ts");
     let body = "";
-    req.on("data", (c) => (body += c.toString()));
+    req.on("data", (c: any) => (body += c.toString()));
     req.on("end", async () => {
       try {
         const payload = JSON.parse(body || "{}");
@@ -2935,7 +2945,7 @@ const server = http.createServer(async (req, res) => {
     }
     if (req.method === "POST" || req.method === "DELETE") {
       let body = "";
-      req.on("data", (c) => (body += c.toString()));
+      req.on("data", (c: any) => (body += c.toString()));
       req.on("end", async () => {
         try {
           const payload = JSON.parse(body || "{}");
@@ -2972,7 +2982,7 @@ const server = http.createServer(async (req, res) => {
   // preview in the UI uses the local URL.createObjectURL that already exists.
   if (req.method === "POST" && req.url === "/attach") {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
       try {
         const { name, data, type } = JSON.parse(body || "{}");
@@ -3011,7 +3021,7 @@ const server = http.createServer(async (req, res) => {
   // Upload file attachment (base64 JSON â†’ saved to public/uploads/)
   if (req.method === "POST" && req.url === "/upload") {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", async () => {
       try {
         const { name, data } = JSON.parse(body);
@@ -3060,7 +3070,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
     });
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", async () => {
       let history, port, cloud;
       try {
@@ -3077,13 +3087,13 @@ const server = http.createServer(async (req, res) => {
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       });
-      const ev = (o) => {
+      const ev = (o: any) => {
         if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`);
       };
       // Logic lives in the pure chatStream() (shared with the IPC layer).
       await chatStream({ history, port, cloud }, ev, {
         isCancelled: () => cancelled,
-        setCurReq: (r) => {
+        setCurReq: (r: any) => {
           curReq = r;
         },
       });
@@ -3107,7 +3117,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
     });
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", async () => {
       let history, port, cloud;
       try {
@@ -3128,7 +3138,7 @@ const server = http.createServer(async (req, res) => {
       // key (cloud-keys.json). The local 3B can't drive the tool loop reliably.
       if (!(cloud && cloud.key)) {
         const prov = Object.keys(CLOUD_KEYS).find(
-          (p) => CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
+          (p: any) => CLOUD_KEYS[p] && CLOUD_KEYS[p].key,
         );
         if (prov)
           cloud = {
@@ -3143,7 +3153,7 @@ const server = http.createServer(async (req, res) => {
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       });
-      const ev = (o) => {
+      const ev = (o: any) => {
         if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`);
       };
       const convo = (history || []).slice();
@@ -3159,8 +3169,8 @@ const server = http.createServer(async (req, res) => {
             reply = await askCloudStream(
               { ...cloud, system: AGENT_SYS },
               convo,
-              (tok) => ev({ t: "tok", c: tok }),
-              (r) => {
+              (tok: any) => ev({ t: "tok", c: tok }),
+              (r: any) => {
                 curReq = r;
               },
             );
@@ -3188,7 +3198,7 @@ const server = http.createServer(async (req, res) => {
                 // untagged prose blocks are NOT executed
                 const clean = cb.code
                   .split("\n")
-                  .filter((l) => !/^\s*(WRITE\b|RUN\b|DONE\b)/i.test(l))
+                  .filter((l: any) => !/^\s*(WRITE\b|RUN\b|DONE\b)/i.test(l))
                   .join("\n");
                 act = { kind: "run", arg: lang, body: clean };
                 implicitRun = true;
@@ -3368,9 +3378,9 @@ const server = http.createServer(async (req, res) => {
   ) {
     const membuat = req.url === "/ww/buat-berkas";
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
-      const tolak = (kode, pesan) => {
+      const tolak = (kode: any, pesan: any) => {
         res.writeHead(kode, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: false, error: pesan }));
       };
@@ -3451,9 +3461,9 @@ const server = http.createServer(async (req, res) => {
   // subtree, and nothing in this app can put it back.
   if (req.method === "POST" && req.url === "/ww/hapus-berkas") {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
-      const tolak = (kode, pesan) => {
+      const tolak = (kode: any, pesan: any) => {
         res.writeHead(kode, { "Content-Type": "application/json" });
         res.end(JSON.stringify({ ok: false, error: pesan }));
       };
@@ -3486,7 +3496,7 @@ const server = http.createServer(async (req, res) => {
         // damage — the number the user is asked to approve has to come from
         // the disk.
         let jumlah = 0;
-        const hitung = (d) => {
+        const hitung = (d: any) => {
           let isi: any[] = [];
           try {
             isi = fs.readdirSync(d, { withFileTypes: true });
@@ -3568,7 +3578,7 @@ const server = http.createServer(async (req, res) => {
   // transitive dependencies would be suggested even though they are not this
   // project's.
   if (req.method === "GET" && req.url.startsWith("/ww/pustaka")) {
-    const kirim = (isi) => {
+    const kirim = (isi: any) => {
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(isi));
     };
@@ -3579,7 +3589,7 @@ const server = http.createServer(async (req, res) => {
       akar = "";
     }
     if (!akar) return kirim({ js: [], py: [], builtin: [] });
-    const bacaAman = (p) => {
+    const bacaAman = (p: any) => {
       try {
         return fs.readFileSync(path.join(akar, p), "utf8");
       } catch (_) {
@@ -3603,10 +3613,10 @@ const server = http.createServer(async (req, res) => {
     if (reqs)
       py = reqs
         .split("\n")
-        .map((b) => b.trim())
-        .filter((b) => b && !b.startsWith("#"))
+        .map((b: any) => b.trim())
+        .filter((b: any) => b && !b.startsWith("#"))
         // "paket==1.2.3", "paket[extra]>=2" -> "paket"
-        .map((b) => b.split(/[=<>!~\[; ]/)[0].trim())
+        .map((b: any) => b.split(/[=<>!~\[; ]/)[0].trim())
         .filter(Boolean);
     kirim({
       js: js.sort(),
@@ -3614,7 +3624,7 @@ const server = http.createServer(async (req, res) => {
       // Node's built-in modules, taken from the runtime — not a hand-written list
       // that goes quietly stale every time Node gains a version.
       builtin: require("module")
-        .builtinModules.filter((m) => !m.startsWith("_"))
+        .builtinModules.filter((m: any) => !m.startsWith("_"))
         .sort(),
     });
     return;
@@ -3646,7 +3656,7 @@ const server = http.createServer(async (req, res) => {
         ".DS_Store",
       ]);
       const entries: any[] = [];
-      const walk = (dir, depth) => {
+      const walk = (dir: any, depth: any) => {
         if (depth > maxDepth || entries.length >= MAX_ENTRIES) return;
         let ents;
         try {
@@ -3656,11 +3666,13 @@ const server = http.createServer(async (req, res) => {
         }
         // folders first, then files — each sorted A→Z (case-insensitive)
         const dirs = ents.filter(
-          (e) =>
+          (e: any) =>
             e.isDirectory() && !SKIP.has(e.name) && !e.name.startsWith("."),
         );
-        const files = ents.filter((e) => e.isFile() && !e.name.startsWith("."));
-        const cmp = (a, b) =>
+        const files = ents.filter(
+          (e: any) => e.isFile() && !e.name.startsWith("."),
+        );
+        const cmp = (a: any, b: any) =>
           a.name.toLowerCase().localeCompare(b.name.toLowerCase());
         dirs.sort(cmp);
         files.sort(cmp);
@@ -3711,7 +3723,7 @@ const server = http.createServer(async (req, res) => {
         JSON.stringify({
           ok: true,
           izinDikenal: P.IZIN_DIKENAL,
-          plugin: plugin.map((p) => ({
+          plugin: plugin.map((p: any) => ({
             nama: p.nama,
             versi: p.versi,
             ket: p.ket,
@@ -3745,7 +3757,7 @@ const server = http.createServer(async (req, res) => {
   // not revived.
   if (req.method === "POST" && req.url === "/plugins/pasang") {
     let raw = "";
-    req.on("data", (c) => (raw += c));
+    req.on("data", (c: any) => (raw += c));
     req.on("end", () => {
       let b: any = {};
       try {
@@ -3781,7 +3793,7 @@ const server = http.createServer(async (req, res) => {
   // POST /plugins/copot — user menghapus plugin beserta persetujuannya.
   if (req.method === "POST" && req.url === "/plugins/copot") {
     let raw = "";
-    req.on("data", (c) => (raw += c));
+    req.on("data", (c: any) => (raw += c));
     req.on("end", () => {
       let b: any = {};
       try {
@@ -3814,7 +3826,7 @@ const server = http.createServer(async (req, res) => {
   // could approve plugins, the whole two-door separation collapses.
   if (req.method === "POST" && req.url === "/plugins/setujui") {
     let raw = "";
-    req.on("data", (c) => (raw += c));
+    req.on("data", (c: any) => (raw += c));
     req.on("end", () => {
       let b: any = {};
       try {
@@ -3824,7 +3836,7 @@ const server = http.createServer(async (req, res) => {
       const beri = b.setujui !== false;
       try {
         const P = require("./agent/plugins.ts");
-        const ada = P.pindai().plugin.some((p) => p.nama === nama);
+        const ada = P.pindai().plugin.some((p: any) => p.nama === nama);
         if (!ada) {
           res.writeHead(404, { "Content-Type": "application/json" });
           res.end(
@@ -3887,7 +3899,7 @@ const server = http.createServer(async (req, res) => {
   // display the result easily.
   if (req.method === "POST" && req.url === "/flow/http") {
     let raw = "";
-    req.on("data", (c) => (raw += c));
+    req.on("data", (c: any) => (raw += c));
     req.on("end", async () => {
       let b: any = {};
       try {
@@ -3919,7 +3931,7 @@ const server = http.createServer(async (req, res) => {
         const text = await r.text();
         const outHeaders: any = {};
         try {
-          r.headers.forEach((v, k) => {
+          r.headers.forEach((v: any, k: any) => {
             outHeaders[k] = v;
           });
         } catch (_) {}
@@ -3957,7 +3969,7 @@ const server = http.createServer(async (req, res) => {
   // reads it. One-shot; the file can be deleted afterwards.
   if (req.method === "POST" && req.url === "/ww/ls-save") {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
       try {
         const data = JSON.parse(body || "{}").data || {};
@@ -4005,7 +4017,7 @@ const server = http.createServer(async (req, res) => {
   // non-destructive.
   if (req.method === "POST" && req.url === "/ww/attach") {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
       let p = "";
       try {
@@ -4046,7 +4058,7 @@ const server = http.createServer(async (req, res) => {
   // on the wrong path.
   if (req.method === "POST" && req.url === "/ww/delete") {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
       let p = "";
       try {
@@ -4083,7 +4095,7 @@ const server = http.createServer(async (req, res) => {
   // so the UI can drop "ghosts" (projects whose folder is gone) wherever they are.
   if (req.method === "POST" && req.url === "/ww/verify") {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
       let paths: any[] = [];
       try {
@@ -4131,7 +4143,7 @@ const server = http.createServer(async (req, res) => {
     (req.url === "/rag/ingest" || req.url === "/rag/retrieve")
   ) {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
       let b: any = {};
       try {
@@ -4188,7 +4200,7 @@ const server = http.createServer(async (req, res) => {
       req.url === "/ww/rename")
   ) {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", () => {
       let b: any = {};
       try {
@@ -4245,7 +4257,7 @@ const server = http.createServer(async (req, res) => {
         }
       }
     });
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", async () => {
       let payload;
       try {
@@ -4259,7 +4271,7 @@ const server = http.createServer(async (req, res) => {
         "Cache-Control": "no-cache",
         Connection: "keep-alive",
       });
-      const ev = (o) => {
+      const ev = (o: any) => {
         if (!res.writableEnded) res.write(`data: ${JSON.stringify(o)}\n\n`);
       };
       // Logic lives in the pure selfAgentStream() (shared with the IPC layer).
@@ -4304,7 +4316,7 @@ const server = http.createServer(async (req, res) => {
 
       await jalankanAgent(payload, ev, {
         isCancelled: () => cancelled,
-        setCurReq: (r) => {
+        setCurReq: (r: any) => {
           curReq = r;
         },
       });
@@ -4316,7 +4328,7 @@ const server = http.createServer(async (req, res) => {
   // Python autocomplete via Jedi (static analysis, no model)
   if (req.method === "POST" && req.url === "/pycomplete") {
     let body = "";
-    req.on("data", (c) => (body += c));
+    req.on("data", (c: any) => (body += c));
     req.on("end", async () => {
       let out: any[] = [];
       try {
@@ -4366,7 +4378,7 @@ const server = http.createServer(async (req, res) => {
         });
         return res.end(fs.readFileSync(resolved));
       }
-      const mimeTypes = {
+      const mimeTypes: Record<string, string> = {
         ".html": "text/html",
         ".htm": "text/html",
         ".css": "text/css",
@@ -4404,7 +4416,7 @@ const server = http.createServer(async (req, res) => {
           '<base href="/preview-file-assets/' + encodeURI(dir) + '">';
         let html = fs.readFileSync(resolved, "utf8");
         html = /<head[^>]*>/i.test(html)
-          ? html.replace(/<head[^>]*>/i, (m) => m + baseTag)
+          ? html.replace(/<head[^>]*>/i, (m: any) => m + baseTag)
           : baseTag + html;
         return res.end(html);
       }
@@ -4428,7 +4440,7 @@ const server = http.createServer(async (req, res) => {
         return res.end("Not found");
       }
       const ext = path.extname(resolved).toLowerCase();
-      const mimeTypes = {
+      const mimeTypes: Record<string, string> = {
         ".html": "text/html",
         ".htm": "text/html",
         ".css": "text/css",
@@ -4470,7 +4482,7 @@ const server = http.createServer(async (req, res) => {
       fs.existsSync(filePath) &&
       fs.statSync(filePath).isFile()
     ) {
-      const types = {
+      const types: Record<string, string> = {
         ".css": "text/css",
         ".js": "application/javascript",
         ".jsx": "application/javascript",
@@ -4523,7 +4535,7 @@ const server = http.createServer(async (req, res) => {
   }
 
   // Fallback: serve the chat UI
-  fs.readFile(HTML, (e, data) => {
+  fs.readFile(HTML, (e: any, data: any) => {
     if (e) {
       res.writeHead(404);
       return res.end("public/index.html not found");
@@ -4572,9 +4584,9 @@ function versiBackend() {
 //     cannot hold that port — if it appears, the parsing is wrong)
 //   - it MUST NOT be PID 1 (init / the distro manager; killing it takes everything
 //     down)
-function _pidPemegangPort(port) {
+function _pidPemegangPort(port: any) {
   const { execSync } = require("child_process");
-  const jalankan = (cmd) => {
+  const jalankan = (cmd: any) => {
     try {
       // 5000 ms is EXACTLY the point at which Windows marks the window Not
       // Responding, so a command that runs to this timeout freezes it by
@@ -4622,7 +4634,7 @@ const _dijalankanLangsung =
   (!!require.main && require.main.filename === require.resolve("./server.cjs"));
 
 if (_dijalankanLangsung) {
-  server.on("error", (err) => {
+  server.on("error", (err: any) => {
     if (err.code === "EADDRINUSE") {
       console.error(
         `\n  Port ${PORT} is already in use. Trying to kill the old process...`,
@@ -4684,7 +4696,7 @@ function startWwWatcher() {
     const ww = require("./scripts/ww.ts");
     const root = CONFIG.ww.root || ww.DEFAULT_ROOT;
     _wwWatcher = ww.startWatcher(root, {
-      log: (m) => console.log("  [ww] " + m),
+      log: (m: any) => console.log("  [ww] " + m),
     });
     console.log(
       `  [ww] auto-watcher active at ${root} — new folders are isolated automatically (repo+branch).`,

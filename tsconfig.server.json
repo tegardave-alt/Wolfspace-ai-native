@@ -34,7 +34,11 @@
     "maxNodeModuleJsDepth": 0,
 
     "strict": false,
-    "noImplicitAny": false,
+    // DINYALAKAN. server.ts dulu punya 236 parameter tanpa anotasi, dan
+    // longgarnya setelan ini yang membuat baris perintah tak pernah
+    // melaporkannya sementara editor -- yang memakai setelan lebih ketat --
+    // menampilkan 189 TS7006 di berkas yang dianggap build bersih.
+    "noImplicitAny": true,
     "strictNullChecks": true,
 
     // The port still requires untyped .cjs siblings; without this every one of
