@@ -37,7 +37,12 @@ describe("the renderer build produces what index.html would have compiled", () =
     // throws on first render.
     const nyata = fs
       .readdirSync(path.join(AKAR, "public", "app"))
-      .filter((f) => /\.(tsx|jsx)$/.test(f))
+      // .ts ikut sejak IkonBahasa berhenti berpura-pura JSX — isinya tabel
+      // string SVG, tak ada satu pun elemen di dalamnya. Berkas .d.ts
+      // DIKECUALIKAN: itu deklarasi tipe, bukan modul yang dimuat saat jalan,
+      // dan memasukkannya ke APP_MODULES akan menambah permintaan jaringan
+      // untuk berkas yang tak menghasilkan apa pun.
+      .filter((f) => /\.(tsx|jsx|ts)$/.test(f) && !/\.d\.ts$/.test(f))
       .map((f) => "/app/" + f)
       .sort();
     expect(modul.filter((m) => m.startsWith("/app/")).sort()).toEqual(nyata);

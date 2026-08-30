@@ -91,6 +91,7 @@ const BERKAS_MIGRASI = [
   "public/app/Components.tsx",
   "public/app/Config.tsx",
   "public/app/Icons.tsx",
+  "public/app/IkonBahasa.ts",
   "public/app/Model3DViewer.tsx",
   "public/app/PluginsView.tsx",
   "public/app/Screens.tsx",
