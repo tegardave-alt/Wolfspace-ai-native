@@ -51,7 +51,17 @@ async function tanganiInvoke(channel, payload) {
   const c = core();
   if (channel === "ping") return { ok: true, pong: Date.now() };
   if (channel === "cloudKeys") return Object.keys(c.getCloudKeys());
-  if (channel === "api") return c.apiCall ? c.apiCall(payload) : null;
+  // `api` DIHAPUS dari sini, dan sengaja. apiCall() hidup di electron/main.ts:
+  // ia membangun req/res palsu terhadap handler HTTP in-process, jadi ia tak
+  // pernah ada di ekspor core.js. Versi pertama menuliskannya sebagai
+  // `c.apiCall ? c.apiCall(payload) : null`, yang mengembalikan NULL dengan
+  // ok:true -- main lalu meneruskan null itu ke renderer alih-alih memakai
+  // apiCall yang asli, dan penyimpanan kunci API gagal dengan "Cannot read
+  // properties of null (reading 'body')".
+  //
+  // Pelajarannya bukan "tambahkan apiCall di sini": kanal yang tak bisa
+  // dilayani host harus MELEMPAR, supaya main jatuh ke jalur in-process alih-
+  // alih menyebarkan null yang terlihat seperti jawaban sah.
   throw new Error("unknown invoke channel: " + channel);
 }
 

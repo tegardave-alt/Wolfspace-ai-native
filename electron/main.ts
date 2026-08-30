@@ -1061,9 +1061,13 @@ function registerIpc() {
       //
       // Falls back to core() when the host is unavailable — losing the
       // isolation must never cost the feature.
-      if (channel === "api" || channel === "cloudKeys") {
+      if (channel === "cloudKeys") {
         const lewatHost = await backendInvoke(channel, payload);
-        if (lewatHost && lewatHost.ok) return lewatHost.value;
+        // `value != null` IS REQUIRED. A null from the host was once passed
+        // straight to the renderer as a valid answer; falling through to the
+        // in-process path is far better than handing over a null.
+        if (lewatHost && lewatHost.ok && lewatHost.value != null)
+          return lewatHost.value;
         if (lewatHost)
           probe.say("backend-host gagal " + channel + ": " + lewatHost.error);
       }
