@@ -1,6 +1,6 @@
 {
   "name": "WOLFSPACE",
-  "version": "0.2.3",
+  "version": "0.2.4",
   "description": "An open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
   "main": "server.cjs",
   "type": "commonjs",
