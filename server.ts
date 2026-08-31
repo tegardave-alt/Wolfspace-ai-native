@@ -148,7 +148,7 @@ const path = require("path");
 // detectShell ALWAYS fell back to cmd.exe even where PowerShell was installed.
 //
 // (_pidPemegangPort is unaffected: it has its own require("child_process") inside.)
-const { exec, spawn, execSync } = require("child_process");
+const { exec, execFile, spawn, execSync } = require("child_process");
 const util = require("util");
 const execP = util.promisify(exec);
 // node-pty is a NATIVE module, so it may simply be unavailable on a platform
@@ -1421,6 +1421,18 @@ const Q_RAHASIA =
 // Confinement for routes that WRITE to the workspace on the renderer's orders. One
 // function serves every write route: two copies of the same rule will certainly
 // diverge, and what diverges here is a security boundary.
+// -- INFO panel helpers --
+//
+// A scan is a whole tsc process, so only one may be in flight. Two concurrent
+// runs over the same tree would double the cost and race to answer the panel.
+let _infoBerjalan = false;
+// The parser is a module so the suite can exercise it directly; requiring
+// server.ts from a test hangs the runner.
+const {
+  cariTsc: _cariTsc,
+  uraiTsc: _uraiTsc,
+} = require("./scripts/urai-tsc.ts");
+
 function _kurungDiAkar(root: any, p: any) {
   if (!root || !p) return { kode: 400, galat: "root and path are required" };
   const akar = path.resolve(String(root));
@@ -2882,6 +2894,96 @@ const server = http.createServer(async (req: any, res: any) => {
   // returns the configuration map DIRECTLY, and the frontend already reads it with
   // Object.entries(data) — changing its shape would repeat the old bug where the
   // MCP list never refreshed.
+  // -- INFO: workspace-wide TypeScript diagnostics --
+  //
+  // The INFO panel needs the WHOLE project, not only what the editor happens to
+  // have open. Monaco's markers cover open models alone, so a file nobody opened
+  // reports clean however broken it is -- which is the opposite of what a
+  // problems panel is for.
+  //
+  // tsc runs through node against a RESOLVED entry point rather than through npx.
+  // npx would reach the network on first use and pay a download inside a panel
+  // the user expects to answer in seconds. The project's own typescript is
+  // preferred so the numbers match what its build would say; WOLFSPACE's copy is
+  // the fallback for a project that ships none.
+  if (_path === "/info/diagnostics" && req.method === "POST") {
+    let body = "";
+    req.on("data", (c: any) => (body += c));
+    req.on("end", () => {
+      const jawab = (kode: number, obj: any) => {
+        res.writeHead(kode, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(obj));
+      };
+      let p: any;
+      try {
+        p = JSON.parse(body || "{}");
+      } catch (_) {
+        return jawab(400, { ok: false, error: "invalid json" });
+      }
+      let akar: string;
+      try {
+        akar = path.resolve(String(p.root || ""));
+      } catch (_) {
+        return jawab(400, { ok: false, error: "invalid root" });
+      }
+      if (!p.root || !fs.existsSync(akar) || !fs.statSync(akar).isDirectory())
+        return jawab(400, { ok: false, error: "root is not a directory" });
+      // One run at a time. tsc over a large project is expensive and the panel
+      // can be reopened far faster than a run finishes.
+      if (_infoBerjalan)
+        return jawab(429, { ok: false, error: "a scan is already running" });
+      const tsconfig = path.join(akar, "tsconfig.json");
+      if (!fs.existsSync(tsconfig))
+        return jawab(200, {
+          ok: true,
+          ran: false,
+          diagnostics: [],
+          note: "no tsconfig.json in this workspace",
+        });
+      const tsc = _cariTsc(akar);
+      if (!tsc)
+        return jawab(200, {
+          ok: true,
+          ran: false,
+          diagnostics: [],
+          note: "typescript is not installed",
+        });
+      _infoBerjalan = true;
+      execFile(
+        process.execPath,
+        [tsc, "-p", tsconfig, "--noEmit", "--pretty", "false"],
+        {
+          cwd: akar,
+          timeout: 120000,
+          maxBuffer: 8 * 1024 * 1024,
+          windowsHide: true,
+          // process.execPath is electron.exe here, not node. Without this it
+          // would open a second app window instead of running the compiler.
+          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+        },
+        (err: any, stdout: any, stderr: any) => {
+          _infoBerjalan = false;
+          // tsc EXITS NON-ZERO whenever it found anything at all, so `err` is
+          // the ordinary case here rather than a failure. Only a kill counts.
+          if (err && err.killed)
+            return jawab(200, {
+              ok: false,
+              ran: true,
+              diagnostics: [],
+              error: "scan timed out",
+            });
+          const teks = String(stdout || "") + String(stderr || "");
+          return jawab(200, {
+            ok: true,
+            ran: true,
+            diagnostics: _uraiTsc(teks, akar),
+          });
+        },
+      );
+    });
+    return;
+  }
+
   if (_path === "/mcp/status" && req.method === "GET") {
     const mcpClient = require("./agent/mcp-client.ts");
     res.writeHead(200, { "Content-Type": "application/json" });

@@ -1600,6 +1600,32 @@ function ProjectPickerScreen({
 }
 
 /* ----------------------------- VS Code Style Terminal ----------------------------- */
+// -- INFO severity tiers --
+//
+// Ordered worst-first, which is the order the rail stacks them in: an error is
+// what someone opens this panel to find, so it must not sit below a count of
+// style hints. `kunci` matches the severity word tsc prints, so the rows filter
+// without a translation table in between.
+const TINGKAT_INFO = [
+  { kunci: "error", ikon: "⊗", judul: "Errors", warna: "#f85149" },
+  { kunci: "warning", ikon: "⚠", judul: "Warnings", warna: "#e3b341" },
+  { kunci: "info", ikon: "ⓘ", judul: "Info", warna: "#58a6ff" },
+];
+
+/**
+ * The workspace root, from whichever shape the caller holds it in.
+ *
+ * The terminal derived this inline to pick a cwd, and INFO needs the same
+ * answer. Two copies of the rule is how the MCP command resolution drifted
+ * between Components and Screens, so this one is written once.
+ */
+function akarProyek(proyek: any): string | undefined {
+  if (typeof proyek === "object" && proyek !== null)
+    return proyek.path || proyek.dir || undefined;
+  if (typeof proyek === "string" && proyek.trim() !== "") return proyek.trim();
+  return undefined;
+}
+
 function VSCodeTerminal({
   selectedProject,
   onClose,
@@ -1642,6 +1668,52 @@ function VSCodeTerminal({
   const ekorRef = useRef("");
   const sudahLihatRef = useRef(false);
   const [activeTab, setActiveTab] = useState("TERMINAL");
+  // INFO panel state. `infoSaring` is "all" or one severity key; the rail
+  // toggles it rather than holding a separate selection, so clicking the lit
+  // tier again clears the filter instead of stranding the user in one tier.
+  const [infoDiag, setInfoDiag] = useState<any[]>([]);
+  const [infoSibuk, setInfoSibuk] = useState(false);
+  const [infoNota, setInfoNota] = useState("");
+  const [infoSaring, setInfoSaring] = useState("all");
+  const [infoPernah, setInfoPernah] = useState(false);
+
+  // Scanning is MANUAL plus once when the panel is first opened, never
+  // continuous. tsc over a real project costs seconds of CPU, and a problems
+  // panel that re-runs it on every keystroke becomes the reason the app
+  // stutters -- the exact failure this app has been chasing elsewhere.
+  async function pindaiInfo() {
+    const akar = akarProyek(selectedProject);
+    if (!akar) {
+      setInfoDiag([]);
+      setInfoNota("No workspace is selected.");
+      setInfoPernah(true);
+      return;
+    }
+    setInfoSibuk(true);
+    setInfoNota("");
+    try {
+      const r = await fetch("/info/diagnostics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: akar }),
+      });
+      const d = await r.json();
+      setInfoDiag(Array.isArray(d.diagnostics) ? d.diagnostics : []);
+      setInfoNota(d.note || d.error || "");
+    } catch (e: any) {
+      setInfoDiag([]);
+      setInfoNota("Scan failed: " + (e && e.message ? e.message : String(e)));
+    } finally {
+      setInfoSibuk(false);
+      setInfoPernah(true);
+    }
+  }
+
+  // An unscanned panel must not render as "no problems found" -- that is a
+  // claim it has no basis for. It scans once on first open instead.
+  useEffect(() => {
+    if (activeTab === "INFO" && !infoPernah && !infoSibuk) pindaiInfo();
+  }, [activeTab]);
   const [statusText, setStatusText] = useState("Connecting PTY...");
 
   // Build a clean, formatted AI output log from the main UI messages + any agent/terminal output
@@ -2053,6 +2125,43 @@ function VSCodeTerminal({
           >
             OUTPUT
           </button>
+          {/* INFO carries its counts on the tab itself: the point of a problems
+              panel is to be glanceable without being opened. */}
+          <button
+            className="btn-reset"
+            onClick={() => setActiveTab("INFO")}
+            style={{
+              borderBottom:
+                activeTab === "INFO"
+                  ? "2px solid var(--brand, #5eead4)"
+                  : "2px solid transparent",
+              color: activeTab === "INFO" ? "#ffffff" : "#8b949e",
+              fontSize: "11px",
+              fontWeight: 600,
+              letterSpacing: "0.5px",
+              height: "100%",
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              padding: "0 4px",
+              fontFamily: "inherit",
+            }}
+          >
+            <span>INFO</span>
+            {infoPernah &&
+              TINGKAT_INFO.filter(
+                (t) =>
+                  infoDiag.filter((d: any) => d.severity === t.kunci).length,
+              ).map((t) => (
+                <span
+                  key={t.kunci}
+                  style={{ fontSize: "10px", color: t.warna }}
+                >
+                  {t.ikon}{" "}
+                  {infoDiag.filter((d: any) => d.severity === t.kunci).length}
+                </span>
+              ))}
+          </button>
         </div>
         <div style={{ display: "flex", alignItems: "center", gap: "10px" }}>
           <span
@@ -2458,6 +2567,161 @@ function VSCodeTerminal({
               this panel.
             </div>
           )}
+        </div>
+        {/* INFO -- problems across the whole workspace.
+            
+            TWO LAYERS, deliberately. The tab strip above is the first: it names
+            which panel you are in. The rail below is the second: it names the
+            severity, and it runs VERTICALLY so the counts stay readable when
+            the terminal is docked narrow, where a horizontal filter row would
+            wrap or clip the very numbers it exists to show. */}
+        <div
+          style={{
+            display: activeTab === "INFO" ? "flex" : "none",
+            height: "100%",
+            minHeight: 0,
+          }}
+        >
+          <div
+            style={{
+              width: "56px",
+              flexShrink: 0,
+              borderRight: "1px solid var(--line, #1f2733)",
+              display: "flex",
+              flexDirection: "column",
+              padding: "6px 0",
+              gap: "2px",
+              background: "var(--surface-1, #0f1318)",
+            }}
+          >
+            {TINGKAT_INFO.map((t) => {
+              const jml = infoDiag.filter(
+                (d: any) => d.severity === t.kunci,
+              ).length;
+              const aktif = infoSaring === t.kunci;
+              return (
+                <button
+                  key={t.kunci}
+                  className="btn-reset"
+                  title={t.judul + " (" + jml + ")"}
+                  onClick={() => setInfoSaring(aktif ? "all" : t.kunci)}
+                  style={{
+                    display: "flex",
+                    flexDirection: "column",
+                    alignItems: "center",
+                    gap: "1px",
+                    padding: "6px 0",
+                    borderLeft: aktif
+                      ? "2px solid " + t.warna
+                      : "2px solid transparent",
+                    background: aktif ? "rgba(255,255,255,0.05)" : "none",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  <span style={{ fontSize: "14px", color: t.warna }}>
+                    {t.ikon}
+                  </span>
+                  <span
+                    style={{
+                      fontSize: "11px",
+                      fontWeight: 600,
+                      color: jml ? "#c9d1d9" : "#6e7681",
+                    }}
+                  >
+                    {jml}
+                  </span>
+                </button>
+              );
+            })}
+          </div>
+          <div
+            style={{
+              flex: 1,
+              minWidth: 0,
+              display: "flex",
+              flexDirection: "column",
+            }}
+          >
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "10px",
+                padding: "6px 10px",
+                borderBottom: "1px solid var(--line, #1f2733)",
+                flexShrink: 0,
+              }}
+            >
+              <button
+                className="btn-reset"
+                onClick={() => pindaiInfo()}
+                disabled={infoSibuk}
+                style={{
+                  fontSize: "11px",
+                  color: infoSibuk ? "#6e7681" : "#5eead4",
+                  fontFamily: "inherit",
+                  fontWeight: 600,
+                }}
+              >
+                {infoSibuk ? "Scanning..." : "Rescan"}
+              </button>
+              <span style={{ fontSize: "11px", color: "#6e7681" }}>
+                {infoNota ||
+                  (infoPernah
+                    ? infoDiag.length + " problem(s)"
+                    : "not scanned yet")}
+              </span>
+            </div>
+            <div style={{ flex: 1, overflowY: "auto", minHeight: 0 }}>
+              {infoDiag
+                .filter(
+                  (d: any) => infoSaring === "all" || d.severity === infoSaring,
+                )
+                .map((d: any, i: any) => {
+                  const t = TINGKAT_INFO.find((x) => x.kunci === d.severity);
+                  const warna = t ? t.warna : "#58a6ff";
+                  const ikon = t ? t.ikon : "ⓘ";
+                  return (
+                    <div
+                      key={i}
+                      style={{
+                        display: "flex",
+                        gap: "8px",
+                        padding: "5px 10px",
+                        fontSize: "12px",
+                        fontFamily:
+                          '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
+                        borderBottom: "1px solid rgba(255,255,255,0.03)",
+                      }}
+                    >
+                      <span style={{ color: warna, flexShrink: 0 }}>
+                        {ikon}
+                      </span>
+                      <span style={{ minWidth: 0 }}>
+                        <span style={{ color: "#58a6ff" }}>
+                          {d.file}:{d.line}:{d.col}
+                        </span>
+                        <span style={{ color: "#6e7681" }}> {d.code}</span>
+                        <div style={{ color: "#c9d1d9", lineHeight: 1.5 }}>
+                          {d.message}
+                        </div>
+                      </span>
+                    </div>
+                  );
+                })}
+              {infoPernah && !infoSibuk && infoDiag.length === 0 && (
+                <div
+                  style={{
+                    padding: "12px",
+                    fontSize: "12px",
+                    color: "#8b949e",
+                  }}
+                >
+                  No problems have been detected in the workspace.
+                </div>
+              )}
+            </div>
+          </div>
         </div>
       </div>
     </div>
