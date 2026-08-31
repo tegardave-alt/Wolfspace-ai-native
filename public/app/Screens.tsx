@@ -1600,6 +1600,26 @@ function ProjectPickerScreen({
 }
 
 /* ----------------------------- VS Code Style Terminal ----------------------------- */
+// -- Terminals outlive the panel --
+//
+// Held at MODULE scope, not in a ref. Closing the terminal panel unmounts
+// VSCodeTerminal, and anything in a ref dies with it -- which killed every PTY
+// and disposed every xterm, so reopening the panel gave a blank shell in the
+// wrong directory with the history gone. VS Code keeps its terminals running
+// when the panel is hidden, and so does this now.
+//
+// The same pattern the editor already uses for Monaco models (_modelBerkas in
+// app.tsx), and for the same reason: the buffer must outlive the view.
+//
+// On remount the existing DOM nodes are MOVED into the new host rather than
+// recreated. An xterm instance cannot be reopened into a different element
+// without losing its screen, but its element can simply be appended somewhere
+// else and the instance never notices.
+const _terminalInstans = new Map<string, any>();
+let _terminalUrut = 0;
+let _terminalAktif = "";
+let _terminalPecah = "";
+
 // Shells offered by the "+" dropdown.
 //
 // NOT probed for availability first. /api/terminal/open already takes a shell
@@ -1663,15 +1683,63 @@ function VSCodeTerminal({
   const termRef = useRef<any>(null);
   const fitRef = useRef<any>(null);
   const sessionIdRef = useRef<any>(null);
-  // key -> { term, fit, el, sessionId }. The xterm instance and its DOM node
-  // are kept ALIVE while another terminal is shown; disposing on switch would
-  // throw away the scrollback, which is most of what a terminal is for.
-  const instansRef = useRef<Map<string, any>>(new Map());
+  // The instance store is at MODULE scope (_terminalInstans) so terminals
+  // survive the panel being closed. Only the host element is per-mount.
   const hostRef = useRef<any>(null);
-  const urutRef = useRef(0);
-  const [terminals, setTerminals] = useState<any[]>([]);
-  const [aktifKey, setAktifKey] = useState("");
-  const [pecahKey, setPecahKey] = useState("");
+  // State is SEEDED from the store rather than from empty, so reopening the
+  // panel redraws the list that is still running instead of claiming there is
+  // nothing there.
+  const [terminals, setTerminals] = useState<any[]>(() =>
+    Array.from(_terminalInstans.values()).map((i: any) => ({
+      key: i.key,
+      shell: i.shell,
+      nama: i.nama,
+    })),
+  );
+  const [aktifKey, setAktifKey] = useState(_terminalAktif);
+  const [pecahKey, setPecahKey] = useState(_terminalPecah);
+  const [menuBaris, setMenuBaris] = useState<any>(null);
+  const [geserDaftar, setGeserDaftar] = useState(false);
+  // The width is mirrored in a ref because the mouseup closure is created once
+  // at drag start: reading the state there would persist the width the drag
+  // BEGAN with, so every resize would be forgotten.
+  const lebarDaftarRef = useRef(160);
+  // Width is remembered, like the other resizable panels in this app. A list
+  // that snaps back to a default every time the panel reopens is the kind of
+  // small rigidity that makes a UI feel like it is not listening.
+  const [lebarDaftar, setLebarDaftar] = useState(() => {
+    try {
+      const n = Number(localStorage.getItem("wolfspace_lebar_daftar_terminal"));
+      if (n >= 110 && n <= 360) return n;
+    } catch (_) {}
+    return 160;
+  });
+  const mulaiGeserDaftar = (e: any) => {
+    e.preventDefault();
+    setGeserDaftar(true);
+    const x0 = e.clientX;
+    const w0 = lebarDaftar;
+    const gerak = (ev: any) => {
+      // Dragging LEFT widens the list: it is pinned to the right edge, so the
+      // delta is inverted.
+      const w = Math.min(360, Math.max(110, w0 + (x0 - ev.clientX)));
+      lebarDaftarRef.current = w;
+      setLebarDaftar(w);
+    };
+    const lepas = () => {
+      setGeserDaftar(false);
+      window.removeEventListener("mousemove", gerak);
+      window.removeEventListener("mouseup", lepas);
+      try {
+        localStorage.setItem(
+          "wolfspace_lebar_daftar_terminal",
+          String(lebarDaftarRef.current),
+        );
+      } catch (_) {}
+    };
+    window.addEventListener("mousemove", gerak);
+    window.addEventListener("mouseup", lepas);
+  };
   const [menuShell, setMenuShell] = useState(false);
   // ── Commands that arrive before the PTY is ready ──
   //
@@ -1859,7 +1927,7 @@ function VSCodeTerminal({
     // has to learn the new id too. Setting only sessionIdRef would leave the
     // poll loop reading, and onData writing to, a session that was just
     // closed -- the terminal would look alive and do nothing.
-    const instAktif = instansRef.current.get(aktifKey);
+    const instAktif = _terminalInstans.get(aktifKey);
     const pasangSesi = (id: any) => {
       sessionIdRef.current = id;
       if (instAktif) instAktif.sessionId = id;
@@ -1948,7 +2016,7 @@ function VSCodeTerminal({
   };
 
   const pasangAktif = (key: string) => {
-    const inst = instansRef.current.get(key);
+    const inst = _terminalInstans.get(key);
     if (!inst) return;
     termRef.current = inst.term;
     fitRef.current = inst.fit;
@@ -1958,7 +2026,7 @@ function VSCodeTerminal({
   // Only the active terminal is shown -- and the split partner beside it. The
   // others stay MOUNTED but hidden, which is what preserves their scrollback.
   const susunTampilan = (aktif: string, pecah: string) => {
-    for (const [k, inst] of instansRef.current) {
+    for (const [k, inst] of _terminalInstans) {
       const tampil = k === aktif || (pecah && k === pecah);
       inst.el.style.display = tampil ? "block" : "none";
       if (!tampil) continue;
@@ -1981,8 +2049,8 @@ function VSCodeTerminal({
   const buatTerminal = async (shellPilihan?: any) => {
     const host = hostRef.current;
     if (!host || !window.Terminal) return null;
-    urutRef.current += 1;
-    const key = "t" + urutRef.current;
+    _terminalUrut += 1;
+    const key = "t" + _terminalUrut;
 
     const el = document.createElement("div");
     el.style.position = "absolute";
@@ -2007,7 +2075,7 @@ function VSCodeTerminal({
     term.open(el);
 
     const inst: any = { key, term, fit, el, sessionId: null, shell: "" };
-    instansRef.current.set(key, inst);
+    _terminalInstans.set(key, inst);
 
     // Input and resize are bound to THIS instance's session, read off `inst`
     // rather than the active pointer. Reading the pointer would send what
@@ -2041,6 +2109,7 @@ function VSCodeTerminal({
       const data = await res.json();
       inst.sessionId = data.id;
       inst.shell = data.shell || shellPilihan || "shell";
+      inst.nama = namaShell(inst.shell);
       setTerminals((prev: any[]) =>
         prev.concat([{ key, shell: inst.shell, nama: namaShell(inst.shell) }]),
       );
@@ -2074,17 +2143,18 @@ function VSCodeTerminal({
 
   const pilihTerminal = (key: string) => {
     setAktifKey(key);
+    _terminalAktif = key;
     pasangAktif(key);
     setTimeout(() => {
       susunTampilan(key, pecahKey === key ? "" : pecahKey);
-      instansRef.current.get(key)?.term?.focus();
+      _terminalInstans.get(key)?.term?.focus();
     }, 0);
   };
 
   const tutupTerminal = async (key: string) => {
-    const inst = instansRef.current.get(key);
+    const inst = _terminalInstans.get(key);
     if (!inst) return;
-    instansRef.current.delete(key);
+    _terminalInstans.delete(key);
     if (inst.sessionId) {
       fetch("/api/terminal/close", {
         method: "POST",
@@ -2098,7 +2168,7 @@ function VSCodeTerminal({
     try {
       inst.el.remove();
     } catch (_) {}
-    const sisa = Array.from(instansRef.current.keys());
+    const sisa = Array.from(_terminalInstans.keys());
     setTerminals((prev: any[]) => prev.filter((t) => t.key !== key));
     if (pecahKey === key) setPecahKey("");
     if (aktifKey === key) {
@@ -2125,6 +2195,7 @@ function VSCodeTerminal({
     const key = await buatTerminal();
     if (!key) return;
     setPecahKey(key);
+    _terminalPecah = key;
     setTimeout(() => susunTampilan(aktifKey, key), 0);
   };
 
@@ -2137,19 +2208,38 @@ function VSCodeTerminal({
     if (!hostRef.current || !window.Terminal) return;
     let hidup = true;
     (async () => {
+      // REOPENING: the terminals are still running from last time, so their
+      // elements are moved back into this mount's host and nothing is
+      // respawned. Creating fresh ones here is what used to lose the history.
+      if (_terminalInstans.size) {
+        for (const inst of _terminalInstans.values())
+          hostRef.current.appendChild(inst.el);
+        const kunci = Array.from(_terminalInstans.keys());
+        const key = _terminalInstans.has(_terminalAktif)
+          ? _terminalAktif
+          : kunci[0] || "";
+        if (!key) return;
+        setAktifKey(key);
+        _terminalAktif = key;
+        pasangAktif(key);
+        susunTampilan(key, _terminalPecah);
+        _terminalInstans.get(key)?.term?.focus();
+        return;
+      }
       const key = await buatTerminal();
       if (!hidup || !key) return;
       setAktifKey(key);
+      _terminalAktif = key;
       pasangAktif(key);
       susunTampilan(key, "");
-      instansRef.current.get(key)?.term?.focus();
+      _terminalInstans.get(key)?.term?.focus();
     })();
 
     let resizeDebounce: any = null;
     const doFit = () => {
       clearTimeout(resizeDebounce);
       resizeDebounce = setTimeout(() => {
-        for (const inst of instansRef.current.values()) {
+        for (const inst of _terminalInstans.values()) {
           if (inst.el.style.display === "none") continue;
           try {
             inst.fit?.fit();
@@ -2162,7 +2252,7 @@ function VSCodeTerminal({
     window.addEventListener("resize", doFit);
 
     const readInterval = setInterval(async () => {
-      for (const inst of Array.from(instansRef.current.values())) {
+      for (const inst of Array.from(_terminalInstans.values())) {
         if (!inst.sessionId) continue;
         try {
           const res = await fetch("/api/terminal/read", {
@@ -2188,19 +2278,11 @@ function VSCodeTerminal({
       clearTimeout(resizeDebounce);
       ro.disconnect();
       window.removeEventListener("resize", doFit);
-      for (const inst of instansRef.current.values()) {
-        if (inst.sessionId) {
-          fetch("/api/terminal/close", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ id: inst.sessionId }),
-          }).catch(() => {});
-        }
-        try {
-          inst.term.dispose();
-        } catch (_) {}
-      }
-      instansRef.current.clear();
+      // The sessions are DELIBERATELY left running and the xterms undisposed.
+      // Closing the panel is not closing the terminals -- the cross on each
+      // row is what closes one. Only this mount's timers and observer stop,
+      // and the PTY output that arrives meanwhile is held in the server's
+      // per-session buffer until the panel comes back and reads it.
       termRef.current = null;
     };
   }, [selectedProject]);
@@ -2389,7 +2471,7 @@ function VSCodeTerminal({
               }}
             >
               <button
-                className="btn-reset"
+                className="btn-reset term-btn"
                 title="New Terminal"
                 aria-label="New Terminal"
                 onClick={async () => {
@@ -2398,43 +2480,43 @@ function VSCodeTerminal({
                 }}
                 style={{
                   color: "#c9d1d9",
-                  fontSize: "15px",
-                  lineHeight: 1,
-                  padding: "0 4px",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "4px",
                   fontFamily: "inherit",
                 }}
               >
-                +
+                <Icon.plus width="14" height="14" />
               </button>
               <button
-                className="btn-reset"
+                className="btn-reset term-btn"
                 title="Choose shell"
                 aria-label="Choose shell"
                 onClick={() => setMenuShell((v: boolean) => !v)}
                 style={{
                   color: "#8b949e",
-                  fontSize: "9px",
-                  lineHeight: 1,
-                  padding: "0 3px",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "4px 2px",
                   fontFamily: "inherit",
                 }}
               >
-                ▼
+                <Icon.chev width="11" height="11" />
               </button>
               <button
-                className="btn-reset"
+                className="btn-reset term-btn"
                 title="Split Terminal"
                 aria-label="Split Terminal"
                 onClick={() => pecahTerminal()}
                 style={{
                   color: "#c9d1d9",
-                  fontSize: "12px",
-                  lineHeight: 1,
-                  padding: "0 4px",
+                  display: "flex",
+                  alignItems: "center",
+                  padding: "4px",
                   fontFamily: "inherit",
                 }}
               >
-                ⫿
+                <Icon.split width="14" height="14" />
               </button>
               {menuShell && (
                 <div
@@ -2622,14 +2704,22 @@ function VSCodeTerminal({
           />
           {terminals.length > 0 && (
             <div
+              className={"term-resizer" + (geserDaftar ? " geser" : "")}
+              onMouseDown={mulaiGeserDaftar}
+              title="Resize"
+            />
+          )}
+          {terminals.length > 0 && (
+            <div
               style={{
-                width: "150px",
+                width: lebarDaftar + "px",
                 flexShrink: 0,
                 borderLeft: "1px solid var(--line, #1f2733)",
                 background: "var(--surface-1, #0f1318)",
                 display: "flex",
                 flexDirection: "column",
                 overflowY: "auto",
+                paddingTop: "4px",
               }}
             >
               {terminals.map((t: any) => {
@@ -2638,27 +2728,40 @@ function VSCodeTerminal({
                 return (
                   <div
                     key={t.key}
+                    className={"term-row" + (aktif ? " aktif" : "")}
                     onClick={() => pilihTerminal(t.key)}
+                    onContextMenu={(e: any) => {
+                      // Right-click carries the row's own actions, as VS Code
+                      // does. Without it, Split always makes a terminal from
+                      // the ACTIVE one, so acting on a row means selecting it
+                      // first -- two steps for one intent.
+                      e.preventDefault();
+                      setMenuBaris({ key: t.key, x: e.clientX, y: e.clientY });
+                    }}
                     title={t.shell}
                     style={{
                       display: "flex",
                       alignItems: "center",
                       gap: "6px",
                       height: "26px",
-                      padding: "0 6px 0 8px",
+                      padding: "0 6px 0 7px",
                       cursor: "pointer",
                       fontSize: "12px",
                       whiteSpace: "nowrap",
                       color: aktif ? "#ffffff" : "#8b949e",
                       background: aktif
-                        ? "rgba(255,255,255,0.06)"
+                        ? "rgba(255,255,255,0.07)"
                         : "transparent",
                       borderLeft: aktif
                         ? "2px solid var(--brand, #5eead4)"
                         : "2px solid transparent",
                     }}
                   >
-                    <span style={{ flexShrink: 0, opacity: 0.8 }}>❯</span>
+                    <Icon.terminal
+                      width="13"
+                      height="13"
+                      style={{ flexShrink: 0, opacity: aktif ? 0.95 : 0.65 }}
+                    />
                     <span
                       style={{
                         flex: 1,
@@ -2668,11 +2771,17 @@ function VSCodeTerminal({
                       }}
                     >
                       {t.nama}
-                      {terpecah ? " (split)" : ""}
                     </span>
+                    {terpecah && (
+                      <Icon.split
+                        width="11"
+                        height="11"
+                        style={{ flexShrink: 0, opacity: 0.55 }}
+                      />
+                    )}
                     <button
-                      className="btn-reset"
-                      title={"Close " + t.nama}
+                      className="btn-reset term-x"
+                      title={"Kill " + t.nama}
                       aria-label={"Close " + t.nama}
                       onClick={(e: any) => {
                         // Without this the click also selects the row that is
@@ -2682,18 +2791,70 @@ function VSCodeTerminal({
                       }}
                       style={{
                         flexShrink: 0,
-                        color: "#8b949e",
-                        fontSize: "13px",
-                        lineHeight: 1,
-                        padding: "0 2px",
+                        color: "inherit",
+                        display: "flex",
+                        alignItems: "center",
+                        padding: "2px",
                         fontFamily: "inherit",
                       }}
                     >
-                      ✕
+                      <Icon.close width="11" height="11" />
                     </button>
                   </div>
                 );
               })}
+            </div>
+          )}
+          {menuBaris && (
+            <div
+              onMouseLeave={() => setMenuBaris(null)}
+              style={{
+                position: "fixed",
+                left: menuBaris.x + "px",
+                top: menuBaris.y + "px",
+                zIndex: 3000,
+                minWidth: "140px",
+                background: "#161b22",
+                border: "1px solid #30363d",
+                borderRadius: "6px",
+                padding: "4px 0",
+                boxShadow: "0 12px 34px rgba(0,0,0,0.65)",
+              }}
+            >
+              {[
+                {
+                  label: "Split",
+                  jalan: () => {
+                    pilihTerminal(menuBaris.key);
+                    pecahTerminal();
+                  },
+                },
+                {
+                  label: "Kill",
+                  jalan: () => tutupTerminal(menuBaris.key),
+                  merah: true,
+                },
+              ].map((m: any) => (
+                <button
+                  key={m.label}
+                  className="btn-reset"
+                  onClick={() => {
+                    setMenuBaris(null);
+                    m.jalan();
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    color: m.merah ? "#f85149" : "#c9d1d9",
+                    fontFamily: "inherit",
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
             </div>
           )}
         </div>

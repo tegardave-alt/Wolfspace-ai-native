@@ -4796,3 +4796,57 @@ img.ar-fs-icon {
   opacity: 0.6;
   cursor: default;
 }
+
+/* ── Terminal session list ──
+   The list was rigid because nothing responded to the pointer: rows had one
+   flat colour, and the close button was always visible on every row, which
+   turns a list of four terminals into a wall of crosses. VS Code reveals the
+   cross on the row under the pointer and on the active row, and nowhere else.
+   Written in CSS rather than React state so hovering does not re-render the
+   list on every pointer move. */
+.term-row {
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.term-row:hover {
+  background: rgba(255, 255, 255, 0.06);
+  color: #e6edf3;
+}
+.term-row .term-x {
+  opacity: 0;
+  transition: opacity 0.12s ease;
+}
+.term-row:hover .term-x,
+.term-row.aktif .term-x {
+  opacity: 1;
+}
+.term-row .term-x:hover {
+  color: #f85149;
+}
+
+/* Header controls: a hover pill, so the buttons read as pressable rather than
+   as glyphs printed on the bar. */
+.term-btn {
+  border-radius: 5px;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.term-btn:hover {
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+}
+
+/* The divider between the panes and the session list, dragged to resize. */
+.term-resizer {
+  width: 4px;
+  flex-shrink: 0;
+  cursor: col-resize;
+  background: transparent;
+  transition: background 0.12s ease;
+}
+.term-resizer:hover,
+.term-resizer.geser {
+  background: var(--brand, #5eead4);
+}

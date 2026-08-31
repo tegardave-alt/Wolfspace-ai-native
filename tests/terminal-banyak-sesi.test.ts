@@ -40,10 +40,25 @@ describe("backend sudah mendukung banyak sesi", () => {
 });
 
 describe("beberapa terminal", () => {
-  test("instances are held in a map, not a single ref", () => {
-    expect(LAYAR).toMatch(
-      /instansRef = useRef<Map<string, any>>\(new Map\(\)\)/,
-    );
+  test("instances live at MODULE scope, so they outlive the panel", () => {
+    // A ref dies with the component. Closing the terminal panel unmounts it,
+    // and that used to kill every PTY and dispose every xterm -- reopening
+    // gave a blank shell with the history gone.
+    expect(LAYAR).toMatch(/const _terminalInstans = new Map<string, any>\(\)/);
+    expect(LAYAR).not.toMatch(/instansRef/);
+  });
+
+  test("closing the PANEL does not close the terminals", () => {
+    const m = LAYAR.match(/hidup = false;[\s\S]*?termRef\.current = null;/);
+    expect(m).toBeTruthy();
+    expect(m![0]).not.toMatch(/terminal\/close/);
+    expect(m![0]).not.toMatch(/dispose\(\)/);
+  });
+
+  test("reopening re-attaches the running terminals instead of respawning", () => {
+    // An xterm cannot be reopened into a different element without losing its
+    // screen, but its element can be appended somewhere else.
+    expect(LAYAR).toMatch(/hostRef\.current\.appendChild\(inst\.el\)/);
   });
 
   test("switching does NOT dispose the instance", () => {
@@ -83,7 +98,7 @@ describe("beberapa terminal", () => {
     const jumlah = (LAYAR.match(/setInterval\(/g) || []).length;
     expect(jumlah).toBe(1);
     expect(LAYAR).toMatch(
-      /for \(const inst of Array\.from\(instansRef\.current\.values\(\)\)\)/,
+      /for \(const inst of Array\.from\(_terminalInstans\.values\(\)\)\)/,
     );
   });
 
@@ -144,5 +159,56 @@ describe("kendali di UI", () => {
     const m = LAYAR.match(/const SHELL_PILIHAN = \[[\s\S]*?\n\];/);
     expect(m).toBeTruthy();
     expect(m![0]).not.toMatch(/existsSync|fetch|probe/i);
+  });
+});
+
+describe("UI tidak kaku", () => {
+  const CSS = baca("public/styles.css");
+
+  test("rows and controls use icons, not text glyphs", () => {
+    // The first pass drew the controls with bare characters. They render at
+    // whatever the font decides, ignore currentColor, and sit differently on
+    // every machine.
+    // Matched with \s rather than a literal space: prettier moves the first
+    // attribute onto its own line whenever the tag is long enough, so pinning
+    // a space here would make this test about formatting instead of icons.
+    expect(LAYAR).toMatch(/<Icon\.terminal\s/);
+    expect(LAYAR).toMatch(/<Icon\.plus\s/);
+    expect(LAYAR).toMatch(/<Icon\.split\s/);
+    expect(LAYAR).toMatch(/<Icon\.close\s/);
+  });
+
+  test("hover is CSS, not React state", () => {
+    // Tracking hover in state re-renders the whole list on every pointer move.
+    expect(CSS).toMatch(/\.term-row:hover/);
+    expect(CSS).toMatch(/\.term-btn:hover/);
+    expect(CSS).toMatch(/transition:/);
+  });
+
+  test("the close cross is revealed, not always on", () => {
+    // Always-visible crosses turn a list of four terminals into a wall of
+    // crosses. VS Code shows it on the hovered row and the active one.
+    expect(CSS).toMatch(/\.term-row \.term-x\s*\{[^}]*opacity:\s*0/);
+    expect(CSS).toMatch(
+      /\.term-row:hover \.term-x,?\s*\n?\.term-row\.aktif \.term-x/,
+    );
+  });
+
+  test("the list is resizable and the width is remembered", () => {
+    expect(CSS).toMatch(/\.term-resizer/);
+    expect(LAYAR).toMatch(/const mulaiGeserDaftar = \(e: any\)/);
+    expect(LAYAR).toMatch(/wolfspace_lebar_daftar_terminal/);
+  });
+
+  test("the drag persists the width it ENDED at", () => {
+    // The mouseup closure is created once at drag start, so reading state
+    // there would save the width the drag began with.
+    expect(LAYAR).toMatch(/lebarDaftarRef\.current = w;/);
+    expect(LAYAR).toMatch(/String\(lebarDaftarRef\.current\)/);
+  });
+
+  test("right-click carries the row's own actions", () => {
+    expect(LAYAR).toMatch(/onContextMenu=\{\(e: any\) => \{/);
+    expect(LAYAR).toMatch(/setMenuBaris\(\{ key: t\.key/);
   });
 });
