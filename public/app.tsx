@@ -785,6 +785,8 @@ function LogicCodePane({
   onFokus,
   onPecah,
   bisaPecah,
+  sudahPecah,
+  onTutupPecah,
   banyakGrup,
   gaya,
 }: any) {
@@ -1257,12 +1259,13 @@ function LogicCodePane({
         // rather than the window: a shortcut this generic must not fire while
         // the user is typing in the chat box on another page.
         e.preventDefault();
-        if (bisaPecah && onPecah) onPecah();
+        if (sudahPecah && onTutupPecah) onTutupPecah();
+        else if (bisaPecah && onPecah) onPecah();
       }
     };
     el.addEventListener("keydown", tekan);
     return () => el.removeEventListener("keydown", tekan);
-  }, [simpan, jalankan, bisaPecah, onPecah]);
+  }, [simpan, jalankan, bisaPecah, onPecah, sudahPecah, onTutupPecah]);
 
   return (
     <div
@@ -1384,16 +1387,26 @@ function LogicCodePane({
             </span>
           )}
         </div>
-        {/* Split. Hidden rather than disabled once the area is already split:
-            a permanently greyed-out control teaches nothing and occupies the
-            row for as long as the split lasts. */}
-        {bisaPecah && (
+        {/* Split, as a TOGGLE.
+        
+            It used to vanish once the area was split -- the reasoning being
+            that a greyed-out control teaches nothing. But the control was
+            never spent: the opposite action still existed and had nowhere to
+            live, so closing a split meant closing tabs one at a time until the
+            second half emptied itself. A button that reverses what it just did
+            is neither disabled nor decoration. */}
+        {(bisaPecah || sudahPecah) && (
           <button
             type="button"
-            className="tab-pecah"
-            title="Split editor (Ctrl+\)"
-            aria-label="Split editor"
-            onClick={() => onPecah && onPecah()}
+            className={"tab-pecah" + (sudahPecah ? " aktif" : "")}
+            title={
+              sudahPecah ? "Close split (Ctrl+\)" : "Split editor (Ctrl+\)"
+            }
+            aria-label={sudahPecah ? "Close split" : "Split editor"}
+            aria-pressed={sudahPecah ? true : undefined}
+            onClick={() =>
+              sudahPecah ? onTutupPecah && onTutupPecah() : onPecah && onPecah()
+            }
           >
             <svg
               width="14"
@@ -1765,6 +1778,7 @@ function LogicFileTree({
   folders,
   root,
   tanda,
+  onImpor,
   active,
   terpilih,
   onPilih,
@@ -1930,6 +1944,44 @@ function LogicFileTree({
   // submit handler: the placeholder, the icon and the error text all have to
   // agree with it, and deciding at submit time means the row lies until then.
   const [jenisBaru, setJenisBaru] = React.useState("berkas");
+  // Bringing something IN from anywhere on disk.
+  //
+  // Two entry points rather than one that guesses: the native dialog cannot
+  // offer files and folders in the same picker on Windows, so a single button
+  // would have to ask which -- a question the toolbar can answer with a second
+  // icon instead.
+  const [imporSibuk, setImporSibuk] = React.useState(false);
+  const imporDari = async (jenis: any) => {
+    if (!akarAda || imporSibuk) return;
+    const ipc = (window as any).WOLFSPACE;
+    if (!ipc || !ipc.invoke) return;
+    setImporSibuk(true);
+    try {
+      const r = await ipc.invoke(
+        jenis === "folder" ? "selectFolder" : "selectFiles",
+      );
+      const sumber =
+        jenis === "folder"
+          ? r && r.path
+            ? [r.path]
+            : []
+          : (r && r.paths) || [];
+      if (!sumber.length) return; // cancelled: not an error, say nothing
+      const res = await fetch("/ww/impor", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: String(root || ""), sources: sumber }),
+      });
+      const d = await res.json();
+      if (d && Array.isArray(d.added) && d.added.length && onImpor)
+        onImpor(d.added);
+      if (d && d.ok === false && d.error) setGalatBuat(d.error);
+    } catch (e: any) {
+      setGalatBuat(e && e.message ? e.message : String(e));
+    } finally {
+      setImporSibuk(false);
+    }
+  };
   const mulaiBuat = (jenis: any) => {
     setGalatBuat("");
     setJenisBaru(jenis === "folder" ? "folder" : "berkas");
@@ -2156,7 +2208,7 @@ function LogicFileTree({
               two buttons that do the same kind of thing should not look like
               two different kinds of control. */}
           <button
-            className="btn-reset"
+            className="btn-reset alat-btn"
             title={
               akarAda ? "New folder" : "No workspace yet — open a project first"
             }
@@ -2172,15 +2224,6 @@ function LogicFileTree({
               justifyContent: "center",
               cursor: akarAda ? "pointer" : "not-allowed",
               opacity: akarAda ? 1 : 0.4,
-            }}
-            onMouseEnter={(e: any) => {
-              if (!akarAda) return;
-              e.currentTarget.style.background = "#1b2431";
-              e.currentTarget.style.color = "#cdd9e5";
-            }}
-            onMouseLeave={(e: any) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "inherit";
             }}
           >
             {/* A folder with a + in the corner, drawn with the same strokes as
@@ -2202,7 +2245,7 @@ function LogicFileTree({
             </svg>
           </button>
           <button
-            className="btn-reset"
+            className="btn-reset alat-btn"
             title={
               akarAda ? "New file" : "No workspace yet — open a project first"
             }
@@ -2218,15 +2261,6 @@ function LogicFileTree({
               justifyContent: "center",
               cursor: akarAda ? "pointer" : "not-allowed",
               opacity: akarAda ? 1 : 0.4,
-            }}
-            onMouseEnter={(e: any) => {
-              if (!akarAda) return;
-              e.currentTarget.style.background = "#1b2431";
-              e.currentTarget.style.color = "#cdd9e5";
-            }}
-            onMouseLeave={(e: any) => {
-              e.currentTarget.style.background = "transparent";
-              e.currentTarget.style.color = "inherit";
             }}
           >
             {/* A document sheet with a + in the corner — the "new file" icon
@@ -2246,6 +2280,83 @@ function LogicFileTree({
               <polyline points="13.5 3 13.5 8 18.5 8" />
               <line x1="18" y1="14" x2="18" y2="21" />
               <line x1="14.5" y1="17.5" x2="21.5" y2="17.5" />
+            </svg>
+          </button>
+          {/* Import, one button per kind. Same 24x24 box and same stroke as
+              the two beside them: four controls that all act on the tree
+              should not look like four different kinds of control. */}
+          <button
+            className="btn-reset alat-btn"
+            title={
+              akarAda
+                ? "Import files…"
+                : "No workspace yet — open a project first"
+            }
+            disabled={!akarAda || imporSibuk}
+            onClick={() => imporDari("berkas")}
+            style={{
+              color: "inherit",
+              width: "24px",
+              height: "24px",
+              borderRadius: "5px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: akarAda ? "pointer" : "not-allowed",
+              opacity: akarAda ? (imporSibuk ? 0.5 : 1) : 0.4,
+            }}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M13.5 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" />
+              <polyline points="13.5 3 13.5 8 18.5 8" />
+              <line x1="18" y1="13" x2="18" y2="20" />
+              <polyline points="15 17.5 18 20.5 21 17.5" />
+            </svg>
+          </button>
+          <button
+            className="btn-reset alat-btn"
+            title={
+              akarAda
+                ? "Import a folder…"
+                : "No workspace yet — open a project first"
+            }
+            disabled={!akarAda || imporSibuk}
+            onClick={() => imporDari("folder")}
+            style={{
+              color: "inherit",
+              width: "24px",
+              height: "24px",
+              borderRadius: "5px",
+              display: "inline-flex",
+              alignItems: "center",
+              justifyContent: "center",
+              cursor: akarAda ? "pointer" : "not-allowed",
+              opacity: akarAda ? (imporSibuk ? 0.5 : 1) : 0.4,
+            }}
+          >
+            <svg
+              width="15"
+              height="15"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v3" />
+              <path d="M3 7v11a2 2 0 0 0 2 2h6" />
+              <line x1="18" y1="13" x2="18" y2="20" />
+              <polyline points="15 17.5 18 20.5 21 17.5" />
             </svg>
           </button>
         </div>
@@ -2943,6 +3054,25 @@ function App() {
       return gs.concat({ tabs: rel ? [rel] : [], aktif: rel });
     });
   }, [grupFokus]);
+
+  // Close the split, the counterpart of pecahGrup.
+  //
+  // The tabs of the group being removed are MOVED into the one that remains,
+  // not discarded. Closing a split is a layout change; losing half the open
+  // files to it would make the button dangerous to press, which is exactly why
+  // it used to be hidden instead of offered.
+  const tutupGrup = useCallback(() => {
+    setLogicGrup((gs: any[]) => {
+      if (gs.length < 2) return gs;
+      const tinggal = gs[0];
+      const pergi = gs[1];
+      const tabs = tinggal.tabs.concat(
+        (pergi.tabs || []).filter((t: any) => tinggal.tabs.indexOf(t) < 0),
+      );
+      setGrupFokus(0);
+      return [{ tabs, aktif: tinggal.aktif || pergi.aktif || "" }];
+    });
+  }, []);
 
   // Close a tab. `grup` undefined means EVERY group — that is the deletion
   // case: a file gone from disk must not survive as a tab anywhere, in either
@@ -4983,6 +5113,13 @@ function App() {
                         files={devFiles}
                         folders={devFolders}
                         tanda={tandaBerkas}
+                        onImpor={(rels: any[]) =>
+                          setDevFiles((prev: any) =>
+                            prev.concat(
+                              rels.filter((r: any) => prev.indexOf(r) < 0),
+                            ),
+                          )
+                        }
                         root={webProjectRoot(preview.url, selectedProject)}
                         active={!!preview.url}
                         terpilih={logicBerkas}
@@ -5060,6 +5197,8 @@ function App() {
                               fokus={i === grupFokus}
                               banyakGrup={logicGrup.length > 1}
                               bisaPecah={logicGrup.length < MAKS_GRUP}
+                              sudahPecah={logicGrup.length > 1}
+                              onTutupPecah={tutupGrup}
                               onFokus={() => setGrupFokus(i)}
                               onPecah={pecahGrup}
                               gaya={

@@ -4850,3 +4850,51 @@ img.ar-fs-icon {
 .term-resizer.geser {
   background: var(--brand, #5eead4);
 }
+
+/* ── Dropdown and context-menu items ──
+   These were flat: one colour, no reaction to the pointer, so the only way to
+   know which row a click would hit was to aim carefully. A menu that does not
+   light up under the pointer reads as a picture of a menu. Hover and the
+   keyboard-focus state share one rule so both feel the same. */
+.menu-item {
+  transition:
+    background 0.1s ease,
+    color 0.1s ease;
+}
+.menu-item:hover,
+.menu-item:focus-visible {
+  background: rgba(255, 255, 255, 0.09);
+  color: #ffffff;
+  outline: none;
+}
+.menu-item:active {
+  background: rgba(255, 255, 255, 0.14);
+}
+/* A destructive row stays red, and warms rather than turning white. */
+.menu-item.bahaya:hover,
+.menu-item.bahaya:focus-visible {
+  background: rgba(248, 81, 73, 0.14);
+  color: #ff7b72;
+}
+
+/* Toolbar icon buttons in the file tree: same hover pill as the terminal
+   controls, so the two toolbars do not behave differently. */
+.alat-btn {
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.alat-btn:not(:disabled):hover {
+  background: rgba(255, 255, 255, 0.1);
+  color: #e6edf3;
+}
+.alat-btn:not(:disabled):active {
+  background: rgba(255, 255, 255, 0.16);
+}
+
+/* The split control while a split is open: lit, so the button reads as a state
+   you can leave rather than an action you already took. */
+.tab-pecah.aktif {
+  color: var(--brand, #5eead4);
+  background: rgba(94, 234, 212, 0.12);
+}

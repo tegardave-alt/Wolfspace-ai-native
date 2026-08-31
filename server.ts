@@ -3530,6 +3530,114 @@ const server = http.createServer(async (req: any, res: any) => {
   //   3. Q_FORBID + Q_RAHASIA still apply — .git, node_modules, build, and secret
   //      files (.env/.pem/.key) are already hidden from the file tree, so they must
   //      not be writable from here either
+  // POST /ww/impor { root, sources: string[] } -> { ok, added: string[] }
+  //
+  // Bringing a file or a folder in from ANYWHERE on disk. The picker that
+  // produced `sources` is the native Electron dialog, so the user chose these
+  // paths themselves -- the guard here is not about the source but about where
+  // it lands: everything is written under `root` and nowhere else.
+  //
+  // Copying rather than linking: a workspace that depends on a file still
+  // sitting in Downloads breaks the moment that folder is tidied.
+  if (req.method === "POST" && req.url === "/ww/impor") {
+    let body = "";
+    req.on("data", (c: any) => (body += c));
+    req.on("end", () => {
+      const jawab = (kode: number, obj: any) => {
+        res.writeHead(kode, { "Content-Type": "application/json" });
+        res.end(JSON.stringify(obj));
+      };
+      let p: any;
+      try {
+        p = JSON.parse(body || "{}");
+      } catch (_) {
+        return jawab(400, { ok: false, error: "invalid json" });
+      }
+      const akar = path.resolve(String(p.root || ""));
+      const sumber: string[] = Array.isArray(p.sources) ? p.sources : [];
+      if (!p.root || !fs.existsSync(akar) || !fs.statSync(akar).isDirectory())
+        return jawab(400, { ok: false, error: "root is not a directory" });
+      if (!sumber.length)
+        return jawab(400, { ok: false, error: "no sources given" });
+
+      // Folders that are dependency trees, build output or history are skipped
+      // wholesale, and secret files never come in at all -- importing someone's
+      // node_modules or their .env is never the intent.
+      const LEWATI = new Set([
+        "node_modules",
+        ".git",
+        "dist",
+        "build",
+        "dist-app",
+        "__pycache__",
+        ".venv",
+        "venv",
+      ]);
+      const bolehSalin = (asal: string) => {
+        const nama = path.basename(asal);
+        if (LEWATI.has(nama)) return false;
+        if (Q_RAHASIA.test(nama)) return false;
+        return true;
+      };
+
+      // A name already taken gets a suffix rather than overwriting. Silently
+      // replacing a file someone is working on is not an import.
+      const namaBebas = (dir: string, nama: string) => {
+        let calon = path.join(dir, nama);
+        if (!fs.existsSync(calon)) return calon;
+        const ext = path.extname(nama);
+        const dasar = path.basename(nama, ext);
+        for (let i = 1; i < 500; i++) {
+          calon = path.join(dir, dasar + "-" + i + ext);
+          if (!fs.existsSync(calon)) return calon;
+        }
+        return path.join(dir, dasar + "-" + Date.now() + ext);
+      };
+
+      const ditambah: string[] = [];
+      const kumpulkan = (abs: string) => {
+        try {
+          if (fs.statSync(abs).isDirectory()) {
+            for (const e of fs.readdirSync(abs)) kumpulkan(path.join(abs, e));
+          } else {
+            const rel = path.relative(akar, abs).split("\\").join("/");
+            if (rel && !rel.startsWith("..")) ditambah.push(rel);
+          }
+        } catch (_) {}
+      };
+
+      try {
+        for (const s of sumber) {
+          const asal = path.resolve(String(s || ""));
+          if (!asal || !fs.existsSync(asal)) continue;
+          if (!bolehSalin(asal)) continue;
+          // basename() is what keeps the destination inside root: whatever the
+          // source path was, only its last segment is used here.
+          const tujuan = namaBebas(akar, path.basename(asal));
+          const kurung = _kurungDiAkar(akar, tujuan);
+          if (kurung.galat) continue;
+          if (fs.statSync(asal).isDirectory()) {
+            fs.cpSync(asal, tujuan, {
+              recursive: true,
+              filter: (src: string) => bolehSalin(src) || src === asal,
+            });
+          } else {
+            fs.copyFileSync(asal, tujuan);
+          }
+          kumpulkan(tujuan);
+        }
+      } catch (e: any) {
+        return jawab(200, {
+          ok: false,
+          added: ditambah,
+          error: e && e.message ? e.message : String(e),
+        });
+      }
+      return jawab(200, { ok: true, added: ditambah });
+    });
+    return;
+  }
+
   if (
     req.method === "POST" &&
     (req.url === "/ww/tulis-berkas" || req.url === "/ww/buat-berkas")

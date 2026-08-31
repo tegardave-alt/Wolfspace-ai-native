@@ -1029,6 +1029,21 @@ function registerIpc() {
           return { canceled: true };
         return { path: r.filePaths[0] };
       }
+      // Native FILE picker, for importing into the workspace. Separate channel
+      // rather than an option on selectFolder: the two return different shapes
+      // (one path against many) and every caller of selectFolder expects one.
+      if (channel === "selectFiles") {
+        const { dialog } = require("electron");
+        const win =
+          BrowserWindow.getFocusedWindow() || BrowserWindow.getAllWindows()[0];
+        const r = await dialog.showOpenDialog(win, {
+          properties: ["openFile", "multiSelections"],
+          title: "Import files into workspace",
+        });
+        if (r.canceled || !r.filePaths || !r.filePaths.length)
+          return { canceled: true };
+        return { paths: r.filePaths };
+      }
       // Hot-reload the backend WITHOUT restarting the app: drop every cached module
       // under the source root and re-require core. Lets edits to server.cjs/core.js
       // take effect live (front-end edits just need a renderer reload).

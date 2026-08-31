@@ -82,7 +82,10 @@ describe("grup editor", () => {
 
 describe("cara memecahnya", () => {
   test("tombol Split ada dan menyebut pintasannya", () => {
-    expect(APP).toMatch(/className="tab-pecah"/);
+    // The class is no longer a bare string: the button became a TOGGLE, and it
+    // carries an `aktif` modifier while a split is open. What this test is
+    // about — that the control exists and names its shortcut — is unchanged.
+    expect(APP).toMatch(/"tab-pecah"/);
     expect(APP).toMatch(/Split editor \(Ctrl\+/);
   });
 

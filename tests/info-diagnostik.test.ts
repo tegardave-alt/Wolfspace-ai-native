@@ -127,7 +127,15 @@ describe("INFO endpoint", () => {
     // there made the browser log a failed request on every launch -- caught by
     // tests/render-hidup.test.ts, which watches the console.
     expect(SERVER).toMatch(/note: "no workspace to scan"/);
-    expect(SERVER).not.toMatch(/error: "root is not a directory"/);
+    // Scoped to the INFO route. It used to read the whole file, which was
+    // fine until another endpoint had an honest reason to reject a bad root
+    // with that same message -- /ww/impor does, and the rule here was never
+    // about the phrase existing anywhere in server.ts.
+    const blok = SERVER.match(
+      /_path === "\/info\/diagnostics"[\s\S]*?\n    return;\n  \}/,
+    );
+    expect(blok).toBeTruthy();
+    expect(blok![0]).not.toMatch(/error: "root is not a directory"/);
   });
 
   test("python is scanned as well as typescript", () => {

@@ -2601,7 +2601,7 @@ function VSCodeTerminal({
                   {SHELL_PILIHAN.map((s) => (
                     <button
                       key={s.nilai}
-                      className="btn-reset"
+                      className="btn-reset menu-item"
                       onClick={async () => {
                         setMenuShell(false);
                         const k = await buatTerminal(s.nilai);
@@ -2982,7 +2982,7 @@ function VSCodeTerminal({
               ].map((m: any) => (
                 <button
                   key={m.label}
-                  className="btn-reset"
+                  className={"btn-reset menu-item" + (m.merah ? " bahaya" : "")}
                   onClick={() => {
                     setMenuBaris(null);
                     m.jalan();
