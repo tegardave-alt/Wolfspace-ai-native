@@ -76,6 +76,12 @@ describe("vendor cost meter", () => {
           "/vendor/xterm/xterm.js",
           "/vendor/xterm/addon-fit.js",
           "/vendor/xterm/addon-webgl.js",
+          // Search (Ctrl+F) and clickable URLs. Both are small -- 12 KB and
+          // 3 KB -- and both MUST stay above Monaco's AMD loader: they are UMD
+          // bundles that prefer AMD, so below it they would register as
+          // anonymous modules and set no global at all.
+          "/vendor/xterm/addon-search.js",
+          "/vendor/xterm/addon-web-links.js",
         ],
       },
       { tanda: "cytoscape", vendor: ["/vendor/cytoscape.min.js"] },

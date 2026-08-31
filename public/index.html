@@ -274,6 +274,14 @@
     <script src="/vendor/xterm/xterm.js"></script>
     <script src="/vendor/xterm/addon-fit.js"></script>
     <script src="/vendor/xterm/addon-webgl.js"></script>
+    <!-- Search (Ctrl+F) and clickable paths/URLs. Both are UMD bundles that
+         test define.amd BEFORE the global branch, exactly like the Babel bundle
+         that silently registered itself as an anonymous AMD module and left
+         `Babel` undefined. They are safe HERE and only here: Monaco's AMD
+         loader is loaded further down this file, so `define` does not exist
+         yet. Moving these below it would break them with no error. -->
+    <script src="/vendor/xterm/addon-search.js"></script>
+    <script src="/vendor/xterm/addon-web-links.js"></script>
     <script>
       __vt("xterm");
     </script>

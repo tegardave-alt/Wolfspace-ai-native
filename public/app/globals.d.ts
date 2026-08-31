@@ -182,6 +182,10 @@ interface Window {
   IPC?: any;
   Terminal?: any;
   FitAddon?: any;
+  // Loaded by <script> in index.html, BEFORE Monaco's AMD loader. Both are UMD
+  // bundles that prefer AMD, so they only reach the window from that position.
+  SearchAddon?: any;
+  WebLinksAddon?: any;
   fitAddon?: any;
   xterm?: any;
   showDirectoryPicker?: (opts?: any) => Promise<any>;

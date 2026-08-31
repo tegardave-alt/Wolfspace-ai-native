@@ -44,5 +44,23 @@ it.
 
 ## xterm.js and node-pty
 
-Used as ordinary dependencies through `package.json` (both MIT), not vendored
-by copying source. `public/vendor/xterm/` holds their published build output.
+Declared as dependencies in `package.json` (both MIT). `public/vendor/xterm/`
+holds published build output, loaded by `<script>` rather than bundled.
+
+### xterm addons — vendored build output, MIT
+
+These are **not** in `package.json`. Their published UMD builds are committed
+under `public/vendor/xterm/` and loaded by `<script>`, the same way the xterm
+core is:
+
+| file                 | package                 | version        |
+| -------------------- | ----------------------- | -------------- |
+| `addon-fit.js`       | `xterm-addon-fit`       | (pre-existing) |
+| `addon-webgl.js`     | `xterm-addon-webgl`     | (pre-existing) |
+| `addon-search.js`    | `xterm-addon-search`    | 0.13.0         |
+| `addon-web-links.js` | `xterm-addon-web-links` | 0.9.0          |
+
+The `0.13.0` / `0.9.0` line is the one whose peer range is `xterm ^5.0.0`,
+matching the xterm 5.3 in use. VS Code itself runs `@xterm/*` 6.x builds that
+are not published to npm at those versions, so its exact set cannot be
+installed even deliberately.

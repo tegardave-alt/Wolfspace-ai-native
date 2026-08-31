@@ -212,3 +212,77 @@ describe("UI tidak kaku", () => {
     expect(LAYAR).toMatch(/setMenuBaris\(\{ key: t\.key/);
   });
 });
+
+describe("cari dan link", () => {
+  const HTML = baca("public/index.html");
+  const NOTIS = baca("THIRD-PARTY-NOTICES.md");
+  const VENDOR = path.join(AKAR, "public", "vendor", "xterm");
+
+  test("both addon bundles are actually vendored", () => {
+    for (const f of ["addon-search.js", "addon-web-links.js"]) {
+      expect(fs.existsSync(path.join(VENDOR, f))).toBe(true);
+    }
+  });
+
+  test("they load BEFORE Monaco's AMD loader", () => {
+    // Both are UMD bundles that test define.amd before the global branch --
+    // the same shape that made Babel register as an anonymous AMD module and
+    // leave its global undefined. Below the loader they would silently do
+    // nothing at all.
+    const iSearch = HTML.indexOf("/vendor/xterm/addon-search.js");
+    const iLinks = HTML.indexOf("/vendor/xterm/addon-web-links.js");
+    const iLoader = HTML.indexOf("/vendor/monaco/vs/loader.js");
+    expect(iSearch).toBeGreaterThan(-1);
+    expect(iLinks).toBeGreaterThan(-1);
+    expect(iLoader).toBeGreaterThan(-1);
+    expect(iSearch).toBeLessThan(iLoader);
+    expect(iLinks).toBeLessThan(iLoader);
+  });
+
+  test("the vendored bundles really do prefer AMD", () => {
+    // If a future build drops the AMD branch, the ordering rule above stops
+    // being load-bearing and this test says so.
+    for (const f of ["addon-search.js", "addon-web-links.js"]) {
+      const isi = fs.readFileSync(path.join(VENDOR, f), "utf8").slice(0, 300);
+      expect(isi).toMatch(/define\.amd\?define/);
+    }
+  });
+
+  test("search belongs to the terminal being looked at", () => {
+    // One shared addon would search whichever terminal it was attached to.
+    expect(LAYAR).toMatch(/cari = new SearchCtor\(\)/);
+    expect(LAYAR).toMatch(/const inst: any = \{ key, term, fit, cari,/);
+    expect(LAYAR).toMatch(/const inst = _terminalInstans\.get\(aktifKey\)/);
+  });
+
+  test("Ctrl+F is caught on the window, not the container", () => {
+    // xterm owns the keyboard inside the terminal and never lets the event
+    // reach a parent, so a handler on the host would never fire while someone
+    // is actually typing in a shell.
+    const m = LAYAR.match(/const onKey = \(e: any\) => \{[\s\S]*?\n    \};/);
+    expect(m).toBeTruthy();
+    expect(m![0]).toMatch(/e\.key === "f" \|\| e\.key === "F"/);
+    expect(LAYAR).toMatch(/window\.addEventListener\("keydown", onKey\)/);
+  });
+
+  test("typing searches the value in hand, not stale state", () => {
+    // setCariTeks has not committed when the handler runs, so reading state
+    // there would always search the previous keystroke.
+    expect(LAYAR).toMatch(/cariJalan\(1, v\)/);
+  });
+
+  test("a link opens the system browser, not the renderer", () => {
+    // Following it in place would navigate the app away from itself.
+    // window.open is already routed by setWindowOpenHandler in main.ts.
+    const m = LAYAR.match(/new WebLinksCtor\([\s\S]*?\),\n      \);/);
+    expect(m).toBeTruthy();
+    expect(m![0]).toMatch(/window\.open\(url, "_blank"\)/);
+  });
+
+  test("the vendored addons are recorded with their versions", () => {
+    expect(NOTIS).toMatch(/xterm-addon-search/);
+    expect(NOTIS).toMatch(/0\.13\.0/);
+    expect(NOTIS).toMatch(/xterm-addon-web-links/);
+    expect(NOTIS).toMatch(/0\.9\.0/);
+  });
+});

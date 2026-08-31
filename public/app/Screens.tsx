@@ -1699,6 +1699,20 @@ function VSCodeTerminal({
   const [aktifKey, setAktifKey] = useState(_terminalAktif);
   const [pecahKey, setPecahKey] = useState(_terminalPecah);
   const [menuBaris, setMenuBaris] = useState<any>(null);
+  const [cariBuka, setCariBuka] = useState(false);
+  const [cariTeks, setCariTeks] = useState("");
+  const cariInputRef = useRef<any>(null);
+  // Each terminal searches ITS OWN buffer, so the addon is read off the active
+  // instance rather than held once for the panel.
+  const cariJalan = (arah: number, teks?: string) => {
+    const inst = _terminalInstans.get(aktifKey);
+    const q = teks === undefined ? cariTeks : teks;
+    if (!inst || !inst.cari || !q) return;
+    try {
+      if (arah < 0) inst.cari.findPrevious(q);
+      else inst.cari.findNext(q);
+    } catch (_) {}
+  };
   const [geserDaftar, setGeserDaftar] = useState(false);
   // The width is mirrored in a ref because the mouseup closure is created once
   // at drag start: reading the state there would persist the width the drag
@@ -2072,9 +2086,34 @@ function VSCodeTerminal({
       fit = new FitAddonCtor();
       term.loadAddon(fit);
     }
+
+    // Search (Ctrl+F). Held on the instance, because each terminal searches its
+    // own buffer -- a single shared addon would search whichever terminal it
+    // was attached to, not the one being looked at.
+    let cari: any = null;
+    const SearchCtor = window.SearchAddon?.SearchAddon;
+    if (SearchCtor) {
+      cari = new SearchCtor();
+      term.loadAddon(cari);
+    }
+
+    // Clickable URLs. window.open is already routed to the system browser by
+    // setWindowOpenHandler in electron/main.ts, so a link must NOT be followed
+    // in the renderer -- that would navigate the app away from itself.
+    const WebLinksCtor = window.WebLinksAddon?.WebLinksAddon;
+    if (WebLinksCtor) {
+      term.loadAddon(
+        new WebLinksCtor((_e: any, url: string) => {
+          try {
+            window.open(url, "_blank");
+          } catch (_) {}
+        }),
+      );
+    }
+
     term.open(el);
 
-    const inst: any = { key, term, fit, el, sessionId: null, shell: "" };
+    const inst: any = { key, term, fit, cari, el, sessionId: null, shell: "" };
     _terminalInstans.set(key, inst);
 
     // Input and resize are bound to THIS instance's session, read off `inst`
@@ -2204,6 +2243,27 @@ function VSCodeTerminal({
   // A read interval per terminal would multiply a 75 ms poll by however many
   // are open; the loop below walks the instance map instead, so the cost of a
   // second terminal is one more request per tick rather than a second timer.
+  // Ctrl+F is caught on the WINDOW, not on the host element: xterm owns the
+  // keyboard inside the terminal and never lets the event reach a parent, so a
+  // handler on the container would never fire while anyone is actually typing
+  // in a shell.
+  useEffect(() => {
+    const onKey = (e: any) => {
+      if (activeTab !== "TERMINAL") return;
+      if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
+        e.preventDefault();
+        setCariBuka(true);
+        setTimeout(() => cariInputRef.current?.focus(), 0);
+      } else if (e.key === "Escape" && cariBuka) {
+        setCariBuka(false);
+        _terminalInstans.get(aktifKey)?.cari?.clearDecorations?.();
+        _terminalInstans.get(aktifKey)?.term?.focus();
+      }
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [activeTab, cariBuka, aktifKey]);
+
   useEffect(() => {
     if (!hostRef.current || !window.Terminal) return;
     let hidup = true;
@@ -2702,6 +2762,91 @@ function VSCodeTerminal({
               position: "relative",
             }}
           />
+          {cariBuka && (
+            <div
+              style={{
+                position: "absolute",
+                top: "8px",
+                right: "16px",
+                zIndex: 40,
+                display: "flex",
+                alignItems: "center",
+                gap: "4px",
+                padding: "4px 6px",
+                background: "#161b22",
+                border: "1px solid #30363d",
+                borderRadius: "6px",
+                boxShadow: "0 8px 24px rgba(0,0,0,0.55)",
+              }}
+            >
+              <input
+                ref={cariInputRef}
+                value={cariTeks}
+                placeholder="Find"
+                onChange={(e: any) => {
+                  const v = e.target.value;
+                  setCariTeks(v);
+                  // Searching as it is typed, from the value in HAND rather
+                  // than from state: setCariTeks has not committed yet when
+                  // this runs, so reading state here would always search the
+                  // previous keystroke.
+                  cariJalan(1, v);
+                }}
+                onKeyDown={(e: any) => {
+                  if (e.key === "Enter") {
+                    e.preventDefault();
+                    cariJalan(e.shiftKey ? -1 : 1);
+                  }
+                }}
+                style={{
+                  width: "150px",
+                  background: "#0d1117",
+                  border: "1px solid #30363d",
+                  borderRadius: "4px",
+                  color: "#c9d1d9",
+                  fontSize: "12px",
+                  padding: "3px 6px",
+                  outline: "none",
+                  fontFamily: "inherit",
+                }}
+              />
+              <button
+                className="btn-reset term-btn"
+                title="Previous (Shift+Enter)"
+                aria-label="Find previous"
+                onClick={() => cariJalan(-1)}
+                style={{ color: "#c9d1d9", padding: "3px", display: "flex" }}
+              >
+                <Icon.chev
+                  width="12"
+                  height="12"
+                  style={{ transform: "rotate(180deg)" }}
+                />
+              </button>
+              <button
+                className="btn-reset term-btn"
+                title="Next (Enter)"
+                aria-label="Find next"
+                onClick={() => cariJalan(1)}
+                style={{ color: "#c9d1d9", padding: "3px", display: "flex" }}
+              >
+                <Icon.chev width="12" height="12" />
+              </button>
+              <button
+                className="btn-reset term-btn"
+                title="Close (Esc)"
+                aria-label="Close find"
+                onClick={() => {
+                  setCariBuka(false);
+                  _terminalInstans.get(aktifKey)?.cari?.clearDecorations?.();
+                  _terminalInstans.get(aktifKey)?.term?.focus();
+                }}
+                style={{ color: "#8b949e", padding: "3px", display: "flex" }}
+              >
+                <Icon.close width="12" height="12" />
+              </button>
+            </div>
+          )}
           {terminals.length > 0 && (
             <div
               className={"term-resizer" + (geserDaftar ? " geser" : "")}
