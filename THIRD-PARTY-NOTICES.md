@@ -15,9 +15,20 @@ someone's memory.
   at commit `db46a82c4f4a77c4853867dcdba5057229b5d099`
 - Used in: `public/app/TemaTerminalVSCode.ts`
 
-Only the colour VALUES were taken. None of the surrounding implementation is
-included: VS Code's terminal is 179 files whose first hop alone reaches 232
-modules outside itself, and it is not separable from the workbench.
+## Visual Studio Code — terminal source, vendored for reference
+
+- Project: https://github.com/microsoft/vscode
+- Licence: MIT (`vendor/vscode-terminal/LICENSE.txt`, copied with the source)
+- Copyright (c) 2015 - present Microsoft Corporation
+- Taken: `src/vs/workbench/contrib/terminal/` and `src/vs/platform/terminal/`
+  in full, unmodified, at commit `db46a82c4f4a77c4853867dcdba5057229b5d099`
+  — 179 files, 51,361 lines
+- Kept in: `vendor/vscode-terminal/`
+
+This copy is reference material, not code on the build path. Nothing imports
+it, it sits outside every typecheck and lint scan, and `build.files` does not
+list `vendor/`, so it does not reach the installer. See
+`vendor/vscode-terminal/README.md` for why it cannot simply be compiled.
 
 Note that the MIT licence covers the **source repository** above. The
 Microsoft-branded Visual Studio Code product that ships as an installer is

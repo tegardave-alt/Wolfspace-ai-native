@@ -154,7 +154,8 @@
     "testPathIgnorePatterns": [
       "/node_modules/",
       "<rootDir>/_agent_backups/",
-      "<rootDir>/.wolfspace/"
+      "<rootDir>/.wolfspace/",
+      "<rootDir>/vendor/"
     ],
     "setupFiles": [
       "<rootDir>/tests/setup-jest.cjs"
