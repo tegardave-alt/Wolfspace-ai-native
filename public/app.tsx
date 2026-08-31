@@ -1136,6 +1136,15 @@ function LogicCodePane({
       _kotorBerkas.set(target, false);
       if (onKotorBerubah) onKotorBerubah(target, false);
       setSaveState("saved");
+      // INFO reads DISK. A save is exactly the moment its numbers go stale, and
+      // nothing else tells it -- the panel is in another component entirely.
+      try {
+        window.dispatchEvent(
+          new CustomEvent("wolfspace_berkas_tersimpan", {
+            detail: { rel: target },
+          }),
+        );
+      } catch (_) {}
       return true;
     } catch (e) {
       // The dirty marker is DELIBERATELY not cleared on failure: the user must
@@ -2795,6 +2804,34 @@ function App() {
   useEffect(() => {
     pindaiDiagnostik();
   }, [akarDiag]);
+
+  // A scan reads DISK, so what makes its numbers stale is a WRITE: a save from
+  // the editor, or the agent writing a file. Tying it to the workspace alone
+  // meant breaking a file on purpose produced nothing at all until reload.
+  //
+  // DEBOUNCED, because the agent writes in bursts and one compiler run per
+  // written file is how this panel would become the reason the app stutters.
+  useEffect(() => {
+    let jam: any = null;
+    const jadwalkan = () => {
+      if (jam) clearTimeout(jam);
+      jam = setTimeout(() => pindaiDiagnostik(), 1200);
+    };
+    const onSimpan = () => jadwalkan();
+    const onAgent = (e: any) => {
+      const det = (e && e.detail) || {};
+      if (!/write|edit|create|apply|save/i.test(String(det.kind || ""))) return;
+      if (det.ok === false) return;
+      jadwalkan();
+    };
+    window.addEventListener("wolfspace_berkas_tersimpan", onSimpan);
+    window.addEventListener("wolfspace_agent_act", onAgent);
+    return () => {
+      if (jam) clearTimeout(jam);
+      window.removeEventListener("wolfspace_berkas_tersimpan", onSimpan);
+      window.removeEventListener("wolfspace_agent_act", onAgent);
+    };
+  }, [pindaiDiagnostik]);
 
   // rel -> counts. Built once per result rather than per row: the tree can be
   // hundreds of rows, and filtering the whole list inside each of them turns

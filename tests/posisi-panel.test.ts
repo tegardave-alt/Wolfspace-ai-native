@@ -688,7 +688,16 @@ describe("Run menjalankan berkas di terminal", () => {
     expect(bersihA).toMatch(/const ok = await simpan\(\)/);
     expect(bersihA).toMatch(/if \(!ok\) return/);
     // simpan() harus benar-benar melaporkan hasilnya, bukan void.
-    expect(bersihA).toMatch(/setSaveState\("saved"\);\s*\n\s*return true/);
+    //
+    // TIDAK LAGI dipatok berdampingan: simpan yang berhasil kini juga
+    // mengumumkan dirinya lewat event supaya INFO memindai ulang, dan
+    // pengumuman itu duduk di antara keduanya. Yang diuji tetap sama —
+    // jalur sukses berakhir dengan `return true` — hanya dalam jendela
+    // terbatas, bukan baris yang menempel.
+    expect(bersihA).toMatch(/setSaveState\("saved"\);/);
+    expect(bersihA).toMatch(
+      /setSaveState\("saved"\);[\s\S]{0,400}?\n      return true;/,
+    );
     expect(bersihA).toMatch(/return false/);
   });
 

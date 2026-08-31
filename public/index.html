@@ -245,7 +245,29 @@
         return window.__muatVendor("three3d", "/vendor/three3d.bundle.js");
       };
       window.__muatBabel = function () {
-        return window.__muatVendor("babel", "/vendor/babel.min.js");
+        // Monaco memuat loader AMD, jadi `define.amd` ADA. Bundel Babel yang
+        // di-vendor berbentuk UMD dan menguji AMD SEBELUM cabang global, jadi
+        // ia mendaftar sebagai modul anonim yang tak pernah di-require siapa
+        // pun: skripnya termuat, onload menyala, dan `Babel` tak pernah ada.
+        //
+        // Gejalanya menyesatkan — "VENDOR-LAZY babel 52ms" yang bersih, lalu
+        // "ReferenceError: Babel is not defined". Terukur di jendela sungguhan:
+        // dengan `define` disembunyikan window.Babel = 7.29.0; dengan `define`
+        // terlihat, undefined.
+        var d = window.define;
+        var pulihkan = function () {
+          if (d) window.define = d;
+        };
+        if (d) window.define = undefined;
+        // Dipulihkan lewat DUA jalur: `sesudah` hanya jalan saat sukses, dan
+        // pemuatan gagal tak boleh meninggalkan loader Monaco tersembunyi
+        // untuk sisa sesi.
+        return window
+          .__muatVendor("babel", "/vendor/babel.min.js", pulihkan)
+          .catch(function (e) {
+            pulihkan();
+            throw e;
+          });
       };
     </script>
     <!-- xterm.js — fullscreen terminal for Agent Runner -->
@@ -604,6 +626,13 @@
                 link.href = link.href.split("?")[0] + "?v=" + Date.now();
               }
             });
+          } else if (filename.endsWith("app.build.js")) {
+            // Berkas INI adalah renderer yang sudah dibangun. Mengkompilasinya
+            // ulang dari sumber justru terbalik: jalur prebuilt tak butuh Babel
+            // sama sekali. Sebelum cabang ini ada, tiap `npm run build:app`
+            // selagi aplikasi hidup melempar aplikasinya ke jalur Babel.
+            console.log("[hmr] renderer prebuilt dibangun ulang:", filename);
+            window.loadApp();
           } else if (filename.endsWith(".jsx") || filename.endsWith(".js")) {
             console.log(
               "[hmr] Re-injecting React components (Soft Refresh):",

@@ -226,6 +226,30 @@ describe("file tree marks", () => {
     expect(APP).toMatch(/const tk = tandaBaris\(tanda, n\.rel\)/);
   });
 
+  test("a write re-scans; the workspace alone is not enough", () => {
+    // Tying the scan to the workspace meant breaking a file on purpose
+    // produced nothing at all until reload -- which is exactly how the panel
+    // was first reported as dead.
+    expect(APP).toMatch(/wolfspace_berkas_tersimpan/);
+    expect(APP).toMatch(
+      /window\.addEventListener\("wolfspace_agent_act", onAgent\)/,
+    );
+  });
+
+  test("a burst of writes collapses into one scan", () => {
+    // The agent writes in bursts; one compiler run per file is how this panel
+    // would become the reason the app stutters.
+    const m = APP.match(/const jadwalkan = \(\) => \{[\s\S]*?\};/);
+    expect(m).toBeTruthy();
+    expect(m[0]).toMatch(/clearTimeout\(jam\)/);
+    expect(m[0]).toMatch(/setTimeout\(\(\) => pindaiDiagnostik\(\), \d+\)/);
+  });
+
+  test("the editor announces its saves", () => {
+    // INFO lives in another component entirely; nothing else would tell it.
+    expect(APP).toMatch(/new CustomEvent\("wolfspace_berkas_tersimpan"/);
+  });
+
   test("marks come from the compilers, not from Monaco", () => {
     // Monaco has markers only for models it has open, which would leave every
     // unopened file looking clean however broken it is.
