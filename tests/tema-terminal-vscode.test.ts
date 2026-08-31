@@ -90,10 +90,23 @@ describe("terminal memakainya", () => {
 
   test("no stray inline palette is left behind", () => {
     // Two sources of truth for a colour table is how one of them goes stale.
-    const m = LAYAR.match(/new window\.Terminal\(\{[\s\S]*?\n    \}\);/);
+    //
+    // The options moved into a shared factory when the terminal became several
+    // terminals -- so that a second one cannot drift from the first by being
+    // constructed somewhere else. That factory is now the place to check.
+    const m = LAYAR.match(/const opsiTerminal = \(\) => \(\{[\s\S]*?\n  \}\);/);
     expect(m).toBeTruthy();
+    expect(m![0]).toMatch(/theme: TEMA_TERMINAL_VSCODE/);
     expect(m![0]).not.toMatch(/foreground:\s*"#/);
     expect(m![0]).not.toMatch(/background:\s*"#/);
+  });
+
+  test("every terminal is built from that one factory", () => {
+    // A second `new window.Terminal({...})` with its own literal options is
+    // exactly the drift the factory exists to prevent.
+    const panggilan = LAYAR.match(/new window\.Terminal\(/g) || [];
+    expect(panggilan).toHaveLength(1);
+    expect(LAYAR).toMatch(/new window\.Terminal\(opsiTerminal\(\)\)/);
   });
 
   test("the xterm 5 key is used, not the removed one", () => {

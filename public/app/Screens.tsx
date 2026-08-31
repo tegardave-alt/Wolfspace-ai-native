@@ -1600,6 +1600,21 @@ function ProjectPickerScreen({
 }
 
 /* ----------------------------- VS Code Style Terminal ----------------------------- */
+// Shells offered by the "+" dropdown.
+//
+// NOT probed for availability first. /api/terminal/open already takes a shell
+// and already reports what it could not spawn, and that error arrives inside
+// the new terminal where it is readable. Filtering the list here would mean
+// this component keeping a picture of the machine in step with the machine,
+// which is a second source of truth for no gain.
+const SHELL_PILIHAN = [
+  { nama: "PowerShell", nilai: "powershell.exe" },
+  { nama: "pwsh", nilai: "pwsh.exe" },
+  { nama: "Command Prompt", nilai: "cmd.exe" },
+  { nama: "Git Bash", nilai: "bash.exe" },
+  { nama: "WSL", nilai: "wsl.exe" },
+];
+
 // -- INFO severity tiers --
 //
 // Ordered worst-first, which is the order the rail stacks them in: an error is
@@ -1639,10 +1654,25 @@ function VSCodeTerminal({
   dapKeadaan,
   onAksiDap,
 }: any) {
-  const containerRef = useRef<any>(null);
+  // termRef / fitRef / sessionIdRef POINT AT THE ACTIVE TERMINAL.
+  //
+  // They were the only terminal. Keeping them as pointers instead of replacing
+  // them is what made multiple terminals a contained change: the queued-command
+  // path, the debug prompt watcher, restartSession and the Run button all read
+  // these and none of them had to learn that a list now exists.
   const termRef = useRef<any>(null);
   const fitRef = useRef<any>(null);
   const sessionIdRef = useRef<any>(null);
+  // key -> { term, fit, el, sessionId }. The xterm instance and its DOM node
+  // are kept ALIVE while another terminal is shown; disposing on switch would
+  // throw away the scrollback, which is most of what a terminal is for.
+  const instansRef = useRef<Map<string, any>>(new Map());
+  const hostRef = useRef<any>(null);
+  const urutRef = useRef(0);
+  const [terminals, setTerminals] = useState<any[]>([]);
+  const [aktifKey, setAktifKey] = useState("");
+  const [pecahKey, setPecahKey] = useState("");
+  const [menuShell, setMenuShell] = useState(false);
   // ── Commands that arrive before the PTY is ready ──
   //
   // Pressing Run while the terminal is closed opens the terminal AND sends the
@@ -1825,6 +1855,15 @@ function VSCodeTerminal({
   }, [perintah]);
 
   const restartSession = async () => {
+    // Restart replaces the session UNDER THE ACTIVE TERMINAL, so the instance
+    // has to learn the new id too. Setting only sessionIdRef would leave the
+    // poll loop reading, and onData writing to, a session that was just
+    // closed -- the terminal would look alive and do nothing.
+    const instAktif = instansRef.current.get(aktifKey);
+    const pasangSesi = (id: any) => {
+      sessionIdRef.current = id;
+      if (instAktif) instAktif.sessionId = id;
+    };
     if (sessionIdRef.current) {
       try {
         await fetch("/api/terminal/close", {
@@ -1833,7 +1872,7 @@ function VSCodeTerminal({
           body: JSON.stringify({ id: sessionIdRef.current }),
         });
       } catch (_) {}
-      sessionIdRef.current = null;
+      pasangSesi(null);
     }
     if (termRef.current) {
       termRef.current.clear();
@@ -1852,7 +1891,7 @@ function VSCodeTerminal({
       });
       if (res.ok) {
         const data = await res.json();
-        sessionIdRef.current = data.id;
+        pasangSesi(data.id);
         setStatusText(
           `Shell: ${data.shell || "powershell"} (${targetCwd || "default"})`,
         );
@@ -1882,32 +1921,79 @@ function VSCodeTerminal({
     }
   };
 
-  useEffect(() => {
-    if (!containerRef.current || !window.Terminal) return;
-    const term = new window.Terminal({
-      cols: 100,
-      rows: 25,
-      scrollback: 5000,
-      fontFamily: '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
-      fontSize: 13,
-      cursorStyle: "block",
-      cursorBlink: true,
-      // The full VS Code palette, not five colours.
-      //
-      // This used to carry a background, a foreground, a cursor pair and a
-      // selection. Everything a program prints IN COLOUR -- ls, git diff, a
-      // stack trace, any compiler -- fell through to xterm's own defaults, so
-      // the output never looked like VS Code however closely the chrome around
-      // it was matched. See public/app/TemaTerminalVSCode.ts for the source and
-      // its licence.
-      //
-      // `selection` was also the WRONG KEY for xterm 5: it renamed the option
-      // to `selectionBackground`, so the old value was silently ignored and the
-      // selection fell back to a default too.
-      theme: TEMA_TERMINAL_VSCODE,
-      allowProposedApi: true,
-    });
+  // Options are shared by every terminal, so a second one cannot drift from
+  // the first by being constructed somewhere else.
+  const opsiTerminal = () => ({
+    cols: 100,
+    rows: 25,
+    scrollback: 5000,
+    fontFamily: '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
+    fontSize: 13,
+    cursorStyle: "block" as any,
+    cursorBlink: true,
+    // The full VS Code palette. Before this the terminal handed xterm five
+    // colours, so everything a program printed IN COLOUR fell through to
+    // xterm's defaults. See public/app/TemaTerminalVSCode.ts for the source
+    // and its licence.
+    theme: TEMA_TERMINAL_VSCODE,
+    allowProposedApi: true,
+  });
 
+  // The label beside each row, as VS Code names them: the shell, not the path.
+  const namaShell = (shell: any) => {
+    const b = String(shell || "")
+      .split(/[\\/]/)
+      .pop();
+    return String(b || "shell").replace(/\.exe$/i, "");
+  };
+
+  const pasangAktif = (key: string) => {
+    const inst = instansRef.current.get(key);
+    if (!inst) return;
+    termRef.current = inst.term;
+    fitRef.current = inst.fit;
+    sessionIdRef.current = inst.sessionId;
+  };
+
+  // Only the active terminal is shown -- and the split partner beside it. The
+  // others stay MOUNTED but hidden, which is what preserves their scrollback.
+  const susunTampilan = (aktif: string, pecah: string) => {
+    for (const [k, inst] of instansRef.current) {
+      const tampil = k === aktif || (pecah && k === pecah);
+      inst.el.style.display = tampil ? "block" : "none";
+      if (!tampil) continue;
+      if (pecah && k === aktif) {
+        inst.el.style.left = "0";
+        inst.el.style.width = "50%";
+      } else if (pecah && k === pecah) {
+        inst.el.style.left = "50%";
+        inst.el.style.width = "50%";
+      } else {
+        inst.el.style.left = "0";
+        inst.el.style.width = "100%";
+      }
+      try {
+        inst.fit?.fit();
+      } catch (_) {}
+    }
+  };
+
+  const buatTerminal = async (shellPilihan?: any) => {
+    const host = hostRef.current;
+    if (!host || !window.Terminal) return null;
+    urutRef.current += 1;
+    const key = "t" + urutRef.current;
+
+    const el = document.createElement("div");
+    el.style.position = "absolute";
+    el.style.top = "0";
+    el.style.bottom = "0";
+    el.style.left = "0";
+    el.style.width = "100%";
+    el.style.display = "none";
+    host.appendChild(el);
+
+    const term = new window.Terminal(opsiTerminal());
     const FitAddonCtor =
       window.FitAddon?.FitAddon ||
       window.FitAddon ||
@@ -1918,85 +2004,203 @@ function VSCodeTerminal({
       fit = new FitAddonCtor();
       term.loadAddon(fit);
     }
+    term.open(el);
 
-    term.open(containerRef.current);
-    if (fit) {
-      try {
-        fit.fit();
-      } catch (_) {}
-    }
-    termRef.current = term;
-    fitRef.current = fit;
-    term.focus();
+    const inst: any = { key, term, fit, el, sessionId: null, shell: "" };
+    instansRef.current.set(key, inst);
 
+    // Input and resize are bound to THIS instance's session, read off `inst`
+    // rather than the active pointer. Reading the pointer would send what
+    // someone types into the visible terminal to whichever session happens to
+    // be active by the time the callback runs.
     term.onData((data: any) => {
-      if (!sessionIdRef.current) return;
+      if (!inst.sessionId) return;
       fetch("/api/terminal/write", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: sessionIdRef.current, data }),
+        body: JSON.stringify({ id: inst.sessionId, data }),
       }).catch(() => {});
     });
-
     term.onResize(({ cols, rows }: any) => {
-      if (!sessionIdRef.current) return;
+      if (!inst.sessionId) return;
       fetch("/api/terminal/resize", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ id: sessionIdRef.current, cols, rows }),
+        body: JSON.stringify({ id: inst.sessionId, cols, rows }),
       }).catch(() => {});
     });
+
+    const targetCwd = akarProyek(selectedProject);
+    try {
+      const res = await fetch("/api/terminal/open", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ cwd: targetCwd, shell: shellPilihan }),
+      });
+      if (!res.ok) throw new Error("HTTP " + res.status);
+      const data = await res.json();
+      inst.sessionId = data.id;
+      inst.shell = data.shell || shellPilihan || "shell";
+      setTerminals((prev: any[]) =>
+        prev.concat([{ key, shell: inst.shell, nama: namaShell(inst.shell) }]),
+      );
+      setStatusText(
+        "Shell: " +
+          namaShell(inst.shell) +
+          " (" +
+          (targetCwd || "default") +
+          ")",
+      );
+      // A command queued while the PTY was still opening is released now
+      // rather than discarded -- the button looked like it worked otherwise.
+      if (tertundaRef.current) {
+        const antre = tertundaRef.current;
+        tertundaRef.current = null;
+        fetch("/api/terminal/write", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: inst.sessionId, data: antre }),
+        }).catch(() => {});
+      }
+    } catch (e: any) {
+      term.write(
+        "\r\n\x1b[31m[Error] Cannot connect to /api/terminal/open (" +
+          (e && e.message ? e.message : String(e)) +
+          "). Ensure server is running.\x1b[0m\r\n",
+      );
+    }
+    return key;
+  };
+
+  const pilihTerminal = (key: string) => {
+    setAktifKey(key);
+    pasangAktif(key);
+    setTimeout(() => {
+      susunTampilan(key, pecahKey === key ? "" : pecahKey);
+      instansRef.current.get(key)?.term?.focus();
+    }, 0);
+  };
+
+  const tutupTerminal = async (key: string) => {
+    const inst = instansRef.current.get(key);
+    if (!inst) return;
+    instansRef.current.delete(key);
+    if (inst.sessionId) {
+      fetch("/api/terminal/close", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: inst.sessionId }),
+      }).catch(() => {});
+    }
+    try {
+      inst.term.dispose();
+    } catch (_) {}
+    try {
+      inst.el.remove();
+    } catch (_) {}
+    const sisa = Array.from(instansRef.current.keys());
+    setTerminals((prev: any[]) => prev.filter((t) => t.key !== key));
+    if (pecahKey === key) setPecahKey("");
+    if (aktifKey === key) {
+      // Closing the last one leaves NO terminal rather than a dead pane: a
+      // pane with no session accepts typing that goes nowhere.
+      const berikut = sisa[sisa.length - 1] || "";
+      setAktifKey(berikut);
+      if (berikut) pasangAktif(berikut);
+      else {
+        termRef.current = null;
+        fitRef.current = null;
+        sessionIdRef.current = null;
+      }
+      setTimeout(() => susunTampilan(berikut, ""), 0);
+    } else {
+      setTimeout(
+        () => susunTampilan(aktifKey, pecahKey === key ? "" : pecahKey),
+        0,
+      );
+    }
+  };
+
+  const pecahTerminal = async () => {
+    const key = await buatTerminal();
+    if (!key) return;
+    setPecahKey(key);
+    setTimeout(() => susunTampilan(aktifKey, key), 0);
+  };
+
+  // ONE terminal is created on mount, and one poll loop serves them all.
+  //
+  // A read interval per terminal would multiply a 75 ms poll by however many
+  // are open; the loop below walks the instance map instead, so the cost of a
+  // second terminal is one more request per tick rather than a second timer.
+  useEffect(() => {
+    if (!hostRef.current || !window.Terminal) return;
+    let hidup = true;
+    (async () => {
+      const key = await buatTerminal();
+      if (!hidup || !key) return;
+      setAktifKey(key);
+      pasangAktif(key);
+      susunTampilan(key, "");
+      instansRef.current.get(key)?.term?.focus();
+    })();
 
     let resizeDebounce: any = null;
     const doFit = () => {
       clearTimeout(resizeDebounce);
       resizeDebounce = setTimeout(() => {
-        if (fitRef.current) {
+        for (const inst of instansRef.current.values()) {
+          if (inst.el.style.display === "none") continue;
           try {
-            fitRef.current.fit();
+            inst.fit?.fit();
           } catch (_) {}
         }
       }, 100);
     };
     const ro = new ResizeObserver(() => doFit());
-    ro.observe(containerRef.current);
+    ro.observe(hostRef.current);
     window.addEventListener("resize", doFit);
 
-    restartSession();
-
     const readInterval = setInterval(async () => {
-      if (!sessionIdRef.current || !termRef.current) return;
-      try {
-        const res = await fetch("/api/terminal/read", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: sessionIdRef.current, clear: true }),
-        });
-        if (res.ok) {
+      for (const inst of Array.from(instansRef.current.values())) {
+        if (!inst.sessionId) continue;
+        try {
+          const res = await fetch("/api/terminal/read", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: inst.sessionId, clear: true }),
+          });
+          if (!res.ok) continue;
           const data = await res.json();
-          if (data.output && termRef.current) {
-            termRef.current.write(data.output);
-            periksaAkhirDebug(data.output);
+          if (data.output) {
+            inst.term.write(data.output);
+            // The debug prompt watcher only cares about the terminal being
+            // looked at; a background session must not trip it.
+            if (inst.term === termRef.current) periksaAkhirDebug(data.output);
           }
-        }
-      } catch (_) {}
+        } catch (_) {}
+      }
     }, 75);
 
     return () => {
+      hidup = false;
       clearInterval(readInterval);
       clearTimeout(resizeDebounce);
       ro.disconnect();
       window.removeEventListener("resize", doFit);
-      if (sessionIdRef.current) {
-        fetch("/api/terminal/close", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ id: sessionIdRef.current }),
-        }).catch(() => {});
+      for (const inst of instansRef.current.values()) {
+        if (inst.sessionId) {
+          fetch("/api/terminal/close", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ id: inst.sessionId }),
+          }).catch(() => {});
+        }
+        try {
+          inst.term.dispose();
+        } catch (_) {}
       }
-      try {
-        term.dispose();
-      } catch (_) {}
+      instansRef.current.clear();
       termRef.current = null;
     };
   }, [selectedProject]);
@@ -2175,6 +2379,109 @@ function VSCodeTerminal({
           >
             {statusText}
           </span>
+          {activeTab === "TERMINAL" && (
+            <div
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "2px",
+                position: "relative",
+              }}
+            >
+              <button
+                className="btn-reset"
+                title="New Terminal"
+                aria-label="New Terminal"
+                onClick={async () => {
+                  const k = await buatTerminal();
+                  if (k) pilihTerminal(k);
+                }}
+                style={{
+                  color: "#c9d1d9",
+                  fontSize: "15px",
+                  lineHeight: 1,
+                  padding: "0 4px",
+                  fontFamily: "inherit",
+                }}
+              >
+                +
+              </button>
+              <button
+                className="btn-reset"
+                title="Choose shell"
+                aria-label="Choose shell"
+                onClick={() => setMenuShell((v: boolean) => !v)}
+                style={{
+                  color: "#8b949e",
+                  fontSize: "9px",
+                  lineHeight: 1,
+                  padding: "0 3px",
+                  fontFamily: "inherit",
+                }}
+              >
+                ▼
+              </button>
+              <button
+                className="btn-reset"
+                title="Split Terminal"
+                aria-label="Split Terminal"
+                onClick={() => pecahTerminal()}
+                style={{
+                  color: "#c9d1d9",
+                  fontSize: "12px",
+                  lineHeight: 1,
+                  padding: "0 4px",
+                  fontFamily: "inherit",
+                }}
+              >
+                ⫿
+              </button>
+              {menuShell && (
+                <div
+                  style={{
+                    position: "absolute",
+                    top: "26px",
+                    right: 0,
+                    zIndex: 50,
+                    minWidth: "150px",
+                    background: "#161b22",
+                    border: "1px solid #30363d",
+                    borderRadius: "6px",
+                    padding: "4px 0",
+                    boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+                  }}
+                >
+                  {/* The shell is passed straight to /api/terminal/open, which
+                      already accepts one. Anything not installed fails there
+                      and the error lands in the new terminal, where it is
+                      readable -- rather than being pre-filtered by a list this
+                      component would have to keep in step with the machine. */}
+                  {SHELL_PILIHAN.map((s) => (
+                    <button
+                      key={s.nilai}
+                      className="btn-reset"
+                      onClick={async () => {
+                        setMenuShell(false);
+                        const k = await buatTerminal(s.nilai);
+                        if (k) pilihTerminal(k);
+                      }}
+                      style={{
+                        display: "block",
+                        width: "100%",
+                        textAlign: "left",
+                        padding: "6px 12px",
+                        fontSize: "12px",
+                        color: "#c9d1d9",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      {s.nama}
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+          )}
           <button
             className="btn-reset"
             onClick={restartSession}
@@ -2289,15 +2596,107 @@ function VSCodeTerminal({
           overflow: "hidden",
         }}
       >
+        {/* TERMINAL: the panes on the left, the session list on the right.
+
+            Each terminal owns a DOM node created imperatively inside `hostRef`
+            and kept mounted while another one is shown. Rendering them from
+            React state instead would remount on every switch, and a remounted
+            xterm has lost its scrollback -- which is most of what a terminal
+            is for. */}
         <div
-          ref={containerRef}
           style={{
             width: "100%",
             height: "100%",
-            padding: "6px 8px",
-            display: activeTab === "TERMINAL" ? "block" : "none",
+            display: activeTab === "TERMINAL" ? "flex" : "none",
           }}
-        />
+        >
+          <div
+            ref={hostRef}
+            style={{
+              flex: 1,
+              minWidth: 0,
+              height: "100%",
+              padding: "6px 8px",
+              position: "relative",
+            }}
+          />
+          {terminals.length > 0 && (
+            <div
+              style={{
+                width: "150px",
+                flexShrink: 0,
+                borderLeft: "1px solid var(--line, #1f2733)",
+                background: "var(--surface-1, #0f1318)",
+                display: "flex",
+                flexDirection: "column",
+                overflowY: "auto",
+              }}
+            >
+              {terminals.map((t: any) => {
+                const aktif = t.key === aktifKey;
+                const terpecah = t.key === pecahKey;
+                return (
+                  <div
+                    key={t.key}
+                    onClick={() => pilihTerminal(t.key)}
+                    title={t.shell}
+                    style={{
+                      display: "flex",
+                      alignItems: "center",
+                      gap: "6px",
+                      height: "26px",
+                      padding: "0 6px 0 8px",
+                      cursor: "pointer",
+                      fontSize: "12px",
+                      whiteSpace: "nowrap",
+                      color: aktif ? "#ffffff" : "#8b949e",
+                      background: aktif
+                        ? "rgba(255,255,255,0.06)"
+                        : "transparent",
+                      borderLeft: aktif
+                        ? "2px solid var(--brand, #5eead4)"
+                        : "2px solid transparent",
+                    }}
+                  >
+                    <span style={{ flexShrink: 0, opacity: 0.8 }}>❯</span>
+                    <span
+                      style={{
+                        flex: 1,
+                        minWidth: 0,
+                        overflow: "hidden",
+                        textOverflow: "ellipsis",
+                      }}
+                    >
+                      {t.nama}
+                      {terpecah ? " (split)" : ""}
+                    </span>
+                    <button
+                      className="btn-reset"
+                      title={"Close " + t.nama}
+                      aria-label={"Close " + t.nama}
+                      onClick={(e: any) => {
+                        // Without this the click also selects the row that is
+                        // being removed.
+                        e.stopPropagation();
+                        tutupTerminal(t.key);
+                      }}
+                      style={{
+                        flexShrink: 0,
+                        color: "#8b949e",
+                        fontSize: "13px",
+                        lineHeight: 1,
+                        padding: "0 2px",
+                        fontFamily: "inherit",
+                      }}
+                    >
+                      ✕
+                    </button>
+                  </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
         {/* ── The DEBUG tab ──
             Its controls live here while its output stays in the TERMINAL tab —
             a debugger session really is one process with its shell, so
