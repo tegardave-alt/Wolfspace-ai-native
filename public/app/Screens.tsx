@@ -337,8 +337,6 @@ function ProjectPickerScreen({
         else if (cleanType.includes("slack"))
           env = { SLACK_BOT_TOKEN: envVars };
         else if (cleanType.includes("notion")) env = { NOTION_TOKEN: envVars };
-        else if (cleanType.includes("penpot"))
-          env = { PENPOT_ACCESS_TOKEN: envVars };
         else if (cleanType === "figma") {
           // figma-developer-mcp takes its token via the --figma-api-key arg
           // rather than env, and needs --stdio.

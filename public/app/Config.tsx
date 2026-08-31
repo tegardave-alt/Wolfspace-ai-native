@@ -97,12 +97,6 @@ const MCP_ALIAS = {
     command: "npx",
     args: ["-y", "@modelcontextprotocol/server-github"],
   },
-  penpot: {
-    command: "node",
-    args: [
-      "C:\langs\node\node_modules\@penpot\mcp\packages\server\dist\index.js",
-    ],
-  },
 };
 
 function mcpResolvePerintah(type: unknown): {

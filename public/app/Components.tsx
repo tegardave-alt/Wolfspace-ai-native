@@ -883,8 +883,6 @@ function Composer({
           env = { POSTGRES_URL: envVars };
         else if (cleanType.includes("slack"))
           env = { SLACK_BOT_TOKEN: envVars };
-        else if (cleanType.includes("penpot"))
-          env = { PENPOT_ACCESS_TOKEN: envVars };
         else if (cleanType === "figma") {
           // figma-developer-mcp needs its token via --figma-api-key and a
           // stdout pipe via --stdio.
