@@ -96,6 +96,7 @@ const BERKAS_MIGRASI = [
   "public/app/PluginsView.tsx",
   "public/app/Screens.tsx",
   "public/app/Sidebar.tsx",
+  "public/app/TemaTerminalVSCode.ts",
   "public/app/Viewport.tsx",
   "public/app/Views.tsx",
   "public/app/VisualTools.tsx",

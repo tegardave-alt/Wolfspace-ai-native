@@ -1892,13 +1892,19 @@ function VSCodeTerminal({
       fontSize: 13,
       cursorStyle: "block",
       cursorBlink: true,
-      theme: {
-        background: "#181c20",
-        foreground: "#e2e8f0",
-        cursor: "#ffffff",
-        cursorAccent: "#181c20",
-        selection: "rgba(56, 139, 253, 0.4)",
-      },
+      // The full VS Code palette, not five colours.
+      //
+      // This used to carry a background, a foreground, a cursor pair and a
+      // selection. Everything a program prints IN COLOUR -- ls, git diff, a
+      // stack trace, any compiler -- fell through to xterm's own defaults, so
+      // the output never looked like VS Code however closely the chrome around
+      // it was matched. See public/app/TemaTerminalVSCode.ts for the source and
+      // its licence.
+      //
+      // `selection` was also the WRONG KEY for xterm 5: it renamed the option
+      // to `selectionBackground`, so the old value was silently ignored and the
+      // selection fell back to a default too.
+      theme: TEMA_TERMINAL_VSCODE,
       allowProposedApi: true,
     });
 
