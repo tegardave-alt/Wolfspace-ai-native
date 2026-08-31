@@ -76,10 +76,33 @@ describe("impor berkas dan folder", () => {
     expect(m![0]).toMatch(/if \(!sumber\.length\) return;/);
   });
 
-  test("the toolbar carries one button per kind", () => {
+  test("import is FOLDED INTO the two existing buttons, not a third and fourth", () => {
+    // The first attempt put four controls side by side. Two of them acted on
+    // folders and two on files, so the row said "four kinds of thing" when
+    // there are two. Each button now opens its own two-row menu instead.
     expect(APP).toMatch(/imporDari\("berkas"\)/);
     expect(APP).toMatch(/imporDari\("folder"\)/);
     expect(APP).toMatch(/onImpor=\{\(rels: any\[\]\)/);
+    // Exactly two toolbar buttons remain.
+    const tombol = APP.match(/className="btn-reset alat-btn"/g) || [];
+    expect(tombol.length).toBe(2);
+  });
+
+  test("each button offers New and Import for its own kind", () => {
+    const m = APP.match(
+      /menuAlat === "folder"[\s\S]*?\n              \)\.map\(/,
+    );
+    expect(m).toBeTruthy();
+    expect(m![0]).toMatch(/mulaiBuat\("folder"\)/);
+    expect(m![0]).toMatch(/imporDari\("folder"\)/);
+    expect(m![0]).toMatch(/mulaiBuat\("berkas"\)/);
+    expect(m![0]).toMatch(/imporDari\("berkas"\)/);
+  });
+
+  test("the menu rows are the same live rows as everywhere else", () => {
+    // Reusing .menu-item rather than restyling: two menus that behave
+    // differently under the pointer is how a UI starts feeling arbitrary.
+    expect(APP).toMatch(/className="btn-reset menu-item"/);
   });
 
   test("imported paths are merged, not appended blindly", () => {
@@ -103,12 +126,16 @@ describe("menu tidak lagi datar", () => {
     // Inline onMouseLeave forced the background back to transparent, which
     // beat the class rule and killed the transition with it.
     expect(CSS).toMatch(/\.alat-btn:not\(:disabled\):hover/);
-    // The window has to clear the inline SVG that ends the button, which is
-    // well past 900 characters -- a shorter one silently matches nothing and
-    // the assertion passes for the wrong reason.
-    const m = APP.match(/akarAda \? "New folder"[\s\S]{0,2500}?<\/button>/);
-    expect(m).toBeTruthy();
-    expect(m![0]).not.toMatch(/onMouseEnter/);
+    // Anchored on the CLASS rather than on a title. The titles moved into the
+    // dropdown rows when the four buttons were folded back into two, and an
+    // assertion pinned to wording breaks on every rename while proving nothing
+    // about hover.
+    const tombol = APP.match(
+      /className="btn-reset alat-btn"[\s\S]{0,2500}?<\/button>/g,
+    );
+    expect(tombol).toBeTruthy();
+    expect(tombol!.length).toBe(2);
+    for (const t of tombol!) expect(t).not.toMatch(/onMouseEnter/);
   });
 });
 

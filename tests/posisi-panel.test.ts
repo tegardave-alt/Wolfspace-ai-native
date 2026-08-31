@@ -503,10 +503,13 @@ describe("berkas baru di pohon Logic", () => {
 
   test("tombolnya benar-benar tersambung, bukan hiasan lagi", () => {
     expect(bersih).toMatch(/title=\{\s*akarAda/);
-    // Sejak ada tombol New folder, mulaiBuat menerima JENIS-nya — jadi
-    // pemanggilannya berbentuk panah, bukan referensi telanjang.
-    expect(bersih).toMatch(/onClick=\{\(\) => mulaiBuat\("berkas"\)\}/);
-    expect(bersih).toMatch(/onClick=\{\(\) => mulaiBuat\("folder"\)\}/);
+    // Sejak impor dilipat KE DALAM kedua tombol, keduanya membuka menu dua
+    // baris alih-alih bertindak langsung. Yang diuji tetap sama — aksinya
+    // benar-benar tersambung, bukan hiasan — hanya kini dipanggil dari baris
+    // menunya, dan tombolnya yang membuka menu itu.
+    expect(bersih).toMatch(/mulaiBuat\("berkas"\)/);
+    expect(bersih).toMatch(/mulaiBuat\("folder"\)/);
+    expect(bersih).toMatch(/setMenuAlat\(\(v: any\) =>/);
     // Tanpa akar, path yang dikirim jadi omong kosong — tombolnya dimatikan.
     expect(bersih).toMatch(/disabled=\{!akarAda\}/);
   });

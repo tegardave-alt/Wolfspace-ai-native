@@ -1951,6 +1951,8 @@ function LogicFileTree({
   // would have to ask which -- a question the toolbar can answer with a second
   // icon instead.
   const [imporSibuk, setImporSibuk] = React.useState(false);
+  // Which of the two toolbar buttons has its menu open, if either.
+  const [menuAlat, setMenuAlat] = React.useState<any>(null);
   const imporDari = async (jenis: any) => {
     if (!akarAda || imporSibuk) return;
     const ipc = (window as any).WOLFSPACE;
@@ -2199,6 +2201,7 @@ function LogicFileTree({
             alignItems: "center",
             gap: "2px",
             color: "#6f7d92",
+            position: "relative",
           }}
         >
           {/* Two buttons that used to be here — "Search" and "Collapse all" —
@@ -2210,10 +2213,12 @@ function LogicFileTree({
           <button
             className="btn-reset alat-btn"
             title={
-              akarAda ? "New folder" : "No workspace yet — open a project first"
+              akarAda ? "Folder…" : "No workspace yet — open a project first"
             }
             disabled={!akarAda}
-            onClick={() => mulaiBuat("folder")}
+            onClick={() =>
+              setMenuAlat((v: any) => (v === "folder" ? null : "folder"))
+            }
             style={{
               color: "inherit",
               width: "24px",
@@ -2247,10 +2252,12 @@ function LogicFileTree({
           <button
             className="btn-reset alat-btn"
             title={
-              akarAda ? "New file" : "No workspace yet — open a project first"
+              akarAda ? "File…" : "No workspace yet — open a project first"
             }
             disabled={!akarAda}
-            onClick={() => mulaiBuat("berkas")}
+            onClick={() =>
+              setMenuAlat((v: any) => (v === "berkas" ? null : "berkas"))
+            }
             style={{
               color: "inherit",
               width: "24px",
@@ -2282,83 +2289,62 @@ function LogicFileTree({
               <line x1="14.5" y1="17.5" x2="21.5" y2="17.5" />
             </svg>
           </button>
-          {/* Import, one button per kind. Same 24x24 box and same stroke as
-              the two beside them: four controls that all act on the tree
-              should not look like four different kinds of control. */}
-          <button
-            className="btn-reset alat-btn"
-            title={
-              akarAda
-                ? "Import files…"
-                : "No workspace yet — open a project first"
-            }
-            disabled={!akarAda || imporSibuk}
-            onClick={() => imporDari("berkas")}
-            style={{
-              color: "inherit",
-              width: "24px",
-              height: "24px",
-              borderRadius: "5px",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: akarAda ? "pointer" : "not-allowed",
-              opacity: akarAda ? (imporSibuk ? 0.5 : 1) : 0.4,
-            }}
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
+          {menuAlat && (
+            <div
+              onMouseLeave={() => setMenuAlat(null)}
+              style={{
+                position: "absolute",
+                top: "26px",
+                right: 0,
+                zIndex: 60,
+                minWidth: "160px",
+                background: "#161b22",
+                border: "1px solid #30363d",
+                borderRadius: "6px",
+                padding: "4px 0",
+                boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
+              }}
             >
-              <path d="M13.5 3H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h5" />
-              <polyline points="13.5 3 13.5 8 18.5 8" />
-              <line x1="18" y1="13" x2="18" y2="20" />
-              <polyline points="15 17.5 18 20.5 21 17.5" />
-            </svg>
-          </button>
-          <button
-            className="btn-reset alat-btn"
-            title={
-              akarAda
-                ? "Import a folder…"
-                : "No workspace yet — open a project first"
-            }
-            disabled={!akarAda || imporSibuk}
-            onClick={() => imporDari("folder")}
-            style={{
-              color: "inherit",
-              width: "24px",
-              height: "24px",
-              borderRadius: "5px",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: akarAda ? "pointer" : "not-allowed",
-              opacity: akarAda ? (imporSibuk ? 0.5 : 1) : 0.4,
-            }}
-          >
-            <svg
-              width="15"
-              height="15"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinecap="round"
-              strokeLinejoin="round"
-            >
-              <path d="M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v3" />
-              <path d="M3 7v11a2 2 0 0 0 2 2h6" />
-              <line x1="18" y1="13" x2="18" y2="20" />
-              <polyline points="15 17.5 18 20.5 21 17.5" />
-            </svg>
-          </button>
+              {(menuAlat === "folder"
+                ? [
+                    { label: "New folder", jalan: () => mulaiBuat("folder") },
+                    {
+                      label: "Import folder…",
+                      jalan: () => imporDari("folder"),
+                    },
+                  ]
+                : [
+                    { label: "New file", jalan: () => mulaiBuat("berkas") },
+                    {
+                      label: "Import files…",
+                      jalan: () => imporDari("berkas"),
+                    },
+                  ]
+              ).map((m: any) => (
+                <button
+                  key={m.label}
+                  className="btn-reset menu-item"
+                  disabled={imporSibuk}
+                  onClick={() => {
+                    setMenuAlat(null);
+                    m.jalan();
+                  }}
+                  style={{
+                    display: "block",
+                    width: "100%",
+                    textAlign: "left",
+                    padding: "6px 12px",
+                    fontSize: "12px",
+                    color: "#c9d1d9",
+                    fontFamily: "inherit",
+                    cursor: "pointer",
+                  }}
+                >
+                  {m.label}
+                </button>
+              ))}
+            </div>
+          )}
         </div>
       </div>
       {/* The filename input row, as in VS Code: it appears INSIDE the tree,
