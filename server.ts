@@ -1423,15 +1423,107 @@ const Q_RAHASIA =
 // diverge, and what diverges here is a security boundary.
 // -- INFO panel helpers --
 //
-// A scan is a whole tsc process, so only one may be in flight. Two concurrent
-// runs over the same tree would double the cost and race to answer the panel.
-let _infoBerjalan = false;
 // The parser is a module so the suite can exercise it directly; requiring
-// server.ts from a test hangs the runner.
+// server.ts from a test executes the whole backend and the runner never exits.
 const {
   cariTsc: _cariTsc,
   uraiTsc: _uraiTsc,
 } = require("./scripts/urai-tsc.ts");
+
+// Concurrent callers SHARE one scan instead of being refused.
+//
+// Two surfaces ask for these numbers -- the file tree and the terminal's INFO
+// tab -- and they can easily ask at once. Answering the second with "busy"
+// would make whichever asked second look broken, for a result the first is
+// already computing. Keyed by root so two different workspaces still scan
+// independently.
+const _infoJalan = new Map<string, Promise<any>>();
+
+/** Runs one compiler and hands back everything it printed. Never rejects. */
+function _jalankanPindai(
+  bin: string,
+  args: string[],
+  cwd: string,
+): Promise<string> {
+  return new Promise((resolve) => {
+    execFile(
+      bin,
+      args,
+      {
+        cwd,
+        timeout: 120000,
+        maxBuffer: 8 * 1024 * 1024,
+        windowsHide: true,
+        // process.execPath is electron.exe here, not node. Without this the
+        // spawn opens a second app window instead of running the compiler.
+        env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
+      },
+      (_err: any, stdout: any, stderr: any) => {
+        // A compiler EXITS NON-ZERO whenever it found anything at all, so an
+        // error here is the ORDINARY case. What it printed is the result.
+        resolve(String(stdout || "") + String(stderr || ""));
+      },
+    );
+  });
+}
+
+/** Every diagnostic in one workspace, from whichever compilers apply to it. */
+function _pindaiInfo(akar: string): Promise<any> {
+  const berjalan = _infoJalan.get(akar);
+  if (berjalan) return berjalan;
+  const janji = (async () => {
+    const keluaran: string[] = [];
+    const catatan: string[] = [];
+
+    const tsconfig = path.join(akar, "tsconfig.json");
+    if (fs.existsSync(tsconfig)) {
+      const tsc = _cariTsc(akar);
+      if (tsc)
+        keluaran.push(
+          await _jalankanPindai(
+            process.execPath,
+            [tsc, "-p", tsconfig, "--noEmit", "--pretty", "false"],
+            akar,
+          ),
+        );
+      else catatan.push("typescript is not installed");
+    } else {
+      catatan.push("no tsconfig.json, so TypeScript was not checked");
+    }
+
+    try {
+      const py = await findPythonAsync();
+      keluaran.push(
+        await _jalankanPindai(
+          py,
+          [path.join(__dirname, "scripts", "pindai-python.py"), akar],
+          akar,
+        ),
+      );
+    } catch (_) {
+      catatan.push("python is not available");
+    }
+
+    const diagnostics: any[] = [];
+    for (const t of keluaran) diagnostics.push(..._uraiTsc(t, akar));
+    return {
+      ok: true,
+      ran: true,
+      diagnostics,
+      note: catatan.join("; "),
+    };
+  })();
+  _infoJalan.set(akar, janji);
+  // The entry MUST be cleared however the scan ended, or one failure would
+  // pin a rejected promise here and every later scan of this root would
+  // replay that failure instead of running.
+  janji
+    .catch(() => {})
+    .then(() => {
+      _infoJalan.delete(akar);
+    });
+  return janji;
+}
 
 function _kurungDiAkar(root: any, p: any) {
   if (!root || !p) return { kode: 400, galat: "root and path are required" };
@@ -2894,22 +2986,19 @@ const server = http.createServer(async (req: any, res: any) => {
   // returns the configuration map DIRECTLY, and the frontend already reads it with
   // Object.entries(data) — changing its shape would repeat the old bug where the
   // MCP list never refreshed.
-  // -- INFO: workspace-wide TypeScript diagnostics --
+  // -- INFO: diagnostics for the whole workspace --
   //
-  // The INFO panel needs the WHOLE project, not only what the editor happens to
-  // have open. Monaco's markers cover open models alone, so a file nobody opened
-  // reports clean however broken it is -- which is the opposite of what a
-  // problems panel is for.
+  // The file tree marks each row from these numbers, so they must cover files
+  // NOBODY HAS OPENED. Monaco only has markers for models it has open, which
+  // would leave every unopened file looking clean however broken it is.
   //
-  // tsc runs through node against a RESOLVED entry point rather than through npx.
-  // npx would reach the network on first use and pay a download inside a panel
-  // the user expects to answer in seconds. The project's own typescript is
-  // preferred so the numbers match what its build would say; WOLFSPACE's copy is
-  // the fallback for a project that ships none.
+  // TWO COMPILERS, ONE SHAPE. tsc handles TS/TSX/JS; scripts/pindai-python.py
+  // handles .py and prints the same `file(line,col): severity CODE: message`
+  // line, so one parser reads both.
   if (_path === "/info/diagnostics" && req.method === "POST") {
     let body = "";
     req.on("data", (c: any) => (body += c));
-    req.on("end", () => {
+    req.on("end", async () => {
       const jawab = (kode: number, obj: any) => {
         res.writeHead(kode, { "Content-Type": "application/json" });
         res.end(JSON.stringify(obj));
@@ -2926,60 +3015,27 @@ const server = http.createServer(async (req: any, res: any) => {
       } catch (_) {
         return jawab(400, { ok: false, error: "invalid root" });
       }
+      // A workspace that is not chosen yet, or a stored path that no longer
+      // exists, is an ORDINARY startup state -- not a protocol error. Answering
+      // 400 made the browser log a failed request on every launch. 400 is kept
+      // for a body that is not JSON, which really is the caller's mistake.
       if (!p.root || !fs.existsSync(akar) || !fs.statSync(akar).isDirectory())
-        return jawab(400, { ok: false, error: "root is not a directory" });
-      // One run at a time. tsc over a large project is expensive and the panel
-      // can be reopened far faster than a run finishes.
-      if (_infoBerjalan)
-        return jawab(429, { ok: false, error: "a scan is already running" });
-      const tsconfig = path.join(akar, "tsconfig.json");
-      if (!fs.existsSync(tsconfig))
         return jawab(200, {
-          ok: true,
+          ok: false,
           ran: false,
           diagnostics: [],
-          note: "no tsconfig.json in this workspace",
+          note: "no workspace to scan",
         });
-      const tsc = _cariTsc(akar);
-      if (!tsc)
+      try {
+        return jawab(200, await _pindaiInfo(akar));
+      } catch (e: any) {
         return jawab(200, {
-          ok: true,
-          ran: false,
+          ok: false,
+          ran: true,
           diagnostics: [],
-          note: "typescript is not installed",
+          error: e && e.message ? e.message : String(e),
         });
-      _infoBerjalan = true;
-      execFile(
-        process.execPath,
-        [tsc, "-p", tsconfig, "--noEmit", "--pretty", "false"],
-        {
-          cwd: akar,
-          timeout: 120000,
-          maxBuffer: 8 * 1024 * 1024,
-          windowsHide: true,
-          // process.execPath is electron.exe here, not node. Without this it
-          // would open a second app window instead of running the compiler.
-          env: { ...process.env, ELECTRON_RUN_AS_NODE: "1" },
-        },
-        (err: any, stdout: any, stderr: any) => {
-          _infoBerjalan = false;
-          // tsc EXITS NON-ZERO whenever it found anything at all, so `err` is
-          // the ordinary case here rather than a failure. Only a kill counts.
-          if (err && err.killed)
-            return jawab(200, {
-              ok: false,
-              ran: true,
-              diagnostics: [],
-              error: "scan timed out",
-            });
-          const teks = String(stdout || "") + String(stderr || "");
-          return jawab(200, {
-            ok: true,
-            ran: true,
-            diagnostics: _uraiTsc(teks, akar),
-          });
-        },
-      );
+      }
     });
     return;
   }

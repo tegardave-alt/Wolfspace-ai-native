@@ -1737,10 +1737,25 @@ function bahasaMonaco(nama: any) {
   return peta[e!] || "plaintext";
 }
 
+// The mark one file row carries.
+//
+// WORST SEVERITY WINS, and only one mark is shown. A row is 24px of a narrow
+// column; three stacked counters there would cost the filename the space it
+// needs, and the filename is what the row is for.
+function tandaBaris(tanda: any, rel: any) {
+  const t = rel && tanda ? tanda.get(rel) : null;
+  if (!t) return null;
+  if (t.error) return { warna: "#f85149", jml: t.error, nama: "error" };
+  if (t.warning) return { warna: "#e3b341", jml: t.warning, nama: "warning" };
+  if (t.info) return { warna: "#58a6ff", jml: t.info, nama: "info" };
+  return null;
+}
+
 function LogicFileTree({
   files,
   folders,
   root,
+  tanda,
   active,
   terpilih,
   onPilih,
@@ -2415,79 +2430,108 @@ function LogicFileTree({
         </div>
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}>
-          {tree.map((n: any, i: number) => (
-            <div
-              key={i}
-              title={n.rel || n.name}
-              onClick={(e: any) =>
-                n.type !== "folder" &&
-                onPilih &&
-                // Alt is "open to the side", as in VS Code. The flag is passed
-                // up rather than handled here: the tree has no idea groups
-                // exist, and it should not learn.
-                onPilih(n.rel || n.name, e.altKey)
-              }
-              onContextMenu={(e: any) => {
-                e.preventDefault();
-                setHapusGalat("");
-                setMenuKonteks({
-                  x: e.clientX,
-                  y: e.clientY,
-                  rel: n.rel || n.name,
-                  folder: n.type === "folder",
-                });
-              }}
-              style={{
-                display: "flex",
-                alignItems: "center",
-                gap: "6px",
-                height: "24px",
-                paddingRight: "10px",
-                paddingLeft: 10 + n.depth * 14 + "px",
-                cursor: n.type === "folder" ? "default" : "pointer",
-                color: n.type === "folder" ? "#cdd9e5" : "#adbac7",
-                fontSize: "13px",
-                whiteSpace: "nowrap",
-                // The open file is marked PERSISTENTLY, not only on hover —
-                // without that, once the mouse moves nothing tells you which
-                // file the editor on the right belongs to.
-                background:
-                  n.rel && n.rel === terpilih ? "#1b2431" : "transparent",
-              }}
-              onMouseEnter={(e: any) => {
-                if (n.rel !== terpilih)
-                  e.currentTarget.style.background = "#141c26";
-              }}
-              onMouseLeave={(e: any) => {
-                e.currentTarget.style.background =
-                  n.rel && n.rel === terpilih ? "#1b2431" : "transparent";
-              }}
-            >
-              {n.type === "folder" ? (
-                <svg
-                  width="12"
-                  height="12"
-                  viewBox="0 0 16 16"
-                  fill="none"
-                  stroke="#768390"
-                  strokeWidth="1.6"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                  style={{ flexShrink: 0, transform: "rotate(90deg)" }}
+          {tree.map((n: any, i: number) => {
+            const tk = tandaBaris(tanda, n.rel);
+            return (
+              <div
+                key={i}
+                title={n.rel || n.name}
+                onClick={(e: any) =>
+                  n.type !== "folder" &&
+                  onPilih &&
+                  // Alt is "open to the side", as in VS Code. The flag is passed
+                  // up rather than handled here: the tree has no idea groups
+                  // exist, and it should not learn.
+                  onPilih(n.rel || n.name, e.altKey)
+                }
+                onContextMenu={(e: any) => {
+                  e.preventDefault();
+                  setHapusGalat("");
+                  setMenuKonteks({
+                    x: e.clientX,
+                    y: e.clientY,
+                    rel: n.rel || n.name,
+                    folder: n.type === "folder",
+                  });
+                }}
+                style={{
+                  display: "flex",
+                  alignItems: "center",
+                  gap: "6px",
+                  height: "24px",
+                  paddingRight: "10px",
+                  paddingLeft: 10 + n.depth * 14 + "px",
+                  cursor: n.type === "folder" ? "default" : "pointer",
+                  color: n.type === "folder" ? "#cdd9e5" : "#adbac7",
+                  fontSize: "13px",
+                  whiteSpace: "nowrap",
+                  // The open file is marked PERSISTENTLY, not only on hover —
+                  // without that, once the mouse moves nothing tells you which
+                  // file the editor on the right belongs to.
+                  background:
+                    n.rel && n.rel === terpilih ? "#1b2431" : "transparent",
+                }}
+                onMouseEnter={(e: any) => {
+                  if (n.rel !== terpilih)
+                    e.currentTarget.style.background = "#141c26";
+                }}
+                onMouseLeave={(e: any) => {
+                  e.currentTarget.style.background =
+                    n.rel && n.rel === terpilih ? "#1b2431" : "transparent";
+                }}
+              >
+                {n.type === "folder" ? (
+                  <svg
+                    width="12"
+                    height="12"
+                    viewBox="0 0 16 16"
+                    fill="none"
+                    stroke="#768390"
+                    strokeWidth="1.6"
+                    strokeLinecap="round"
+                    strokeLinejoin="round"
+                    style={{ flexShrink: 0, transform: "rotate(90deg)" }}
+                  >
+                    <path d="M6 4l4 4-4 4" />
+                  </svg>
+                ) : (
+                  <span style={{ width: "12px", flexShrink: 0 }} />
+                )}
+                <span style={{ flexShrink: 0, display: "inline-flex" }}>
+                  {icon(n.type)}
+                </span>
+                <span
+                  style={{
+                    overflow: "hidden",
+                    textOverflow: "ellipsis",
+                    color: tk ? tk.warna : undefined,
+                  }}
                 >
-                  <path d="M6 4l4 4-4 4" />
-                </svg>
-              ) : (
-                <span style={{ width: "12px", flexShrink: 0 }} />
-              )}
-              <span style={{ flexShrink: 0, display: "inline-flex" }}>
-                {icon(n.type)}
-              </span>
-              <span style={{ overflow: "hidden", textOverflow: "ellipsis" }}>
-                {n.name}
-              </span>
-            </div>
-          ))}
+                  {n.name}
+                </span>
+                {tk && (
+                  <span
+                    title={tk.jml + " " + tk.nama + "(s)"}
+                    style={{
+                      marginLeft: "auto",
+                      flexShrink: 0,
+                      fontSize: "10px",
+                      fontWeight: 600,
+                      lineHeight: "14px",
+                      minWidth: "14px",
+                      textAlign: "center",
+                      padding: "0 4px",
+                      borderRadius: "7px",
+                      color: tk.warna,
+                      background: "rgba(255,255,255,0.07)",
+                    }}
+                  >
+                    {tk.jml}
+                  </span>
+                )}
+              </div>
+            );
+          })}
         </div>
       )}
     </div>
@@ -2635,6 +2679,16 @@ function App() {
   // FILES: a folder with nothing in it would leave no trace there and would
   // vanish from the tree the moment it was created.
   const [devFolders, setDevFolders] = useState<any[]>([]);
+
+  // -- INFO: the diagnostics behind the file-tree marks --
+  //
+  // The tree marks rows for files NOBODY HAS OPENED, so the numbers cannot come
+  // from Monaco: it only has markers for models it has open, which would leave
+  // every unopened file looking clean however broken it is. They come from the
+  // compilers themselves, through /info/diagnostics.
+  const [diagnostik, setDiagnostik] = useState<any[]>([]);
+  const [diagSibuk, setDiagSibuk] = useState(false);
+  const [diagNota, setDiagNota] = useState("");
   useEffect(() => {
     setDevFiles([]);
     setDevFolders([]);
@@ -2714,6 +2768,49 @@ function App() {
   // Every file open in ANY group. The editor needs this to decide which shared
   // Monaco models may be released — see _modelBerkas. Keyed on one group's tabs
   // it would dispose a buffer the other group is still showing.
+  // Scanning runs a compiler over the tree, which costs seconds of CPU. It is
+  // therefore tied to the workspace CHANGING, not to typing -- a mark that
+  // refreshes on every keystroke is how a problems view becomes the reason the
+  // app stutters.
+  const akarDiag = webProjectRoot(preview.url, selectedProject);
+  const pindaiDiagnostik = useCallback(async () => {
+    if (!akarDiag) return;
+    setDiagSibuk(true);
+    try {
+      const r = await fetch("/info/diagnostics", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ root: akarDiag }),
+      });
+      const d = await r.json();
+      setDiagnostik(Array.isArray(d.diagnostics) ? d.diagnostics : []);
+      setDiagNota(d.note || d.error || "");
+    } catch (e: any) {
+      setDiagnostik([]);
+      setDiagNota(e && e.message ? e.message : String(e));
+    } finally {
+      setDiagSibuk(false);
+    }
+  }, [akarDiag]);
+  useEffect(() => {
+    pindaiDiagnostik();
+  }, [akarDiag]);
+
+  // rel -> counts. Built once per result rather than per row: the tree can be
+  // hundreds of rows, and filtering the whole list inside each of them turns
+  // one pass into a quadratic one.
+  const tandaBerkas = useMemo(() => {
+    const m = new Map<string, any>();
+    for (const d of diagnostik) {
+      const k = String((d && d.file) || "");
+      if (!k) continue;
+      const v = m.get(k) || { error: 0, warning: 0, info: 0 };
+      if (v[d.severity] != null) v[d.severity]++;
+      m.set(k, v);
+    }
+    return m;
+  }, [diagnostik]);
+
   const logicTabsSemua = useMemo(() => {
     const set = new Set<string>();
     logicGrup.forEach((g: any) =>
@@ -4848,6 +4945,7 @@ function App() {
                       <LogicFileTree
                         files={devFiles}
                         folders={devFolders}
+                        tanda={tandaBerkas}
                         root={webProjectRoot(preview.url, selectedProject)}
                         active={!!preview.url}
                         terpilih={logicBerkas}

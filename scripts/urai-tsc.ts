@@ -29,8 +29,12 @@ function cariTsc(akar: string): string | null {
 // `file(line,col): error TS1234: message`, which is what --pretty false emits.
 // The severity word is captured rather than assumed: tsc emits warnings as well
 // as errors, and INFO files them on separate rows.
+//
+// The code is TWO LETTERS then digits, not literally TS: scripts/pindai-python.py
+// deliberately prints the same shape with PY codes so one parser reads both
+// compilers instead of each language growing its own.
 const POLA_TSC =
-  /^(.+?)\((\d+),(\d+)\):\s+(error|warning|info)\s+(TS\d+):\s+(.*)$/;
+  /^(.+?)\((\d+),(\d+)\):\s+(error|warning|info)\s+([A-Z]{2}\d+):\s+(.*)$/;
 
 /**
  * Turns raw tsc output into diagnostic rows.
