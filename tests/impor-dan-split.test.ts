@@ -167,3 +167,40 @@ describe("split editor bisa dibuka DAN ditutup", () => {
     expect(CSS).toMatch(/\.tab-pecah\.aktif/);
   });
 });
+
+describe("impor tidak boleh membekukan jendela", () => {
+  // FOUND IN THE RUNNING APP, not by these tests. Importing a folder left the
+  // main process pegged on one core with Responding=False, and the debug log's
+  // last line from that process was "POST /ww/impor" -- nothing after it.
+  //
+  // TWO causes, both mine:
+  //   1. the copy was SYNCHRONOUS. /ww/impor is served through apiCall in
+  //      electron/main.ts, which runs in the MAIN process, so cpSync there
+  //      freezes the window outright.
+  //   2. a source that CONTAINS the workspace copies into itself forever:
+  //      importing C:/Users/dave while the workspace is C:/Users/dave/WOLFSPACE
+  //      puts the destination inside the source.
+  const blok = SERVER.match(/req\.url === "\/ww\/impor"[\s\S]*?\n  \}\n/);
+
+  test("the copy never blocks the thread it runs on", () => {
+    expect(blok).toBeTruthy();
+    expect(blok![0]).toMatch(/await fs\.promises\.cp\(/);
+    expect(blok![0]).toMatch(/await fs\.promises\.copyFile\(/);
+    expect(blok![0]).not.toMatch(/fs\.cpSync|fs\.copyFileSync/);
+  });
+
+  test("the handler can actually await", () => {
+    // Making the copy async while the handler stays sync would fire it and
+    // return, answering before a single byte had been written.
+    expect(blok![0]).toMatch(/req\.on\("end", async \(\) => \{/);
+  });
+
+  test("a folder that contains the workspace is refused", () => {
+    expect(blok![0]).toMatch(/const kedalam = path\.relative\(asal, akar\)/);
+    expect(blok![0]).toMatch(/contains this workspace/);
+  });
+
+  test("there is a ceiling even on an honest import", () => {
+    expect(blok![0]).toMatch(/BATAS_IMPOR/);
+  });
+});

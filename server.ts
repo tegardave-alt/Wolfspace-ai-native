@@ -3542,7 +3542,7 @@ const server = http.createServer(async (req: any, res: any) => {
   if (req.method === "POST" && req.url === "/ww/impor") {
     let body = "";
     req.on("data", (c: any) => (body += c));
-    req.on("end", () => {
+    req.on("end", async () => {
       const jawab = (kode: number, obj: any) => {
         res.writeHead(kode, { "Content-Type": "application/json" });
         res.end(JSON.stringify(obj));
@@ -3594,8 +3594,13 @@ const server = http.createServer(async (req: any, res: any) => {
         return path.join(dir, dasar + "-" + Date.now() + ext);
       };
 
+      // A ceiling on what one import may report. The ancestor guard above stops
+      // the runaway case; this stops an honest-but-enormous folder from
+      // building a response nobody can use.
+      const BATAS_IMPOR = 5000;
       const ditambah: string[] = [];
       const kumpulkan = (abs: string) => {
+        if (ditambah.length >= BATAS_IMPOR) return;
         try {
           if (fs.statSync(abs).isDirectory()) {
             for (const e of fs.readdirSync(abs)) kumpulkan(path.join(abs, e));
@@ -3611,18 +3616,36 @@ const server = http.createServer(async (req: any, res: any) => {
           const asal = path.resolve(String(s || ""));
           if (!asal || !fs.existsSync(asal)) continue;
           if (!bolehSalin(asal)) continue;
+          // A source that CONTAINS the workspace copies into itself forever.
+          //
+          // Importing C:/Users/dave while the workspace is
+          // C:/Users/dave/WOLFSPACE puts the destination INSIDE the source, so
+          // the copy keeps finding the growing target and recursing into it.
+          // Measured on the real app: the main process pegged one core and
+          // stopped logging entirely after "POST /ww/impor".
+          const kedalam = path.relative(asal, akar);
+          if (
+            !kedalam ||
+            (!kedalam.startsWith("..") && !path.isAbsolute(kedalam))
+          )
+            return jawab(200, {
+              ok: false,
+              added: [],
+              error:
+                "that folder contains this workspace, so importing it would copy into itself",
+            });
           // basename() is what keeps the destination inside root: whatever the
           // source path was, only its last segment is used here.
           const tujuan = namaBebas(akar, path.basename(asal));
           const kurung = _kurungDiAkar(akar, tujuan);
           if (kurung.galat) continue;
           if (fs.statSync(asal).isDirectory()) {
-            fs.cpSync(asal, tujuan, {
+            await fs.promises.cp(asal, tujuan, {
               recursive: true,
               filter: (src: string) => bolehSalin(src) || src === asal,
             });
           } else {
-            fs.copyFileSync(asal, tujuan);
+            await fs.promises.copyFile(asal, tujuan);
           }
           kumpulkan(tujuan);
         }
