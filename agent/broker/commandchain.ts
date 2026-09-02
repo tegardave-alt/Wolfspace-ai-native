@@ -183,29 +183,9 @@ function sesiRuleset(): Ruleset {
     // nobody asked for. Lockdown remains available to whoever chooses it:
     // WOLFSPACE_CC_TANPA=proc.raw.
 
-    // Plugin capabilities the user has ALREADY APPROVED are frozen into genesis
-    // too. Read once here along with the rest of the vocabulary, so they behave
-    // the same way: approving a plugin mid-session does NOT take effect until the
-    // next session.
-    //
-    // That is deliberate, not a limitation. If an approval could enter a ruleset
-    // that is already running, there would be a way to LOOSEN genesis after it
-    // was frozen, and the whole point would be gone. What is unapproved is not
-    // refused when called; it never has a tool to call in the first place.
-    //
-    // require inside the function rather than at the top of the file: plugins.ts
-    // scans the disk, and this module is used on paths that must stay pure under
-    // test.
-    let kapPlugin: string[] = [];
-    try {
-      kapPlugin = require("../plugins.ts").kapabilitasDisetujui();
-    } catch (_) {
-      kapPlugin = []; // no plugin system = no plugin capabilities
-    }
-
     _ruleset = mulaiSesi({
       tanpa,
-      kapabilitas: KOSAKATA_DEFAULT.concat(kapPlugin),
+      kapabilitas: KOSAKATA_DEFAULT,
     });
   }
   return _ruleset;

@@ -505,54 +505,6 @@ const SELF_TOOLS = [
       },
     },
   },
-  {
-    type: "function",
-    function: {
-      name: "skill_list",
-      description:
-        "List all installed skills (modular tool plugins). Returns name, version, description for each.",
-      parameters: { type: "object", properties: {} },
-    },
-  },
-  {
-    type: "function",
-    function: {
-      name: "skill_run",
-      description: "Run an installed skill by name with optional arguments.",
-      parameters: {
-        type: "object",
-        properties: {
-          name: { type: "string", description: "skill name from skill_list" },
-          args: {
-            type: "object",
-            description: "arguments to pass to the skill (JSON object)",
-          },
-        },
-        required: ["name"],
-      },
-    },
-  },
-  // skill_install is WITHDRAWN from the model's tool list. Do not restore it.
-  //
-  // Its description used to read "Install a new skill from npm, a local .cjs
-  // file, or a URL" — meaning the model could install arbitrary code for itself
-  // with no approval whatsoever: there was no CommandChain admission on the
-  // skill branch, and EXECUTION_TOOLS (which triggers HITL) contained only
-  // "bash".
-  //
-  // What makes this serious is not that a plugin might be malicious, but the
-  // CALL PATH: the tool is chosen by the model, and the model reads file
-  // contents, tool output and web pages — any of which can carry a sentence that
-  // reads like an instruction. VS Code does not have this problem because a
-  // HUMAN presses the install button.
-  //
-  // Installing is a human action. The implementation is deliberately LEFT ALIVE
-  // in tools/index.ts so the UI (and a future HITL path) can still call it —
-  // only the door to the model is closed.
-  //
-  // If the model ever needs to PROPOSE an install, the path already exists: add
-  // its name to EXECUTION_TOOLS in agent/self_agent.ts, as bash is. Locked by
-  // tests/plugin-pintu-pasang.test.js.
   // git has its own tool because it CAN NO LONGER be run through bash.
   //
   // Once bash became AppContainer-contained, every git command died before doing

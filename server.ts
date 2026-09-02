@@ -3019,7 +3019,11 @@ const server = http.createServer(async (req: any, res: any) => {
       // exists, is an ORDINARY startup state -- not a protocol error. Answering
       // 400 made the browser log a failed request on every launch. 400 is kept
       // for a body that is not JSON, which really is the caller's mistake.
-      if (!p.root || !fs.existsSync(akar) || !fs.statSync(akar).isDirectory())
+      let akarStat: any = null;
+      try {
+        akarStat = await fs.promises.stat(akar);
+      } catch (_) {}
+      if (!p.root || !akarStat || !akarStat.isDirectory())
         return jawab(200, {
           ok: false,
           ran: false,
@@ -3555,7 +3559,11 @@ const server = http.createServer(async (req: any, res: any) => {
       }
       const akar = path.resolve(String(p.root || ""));
       const sumber: string[] = Array.isArray(p.sources) ? p.sources : [];
-      if (!p.root || !fs.existsSync(akar) || !fs.statSync(akar).isDirectory())
+      let akarStat: any = null;
+      try {
+        akarStat = await fs.promises.stat(akar);
+      } catch (_) {}
+      if (!p.root || !akarStat || !akarStat.isDirectory())
         return jawab(400, { ok: false, error: "root is not a directory" });
       if (!sumber.length)
         return jawab(400, { ok: false, error: "no sources given" });
@@ -3582,14 +3590,22 @@ const server = http.createServer(async (req: any, res: any) => {
 
       // A name already taken gets a suffix rather than overwriting. Silently
       // replacing a file someone is working on is not an import.
-      const namaBebas = (dir: string, nama: string) => {
+      const ada = async (jalur: string) => {
+        try {
+          await fs.promises.access(jalur);
+          return true;
+        } catch (_) {
+          return false;
+        }
+      };
+      const namaBebas = async (dir: string, nama: string) => {
         let calon = path.join(dir, nama);
-        if (!fs.existsSync(calon)) return calon;
+        if (!(await ada(calon))) return calon;
         const ext = path.extname(nama);
         const dasar = path.basename(nama, ext);
         for (let i = 1; i < 500; i++) {
           calon = path.join(dir, dasar + "-" + i + ext);
-          if (!fs.existsSync(calon)) return calon;
+          if (!(await ada(calon))) return calon;
         }
         return path.join(dir, dasar + "-" + Date.now() + ext);
       };
@@ -3599,11 +3615,20 @@ const server = http.createServer(async (req: any, res: any) => {
       // building a response nobody can use.
       const BATAS_IMPOR = 5000;
       const ditambah: string[] = [];
-      const kumpulkan = (abs: string) => {
+      // ASYNCHRONOUS, and that is the whole point.
+      //
+      // This walk used to be readdirSync/statSync over everything that had
+      // just been copied -- in the MAIN process. Measured on the real app it
+      // showed up as a 113 ms block, well under the 5000 ms that earns "Not
+      // Responding" but plainly felt. The copy was made async in a2e9c15; this
+      // was the piece still holding the thread afterwards.
+      const kumpulkan = async (abs: string) => {
         if (ditambah.length >= BATAS_IMPOR) return;
         try {
-          if (fs.statSync(abs).isDirectory()) {
-            for (const e of fs.readdirSync(abs)) kumpulkan(path.join(abs, e));
+          const st = await fs.promises.stat(abs);
+          if (st.isDirectory()) {
+            for (const e of await fs.promises.readdir(abs))
+              await kumpulkan(path.join(abs, e));
           } else {
             const rel = path.relative(akar, abs).split("\\").join("/");
             if (rel && !rel.startsWith("..")) ditambah.push(rel);
@@ -3614,7 +3639,12 @@ const server = http.createServer(async (req: any, res: any) => {
       try {
         for (const s of sumber) {
           const asal = path.resolve(String(s || ""));
-          if (!asal || !fs.existsSync(asal)) continue;
+          if (!asal) continue;
+          let asalStat: any = null;
+          try {
+            asalStat = await fs.promises.stat(asal);
+          } catch (_) {}
+          if (!asalStat) continue;
           if (!bolehSalin(asal)) continue;
           // A source that CONTAINS the workspace copies into itself forever.
           //
@@ -3636,10 +3666,10 @@ const server = http.createServer(async (req: any, res: any) => {
             });
           // basename() is what keeps the destination inside root: whatever the
           // source path was, only its last segment is used here.
-          const tujuan = namaBebas(akar, path.basename(asal));
+          const tujuan = await namaBebas(akar, path.basename(asal));
           const kurung = _kurungDiAkar(akar, tujuan);
           if (kurung.galat) continue;
-          if (fs.statSync(asal).isDirectory()) {
+          if (asalStat.isDirectory()) {
             await fs.promises.cp(asal, tujuan, {
               recursive: true,
               filter: (src: string) => bolehSalin(src) || src === asal,
@@ -3647,7 +3677,7 @@ const server = http.createServer(async (req: any, res: any) => {
           } else {
             await fs.promises.copyFile(asal, tujuan);
           }
-          kumpulkan(tujuan);
+          await kumpulkan(tujuan);
         }
       } catch (e: any) {
         return jawab(200, {
@@ -3996,190 +4026,6 @@ const server = http.createServer(async (req: any, res: any) => {
     }
   }
 
-  // GET /plugins — the installed plugins and their approval status.
-  //
-  // A BROKEN manifest is included too (the `rusak` field) rather than dropped
-  // silently. A plugin vanishing without trace is precisely how skills.ts came to be
-  // forgotten until it turned into a hole.
-  if (req.method === "GET" && req.url === "/plugins") {
-    try {
-      const P = require("./agent/plugins.ts");
-      const { plugin, rusak } = P.pindai();
-      const setuju = new Set(P.disetujui());
-      const aktifSesi = new Set(P.kapabilitasDisetujui());
-      res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(
-        JSON.stringify({
-          ok: true,
-          izinDikenal: P.IZIN_DIKENAL,
-          plugin: plugin.map((p: any) => ({
-            nama: p.nama,
-            versi: p.versi,
-            ket: p.ket,
-            sumber: [p.command].concat(p.args || []).join(" "),
-            izin: p.izin,
-            disetujui: setuju.has(p.nama),
-            // Approvals are frozen into genesis when the session starts. Something
-            // just approved shows `disetujui:true` but `aktifSesi:false` — and that
-            // difference MUST be visible, because otherwise the user believes the
-            // plugin is live while the agent still cannot call it.
-            aktifSesi: aktifSesi.has(P.kapabilitas(p.nama)),
-          })),
-          rusak,
-        }),
-      );
-    } catch (e) {
-      res.writeHead(500, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ ok: false, error: e.message }));
-    }
-    return;
-  }
-
-  // POST /plugins/pasang — the user installs a new plugin.
-  //
-  // There is no agent-tool equivalent, and there must not be. This is the user's
-  // door; the whole two-door separation collapses if the model can install for
-  // itself.
-  //
-  // ONLY the manifest is written — no code is downloaded or copied. The
-  // "fetch from a URL and save it" path that skill_install once had is deliberately
-  // not revived.
-  if (req.method === "POST" && req.url === "/plugins/pasang") {
-    let raw = "";
-    req.on("data", (c: any) => (raw += c));
-    req.on("end", () => {
-      let b: any = {};
-      try {
-        b = JSON.parse(raw || "{}");
-      } catch (_) {}
-      try {
-        const P = require("./agent/plugins.ts");
-        const r = P.pasang(b);
-        res.writeHead(r.ok ? 200 : 400, {
-          "Content-Type": "application/json",
-        });
-        res.end(
-          JSON.stringify(
-            r.ok
-              ? {
-                  ok: true,
-                  // Installing does NOT grant permission. Said plainly so the user
-                  // does not assume the plugin is immediately usable by the agent.
-                  catatan:
-                    "Installed. Not yet permitted — the agent cannot call it yet.",
-                }
-              : r,
-          ),
-        );
-      } catch (e) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // POST /plugins/copot — user menghapus plugin beserta persetujuannya.
-  if (req.method === "POST" && req.url === "/plugins/copot") {
-    let raw = "";
-    req.on("data", (c: any) => (raw += c));
-    req.on("end", () => {
-      let b: any = {};
-      try {
-        b = JSON.parse(raw || "{}");
-      } catch (_) {}
-      const nama = String(b.nama || "");
-      try {
-        const P = require("./agent/plugins.ts");
-        // The process is stopped FIRST, before the folder disappears: uninstalling
-        // without killing leaves an orphan process still serving calls.
-        try {
-          require("./agent/mcp-client.ts").stopServer(nama);
-        } catch (_) {}
-        const r = P.copot(nama);
-        res.writeHead(r.ok ? 200 : 400, {
-          "Content-Type": "application/json",
-        });
-        res.end(JSON.stringify(r));
-      } catch (e) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
-  // POST /plugins/setujui — the user GRANTS or REVOKES a plugin's permission.
-  //
-  // Deliberately with no agent-tool equivalent. This is the user's door; if the model
-  // could approve plugins, the whole two-door separation collapses.
-  if (req.method === "POST" && req.url === "/plugins/setujui") {
-    let raw = "";
-    req.on("data", (c: any) => (raw += c));
-    req.on("end", () => {
-      let b: any = {};
-      try {
-        b = JSON.parse(raw || "{}");
-      } catch (_) {}
-      const nama = String(b.nama || "");
-      const beri = b.setujui !== false;
-      try {
-        const P = require("./agent/plugins.ts");
-        const ada = P.pindai().plugin.some((p: any) => p.nama === nama);
-        if (!ada) {
-          res.writeHead(404, { "Content-Type": "application/json" });
-          res.end(
-            JSON.stringify({
-              ok: false,
-              error: "plugin not found: " + nama,
-            }),
-          );
-          return;
-        }
-        const kini = new Set(P.disetujui());
-        if (beri) kini.add(nama);
-        else kini.delete(nama);
-        fs.mkdirSync(P.DIR_PLUGIN, { recursive: true });
-        fs.mkdirSync(P.DIR_PLUGIN, { recursive: true });
-        fs.writeFileSync(
-          P.BERKAS_SETUJU,
-          JSON.stringify([...kini].sort(), null, 2),
-        );
-
-        // A REVOCATION has to take effect NOW, and the approval file alone does not
-        // deliver that: this session's genesis is already frozen with that capability
-        // inside it, and the process is already running. So the process is killed —
-        // nothing is left to call, and the tool disappears from the list.
-        let dimatikan = false;
-        if (!beri) {
-          try {
-            const mcp = require("./agent/mcp-client.ts");
-            mcp.stopServer(nama);
-            dimatikan = true;
-          } catch (_) {}
-        }
-
-        res.writeHead(200, { "Content-Type": "application/json" });
-        res.end(
-          JSON.stringify({
-            ok: true,
-            disetujui: beri,
-            dimatikan,
-            // Honest about when it takes effect. Genesis is frozen once per session,
-            // so GRANTING a permission does not touch the ruleset already running.
-            catatan: beri
-              ? "Takes effect from the next session — this session's genesis is already frozen."
-              : "Prosesnya dihentikan sekarang; kapabilitasnya hilang dari genesis pada sesi berikutnya.",
-          }),
-        );
-      } catch (e) {
-        res.writeHead(500, { "Content-Type": "application/json" });
-        res.end(JSON.stringify({ ok: false, error: e.message }));
-      }
-    });
-    return;
-  }
-
   // POST /flow/http — the "HTTP Request" node executor for the Logic canvas
   // (integrations). Makes the HTTP request SERVER-SIDE so the renderer does not hit
   // CORS — this is the backbone of "external platform integration": outbound calls
@@ -4490,7 +4336,7 @@ const server = http.createServer(async (req: any, res: any) => {
   ) {
     let body = "";
     req.on("data", (c: any) => (body += c));
-    req.on("end", () => {
+    req.on("end", async () => {
       let b: any = {};
       try {
         b = JSON.parse(body || "{}");
@@ -4499,15 +4345,15 @@ const server = http.createServer(async (req: any, res: any) => {
       let out;
       try {
         if (req.url === "/ww/branch/switch")
-          out = ww.switchBranch(b.path, b.branch);
+          out = await ww.switchBranch(b.path, b.branch);
         else if (req.url === "/ww/branch/create")
-          out = ww.createBranch(b.path, b.branch, b.from);
+          out = await ww.createBranch(b.path, b.branch, b.from);
         else if (req.url === "/ww/branch/rename")
-          out = ww.renameBranch(b.path, b.oldName, b.newName);
+          out = await ww.renameBranch(b.path, b.oldName, b.newName);
         else if (req.url === "/ww/branch/delete")
-          out = ww.deleteBranch(b.path, b.branch);
+          out = await ww.deleteBranch(b.path, b.branch);
         else if (req.url === "/ww/commit")
-          out = ww.commitAll(b.path, b.message);
+          out = await ww.commitAll(b.path, b.message);
         else if (req.url === "/ww/rename")
           out = ww.renameWorkspaceFolder(b.path, b.newName);
       } catch (e) {
@@ -4624,6 +4470,50 @@ const server = http.createServer(async (req: any, res: any) => {
         const { code, line, column } = JSON.parse(body);
         out = (await jediComplete({ code, line, column })) as any[];
       } catch {}
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(out));
+    });
+    return;
+  }
+
+  // Python code intelligence: definition, references, hover.
+  //
+  // The same Jedi worker that already served autocomplete, asked different
+  // questions. Static analysis, no model, no network.
+  //
+  // `path` is forwarded and it is what makes this worth having: with the real
+  // file path, Jedi resolves imports and `goto` can leave the buffer and land
+  // in another module. Without it every file is an island -- the identical
+  // failure the editor had while its Monaco models carried no URI.
+  if (req.method === "POST" && req.url === "/pyintel") {
+    let body = "";
+    req.on("data", (c: any) => (body += c));
+    req.on("end", async () => {
+      let out: any = { ok: false, err: "bad request" };
+      try {
+        const p = JSON.parse(body || "{}");
+        const op = String(p.op || "");
+        if (op !== "goto" && op !== "references" && op !== "hover") {
+          out = { ok: false, err: "unknown op: " + op };
+        } else {
+          const r: any = await jediComplete({
+            op,
+            code: p.code,
+            line: p.line,
+            column: p.column,
+            path: p.path,
+          });
+          // jediComplete answers [] when the worker is not running, because
+          // that was the right empty answer for completion. For these
+          // operations an array is not a valid shape, and "no worker" must not
+          // read as "no results".
+          out = Array.isArray(r)
+            ? { ok: false, err: "jedi worker is not available" }
+            : r;
+        }
+      } catch (e: any) {
+        out = { ok: false, err: (e && e.message) || String(e) };
+      }
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(out));
     });

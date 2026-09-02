@@ -2,7 +2,7 @@
 //
 // WHY THIS EXISTS. The files here are NOT ES modules — index.html fetches them
 // one by one, transpiles each, and then CONCATENATES the results into a single
-// <script>. They all share one global scope: the `useState` in PluginsView.tsx
+// <script>. They all share one global scope: the `useState` in Views.tsx
 // is the same useState app.tsx destructured from React, with no import anywhere.
 //
 // Without this file TypeScript flags every one of those names "Cannot find

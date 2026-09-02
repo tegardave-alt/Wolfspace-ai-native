@@ -21,7 +21,6 @@
 // The entry points that install it today:
 //   server.cjs                  (line 1, before agent/mcp-client.ts)
 //   agent/tools/index.ts       (reached directly by test subprocesses)
-//   agent/plugins.ts
 //   agent/self_agent.ts
 //   scripts/mcp-http-bridge.cjs
 //   tests/setup-jest.cjs        (plus tests/transformer-ts.cjs for Jest itself)

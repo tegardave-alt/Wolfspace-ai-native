@@ -2,9 +2,10 @@
 // ride on it.
 //
 // WHAT WENT WRONG. `.page.hub-page` is the wrapper for full-page views, and
-// SettingsView renders the `.hub-header` that belongs with it. PluginsView and
-// HistoryView did not — they opened straight into their own body div. Nothing
-// looked broken, and two behaviours were quietly absent:
+// SettingsView renders the `.hub-header` that belongs with it. The Plugins
+// page (since deleted) and HistoryView did not — they opened straight into
+// their own body div. Nothing looked broken, and two behaviours were quietly
+// absent:
 //
 //   1. `.app.sb-sembunyi .hub-header { padding-left: 58px }` is what reserves
 //      the top-left corner for the floating sidebar toggle. That rule names the
@@ -29,7 +30,7 @@ const baca = (rel: string): string =>
 
 const APP = baca("public/app.tsx");
 const CSS = baca("public/styles.css");
-const SUMBER = ["public/app/Views.tsx", "public/app/PluginsView.tsx"];
+const SUMBER = ["public/app/Views.tsx"];
 
 /** Components rendered inside a `.page hub-page` wrapper, in app.tsx. */
 function komponenHalamanHub(): string[] {
@@ -60,7 +61,13 @@ describe("hub pages carry the shared header", () => {
   test("there are hub pages to check at all", () => {
     // Guards the walker itself. If the markup in app.tsx changes shape and
     // this finds nothing, every test below would pass on an empty list.
-    expect(HALAMAN.length).toBeGreaterThanOrEqual(3);
+    //
+    // TWO, not three. There are three `.page.hub-page` wrappers, but the
+    // `agents` one renders nothing (its runner was removed) and the Skills page
+    // was deleted with the rest of that feature, so only SettingsView and
+    // HistoryView are actually walked. The floor exists to catch a walker that
+    // finds NOTHING; it is not a count of the pages that ought to exist.
+    expect(HALAMAN.length).toBeGreaterThanOrEqual(2);
   });
 
   test.each(HALAMAN)("%s renders a .hub-header", (nama) => {

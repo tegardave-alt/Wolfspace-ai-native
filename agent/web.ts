@@ -41,7 +41,7 @@ function trunc(s, n) {
 // nothing guarded a network destination. Proven by a real test: a local server
 // on 127.0.0.1:8399 had its contents read whole by webFetch. The expensive one
 // was not that test server but WOLFSPACE'S OWN backend on 8090 — where
-// /plugins, /debug and the configuration live.
+// /debug and the configuration live.
 //
 // What is guarded is the DESTINATION, not the URL string. The hostname is
 // resolved first and the RESULTING ADDRESS is checked; otherwise "localtest.me"

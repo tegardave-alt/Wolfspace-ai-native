@@ -67,7 +67,7 @@ try {
 // ── Lazy (peripheral) — loaded on first tool call ──
 let _diskTools = null,
   _webTools = null,
-  _skillTools = null,
+  _sandboxTools = null,
   _broker = null;
 function lazyDisk() {
   return (
@@ -89,10 +89,10 @@ function lazyArch() {
     {}
   );
 }
-function lazySkill() {
+function lazySandbox() {
   return (
-    _skillTools ||
-    (_skillTools = _ensureMod("skill-tools", "./skill-tools.ts")) ||
+    _sandboxTools ||
+    (_sandboxTools = _ensureMod("sandbox-tools", "./sandbox-tools.ts")) ||
     {}
   );
 }
@@ -119,6 +119,20 @@ function lazyCC() {
 
 // Static definitions (pure JSON, never fails)
 const { SELF_TOOLS } = require("./tool-definitions.ts");
+
+async function getToolDefs() {
+  const base = [...SELF_TOOLS];
+  try {
+    const mcpClient = require("../mcp-client.ts");
+    const active = await mcpClient.getTools();
+    if (Array.isArray(active) && active.length) base.push(...active);
+  } catch (_) {
+    // MCP is optional and may not be connected yet. The agent still sees the
+    // built-in tool set, and MCP tools appear only when a server is actually
+    // running and ready.
+  }
+  return base;
+}
 
 // Sandbox validator — non-critical, isolated
 let validateOperation: (
@@ -230,45 +244,21 @@ const webExtract = async (...a) => {
     throw new Error("web-tools could not be loaded (playwright?)");
   return m.webExtract(...a);
 };
-const skills = {
-  listSkills: () => {
-    const m = lazySkill();
-    return m.skills ? m.skills.listSkills() : [];
-  },
-  runSkill: async (n, a, sr) => {
-    const m = lazySkill();
-    return m.skills
-      ? m.skills.runSkill(n, a, sr)
-      : { ok: false, output: "skill-tools not loaded" };
-  },
-  installFromFile: (s) => {
-    const m = lazySkill();
-    return m.skills
-      ? m.skills.installFromFile(s)
-      : { output: "skill-tools not loaded" };
-  },
-  installFromNpm: async (s) => {
-    const m = lazySkill();
-    return m.skills
-      ? m.skills.installFromNpm(s)
-      : { ok: false, output: "skill-tools not loaded" };
-  },
-};
 const sandbox = {
   sandboxRun: async (cmd, opts) => {
-    const m = lazySkill();
+    const m = lazySandbox();
     return m.sandbox
       ? m.sandbox.sandboxRun(cmd, opts)
-      : { ok: false, output: "skill-tools not loaded" };
+      : { ok: false, output: "sandbox-tools not loaded" };
   },
   defaultSandboxOpts: () => {
-    const m = lazySkill();
+    const m = lazySandbox();
     return m.sandbox ? m.sandbox.defaultSandboxOpts() : {};
   },
   // null means "unknown", and penegakan.js translates that into "advisory" —
   // not silently into "kernel". That default direction is deliberate:
   adapterCapabilities: () => {
-    const m = lazySkill();
+    const m = lazySandbox();
     return m.sandbox && m.sandbox.adapterCapabilities
       ? m.sandbox.adapterCapabilities()
       : null;
@@ -806,10 +796,7 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
       disk_read: "disk-tools",
       disk_glob: "disk-tools",
       disk_grep: "disk-tools",
-      skill_list: "skill-tools",
-      skill_run: "skill-tools",
-      skill_install: "skill-tools",
-      sandbox_run: "skill-tools",
+      sandbox_run: "sandbox-tools",
       terminal_open: "exec-tools",
       terminal_write: "exec-tools",
       terminal_read: "exec-tools",
@@ -2241,40 +2228,6 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
     // resolveDiskPath is used by bash for cwd. What was removed is the tool path,
     // not the module.
 
-    if (name === "skill_list") {
-      const list = skills.listSkills();
-      const text = list.length
-        ? list
-            .map((s) => "- " + s.name + " v" + s.version + ": " + s.description)
-            .join("\n")
-        : "(no skills installed yet. Use skill_install to add one.)";
-      return { ok: true, output: text };
-    }
-    if (name === "skill_run") {
-      const sandboxRunner = (cmd, opts) =>
-        sandbox.sandboxRun(cmd, { ...opts, ...sandbox.defaultSandboxOpts() });
-      return skills.runSkill(args.name, args.args || {}, sandboxRunner).then(
-        (r) => r,
-        (e) => ({ ok: false, output: e.message }),
-      );
-    }
-    if (name === "skill_install") {
-      const src = (args.source || "").trim();
-      if (!src)
-        return {
-          ok: false,
-          output:
-            "source is required (npm package name or path to a .cjs file)",
-        };
-      if (src.endsWith(".cjs") && fs.existsSync(src)) {
-        return { ok: true, output: skills.installFromFile(src).output };
-      }
-      // Try npm install
-      return skills.installFromNpm(src).then(
-        (r) => r,
-        (e) => ({ ok: false, output: e.message }),
-      );
-    }
     if (name === "git") {
       // git CANNOT run inside an AppContainer — it opens /dev/null with O_RDWR
       // at startup, and the NUL device cannot be read there. So once bash became
@@ -2500,6 +2453,7 @@ module.exports = {
   Q_ALLOWED,
   Q_FORBID,
   SELF_TOOLS,
+  getToolDefs,
   runSelfTool,
   qWalk,
   qList,

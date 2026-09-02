@@ -1398,7 +1398,6 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     "web_fetch",
     "question",
     "todowrite",
-    "skill_list",
     "terminal_read",
   ];
   currentTools = currentTools.map((t) => {
@@ -1927,7 +1926,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             };
           }
           const isReadOnlyTool =
-            /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|architecture_map|terminal_read|skill_list|mcp_[a-z0-9_]+)$/i.test(
+            /^(disk_grep|disk_read|disk_glob|disk_list|web_search|web_fetch|glob|grep|read|list|architecture_map|terminal_read|mcp_[a-z0-9_]+)$/i.test(
               tc.function.name,
             );
 

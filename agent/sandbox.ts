@@ -499,12 +499,7 @@ function defaultSandboxOpts() {
       path.join(QROOT, "workspace"),
       os.tmpdir(),
     ],
-    writeRoots: [
-      QROOT,
-      path.join(QROOT, "workspace"),
-      os.tmpdir(),
-      path.join(QROOT, "skills"),
-    ],
+    writeRoots: [QROOT, path.join(QROOT, "workspace"), os.tmpdir()],
     timeout: 60000,
     maxOutput: 100000,
     networkAllowed: true,

@@ -2,7 +2,7 @@
 //
 // KENAPA UJI TERPISAH. tests/migrated-code-is-english.test.ts sudah menjaga
 // bahasa komentar, tapi komentarSaja() memang hanya mengekstrak KOMENTAR — ia
-// tak pernah melihat satu pun string. Akibatnya public/app/PluginsView.tsx
+// tak pernah melihat satu pun string. Akibatnya public/app/Views.tsx
 // duduk di daftar berkas terjaga, lulus terus, sementara layarnya penuh
 // bahasa Indonesia: "Beri izin", "copot", "Saring plugin terpasang…",
 // "Memuat…". Yang menemukannya mata pemakai, bukan ujinya.
@@ -30,7 +30,6 @@ const BERKAS_UI = [
   "public/app/AgentSteps.tsx",
   "public/app/Components.tsx",
   "public/app/Model3DViewer.tsx",
-  "public/app/PluginsView.tsx",
   "public/app/Screens.tsx",
   "public/app/Sidebar.tsx",
   "public/app/Views.tsx",

@@ -38,7 +38,6 @@ const BERKAS_AGENT = [
   "agent/tools/file-tools.ts",
   "agent/tools/appcontainer-jail.ts",
   "agent/mcp-client.ts",
-  "agent/plugins.ts",
   "agent/cloud.ts",
   "agent/chat.ts",
 ];
