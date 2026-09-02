@@ -324,30 +324,21 @@ function ProjectPickerScreen({
       .replace("server-", "")
       .replace(/[^a-zA-Z0-9-]/g, "");
 
-    let env = {};
-    if (envVars) {
-      try {
-        env = JSON.parse(envVars);
-      } catch (err) {
-        if (cleanType.includes("github"))
-          env = { GITHUB_PERSONAL_ACCESS_TOKEN: envVars };
-        else if (cleanType.includes("brave")) env = { BRAVE_API_KEY: envVars };
-        else if (cleanType.includes("postgres"))
-          env = { POSTGRES_URL: envVars };
-        else if (cleanType.includes("slack"))
-          env = { SLACK_BOT_TOKEN: envVars };
-        else if (cleanType.includes("notion")) env = { NOTION_TOKEN: envVars };
-        else if (cleanType === "figma") {
-          // figma-developer-mcp takes its token via the --figma-api-key arg
-          // rather than env, and needs --stdio.
-          args = [
-            "-y",
-            "figma-developer-mcp",
-            "--stdio",
-            `--figma-api-key=${envVars}`,
-          ];
-        } else env = { TOKEN: envVars };
-      }
+    // Single source, exactly like the command above: see mcpResolveKredensial()
+    // in app/Config.tsx. This was an if/else chain HERE and another one in
+    // Components.tsx, and the two had already drifted — this copy could not send
+    // a bearer token to a remote server at all, and both ended in
+    // `env = { TOKEN: ... }`, a name no MCP server reads.
+    const _k = mcpResolveKredensial(type, envVars, args);
+    const env = _k.env;
+    args = _k.args;
+    if (_k.perluNama) {
+      setPickerMcpInputError(
+        "There is no known credential name for '" +
+          type +
+          "'. Enter it as NAME=value (for example API_KEY=abc), or as JSON.",
+      );
+      return;
     }
 
     const conf = { command, args, env };
@@ -1129,7 +1120,9 @@ function ProjectPickerScreen({
                                       (srv.status && srv.status.lastError) ||
                                       (srv.status && !srv.status.running
                                         ? "MCP process is not running"
-                                        : "Not ready")
+                                        : srv.status && srv.status.starting
+                                          ? "Handshake in progress"
+                                          : "Not ready")
                                     }
                                     style={{
                                       fontSize: "11px",
@@ -1153,7 +1146,9 @@ function ProjectPickerScreen({
                                       ? "✕ Failed"
                                       : srv.status && !srv.status.running
                                         ? "○ Berhenti"
-                                        : "○ Not ready"}
+                                        : srv.status && srv.status.starting
+                                          ? "◌ Connecting…"
+                                          : "○ Not ready"}
                                   </span>
                                 )}
                                 <span
@@ -2311,7 +2306,21 @@ function VSCodeTerminal({
     ro.observe(hostRef.current);
     window.addEventListener("resize", doFit);
 
-    const readInterval = setInterval(async () => {
+    // SELF-SCHEDULING, not setInterval.
+    //
+    // setInterval does not wait for an async callback. It fired every 75 ms
+    // whether or not the previous read had come back, so the moment one read
+    // took longer than the gap -- which crossing to a busy backend process
+    // always does -- the iterations overlapped and piled up without bound. The
+    // log showed the result: POST /api/terminal/read stacked on top of itself
+    // until the backend stopped answering at all.
+    //
+    // Waiting for the round trip before scheduling the next one makes the poll
+    // self-limiting: a slow backend simply gets polled less often, which is the
+    // correct response to it being slow.
+    let berhentiPoll = false;
+    let jamPoll: any = null;
+    const putaranBaca = async () => {
       for (const inst of Array.from(_terminalInstans.values())) {
         if (!inst.sessionId) continue;
         try {
@@ -2330,11 +2339,14 @@ function VSCodeTerminal({
           }
         } catch (_) {}
       }
-    }, 75);
+      if (!berhentiPoll) jamPoll = setTimeout(putaranBaca, 75);
+    };
+    jamPoll = setTimeout(putaranBaca, 75);
 
     return () => {
       hidup = false;
-      clearInterval(readInterval);
+      berhentiPoll = true;
+      clearTimeout(jamPoll);
       clearTimeout(resizeDebounce);
       ro.disconnect();
       window.removeEventListener("resize", doFit);

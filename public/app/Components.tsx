@@ -871,41 +871,20 @@ function Composer({
     }
     if (!name) name = "mcp-" + Date.now().toString(36);
 
-    let env = {};
-    if (envVars) {
-      try {
-        env = JSON.parse(envVars);
-      } catch (err) {
-        if (cleanType.includes("github"))
-          env = { GITHUB_PERSONAL_ACCESS_TOKEN: envVars };
-        else if (cleanType.includes("brave")) env = { BRAVE_API_KEY: envVars };
-        else if (cleanType.includes("postgres"))
-          env = { POSTGRES_URL: envVars };
-        else if (cleanType.includes("slack"))
-          env = { SLACK_BOT_TOKEN: envVars };
-        else if (cleanType === "figma") {
-          // figma-developer-mcp needs its token via --figma-api-key and a
-          // stdout pipe via --stdio.
-          args = [
-            "-y",
-            "figma-developer-mcp",
-            "--stdio",
-            `--figma-api-key=${envVars}`,
-          ];
-        } else if (cleanType.startsWith("http")) {
-          // Remote server: credentials go as HEADERS through env, NOT pasted
-          // into the URL in argv. argv is visible in any process listing and
-          // gets recorded with it; env is never logged by mcp-client.
-          // This is the path for a BARE token (one that failed JSON.parse
-          // above), treated as a bearer. If the user entered JSON, the
-          // JSON.parse branch above already used it as env verbatim — and
-          // there they can set MCP_HEADERS themselves for non-standard
-          // headers.
-          env = {
-            MCP_HEADERS: JSON.stringify({ Authorization: "Bearer " + envVars }),
-          };
-        } else env = { TOKEN: envVars };
-      }
+    // Single source, exactly like the command above: see mcpResolveKredensial()
+    // in app/Config.tsx. The same chain lived in Screens.tsx and the two had
+    // drifted — that copy had no remote-bearer branch at all — and both ended in
+    // `env = { TOKEN: ... }`, a name no MCP server reads.
+    const _k = mcpResolveKredensial(type, envVars, args);
+    const env = _k.env;
+    args = _k.args;
+    if (_k.perluNama) {
+      setMcpInputError(
+        "There is no known credential name for '" +
+          type +
+          "'. Enter it as NAME=value (for example API_KEY=abc), or as JSON.",
+      );
+      return;
     }
 
     const conf = { command, args, env };
@@ -1865,7 +1844,9 @@ function Composer({
                                         (srv.status && srv.status.lastError) ||
                                         (srv.status && !srv.status.running
                                           ? "MCP process is not running"
-                                          : "Not ready")
+                                          : srv.status && srv.status.starting
+                                            ? "Handshake in progress"
+                                            : "Not ready")
                                       }
                                       style={{
                                         fontSize: "11px",
@@ -1889,7 +1870,9 @@ function Composer({
                                         ? "✕ Failed"
                                         : srv.status && !srv.status.running
                                           ? "○ Berhenti"
-                                          : "○ Not ready"}
+                                          : srv.status && srv.status.starting
+                                            ? "◌ Connecting…"
+                                            : "○ Not ready"}
                                     </span>
                                   )}
                                   <span
