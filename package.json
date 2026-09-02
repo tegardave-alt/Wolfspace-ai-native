@@ -1,7 +1,7 @@
 {
   "name": "WOLFSPACE",
   "version": "0.2.4",
-  "description": "An open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
+  "description": "An open-source AI coding chat that proves its code by actually running it \u2014 model guesses, your CPU judges.",
   "main": "server.cjs",
   "type": "commonjs",
   "bin": {
@@ -22,8 +22,10 @@
     "build:main": "node scripts/build-main.cjs",
     "ww": "node -r ./scripts/ts-register.cjs scripts/ww.ts",
     "periksa:paket": "node scripts/periksa-paket.cjs",
+    "mcp:periksa": "node scripts/periksa-mcp.cjs",
     "build:app": "node scripts/build-app.cjs",
-    "build:aclaunch": "node scripts/build-aclaunch.cjs"
+    "build:aclaunch": "node scripts/build-aclaunch.cjs",
+    "uji:beku": "node scripts/uji-beku.cjs"
   },
   "keywords": [
     "ai",
@@ -76,6 +78,10 @@
       "config.json",
       "package.json",
       "node_modules/**",
+      "scripts/mcp-http-bridge.cjs",
+      "scripts/urai-tsc.ts",
+      "scripts/pindai-python.py",
+      "jedi_worker.py",
       "!agent/**/*.md",
       "!agent/**/*.txt",
       "!public/uploads/**",
@@ -94,6 +100,10 @@
       "server/**",
       "scripts/ww.ts",
       "scripts/ts-register.cjs",
+      "jedi_worker.py",
+      "scripts/pindai-python.py",
+      "scripts/urai-tsc.ts",
+      "scripts/mcp-http-bridge.cjs",
       "scripts/appcontainer/AcLaunch.exe",
       "core/**",
       "public/**",
