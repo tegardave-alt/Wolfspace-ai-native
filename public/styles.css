@@ -4898,3 +4898,20 @@ img.ar-fs-icon {
   color: var(--brand, #5eead4);
   background: rgba(94, 234, 212, 0.12);
 }
+
+/* ── Commit ──
+   The primary action gets a colour of its own, and the same pointer feedback
+   as every other control in the app. A disabled Commit must NOT light up: the
+   message is required, and a button that brightens under the pointer while
+   refusing to act is the sort of thing that gets clicked repeatedly. */
+.git-utama {
+  transition:
+    background 0.12s ease,
+    filter 0.12s ease;
+}
+.git-utama:not(:disabled):hover {
+  filter: brightness(1.15);
+}
+.git-utama:not(:disabled):active {
+  filter: brightness(0.92);
+}

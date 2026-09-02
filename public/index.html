@@ -324,6 +324,131 @@
       require.config({ paths: { vs: MB + "/vendor/monaco/vs" } });
       window.monacoReady = new Promise(function (res) {
         require(["vs/editor/editor.main"], function () {
+          // ── Worker TypeScript-nya DINYALAKAN ──
+          //
+          // Ia sudah ikut di-vendor sejak awal (vs/language/typescript) dan tak
+          // pernah disetel sekali pun, jadi hover, go-to-definition dan
+          // find-references tak punya apa pun untuk diselesaikan. Model kini
+          // membawa URI berkas sungguhan (lihat createModel di app.tsx); opsi
+          // di bawah ini separuh sisanya — tanpa resolusi modul dan setelan jsx,
+          // sebuah import tetap tak menuju ke mana-mana.
+          var ts = window.monaco.languages.typescript;
+          var opsiTs = {
+            target: ts.ScriptTarget.ES2020,
+            module: ts.ModuleKind.ESNext,
+            moduleResolution: ts.ModuleResolutionKind.NodeJs,
+            allowJs: true,
+            checkJs: false,
+            jsx: ts.JsxEmit.React,
+            allowNonTsExtensions: true,
+            esModuleInterop: true,
+            skipLibCheck: true,
+          };
+          ts.typescriptDefaults.setCompilerOptions(opsiTs);
+          ts.javascriptDefaults.setCompilerOptions(opsiTs);
+          // Validasi SEMANTIK sengaja dimatikan.
+          //
+          // Worker ini hanya tahu berkas yang modelnya terbuka, jadi ia akan
+          // menggarisbawahi import yang sah sebagai "tak ditemukan" semata
+          // karena berkas tujuannya belum pernah dibuka. Panel INFO sudah
+          // menjalankan tsc atas SELURUH workspace dan tahu semuanya — dua
+          // sumber kebenaran, dan yang di sini lebih sering keliru.
+          //
+          // Validasi SINTAKS tetap menyala: itu hanya butuh berkas di depan
+          // mata, dan di situ ia selalu benar.
+          var diagTs = {
+            noSemanticValidation: true,
+            noSyntaxValidation: false,
+          };
+          ts.typescriptDefaults.setDiagnosticsOptions(diagTs);
+          ts.javascriptDefaults.setDiagnosticsOptions(diagTs);
+
+          // ── Python: hover, definisi, referensi ──
+          //
+          // Monaco hanya mengirim language service sungguhan untuk EMPAT bahasa
+          // (typescript, css, html, json). Sisanya di basic-languages -- 81
+          // bahasa -- hanya dapat pewarnaan. Jadi intelijensi Python datang dari
+          // LUAR Monaco: worker Jedi yang selama ini sudah berjalan untuk
+          // autocomplete, ditanyai tiga pertanyaan lagi lewat /pyintel.
+          //
+          // Posisi diterjemahkan di perbatasan. Monaco menghitung kolom dari 1,
+          // Jedi dari 0 — salah di sini berarti meleset satu karakter di SETIAP
+          // pencarian, dan gejalanya terlihat seperti "kadang benar kadang
+          // tidak" alih-alih seperti bug.
+          function pyMinta(op, model, position) {
+            return fetch("/pyintel", {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify({
+                op: op,
+                code: model.getValue(),
+                line: position.lineNumber,
+                column: position.column - 1,
+                // Model kini membawa URI berkas sungguhan, dan itulah yang
+                // membuat Jedi bisa menyeberang ke modul lain.
+                path:
+                  model.uri && model.uri.fsPath ? model.uri.fsPath : undefined,
+              }),
+            })
+              .then(function (r) {
+                return r.json();
+              })
+              .catch(function () {
+                return { ok: false };
+              });
+          }
+
+          function pyTempat(t) {
+            var kol = (t.column || 0) + 1;
+            var panjang = t.name ? String(t.name).length : 0;
+            return {
+              uri: window.monaco.Uri.file(t.path),
+              range: {
+                startLineNumber: t.line || 1,
+                startColumn: kol,
+                endLineNumber: t.line || 1,
+                endColumn: kol + panjang,
+              },
+            };
+          }
+
+          // Hasil tanpa path, atau yang menunjuk ke dalam CPython sendiri,
+          // dibuang: melompat ke sana jarang yang dimaui, dan berkasnya belum
+          // tentu ada di disk.
+          function pyBisaDilompati(t) {
+            return t && t.path && !t.builtin;
+          }
+
+          window.monaco.languages.registerHoverProvider("python", {
+            provideHover: function (model, position) {
+              return pyMinta("hover", model, position).then(function (d) {
+                if (!d || !d.ok || !d.hasil || !d.hasil.length) return null;
+                var h = d.hasil[0];
+                var isi = [];
+                if (h.description) isi.push({ value: h.description });
+                if (h.doc) isi.push({ value: h.doc });
+                return isi.length ? { contents: isi } : null;
+              });
+            },
+          });
+
+          window.monaco.languages.registerDefinitionProvider("python", {
+            provideDefinition: function (model, position) {
+              return pyMinta("goto", model, position).then(function (d) {
+                if (!d || !d.ok || !d.hasil) return null;
+                return d.hasil.filter(pyBisaDilompati).map(pyTempat);
+              });
+            },
+          });
+
+          window.monaco.languages.registerReferenceProvider("python", {
+            provideReferences: function (model, position) {
+              return pyMinta("references", model, position).then(function (d) {
+                if (!d || !d.ok || !d.hasil) return null;
+                return d.hasil.filter(pyBisaDilompati).map(pyTempat);
+              });
+            },
+          });
           // Tema sendiri, dengan latar TRANSPARAN.
           //
           // vs-dark memaksa #1e1e1e, dan itu tak sama dengan satu pun permukaan
@@ -529,7 +654,6 @@
             "/app/VisualTools.tsx",
             "/app/CodeBlocks.tsx",
             "/app/Views.tsx",
-            "/app/PluginsView.tsx",
             "/app/Components.tsx",
             "/app/Screens.tsx",
             "/app/Sidebar.tsx",

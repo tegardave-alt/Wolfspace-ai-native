@@ -1081,7 +1081,22 @@ function LogicCodePane({
         if (dibatalkan) return;
         setMuat(false);
         if (!edRef.current || !window.monaco) return;
-        const model = window.monaco.editor.createModel(teks, bahasaMonaco(rel));
+        // A REAL URI, not an anonymous one.
+        //
+        // createModel(value, language) leaves Monaco to invent a name like
+        // inmemory://model/1, and the TypeScript worker indexes files BY URI.
+        // Every file was therefore an island under a made-up name: `import
+        // "./utils"` resolved against inmemory://model/1, which means nothing,
+        // so hover, go-to-definition and find-references had nothing to work
+        // with. The worker was vendored and configured all along; it simply had
+        // no addressable files.
+        //
+        // getModel first: createModel THROWS when a URI is already taken, and
+        // the same path can be opened into both editor groups.
+        const uri = window.monaco.Uri.file(abs);
+        const model =
+          window.monaco.editor.getModel(uri) ||
+          window.monaco.editor.createModel(teks, bahasaMonaco(rel), uri);
         model.onDidChangeContent(() => {
           _kotorBerkas.set(rel, true);
           if (relRef.current === rel) {
@@ -1790,7 +1805,37 @@ function LogicFileTree({
   // The "Changes" tab was REMOVED. It always read "No changes." — it was never
   // wired to real data in the first place — so it was not a disabled feature
   // but a piece of UI that never had any content.
+  // Folders that are CLOSED.
+  //
+  // The tree used to render every level at once: a folder drew a chevron, but
+  // the chevron did nothing and the row's cursor said "default". So the control
+  // looked clickable, was not, and a project of any size arrived as one long
+  // pile of files with no way to put any of it away.
+  //
+  // Closed rather than open is the state worth holding: a fresh tree shows
+  // everything, which is what someone opening a project expects, and the set
+  // stays empty until they actually fold something.
+  const [terlipat, setTerlipat] = React.useState<Set<string>>(
+    () => new Set<string>(),
+  );
+  const lipatToggle = (rel: string) =>
+    setTerlipat((prev: Set<string>) => {
+      const next = new Set(prev);
+      if (next.has(rel)) next.delete(rel);
+      else next.add(rel);
+      return next;
+    });
   const tree = buildDevTree(files, root, folders);
+  // A row is hidden when ANY closed folder is one of its ancestors. Checked by
+  // path prefix rather than by depth: the list is flat, so depth alone cannot
+  // say whose child a row is.
+  const treeTampil = tree.filter((n: any) => {
+    const rel = String(n.rel || "");
+    for (const f of terlipat) {
+      if (rel !== f && rel.startsWith(f + "/")) return false;
+    }
+    return true;
+  });
   // Resizable width, THE SAME PATTERN as the sidebar resizer (Sidebar.tsx):
   // separate localStorage, upper and lower bounds, a "resizing" class while
   // dragging. Matched deliberately — two panels resized in different ways would
@@ -1953,6 +1998,11 @@ function LogicFileTree({
   const [imporSibuk, setImporSibuk] = React.useState(false);
   // Which of the two toolbar buttons has its menu open, if either.
   const [menuAlat, setMenuAlat] = React.useState<any>(null);
+  // Import needs its OWN feedback. It used to report through galatBuat, which
+  // is only rendered inside the filename draft row -- a row an import never
+  // opens. So every outcome, success and refusal alike, was written to state
+  // that nothing displayed: the button appeared to do nothing at all.
+  const [imporPesan, setImporPesan] = React.useState<any>(null);
   const imporDari = async (jenis: any) => {
     if (!akarAda || imporSibuk) return;
     const ipc = (window as any).WOLFSPACE;
@@ -1977,9 +2027,22 @@ function LogicFileTree({
       const d = await res.json();
       if (d && Array.isArray(d.added) && d.added.length && onImpor)
         onImpor(d.added);
-      if (d && d.ok === false && d.error) setGalatBuat(d.error);
+      if (d && d.ok === false && d.error) {
+        setImporPesan({ teks: d.error, galat: true });
+      } else {
+        const n = (d && d.added && d.added.length) || 0;
+        // "0 files" is worth saying: it means the folder held only things the
+        // import skips, which otherwise looks identical to a broken button.
+        setImporPesan({
+          teks: n === 1 ? "Imported 1 file" : "Imported " + n + " files",
+          galat: n === 0,
+        });
+      }
     } catch (e: any) {
-      setGalatBuat(e && e.message ? e.message : String(e));
+      setImporPesan({
+        teks: e && e.message ? e.message : String(e),
+        galat: true,
+      });
     } finally {
       setImporSibuk(false);
     }
@@ -2289,6 +2352,30 @@ function LogicFileTree({
               <line x1="14.5" y1="17.5" x2="21.5" y2="17.5" />
             </svg>
           </button>
+          {imporPesan && (
+            <div
+              onClick={() => setImporPesan(null)}
+              title="Click to dismiss"
+              style={{
+                position: "absolute",
+                top: "26px",
+                right: 0,
+                zIndex: 55,
+                maxWidth: "260px",
+                padding: "5px 9px",
+                borderRadius: "6px",
+                fontSize: "11px",
+                lineHeight: 1.4,
+                cursor: "pointer",
+                background: imporPesan.galat ? "#3d1d1d" : "#16241b",
+                border:
+                  "1px solid " + (imporPesan.galat ? "#f85149" : "#2ea043"),
+                color: imporPesan.galat ? "#ffa198" : "#7ee787",
+              }}
+            >
+              {imporPesan.teks}
+            </div>
+          )}
           {menuAlat && (
             <div
               onMouseLeave={() => setMenuAlat(null)}
@@ -2536,19 +2623,22 @@ function LogicFileTree({
         </div>
       ) : (
         <div style={{ flex: 1, overflowY: "auto", padding: "6px 0" }}>
-          {tree.map((n: any, i: number) => {
+          {treeTampil.map((n: any, i: number) => {
             const tk = tandaBaris(tanda, n.rel);
             return (
               <div
                 key={i}
                 title={n.rel || n.name}
+                // A folder row FOLDS. It already drew a chevron and did nothing
+                // with it, so the control was there and inert.
                 onClick={(e: any) =>
-                  n.type !== "folder" &&
-                  onPilih &&
-                  // Alt is "open to the side", as in VS Code. The flag is passed
-                  // up rather than handled here: the tree has no idea groups
-                  // exist, and it should not learn.
-                  onPilih(n.rel || n.name, e.altKey)
+                  n.type === "folder"
+                    ? lipatToggle(n.rel || n.name)
+                    : onPilih &&
+                      // Alt is "open to the side", as in VS Code. The flag is
+                      // passed up rather than handled here: the tree has no
+                      // idea groups exist, and it should not learn.
+                      onPilih(n.rel || n.name, e.altKey)
                 }
                 onContextMenu={(e: any) => {
                   e.preventDefault();
@@ -2567,7 +2657,7 @@ function LogicFileTree({
                   height: "24px",
                   paddingRight: "10px",
                   paddingLeft: 10 + n.depth * 14 + "px",
-                  cursor: n.type === "folder" ? "default" : "pointer",
+                  cursor: "pointer",
                   color: n.type === "folder" ? "#cdd9e5" : "#adbac7",
                   fontSize: "13px",
                   whiteSpace: "nowrap",
@@ -2596,7 +2686,13 @@ function LogicFileTree({
                     strokeWidth="1.6"
                     strokeLinecap="round"
                     strokeLinejoin="round"
-                    style={{ flexShrink: 0, transform: "rotate(90deg)" }}
+                    style={{
+                      flexShrink: 0,
+                      transition: "transform 0.12s ease",
+                      transform: terlipat.has(n.rel || n.name)
+                        ? "rotate(0deg)"
+                        : "rotate(90deg)",
+                    }}
                   >
                     <path d="M6 4l4 4-4 4" />
                   </svg>
@@ -5234,13 +5330,6 @@ function App() {
                 onCloudChanged={() => setCloudVersion((v: any) => v + 1)}
               />
             )}
-          </div>
-          <div
-            className={
-              "page hub-page " + (view === "plugins" ? "active" : "enter")
-            }
-          >
-            {view === "plugins" && <PluginsView />}
           </div>
           <div
             className={

@@ -374,10 +374,21 @@ function gitInfo(dir: any) {
   // --porcelain: one line per change (staged/unstaged/untracked). The count of
   // non-empty lines is the number of changes not yet reflected in a commit.
   const porcelain = gitTry(["status", "--porcelain"], dir);
-  const dirtyCount =
-    porcelain == null
-      ? 0
-      : porcelain.split("\n").filter((l: any) => l.trim()).length;
+  // NULL IS NOT CLEAN. `git status --porcelain` answers with an empty string
+  // when there is nothing to report, so null means the question could not be
+  // asked at all -- a timeout, or a lock held by another program. Counting
+  // that as zero told the panel "clean, no changes" about a repository full
+  // of uncommitted work, which is the one lie a git panel must never tell.
+  if (porcelain == null)
+    return {
+      repo: true,
+      branch,
+      dirtyCount: null,
+      dirty: false,
+      takTerbaca: true,
+      lastCommit: null,
+    };
+  const dirtyCount = porcelain.split("\n").filter((l: any) => l.trim()).length;
   // The last commit: short hash + subject + relative time. null when there is none.
   const last = gitTry(["log", "-1", "--format=%h%s%cr"], dir);
   let lastCommit: any = null;
@@ -486,12 +497,61 @@ function lupakanGit(dir: any) {
     if (v.dir === cari) _cacheGit.delete(k);
 }
 
+// The async twin of gitRun. Same contract -- { ok, out } or { ok:false, err } --
+// so the write paths could stop blocking without changing what they return.
+//
+// WHY IT MATTERS. These run on the "kerja" host, and execFileSync there holds
+// that host's only thread: a slow commit stalled every other /ww call behind
+// it, so the file tree went quiet while git worked.
+function gitRunAsync(args: any, cwd: any): Promise<any> {
+  return new Promise((resolve) => {
+    execFile(
+      "git",
+      args,
+      {
+        cwd,
+        encoding: "utf8",
+        maxBuffer: 8 * 1024 * 1024,
+        windowsHide: true,
+        timeout: BATAS_GIT_MS,
+      },
+      (e: any, stdout: any, stderr: any) => {
+        if (!e) return resolve({ ok: true, out: String(stdout || "").trim() });
+        resolve({ ok: false, err: _sebabGit(e, stderr, stdout) });
+      },
+    );
+  });
+}
+
+// Git calls get a CEILING.
+//
+// Without one they wait for ever, and "for ever" is what a locked repository
+// gives you: another program holding .git/index.lock, or a `git status -uall`
+// grinding through a deep tree. Seen in the real app -- the panel span its
+// loader indefinitely while the failure surfaced somewhere else entirely, as
+// "host tak menjawab", which names neither git nor the lock.
+const BATAS_GIT_MS = 15000;
+
+/** Reads a git failure and says what it actually was. */
+function _sebabGit(e: any, stderr: any, stdout: any) {
+  const teks = ((stderr || "") + (stdout || "")).toString().trim();
+  if (e && (e.killed || e.signal))
+    return (
+      "git did not answer in " +
+      Math.round(BATAS_GIT_MS / 1000) +
+      "s - the repository may be locked by another program"
+    );
+  if (/index\.lock|Another git process|Unable to create/i.test(teks))
+    return "repository is locked by another git process (.git/index.lock)";
+  return teks || (e && e.message) || "git failed";
+}
+
 function gitTryAsync(args: any, cwd: any): Promise<any> {
   return new Promise((selesai: any) => {
     execFile(
       "git",
       args,
-      { cwd, encoding: "utf8", windowsHide: true },
+      { cwd, encoding: "utf8", windowsHide: true, timeout: BATAS_GIT_MS },
       (galat: any, keluar: any) =>
         selesai(galat ? null : String(keluar).trim()),
     );
@@ -505,10 +565,21 @@ async function _gitInfoTarik(dir: any) {
     gitTryAsync(["status", "--porcelain"], dir),
     gitTryAsync(["log", "-1", "--format=%h\x1f%s\x1f%cr"], dir),
   ]);
-  const dirtyCount =
-    porcelain == null
-      ? 0
-      : porcelain.split("\n").filter((l: any) => l.trim()).length;
+  // NULL IS NOT CLEAN. `git status --porcelain` answers with an empty string
+  // when there is nothing to report, so null means the question could not be
+  // asked at all -- a timeout, or a lock held by another program. Counting
+  // that as zero told the panel "clean, no changes" about a repository full
+  // of uncommitted work, which is the one lie a git panel must never tell.
+  if (porcelain == null)
+    return {
+      repo: true,
+      branch: cabang || "?",
+      dirtyCount: null,
+      dirty: false,
+      takTerbaca: true,
+      lastCommit: null,
+    };
+  const dirtyCount = porcelain.split("\n").filter((l: any) => l.trim()).length;
   let lastCommit: any = null;
   if (terakhir) {
     const [hash, subject, when] = terakhir.split("\x1f");
@@ -565,39 +636,39 @@ function listBranches(dir: any) {
 }
 
 // Switch to another branch (checkout). Fails when a conflict or change blocks it.
-function switchBranch(dir: any, branch: any) {
+async function switchBranch(dir: any, branch: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   if (!branch) return { ok: false, err: "empty branch name" };
-  return gitRun(["checkout", branch], dir);
+  return gitRunAsync(["checkout", branch], dir);
 }
 
 // Create a new branch (optionally from another branch/ref) and switch to it.
-function createBranch(dir: any, branch: any, from: any) {
+async function createBranch(dir: any, branch: any, from: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const name = toBranch(branch);
   if (!name) return { ok: false, err: "invalid branch name" };
   const args = from ? ["checkout", "-b", name, from] : ["checkout", "-b", name];
-  const r = gitRun(args, dir);
+  const r = await gitRunAsync(args, dir);
   return r.ok ? { ok: true, out: r.out, name } : r;
 }
 
 // Rename a branch (git branch -m). When oldName is the active branch it may be
 // omitted.
-function renameBranch(dir: any, oldName: any, newName: any) {
+async function renameBranch(dir: any, oldName: any, newName: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const nn = toBranch(newName);
   if (!nn) return { ok: false, err: "invalid new branch name" };
-  const r = gitRun(["branch", "-m", oldName, nn], dir);
+  const r = await gitRunAsync(["branch", "-m", oldName, nn], dir);
   return r.ok ? { ok: true, name: nn } : r;
 }
 
 // Delete a local branch (-D, forced). Refuses to delete the active branch.
-function deleteBranch(dir: any, branch: any) {
+async function deleteBranch(dir: any, branch: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
-  const cur = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+  const cur = await gitTryAsync(["rev-parse", "--abbrev-ref", "HEAD"], dir);
   if (cur === branch)
     return { ok: false, err: "cannot delete the currently active branch" };
-  return gitRun(["branch", "-D", branch], dir);
+  return gitRunAsync(["branch", "-D", branch], dir);
 }
 
 // Commit EVERY change in the workspace working tree, with a message from the user.
@@ -610,20 +681,20 @@ function deleteBranch(dir: any, branch: any) {
 // When nothing has changed, `git commit` exits non-zero with "nothing to commit".
 // That is not a failure the user needs to fear, so it is separated out first and
 // answered clearly.
-function commitAll(dir: any, message: any) {
+async function commitAll(dir: any, message: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const pesan = String(message || "").trim();
   if (!pesan) return { ok: false, err: "empty commit message" };
   // Only the first line becomes the subject; the rest is ignored so `git log
   // --oneline` stays readable. The 200 limit follows git convention, not a rule.
   const subject = pesan.split(/\r?\n/)[0].slice(0, 200);
-  const kotor = gitTry(["status", "--porcelain"], dir);
+  const kotor = await gitTryAsync(["status", "--porcelain"], dir);
   if (!kotor) return { ok: false, err: "nothing to commit" };
-  const staged = gitRun(["add", "-A"], dir);
+  const staged = await gitRunAsync(["add", "-A"], dir);
   if (!staged.ok) return staged;
-  const r = gitRun(["commit", "-m", subject], dir);
+  const r = await gitRunAsync(["commit", "-m", subject], dir);
   if (!r.ok) return r;
-  const hash = gitTry(["rev-parse", "--short", "HEAD"], dir) || "";
+  const hash = (await gitTryAsync(["rev-parse", "--short", "HEAD"], dir)) || "";
   return { ok: true, hash, subject };
 }
 

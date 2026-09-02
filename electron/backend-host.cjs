@@ -32,6 +32,7 @@
 require("../scripts/ts-register.cjs");
 
 const path = require("path");
+const { PassThrough, Writable } = require("stream");
 
 let _core = null;
 function core() {
@@ -45,6 +46,79 @@ function kirim(msg) {
   } catch (e) {
     // The parent is gone; there is nobody left to tell.
   }
+}
+
+/**
+ * Which api paths this process serves: EVERYTHING, unless listed otherwise.
+ * Mirrors _jalurKeHost in electron/main.ts -- see the note there for why the
+ * default is inverted.
+ */
+const _TETAP_DI_MAIN = [];
+function _jalurKeHost(payload) {
+  const jalur = String((payload && payload.path) || "");
+  if (!jalur.startsWith("/")) return false;
+  for (const p of _TETAP_DI_MAIN) {
+    if (jalur === p || jalur.startsWith(p + "/")) return false;
+  }
+  return true;
+}
+
+/**
+ * The same fake-req/res proxy main.ts uses, against THIS process's server.
+ *
+ * Written out rather than imported: apiCall lives in electron/main.ts, which
+ * belongs to the other process and pulls in Electron itself.
+ */
+function apiHost({
+  method = "GET",
+  path: jalur = "/",
+  body = null,
+  headers = {},
+} = {}) {
+  return new Promise((resolve) => {
+    let selesai = false;
+    const req = new PassThrough();
+    req.method = method;
+    req.url = jalur;
+    req.headers = Object.assign(
+      { "content-type": "application/json" },
+      headers,
+    );
+    const res = new Writable();
+    res.statusCode = 200;
+    res._h = {};
+    res._chunks = [];
+    res.setHeader = (k, v) => {
+      res._h[String(k).toLowerCase()] = v;
+    };
+    res.getHeader = (k) => res._h[String(k).toLowerCase()];
+    res.removeHeader = (k) => {
+      delete res._h[String(k).toLowerCase()];
+    };
+    res.writeHead = (kode, h) => {
+      res.statusCode = kode;
+      if (h) for (const k in h) res._h[String(k).toLowerCase()] = h[k];
+      return res;
+    };
+    res._write = (chunk, _enc, cb) => {
+      res._chunks.push(Buffer.from(chunk));
+      cb();
+    };
+    res.end = (chunk) => {
+      if (selesai) return;
+      if (chunk) res._chunks.push(Buffer.from(chunk));
+      selesai = true;
+      resolve({
+        status: res.statusCode,
+        headers: res._h,
+        body: Buffer.concat(res._chunks).toString("utf8"),
+      });
+    };
+    core().server.emit("request", req, res);
+    if (body != null)
+      req.end(typeof body === "string" ? body : JSON.stringify(body));
+    else req.end();
+  });
 }
 
 async function tanganiInvoke(channel, payload) {
@@ -62,6 +136,21 @@ async function tanganiInvoke(channel, payload) {
   // Pelajarannya bukan "tambahkan apiCall di sini": kanal yang tak bisa
   // dilayani host harus MELEMPAR, supaya main jatuh ke jalur in-process alih-
   // alih menyebarkan null yang terlihat seperti jawaban sah.
+  //
+  // JALUR MCP ADALAH PENGECUALIAN, dan alasannya bukan kenyamanan.
+  //
+  // selfAgentStream berjalan DI SINI, dan ia memanggil mcpClient.getTools().
+  // Sementara itu /mcp/connect dilayani lewat kanal `api` di main. Dua proses
+  // berarti dua require("mcp-client.ts") terpisah, dua peta this.servers
+  // terpisah: UI menyambungkan server di main, agent bertanya ke instance di
+  // sini yang tak punya server sama sekali, dan getTools() mengembalikan []
+  // TANPA galat dan tanpa satu pun baris log. Terbukti di aplikasi berjalan --
+  // log mencatat "MCP server github ready" sementara agent tak melihat apa pun.
+  //
+  // Jadi kepemilikan MCP dipindahkan ke sini, ke proses yang menjalankan agent.
+  // Hanya jalur /mcp yang diambil; sisanya tetap MELEMPAR supaya main memakai
+  // apiCall-nya sendiri.
+  if (channel === "api" && _jalurKeHost(payload)) return apiHost(payload);
   throw new Error("unknown invoke channel: " + channel);
 }
 

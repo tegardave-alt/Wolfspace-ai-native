@@ -358,7 +358,9 @@ export async function selfAgentStreamPython(
 
   const agentCtx = { sessionId: threadId, workspaceRoot: wsRoot };
   const cloud = payload?.cloud;
-  const toolDefs = [...tools().SELF_TOOLS];
+  const toolDefs = await (
+    tools().getToolDefs || (async () => [...tools().SELF_TOOLS])
+  )();
 
   // What the tools actually returned this run, used to check the final answer.
   // Only SUBSTANTIVE output counts: an empty result, or one that says it found

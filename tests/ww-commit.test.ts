@@ -43,53 +43,56 @@ describe("commitAll", () => {
     git(["commit", "-m", "awal"], dir);
   };
 
-  test("menolak folder yang bukan repo", () => {
-    expect(ww.commitAll(dir, "apa saja").ok).toBe(false);
+  test("menolak folder yang bukan repo", async () => {
+    expect((await ww.commitAll(dir, "apa saja")).ok).toBe(false);
   });
 
-  test("menolak pesan kosong — TIDAK diam-diam memakai pesan bawaan", () => {
+  test("menolak pesan kosong — TIDAK diam-diam memakai pesan bawaan", async () => {
     jadikanRepo();
     fs.writeFileSync(path.join(dir, "b.txt"), "dua");
-    const r = ww.commitAll(dir, "   ");
+    const r = await ww.commitAll(dir, "   ");
     expect(r.ok).toBe(false);
     expect(r.err).toMatch(/message/i);
     // Dan tak ada commit yang terlanjur dibuat.
     expect(git(["log", "--oneline"], dir).split("\n")).toHaveLength(1);
   });
 
-  test("menolak saat memang tak ada perubahan", () => {
+  test("menolak saat memang tak ada perubahan", async () => {
     jadikanRepo();
-    const r = ww.commitAll(dir, "tak ada apa-apa");
+    const r = await ww.commitAll(dir, "tak ada apa-apa");
     expect(r.ok).toBe(false);
     expect(r.err).toMatch(/nothing to commit/i);
   });
 
-  test("commit berhasil dan working tree jadi bersih", () => {
+  test("commit berhasil dan working tree jadi bersih", async () => {
     jadikanRepo();
     fs.writeFileSync(path.join(dir, "b.txt"), "dua");
-    const r = ww.commitAll(dir, "feat: tambah b");
+    const r = await ww.commitAll(dir, "feat: tambah b");
     expect(r.ok).toBe(true);
     expect(r.hash).toMatch(/^[0-9a-f]{7,}$/);
     expect(git(["status", "--porcelain"], dir)).toBe("");
   });
 
-  test("PENGHAPUSAN ikut ter-commit, bukan cuma berkas baru", () => {
+  test("PENGHAPUSAN ikut ter-commit, bukan cuma berkas baru", async () => {
     // `git add .` versi lama tak mementaskan penghapusan; angka di panel
     // menghitungnya, jadi commit-nya harus ikut. Kalau tidak, panel akan tetap
     // melaporkan perubahan tersisa sesudah orang menekan Commit.
     jadikanRepo();
     fs.rmSync(path.join(dir, "a.txt"));
     fs.writeFileSync(path.join(dir, "c.txt"), "tiga");
-    expect(ww.commitAll(dir, "chore: tukar berkas").ok).toBe(true);
+    expect((await ww.commitAll(dir, "chore: tukar berkas")).ok).toBe(true);
     expect(git(["ls-tree", "--name-only", "HEAD"], dir)).toBe("c.txt");
     expect(git(["status", "--porcelain"], dir)).toBe("");
   });
 
-  test("hanya baris pertama jadi subject", () => {
+  test("hanya baris pertama jadi subject", async () => {
     // `git log --oneline` tak terbaca lagi kalau seluruh badan pesan ikut.
     jadikanRepo();
     fs.writeFileSync(path.join(dir, "b.txt"), "dua");
-    const r = ww.commitAll(dir, "fix: satu baris\n\nbadan panjang di bawah");
+    const r = await ww.commitAll(
+      dir,
+      "fix: satu baris\n\nbadan panjang di bawah",
+    );
     expect(r.subject).toBe("fix: satu baris");
     expect(git(["log", "--format=%s", "-1"], dir)).toBe("fix: satu baris");
   });
@@ -120,5 +123,71 @@ describe("jalur HTTP dan UI terpasang", () => {
     const i = B.indexOf("const doCommit");
     const blok = B.slice(i, i + 500);
     expect(blok).toMatch(/if \(!m\) return;/);
+  });
+});
+
+describe("jalur tulis git tidak lagi memblokir", () => {
+  // WHY. These run on the "kerja" host, which is single-threaded. execFileSync
+  // there holds its only thread, so a slow commit stalled every other /ww call
+  // behind it -- the file tree went quiet while git worked. Splitting the hosts
+  // stopped that reaching the file tree; this stops it reaching the rest of
+  // /ww as well.
+  const fsx = require("fs");
+  const pathx = require("path");
+  const WW = fsx.readFileSync(
+    pathx.join(__dirname, "..", "scripts", "ww.ts"),
+    "utf8",
+  );
+  const SRV = fsx.readFileSync(
+    pathx.join(__dirname, "..", "server.ts"),
+    "utf8",
+  );
+  // Sliced with indexOf rather than a RegExp built from a string: the escapes
+  // needed for that do not survive being written through a shell, and a broken
+  // pattern fails as a SyntaxError that looks like a code fault rather than a
+  // test fault.
+  const isi = (nama) => {
+    const mulai = WW.indexOf("async function " + nama + "(");
+    expect(mulai).toBeGreaterThan(-1);
+    const akhir = WW.indexOf("\n}", mulai);
+    expect(akhir).toBeGreaterThan(mulai);
+    return WW.slice(mulai, akhir);
+  };
+
+  test("there is an async twin of gitRun", () => {
+    expect(WW).toMatch(/function gitRunAsync\(args: any, cwd: any\)/);
+    expect(WW).toMatch(/execFile\(\s*\n?\s*"git"/);
+  });
+
+  test("every write path is async and awaits git", () => {
+    for (const nama of [
+      "switchBranch",
+      "createBranch",
+      "renameBranch",
+      "deleteBranch",
+      "commitAll",
+    ]) {
+      const blok = isi(nama);
+      expect(blok).not.toMatch(/gitRun\(/);
+      expect(blok).not.toMatch(/gitTry\(/);
+    }
+  });
+
+  test("commitAll reads status and hash without blocking either", () => {
+    const blok = isi("commitAll");
+    expect(blok).toMatch(/await gitTryAsync\(\["status", "--porcelain"\]/);
+    expect(blok).toMatch(/await gitRunAsync\(\["add", "-A"\]/);
+    expect(blok).toMatch(/await gitRunAsync\(\["commit", "-m", subject\]/);
+    expect(blok).toMatch(
+      /await gitTryAsync\(\["rev-parse", "--short", "HEAD"\]/,
+    );
+  });
+
+  test("the route awaits them, or it would answer with a Promise", () => {
+    // Returning the promise itself would send `{}` to the UI and look like a
+    // silent failure -- the same shape of bug as the null-body regression.
+    expect(SRV).toMatch(/await ww\.commitAll\(b\.path, b\.message\)/);
+    expect(SRV).toMatch(/await ww\.switchBranch\(/);
+    expect(SRV).toMatch(/req\.on\("end", async \(\) => \{/);
   });
 });

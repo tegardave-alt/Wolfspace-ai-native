@@ -65,7 +65,11 @@ describe("impor berkas dan folder", () => {
     // Silently replacing a file someone is working on is not an import.
     const m = SERVER.match(/const namaBebas = [\s\S]*?\n      \};/);
     expect(m).toBeTruthy();
-    expect(m![0]).toMatch(/if \(!fs\.existsSync\(calon\)\) return calon/);
+    // The existence check went async when the route was cleared of every
+    // synchronous fs call. The rule it guards is unchanged: a free name is
+    // returned as-is, and a taken one gets a suffix.
+    expect(m![0]).toMatch(/if \(!\(await ada\(calon\)\)\) return calon/);
+    expect(m![0]).toMatch(/dasar \+ "-" \+ i \+ ext/);
   });
 
   test("cancelling the dialog is silent, not an error", () => {
@@ -202,5 +206,44 @@ describe("impor tidak boleh membekukan jendela", () => {
 
   test("there is a ceiling even on an honest import", () => {
     expect(blok![0]).toMatch(/BATAS_IMPOR/);
+  });
+});
+
+describe("impor tidak menahan thread sama sekali", () => {
+  // FOUND IN THE RUNNING APP. After the copy was made async the window stopped
+  // freezing, but the probe still reported:
+  //
+  //   BLOKIR blokir maks 113 ms (naik) p99 36 ms, jendela 15 dtk — (untracked)
+  //
+  // 113 ms is far under the 5000 ms that earns "Not Responding", so nothing
+  // said Not Responding -- it was simply felt. The cause was the piece left
+  // behind: the walk that collects what was copied still used readdirSync and
+  // statSync, over every file just written, in the MAIN process.
+  //
+  // "(untracked)" is not a second bug. ukur() times SYNCHRONOUS calls, and
+  // this route carried no instrument, so the monitor could say a block
+  // happened but not whose it was.
+  const blok = SERVER.match(/req\.url === "\/ww\/impor"[\s\S]*?\n  \}\n/);
+
+  test("the route contains NO synchronous fs call at all", () => {
+    expect(blok).toBeTruthy();
+    const kode = blok![0]
+      .split("\n")
+      .filter((b: string) => !/^\s*\/\//.test(b))
+      .join("\n");
+    expect(kode).not.toMatch(
+      /fs\.(existsSync|statSync|readdirSync|cpSync|copyFileSync)/,
+    );
+  });
+
+  test("the collect walk awaits, one entry at a time", () => {
+    expect(blok![0]).toMatch(/const kumpulkan = async \(abs: string\)/);
+    expect(blok![0]).toMatch(/await fs\.promises\.readdir\(abs\)/);
+    expect(blok![0]).toMatch(/await kumpulkan\(path\.join\(abs, e\)\)/);
+  });
+
+  test("its callers await it, or the answer would race the walk", () => {
+    expect(blok![0]).toMatch(/await kumpulkan\(tujuan\)/);
+    expect(blok![0]).toMatch(/await namaBebas\(akar, path\.basename\(asal\)\)/);
   });
 });

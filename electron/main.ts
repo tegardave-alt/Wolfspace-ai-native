@@ -348,6 +348,23 @@ function createWindow() {
   } else {
     win.loadURL("app://WOLFSPACE/index.html"); // served from disk via the app:// protocol
   }
+  // ── Warm the hosts before anyone asks them anything ──
+  //
+  // They fork lazily, and a cold fork has to load ts-register and then the whole
+  // of core.js before it can answer its first message. Measured here at 827 to
+  // 1697 ms; on a slower machine it went past three seconds and the first git
+  // call fell back to main with "host kerja tak menjawab".
+  //
+  // Paying that during startup instead moves the cost to where nothing is
+  // waiting on it. Deliberately AFTER the window has been told to load, and on
+  // a timer rather than inline: the window is what the user is waiting for, and
+  // three forks ahead of it would delay the thing they can actually see.
+  setTimeout(() => {
+    try {
+      backendHost("backend");
+    } catch (_e: any) {}
+  }, 1500);
+
   // open real external links in the system browser, not inside the app
   win.webContents.setWindowOpenHandler(({ url }: any) => {
     shell.openExternal(url);
@@ -737,6 +754,35 @@ function browserAksi(p: any) {
   return { ok: true, ..._brKeadaan() };
 }
 
+/**
+ * Which api paths the backend host serves: EVERYTHING, unless listed otherwise.
+ *
+ * This is VS Code's shape, adapted. There the renderer draws and nothing else,
+ * an extension host process carries the work, and the main process owns only
+ * the window and the OS. WOLFSPACE grew the other way round -- main answered
+ * every route and picked up a freeze each time one of them turned out to do
+ * synchronous work. Moving them one at a time meant finding each freeze the
+ * expensive way: in the user's hands.
+ *
+ * So the default is inverted. A new route is off the window thread the moment
+ * it is written, and putting one back in main is a decision someone has to make
+ * deliberately by adding it below.
+ *
+ * Safe because none of it is Electron-bound: server.ts, core.js and
+ * scripts/ww.ts require("electron") zero times between them. Routes that DO
+ * need the window -- the browser view, the folder and file pickers -- are not
+ * api routes at all; they are their own channels and stay in main untouched.
+ */
+const _TETAP_DI_MAIN: string[] = [];
+function _jalurKeHost(payload: any) {
+  const jalur = String((payload && payload.path) || "");
+  if (!jalur.startsWith("/")) return false;
+  for (const p of _TETAP_DI_MAIN) {
+    if (jalur === p || jalur.startsWith(p + "/")) return false;
+  }
+  return true;
+}
+
 function apiCall({
   method = "GET",
   path = "/",
@@ -899,37 +945,71 @@ function lewatBatasIpc(v: any, arah: string): string | null {
   }
 }
 
-// ── The backend, moved OFF the window thread ──
+// ── One process per KIND of work ──
 //
-// electron/backend-host.cjs runs core.js in a utilityProcess. See that file for
-// why: the main process owns the window, so its event loop is the one Windows
-// watches, and every synchronous call in the backend was a candidate freeze.
+// There used to be a single host, and routing everything to it simply moved the
+// pile-up rather than removing it. Measured in the running app: an agent step
+// held the host's loop and an ordinary file listing queued behind it for the
+// full 30 s budget before the fallback ran.
 //
-// Spawned LAZILY and with a FALLBACK. If the process cannot start, callers fall
-// back to the in-process core() they used before — losing the isolation must
-// never cost the feature. That is the same rule the block watchdog and the .ts
-// hook already follow here.
-let _backendHost: any = null;
-let _backendGagal = false;
-const _backendMenunggu = new Map<number, (m: any) => void>();
-/** Streams in flight inside the host: id -> the emit/finish pair owned by main. */
-const _aliranHost = new Map<
-  any,
-  { emit: (d: any) => void; finish: () => void }
->();
+// A host is single-threaded, so what shares one must have similar timing. These
+// three do not, which is why they are three:
+//
+//   agent    chat, self-agent, and /mcp. Runs for MINUTES. MCP belongs here and
+//            not elsewhere: getTools() reads the agent's OWN client, and a
+//            server connected in another process is invisible to it -- that was
+//            a real bug, silent in every direction.
+//   kerja    /ww. Git, and it spawns processes SYNCHRONOUSLY -- four such calls
+//            in scripts/ww.ts. On the same host as the file tree, one slow git
+//            stalls every interactive read behind it.
+//   layanan  everything else on `api`. Short reads that must stay short: the
+//            file tree, config, status, the terminal, INFO.
+//
+// Main keeps only what needs the window: the browser view and the OS pickers.
+const _host = new Map<string, any>();
+const _hostGagal = new Set<string>();
+// Waiters and streams carry the host they belong to, so one host exiting fails
+// only its own callers instead of everybody's.
+const _backendMenunggu = new Map<number, { nama: string; lanjut: any }>();
+const _aliranHost = new Map<any, { nama: string; emit: any; finish: any }>();
+
 let _backendId = 0;
 
-function backendHost() {
-  if (_backendHost || _backendGagal) return _backendHost;
+/**
+ * Which host serves this call. ONE host, for now.
+ *
+ * The three-way split -- agent / kerja / layanan -- measured well in the
+ * harness and failed in the real app: hosts stopped answering entirely, one of
+ * them past a 30 s budget, and the log carried no "dijalankan" line for them at
+ * all. Three processes each loading the whole of core.js is not the same shape
+ * as VS Code's specialised services; it is three copies of everything, and the
+ * cost of that landed on a machine already running the app.
+ *
+ * So it is back to the arrangement that was MEASURED working: every route on
+ * one host, off the window thread. That keeps the freezes fixed -- git commit,
+ * folder import and terminal open all reported ~1 ms round-trips to main -- and
+ * keeps MCP where the agent can see it.
+ *
+ * What comes back with it: a long agent step can still delay an api call on the
+ * same host. That was seen once. It is a smaller problem than hosts that do not
+ * answer, and splitting it again needs evidence from the real app rather than
+ * from the harness, which never reproduced the failure.
+ */
+function _hostUntuk(_channel: string, _payload: any): string {
+  return "backend";
+}
+
+function backendHost(nama: string) {
+  if (_host.has(nama) || _hostGagal.has(nama)) return _host.get(nama) || null;
   try {
     const { utilityProcess } = require("electron");
     const entri = path.join(unpackedRoot(), "electron", "backend-host.cjs");
     if (!fs.existsSync(entri)) throw new Error("backend-host.cjs tidak ada");
-    _backendHost = utilityProcess.fork(entri, [], {
-      serviceName: "wolfspace-backend",
+    const proc = utilityProcess.fork(entri, [], {
+      serviceName: "wolfspace-" + nama,
       stdio: "inherit",
     });
-    _backendHost.on("message", (m: any) => {
+    proc.on("message", (m: any) => {
       // Streams answer many times, so they are routed before the one-shot map.
       if (m && (m.kind === "chunk" || m.kind === "end")) {
         const al = _aliranHost.get(m.id);
@@ -944,41 +1024,46 @@ function backendHost() {
       const tunggu = _backendMenunggu.get(m && m.id);
       if (tunggu) {
         _backendMenunggu.delete(m.id);
-        tunggu(m);
+        tunggu.lanjut(m);
       }
     });
-    _backendHost.on("exit", (kode: any) => {
-      probe.say("backend-host keluar, kode " + kode);
-      _backendHost = null;
-      // Every caller still waiting would otherwise hang for ever.
-      for (const [, tunggu] of _backendMenunggu) {
-        tunggu({ ok: false, error: "backend-host berhenti" });
+    proc.on("exit", (kode: any) => {
+      probe.say("host " + nama + " keluar, kode " + kode);
+      _host.delete(nama);
+      // ONLY this host's callers. A shared pool that cleared everything would
+      // fail requests being served perfectly well by the other two.
+      for (const [id, tunggu] of [..._backendMenunggu]) {
+        if (tunggu.nama !== nama) continue;
+        _backendMenunggu.delete(id);
+        tunggu.lanjut({ ok: false, error: "host " + nama + " berhenti" });
       }
-      _backendMenunggu.clear();
-      // A stream left open would keep the renderer waiting for a chunk that can
-      // no longer arrive, so each one is ended rather than abandoned.
-      for (const [, al] of _aliranHost) {
+      for (const [id, al] of [..._aliranHost]) {
+        if (al.nama !== nama) continue;
+        _aliranHost.delete(id);
         try {
-          al.emit({ t: "err", m: "backend-host berhenti" });
+          al.emit({ t: "err", m: "host " + nama + " berhenti" });
         } catch (_e: any) {}
         try {
           al.finish();
         } catch (_e: any) {}
       }
-      _aliranHost.clear();
     });
-    probe.say("backend-host dijalankan");
+    _host.set(nama, proc);
+    probe.say("host " + nama + " dijalankan");
+    return proc;
   } catch (e: any) {
-    _backendGagal = true;
-    _backendHost = null;
-    probe.say("backend-host gagal, memakai jalur in-process: " + e.message);
+    _hostGagal.add(nama);
+    probe.say(
+      "host " + nama + " gagal, memakai jalur in-process: " + e.message,
+    );
+    return null;
   }
-  return _backendHost;
 }
 
-/** Send to backend-host. null means the caller must fall back to core(). */
+/** Send to the host that owns this work. null means fall back to core(). */
 function backendInvoke(channel: string, payload: any, batasMs = 30000) {
-  const h = backendHost();
+  const nama = _hostUntuk(channel, payload);
+  const h = backendHost(nama);
   if (!h) return null;
   const id = ++_backendId;
   return new Promise<any>((resolve) => {
@@ -986,13 +1071,16 @@ function backendInvoke(channel: string, payload: any, batasMs = 30000) {
       if (_backendMenunggu.delete(id)) {
         resolve({
           ok: false,
-          error: "backend-host tak menjawab dalam " + batasMs + " ms",
+          error: "host " + nama + " tak menjawab dalam " + batasMs + " ms",
         });
       }
     }, batasMs);
-    _backendMenunggu.set(id, (m: any) => {
-      clearTimeout(jam);
-      resolve(m);
+    _backendMenunggu.set(id, {
+      nama,
+      lanjut: (m: any) => {
+        clearTimeout(jam);
+        resolve(m);
+      },
     });
     try {
       h.postMessage({ id, kind: "invoke", channel, payload });
@@ -1085,6 +1173,38 @@ function registerIpc() {
           return lewatHost.value;
         if (lewatHost)
           probe.say("backend-host gagal " + channel + ": " + lewatHost.error);
+      }
+      // MCP routes go to the HOST, because that is where the agent runs.
+      //
+      // selfAgentStream runs in backend-host and calls mcpClient.getTools().
+      // While /mcp/connect was served here, the two processes each had their
+      // own require("mcp-client.ts") and their own this.servers map: the UI
+      // connected a server in THIS process and the agent asked an instance in
+      // the other one, which had none. getTools() then returned [] with no
+      // error and no log line at all -- the log said "MCP server github ready"
+      // while the agent saw nothing.
+      //
+      // Only /mcp is diverted. Everything else on `api` stays here, and a host
+      // that cannot answer still falls through rather than handing over a null.
+      if (channel === "api" && _jalurKeHost(payload)) {
+        // NO SHORT BUDGET. The timeout is a last resort, not a scheduler.
+        //
+        // A three-second budget was tried and it was actively harmful. The
+        // fallback re-runs the SAME work in main -- the process that owns the
+        // window -- so a request that was merely slow got done twice, the
+        // second time on the thread this whole effort was spent clearing.
+        // During boot the renderer fires several routes at once and one of them
+        // runs tsc, so the ones queued behind it tripped the budget every time.
+        //
+        // Waiting is the correct answer to a busy host: the work IS being done.
+        // The case a timeout exists for -- a host that is gone -- is already
+        // covered, and covered better, by the exit handler above: it fails that
+        // host's waiters immediately and by name. This budget only catches a
+        // host that is alive and silent, which has not been observed.
+        const lewatHost = await backendInvoke(channel, payload);
+        if (lewatHost && lewatHost.ok && lewatHost.value != null)
+          return lewatHost.value;
+        if (lewatHost) probe.say("backend-host gagal api: " + lewatHost.error);
       }
       if (channel === "api") return apiCall(payload); // generic in-process HTTP-handler proxy
       const c = core();
@@ -1188,9 +1308,9 @@ function registerIpc() {
     // sees is unchanged — main forwards the host's chunks verbatim.
     //
     // Falls through to the in-process path below when the host is unavailable.
-    const hostAliran = backendHost();
+    const hostAliran = backendHost("backend");
     if (hostAliran && (channel === "chat" || channel === "self-agent")) {
-      _aliranHost.set(id, { emit, finish });
+      _aliranHost.set(id, { nama: "backend", emit, finish });
       try {
         hostAliran.postMessage({ id, kind: "stream", channel, payload });
         return;
@@ -1252,9 +1372,10 @@ function registerIpc() {
         } catch (_: any) {}
       }
     }
-    // The stream may live in the host, so the cancel has to reach it there too.
+    // The stream may live in a host, so the cancel has to reach it there too.
+    // Streams only ever run on "agent", so that is the only host to tell.
     try {
-      const h = backendHost();
+      const h = backendHost("backend");
       if (h) h.postMessage({ id, kind: "cancel" });
     } catch (_e: any) {}
   });

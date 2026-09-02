@@ -591,6 +591,7 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   const [renamingBranch, setRenamingBranch] = React.useState<any>(null);
   const [editingFolder, setEditingFolder] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
+  const [pesanCommit, setPesanCommit] = React.useState("");
   const [busy, setBusy] = React.useState(false);
   const [msg, setMsg] = React.useState<any>(null); // { ok, text }
 
@@ -1147,16 +1148,26 @@ function WorkspaceGitPanel({ path, onClose }: any) {
           }}
         ></span>
         <span>
-          {g.dirty
-            ? g.dirtyCount + " uncommitted changes"
-            : "clean — no changes"}
+          {/* "could not read" is NOT "clean". git status answers with an empty
+              string when there is nothing to report, so a null count means the
+              question failed — a timeout, or another program holding
+              .git/index.lock. Reporting that as clean tells someone their work
+              is committed when it is not. */}
+          {g.takTerbaca
+            ? "git is not answering — repository may be locked"
+            : g.dirty
+              ? g.dirtyCount + " uncommitted changes"
+              : "clean — no changes"}
         </span>
         {g.dirty && !committing && (
           <button
             className="btn-reset vp-hover"
             title="Commit all changes"
             disabled={busy}
-            onClick={() => setCommitting(true)}
+            onClick={() => {
+              setPesanCommit("");
+              setCommitting(true);
+            }}
             style={commitBtnStyle(busy)}
           >
             Commit
@@ -1169,16 +1180,63 @@ function WorkspaceGitPanel({ path, onClose }: any) {
           offered — a git history full of identical messages cannot be read back
           when it is needed. */}
       {committing && (
-        <input
-          autoFocus
-          placeholder="commit message — Enter to save, Esc to cancel"
-          onKeyDown={(e: any) => {
-            if (e.key === "Enter") doCommit(e.currentTarget.value);
-            else if (e.key === "Escape") setCommitting(false);
-          }}
-          onBlur={(e: any) => doCommit(e.currentTarget.value)}
-          style={commitInputStyle}
-        />
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          <input
+            autoFocus
+            value={pesanCommit}
+            placeholder="Message (Enter to commit, Esc to cancel)"
+            onChange={(e: any) => setPesanCommit(e.target.value)}
+            onKeyDown={(e: any) => {
+              if (e.key === "Enter") doCommit(pesanCommit);
+              else if (e.key === "Escape") setCommitting(false);
+            }}
+            style={commitInputStyle}
+          />
+          <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
+            <button
+              className="btn-reset git-utama"
+              disabled={busy || !pesanCommit.trim()}
+              title={
+                pesanCommit.trim()
+                  ? "Commit " + g.dirtyCount + " change(s)"
+                  : "A message is required"
+              }
+              onClick={() => doCommit(pesanCommit)}
+              style={{
+                padding: "3px 10px",
+                borderRadius: "5px",
+                fontSize: "11px",
+                fontWeight: 600,
+                fontFamily: "inherit",
+                color: busy || !pesanCommit.trim() ? "#6b7280" : "#ffffff",
+                background:
+                  busy || !pesanCommit.trim()
+                    ? "rgba(255,255,255,0.06)"
+                    : "#238636",
+                cursor: busy || !pesanCommit.trim() ? "default" : "pointer",
+              }}
+            >
+              {busy ? "Committing…" : "Commit " + g.dirtyCount}
+            </button>
+            <button
+              className="btn-reset menu-item"
+              onClick={() => setCommitting(false)}
+              style={{
+                padding: "3px 9px",
+                borderRadius: "5px",
+                fontSize: "11px",
+                fontFamily: "inherit",
+                color: "#8b949e",
+                cursor: "pointer",
+              }}
+            >
+              Cancel
+            </button>
+            <span style={{ fontSize: "10.5px", color: "#6b7280" }}>
+              on {(br && br.current) || "…"}
+            </span>
+          </div>
+        </div>
       )}
       {g.lastCommit && (
         <div
@@ -2204,31 +2262,6 @@ function Sidebar({
             label="Terminal"
             active={terminalOpen}
             onClick={() => setTerminalOpen(!terminalOpen)}
-          />
-          {/* Plugins — a full page (like Extensions in VS Code), not a
-              dropdown. The word means what it says: things plugged in from
-              outside, not modules required inward. */}
-          <Item
-            icon={
-              <svg
-                width="19"
-                height="19"
-                viewBox="0 0 24 24"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="1.5"
-                strokeLinecap="round"
-                strokeLinejoin="round"
-              >
-                <path d="M12 22v-5"></path>
-                <path d="M9 8V2"></path>
-                <path d="M15 8V2"></path>
-                <path d="M18 8v5a4 4 0 0 1-4 4h-4a4 4 0 0 1-4-4V8z"></path>
-              </svg>
-            }
-            label="Plugins"
-            active={view === "plugins"}
-            onClick={() => setView("plugins")}
           />
         </div>
       )}

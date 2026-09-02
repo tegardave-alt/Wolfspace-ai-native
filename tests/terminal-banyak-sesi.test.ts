@@ -93,13 +93,35 @@ describe("beberapa terminal", () => {
   });
 
   test("ONE poll loop serves every terminal", () => {
-    // A 75 ms interval per terminal would multiply timers by however many are
-    // open. The loop walks the map instead.
-    const jumlah = (LAYAR.match(/setInterval\(/g) || []).length;
-    expect(jumlah).toBe(1);
+    // A timer per terminal would multiply them by however many are open. The
+    // loop walks the map instead.
     expect(LAYAR).toMatch(
       /for \(const inst of Array\.from\(_terminalInstans\.values\(\)\)\)/,
     );
+  });
+
+  test("the poll waits for its own answer before asking again", () => {
+    // setInterval does NOT wait for an async callback. It fired every 75 ms
+    // whether or not the previous read had returned, so once a read took
+    // longer than the gap the iterations overlapped and piled up without
+    // bound -- seen in the log as POST /api/terminal/read stacking on itself
+    // until the backend stopped answering.
+    //
+    // Self-scheduling makes the poll self-limiting: a slow backend gets polled
+    // less often, which is the right answer to it being slow.
+    expect(LAYAR).toMatch(/const putaranBaca = async \(\) => \{/);
+    expect(LAYAR).toMatch(
+      /if \(!berhentiPoll\) jamPoll = setTimeout\(putaranBaca, 75\)/,
+    );
+    // And no interval anywhere, or the old shape would still be in play.
+    expect(LAYAR).not.toMatch(/setInterval\(/);
+  });
+
+  test("the loop is stopped on unmount, not just its timer cleared", () => {
+    // Clearing the timer alone leaves an in-flight iteration free to schedule
+    // the next one after the component is gone.
+    expect(LAYAR).toMatch(/berhentiPoll = true;/);
+    expect(LAYAR).toMatch(/clearTimeout\(jamPoll\)/);
   });
 
   test("a background session does not trip the debug watcher", () => {
