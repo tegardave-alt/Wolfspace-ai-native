@@ -147,11 +147,17 @@ describe("mcp-client meneruskan cwd", () => {
   );
 
   test("spawn memakai conf.cwd", () => {
-    const blok = SRC.slice(
-      SRC.indexOf("const proc = spawn("),
-      SRC.indexOf("const proc = spawn(") + 300,
-    );
-    expect(blok).toMatch(/cwd: conf\.cwd \|\| undefined/);
+    // Anchored on `const proc =` rather than on `const proc = spawn(`. There are
+    // TWO spawn calls now — one through cmd.exe for .cmd/.bat targets, one
+    // direct — and the old anchor matched neither, so this went red over a
+    // formatting change while the behaviour it guards was intact. Both branches
+    // must forward cwd, so the count is asserted instead of a single hit.
+    const i = SRC.indexOf("const proc =");
+    expect(i).toBeGreaterThan(-1);
+    const blok = SRC.slice(i, i + 900);
+    const jumlah = (blok.match(/cwd: conf\.cwd \|\| undefined/g) || []).length;
+    expect(jumlah).toBe((blok.match(/\bspawn\(/g) || []).length);
+    expect(jumlah).toBeGreaterThan(0);
   });
 
   test("alasannya tertulis, supaya tak dihapus lagi", () => {

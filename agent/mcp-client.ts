@@ -179,8 +179,8 @@ function _bukanMilikKita(entri, mulai) {
  * WHY IT EXISTS. _startServer used to pass `shell: true` on Windows for EVERY
  * command, and Node warns about that for good reason (DEP0190): with a shell,
  * arguments are not escaped, only concatenated into one command line. MCP
- * commands and their arguments come from config/mcp.json and from plugin
- * manifests, so a `&` or `|` in an argument is a second command, not a string.
+ * commands and their arguments come from config/mcp.json, so a `&` or `|` in
+ * an argument is a second command, not a string.
  *
  * The shell was not gratuitous: `npx` on Windows is `npx.cmd`, and Node refuses
  * to spawn .cmd/.bat without one. So the fix is not to drop the shell — it is to
@@ -190,6 +190,31 @@ function _bukanMilikKita(entri, mulai) {
  * failure: the caller then keeps the old behaviour rather than turning a working
  * configuration into a broken one.
  */
+/**
+ * Quote ONE token for a cmd.exe command line.
+ *
+ * Windows hands a process a command LINE, not an argv array, so every token
+ * carrying a separator has to bring its own quotes. Backslashes are special
+ * only immediately before a quote, which is why the doubling below is
+ * conditional rather than applied everywhere.
+ *
+ * `%` is deliberately NOT handled. cmd expands %VAR% even inside double quotes
+ * and there is no escape for it outside a batch file, so an argument that must
+ * contain a literal percent sign cannot survive cmd at all — better that it
+ * stay visibly unsupported than be silently half-escaped.
+ */
+function _kutipCmd(token: any): string {
+  const s = String(token == null ? "" : token);
+  if (s === "") return '""';
+  if (!/[\s"^&|<>()]/.test(s)) return s;
+  const isi = s
+    // A run of backslashes before a quote doubles, and the quote is escaped.
+    .replace(/(\\*)"/g, '$1$1\\"')
+    // A trailing run doubles too, so it cannot escape the closing quote.
+    .replace(/(\\+)$/, "$1$1");
+  return '"' + isi + '"';
+}
+
 function _cariExe(cmd: string, env: any): string | null {
   if (!cmd) return null;
   if (cmd.includes("/") || cmd.includes("\\")) {
@@ -341,15 +366,18 @@ const REQUEST_TIMEOUT_MS = 120000;
 // contention.
 const HANDSHAKE_TIMEOUT_MS = 60000;
 
-/** A configured MCP server as written in config/mcp.json (or by a plugin). */
+// How many stderr lines to keep per server, so a failure can say WHY. Small on
+// purpose: this exists to quote the last few lines back to the user, not to
+// buffer the output of a server that fails by shouting.
+const STDERR_DISIMPAN = 40;
+
+/** A configured MCP server, as written in config/mcp.json. */
 interface KonfigServer {
   command: string;
   args?: string[];
   env?: Record<string, string>;
   cwd?: string;
   disabled?: boolean;
-  /** Set when the entry came from a plugin manifest rather than the file. */
-  _plugin?: string;
   [k: string]: unknown;
 }
 
@@ -366,6 +394,14 @@ interface ServerHidup {
   lastCallAt?: number;
   lastCallOk?: boolean;
   lastError?: string | null;
+  /**
+   * The server's last stderr lines, capped at STDERR_DISIMPAN.
+   *
+   * Kept so a failed handshake can report WHY. Without it the user was told
+   * "Failed to initialise MCP server X" while the npm 404 that explains it sat
+   * in the debug log.
+   */
+  stderrAkhir?: string[];
 }
 
 /** A tool definition in the SELF_TOOLS shape WOLFSPACE's agent loop consumes. */
@@ -415,6 +451,10 @@ class MCPClient {
   msgId: number;
   pendingReqs: Record<number, ReqTertunda>;
   initialized: boolean;
+  /** Handshakes still in flight — what status() reports as `starting`. */
+  _mulai: Record<string, Promise<void> | undefined>;
+  /** Why the last start failed, kept outside this.servers (see the field's use). */
+  _galatMulai: Record<string, string | undefined>;
 
   constructor() {
     this.servers = {}; // serverName -> process info
@@ -422,15 +462,20 @@ class MCPClient {
     this.msgId = 1;
     this.pendingReqs = {}; // msgId -> { resolve, reject }
     this.initialized = false;
+    // Handshakes still running. A connect returns as soon as the process is
+    // SPAWNED, so this is what "starting" means to status() afterwards.
+    this._mulai = {}; // serverName -> Promise
+    // Why the last start failed, kept OUTSIDE this.servers because a failed
+    // start deletes that record — the reason would die with the thing that
+    // needed to explain itself.
+    this._galatMulai = {}; // serverName -> string
   }
 
-  // The file contents AS THEY ARE, without plugins.
+  // The file contents AS THEY ARE.
   //
-  // REQUIRED for anything that will WRITE back. _loadConfig() below returns file
-  // plus plugins merged; saving that merged result would bake plugin entries into
-  // config/mcp.json permanently — complete with the _plugin marker — so a plugin
-  // would have two homes at once and the config/mcp.json one would win. Exactly
-  // the class of mistake that lets dead config survive unnoticed.
+  // REQUIRED for anything that will WRITE back: only what is actually in the
+  // file may be written to the file. _loadConfig() below normalises the shape
+  // for readers and must never be the thing that gets saved.
   _loadConfigMentah() {
     try {
       if (fs.existsSync(CONFIG_PATH))
@@ -444,71 +489,9 @@ class MCPClient {
   _loadConfig() {
     const dasar = this._loadConfigMentah();
 
-    // Plugins the user has APPROVED join as ordinary MCP servers, so every path
-    // below (spawn, handshake, orphan processes, hot reload) needs no duplicate.
-    // The only difference is the `_plugin` marker, which forces their tools and
-    // calls through CommandChain admission.
-    //
-    // Placed AFTER the base: a config/mcp.json entry of the same name wins, so a
-    // plugin cannot hijack the name of a server the user already uses.
-    let plug = {};
-    try {
-      plug = require("./plugins.ts").konfigMcp();
-    } catch (_) {
-      plug = {};
-    }
-    const gabung = { ...plug, ...(dasar.mcpServers || {}) };
-    return { ...dasar, mcpServers: gabung };
-  }
-
-  // Whether this server came from a plugin.
-  //
-  // Read from DISK via plugins.adalahPlugin(), not from the merged config. The
-  // config holds only approved plugins, so using it here would make a revoked
-  // permission answer "not a plugin" — and the caller would conclude no gate is
-  // needed. Revoking would OPEN the gate. Pinned by the test
-  // "mencabut izin tidak boleh membuka gerbang" (test name, kept verbatim).
-  _dariPlugin(nama) {
-    try {
-      return require("./plugins.ts").adalahPlugin(nama);
-    } catch (_) {
-      return false;
-    }
-  }
-
-  // TWO conditions, both required. The asymmetry is deliberate:
-  //
-  //   frozen genesis    -> ADDING a permission does not apply until the next session
-  //   approval file     -> REVOKING a permission applies IMMEDIATELY
-  //
-  // The rule in one sentence: narrowing is always allowed, widening is not.
-  // Widening mid-session would mean there is a way to loosen genesis after it was
-  // frozen, and the whole point of freezing is gone. Narrowing has no such
-  // problem — it only takes back something previously allowed.
-  //
-  // Without the second condition, revoking a permission has NO effect while the
-  // plugin process is alive: its capabilities are already in genesis. That is
-  // measured — see the note in tests/plugin-gerbang.test.js.
-  _izinPlugin(nama) {
-    if (!this._dariPlugin(nama)) return { allow: true, alasan: null };
-    try {
-      const cc = require("./broker/commandchain.ts");
-      const P = require("./plugins.ts");
-
-      const vonis = cc.periksa(cc.sesiRuleset(), P.kapabilitas(nama));
-      if (!vonis.allow) return vonis;
-
-      if (!P.disetujui().includes(String(nama))) {
-        return { allow: false, alasan: "izin plugin dicabut user" };
-      }
-      return vonis;
-    } catch (e) {
-      // Failing to load the guard = DENY. Deny-by-default, never fail-open.
-      return {
-        allow: false,
-        alasan: "the admission guard could not be loaded",
-      };
-    }
+    // Normalised for READERS. Never the thing that gets saved — see
+    // _loadConfigMentah above.
+    return { ...dasar, mcpServers: { ...(dasar.mcpServers || {}) } };
   }
 
   // Starting MCP servers NO LONGER happens automatically.
@@ -542,7 +525,7 @@ class MCPClient {
 
   // Menyalakan SATU server atas permintaan (tombol Connect di UI).
   // Idempotent: a server already ready is not respawned.
-  async connectServer(name) {
+  async connectServer(name, opsi: any = {}) {
     // The single-server path used to SKIP this while connectAll() called it, so
     // orphan cleanup ran only if you happened to press "Connect All". Pressing
     // Connect on servers one at a time — the normal way to use the UI — left
@@ -560,13 +543,48 @@ class MCPClient {
     if (conf.disabled) return { ok: false, error: "MCP server dinonaktifkan" };
     const ada = this.servers[name];
     if (ada && ada.ready) return { ok: true, already: true };
+    if (this._mulai[name]) return { ok: true, status: "starting" };
     if (ada && ada.proc) this.stopServer(name); // setengah jalan -> mulai bersih
-    try {
-      await this._startServer(name, conf);
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: e.message };
-    }
+    return this._mulaiServer(name, conf, opsi.tunggu === true);
+  }
+
+  /**
+   * Spawn, and DO NOT wait for the handshake unless asked to.
+   *
+   * WHY. The handshake is allowed 60 seconds — deliberately, because `npx` cold
+   * starts contend over the npm cache — and it used to be awaited all the way up
+   * the call chain: _startServer -> connectServer -> the /mcp route -> the
+   * backend host -> main. The host answers requests on that path, so pressing
+   * Connect stopped it answering ANY of them. The probe reported exactly that:
+   *
+   *   "backend-host gagal api: host backend tak menjawab dalam 30000 ms"
+   *
+   * Nothing was broken; a connection that was merely slow made the whole app
+   * look hung, and the user's only evidence was a window that stopped painting.
+   *
+   * So connecting now returns once the process EXISTS. Readiness is reported by
+   * status(), which the UI already polls — the information was always there, it
+   * was the waiting that was wrong.
+   */
+  _mulaiServer(name, conf, tunggu) {
+    const p = this._startServer(name, conf);
+    this._mulai[name] = p;
+    delete this._galatMulai[name];
+    const selesai = p.then(
+      () => {
+        delete this._mulai[name];
+        return { ok: true };
+      },
+      (e) => {
+        delete this._mulai[name];
+        // stopServer() has already dropped this.servers[name] by now, so the
+        // reason is kept here or it is lost.
+        this._galatMulai[name] = e.message;
+        return { ok: false, error: e.message };
+      },
+    );
+    if (tunggu) return selesai;
+    return { ok: true, status: "starting" };
   }
 
   // Starts EVERY server that is not disabled — used by the "Connect All" button
@@ -591,6 +609,11 @@ class MCPClient {
     // Promise<void>: resolve() is called with no value, and without the type
     // this, TypeScript infers Promise<unknown> and then demands an argument.
     return new Promise<void>((resolve, reject) => {
+      // Settled once. The handshake and the process's own death race each
+      // other, and after a failure stopServer() kills the child -- which fires
+      // `close` again. Without this flag that second path would reject an
+      // already-settled promise and, worse, overwrite the real reason.
+      let sudahSelesai = false;
       dlog("mcp", "info", `Memulai server MCP: ${name}`, {
         cmd: conf.command,
         args: _argsAman(conf.args),
@@ -608,17 +631,15 @@ class MCPClient {
       // its config file relative to cwd (`data/initial_instructions.md`), so it
       // always looked in the WOLFSPACE root and died at startup with
       // "Configuration file not found" — a message pointing at a path that was
-      // never there. It also made the `cwd` written by plugins.ts konfigMcp()
-      // useless: relative args in a plugin manifest resolved from the parent
-      // process's cwd rather than from the repo root.
+      // never there.
       // SHELL ONLY WHEN THE TARGET NEEDS ONE.
       //
       // This was `shell: process.platform === "win32"` — unconditionally, for
       // every command. Node flags it as DEP0190 because with a shell the
       // arguments are concatenated into one command line rather than escaped, so
       // a `&` or `|` inside an argument stops being text and becomes a second
-      // command. Those arguments come from config/mcp.json and from plugin
-      // manifests, which is close enough to input to be worth closing.
+      // command. Those arguments come from config/mcp.json, which is close
+      // enough to input to be worth closing.
       //
       // Dropping the shell outright is not an option: `npx` on Windows is
       // npx.cmd, and Node refuses to spawn .cmd/.bat without one. So the command
@@ -632,11 +653,37 @@ class MCPClient {
       const perluShell =
         process.platform === "win32" &&
         (!tersolusi || /\.(cmd|bat)$/i.test(tersolusi));
-      const proc = spawn(perluShell ? cmd : tersolusi || cmd, conf.args || [], {
-        env,
-        shell: perluShell,
-        cwd: conf.cwd || undefined,
-      });
+      // NOT `shell: true`. Node concatenates the arguments into one command line
+      // WITHOUT quoting them — its own DEP0190 warning says exactly that — so an
+      // argument containing a space silently becomes two.
+      //
+      // MEASURED, not assumed: ["-y", "hugging face"] reached the child as
+      // ["-y", "hugging", "face"], and npm went looking for a package named
+      // `hugging`. A Windows path like C:\Program Files\... breaks the same way,
+      // and nothing in the resulting error points back at the cause.
+      //
+      // cmd.exe is invoked the way Node would have (/d /s /c, the whole line
+      // wrapped, windowsVerbatimArguments so Node does not re-mangle it) — but
+      // the line is built HERE, with every token quoted.
+      const proc = perluShell
+        ? spawn(
+            process.env.ComSpec || "cmd.exe",
+            [
+              "/d",
+              "/s",
+              "/c",
+              '"' + [cmd, ...(conf.args || [])].map(_kutipCmd).join(" ") + '"',
+            ],
+            {
+              env,
+              cwd: conf.cwd || undefined,
+              windowsVerbatimArguments: true,
+            },
+          )
+        : spawn(tersolusi || cmd, conf.args || [], {
+            env,
+            cwd: conf.cwd || undefined,
+          });
 
       let buffer = "";
 
@@ -650,8 +697,35 @@ class MCPClient {
         }
       });
 
+      // stderr is KEPT, not only logged.
+      //
+      // A failed handshake used to reach the user as "Failed to initialise MCP
+      // server X" and nothing else, while the actual reason — `npm error 404`,
+      // a missing API key, a native build failing — sat in the debug log where
+      // only someone who knew to look would find it. The reason and the report
+      // were in two different places, so the report was useless.
+      //
+      // Bounded on purpose: a server that fails by shouting must not turn a
+      // failure into a memory problem as well.
       proc.stderr.on("data", (data) => {
-        dlog("mcp", "warn", `[MCP ${name} stderr] ${data.toString().trim()}`);
+        const teks = data.toString().trim();
+        dlog("mcp", "warn", `[MCP ${name} stderr] ${teks}`);
+        const srv = this.servers[name];
+        if (srv && teks) {
+          srv.stderrAkhir = (srv.stderrAkhir || [])
+            .concat(teks.split(/\r?\n/).filter(Boolean))
+            .slice(-STDERR_DISIMPAN);
+        }
+      });
+
+      // A server can exit between spawn and the initialize write. Without a
+      // listener on stdin, Windows emits EPIPE as an uncaught stream error and
+      // takes down the whole Electron main process. Treat it as a failed MCP
+      // connection; connectServer() will return the error to the UI instead.
+      proc.stdin.on("error", (err) => {
+        dlog("mcp", "error", `[MCP ${name} stdin error]`, {
+          error: err.message,
+        });
       });
 
       proc.on("error", (err) => {
@@ -665,8 +739,32 @@ class MCPClient {
         // A server that died on its own must have its record dropped too;
         // stopServer alone is not enough, because this path does not go through it.
         if (proc.pid) _forgetPid(proc.pid);
+        const srv = this.servers[name];
+        const kata = (srv && srv.stderrAkhir) || [];
         delete this.servers[name];
         delete this.toolsCache[name];
+
+        // A DEAD PROCESS IS AN ANSWER. Without this the handshake kept waiting
+        // for a reply from something that no longer existed, and the caller sat
+        // out the full HANDSHAKE_TIMEOUT_MS — sixty seconds to learn that npm
+        // had already said "404" and exited within two.
+        //
+        // That is the shape of the reported failure: `npx -y "hugging face"`
+        // died almost immediately, and the UI still waited.
+        if (!sudahSelesai) {
+          sudahSelesai = true;
+          const sebab = kata.length
+            ? " — " + kata.slice(-4).join(" | ").slice(0, 500)
+            : "";
+          reject(
+            new Error(
+              "the server exited with code " +
+                code +
+                " before it was ready" +
+                sebab,
+            ),
+          );
+        }
       });
 
       this.servers[name] = { proc, ready: false };
@@ -697,9 +795,21 @@ class MCPClient {
             this.servers[name].ready = true;
             dlog("mcp", "info", `MCP server ${name} ready.`);
           }
+          sudahSelesai = true;
           resolve();
         })
         .catch((err) => {
+          sudahSelesai = true;
+          // Carry the server's OWN last words back to the caller. Everything
+          // below this point tears the process down, so this is the last moment
+          // the reason still exists.
+          const srv = this.servers[name];
+          const kata = (srv && srv.stderrAkhir) || [];
+          if (kata.length) {
+            err = new Error(
+              err.message + " — " + kata.slice(-4).join(" | ").slice(0, 500),
+            );
+          }
           dlog("mcp", "error", `Failed to initialise MCP server ${name}`, {
             err: err.message,
           });
@@ -758,24 +868,21 @@ class MCPClient {
 
   async addServer(name, conf) {
     this.stopServer(name);
-    // RAW, not merged: saving the merged result would write plugin entries into
-    // config/mcp.json permanently.
+    // RAW: only what is actually in the file is written back to the file.
     const config = this._loadConfigMentah();
     if (!config.mcpServers) config.mcpServers = {};
     config.mcpServers[name] = conf;
     this._saveConfig(config);
-    try {
-      await this._startServer(name, conf);
-      return { ok: true };
-    } catch (e) {
-      return { ok: false, error: e.message };
-    }
+    // Same reasoning as connectServer: the config is SAVED synchronously, so the
+    // answer is honest the moment it is sent, but the handshake is not waited
+    // for. Adding a server used to hold the backend host for up to 60 seconds
+    // exactly like connecting one did.
+    return this._mulaiServer(name, conf, false);
   }
 
   removeServer(name) {
     this.stopServer(name);
     // RAW: only what is actually in the file may be deleted from the file.
-    // Plugins are uninstalled from the Plugins page, not from here.
     const config = this._loadConfigMentah();
     // Tell "deleted" apart from "never existed": both used to answer {ok:true},
     // so a typo in the name looked like success while the UI silently did nothing.
@@ -788,22 +895,9 @@ class MCPClient {
   }
 
   async toggleServer(name, enabled) {
-    // RAW, like addServer/removeServer: writing the merged result would bake
-    // plugin entries into config/mcp.json.
+    // RAW: only what is actually in the file is written back to the file.
     const config = this._loadConfigMentah();
     if (!config.mcpServers || !config.mcpServers[name]) {
-      // A plugin will indeed not be found here, and that is correct: whether it
-      // runs is decided by the user's APPROVAL on the Plugins page, not by a
-      // disabled switch in config/mcp.json. Said plainly so the user does not
-      // conclude the switch is broken.
-      if (this._dariPlugin(name)) {
-        return {
-          ok: false,
-          error:
-            `'${name}' is a plugin, not a config/mcp.json entry. ` +
-            "Grant or revoke its permission on the Plugins page.",
-        };
-      }
       return { ok: false, error: "MCP server not found in configuration" };
     }
     const conf = config.mcpServers[name];
@@ -819,7 +913,7 @@ class MCPClient {
       // (a server already ready is not respawned) and it cleans up half-started
       // processes. Without that, starting twice leaves an orphan that this.servers
       // never recorded.
-      const r = await this.connectServer(name);
+      const r: any = await this.connectServer(name);
       return r.ok ? { ok: true, enabled: true } : { ok: false, error: r.error };
     }
   }
@@ -830,9 +924,18 @@ class MCPClient {
 
   _send(name, msg) {
     const srv = this.servers[name];
-    if (!srv || !srv.proc) return;
+    if (!srv || !srv.proc || !srv.proc.stdin || srv.proc.stdin.destroyed)
+      return false;
     const str = JSON.stringify(msg) + "\r\n";
-    srv.proc.stdin.write(str);
+    try {
+      srv.proc.stdin.write(str);
+      return true;
+    } catch (e) {
+      dlog("mcp", "error", `Failed to write to MCP server ${name}`, {
+        error: e.message,
+      });
+      return false;
+    }
   }
 
   _notify(name, method, params) {
@@ -869,7 +972,11 @@ class MCPClient {
           reject(e);
         },
       };
-      this._send(name, { jsonrpc: "2.0", id, method, params });
+      if (!this._send(name, { jsonrpc: "2.0", id, method, params })) {
+        delete this.pendingReqs[id];
+        clearTimeout(timer);
+        reject(new Error(`MCP server ${name} stdin is unavailable`));
+      }
     });
   }
 
@@ -911,20 +1018,6 @@ class MCPClient {
 
     for (const name of Object.keys(this.servers)) {
       if (!this.servers[name].ready) continue;
-
-      // Unapproved plugins DO NOT APPEAR AT ALL in the tool list.
-      //
-      // This differs importantly from "refused when called": the model never sees
-      // the tool, so there is nothing it can be talked into calling. Untrusted
-      // content the model reads cannot direct it toward something that is not on
-      // the list.
-      const izin = this._izinPlugin(name);
-      if (!izin.allow) {
-        dlog("mcp", "info", `Plugin ${name} disembunyikan dari daftar tool`, {
-          alasan: izin.alasan,
-        });
-        continue;
-      }
 
       try {
         if (!this.toolsCache[name]) {
@@ -972,36 +1065,6 @@ class MCPClient {
 
     if (!this.servers[serverName] || !this.servers[serverName].ready) {
       return { ok: false, output: `Server MCP ${serverName} is not active.` };
-    }
-
-    // The SECOND gate. getTools() already hides unapproved plugins, but the tool
-    // list is built once at the start of a turn while approval can be revoked,
-    // and a tool name can arrive from conversation history — not only from the
-    // list just sent. This check at the point of use is the decisive one; the one
-    // in getTools() merely keeps the temptation out of sight.
-    const izin = this._izinPlugin(serverName);
-    if (!izin.allow) {
-      try {
-        const cc = require("./broker/commandchain.ts");
-        const P = require("./plugins.ts");
-        cc.catat({
-          capability: P.kapabilitas(serverName),
-          decision: "DENY",
-          reason: izin.alasan,
-          params: { tool: toolName },
-          kurungan: {
-            enforced: true,
-            mekanisme: "genesis admission — plugin not approved by the user",
-          },
-        });
-      } catch (_) {}
-      return {
-        ok: false,
-        output:
-          `Plugin '${serverName}' is not approved for this session: ` +
-          izin.alasan +
-          ". The user grants approval on the Plugins page, and it takes effect from the next session.",
-      };
     }
 
     // STRIP WOLFSPACE-INTERNAL arguments before crossing into the MCP protocol.
@@ -1087,10 +1150,16 @@ class MCPClient {
         disabled: isDisabled,
         running: !!(s && s.proc),
         ready: !isDisabled && !!(s && s.ready),
+        // The state that did not exist before connecting stopped blocking.
+        // Without it the UI can only tell "not ready" from "failed" by waiting,
+        // which is the thing being removed.
+        starting: !!this._mulai[name],
         lastCallOk:
           s && typeof s.lastCallOk === "boolean" ? s.lastCallOk : null,
         lastCallAt: (s && s.lastCallAt) || null,
-        lastError: (s && s.lastError) || null,
+        // A failed START leaves no server record — stopServer() removes it — so
+        // the reason comes from _galatMulai or it is not reported at all.
+        lastError: (s && s.lastError) || this._galatMulai[name] || null,
         toolCount: isDisabled ? 0 : (this.toolsCache[name] || []).length,
       };
     }
@@ -1152,5 +1221,10 @@ mcpClient._ownFile = _ownFile;
 mcpClient.PID_DIR = PID_DIR;
 mcpClient.LEGACY_PID_FILE = LEGACY_PID_FILE;
 mcpClient._argsAman = _argsAman;
+
+// Test hook. _kutipCmd is what stops an argument containing a space from
+// arriving at the server as two, and the only other way to reach it is to start
+// a real MCP server through npx.
+mcpClient._kutipCmd = _kutipCmd;
 
 module.exports = mcpClient;
