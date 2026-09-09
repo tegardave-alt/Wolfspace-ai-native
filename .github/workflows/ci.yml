@@ -103,19 +103,52 @@ jobs:
   build-electron:
     name: Build Electron (windows)
     runs-on: windows-latest
-    # Rebuild node-pty + paket ~29MB public/: lambat, tapi 30 menit sudah sangat
-    # longgar. Batas ini mencegah job menggantung menghabiskan menit build.
-    timeout-minutes: 30
+    # 45, dan angka ini diukur bukan ditebak. Job ini KEHABISAN 30 menit setelah
+    # Monaco di-vendor ulang (+34 MB, +120 berkas di public/) dan Electron naik
+    # 33 -> 44. Diukur di mesin dev dengan biner Electron SUDAH ter-cache:
+    # electron-builder --win --dir = 452 detik, keluaran 653 MB. Runner tidak
+    # punya cache itu, jadi tambahkan unduhan Electron 44 di atasnya.
+    #
+    # Batasnya tetap ada supaya job yang MENGGANTUNG tidak menghabiskan menit
+    # build; yang dinaikkan cuma marginnya.
+    timeout-minutes: 45
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
         with:
           node-version: 20
           cache: npm
-      # Runner Windows GitHub sudah membawa Visual Studio Build Tools, jadi
-      # node-pty (modul native) bisa di-rebuild di sini — sesuatu yang gagal di
-      # mesin dev tanpa toolchain C++. Inilah alasan utama job ini ada.
+      # KENAPA JOB INI ADA, dinyatakan ulang karena versi sebelumnya salah.
+      #
+      # Komentar lama berbunyi "node-pty bisa di-rebuild di sini ... inilah
+      # alasan utama job ini ada". Itu tidak terjadi: package.json menyetel
+      # build.npmRebuild = false, dan electron-builder mengatakannya sendiri di
+      # log -- "skipped dependencies rebuild, reason=npmRebuild is set to
+      # false". Rebuild-nya juga tak diperlukan: node-pty mengirim prebuild
+      # N-API (prebuilds/win32-x64/pty.node), yang tidak terikat ABI Node
+      # maupun Electron -- itulah sebabnya lompatan 33 -> 44 tidak merusaknya.
+      #
+      # Yang benar-benar dijaga job ini adalah ISI PAKET. electron-builder
+      # mengemas pohon berkas apa adanya, jadi sebuah build bisa "sukses" sambil
+      # berisi aplikasi tanpa main process. Langkah verifikasi di bawah yang
+      # menangkap itu.
       - run: npm ci
+
+      # Biner Electron TIDAK ikut cache npm.
+      #
+      # actions/setup-node dengan cache:npm hanya menyimpan paket npm. Electron
+      # sendiri diunduh electron-builder ke cache terpisah, dan di runner cache
+      # itu kosong setiap kali. Diukur di mesin dev: ~/AppData/Local/electron
+      # 371 MB, ~/AppData/Local/electron-builder 35 MB -- keduanya diunduh ulang
+      # dari nol pada tiap run tanpa langkah ini.
+      - name: Cache biner Electron
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~\AppData\Local\electron\Cache
+            ~\AppData\Local\electron-builder\Cache
+          key: electron-${{ runner.os }}-${{ hashFiles('package-lock.json') }}
+          restore-keys: electron-${{ runner.os }}-
 
       # electron/main.js dan electron/preload.js DIBANGUN di sini, bukan di-commit.
       # electron-builder mengemas pohon berkas apa adanya, jadi tanpa langkah ini
@@ -131,8 +164,30 @@ jobs:
       - name: Bangun peluncur AppContainer
         run: npm run build:aclaunch
 
+      # PENANDATANGANAN DIMATIKAN, dan flag-nya dipilih dengan mengukur.
+      #
+      # Tanpa ini electron-builder mencari sertifikat sendiri, mengunduh paket
+      # winCodeSign supaya punya signtool.exe, lalu menjalankannya pada tiap
+      # biner -- terhitung SEPULUH kali di build lokal (node-pty
+      # winpty-agent/OpenConsole untuk x64 dan arm64, esbuild.exe, dan
+      # seterusnya). Runner tidak punya sertifikat, jadi tak satu pun tanda
+      # tangan itu berarti.
+      #
+      # CSC_IDENTITY_AUTO_DISCOVERY=false DICOBA LEBIH DULU DAN TIDAK CUKUP:
+      # hitungan signtool tetap 10. Variabel itu mengatur pencarian SERTIFIKAT,
+      # bukan langkah sign-and-edit-nya. Dengan flag di bawah hitungannya 0.
+      #
+      # Konsekuensinya diterima dengan sadar: signAndEditExecutable juga
+      # mematikan penyuntingan ikon dan info versi pada exe. Yang dihasilkan job
+      # ini adalah direktori yang DIPERIKSA ISINYA lalu dibuang -- tak pernah
+      # jadi installer, tak pernah sampai ke siapa pun. Flag-nya ada DI SINI dan
+      # bukan di package.json, jadi build rilis sungguhan tetap menandatangani
+      # dan tetap berikon.
+      #
+      # Diverifikasi: build tanpa tanda tangan tetap LOLOS langkah verifikasi
+      # isi paket di bawah, dan WOLFSPACE.exe tetap dihasilkan.
       - name: Package (dir saja, tanpa installer)
-        run: npx electron-builder --win --dir
+        run: npx electron-builder --win --dir --config.win.signAndEditExecutable=false
 
       # INTI job ini. Membangun saja tidak cukup: bug lama menghasilkan build yang
       # "sukses" padahal isinya tidak lengkap. Jadi verifikasi eksplisit bahwa file
