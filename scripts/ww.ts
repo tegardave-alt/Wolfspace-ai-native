@@ -627,6 +627,17 @@ function listBranchesAsync(dir: any) {
 }
 
 // The local branches plus the active one. Does not throw.
+//
+// IT MUST ANSWER EXACTLY WHAT _listBranchesTarik ANSWERS. These are the sync
+// and async halves of one question, and tests/execsync-terikat.test.ts compares
+// them precisely because a difference here is not an optimisation — it is a
+// silent change of behaviour depending on which caller asked.
+//
+// The detached-HEAD branch below went into the async half alone, and the
+// divergence was invisible on an ordinary checkout: both halves agree whenever
+// a branch is checked out by name. CI is what found it, because
+// actions/checkout leaves HEAD DETACHED for a pull request — there the sync
+// half reported a branch called "HEAD" while the async half reported a sha.
 function listBranches(dir: any) {
   if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
   const current = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
@@ -640,6 +651,12 @@ function listBranches(dir: any) {
         .map((s: any) => s.trim())
         .filter(Boolean)
     : [];
+  // A DETACHED HEAD IS NOT A BRANCH NAMED "HEAD" — see _listBranchesTarik for
+  // what that looked like in the panel.
+  if (current === "HEAD") {
+    const sha = gitTry(["rev-parse", "--short", "HEAD"], dir);
+    return { repo: true, current: null, detached: sha || "?", branches };
+  }
   return { repo: true, current: current || null, branches };
 }
 

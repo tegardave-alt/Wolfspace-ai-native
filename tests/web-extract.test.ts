@@ -46,7 +46,16 @@ afterAll(async () => {
   try {
     await require("../agent/web.ts").tutupBrowser();
   } catch (_) {}
-});
+  // 60s, NOT jest's default 5s for a hook.
+  //
+  // This teardown closes a real headless Chromium, and 5 seconds is not a
+  // budget for that under load: with the whole suite running in parallel it
+  // overran and jest reported "Test suite failed to run — Exceeded timeout of
+  // 5000 ms for a hook", which names the hook and not the browser, so the
+  // failure reads as a broken suite rather than a slow shutdown. The tests in
+  // this file already carry their own generous timeouts for the same reason;
+  // the hook was the one place that had been left on the default.
+}, 60000);
 
 const url = () => `http://127.0.0.1:${PORT}/`;
 

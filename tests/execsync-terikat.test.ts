@@ -210,3 +210,69 @@ describe("rute git tidak membekukan thread utama", () => {
     expect(await ww.listBranchesAsync(d)).toEqual(ww.listBranches(d));
   }, 30000);
 });
+
+// ── DETACHED HEAD: THE CASE ONLY CI HAD ─────────────────────────────────────
+//
+// The test above compares the sync and async halves against AKAR — this
+// repository, which on a developer's machine always has a branch checked out.
+// Both halves agree there, so it passed on Windows for as long as it existed.
+//
+// actions/checkout leaves HEAD DETACHED for a pull request, and there they did
+// not agree: the sync half answered a branch literally named "HEAD" while the
+// async half answered { current: null, detached: <sha> }. The comparison was
+// right and the environment was what it had never been given.
+//
+// So the state is now built rather than waited for.
+describe("kedua paruh sepakat saat HEAD terlepas", () => {
+  const os = require("os");
+  const { execFileSync } = require("child_process");
+  const ww = require(path.join(AKAR, "scripts", "ww.ts"));
+  let dir = "";
+
+  const g = (...a: any[]) =>
+    execFileSync("git", ["-C", dir, ...a], {
+      encoding: "utf8",
+      env: {
+        ...process.env,
+        GIT_AUTHOR_NAME: "Uji",
+        GIT_AUTHOR_EMAIL: "uji@example.com",
+        GIT_COMMITTER_NAME: "Uji",
+        GIT_COMMITTER_EMAIL: "uji@example.com",
+      },
+    });
+
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "uji-detach-"));
+    g("init", "-q");
+    fs.writeFileSync(path.join(dir, "a.txt"), "satu\n");
+    g("add", "-A");
+    g("commit", "-qm", "commit pertama");
+    g("checkout", "-q", "--detach", "HEAD");
+    ww.lupakanGit(dir);
+  });
+
+  afterAll(() => {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (_) {}
+  });
+
+  test("git benar-benar melaporkan HEAD terlepas", () => {
+    // If this ever stops being true the rest of the block proves nothing.
+    expect(g("rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("HEAD");
+  });
+
+  test("tak satu pun paruh menyebut cabang bernama HEAD", () => {
+    // The panel printed that in the branch button, and no row in the list
+    // matched it — so every branch also looked inactive.
+    const s: any = ww.listBranches(dir);
+    expect(s.current).toBe(null);
+    expect(s.branches).not.toContain("HEAD");
+    expect(String(s.detached)).toMatch(/^[0-9a-f]{4,}$/);
+  });
+
+  test("hasil async SAMA persis dengan yang sinkron, juga di sini", async () => {
+    ww.lupakanGit(dir);
+    expect(await ww.listBranchesAsync(dir)).toEqual(ww.listBranches(dir));
+  }, 30000);
+});
