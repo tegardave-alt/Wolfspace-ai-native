@@ -34,6 +34,39 @@ process.on("uncaughtException", (err: any) => {
   throw err;
 });
 
+// OUR OWN stdout IS A PIPE, AND A PIPE CAN BREAK UNDER US.
+//
+// The handler above rethrows, which is correct for a real bug and fatal for
+// this: an uncaughtException handler that throws makes Node exit with code 7,
+// "Internal Exception Handler Run-Time Failure". The user saw exactly that:
+//
+//     Error: write EOF ... at WriteWrap.onWriteComplete
+//     [probe] host backend keluar, kode 7
+//
+// This process writes to a pipe owned by electron/main.ts, not to a terminal.
+// When the reader goes away while a write is in flight, the stream raises --
+// EPIPE, or EOF on Windows, where the pipe is a Socket -- and with no listener
+// that is an uncaught exception, which the handler above then turns into a
+// hard exit.
+//
+// try/catch DOES NOT HELP, and _writeSafe below is the proof: it wraps every
+// console write in one and the crash still happened. REPRODUCED both ways --
+// a child writing 64 KB at a time with its writes inside try/catch, whose
+// reader is destroyed mid-write, dies with EPIPE at exit 1; the same child with
+// this one listener finishes at exit 0. The write is ACCEPTED and fails
+// afterwards, so there is nothing on the stack to catch by then.
+//
+// The stdin guards added earlier were the same failure in the other direction,
+// and their scanner did not find this one: it looked for writes to a CHILD's
+// stdin, and never asked what this process does with its own.
+//
+// Nothing is logged here. The one place a message could go is the pipe that
+// just broke.
+try {
+  process.stdout.on("error", () => {});
+  process.stderr.on("error", () => {});
+} catch (_) {}
+
 // ── A trace on EXIT, not only a trace on CRASH ──
 //
 // THE INCIDENT THAT PROMPTED THIS. The backend died at 10:42 and left NOTHING

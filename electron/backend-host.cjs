@@ -33,6 +33,26 @@
 // the router in main.ts forwards rather than translates.
 "use strict";
 
+// THE PIPE TO MAIN CAN BREAK WHILE WE ARE WRITING TO IT.
+//
+// This process is forked by electron/main.ts with inherited stdio, so its
+// stdout is a pipe to that process rather than a terminal. If the reader goes
+// away while a write is in flight the stream raises -- EPIPE, or EOF on
+// Windows, where a pipe is a Socket -- and an unhandled stream error is an
+// uncaught exception.
+//
+// server.ts installs the same guard, but only once core.js has been required,
+// and core() is lazy: it does not run until the first invoke arrives. Every
+// line this file logs before that -- including the watchdog below and any
+// failure while loading -- is written with nothing protecting it.
+//
+// FIRST STATEMENT IN THE FILE for that reason. It needs no modules, so nothing
+// has to load correctly for it to take effect.
+try {
+  process.stdout.on("error", () => {});
+  process.stderr.on("error", () => {});
+} catch (_) {}
+
 // MUST come first: core.js reaches .ts modules transitively, and CI runs Node 20
 // which cannot load TypeScript at all.
 require("../scripts/ts-register.cjs");
