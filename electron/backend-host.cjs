@@ -40,6 +40,40 @@ require("../scripts/ts-register.cjs");
 const path = require("path");
 const { PassThrough, Writable } = require("stream");
 
+// ── THE ONE PROCESS THAT WENT SILENT WAS THE ONE NOBODY WAS WATCHING ────────
+//
+// agent/pemantau-blokir.ts was started in electron/main.ts only. That was right
+// when the backend still ran there, and it stopped being right the moment this
+// file took the backend off that thread: the instrument stayed with the window
+// and the work moved here.
+//
+// It cost a real diagnosis. A user's log said
+//
+//   [probe] backend-host gagal api: host backend tak menjawab dalam ...
+//
+// and the wording proves the process was ALIVE -- a host that had exited fails
+// its waiters with "berhenti" instead -- so it was alive and not answering,
+// which is exactly what a blocked event loop looks like from outside and
+// exactly what this histogram measures. Nothing here was measuring it.
+//
+// Silent by design: it speaks only when one UNINTERRUPTED stretch crosses the
+// budget's normal band. stdio is inherited from main, so what it prints lands
+// in the same log the line above came from.
+//
+// Never fatal. Losing an instrument must not cost the app its backend.
+try {
+  const pb = require(path.join(__dirname, "..", "agent", "pemantau-blokir.ts"));
+  pb.mulai(20);
+  pb.pasangLaporan(
+    (l) => console.log("[backend-host] BLOKIR " + pb.ringkas(l)),
+    15000,
+  );
+} catch (e) {
+  console.log(
+    "[backend-host] blocking watchdog not active: " + ((e && e.message) || e),
+  );
+}
+
 let _core = null;
 // The agent runs inside this process, so it reaches main through the global
 // rather than an import -- core.js is loaded lazily and must not pull electron

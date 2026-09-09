@@ -1278,12 +1278,46 @@ function backendInvoke(channel: string, payload: any, batasMs = 30000) {
   const h = backendHost(nama);
   if (!h) return null;
   const id = ++_backendId;
+  // NAME THE REQUEST, not just the host.
+  //
+  // The old message was "host backend tak menjawab dalam 30000 ms" and nothing
+  // else. A user hit it and the line could not be acted on: it does not say
+  // which route hung, how long it really waited, or whether anything was queued
+  // behind it. Two plausible causes were measured and BOTH were wrong --
+  // requiring core.js costs 1162 ms with the cache off, not 30 s, and
+  // startJedi() is async and spawns rather than blocks -- so the guessing was
+  // paid for in full before the gap in the message was noticed.
+  //
+  // `antre` is what separates the two shapes of this failure: one slow route
+  // reports 0 others waiting, a wedged host reports the pile behind it.
+  const rute =
+    channel === "api"
+      ? " [" +
+        String((payload && payload.method) || "GET") +
+        " " +
+        String((payload && payload.path) || "?") +
+        "]"
+      : " [" + channel + "]";
+  const t0 = Date.now();
   return new Promise<any>((resolve) => {
     const jam = setTimeout(() => {
       if (_backendMenunggu.delete(id)) {
+        let antre = 0;
+        for (const [, t] of _backendMenunggu) if (t.nama === nama) antre++;
         resolve({
           ok: false,
-          error: "host " + nama + " tak menjawab dalam " + batasMs + " ms",
+          error:
+            "host " +
+            nama +
+            " tak menjawab dalam " +
+            (Date.now() - t0) +
+            " ms (batas " +
+            batasMs +
+            ")" +
+            rute +
+            ", " +
+            antre +
+            " permintaan lain masih menunggu",
         });
       }
     }, batasMs);
@@ -1412,7 +1446,22 @@ function registerIpc() {
         // The case a timeout exists for -- a host that is gone -- is already
         // covered, and covered better, by the exit handler above: it fails that
         // host's waiters immediately and by name. This budget only catches a
-        // host that is alive and silent, which has not been observed.
+        // host that is alive and silent.
+        //
+        // WHICH HAS NOW BEEN OBSERVED, and this comment used to end by saying it
+        // had not. From a user's log:
+        //
+        //   "[probe] backend-host gagal api: host backend tak menjawab dalam ..."
+        //
+        // The wording is itself the evidence: a host that had EXITED fails its
+        // waiters with "host backend berhenti" from the exit handler above, so
+        // reaching the timeout text at all means the process was alive and
+        // simply never answered. What the line could not say was WHICH route and
+        // for how long -- backendInvoke now says both.
+        //
+        // The claim above that a boot route "runs tsc" is also no longer true:
+        // no route invokes the compiler any more. It is kept as the reason the
+        // three-second budget was removed, which still stands.
         const lewatHost = await backendInvoke(channel, payload);
         if (lewatHost && lewatHost.ok && lewatHost.value != null)
           return lewatHost.value;
