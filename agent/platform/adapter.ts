@@ -1,16 +1,24 @@
-// ── Platform Adapter contract ──
-// An MCP-style abstraction for OS-specific execution. One interface, many
-// interchangeable per-OS implementations selected at runtime (see index.ts).
+// adapter.ts — the contract every OS-specific execution backend implements.
 //
-// The parallel to MCP:
-//   MCP protocol            -> this PlatformAdapter interface
-//   MCP server              -> WindowsAdapter / MacAdapter / LinuxAdapter
-//   MCP capability handshake -> capabilities(): callers ask "what can this OS do?"
-//                               and degrade gracefully instead of assuming.
+// ROLE IN THE SYSTEM. Everything that differs between operating systems — which
+// shell to spawn, how to kill a whole process tree, how to remap a home
+// directory for a contained environment — lives behind this one interface, so
+// the rest of WOLFSPACE never branches on process.platform.
 //
-// Everything OS-specific (which shell, how to kill a process tree, how to
-// remap the home dir for a contained env) lives behind this contract so the
-// rest of the codebase (sandbox.cjs, agent tools) stays platform-agnostic.
+// CONNECTS TO
+//   implemented by  agent/platform/windows.ts  WindowsAdapter
+//                   agent/platform/posix.ts    PosixAdapter, and MacAdapter and
+//                                              LinuxAdapter which extend it
+//   chosen by       agent/platform/index.ts    getPlatformAdapter()
+//   used by         agent/sandbox.ts, agent/tools/index.ts, core/terminal.ts,
+//                   agent/broker/zone-process.ts — all through index.ts, never
+//                   by importing an adapter directly
+//
+// THE MCP PARALLEL, which is where the shape came from:
+//   MCP protocol             -> this PlatformAdapter interface
+//   MCP server               -> WindowsAdapter / MacAdapter / LinuxAdapter
+//   MCP capability handshake -> capabilities(), below: callers ask what this OS
+//                               can actually do and degrade instead of assuming
 "use strict";
 
 class PlatformAdapter {

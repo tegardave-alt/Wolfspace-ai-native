@@ -1,4 +1,15 @@
-// Web search + fetch for WOLFSPACE agent
+// web.ts — how the agent reaches the open internet: search, and fetching a
+// page's readable text.
+//
+// ROLE IN THE SYSTEM. This is the only outbound-HTTP path the agent has that is
+// not a model call. Search API keys come from the keys file resolved by
+// ./keys-path, never from config.json, and the fetch path is measured by
+// ./pemantau-blokir because a slow remote host is one of the few things that
+// can hold the loop for seconds.
+//
+// CONNECTS TO
+//   imports  http, https, fs, path, os, ./keys-path, ./pemantau-blokir
+//   used by  agent/tools/web-tools.ts and agent/tools/index.ts
 import * as https from "https";
 import * as http from "http";
 import * as fs from "fs";
@@ -219,19 +230,68 @@ let _pw: any = null,
 
 function _loadPw() {
   if (_pw !== null) return _pw;
-  // Attributed: require("playwright") is SYNCHRONOUS and was measured at 629 ms
+  // Attributed: requiring playwright is SYNCHRONOUS and was measured at 629 ms
   // on a warm cache — 12.6% of the 5000 ms hang budget, paid on the main thread
   // the first time any web tool is used. It is cached above, so this is a
   // one-off, but a one-off that used to be invisible in a block report.
   const P = require("./pemantau-blokir.ts");
   P.ukur("muat-playwright", () => {
     try {
-      _pw = require("playwright");
+      // playwright-core, NOT playwright.
+      //
+      // `playwright` is a devDependency here, and electron-builder prunes those
+      // when it packages — so in an installed WOLFSPACE this require failed and
+      // web_extract threw "playwright unavailable" every time, while its own
+      // tool description promised the model a real browser. Verified against a
+      // built package: node_modules there had no playwright at all.
+      //
+      // playwright-core is the same engine without the test runner and without
+      // a browser download, and it is now a real dependency. What it drives is
+      // decided by _saluranBrowser() below.
+      _pw = require("playwright-core");
     } catch (_) {
       _pw = false;
     }
   });
   return _pw;
+}
+
+/**
+ * Which browser to drive, in preference order.
+ *
+ * NOTHING IS DOWNLOADED. Playwright normally fetches its own Chromium into a
+ * user-profile cache — about 150 MB that lives outside the repo, is never
+ * packaged, and is missing on every machine that has not run `playwright
+ * install`. That is the second half of why the browser tools were dead once
+ * installed: even with the module present, the binary was not.
+ *
+ * A `channel` points at a browser the machine ALREADY has. Measured on this
+ * one: msedge launched in 1276 ms, chrome in 2333 ms, neither downloading
+ * anything. Edge is tried first because it ships with Windows, so it is the one
+ * most likely to be there.
+ *
+ * The bundled Chromium is still tried last: a dev checkout that HAS run
+ * `playwright install` should keep using it rather than reaching for a browser
+ * the user also browses with.
+ */
+const _SALURAN = ["msedge", "chrome"];
+async function _luncurkanBrowser(pw: any, opsi: any = {}) {
+  const salah: string[] = [];
+  for (const channel of _SALURAN) {
+    try {
+      return await pw.chromium.launch({ ...opsi, channel });
+    } catch (e: any) {
+      salah.push(channel + ": " + String(e && e.message).slice(0, 120));
+    }
+  }
+  try {
+    return await pw.chromium.launch(opsi);
+  } catch (e: any) {
+    salah.push("bundled: " + String(e && e.message).slice(0, 120));
+  }
+  // Every reason, not just the last one: "browser unavailable" with no channel
+  // named is exactly the kind of message that sent this bug undiagnosed.
+  throw new Error("no usable browser — " + salah.join(" | "));
 }
 /**
  * Closes the shared browser NOW instead of waiting out BROWSER_IDLE_MS.
@@ -283,8 +343,7 @@ async function _getBrowser() {
     return _browser;
   }
   if (!_browserPromise) {
-    _browserPromise = pw.chromium
-      .launch({ headless: true })
+    _browserPromise = _luncurkanBrowser(pw, { headless: true })
       .then((b) => {
         _browser = b;
         b.on("disconnected", () => {
@@ -741,6 +800,228 @@ async function webExtract(opts) {
   });
 }
 
+// ══ A BROWSER THE AGENT DRIVES ═══════════════════════════════════════════════
+//
+// SEPARATE FROM THE ONE ABOVE, on purpose. _getBrowser() is headless, shared,
+// and torn down after three idle minutes: right for web_extract, which opens a
+// page, takes what it needs and leaves. This one is HEADED and keeps its page
+// between agent steps, because the whole point is a session -- log in on one
+// step, click through on the next, read the result on a third. A headless
+// browser the user cannot see would also make "live browser" a lie.
+//
+// EVERY NAVIGATION GOES THROUGH urlAman(). Without it this tool would be a
+// clean way around the destination guard the rest of this file enforces: a
+// model that cannot webFetch http://127.0.0.1:8090 could simply ask the browser
+// to open it, read the response off the page, and hand back the same data.
+//
+// Admission is checked at the dispatch site in tools/index.ts, the same way
+// web_extract is, so the whole capability stays revocable.
+let _sesi: any = null;
+let _sesiIdle: any = null;
+// Longer than the extraction browser's window: a session exists to be returned
+// to, and a user reading a page for two minutes has not abandoned it.
+const SESI_IDLE_MS = 10 * 60 * 1000;
+
+function _sentuhSesi() {
+  if (_sesiIdle) clearTimeout(_sesiIdle);
+  _sesiIdle = setTimeout(() => {
+    tutupSesi().catch(() => {});
+  }, SESI_IDLE_MS);
+  // Never hold the process alive; the same lesson tutupBrowser() records.
+  if (_sesiIdle.unref) _sesiIdle.unref();
+}
+
+/** Shuts the live session down now. Safe to call when there is none. */
+async function tutupSesi() {
+  if (_sesiIdle) {
+    clearTimeout(_sesiIdle);
+    _sesiIdle = null;
+  }
+  const s = _sesi;
+  _sesi = null;
+  if (s && s.browser) await s.browser.close().catch(() => {});
+}
+
+async function _sesiHidup() {
+  if (_sesi && _sesi.browser && _sesi.browser.isConnected()) {
+    _sentuhSesi();
+    return _sesi;
+  }
+  const pw = _loadPw();
+  if (!pw) throw new Error("playwright-core unavailable");
+  // HEADED by default -- a live browser the user cannot see is not one.
+  //
+  // The switch exists for the suite: these tests drive real sessions, and a
+  // visible window per test would take over the screen of whoever ran them.
+  // It is opt-IN, so forgetting it in production cannot silently hide the
+  // browser this tool exists to show.
+  const browser = await _luncurkanBrowser(pw, {
+    headless: process.env.WOLFSPACE_BROWSER_HEADLESS === "1",
+  });
+  const page = await browser.newPage();
+  _sesi = { browser, page };
+  browser.on("disconnected", () => {
+    // The user closed the window. That is a legitimate way to end a session,
+    // so it is recorded rather than treated as a fault on the next call.
+    _sesi = null;
+  });
+  _sentuhSesi();
+  return _sesi;
+}
+
+const AKSI_BROWSER = [
+  "open",
+  "goto",
+  "click",
+  "type",
+  "read",
+  "screenshot",
+  "close",
+];
+
+/**
+ * The live browser INSIDE WOLFSPACE: the <webview> panel the user is looking at.
+ *
+ * The guest lives in the main process -- a utilityProcess has no handle to a
+ * WebContents -- so the work happens there and this only asks for it. The
+ * destination guard runs HERE, before the request is sent, so both browsers are
+ * held to the same rule by the same code.
+ */
+async function browserDalam(opts: any) {
+  const minta = (globalThis as any).__wolfspaceMintaMain;
+  if (typeof minta !== "function") {
+    // NAMES ITSELF, because the other failure downstream reads similarly to a
+    // user and the two need different fixes. This one means the bridge is not
+    // there at all: either WOLFSPACE is running as a plain server, or the
+    // backend-host process did not start and main is serving the API in-process
+    // (the fallback path), where the bridge is never installed.
+    throw new Error(
+      "in-app browser unavailable: no host-to-main bridge in this process. " +
+        "That happens when WOLFSPACE runs as a plain server, or when the backend " +
+        "host did not start and main is serving in-process. Use target 'luar' instead.",
+    );
+  }
+  const aksi = String((opts && opts.action) || "").toLowerCase();
+  if (!AKSI_BROWSER.includes(aksi)) {
+    throw new Error(
+      "unknown action: " + aksi + " (expected " + AKSI_BROWSER.join(", ") + ")",
+    );
+  }
+  if (aksi === "close") {
+    // There is no session of ours to end: the panel belongs to the user, and
+    // closing it out from under them would be the tool taking their window.
+    return "the in-app browser panel is the user's; nothing to close";
+  }
+  const args: any = {
+    action: aksi,
+    selector: opts && opts.selector,
+    text: opts && opts.text,
+  };
+  if (aksi === "open" || aksi === "goto") {
+    if (!(opts && opts.url)) throw new Error("url is required for " + aksi);
+    const v = await urlAman(String(opts.url));
+    if (!v.ok) throw new Error("destination refused: " + v.error);
+    args.url = String(v.url);
+  }
+  if ((aksi === "click" || aksi === "type") && !args.selector) {
+    throw new Error("selector is required for " + aksi);
+  }
+  return await minta("browser-dalam", args);
+}
+
+/**
+ * One entry point for every browser action, so the tool surface stays one tool
+ * rather than seven that each have to be admitted and revoked separately.
+ */
+async function browserLangsung(opts: any) {
+  // TWO BROWSERS, ONE TOOL. `dalam` drives the panel inside WOLFSPACE, `luar`
+  // a real window beside it. Splitting them into separate tools would double
+  // the surface the model has to choose between and double what has to be
+  // admitted and revoked, for one differing word.
+  if (String((opts && opts.target) || "").toLowerCase() === "dalam") {
+    return browserDalam(opts);
+  }
+  const aksi = String((opts && opts.action) || "").toLowerCase();
+  if (!AKSI_BROWSER.includes(aksi)) {
+    throw new Error(
+      "unknown action: " + aksi + " (expected " + AKSI_BROWSER.join(", ") + ")",
+    );
+  }
+  if (aksi === "close") {
+    await tutupSesi();
+    return "browser session closed";
+  }
+
+  const sel = opts && opts.selector ? String(opts.selector) : "";
+
+  // ARGUMENTS ARE CHECKED BEFORE A BROWSER IS STARTED.
+  //
+  // Validating after _sesiHidup() meant a call missing its selector still
+  // launched a window, held it, and only then reported the mistake -- the user
+  // watching a browser open for a request that was never going to run.
+  if ((aksi === "open" || aksi === "goto") && !(opts && opts.url)) {
+    throw new Error("url is required for " + aksi);
+  }
+  if ((aksi === "click" || aksi === "type") && !sel) {
+    throw new Error("selector is required for " + aksi);
+  }
+
+  // THE DESTINATION IS CHECKED BEFORE A BROWSER IS STARTED, for the same
+  // reason. A refused address used to open a window first and reject after it,
+  // which is both slower and backwards: nothing should be launched on behalf of
+  // a request the guard was always going to turn down.
+  let tujuan = "";
+  if (aksi === "open" || aksi === "goto") {
+    const v = await urlAman(String(opts.url || ""));
+    if (!v.ok) throw new Error("destination refused: " + v.error);
+    // The normalised href the guard approved -- not the raw input, which could
+    // differ from what was actually checked.
+    tujuan = String(v.url);
+  }
+
+  const { page } = await _sesiHidup();
+  // Long enough for a slow page, short enough that a wrong selector is reported
+  // rather than sat on for the rest of the agent's patience.
+  const TUNGGU = 15000;
+
+  if (aksi === "open" || aksi === "goto") {
+    await page.goto(tujuan, { waitUntil: "domcontentloaded" });
+  } else if (aksi === "click") {
+    await page.click(sel, { timeout: TUNGGU });
+  } else if (aksi === "type") {
+    await page.fill(sel, String((opts && opts.text) || ""), {
+      timeout: TUNGGU,
+    });
+  } else if (aksi === "screenshot") {
+    const b = await page.screenshot({ type: "png" });
+    return (
+      "screenshot taken: " +
+      b.length +
+      " bytes, " +
+      page.url() +
+      " (not returned inline -- base64 of a page fills the context for no gain)"
+    );
+  }
+
+  // Every action that leaves the page open answers with what is now on it, so
+  // the model can decide the next step without a second round trip.
+  const judul = await page.title().catch(() => "");
+  let teks = "";
+  if (sel && aksi === "read") {
+    const el = await page.$(sel);
+    if (!el) throw new Error("selector matched nothing: " + sel);
+    teks = String(await el.innerText().catch(() => ""));
+  } else {
+    teks = String(await page.innerText("body").catch(() => ""));
+  }
+  return (
+    "url: " +
+    page.url() +
+    trunc(judul ? " | title: " + judul : "", 200) +
+    trunc(teks, 4000)
+  );
+}
+
 module.exports = {
   webSearch,
   webFetch,
@@ -748,4 +1029,8 @@ module.exports = {
   urlAman,
   MODE_EKSTRAK,
   tutupBrowser,
+  browserLangsung,
+  browserDalam,
+  tutupSesi,
+  AKSI_BROWSER,
 };

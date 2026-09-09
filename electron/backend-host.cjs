@@ -1,4 +1,10 @@
-// The backend, running OFF the thread that draws the window.
+// backend-host.cjs — the backend, running OFF the thread that draws the window.
+//
+// CONNECTS TO
+//   imports  ../scripts/ts-register.cjs (so it can require .ts directly),
+//            ../core.js and everything under agent/
+//   spawned by electron/main.ts, which forwards renderer IPC to it
+//   owns     the MCP client, deliberately — see the note further down
 //
 // WHY THIS FILE EXISTS. core.js and everything under agent/ used to be required
 // straight into the Electron MAIN process. That process owns the window, so its
@@ -35,6 +41,12 @@ const path = require("path");
 const { PassThrough, Writable } = require("stream");
 
 let _core = null;
+// The agent runs inside this process, so it reaches main through the global
+// rather than an import -- core.js is loaded lazily and must not pull electron
+// internals in behind it.
+globalThis.__wolfspaceMintaMain = (apa, args, batasMs) =>
+  mintaMain(apa, args, batasMs);
+
 function core() {
   if (!_core) _core = require(path.join(__dirname, "..", "core.js"));
   return _core;
@@ -46,6 +58,40 @@ function kirim(msg) {
   } catch (e) {
     // The parent is gone; there is nobody left to tell.
   }
+}
+
+// ── ASKING THE MAIN PROCESS FOR SOMETHING ────────────────────────────────────
+//
+// The message channel was one-directional in practice: main sent `invoke` and
+// `stream`, this process only ever REPLIED. Everything the agent needed lived
+// here or behind an HTTP route.
+//
+// The live browser does not. `<webview>` guests are WebContents, and
+// WebContents exist only in the main process -- there is no handle to them from
+// a utilityProcess at all. So this is the direction that had to be added: a
+// request from here, answered there, matched by id the same way main matches
+// ours.
+//
+// Deliberately NOT a general "run this in main" escape hatch: `apa` names one
+// of a fixed set of operations main is willing to perform. A channel that
+// forwarded arbitrary work would put the agent back on the window thread,
+// which is the thing this whole split exists to prevent.
+let _idMinta = 0;
+const _mintaTertunda = new Map();
+
+function mintaMain(apa, args, batasMs = 30000) {
+  return new Promise((selesai, gagal) => {
+    const id = "m" + ++_idMinta;
+    const jam = setTimeout(() => {
+      _mintaTertunda.delete(id);
+      gagal(
+        new Error("main did not answer " + apa + " within " + batasMs + "ms"),
+      );
+    }, batasMs);
+    if (jam.unref) jam.unref();
+    _mintaTertunda.set(id, { selesai, gagal, jam });
+    kirim({ id, kind: "minta-main", apa, args });
+  });
 }
 
 /**
@@ -125,31 +171,31 @@ async function tanganiInvoke(channel, payload) {
   const c = core();
   if (channel === "ping") return { ok: true, pong: Date.now() };
   if (channel === "cloudKeys") return Object.keys(c.getCloudKeys());
-  // `api` DIHAPUS dari sini, dan sengaja. apiCall() hidup di electron/main.ts:
-  // ia membangun req/res palsu terhadap handler HTTP in-process, jadi ia tak
-  // pernah ada di ekspor core.js. Versi pertama menuliskannya sebagai
-  // `c.apiCall ? c.apiCall(payload) : null`, yang mengembalikan NULL dengan
-  // ok:true -- main lalu meneruskan null itu ke renderer alih-alih memakai
-  // apiCall yang asli, dan penyimpanan kunci API gagal dengan "Cannot read
+  // `api` is deliberately NOT handled here. apiCall() lives in
+  // electron/main.ts, where it builds a fake req/res against the in-process
+  // HTTP handlers, so it was never part of core.js's exports. The first version
+  // wrote it as `c.apiCall ? c.apiCall(payload) : null`, which returned NULL
+  // with ok:true — main then forwarded that null to the renderer instead of
+  // using the real apiCall, and saving an API key failed with "Cannot read
   // properties of null (reading 'body')".
   //
-  // Pelajarannya bukan "tambahkan apiCall di sini": kanal yang tak bisa
-  // dilayani host harus MELEMPAR, supaya main jatuh ke jalur in-process alih-
-  // alih menyebarkan null yang terlihat seperti jawaban sah.
+  // The lesson is not "add apiCall here": a channel this host cannot serve must
+  // THROW, so main falls back to its in-process path rather than passing on a
+  // null that looks like a valid answer.
   //
-  // JALUR MCP ADALAH PENGECUALIAN, dan alasannya bukan kenyamanan.
+  // THE MCP PATH IS THE ONE EXCEPTION, and not for convenience.
   //
-  // selfAgentStream berjalan DI SINI, dan ia memanggil mcpClient.getTools().
-  // Sementara itu /mcp/connect dilayani lewat kanal `api` di main. Dua proses
-  // berarti dua require("mcp-client.ts") terpisah, dua peta this.servers
-  // terpisah: UI menyambungkan server di main, agent bertanya ke instance di
-  // sini yang tak punya server sama sekali, dan getTools() mengembalikan []
-  // TANPA galat dan tanpa satu pun baris log. Terbukti di aplikasi berjalan --
-  // log mencatat "MCP server github ready" sementara agent tak melihat apa pun.
+  // selfAgentStream runs HERE and calls mcpClient.getTools(), while
+  // /mcp/connect used to be served through main's `api` channel. Two processes
+  // mean two separate require("mcp-client.ts") and two separate this.servers
+  // maps: the UI connected a server in main, the agent asked the instance here
+  // which had none, and getTools() returned [] with NO error and not one log
+  // line. Confirmed in the running app — the log said "MCP server github ready"
+  // while the agent saw nothing.
   //
-  // Jadi kepemilikan MCP dipindahkan ke sini, ke proses yang menjalankan agent.
-  // Hanya jalur /mcp yang diambil; sisanya tetap MELEMPAR supaya main memakai
-  // apiCall-nya sendiri.
+  // So MCP ownership moved here, to the process that runs the agent. Only the
+  // /mcp path is taken; everything else still THROWS so main uses its own
+  // apiCall.
   if (channel === "api" && _jalurKeHost(payload)) return apiHost(payload);
   throw new Error("unknown invoke channel: " + channel);
 }
@@ -227,6 +273,16 @@ function batalkan(id) {
 process.parentPort.on("message", (e) => {
   const msg = e.data || {};
   const { id, kind } = msg;
+  // An answer to something WE asked for, not a request to serve.
+  if (kind === "jawab-main") {
+    const t = _mintaTertunda.get(id);
+    if (!t) return;
+    _mintaTertunda.delete(id);
+    clearTimeout(t.jam);
+    if (msg.ok) t.selesai(msg.value);
+    else t.gagal(new Error(msg.error || "main refused"));
+    return;
+  }
   if (kind === "invoke") {
     Promise.resolve()
       .then(() => tanganiInvoke(msg.channel, msg.payload))

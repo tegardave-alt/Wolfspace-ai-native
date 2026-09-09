@@ -1,4 +1,15 @@
-// Execution tools (bash, terminal, workspace)
+// exec-tools.ts — the tools that RUN things: bash, the interactive terminal,
+// and workspace commands.
+//
+// ROLE IN THE SYSTEM. It is the caller of the containment, not the container
+// itself: which jail is used (AppContainer on Windows, namespaces on Linux) is
+// decided elsewhere. What lives here is the tool surface the agent sees, plus
+// the PTY sessions behind terminal_open/write/read/close.
+//
+// CONNECTS TO
+//   imports  ../anggaran (output buffer ceiling), ./file-tools (QROOT),
+//            ./disk-tools (paths outside it), core/terminal (the PTY)
+//   used by  agent/tools/index.ts
 import * as fs from "fs";
 import * as path from "path";
 import { exec, spawn } from "child_process";

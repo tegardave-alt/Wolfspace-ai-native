@@ -1,13 +1,15 @@
-// Prototipe: React Flow (frontend) DIJALANKAN oleh LangGraph (backend). Server ini
-// meng-COMPILE graph yang digambar user (nodes/edges) menjadi StateGraph LangGraph
-// NYATA (@langchain/langgraph v1.x — sama dengan yang dipakai agent/self_agent.ts),
-// lalu MENJALANKANNYA sambil men-stream eksekusi per-node (SSE) ke UI.
+// langgraph-flow-server.cjs — a PROTOTYPE, not part of the running app.
 //
-// Skenario web-dev: node "Generate Site" benar-benar menghasilkan HTML website,
-// lalu node berikutnya (http/transform/condition/output) memprosesnya. Hasil situs
-// dikembalikan untuk di-preview di iframe.
+// ROLE IN THE SYSTEM. It compiles a graph the user drew in React Flow
+// (nodes/edges) into a REAL LangGraph StateGraph — @langchain/langgraph v1.x,
+// the same version agent/self_agent.ts uses — then runs it and streams
+// per-node execution to the UI over SSE.
 //
-// Jalankan: node scripts/langgraph-flow-server.cjs   (buka http://127.0.0.1:8092)
+// The web-dev scenario it demonstrates: a "Generate Site" node really does
+// produce website HTML, the following nodes (http / transform / condition /
+// output) process it, and the result comes back to be previewed in an iframe.
+//
+// Run: node scripts/langgraph-flow-server.cjs   (then http://127.0.0.1:8092)
 "use strict";
 const http = require("http");
 const fs = require("fs");
@@ -18,7 +20,7 @@ const ROOT = path.resolve(__dirname, "..");
 const PUB = path.join(ROOT, "public");
 const PORT = Number(process.env.LG_PORT) || 8092;
 
-// ── Generator website sederhana (deterministik, tanpa LLM) untuk prototipe ──
+// ── A simple website generator: deterministic, no LLM, for the prototype ──
 function genSite(d) {
   const title = (d && d.title) || "Landing Page";
   const tagline = (d && d.tagline) || "Dibuat oleh LangGraph flow";
@@ -44,7 +46,7 @@ a.primary{background:${color};color:#0b0e14}a.ghost{border:1px solid ${color};co
 </section></body></html>`;
 }
 
-// ── Fungsi tiap jenis node (dipanggil LangGraph saat node dieksekusi) ──
+// ── What each node type does (LangGraph calls these when a node runs) ──
 function makeNodeFn(node) {
   const d = node.data || {};
   const kind = (d && d.kind) || node.type; // kind LOGIS dari data (tipe RF bisa beda, mis. outputNode)
@@ -111,7 +113,7 @@ function makeNodeFn(node) {
           : j;
         out = typeof out === "string" ? out : JSON.stringify(out, null, 2);
       } catch (_) {
-        /* bukan JSON → pass-through */
+        /* not JSON -> pass through unchanged */
       }
       out = String(out == null ? "" : out);
       return {
@@ -183,7 +185,7 @@ async function runFlow(spec, sse) {
   for (const e of edges) (outMap[e.source] = outMap[e.source] || []).push(e);
   const inSet = new Set(edges.map((e) => e.target));
 
-  // entry: node tanpa edge masuk → START
+  // The entry point: a node with no incoming edge becomes START.
   let entries = nodes.filter((n) => !inSet.has(n.id));
   if (!entries.length) entries = [nodes[0]];
   for (const n of entries) g.addEdge(START, n.id);

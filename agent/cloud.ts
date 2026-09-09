@@ -1,9 +1,22 @@
-// Cloud model integration for WOLFSPACE (extracted from server.cjs)
-// Dependencies – same as original server.cjs
+// cloud.ts — every cloud model provider WOLFSPACE can talk to, behind one
+// streaming call.
+//
+// ROLE IN THE SYSTEM. Host, path, auth header and request shape differ per
+// provider; this file holds all of that, plus the alias table that maps a short
+// model name to a real one, so nothing upstream has to know whose API it is
+// speaking to. It also owns the API keys: loaded from the keys file resolved by
+// ./keys-path, never from config.json.
+//
+// CONNECTS TO
+//   imports  ./debug, ./keys-path, and config.json for non-secret settings
+//   used by  agent/chat.ts, agent/self_agent.ts, agent/perencana-agent.ts,
+//            agent/python-agent.ts, agent/dspy_tool.ts, agent/tools/index.ts,
+//            server.ts — i.e. every path that reaches a model
 import * as fs from "fs";
 import * as path from "path";
 import * as http from "http";
 import * as https from "https";
+import * as crypto from "crypto";
 const { dlog } = require("./debug.ts");
 const { resolveKeysPath } = require("./keys-path.ts");
 
@@ -46,8 +59,28 @@ const CLOUD = {
     model: "deepseek-chat",
   },
   github: {
-    host: "models.inference.ai.azure.com",
-    path: "/chat/completions",
+    // ── THE OLD HOST IS GONE, NOT SLOW ──
+    //
+    // models.inference.ai.azure.com no longer resolves at all. MEASURED:
+    //
+    //   models.inference.ai.azure.com  ->  ENOTFOUND
+    //   models.github.ai               ->  140.82.112.21
+    //
+    // which is what a real run reported as
+    // "getaddrinfo ENOTFOUND models.inference.ai.azure.com" before falling
+    // through to the next provider. A dead DNS name is the least informative
+    // way for this to fail: it looks like the user's network.
+    //
+    // The path moved with it — /chat/completions answers 404 on the new host,
+    // /inference/chat/completions answers with a real service message.
+    //
+    // BE AWARE: GitHub Models is being RETIRED. The new endpoint currently
+    // answers 410 github_models_retirement_brownout ("temporarily unavailable
+    // as part of a scheduled retirement brownout"). Fixing the address does
+    // not buy this provider a long life; it buys an honest error instead of a
+    // DNS failure that points at the wrong thing.
+    host: "models.github.ai",
+    path: "/inference/chat/completions",
     model: "gpt-4o",
   },
   gemini: {
@@ -193,8 +226,10 @@ const PROBE = {
     auth: "anthropic",
   },
   github: {
-    host: "models.inference.ai.azure.com",
-    path: "/models",
+    // Same move as the chat endpoint above. /models answers 404 on the new
+    // host; the catalogue lives at /catalog/models.
+    host: "models.github.ai",
+    path: "/catalog/models",
     auth: "bearer",
   },
   gemini: {
@@ -225,12 +260,52 @@ function httpsStatus(opts) {
   });
 }
 
+/**
+ * ── THE SESSION HEADER opencode.ai REQUIRES ──
+ *
+ * FROM A REAL RUN. With a valid key, the Zen Go route still refused:
+ *
+ *   opencode 400: {"type":"MissingSessionID",
+ *                  "message":"Error from provider (Console Go): Request is …"}
+ *
+ * `Console Go` is the /zen/go/v1 route — the paid one, chosen because the
+ * model name does not contain `-free`. That route wants a STABLE conversation
+ * identifier in `x-opencode-session`; other clients of opencode.ai send it on
+ * every transport.
+ *
+ * STABLE is the operative word: a fresh id per request would make every turn
+ * of one conversation look like a new session to the provider. So a caller
+ * that knows the conversation (self_agent has thread_id) can pass one in, and
+ * everything else shares one id for the life of this process — which is still
+ * stable, just coarser.
+ *
+ * Sent only to opencode.ai. A session header means nothing to OpenAI or
+ * Anthropic, and an unknown header is not something to scatter over hosts
+ * that never asked for it.
+ */
+let _sesiOpencode = "";
+function _sessionOpencode(cloud: any) {
+  const dari = cloud && (cloud.sessionId || cloud.thread_id);
+  if (dari) return String(dari).slice(0, 100);
+  if (!_sesiOpencode)
+    _sesiOpencode = "wolfspace-" + crypto.randomBytes(8).toString("hex");
+  return _sesiOpencode;
+}
+
+/** Is this request going to opencode.ai, by provider name or by base URL? */
+function _keOpencode(cloud: any) {
+  if (!cloud) return false;
+  if (cloud.provider === "opencode") return true;
+  return !!(cloud.baseUrl && /opencode\.ai/i.test(String(cloud.baseUrl)));
+}
 async function probeProvider(provider: any, key: any): Promise<number> {
   const t = PROBE[provider];
   if (!t) return 0;
   let path = t.path;
   const headers: Record<string, any> = {};
   if (t.auth === "bearer") headers["authorization"] = "Bearer " + key;
+  if (provider === "opencode")
+    headers["x-opencode-session"] = _sessionOpencode(null);
   else if (t.auth === "anthropic") {
     headers["x-api-key"] = key;
     headers["anthropic-version"] = "2023-06-01";
@@ -278,8 +353,60 @@ async function detectKey(key) {
 // -------------------------------------------------------------------
 // Cloud model request helpers (streaming & function‑calling)
 // -------------------------------------------------------------------
-function _askCloudStreamOnce(cloud, work, onToken, reg) {
+/**
+ * Pull token usage out of ONE streamed chunk, whatever shape it arrives in.
+ *
+ * Three shapes, because this file speaks to three API families:
+ *
+ *   OpenAI-compatible  j.usage.{prompt_tokens, completion_tokens} — sent in a
+ *                      FINAL chunk that carries no delta, and only when
+ *                      stream_options.include_usage asked for it. Both request
+ *                      builders below set that flag; without it the field never
+ *                      arrives and every count here stays zero.
+ *   Anthropic          message_start carries input_tokens and message_delta
+ *                      carries output_tokens — two different events, so the
+ *                      accumulator has to survive between them.
+ *   Gemini             usageMetadata.{promptTokenCount, candidatesTokenCount}
+ *
+ * ASSIGNS, never adds. Every shape reports a RUNNING TOTAL for the request, so
+ * summing across chunks would multiply the input count by however many chunks
+ * happened to mention it.
+ *
+ * Mutates `pakai` rather than returning, because the numbers arrive spread over
+ * several chunks and the caller keeps one accumulator for the whole request.
+ */
+function _serapPakai(j: any, pakai: any) {
+  if (!j || !pakai) return;
+  // message_start nests it one level down; everything else puts it at the top.
+  const u = j.usage || (j.message && j.message.usage) || null;
+  if (u) {
+    if (typeof u.prompt_tokens === "number") pakai.masuk = u.prompt_tokens;
+    if (typeof u.completion_tokens === "number")
+      pakai.keluar = u.completion_tokens;
+    if (typeof u.input_tokens === "number") pakai.masuk = u.input_tokens;
+    if (typeof u.output_tokens === "number") pakai.keluar = u.output_tokens;
+    // Anthropic reports cache reads and writes SEPARATELY from input_tokens.
+    // Folding them into `masuk` would understate a cached turn, which is the
+    // turn a user is most likely to be checking the cost of.
+    if (typeof u.cache_read_input_tokens === "number")
+      pakai.cacheBaca = u.cache_read_input_tokens;
+    if (typeof u.cache_creation_input_tokens === "number")
+      pakai.cacheTulis = u.cache_creation_input_tokens;
+  }
+  const g = j.usageMetadata;
+  if (g) {
+    if (typeof g.promptTokenCount === "number")
+      pakai.masuk = g.promptTokenCount;
+    if (typeof g.candidatesTokenCount === "number")
+      pakai.keluar = g.candidatesTokenCount;
+  }
+}
+
+function _askCloudStreamOnce(cloud, work, onToken, reg, onPakai?: any) {
   return new Promise((resolve, reject) => {
+    // One accumulator for the whole request: the counts arrive across several
+    // chunks and, on Anthropic, across two different event types.
+    const pakai: Record<string, any> = { masuk: 0, keluar: 0 };
     const provider = cloud.provider || detectProvider(cloud.key);
     const cfg = CLOUD[provider] || CLOUD.openai;
     // Guard: never leak a raw key in the model field
@@ -330,9 +457,15 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
       path = "/zen/v1/chat/completions";
     const openaiCompatible = () => {
       headers["authorization"] = "Bearer " + cloud.key;
+      // Only opencode.ai asks for this; see _sessionOpencode.
+      if (_keOpencode(cloud))
+        headers["x-opencode-session"] = _sessionOpencode(cloud);
       const payload: Record<string, any> = {
         model,
         stream: true,
+        // Without this the stream never mentions tokens at all, and the usage
+        // badge would have nothing honest to show.
+        stream_options: { include_usage: true },
         messages: [{ role: "system", content: sys || "" }, ...workMsgs],
       };
       // OPENCODE free models: do NOT send reasoning_effort (unsupported).
@@ -494,6 +627,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
           if (m[1] === "[DONE]") continue;
           try {
             const j = JSON.parse(m[1]);
+            _serapPakai(j, pakai);
             const t = extract(j);
             if (t) {
               acc += t;
@@ -512,6 +646,14 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
           dlog("cloud", "info", "cloud model full response", {
             response: acc.slice(0, 5000),
           });
+        // Only when the provider actually said something. A zeroed report would
+        // be indistinguishable from a cheap turn, and inventing a number is the
+        // one thing a cost display must never do.
+        if (onPakai && (pakai.masuk || pakai.keluar)) {
+          try {
+            onPakai({ ...pakai, model, provider });
+          } catch (_) {}
+        }
         resolve(acc);
       });
     });
@@ -540,8 +682,31 @@ function _askCloudStreamOnce(cloud, work, onToken, reg) {
  * @param {function(string):void} onToken - receives each token.
  * @param {function} reg - optional callback to get the request object (for cancellation).
  */
-function askCloudStream(cloud, work, onToken, reg) {
-  return _askCloudStreamOnce(cloud, work, onToken, reg);
+function askCloudStream(cloud, work, onToken, reg, onPakai?: any) {
+  return _askCloudStreamOnce(cloud, work, onToken, reg, onPakai);
+}
+
+/**
+ * Which provider to use when the caller named none.
+ *
+ * The picker in the UI used to answer this by writing a provider into the
+ * client's stored cloud object, which meant a model appeared in the list for a
+ * key the user had never entered -- the settings screen said nothing was
+ * configured while the picker showed a model running.
+ *
+ * The question belongs HERE, next to the keys it is answered from. The order is
+ * the one the UI used, kept so the same provider is chosen as before.
+ */
+const URUTAN_BAWAAN = ["opencode", "nvidia", "gemini", "puter"];
+function _providerBawaan() {
+  for (const p of URUTAN_BAWAAN) {
+    const e = CLOUD_KEYS[p];
+    if (e && (typeof e === "string" ? e : e.key)) return p;
+  }
+  for (const [p, e] of Object.entries(CLOUD_KEYS)) {
+    if (e && (typeof e === "string" ? e : (e as any).key)) return p;
+  }
+  return null;
 }
 
 function fillCloudKey(cloud) {
@@ -551,7 +716,11 @@ function fillCloudKey(cloud) {
     if (provs.length > 0) cloud.provider = provs[0];
   }
   cloud.provider =
-    cloud.provider || (cloud.key ? detectProvider(cloud.key) : null);
+    cloud.provider ||
+    (cloud.key ? detectProvider(cloud.key) : null) ||
+    // Nothing came from the client. Without this the request used to fail with
+    // no provider at all, which is why the UI had to invent one.
+    _providerBawaan();
   const clientKeyObj =
     cloud.clientKeys && cloud.provider && cloud.clientKeys[cloud.provider]
       ? cloud.clientKeys[cloud.provider]
@@ -614,8 +783,14 @@ function _sanitizeMessages(messages) {
   return messages;
 }
 
-function _askCloudToolsOnce(cloud, messages, tools) {
+function _askCloudToolsOnce(cloud, messages, tools, onPakai?: any) {
   return new Promise((resolve, reject) => {
+    // See _serapPakai. This is the call the agent loop makes on every
+    // step, so these are the numbers a run's cost is actually made of.
+    const pakai: Record<string, any> = { masuk: 0, keluar: 0 };
+    // Characters of answer received so far, for the live estimate below.
+    let isiSejauhIni = 0;
+    let laporTerakhir = 0;
     const provider = cloud.provider || detectProvider(cloud.key);
     const cfg = CLOUD[provider] || CLOUD.openai;
     let model = (cloud.model || "").trim();
@@ -652,6 +827,10 @@ function _askCloudToolsOnce(cloud, messages, tools) {
       messages: sanitizedMessages,
       temperature: 0.1,
       stream: true,
+      // See _serapPakai: OpenAI-compatible providers report usage only when
+      // asked, and this is the call the agent loop makes on EVERY step, so it
+      // is the one that actually determines what a run cost.
+      stream_options: { include_usage: true },
       max_tokens: isReasoning ? 2048 : 512,
     };
     if (Array.isArray(tools) && tools.length) {
@@ -659,10 +838,58 @@ function _askCloudToolsOnce(cloud, messages, tools) {
       _payload.tool_choice = "auto";
     }
     const body = JSON.stringify(_payload);
+
+    // ── LIVE REPORTING WHILE THE ANSWER STREAMS ──
+    //
+    // Exact usage does not exist until a request finishes: OpenAI-compatible
+    // providers send it in one final chunk and offer no partial count before
+    // that. Waiting for it means the counter cannot move while the agent is
+    // working -- which is the only time anyone wants to watch it.
+    //
+    // So two GRADES of number are reported, and each says which it is:
+    //
+    //   taksiran: true   derived from bytes actually sent and characters
+    //                    actually received, over CHARS_PER_TOKEN. Real data,
+    //                    rough scale. Never presented as exact.
+    //   taksiran: false  the provider's own figures, which replace it.
+    //
+    // The estimate is never left standing as the final word when the provider
+    // does report: `selesai` always fires, and it carries the exact numbers
+    // whenever they arrived.
+    const CHARS_PER_TOKEN = 4;
+    const lapor = (selesai: boolean) => {
+      if (!onPakai) return;
+      const t = Date.now();
+      // Throttled: a fast stream produces hundreds of chunks a second and the
+      // UI cannot use more than a few updates of the same figure.
+      if (!selesai && t - laporTerakhir < 120) return;
+      laporTerakhir = t;
+      const adaEksak = Boolean(pakai.masuk || pakai.keluar);
+      try {
+        onPakai(
+          adaEksak
+            ? { ...pakai, model, provider, taksiran: false, selesai }
+            : {
+                masuk: Math.round(body.length / CHARS_PER_TOKEN),
+                keluar: Math.round(isiSejauhIni / CHARS_PER_TOKEN),
+                model,
+                provider,
+                taksiran: true,
+                selesai,
+              },
+        );
+      } catch (_) {}
+    };
     const headers = {
       "content-type": "application/json",
       authorization: "Bearer " + cloud.key,
       "content-length": Buffer.byteLength(body),
+      // OpenCode's tool-calling endpoint requires the same stable session
+      // header as the normal chat endpoint. Without it, every self-agent
+      // request fails before the model can choose an MCP tool.
+      ...(_keOpencode(cloud)
+        ? { "x-opencode-session": _sessionOpencode(cloud) }
+        : {}),
     };
     const r = transport.request(
       {
@@ -698,11 +925,19 @@ function _askCloudToolsOnce(cloud, messages, tools) {
             } catch {
               continue;
             }
+            // BEFORE the guard below: the usage chunk carries an empty
+            // `choices` array and no delta, so `continue` would skip the only
+            // chunk that says what the call cost.
+            _serapPakai(j, pakai);
             const delta = j.choices && j.choices[0] && j.choices[0].delta;
             if (!delta) continue;
             if (delta.content) content += delta.content;
             else if (delta.reasoning_content)
               reasoning += delta.reasoning_content;
+            // Reasoning is counted too: the provider bills it as output even
+            // though the user never sees it.
+            isiSejauhIni = content.length + reasoning.length;
+            lapor(false);
             if (delta.tool_calls)
               for (const t of delta.tool_calls) {
                 const i = t.index || 0;
@@ -755,6 +990,16 @@ function _askCloudToolsOnce(cloud, messages, tools) {
           // Only send tool_calls when there is at least one (avoids a DeepSeek
           // error).
           if (validToolCalls.length > 0) response.tool_calls = validToolCalls;
+          // Reported through a CALLBACK, not attached to `response`. That object
+          // is pushed back into the message history and sent to the API again,
+          // and some providers reject unknown fields on a message (qwen already
+          // refuses an empty `tools` array here).
+          //
+          // ALWAYS fires now, unlike the earlier version that stayed silent
+          // when the provider reported nothing. The caller has a live estimate
+          // outstanding for this call and needs to be told it is settled --
+          // otherwise that estimate hangs on screen as a permanent guess.
+          lapor(true);
           resolve(response);
         });
       },
@@ -763,16 +1008,19 @@ function _askCloudToolsOnce(cloud, messages, tools) {
     r.on("timeout", () => r.destroy(new Error("timeout")));
     r.write(body);
     r.end();
+    // The input side is spent the moment the request leaves, so the counter
+    // starts from roughly the right figure rather than crawling up from zero.
+    lapor(false);
   });
 }
 
 const _TRANSIENT =
   /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|too busy|Service Unavailable|service_unavailable|<!DOCTYPE/i;
-async function askCloudTools(cloud, messages, tools) {
+async function askCloudTools(cloud, messages, tools, onPakai?: any) {
   let last: any;
   for (let attempt = 1; attempt <= 3; attempt++) {
     try {
-      return await _askCloudToolsOnce(cloud, messages, tools);
+      return await _askCloudToolsOnce(cloud, messages, tools, onPakai);
     } catch (e) {
       last = e;
       if (!_TRANSIENT.test(e.message || "") || attempt === 3) throw e;
@@ -795,4 +1043,11 @@ module.exports = {
   askCloudStream,
   fillCloudKey,
   askCloudTools,
+  // Test hook. Reaching _serapPakai through askCloudTools would mean a real
+  // model call over the network for what is a pure function over one chunk.
+  _serapPakai,
+  // Same reason: the session header is a pure decision about WHERE a request
+  // is going, and reaching it through askCloudTools would mean a real call.
+  _sessionOpencode,
+  _keOpencode,
 };

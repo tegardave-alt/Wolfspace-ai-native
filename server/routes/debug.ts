@@ -1,7 +1,18 @@
-// Debug API (run timelines, in-memory log ring, live SSE stream, HTML viewer).
-// Ported from the former server/routes/debug.ts; behavior is unchanged.
-// State (LOG_RING, debugSubs, DEBUG_VIEWER, dlog) still lives in server.cjs and
-// is injected via deps — this module holds routing logic only.
+// debug.ts — the debug API: the live log stream, its viewer, and the run
+// timelines.
+//
+// ROLE IN THE SYSTEM. Routing only. The state it serves (LOG_RING, debugSubs,
+// DEBUG_VIEWER, dlog) is owned by server.ts and injected through deps.
+//
+// ONE THING TO KNOW BEFORE DEBUGGING IT: the run-timeline half is permanently
+// empty. It calls agent/trace.ts, which is a stub — listRuns() returns [] and
+// exportBundle() returns { empty: true }. That is unimplemented, not broken.
+// The live log, which comes from agent/debug.ts, works.
+//
+// CONNECTS TO
+//   imports  node:http types
+//   deps     agent/trace (stub), and the log state from server.ts
+//   mounted  by server.ts
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 

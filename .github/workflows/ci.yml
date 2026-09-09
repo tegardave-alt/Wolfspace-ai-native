@@ -62,6 +62,22 @@ jobs:
       - name: Bangun renderer
         run: npm run build:app
 
+      # KENAPA typecheck ADA DI SINI SEKARANG.
+      #
+      # Ia tak pernah dijalankan CI, dan itu bukan kelalaian yang tak berakibat:
+      # `typescript` ternyata TIDAK pernah tercatat di package.json sama sekali.
+      # Ia bertahan hanya karena kebetulan tersisa di node_modules seseorang.
+      # Begitu `npm ci` menghapus node_modules dan memasang ulang dari lock,
+      # ia hilang — dan `npm run typecheck` berhenti bisa dijalankan tanpa satu
+      # pun yang mengeluh, karena tak ada yang menjalankannya.
+      #
+      # Penjaga yang tak pernah dijalankan tak menjaga apa pun. Delapan project
+      # tsc di skrip itu memeriksa yang TIDAK diperiksa Jest: kontrak tipe
+      # lintas berkas, yang tak terlihat oleh uji berbasis teks maupun oleh
+      # esbuild (esbuild hanya melucuti tipe, ia tak pernah memeriksanya).
+      - name: Typecheck
+        run: npm run typecheck
+
       - name: Pasang browser Playwright
         run: npx playwright install --with-deps chromium
 

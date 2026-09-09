@@ -323,10 +323,62 @@ describe("gaya tombol aksi", () => {
     expect(blok).toMatch(/transform: none/);
   });
 
-  test("efek kilau memakai elemen semu, bukan elemen tambahan di DOM", () => {
-    // Tombol ini dirender ulang tiap ketukan tombol di editor.
-    expect(aturan(".aksi-btn::after")).toMatch(/content: ""/);
+  test("tombol Run/Save TENANG — tak ada kilau, gradasi, atau angkatan", () => {
+    // DIBALIK ATAS PERMINTAAN PENGGUNA. Versi lama menumpuk lima efek pada satu
+    // tombol toolbar: pil, gradasi, tepi bercahaya, terangkat saat disentuh,
+    // dan kilau yang MENYAPU melintasinya setiap kali kursor lewat. Kata
+    // penggunanya: "lebay" — dan tombol itu duduk tepat di sebelah kode yang
+    // sedang dibaca, jadi ia bersaing dengan berkasnya.
+    //
+    // Yang dijaga di sini bukan selera, melainkan keputusan yang sudah diambil:
+    // kalau efek-efek itu kembali, tes ini merah.
+    const b = aturan(".aksi-btn");
+    expect(b).toBeTruthy();
+    expect(b).not.toMatch(/linear-gradient/);
+    expect(b).not.toMatch(/border-radius:\s*999px/);
+    expect(CSS).not.toMatch(/\.aksi-btn::after/);
+    expect(aturan(".aksi-btn:hover:not(:disabled)")).not.toMatch(/transform:/);
     expect(BERSIH).not.toMatch(/className="aksi-kilau"/);
+  });
+
+  test("Run/Save adalah IKON TELANJANG — tanpa tepi, tanpa label", () => {
+    // Permintaan kedua, disertai tangkapan layar: bentuk yang dipakai toolbar
+    // editor di mana-mana. Versi sebelumnya sudah tenang tapi masih sebuah
+    // kotak berlabel.
+    const b = aturan(".aksi-btn");
+    expect(b).toMatch(/border:\s*none/);
+    expect(b).toMatch(/background:\s*transparent/);
+    // Labelnya benar-benar hilang, bukan disembunyikan lewat CSS.
+    expect(BERSIH).not.toMatch(/<Icon\.play[^/]*\/>\s*Run/);
+    expect(BERSIH).not.toMatch(/<Icon\.save[^/]*\/>\s*Save/);
+  });
+
+  test("tombol tanpa label tetap punya nama yang bisa dibacakan", () => {
+    // Sebuah tombol yang seluruh isinya <svg> TIDAK punya nama aksesibel sama
+    // sekali. Membuang teksnya tanpa ini membuat kedua tombol terbaca sebagai
+    // "button, button" oleh pembaca layar.
+    const i = BERSIH.indexOf('className="aksi-btn aksi-run"');
+    expect(i).toBeGreaterThan(-1);
+    expect(BERSIH.slice(i, i + 400)).toMatch(/aria-label="Run"/);
+    const j = BERSIH.indexOf('className="aksi-btn aksi-simpan"');
+    expect(j).toBeGreaterThan(-1);
+    expect(BERSIH.slice(j, j + 400)).toMatch(/aria-label="Save"/);
+    // Dan title tetap membawa kalimat lengkapnya, termasuk pintasannya.
+    expect(BERSIH).toMatch(/Ctrl\+Enter/);
+    expect(BERSIH).toMatch(/Save \(Ctrl\+S\)/);
+  });
+
+  test("ikonnya dari tabel bersama, bukan digambar ulang di tombol", () => {
+    // Dua salinan satu simbol adalah bagaimana keduanya berakhir dengan bobot
+    // garis yang berbeda. Icons.tsx sudah memegang keduanya.
+    expect(BERSIH).toMatch(/<Icon\.play\b/);
+    expect(BERSIH).toMatch(/<Icon\.save\b/);
+    const ikon = fs.readFileSync(
+      path.join(AKAR, "public", "app", "Icons.tsx"),
+      "utf8",
+    );
+    expect(ikon).toMatch(/\bsave: \(p: PropsIkon\)/);
+    expect(ikon).toMatch(/\bplay: \(p: PropsIkon\)/);
   });
 
   test("tombol debug BERLABEL, bukan ikon telanjang", () => {

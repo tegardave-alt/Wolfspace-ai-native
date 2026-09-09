@@ -1,7 +1,10 @@
-// Sidebar — extracted from app.tsx (see public/app.tsx for the App
-// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.tsx (prepended), then Babel once -> a single global scope. Function
-// bodies (hooks/React/SB) run at render time.
+// Sidebar.tsx — the sidebar and every panel that lives in it.
+//
+// ROLE IN THE SYSTEM. It is the app's navigation and its control surface at
+// once: projects, history, MCP servers, settings. The agent's own activity feed
+// was split out into AgentSteps.tsx when this file outgrew being readable.
+//
+// See public/app.tsx for how the renderer is assembled.
 
 /* ----------------------------- Sidebar (Claude-style) ----------------------------- */
 const SB = {
@@ -610,11 +613,15 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     };
   }, [path, refreshKey]);
 
+  // AN ERROR NEEDS LONGER THAN A CONFIRMATION. Both used to get 2.8 seconds,
+  // and git's refusals are whole sentences ("uncommitted changes here would be
+  // lost… commit them first"): they were gone before they could be read, so a
+  // switch that git had explained perfectly well looked like a dead button.
   const flash = (ok: any, text: any) => {
     setMsg({ ok, text });
     setTimeout(
       () => setMsg((m: any) => (m && m.text === text ? null : m)),
-      2800,
+      ok ? 2800 : 9000,
     );
   };
   const refresh = () => setRefreshKey((k: any) => k + 1);
@@ -632,9 +639,15 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     return false;
   };
 
+  // The confirmation names the branch git REPORTS being on, not the one that was
+  // clicked — the two came apart in testing, and the panel used to claim the one
+  // it had asked for.
   const doSwitch = (b: any) =>
-    run("/ww/branch/switch", { path, branch: b }, "switched to " + b, () =>
-      setPickerOpen(false),
+    run(
+      "/ww/branch/switch",
+      { path, branch: b },
+      (r: any) => "switched to " + (r.current || b),
+      () => setPickerOpen(false),
     );
   const doCreate = (name: any) => {
     const nm = toBranchName(name);
@@ -708,7 +721,13 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     );
   }
   const dot = g.dirty ? "#d29922" : "#3fb950";
-  const cur = (br && br.current) || g.branch;
+  // A detached HEAD has NO current branch. Both git reads answer "HEAD" there,
+  // and the button printed that as if a branch were called HEAD — while no row
+  // in the list matched, so the repo looked like it had lost its branch.
+  const detached = br && br.detached;
+  const cur = detached
+    ? "detached @ " + br.detached
+    : (br && br.current) || g.branch;
   const branches = (br && br.branches) || [];
   const q = query.trim();
   const norm = q ? toBranchName(q) : "";
@@ -1253,12 +1272,17 @@ function WorkspaceGitPanel({ path, onClose }: any) {
         </div>
       )}
       {msg && (
+        // IT WRAPS. It used to be one clipped line with an ellipsis, and the only
+        // messages long enough to be clipped were the ones that mattered — git's
+        // reason for refusing. The user saw "error: Your local changes to the
+        // following fi…" and no way to read the rest.
         <div
           style={{
             fontSize: "11px",
+            lineHeight: 1.45,
             color: msg.ok ? "#3fb950" : "#f85149",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
           }}
         >
           {msg.text}
@@ -2288,7 +2312,7 @@ function Sidebar({
   );
 }
 
-// Live agent process � animated bubbles showing each file/folder being worked on.
+// Live agent process — animated bubbles showing each file/folder being worked on.
 // ─── Agent Step UI v2 ── SVG icons per tool ────────────────────────────────
 const AG_SVG = {
   list: (p: any) => (

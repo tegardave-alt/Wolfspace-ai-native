@@ -1,7 +1,7 @@
 // Membangun file vendor React Flow (reproducible). Jalankan: npm run vendor:reactflow
 // Menghasilkan public/vendor/reactflow.bundle.js (React Flow + dagre, React external ->
-// window.React) dan public/vendor/reactflow.css. Bundling terjadi di sini (maintainer),
-// runtime WOLFSPACE tetap tanpa-bundler.
+// window.React) and public/vendor/reactflow.css. Bundling happens HERE, at
+// maintenance time; the WOLFSPACE runtime stays bundler-free.
 "use strict";
 const esbuild = require("esbuild");
 const fs = require("fs");
@@ -14,14 +14,15 @@ const outCss = path.join(root, "public", "vendor", "reactflow.css");
 
 (async () => {
   await esbuild.build({
-    entryPoints: [path.join(here, "entry.js")],
+    entryPoints: [path.join(here, "entry.mjs")],
     bundle: true,
     minify: true,
     format: "iife",
     globalName: "RFLib",
     outfile: outJs,
-    // Build dari paket npm @xyflow/react (lihat entry.js). React/react-dom di-shim
-    // ke window.React (UMD yang sudah dimuat index.html) agar tak ada React ganda.
+    // Built from the npm package @xyflow/react (see entry.mjs). React and
+    // react-dom are shimmed onto window.React — the UMD build index.html has
+    // already loaded — so there is never a second copy of React.
     define: { "process.env.NODE_ENV": '"production"' },
     alias: {
       react: path.join(here, "react-shim.js"),
@@ -29,10 +30,13 @@ const outCss = path.join(root, "public", "vendor", "reactflow.css");
       "react/jsx-runtime": path.join(here, "jsx-shim.js"),
       "react/jsx-dev-runtime": path.join(here, "jsx-shim.js"),
     },
-    banner: { js: "/*! bundle: @xyflow/react + @dagrejs/dagre — MIT; see the packages' LICENSE files */" },
+    banner: {
+      js: "/*! bundle: @xyflow/react + @dagrejs/dagre — MIT; see the packages' LICENSE files */",
+    },
     logLevel: "info",
   });
-  // CSS resmi dari paket npm (varian diagonal WOLFSPACE kini komponen kustom di app.jsx).
+  // The official CSS from the npm package. (WOLFSPACE's diagonal variant is now
+  // a custom component in the renderer.)
   fs.copyFileSync(
     path.join(root, "node_modules", "@xyflow", "react", "dist", "style.css"),
     outCss,

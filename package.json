@@ -1,7 +1,7 @@
 {
   "name": "WOLFSPACE",
   "version": "0.3.0",
-  "description": "An open-source AI coding chat that proves its code by actually running it \u2014 model guesses, your CPU judges.",
+  "description": "An open-source AI coding chat that proves its code by actually running it — model guesses, your CPU judges.",
   "main": "server.cjs",
   "type": "commonjs",
   "bin": {
@@ -48,12 +48,13 @@
     "@dagrejs/dagre": "^3.0.0",
     "@playwright/test": "^1.61.1",
     "@xyflow/react": "^12.11.2",
-    "electron": "^33.4.11",
-    "electron-builder": "25.1.8",
+    "electron": "^44.2.0",
+    "electron-builder": "^26.15.3",
     "husky": "^9.1.7",
     "jest": "^29.7.0",
     "lint-staged": "^17.0.8",
-    "prettier": "^3.8.4"
+    "prettier": "^3.8.4",
+    "typescript": "^5.9.3"
   },
   "trustedDependencies": [
     "electron",
@@ -141,6 +142,7 @@
     "esbuild": "^0.28.1",
     "mermaid": "^11.16.0",
     "node-pty": "^1.1.0",
+    "playwright-core": "^1.61.1",
     "xterm": "^5.3.0"
   },
   "lint-staged": {

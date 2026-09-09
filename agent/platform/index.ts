@@ -1,6 +1,14 @@
-// ── Platform registry ──
-// Selects the right adapter for the host OS at runtime (the MCP-style handshake:
-// pick the implementation, then let callers negotiate via capabilities()).
+// index.ts — picks the platform adapter for the host OS, once, and hands the
+// same instance to everyone.
+//
+// ROLE IN THE SYSTEM. This is the ONLY door to the platform layer: callers ask
+// here and then negotiate through capabilities(), never by testing
+// process.platform themselves.
+//
+// CONNECTS TO
+//   imports  ./windows (WindowsAdapter), ./posix (MacAdapter, LinuxAdapter)
+//   used by  agent/sandbox.ts, agent/tools/index.ts, core/terminal.ts,
+//            agent/broker/zone-process.ts
 "use strict";
 
 const { WindowsAdapter } = require("./windows.ts");

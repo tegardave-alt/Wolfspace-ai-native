@@ -1,9 +1,14 @@
-// ── The host side of the Python LangGraph worker ──
+// python-worker.ts — the host end of the line protocol that agent/python-agent
+// speaks to the Python worker process.
 //
-// WHAT THIS IS. services/agent-python holds the agent's state machine; this file
-// is the other end of its line protocol. It owns the process, the framing, and
-// the routing — and nothing about what the agent decides. That split is the
-// whole point of Phase 10 and it is described in services/agent-python/README.md:
+// ROLE IN THE SYSTEM. It owns the child process, the message framing and the
+// routing, and decides NOTHING about the agent itself. The split (also in
+// services/agent-python/README.md):
+//
+// CONNECTS TO
+//   imports  ../ukur-blok (names this file's blocking stretches)
+//   spawns   services/agent-python, the LangGraph worker
+//   used by  agent/python-agent.ts, its only caller
 //
 //   Python                              TypeScript
 //   ------                              ----------

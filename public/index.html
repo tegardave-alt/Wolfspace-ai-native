@@ -4,11 +4,13 @@
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
     <meta name="description" content="Wolfspace UI" />
-    <!-- Content-Security-Policy: menyenyapkan peringatan keamanan Electron TANPA
-         'unsafe-eval'. 'unsafe-inline' WAJIB (app menyuntik kode terkompilasi Babel
-         sebagai <script> inline + ada inline <style>). blob:/worker-src untuk worker
-         Monaco. connect/frame longgar untuk fetch API & Live Browser preview. Jika
-         suatu lib ternyata butuh eval, hapus meta ini (warning kembali, tak fatal). -->
+    <!-- Content-Security-Policy: silences Electron's security warning WITHOUT
+         'unsafe-eval'. 'unsafe-inline' is REQUIRED — the app injects
+         Babel-compiled code as an inline <script>, and there are inline styles.
+         blob: and worker-src are for Monaco's workers. connect and frame are
+         loose for the fetch API and the Live Browser preview. If some library
+         turns out to need eval, delete this meta tag: the warning returns, but
+         nothing breaks. -->
     <meta
       http-equiv="Content-Security-Policy"
       content="default-src 'self' app: blob: data:; script-src 'self' 'unsafe-inline' app: blob:; style-src 'self' 'unsafe-inline' app:; img-src 'self' data: blob: app: http: https:; font-src 'self' data: app:; media-src 'self' data: blob: app:; connect-src 'self' app: blob: data: http: https: ws: wss:; worker-src 'self' blob: app:; child-src 'self' blob: app:; frame-src 'self' app: blob: data: http: https:;"
@@ -48,17 +50,17 @@
         };
       })();
 
-      // KREDENSIAL WARISAN DIBUANG SETIAP KALI, tanpa syarat.
+      // INHERITED CREDENTIALS ARE DROPPED EVERY TIME, unconditionally.
       //
-      // Blok rebrand di bawah dijaga penanda wolfspace_key_migrated, dan
-      // penanda itu IKUT TERSALIN ketika profil lama dimigrasi — jadi ia keluar
-      // lebih awal dan quantum_cloud tetap duduk di localStorage bersama kunci
-      // API di dalamnya. Terukur di profil yang benar-benar kosong: pemilih
-      // model sudah bersih, tapi kuncinya masih ada di sana.
+      // The rebrand block below is guarded by a wolfspace_key_migrated marker,
+      // and that marker IS ITSELF COPIED when an old profile is migrated — so
+      // the block returns early and quantum_cloud stays in localStorage with
+      // the API key inside it. Measured on a genuinely empty profile: the model
+      // picker was clean, and the key was still there.
       //
-      // Sebuah kunci yang diwarisi dari profil lain bukan kunci yang dipilih
-      // orang untuk pemasangan ini, jadi ia tak pernah punya alasan untuk
-      // bertahan. Pemeriksaan ini murah dan berjalan di setiap start.
+      // A key inherited from another profile is not a key anyone chose for this
+      // installation, so it never had a reason to survive. This check is cheap
+      // and runs on every start.
       (function () {
         try {
           for (var i = localStorage.length - 1; i >= 0; i--) {
@@ -70,27 +72,29 @@
         } catch (e) {}
       })();
 
-      // Rebrand: rename kunci localStorage quantum_* -> wolfspace_* SEKALI, sambil
-      // MEMBAWA datanya (chat, config, daftar project tak hilang). Jalan sebelum app
-      // dimuat, jadi kode yang sudah pakai wolfspace_* langsung menemukan datanya.
+      // Rebrand: rename the quantum_* localStorage keys to wolfspace_* ONCE,
+      // CARRYING the data across so chats, config and the project list are not
+      // lost. It runs before the app loads, so code that already uses
+      // wolfspace_* finds its data immediately.
       (function () {
         try {
           if (localStorage.getItem("wolfspace_key_migrated")) return;
           for (var i = localStorage.length - 1; i >= 0; i--) {
             var k = localStorage.key(i);
             if (k && k.indexOf("quantum_") === 0) {
-              // KREDENSIAL TIDAK IKUT DIBAWA. Entri *_cloud memuat kunci API,
-              // dan kunci yang diwarisi dari profil lama bukan kunci yang
-              // dipilih orang untuk pemasangan INI.
+              // CREDENTIALS ARE NOT CARRIED ACROSS. A *_cloud entry holds API
+              // keys, and a key inherited from an old profile is not one anyone
+              // chose for THIS installation.
               //
-              // Terukur di profil yang benar-benar kosong: aplikasi terpasang
-              // memunculkan quantum_cloud berisi kunci sk- sungguhan, lalu blok
-              // ini menamainya wolfspace_cloud — dan pemilih model membuka
-              // dengan model beserta empat digit kunci di sebelahnya, seolah
-              // pemakainya pernah mengaturnya. Ia tak pernah.
+              // Measured on a genuinely empty profile: the installed app
+              // produced a quantum_cloud entry containing a real sk- key, this
+              // block renamed it to wolfspace_cloud, and the model picker
+              // opened showing a model with the last four digits of a key
+              // beside it — as though the user had configured it. They never
+              // had.
               //
-              // Dibuang, bukan disaring isinya: tanpa kunci, provider dan model
-              // di dalamnya tak berarti apa-apa.
+              // Dropped whole rather than filtered: without the key, the
+              // provider and model inside it mean nothing.
               if (k === "quantum_cloud" || /_cloud$/.test(k)) {
                 localStorage.removeItem(k);
                 continue;
@@ -171,26 +175,25 @@
       })();
       __vt("__mulai");
 
-      // ── Pemuat vendor SESUAI PERMINTAAN ──
+      // ── ON-DEMAND VENDOR LOADING ──
       //
-      // Diukur di aplikasi yang berjalan, bukan ditaksir:
+      // Measured in the running app, not estimated:
       //
       //   VENDOR 11795ms total — mermaid 8904, three3d 1266, xterm 705,
       //   babel 580, react 238, monaco-loader 74, cytoscape 28
       //
-      // Sebelas koma delapan detik memblokir render sebelum satu piksel
-      // tergambar — lebih dari dua kali ambang 5000 ms yang membuat Windows
-      // menandai jendela tak merespons. Mermaid sendirian 75% dari itu.
+      // Eleven point eight seconds of blocked rendering before one pixel is
+      // drawn — more than twice the 5000 ms threshold at which Windows marks a
+      // window unresponsive. Mermaid alone is 75% of it.
       //
-      // Tiga yang terbesar tidak dibutuhkan saat start: mermaid hanya saat ada
-      // diagram di chat, three3d hanya saat pratinjau 3D dibuka, babel hanya
-      // saat agent menyunting sumber UI-nya sendiri (jalur normal memakai
-      // app.build.js yang sudah dibangun). Ketiganya kini dimuat saat pertama
-      // dipakai.
+      // The three biggest are not needed at startup: mermaid only when a chat
+      // contains a diagram, three3d only when a 3D preview is opened, and babel
+      // only when the agent edits its own UI source (the normal path uses the
+      // prebuilt app.build.js). All three now load on first use.
       //
-      // Biayanya PINDAH, bukan hilang dari pandangan: tiap pemuatan malas
-      // mencetak barisnya sendiri, supaya jeda saat fitur pertama dibuka tetap
-      // bisa diukur alih-alih jadi misteri.
+      // The cost MOVES, it is not hidden: every lazy load prints its own line,
+      // so the pause when a feature is first opened stays measurable instead of
+      // becoming a mystery.
       window.__muatVendor = (function () {
         var tertunda = {};
         return function (nama, src, sesudah) {
@@ -215,11 +218,11 @@
               ok();
             };
             s.onerror = function () {
-              // Ditolak, bukan digantung: pemanggilnya punya jalur cadangan
-              // (MermaidBlock jatuh ke parser SVG sendiri), dan promise yang
-              // tak pernah selesai akan membekukan jalur itu selamanya.
+              // Rejected, not left hanging: the caller has a fallback path
+              // (MermaidBlock drops to its own SVG parser), and a promise that
+              // never settles would freeze that path for good.
               tertunda[nama] = null;
-              gagal(new Error("gagal memuat " + nama));
+              gagal(new Error("failed to load " + nama));
             };
             document.head.appendChild(s);
           });
@@ -245,23 +248,23 @@
         return window.__muatVendor("three3d", "/vendor/three3d.bundle.js");
       };
       window.__muatBabel = function () {
-        // Monaco memuat loader AMD, jadi `define.amd` ADA. Bundel Babel yang
-        // di-vendor berbentuk UMD dan menguji AMD SEBELUM cabang global, jadi
-        // ia mendaftar sebagai modul anonim yang tak pernah di-require siapa
-        // pun: skripnya termuat, onload menyala, dan `Babel` tak pernah ada.
+        // Monaco loads an AMD loader, so `define.amd` EXISTS. The vendored
+        // Babel bundle is UMD and tests for AMD BEFORE the global branch, so it
+        // registers as an anonymous module nobody ever requires: the script
+        // loads, onload fires, and `Babel` never exists.
         //
-        // Gejalanya menyesatkan — "VENDOR-LAZY babel 52ms" yang bersih, lalu
-        // "ReferenceError: Babel is not defined". Terukur di jendela sungguhan:
-        // dengan `define` disembunyikan window.Babel = 7.29.0; dengan `define`
-        // terlihat, undefined.
+        // The symptom is misleading — a clean "VENDOR-LAZY babel 52ms",
+        // followed by "ReferenceError: Babel is not defined". Measured in a real
+        // window: with `define` hidden, window.Babel = 7.29.0; with `define`
+        // visible, undefined.
         var d = window.define;
         var pulihkan = function () {
           if (d) window.define = d;
         };
         if (d) window.define = undefined;
-        // Dipulihkan lewat DUA jalur: `sesudah` hanya jalan saat sukses, dan
-        // pemuatan gagal tak boleh meninggalkan loader Monaco tersembunyi
-        // untuk sisa sesi.
+        // Restored along BOTH paths: `sesudah` runs only on success, and a
+        // failed load must not leave Monaco's loader hidden for the rest of the
+        // session.
         return window
           .__muatVendor("babel", "/vendor/babel.min.js", pulihkan)
           .catch(function (e) {
@@ -298,12 +301,34 @@
     </script>
     <!-- Monaco (VS Code editor) — bundled locally, real highlighting + autocomplete -->
     <script src="/vendor/monaco/vs/loader.js"></script>
+    <!-- The editor theme, generated from VS Code's own default dark theme.
+         A PLAIN SCRIPT TAG, not an APP_MODULES entry: those are fetched and
+         compiled asynchronously, and defineTheme runs below the moment Monaco
+         is ready. A module that has not arrived yet would leave the editor on
+         Monaco's built-in vs-dark with nothing to say it had happened.
+         Regenerate: node scripts/tema-editor/build.cjs -->
+    <script src="/tema-editor.js"></script>
     <script>
       __vt("monaco-loader");
       __vt("__selesai");
     </script>
     <script>
       var MB = location.origin;
+      // ── HOW THE WORKER IS BOOTSTRAPPED, AND WHY IT CHANGED ──
+      //
+      // This used to importScripts vs/base/worker/workerMain.js. That file
+      // DOES NOT EXIST from Monaco 0.53 onwards — its own changelog says
+      // "Custom AMD workers don't work anymore out of the box" — and the
+      // failure is the quiet kind: the editor still loads, still highlights,
+      // still creates models, and only the worker-backed half goes missing.
+      // Hover, go-to-definition and find-references simply stop answering.
+      //
+      // MEASURED against 0.56.0 in a real browser, same page both ways:
+      //   workerMain.js path   -> editor created, getTypeScriptWorker REJECTS
+      //   the two lines below  -> editor created, worker answers quickInfo
+      //
+      // The worker loads the AMD loader itself and then asks for the module
+      // Monaco now publishes for this, vs/editor/editor.worker.
       window.MonacoEnvironment = {
         getWorkerUrl: function () {
           return URL.createObjectURL(
@@ -314,7 +339,11 @@
                   "/vendor/monaco/'};" +
                   "importScripts('" +
                   MB +
-                  "/vendor/monaco/vs/base/worker/workerMain.js');",
+                  "/vendor/monaco/vs/loader.js');" +
+                  "require.config({paths:{vs:'" +
+                  MB +
+                  "/vendor/monaco/vs'}});" +
+                  "require(['vs/editor/editor.worker'], function(){});",
               ],
               { type: "text/javascript" },
             ),
@@ -366,8 +395,10 @@
           // ── Python: hover, definisi, referensi ──
           //
           // Monaco hanya mengirim language service sungguhan untuk EMPAT bahasa
-          // (typescript, css, html, json). Sisanya di basic-languages -- 81
-          // bahasa -- hanya dapat pewarnaan. Jadi intelijensi Python datang dari
+          // (typescript, css, html, json). Sisanya di basic-languages -- 91
+          // bahasa terdaftar pada 0.56.0, dihitung lewat
+          // monaco.languages.getLanguages() di peramban sungguhan -- hanya dapat
+          // pewarnaan. Jadi intelijensi Python datang dari
           // LUAR Monaco: worker Jedi yang selama ini sudah berjalan untuk
           // autocomplete, ditanyai tiga pertanyaan lagi lewat /pyintel.
           //
@@ -376,6 +407,17 @@
           // pencarian, dan gejalanya terlihat seperti "kadang benar kadang
           // tidak" alih-alih seperti bug.
           function pyMinta(op, model, position) {
+            // A REAL PYTHON SERVER WINS. When pyright (or pylsp) is installed,
+            // core/lsp-session.ts serves Python and installLsp() records that
+            // here. Without this check BOTH answer: Monaco merges hover results
+            // from every provider, so the user would get the same symbol
+            // described twice, once by Jedi and once by a language server that
+            // knows strictly more.
+            //
+            // Checked at CALL time, not at registration: a server installed
+            // while the app is open starts serving without a restart.
+            if (window.__lspAmbilAlih && window.__lspAmbilAlih.has("python"))
+              return Promise.resolve(null);
             return fetch("/pyintel", {
               method: "POST",
               headers: { "Content-Type": "application/json" },
@@ -460,18 +502,33 @@
           // Latar transparan membuat tiap editor mengambil warna wadahnya
           // sendiri: keluaran tool ikut .ar-out, blok kode ikut gelembungnya,
           // dan panel kode ikut warna panel berkas.
-          window.monaco.editor.defineTheme("wolfspace-gelap", {
-            base: "vs-dark",
-            inherit: true,
-            rules: [],
-            colors: {
-              "editor.background": "#00000000",
-              "editorGutter.background": "#00000000",
-              "minimap.background": "#00000000",
-              "editorLineNumber.foreground": "#4b5563",
-              "editorLineNumber.activeForeground": "#8b98a9",
+          // ── THE THEME NOW CARRIES SYNTAX COLOURS ──
+          //
+          // It used to be `rules: []` — not one syntax rule — so every colour
+          // came from Monaco's built-in vs-dark, which is "Visual Studio Dark"
+          // from 2015. tema-editor.js is generated from VS Code 1.136.1's own
+          // default ("Dark 2026"): 335 colours and the token rules its scopes
+          // map onto. The transparent background survives, because that is a
+          // decision of this app rather than of the theme.
+          //
+          // The fallback is the OLD object, verbatim: if the generated file is
+          // missing the editor must still come up, and it must come up looking
+          // the way it did rather than not at all.
+          window.monaco.editor.defineTheme(
+            "wolfspace-gelap",
+            window.__TEMA_EDITOR || {
+              base: "vs-dark",
+              inherit: true,
+              rules: [],
+              colors: {
+                "editor.background": "#00000000",
+                "editorGutter.background": "#00000000",
+                "minimap.background": "#00000000",
+                "editorLineNumber.foreground": "#4b5563",
+                "editorLineNumber.activeForeground": "#8b98a9",
+              },
             },
-          });
+          );
           res(window.monaco);
         });
       });
@@ -647,6 +704,8 @@
           const APP_MODULES = [
             "/app/Config.tsx",
             "/app/IkonBahasa.ts",
+            "/app/Lsp.ts",
+            "/app/AgentDiff.ts",
             "/app/TemaTerminalVSCode.ts",
             "/app/Viewport.tsx",
             "/app/Icons.tsx",

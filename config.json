@@ -11,5 +11,9 @@
   "verbose": true,
   "eraser": {
     "apiKey": ""
+  },
+  "reaktif": {
+    "aktif": true,
+    "_note": "The agent watches the workspace and reports on its own. It can ONLY READ — the run is handed a tool array with no writing tools in it (see hanyaBaca in agent/self_agent.ts). Limits live in agent/reaktif.ts: a 20s quiet period after the last change, 90s minimum between reports, 12 reports an hour. Set aktif:false to stop it entirely."
   }
 }

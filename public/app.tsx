@@ -1,4 +1,46 @@
-const { useState, useRef, useEffect, useCallback, useMemo } = React;
+// app.tsx — the App orchestrator: the renderer's top-level component and the
+// state every screen reads from.
+//
+// ── HOW THE RENDERER IS BUILT, AND WHY IT CONSTRAINS EVERY MODULE ──────────
+//
+// There is NO BUNDLER. scripts/build-app.cjs runs esbuild's transform() over
+// each file separately and CONCATENATES the results into public/app.build.js —
+// one file, ONE GLOBAL SCOPE. Three consequences follow, and they are the
+// reason for most of what looks unusual under public/app/:
+//
+//   no import/export   modules see each other as globals, so a top-level name
+//                      declared twice is a real collision
+//   no npm UI packages  anything needing a module graph cannot be used here —
+//                      monaco-languageclient, lucide-react, motion/react and
+//                      @openuidev/react-ui were all ruled out for this reason
+//   ORDER MATTERS       public/index.html lists APP_MODULES, and each is
+//                      prepended before this file in that order
+//
+// React and the other vendored libraries are plain <script> tags in
+// public/index.html, reached as globals (React, ReactDOM, monaco, mermaid,
+// cytoscape, Babel).
+//
+// ── WHERE THINGS LIVE ──────────────────────────────────────────────────────
+//
+//   Config.tsx         the workspace root; loaded FIRST, everything reads it
+//   Icons.tsx          every inline SVG
+//   Views.tsx          list and history views
+//   Components.tsx     chat, composer, top bar, GitHub panel
+//   Screens.tsx        the project picker and other full screens
+//   Sidebar.tsx        the sidebar and its panels
+//   AgentSteps.tsx     the agent activity feed
+//   CodeBlocks.tsx     code blocks, diagrams, the Monaco editor
+//   Lsp.ts             Monaco providers fed by /lsp/* in Node
+//   AgentDiff.ts       the green/red marks where the agent edited code
+//   usePreviewPanel.tsx, Viewport.tsx, VisualTools.tsx, Model3DViewer.tsx
+//
+// The backend is reached two ways: window.WOLFSPACE (Electron IPC, from
+// electron/preload.ts) in the desktop app, and plain HTTP otherwise.
+
+// useLayoutEffect runs BEFORE the browser paints, which is what lets a popup
+// be measured and corrected without the correction being visible.
+const { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } =
+  React;
 
 // ── The agent's thread_id survives a page reload ──
 //
@@ -516,7 +558,7 @@ async function streamChat(reqBody: any, onText: any, signal: any) {
     }
   };
   if (IPC) {
-    // Electron IPC � no HTTP
+    // Electron IPC — no HTTP
     await new Promise((resolve: any) => {
       const cancel = IPC.stream("chat", reqBody, handle, resolve);
       if (signal)
@@ -536,7 +578,7 @@ async function streamChat(reqBody: any, onText: any, signal: any) {
   await pumpSSE(r, signal, handle);
   return { text: acc };
 }
-// Self-edit agent: stream the READ/GREP/EDIT/� loop (IPC, or /self-agent over HTTP).
+// Self-edit agent: stream the READ/GREP/EDIT/… loop (IPC, or /self-agent over HTTP).
 async function streamSelfAgent(reqBody: any, onEvent: any, signal: any) {
   if (IPC) {
     await new Promise((resolve: any) => {
@@ -730,8 +772,9 @@ function buildDevTree(paths: any, root: any, folders: any) {
   walk(rootNode, 0, "");
   return out;
 }
-/* ── Panel kode di sisi kanan view Logic ──
-   Tata letaknya mengikuti VS Code: pohon berkas di kiri, isi berkas di kanan.
+/* ── The code panel on the right of the Logic view ──
+   Laid out like VS Code: the file tree on the left, the file's contents on the
+   right.
 
    Contents come through /preview-file?raw=1 — not the ordinary preview path,
    which injects a <base> into HTML files so their relative links resolve. That
@@ -803,8 +846,8 @@ function LogicCodePane({
   const [kotor, setKotor] = React.useState(false);
   // A ref copy of `kotor`. Run is wrapped in useCallback, and a callback that
   // reads state directly holds the value from the render that created it —
-  // meaning a Run pressed after typing would still see "clean" and
-  // melewatkan simpan tanpa satu pun tanda.
+  // meaning a Run pressed after typing would still see "clean" and skip the
+  // save with nothing at all to show for it.
   const kotorRef = React.useRef(false);
   // Dirty state per file now lives in _kotorBerkas at module scope, beside the
   // shared models: a file is dirty or not, and which pane you are looking
@@ -841,7 +884,8 @@ function LogicCodePane({
     };
   }, [setTitikHenti]);
 
-  // Dekorasi digambar ulang tiap titik henti / baris aktif berubah. Koleksinya
+  // Decorations are redrawn whenever a breakpoint or the active line changes.
+  // The collection is
   // held in a ref so the old set is genuinely replaced rather than stacked —
   // stacking leaves removed breakpoints still visible.
   const hiasRef = React.useRef<any>(null);
@@ -888,49 +932,33 @@ function LogicCodePane({
     window.monacoReady.then((monaco: any) => {
       if (dibuang || !hostRef.current || edRef.current) return;
       pasangSaranPustaka(monaco);
+      // Language servers, when the machine has any. installLsp() asks the
+      // backend which languages the registry covers and registers providers for
+      // all of them — a language with no server installed simply answers null,
+      // which is what Monaco already did for it.
+      installLsp(monaco);
+      // What the agent changes, shown where the code is. Also reloads a file
+      // the agent wrote — the buffer was going stale otherwise, and a manual
+      // save afterwards would have written the old text back over it.
+      installAgentDiff(monaco);
       edRef.current = monaco.editor.create(hostRef.current, {
+        // Everything shared lives in opsiEditor (Config.tsx): the theme, the
+        // bracket colours, the guides, the ghost-text surface. Only what is
+        // genuinely particular to THIS editor is written out below.
+        ...opsiEditor(),
         value: "",
         language: "plaintext",
-        theme: "wolfspace-gelap",
-        automaticLayout: true,
         // Editable. It used to be readOnly, and that is what made this panel
         // read-only — loosening it here is half the fix; the other half is the
         // POST /ww/tulis-berkas route.
         readOnly: false,
         domReadOnly: false,
-        // false, the same as this app's two other Monaco editors (AgentSteps,
-        // CodeBlocks). Differing from them here produced a real bug: the minimap
-        // has a SLIDER (the viewport indicator), and on a short file in a narrow
-        // panel that slider fills almost the whole minimap height — looking
-        // exactly like one solid blue line spanning the full height, and not
-        // like a minimap at all.
-        minimap: { enabled: false },
-        fontSize: 12,
-        scrollBeyondLastLine: false,
         wordWrap: "off",
-        // The line STILL visible after the minimap was turned off was no
-        // minimap remnant at all — it is the top/bottom border of the "active
-        // line" highlight box, Monaco's default when renderLineHighlight is
-        // unset (default "all"). On the first line its TOP border coincides
-        // with the editor edge, so all you see is one full-width line right
-        // under the panel header — a completely different cause from the
-        // minimap, but looking the same: one solid line the width of the panel.
+        // minimap: false, renderLineHighlight: "none" and overviewRulerLanes: 0
+        // all moved into opsiEditor(), and the reasons moved with them — three
+        // separate false "lines" were traced to those three options, and the
+        // notes belong beside the values rather than in one of three copies.
         //
-        // The two other Monaco editors (AgentSteps, CodeBlocks) are already
-        // "none", and this panel followed once it became editable: turning it
-        // back on reproduces that false line exactly, and Monaco's own cursor
-        // marker already shows which line is being typed on.
-        renderLineHighlight: "none",
-        // THE THIRD CAUSE, found through a Playwright screenshot of an ISOLATED
-        // editor (outside the app) so it could not be fooled by caching or a
-        // deferred reload. The two fixes above cleared the top and bottom lines;
-        // the line on the RIGHT EDGE survived both — traced to the
-        // `.decorationsOverviewRuler` element, the 14px canvas Monaco paints
-        // itself on the editor's right side (to show error marks and search
-        // hits, even with the minimap off). Its border is DRAWN to the canvas
-        // rather than set through CSS — so `outline: none` does not touch it;
-        // it has to be disabled through this option.
-        overviewRulerLanes: 0,
         // The gutter lane breakpoints are drawn in. Without it, a
         // glyphMarginClassName decoration has nowhere to go and is never seen —
         // the click works, the point does not appear, and that is
@@ -977,6 +1005,11 @@ function LogicCodePane({
   // libraries.
   React.useEffect(() => {
     _akarPustaka = String(root || "");
+    // The same root confines every LSP request. Set here for the same reason
+    // the library root is: the project can change without the editor being
+    // rebuilt, and a language server pointed at the old one answers about the
+    // wrong project.
+    _lspRoot = String(root || "");
   }, [root]);
 
   // ── One model per file, kept alive ──
@@ -1337,7 +1370,16 @@ function LogicCodePane({
               draggable
               onDragStart={(e: any) => {
                 e.dataTransfer.setData("text/plain", t);
-                e.dataTransfer.effectAllowed = "move";
+                // A SECOND TYPE, and the reordering above is why it has to be
+                // separate. `text/plain` is what the tab strip reads to move a
+                // tab; the chat composer accepts only this one, so dragging a
+                // tab sideways still reorders and dragging it INTO the chat
+                // attaches the file it names. One gesture, two meanings, told
+                // apart by the payload rather than by guessing at coordinates.
+                e.dataTransfer.setData(DRAG_JENIS_BERKAS, t);
+                // "move" alone forbids a copy, and a drop into the chat IS a
+                // copy — the tab stays where it is.
+                e.dataTransfer.effectAllowed = "copyMove";
               }}
               onDragOver={(e: any) => {
                 // Without preventDefault the browser refuses the drop and the
@@ -1456,17 +1498,20 @@ function LogicCodePane({
             className="aksi-btn aksi-run"
             onClick={jalankan}
             disabled={!bisaJalan}
+            aria-label="Run"
             title={
               bisaJalan
                 ? "Run in terminal (Ctrl+Enter) — saves first"
                 : "This file is not run through the terminal"
             }
           >
-            {/* A filled triangle — the same "run" symbol as in any editor. */}
-            <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor">
-              <path d="M1 0.5v9l8-4.5z" />
-            </svg>
-            Run
+            {/* ICON ONLY. The label went with the chrome: Run and Save are two
+                of the few symbols that need no word beside them, and the title
+                attribute above still carries the full sentence — including the
+                shortcut and the fact that Run saves first — for hover and for a
+                screen reader. `aria-label` says it out loud, because a button
+                whose whole content is an svg has no accessible name at all. */}
+            <Icon.play width="13" height="13" />
           </button>
         )}
         {/* The Debug button MOVED to the terminal tab group. Debug is
@@ -1480,23 +1525,10 @@ function LogicCodePane({
             className="aksi-btn aksi-simpan"
             onClick={simpan}
             disabled={!kotor}
+            aria-label="Save"
             title="Save (Ctrl+S)"
           >
-            {/* A floppy disk. The same icon every editor uses for "save",
-                so it reads without its label having to be read first. */}
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinejoin="round"
-            >
-              <path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
-              <path d="M8 4v5h7M8 21v-6h8v6" />
-            </svg>
-            Save
+            <Icon.save width="13" height="13" />
           </button>
         )}
       </div>
@@ -1840,7 +1872,7 @@ function LogicFileTree({
   // separate localStorage, upper and lower bounds, a "resizing" class while
   // dragging. Matched deliberately — two panels resized in different ways would
   // feel like two different applications.
-  // ── Batas lebar pohon berkas ──
+  // ── Bounds on the file tree's width ──
   //
   // ONE place. The numbers were once written three times — on load, while
   // dragging, and on release — and three copies of a bound that have to agree
@@ -3326,8 +3358,8 @@ function App() {
       clearTimeout(jam);
     };
   }, [dapId]);
-  // The session closes when the Code panel closes — otherwise its Python process
-  // hidup terus tanpa satu pun cara menyentuhnya lagi.
+  // The session closes when the Code panel closes — otherwise its Python
+  // process lives on with no way left to reach it.
   useEffect(() => {
     if (logicOpen || !dapId) return;
     fetch("/dap/tutup", {
@@ -3702,79 +3734,41 @@ function App() {
     // Model Hub, so the picker is built purely from configured cloud providers.
     const opts: any[] = [];
     let cloud = getCloud();
-    // Hydrate from server-configured providers (key stays server-side) when there is
-    // no stored cloud OR the stored provider is no longer configured (e.g. stale key).
-    try {
-      const provs = await (await fetch("/cloud-providers")).json();
-      if (Array.isArray(provs) && provs.length) {
-        const pick =
-          provs.find((p: any) => p.provider === "opencode") ||
-          provs.find((p: any) => p.provider === "nvidia") ||
-          provs.find((p: any) => p.provider === "gemini") ||
-          provs.find((p: any) => p.provider === "puter") ||
-          provs[0];
-        // Only override if the user hasn't explicitly set a local key or custom baseUrl.
-        // If they have, we respect their choice.
-        const hasUserConfig = cloud && (cloud.key || cloud.baseUrl);
-        if (!hasUserConfig) {
-          if (
-            !cloud ||
-            cloud.provider !== pick.provider ||
-            cloud.model !== pick.model
-          ) {
-            // MARKED AS AUTOMATIC, and that mark is the whole point.
-            //
-            // Written without it, this entry is byte-for-byte what an explicit
-            // choice looks like: a provider and a model, no key. A fresh
-            // install then reads back as already configured, and there is no
-            // way — for the user or for the code — to tell the difference.
-            //
-            // Not writing at all was the first idea and it is wrong: the server
-            // cannot resolve a provider on its own. agent/cloud.ts derives it
-            // from cloud.provider or from a key, and with neither it gives up
-            // (`cloud.provider || (cloud.key ? detectProvider(cloud.key) : null)`).
-            // So this value is load-bearing for anyone whose keys live
-            // server-side; dropping it would break their chat entirely.
-            //
-            // An explicit save overwrites this object WITHOUT `otomatis`, so
-            // choosing a provider by hand clears the mark by construction.
-            cloud = {
-              provider: pick.provider,
-              name: pick.name,
-              model: pick.model,
-              otomatis: true,
-            };
-            setCloudLS(cloud);
-          }
-        }
-      }
-    } catch (e) {}
-    const hasCloud = cloud && (cloud.key || cloud.provider);
+    // NO PROVIDER IS INVENTED HERE ANY MORE.
+    //
+    // This used to ask the server which providers it held keys for, pick one,
+    // and write it into the stored cloud object marked `otomatis`. The picker
+    // then listed a model for a key the user had never entered, while the
+    // settings screen -- which reads the same state -- showed nothing
+    // configured. One state, reported as 1 in one place and 0 in the other.
+    //
+    // Choosing a provider from the keys on disk is a question for the code that
+    // HOLDS those keys, and it is answered there now: see _providerBawaan() in
+    // agent/cloud.ts, which fills it in when a request names none. So chat
+    // still works with server-side keys; the picker simply stops claiming a
+    // configuration that does not exist.
+    //
+    // An entry written by the OLD behaviour is cleared, or it would keep
+    // showing a model forever after this change.
+    if (cloud && cloud.otomatis) {
+      cloud = null;
+      try {
+        setCloudLS(null);
+      } catch (_) {}
+    }
+    // A configuration is the user's own: a key they pasted, or a base URL they
+    // pointed at. A bare provider name is what the old auto-entry looked like.
+    const hasCloud = cloud && (cloud.key || cloud.baseUrl);
     if (hasCloud)
       opts.push({
         value: "cloud",
-        // The `otomatis` mark is honoured HERE too, and that was missing.
-        //
-        // The settings screen already treats an auto-hydrated entry as "not
-        // chosen" — but this picker did not look at the mark at all, so the
-        // same entry read as an unconfigured provider on one screen and as a
-        // model the user had picked on the other. What a fresh install showed
-        // was a model name sitting there with no key behind it, which is
-        // exactly what "everything is already set up" looks like.
-        //
-        // The entry is NOT dropped: the key really does exist, server-side,
-        // and agent/cloud.ts needs cloud.provider to reach it. What changes is
-        // that the label stops claiming to be the user's own choice.
+        // Only a configuration the user actually made reaches this point, so
+        // the label no longer has to explain whose key is behind it.
         label:
           (cloud.model || cloud.name || cloud.provider || "").replace(
             /-/g,
             " ",
-          ) +
-          (cloud.key
-            ? " •" + cloud.key.slice(-4)
-            : cloud.otomatis
-              ? " (server key)"
-              : ""),
+          ) + (cloud.key ? " •" + cloud.key.slice(-4) : ""),
       });
     if (!opts.length)
       opts.push({ value: "", label: "No models yet", disabled: true });
@@ -3949,6 +3943,13 @@ function App() {
           return c;
         });
       const evlist: any[] = [];
+      // WHEN THE RUN ACTUALLY STARTED. The timeline used to count elapsed
+      // seconds in component-local state that only ticked while the component
+      // was mounted AND busy — so a run reopened from history had zero, and the
+      // header printed a hardcoded "1m" instead. A real timestamp survives a
+      // remount, a reload, and a restore.
+      const mulaiMs = Date.now();
+      upd({ mulaiMs });
       let think = "";
       let adoneSent = false;
       let waitingForInput = false;
@@ -3968,7 +3969,23 @@ function App() {
           },
           (j: any) => {
             if (j.thread_id) simpanThreadTerputus(j.thread_id);
+            // t:"backup" carries a _agent_backups DIRECTORY from qBackup() in
+            // server.ts — a different mechanism from agent/snapshot.ts, with no
+            // metadata and nothing in .wolfspace/snapshots. Measured: passing
+            // its name to POST /api/rollback answers "not found". So it stays
+            // what it always was, a stored path; the restorable checkpoint
+            // arrives as its own event below.
             if (j.t === "backup") upd({ backup: j.dir });
+            else if (j.t === "checkpoint") {
+              evlist.push({
+                type: "checkpoint",
+                id: j.id,
+                label: j.label || "",
+                files: j.files,
+                ts: Date.now(),
+              });
+              upd({ events: [...evlist] });
+            }
             // model_wait: satu-satunya tanda hidup selama menunggu.
             // The backend used to emit this with NO handler here and no
             // catch-all branch — so it vanished silently. Every wait then
@@ -4007,6 +4024,23 @@ function App() {
             } else if (j.t === "tok") {
               think += j.c;
               upd({ thinking: think });
+            } else if (j.t === "usage") {
+              // Token accounting for this run, already SUMMED across steps by
+              // self_agent. Stored whole rather than merged field by field so a
+              // late event cannot leave a half-updated number on screen.
+              upd({
+                pakai: {
+                  masuk: j.masuk,
+                  keluar: j.keluar,
+                  cacheBaca: j.cacheBaca,
+                  cacheTulis: j.cacheTulis,
+                  panggilan: j.panggilan,
+                  model: j.model,
+                  provider: j.provider,
+                  anggaran: j.anggaran,
+                  taksiran: j.taksiran,
+                },
+              });
             } else if (j.t === "thought") {
               think = "";
               evlist.push({
@@ -4071,6 +4105,10 @@ function App() {
                   value: c,
                   text: c,
                 })),
+                // A form, when the agent asked for several things at once. The
+                // modal draws it from this schema; nothing about its appearance
+                // comes from the model.
+                fields: Array.isArray(j.fields) ? j.fields : [],
               });
               upd({ thinking: "Waiting for your reply...", busy: true });
             } else if (j.t === "adone") {
@@ -4154,6 +4192,10 @@ function App() {
           });
       }
       console.log("[doSend] Setting busy=false (agent stream complete)");
+      // The END, stamped once. Every other completion path above is a branch of
+      // this one, and stamping it here means the duration cannot keep growing
+      // after the run is over.
+      upd({ selesaiMs: Date.now() });
       // The run finished (not merely waiting for an answer), so the thread must
       // not linger — otherwise the next, unrelated message would attach to it.
       if (!waitingForInput) simpanThreadTerputus(null);
@@ -4162,7 +4204,7 @@ function App() {
         if (!hadError) {
           const summary =
             evlist.length > 0
-              ? `Selesai. ${evlist.length} operasi dieksekusi.`
+              ? `Done. ${evlist.length} operation${evlist.length === 1 ? "" : "s"} performed.`
               : "Done. No operations were performed.";
           upd({ busy: false, done: true, summary });
           setHistory((h: any) => [
@@ -4281,7 +4323,8 @@ function App() {
       ? Math.max(20, 100 - _jumlahBawah)
       : 0
     : Math.max(20, 100 - _jumlahBawah);
-  // Gaya sebuah panel + pembaginya, mengikuti sisi tempat ia duduk. Satu tempat
+  // The style of a panel and its splitter, following the side it sits on. One
+  // place,
   // so terminal and preview never drift apart in how they are treated.
   //
   // EACH PANEL CARRIES ITS OWN 6px SPLITTER. Without that the total exceeds
@@ -4297,18 +4340,39 @@ function App() {
   // dividing line ends up on the outer edge and the panel butts against chat
   // pemisah sama sekali.
   //
-  //   chat "kiri"  :  [chat] [div] [kanan…]        kiri…] [div] [chat]
-  //   chat "kanan" :  [kiri…] [div] [kanan…] [div] [chat]
+  //   chat "kiri"  :  [chat] [div] [kanan…]
+  //   chat "kanan" :  [kiri…] [div] [chat] [div] [kanan…]
+  //
+  // ── THE BUG THIS ORDERING USED TO HAVE ──
+  //
+  // A "kanan" panel was a flat `1`, and chat on the right is `10`. So with chat
+  // on the RIGHT, a right panel (1) and a left panel (-2) both sorted BEFORE
+  // chat — two different settings, one identical layout. Switching Preview from
+  // Right to Left moved nothing at all, which is exactly how it was reported.
+  //
+  // MEASURED, in a real browser, at 1200px with the app's own .chat-split CSS:
+  //   preview kanan, chat kiri  -> chat x0   div x780  preview x786
+  //   preview KIRI,  chat kiri  -> preview x0   div x414  chat x420
+  //   preview kanan, chat KANAN -> preview x0   div x414  chat x420   ← same
+  //   preview KIRI,  chat KANAN -> preview x0   div x414  chat x420   ← same
+  //
+  // The two identical rows are even written down in the header of
+  // tests/posisi-kiri.test.ts, both at x232, and were read as a pass.
+  //
+  // The fix keeps the sides meaning what they say: "kanan" is the side AWAY
+  // from chat and "kiri" the side toward it, so a right panel must sort AFTER
+  // chat when chat itself is on the right.
   //
   // The bottom number is deliberately far away (20): it is always last, and the
   // gap lets first-row values be inserted without colliding.
   const _chatKanan = posisi.chat === "kanan";
   const _ORDER_CHAT = _chatKanan ? 10 : 0;
   const _orderPanel = (sisi: any) =>
-    sisi === "bawah" ? 20 : sisi === "kiri" ? -2 : 1;
-  // The splitter always sits on the panel side FACING chat.
+    sisi === "bawah" ? 20 : sisi === "kiri" ? -2 : _chatKanan ? 12 : 2;
+  // The splitter always sits on the panel side FACING chat, which is why it is
+  // one step before the panel it belongs to rather than a constant.
   const _orderPembagi = (sisi: any) =>
-    sisi === "bawah" ? 20 : sisi === "kiri" ? -1 : _chatKanan ? 2 : 0;
+    sisi === "bawah" ? 20 : sisi === "kiri" ? -1 : _chatKanan ? 11 : 1;
 
   const gayaPanel = (sisi: any, pct: any) =>
     sisi === "bawah"
@@ -4319,7 +4383,8 @@ function App() {
           order: _orderPanel(sisi),
         }
       : {
-          // Tanpa chat, panel kanan MELEBAR mengisi baris. Grow-nya sebanding
+          // With no chat, the right-hand panels EXPAND to fill the row. Their
+          // grow is proportional
           // with pct, not a flat "1 1 0%": with one panel the two are the same,
           // but with two or three right-hand panels a flat grow makes them all
           // exactly equal width — the result of dragging a splitter disappears

@@ -1,13 +1,21 @@
-// ── An AppContainer-contained shell: one directory, enforced by the Windows kernel ──
+// appcontainer-jail.ts — the Windows containment: a shell confined to one
+// directory by the kernel, not by inspecting the command text.
 //
-// THE PROBLEM THIS SOLVES. The `bash` tool on Windows could only SCAN COMMAND
-// TEXT. It was demonstrably defeatable: a command that assembled a path at run
-// time passed the scan and genuinely created a folder in C:\Users\dave\Desktop.
+// ROLE IN THE SYSTEM. This is the Windows counterpart to bash-jail.ts (Linux
+// namespaces). The `bash` tool used to SCAN COMMAND TEXT on Windows, which was
+// demonstrably defeatable: a command that assembled a path at run time passed
+// the scan and really did create a folder on the Desktop.
 //
 // A process inside an AppContainer runs on a token carrying a container SID.
 // File access checks then REQUIRE that SID in the object's DACL — ordinary user
-// rights are NOT enough. So the entire filesystem is closed except what is
+// rights are not enough — so the whole filesystem is closed except what is
 // explicitly opened for that SID. Deny-by-default, in the kernel.
+//
+// CONNECTS TO
+//   imports  ../anggaran (Job Object limits), ../penegakan (how it reports
+//            what enforced the boundary), ../ukur-blok (block timing)
+//   launcher scripts/appcontainer/AcLaunch.cs, built by scripts/build-aclaunch
+//   used by  agent/sandbox.ts, agent/tools/index.ts
 //
 // MEASURED, on the very same escape:
 //   cwd                C:\Users\dave\WOLFSPACE

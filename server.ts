@@ -1,5 +1,23 @@
 "use strict";
-// DEBUG: capture full stack for Maximum call stack errors
+// server.ts — the WOLFSPACE application itself: the HTTP server, its routes,
+// and everything they hold open.
+//
+// ROLE IN THE SYSTEM. This is the backend, whatever launches it. `npm start`
+// reaches it through server.cjs (the launcher, which installs the .ts require
+// hook); the desktop app reaches the same code in-process through core.js and
+// electron/backend-host.cjs, with no port involved.
+//
+// CONNECTS TO
+//   routes    server/routes/* — cloud, dap, debug, github, lsp, reaktif,
+//             snapshots, terminal — mounted here and given their state via deps
+//   agent     agent/self_agent (the JS loop), agent/python-agent (the Python
+//             graph), agent/chat (plain chat), agent/tools, agent/mcp-client
+//   platform  core/terminal (PTY), agent/snapshot, agent/safe-edit
+//
+// The two blocks below run BEFORE anything else on purpose: they are what makes
+// a crash or an exit leave something to read.
+
+// Full stack for "Maximum call stack" errors, which otherwise truncate.
 process.on("uncaughtException", (err: any) => {
   try {
     require("fs").appendFileSync(
@@ -2645,6 +2663,17 @@ const _terminalRoutes = require("./server/routes/terminal.ts");
 const _snapshotRoutes = require("./server/routes/snapshots.ts");
 const _cloudRoutes = require("./server/routes/cloud.ts");
 const _dapRoutes = require("./server/routes/dap.ts");
+const _githubRoutes = require("./server/routes/github.ts");
+const _reaktifRoutes = require("./server/routes/reaktif.ts");
+const _lspRoutes = require("./server/routes/lsp.ts");
+// A language server is a compiler-sized process, and it is not reaped for free:
+// on Windows a child outlives its parent. Synchronous on purpose — an `exit`
+// handler returns and the process is gone, so nothing asynchronous would run.
+process.on("exit", () => {
+  try {
+    require("./core/lsp-session.ts").killAll();
+  } catch (_) {}
+});
 
 // Recover tool calls that a model wrote as plain text instead of real tool_calls,
 // e.g. `<function=read={"path":"x"}>` or `<function=list>` (groq/llama quirk).
@@ -2958,6 +2987,9 @@ const server = http.createServer(async (req: any, res: any) => {
   // The confinement is DELEGATED, not copied: `program` comes from the renderer, and
   // two copies of the same security rule will certainly diverge.
   if (_dapRoutes.handle(req, res, { kurungDiAkar: _kurungDiAkar })) return;
+  // The SAME confinement, and for the same reason: a language server reads
+  // whatever it is pointed at, and `path` comes from the renderer.
+  if (_lspRoutes.handle(req, res, { kurungDiAkar: _kurungDiAkar })) return;
   if (
     _terminalRoutes.handle(req, res, {
       terminalSessions,
@@ -2969,6 +3001,32 @@ const server = http.createServer(async (req: any, res: any) => {
   )
     return;
   if (_snapshotRoutes.handle(req, res, { listSnapshots, rollback })) return;
+  // ASYNC, unlike the handlers above: every GitHub route makes a network call,
+  // so it returns a promise. Awaiting it here would hold this dispatcher for
+  // the round trip; the handler answers the response itself, and this only
+  // needs to know whether the request was claimed.
+  if (String(req.url || "").startsWith("/github/")) {
+    _githubRoutes.ruteGithub(req, res).catch((e: any) => {
+      try {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      } catch (_) {}
+    });
+    return;
+  }
+  // Same shape as /github/ above: async because enabling starts a watcher and
+  // the handler answers for itself.
+  if (String(req.url || "").startsWith("/reaktif/")) {
+    _reaktifRoutes
+      .ruteReaktif(req, res, { akarBawaan: QROOT })
+      .catch((e: any) => {
+        try {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: e.message }));
+        } catch (_) {}
+      });
+    return;
+  }
   if (
     _cloudRoutes.handle(req, res, {
       CLOUD_KEYS,
@@ -4461,6 +4519,7 @@ const server = http.createServer(async (req: any, res: any) => {
   }
 
   // Python autocomplete via Jedi (static analysis, no model)
+
   if (req.method === "POST" && req.url === "/pycomplete") {
     let body = "";
     req.on("data", (c: any) => (body += c));
@@ -4861,7 +4920,36 @@ if (_dijalankanLangsung) {
       `\n  WOLFSPACE  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`,
     );
     startWwWatcher();
+    startReaktif();
   });
+}
+
+// ── THE REACTIVE REPORTER STARTS BY ITSELF ───────────────────────────────────
+//
+// A reactive agent you have to switch on is not reactive, it is a feature with
+// a setup step. It starts with the server, on the folder the app was opened
+// against, and says nothing at all until it has something to say.
+//
+// WHAT IT MAY DO IS NOT A MATTER OF TRUST. The run is handed a tool array with
+// no writing tools in it (see `hanyaBaca` in agent/self_agent.ts), so it cannot
+// edit, cannot run a command, cannot spawn anything — a tool that is absent
+// cannot be called. The limits that stop it becoming an expensive background
+// leak live in agent/reaktif.ts and are deliberately conservative.
+//
+// AFTER the listen callback, and inside its own try: a watcher that fails to
+// start must never be the reason the server does not come up.
+function startReaktif() {
+  try {
+    if (!(CONFIG.reaktif && CONFIG.reaktif.aktif)) return;
+    _reaktifRoutes.mulaiOtomatis(QROOT);
+    console.log(
+      "  [reaktif] watching " +
+        QROOT +
+        " — the agent may report on its own (reads only, max 12/hour)",
+    );
+  } catch (e: any) {
+    console.log("  [reaktif] did not start: " + e.message);
+  }
 }
 
 // ── ww auto-watcher ──

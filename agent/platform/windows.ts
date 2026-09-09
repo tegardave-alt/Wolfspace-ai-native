@@ -1,4 +1,12 @@
-// ── Windows platform adapter ──
+// windows.ts — the Windows side of the platform contract.
+//
+// It carries the OS-specific work that has no POSIX equivalent: killing a whole
+// process tree without signals, and running commands inside an AppContainer
+// with a Job Object for resource limits.
+//
+// CONNECTS TO
+//   imports  ./adapter (the contract), ../ukur-blok (block timing)
+//   used by  agent/platform/index.ts, which chooses between this and posix.ts
 "use strict";
 
 const path = require("path");

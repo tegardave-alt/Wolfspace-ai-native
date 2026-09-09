@@ -1,15 +1,17 @@
 #!/usr/bin/env node
-// Uji stres WOLFSPACE — bisa diulang siapa pun, bukan angka yang ditulis di doc.
+// stress.cjs — the WOLFSPACE load test: anyone can re-run it, so the numbers are
+// reproduced rather than quoted from a document.
 //
 //   node scripts/stress.cjs broker [konkurensi] [total]     (jalankan DI backend)
-//   node scripts/stress.cjs agent <host> [konkurensi] [total] (dari mana saja)
+//   node scripts/stress.cjs agent <host> [concurrency] [total]   (from anywhere)
 //   node scripts/stress.cjs leak                             (jalankan DI backend)
 //
-// RANCANGANNYA: "semuanya sukses" TIDAK otomatis lulus. Bebannya campuran dan tiap
-// jenis punya harapan berbeda — percobaan jaringan HARUS diblokir, permintaan di
-// luar policy HARUS ditolak, zona pencetak besar harus kembali UTUH (dihitung
-// byte-nya). Uji yang cuma memeriksa "tidak error" akan lulus meski pengurungannya
-// bocor, dan itu justru kegagalan yang paling ingin ditangkap.
+// THE DESIGN: "everything succeeded" is NOT a pass. The load is mixed and each
+// kind has a different expectation — a network attempt MUST be blocked, an
+// out-of-policy request MUST be refused, and a zone printing a large result must
+// come back INTACT (counted in bytes). A test that only checks for "no errors"
+// would pass with the containment leaking, which is precisely the failure worth
+// catching.
 "use strict";
 const path = require("path");
 const fs = require("fs");
@@ -104,7 +106,7 @@ async function stresBroker(konkuren, total) {
 }
 
 // ── Beban agent (model sungguhan) ─────────────────────────────────────────────
-// Kunci dikirim di BADAN permintaan, jadi tak ada kredensial yang perlu mendarat
+// The key travels in the request BODY, so no credential has to land
 // di filesystem backend.
 async function stresAgent(host, konkuren, total) {
   const keysPath =
@@ -124,7 +126,8 @@ async function stresAgent(host, konkuren, total) {
     process.exit(1);
   }
 
-  // Tiap tugas punya PENANDA yang wajib muncul di jawaban — run yang selesai
+  // Every task carries a MARKER that must appear in the answer — a run that
+  // finished
   // tapi salah tetap terhitung gagal.
   const TUGAS = [
     {
@@ -237,7 +240,7 @@ async function stresAgent(host, konkuren, total) {
   laporkan(hasil, total, konkuren, Date.now() - t0, "run agent");
 }
 
-// ── Jejak sumber daya: yang membedakan "cepat" dari "tidak bocor" ─────────────
+// ── Resource trace: what separates "fast" from "does not leak" ───────────────
 function cekBocor() {
   const bacaProc = (f) => {
     try {

@@ -1,6 +1,7 @@
-// usePreviewPanel — the state and behaviour of the "Web Dev Live Browser",
-// extracted from App(). Loaded via APP_MODULES in index.html (CONCATenated ahead
-// of app.tsx, one shared global scope).
+// usePreviewPanel.tsx — the state and behaviour of the Web Dev Live Browser:
+// the in-app browser pane that shows the site being worked on.
+//
+// See public/app.tsx for how the renderer is assembled.
 //
 // WHY A HOOK, NOT A COMPONENT.
 // Moving the preview JSX into a component would require App() to pass url,

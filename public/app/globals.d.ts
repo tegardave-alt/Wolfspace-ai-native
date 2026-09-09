@@ -1,13 +1,15 @@
-// Ambient declarations for the modules in public/app/.
+// globals.d.ts — the scope contract of public/app/, written down so TypeScript
+// can check it.
 //
-// WHY THIS EXISTS. The files here are NOT ES modules — index.html fetches them
-// one by one, transpiles each, and then CONCATENATES the results into a single
-// <script>. They all share one global scope: the `useState` in Views.tsx
-// is the same useState app.tsx destructured from React, with no import anywhere.
+// ROLE IN THE SYSTEM. These files are NOT ES modules: each is transpiled alone
+// and the results are CONCATENATED into one <script> sharing one global scope,
+// so the `useState` in Views.tsx is the same one app.tsx destructured from
+// React, with no import anywhere. Without this file TypeScript reports "Cannot
+// find name" for every one of them — not because the code is wrong, but because
+// nothing had ever stated the contract. See public/app.tsx for the whole build
+// arrangement.
 //
-// Without this file TypeScript flags every one of those names "Cannot find
-// name" — not because the code is wrong, but because its scope contract was
-// never written down.
+// Nothing here emits any code: it is types only.
 //
 // DELIBERATELY MINIMAL. @types/react is not installed (React comes from a
 // vendor <script>, not npm), and adding it purely for types would add a

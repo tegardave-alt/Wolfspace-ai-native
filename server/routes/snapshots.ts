@@ -1,7 +1,14 @@
-// Snapshot API (list + rollback).
-// Pilot for the CJS -> TS route migration: same behavior as the former
-// server/routes/snapshots.cjs, ported verbatim. Snapshot engine itself still
-// lives in agent/snapshot.cjs (untouched, migrates in a later phase).
+// snapshots.ts — list the restore points, and roll back to one.
+//
+// ROLE IN THE SYSTEM. Routing only; the engine is agent/snapshot.ts. It serves
+// the RESTORABLE store (.wolfspace/snapshots/), not the plain copies under
+// _agent_backups/, which have no rollback path — an id from the wrong one will
+// not be found here.
+//
+// CONNECTS TO
+//   imports  node:http types
+//   deps     agent/snapshot
+//   mounted  by server.ts
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 

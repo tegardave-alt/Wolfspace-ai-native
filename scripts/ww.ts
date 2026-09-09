@@ -112,7 +112,7 @@ function ensureRoot(root: any) {
   assertRootNotNested(root);
 }
 
-// ── inti: jadikan sebuah folder repo independen + branch sendiri ───────────────
+// ── core: turn a folder into an independent repo with its own branch ─────────
 function initWorkspace(dir: any, name: any, branchArg?: any) {
   const branch = toBranch(branchArg || name);
 
@@ -529,7 +529,7 @@ function gitRunAsync(args: any, cwd: any): Promise<any> {
 // gives you: another program holding .git/index.lock, or a `git status -uall`
 // grinding through a deep tree. Seen in the real app -- the panel span its
 // loader indefinitely while the failure surfaced somewhere else entirely, as
-// "host tak menjawab", which names neither git nor the lock.
+// "the host is not answering", which names neither git nor the lock.
 const BATAS_GIT_MS = 15000;
 
 /** Reads a git failure and says what it actually was. */
@@ -606,6 +606,14 @@ async function _listBranchesTarik(dir: any) {
     .split("\n")
     .map((s: any) => s.trim())
     .filter(Boolean);
+  // A DETACHED HEAD IS NOT A BRANCH NAMED "HEAD". `rev-parse --abbrev-ref HEAD`
+  // answers with the literal string "HEAD" when nothing is checked out by name,
+  // and the panel printed that in the branch button as though it were a branch —
+  // while no row in the list matched it, so every branch also looked inactive.
+  if (current === "HEAD") {
+    const sha = await gitTryAsync(["rev-parse", "--short", "HEAD"], dir);
+    return { repo: true, current: null, detached: sha || "?", branches };
+  }
   return { repo: true, current: current || null, branches };
 }
 
@@ -635,11 +643,107 @@ function listBranches(dir: any) {
   return { repo: true, current: current || null, branches };
 }
 
-// Switch to another branch (checkout). Fails when a conflict or change blocks it.
+/**
+ * Does this repository have a LOCAL BRANCH by exactly this name?
+ *
+ * refs/heads/ is the whole point. `git checkout` is not a branch command — it is
+ * four commands wearing one name — so anything at all could be handed to it and
+ * something would happen. MEASURED against a real repository holding
+ * uncommitted work:
+ *
+ *   switchBranch(dir, ".")      -> { ok: true }  and a.txt came back from HEAD:
+ *                                  the uncommitted work was DESTROYED, while
+ *                                  the panel flashed "switched to .".
+ *   switchBranch(dir, "--help") -> { ok: true }  HEAD never moved; git printed
+ *                                  its usage and exited 0.
+ *   switchBranch(dir, <sha>)    -> { ok: true }  HEAD detached, after which the
+ *                                  panel showed a branch named "HEAD".
+ *
+ * Verifying the ref first removes all three by construction rather than by
+ * blacklist: `.`, `--help` and a sha are not refs/heads/*. It also settles the
+ * option-injection question for good, because git's own check-ref-format
+ * forbids a ref beginning with `-`, so a name that verifies can never be read
+ * as a flag.
+ */
+async function _localBranchExists(dir: any, branch: any) {
+  const sha = await gitTryAsync(
+    ["rev-parse", "--verify", "--quiet", "refs/heads/" + branch],
+    dir,
+  );
+  return !!sha;
+}
+
+/**
+ * Reads git's refusal and says it in a sentence the panel can actually show.
+ *
+ * The everyday refusal is four lines long — the cause, a tab-indented list of
+ * files, the advice, then "Aborting" — and the panel has one small line for it.
+ * It was passed straight through, so what reached the user was
+ *
+ *   error: Your local changes to the following fi…
+ *
+ * and then it vanished after 2.8 seconds. The switch looked broken when git had
+ * in fact answered clearly: commit first. That is the reported bug.
+ */
+function _switchFailureReason(err: any) {
+  const text = String(err || "").trim();
+  if (!text) return "git refused the switch without saying why";
+  const lower = text.toLowerCase();
+  if (lower.includes("would be overwritten by checkout")) {
+    const files = text
+      .split("\n")
+      .filter((l: any) => l.startsWith("\t"))
+      .map((l: any) => l.trim())
+      .filter(Boolean);
+    const listed = files.slice(0, 3).join(", ");
+    const rest = files.length > 3 ? " +" + (files.length - 3) + " more" : "";
+    const kind = lower.includes("untracked working tree")
+      ? "untracked files"
+      : "uncommitted changes";
+    return (
+      "cannot switch: " +
+      kind +
+      " here would be lost" +
+      (listed ? " (" + listed + rest + ")" : "") +
+      ". Commit them first, then switch."
+    );
+  }
+  if (lower.includes("did not match any file"))
+    return "no branch by that name in this repository";
+  // Anything else: git puts the cause on the first line and the advice after
+  // it, and "error: " in front of a message the panel already colours red adds
+  // nothing.
+  const first = text.split("\n")[0].trim();
+  return first.startsWith("error: ") ? first.slice(7) : first;
+}
+
+// Switch to another branch. Refuses anything that is not a local branch, and
+// reports what HEAD IS afterwards rather than what it was asked to be.
 async function switchBranch(dir: any, branch: any) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
-  if (!branch) return { ok: false, err: "empty branch name" };
-  return gitRunAsync(["checkout", branch], dir);
+  const wanted = String(branch == null ? "" : branch);
+  if (!wanted.trim()) return { ok: false, err: "empty branch name" };
+  if (!(await _localBranchExists(dir, wanted)))
+    return {
+      ok: false,
+      err: "no local branch named " + JSON.stringify(wanted),
+    };
+  const r = await gitRunAsync(["checkout", wanted], dir);
+  if (!r.ok) return { ok: false, err: _switchFailureReason(r.err) };
+  // EXIT 0 IS NOT "THE BRANCH CHANGED". The measurements above are exactly that
+  // case: git succeeded and HEAD stayed where it was. So HEAD is read back, and
+  // the answer describes the repository rather than the request.
+  const actual = await gitTryAsync(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+  if (actual !== wanted)
+    return {
+      ok: false,
+      err:
+        "git reported success but HEAD is now " +
+        (actual || "unreadable") +
+        ", not " +
+        wanted,
+    };
+  return { ok: true, current: actual };
 }
 
 // Create a new branch (optionally from another branch/ref) and switch to it.
@@ -750,6 +854,8 @@ module.exports = {
   listBranches,
   listBranchesAsync,
   switchBranch,
+  _localBranchExists,
+  _switchFailureReason,
   createBranch,
   renameBranch,
   deleteBranch,

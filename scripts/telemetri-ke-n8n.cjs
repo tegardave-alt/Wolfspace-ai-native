@@ -1,28 +1,28 @@
 #!/usr/bin/env node
-// Alirkan telemetri WOLFSPACE ke webhook n8n.
+// telemetri-ke-n8n.cjs — forwards WOLFSPACE telemetry to an n8n webhook.
 //
-// WOLFSPACE TIDAK PUNYA SATU BUS TELEMETRI — ADA TIGA, dan ketiganya tak saling
-// tumpang tindih. Itu fakta yang membentuk seluruh berkas ini:
+// ROLE IN THE SYSTEM. WOLFSPACE HAS NO SINGLE TELEMETRY BUS — it has THREE, and
+// they do not overlap. That fact shapes this whole file:
 //
-//   1. ledger CommandChain (.wolfspace/audit/broker.jsonl)
-//        KEPUTUSAN: kapabilitas apa, diizinkan atau ditolak, ditegakkan atau
-//        sekadar advisory. Ini permukaan keamanan.
+//   1. the CommandChain ledger (.wolfspace/audit/broker.jsonl)
+//        DECISIONS: which capability, allowed or denied, enforced or merely
+//        advisory. This is the security surface.
 //
 //   2. dlog (%TEMP%/WOLFSPACE-debug.log)
-//        OPERASIONAL: self, mcp, cloud, model, http, chat, terminal, sandbox,
-//        exec. Ini yang menceritakan sistemnya sedang mengerjakan apa.
+//        OPERATIONAL: self, mcp, cloud, model, http, chat, terminal, sandbox,
+//        exec. This is what the system is doing.
 //
-//   3. emit() -> SSE ke UI
-//        JALANNYA RUN. TIDAK diambil di sini: hanya ada di memori, dan UI
-//        WOLFSPACE sendiri sudah menampilkannya lebih baik daripada yang bisa
-//        dilakukan n8n. Menggandakannya cuma menambah derau.
+//   3. emit() -> SSE to the UI
+//        THE RUN ITSELF. NOT collected here: it exists only in memory, and the
+//        UI already shows it better than n8n could. Duplicating it would only
+//        add noise.
 //
-// MENYUSURI BERKAS, BUKAN MENGAIT KODE. dlog menulis dengan appendFileSync —
-// SINKRON, di proses main, proses yang juga memiliki jendela. Menyisipkan
-// panggilan jaringan di sana adalah persis kelas bug yang sudah berkali-kali
-// menggigit repo ini (blokir 10,8 detik yang membekukan jendela). Proses
-// terpisah yang membaca berkas tak bisa memperlambat apa pun, dan tetap benar
-// kalau ia sendiri mati.
+// IT TAILS FILES, IT DOES NOT HOOK CODE. dlog writes with appendFileSync —
+// SYNCHRONOUS, in the main process, the process that also owns the window.
+// Adding a network call there is exactly the class of bug that has bitten this
+// repo repeatedly (a 10.8-second block that froze the window). A separate
+// process reading a file cannot slow anything down, and stays correct if it
+// dies.
 //
 // PAKAI:
 //   node scripts/telemetri-ke-n8n.cjs <URL_WEBHOOK> [pilihan]
@@ -30,7 +30,7 @@
 // Pilihan:
 //   --only-important  only DENY/BLOCKED/failures — drops the thousands of ALLOW lines
 //   --once            one pass then exit (for testing)
-//   --sertakan-lama   kirim juga riwayat yang sudah ada (bawaan: mulai dari sekarang)
+//   --sertakan-lama   also send the existing history (default: start from now)
 "use strict";
 
 const fs = require("fs");
@@ -59,8 +59,8 @@ if (!URL_HOOK || URL_HOOK.startsWith("--")) {
 }
 
 // ── Sumber ────────────────────────────────────────────────────────────────
-// Masing-masing dibaca dengan cara berbeda karena bentuknya memang berbeda:
-// ledger JSONL yang bernomor urut, dlog teks baris-per-baris.
+// Each is read differently because each really is a different shape: the ledger
+// is sequence-numbered JSONL, dlog is line-by-line text.
 const SUMBER = [
   {
     nama: "commandchain",
@@ -93,7 +93,8 @@ function tulisPosisi(p) {
   } catch (_) {}
 }
 
-/** Ledger: bernomor urut, jadi posisinya seq — tahan terhadap rotasi berkas. */
+/** The ledger is sequence-numbered, so the position is a seq — which survives
+ *  the file being rotated. */
 function bacaJsonl(berkas, sesudahSeq) {
   let teks;
   try {
@@ -124,8 +125,8 @@ function bacaJsonl(berkas, sesudahSeq) {
       capability: j.capability,
       decision: j.decision,
       reason: j.reason,
-      // Pembeda yang paling penting untuk dibaca manusia: penolakan sungguhan
-      // atau sekadar nasihat. Di Windows sebagian besar berbunyi "advisory".
+      // The distinction that matters most to a human reader: a real refusal or
+      // merely advice. On Windows most of these read "advisory".
       ditegakkan: !!(j.kurungan && j.kurungan.enforced),
       mekanisme: j.kurungan && j.kurungan.mekanisme,
       params: j.params,
@@ -134,7 +135,8 @@ function bacaJsonl(berkas, sesudahSeq) {
   return { entri: out.slice(-MAKS_BATCH), batas };
 }
 
-/** dlog: teks biasa. Posisinya OFFSET byte; menyusut = berkas dirotasi/dihapus. */
+/** dlog is plain text, so the position is a byte OFFSET. A file that has shrunk
+ *  was rotated or deleted. */
 function bacaTeks(berkas, offset) {
   let st;
   try {
@@ -142,8 +144,8 @@ function bacaTeks(berkas, offset) {
   } catch (_) {
     return { entri: [], batas: 0 };
   }
-  // %TEMP% bisa dibersihkan kapan saja, dan log dimulai ulang dari nol. Tanpa
-  // ini, offset lama membuat seluruh isi baru terlewat diam-diam.
+  // %TEMP% can be cleared at any time and the log restarts at zero. Without
+  // this, the old offset would silently skip everything new.
   let mulai = offset;
   if (st.size < offset) mulai = 0;
   if (st.size === mulai) return { entri: [], batas: mulai };
@@ -161,7 +163,7 @@ function bacaTeks(berkas, offset) {
   }
 
   const baris = potongan.split("\n");
-  // Baris terakhir mungkin terpotong; sisakan untuk putaran berikutnya.
+  // The last line may be truncated mid-write; leave it for the next pass.
   const sisa = baris.pop() || "";
   const batas = mulai + Buffer.byteLength(potongan) - Buffer.byteLength(sisa);
 
@@ -169,7 +171,7 @@ function bacaTeks(berkas, offset) {
   for (const b of baris) {
     const t = b.trim();
     if (!t) continue;
-    // dlog menulis JSON per baris bila bisa; kalau tidak, teruskan mentah.
+    // dlog writes one JSON object per line when it can; otherwise pass it raw.
     let j = null;
     try {
       j = JSON.parse(t);
@@ -211,8 +213,8 @@ let posisi = bacaPosisi();
 
 async function putaran() {
   if (!posisi) {
-    // Jalan pertama: tandai ekor sekarang. Mengirim 4.684 entri lama akan
-    // membanjiri n8n dan tak memberi tahu apa pun tentang keadaan SEKARANG.
+    // First run: mark the current tail. Sending 4,684 historical entries would
+    // flood n8n and say nothing about the state RIGHT NOW.
     posisi = {};
     for (const s of SUMBER) {
       posisi[s.nama] =
@@ -248,7 +250,8 @@ async function putaran() {
   }
 
   if (!semua.length) {
-    // Tak ada yang menarik, tapi posisi tetap maju supaya tak dibaca ulang terus.
+    // Nothing of interest, but the position still advances so the same lines are
+    // not read again on every pass.
     posisi = barn;
     tulisPosisi(posisi);
     return;
@@ -260,7 +263,8 @@ async function putaran() {
     tulisPosisi(posisi);
     console.error("[telemetri] terkirim " + semua.length + " entri");
   } catch (e) {
-    // Posisi SENGAJA tidak dimajukan: n8n mati sebentar tak membuat data hilang.
+    // The position is DELIBERATELY not advanced: a brief n8n outage must not
+    // lose data.
     console.error("[telemetri] send failed (will retry): " + e.message);
   }
 }

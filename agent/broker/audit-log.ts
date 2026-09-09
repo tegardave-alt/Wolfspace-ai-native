@@ -1,19 +1,19 @@
-// ── Broker audit trail that PERSISTS to disk ──
+// audit-log.ts — the broker's ALLOW/DENY/BLOCKED trail, written to a
+// hash-chained JSONL ledger on disk.
 //
-// WHY THIS EXISTS. Before it, `Broker.audit` was only an in-memory array, and
-// agent/tools/index.ts built a NEW Broker on every capability_exec call. That
-// meant ALLOW/DENY/BLOCKED records died with the call that produced them: seen
-// once in the tool result, then gone. Nothing left to read tomorrow.
+// ROLE IN THE SYSTEM. `Broker.audit` used to be an in-memory array, and
+// agent/tools/index.ts builds a NEW Broker per capability_exec — so every
+// record died with the call that made it. That is not just inconvenient: a zone
+// once ran for HOURS with no network containment, noticed only because someone
+// happened to test it. An audit trail that does not persist is not one.
 //
-// That is not merely inconvenient. During development a zone ran for HOURS with
-// no network containment and was only noticed because someone happened to test
-// it — not because it was recorded. An audit trail that does not persist is not
-// an audit trail.
+// APPEND-ONLY, claimed no further than is true. This file is only appended to,
+// never rewritten — but any process with write permission can still truncate
+// it. Real immutability needs OS support (chattr +a, WORM) that is not portable.
 //
-// APPEND-ONLY, and only as far as that can honestly be promised. This file is
-// only ever appended to, never rewritten in place. But a process with write
-// permission can still truncate it — real immutability needs OS support
-// (chattr +a, WORM) that cannot be relied on across platforms. Do not claim more.
+// CONNECTS TO
+//   imports  fs, path, crypto
+//   used by  agent/broker/commandchain.ts, agent/broker/host.ts
 "use strict";
 
 import * as fs from "fs";

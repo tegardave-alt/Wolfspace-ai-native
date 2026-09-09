@@ -1,29 +1,36 @@
+// mcp-client.ts — WOLFSPACE's Model Context Protocol client: it starts MCP
+// servers, speaks the protocol to them, and presents their tools to the agent
+// alongside the built-in ones.
+//
+// ROLE IN THE SYSTEM. Everything an MCP server offers reaches the agent through
+// here. It owns the whole lifetime of those child processes — spawn, handshake,
+// tool listing, calls, and cleaning up what an earlier session left behind.
+//
+// CONNECTS TO
+//   imports  fs, path, child_process, ./debug
+//   used by  agent/self_agent.ts and agent/tools/index.ts (tool calls),
+//            server.ts (the MCP management routes)
+//   registry the command and credential list lives in the MCP registry, not here
 import * as fs from "fs";
 import * as path from "path";
 import { spawn, execFile } from "child_process";
 const { dlog } = require("./debug.ts");
 
-// Tracks the PIDs of MCP processes so leftovers from an earlier session can be
-// cleaned up.
+// ── Tracking server PIDs, so an earlier session's leftovers can be cleaned up ──
 //
-// ONE FILE PER OWNER: config/.mcp-pids/<owner-pid>.json, holding the list of
-// server PIDs that process spawned. The owner is in the file NAME, not in its
-// contents.
+// ONE FILE PER OWNER: config/.mcp-pids/<owner-pid>.json, listing the servers
+// that process spawned. The owner is the file NAME, not its contents.
 //
-// Why this way and not one shared file. A shared file forces read-modify-write
-// from many processes at once, and that is a race: two processes reading at the
-// same time overwrite each other, one record is lost, and the unrecorded server
-// is later killed as an "orphan" despite having an owner. Locking would work,
-// but file locks on Windows bring their own problems (a stale lock when the
-// holder dies, then a mechanism to seize it). With one file per owner, NO
-// process ever writes another process's file — the race is gone by
-// construction, without locks.
+// A single shared file would force read-modify-write from several processes at
+// once: two read together, one overwrites the other, and the lost record is
+// later killed as an "orphan" despite having a live owner. Locking would work
+// but file locks on Windows bring stale-lock recovery with them. One file per
+// owner means no process ever writes another's — the race is gone by
+// construction.
 //
-// Orphan = a file whose OWNER is dead. Before this, the file was shared and held
-// only [pid, pid] with no trace of ownership, so every new process killed its
-// neighbour's live servers. Measured across 3 concurrent processes: one waited
-// 127 seconds and then ran with 26 of 50 tools — with no error at all.
-// Afterwards: 22 seconds and 50 tools for all three.
+// Measured before, across 3 concurrent processes: one waited 127 seconds and
+// then ran with 26 of 50 tools, reporting no error at all. After: 22 seconds
+// and 50 tools for all three.
 const PID_DIR = path.join(__dirname, "..", "config", ".mcp-pids");
 // The old file format. Read once, only to clean it up during the upgrade.
 const LEGACY_PID_FILE = path.join(__dirname, "..", "config", ".mcp-pids.json");
@@ -562,9 +569,15 @@ class MCPClient {
    * Nothing was broken; a connection that was merely slow made the whole app
    * look hung, and the user's only evidence was a window that stopped painting.
    *
-   * So connecting now returns once the process EXISTS. Readiness is reported by
-   * status(), which the UI already polls — the information was always there, it
-   * was the waiting that was wrong.
+   * So connecting now returns once the process EXISTS, and readiness is
+   * reported by status() instead.
+   *
+   * THE UI HAS TO POLL THAT, and for a while it did not — this comment used to
+   * assert that it "already polls", which was untrue. Both MCP lists refreshed
+   * once, right after connect returned, saw starting:true, and were never told
+   * again: the badge then read "Connecting..." for ever while the log said the
+   * server was ready. The polling lives in useMcpMenunggu
+   * (public/app/Config.tsx) and runs only while something is starting.
    */
   _mulaiServer(name, conf, tunggu) {
     const p = this._startServer(name, conf);

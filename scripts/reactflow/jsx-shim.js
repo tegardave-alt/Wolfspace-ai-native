@@ -1,7 +1,8 @@
-// Shim untuk 'react/jsx-runtime'. React Flow dist di-compile dengan automatic JSX
-// runtime (memakai jsx()/jsxs() dari react/jsx-runtime), tapi React UMD global TIDAK
-// mengekspos fungsi itu. Kita implementasikan lewat React.createElement supaya bundle
-// tetap pakai window.React yang sama.
+// jsx-shim.js — stands in for 'react/jsx-runtime'. The React Flow dist is
+// compiled with the automatic JSX runtime, so it calls jsx()/jsxs() from
+// react/jsx-runtime — which the UMD React global does NOT expose. They are
+// implemented here on top of React.createElement so the bundle keeps using the
+// same window.React as everything else.
 var R = window.React;
 function jsx(type, config, maybeKey) {
   var props = {},

@@ -1,8 +1,17 @@
-// VisualTools — extracted from app.tsx: useVisualPicker and useVisualDraw, plus
-// their module-level guards (VP_STOP/VD_STOP). Loaded via APP_MODULES,
-// concatenated after app.tsx into one scope. Function declarations hoist; the
-// `let` guards are only touched during interaction (a click), so they are always
-// initialised by then. Used by App via startPicker / startVisualDraw.
+// VisualTools.tsx — pointing at the screen: useVisualPicker (pick an element)
+// and useVisualDraw (draw a region on it).
+//
+// ROLE IN THE SYSTEM. Both let the user show the agent WHERE they mean instead
+// of describing it. App() reaches them through startPicker / startVisualDraw.
+//
+// The module-level VP_STOP / VD_STOP guards matter: only ONE picker may be
+// active, so re-clicking its sidebar item toggles it off rather than stacking
+// capture-listeners that go on swallowing clicks — the "chat becomes
+// unclickable" bug.
+//
+// See public/app.tsx for how the renderer is assembled. This module is
+// concatenated AFTER app.tsx; function declarations hoist, and the `let` guards
+// are only touched during a click, so they are always initialised by then.
 
 /* ----------------------------- Visual Picker ----------------------------- */
 // Module-level guard: only ONE picker can ever be active, so re-clicking the

@@ -1,13 +1,18 @@
-// ── A kernel-contained shell on Windows, through WSL + CIFS + bwrap ──
+// wsl-jail.ts — a kernel-contained shell on Windows, reached through
+// WSL + CIFS + bwrap.
 //
-// THE PROBLEM THIS SOLVES. On Windows the `bash` tool has no real boundary:
-// its guard scans the command TEXT, and a command that assembles a path at run
-// time walks straight through. Measured — a folder was genuinely created on the
-// Desktop from inside a "contained" workspace.
+// ROLE IN THE SYSTEM. The THIRD containment route, alongside
+// appcontainer-jail.ts (Windows AppContainer) and bash-jail.ts (Linux
+// namespaces). It exists because the Windows `bash` guard only scans command
+// TEXT, and a command that assembles a path at run time walks through it —
+// measured: a folder was genuinely created on the Desktop from inside a
+// "contained" workspace. Linux namespaces give a real boundary but only on
+// Linux, and a WSL distro cannot see Windows files (automount off, no drvfs in
+// its kernel) — which is what the CIFS mount below is for.
 //
-// Linux namespaces (bash-jail.ts) give a real boundary, but only on Linux. And
-// a WSL distro cannot see Windows files: automount is off, and its kernel has
-// no drvfs.
+// CONNECTS TO
+//   imports  ../ukur-blok (block timing)
+//   used by  agent/tools/index.ts
 //
 // THE WAY OUT. The folder STAYS on Windows, is shared over SMB, and is mounted
 // into the distro as /work. The process runs inside a bwrap that binds only

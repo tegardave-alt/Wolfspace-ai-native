@@ -1,6 +1,10 @@
-// ── Capability policy ──
-// Declarative allow-rules the Broker checks BEFORE executing anything.
-// Deny-by-default: if no rule matches, the request is refused.
+// policy.ts — the declarative allow-rules the Broker checks BEFORE it executes
+// anything. Deny-by-default: no matching rule means refused.
+//
+// CONNECTS TO
+//   imports  path only — deliberately free of fs and network, so a policy can
+//            be evaluated and tested without the ability to act on it
+//   used by  agent/broker/host.ts (enforcement), agent/broker/index.ts
 "use strict";
 
 import * as path from "path";

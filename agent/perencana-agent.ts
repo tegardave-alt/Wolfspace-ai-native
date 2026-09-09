@@ -1,21 +1,18 @@
-// ── The planner, as ONE implementation with two callers ──
+// perencana-agent.ts — builds the short checklist the agent works from, as ONE
+// implementation both orchestrators call.
 //
-// The JS loop (agent/self_agent.ts) and the Python graph (services/agent-python)
-// both need a short checklist before work starts, and both were getting it from
-// different places: self_agent built one inline, while the Python path answered
-// its `__plan__` pseudo-tool with a three-line stub that always returned an EMPTY
-// checklist.
+// ROLE IN THE SYSTEM. The checklist is ground truth re-injected at every step:
+// it stops the agent redoing finished work, and because failures are recorded
+// against its items it also carries "already tried, already failed" without the
+// model having to remember. Both loops need it, and both used to get it
+// elsewhere — self_agent built one inline while the Python path answered its
+// `__plan__` pseudo-tool with a stub that always returned an EMPTY checklist,
+// losing the anchor exactly where long runs need it most. Same reasoning as
+// agent/penjaga-agent.ts: one implementation, two callers.
 //
-// An empty checklist is not a small difference. The checklist is the ground truth
-// re-injected at every step — it is what stops the agent redoing finished work,
-// and since failures are recorded against items, it is also what carries "already
-// tried, already failed" without the model having to remember it. Running the
-// Python orchestrator without one meant losing the anchor exactly where it
-// matters most.
-//
-// Same reasoning as agent/penjaga-agent.ts: two copies of a decision is the drift
-// this repo has been bitten by before, and the copy is always the one that
-// drifts.
+// CONNECTS TO
+//   imports  ./cloud (the planning model call), ./penjaga-agent
+//   used by  agent/self_agent.ts, agent/python-agent.ts
 
 const penjaga = require("./penjaga-agent.ts");
 

@@ -1,10 +1,29 @@
-// Install the .ts hook FIRST: modules below require TypeScript files, and
+// self_agent.ts — the autonomous agent loop, and WOLFSPACE's DEFAULT
+// orchestrator.
+//
+// ROLE IN THE SYSTEM. It runs the whole turn: build the prompt, call the model,
+// execute the tools it asks for, feed the results back, and stream every step
+// to the UI as it happens. The second orchestrator (agent/python-agent.ts, the
+// Python LangGraph graph) presents the same (payload, emit, ctl) surface and is
+// opt-in behind WOLFSPACE_AGENT_PY; this one stays the default because it is
+// the path years of real runs have shaped.
+//
+// CONNECTS TO
+//   model      ./cloud
+//   tools      ./tools -> ./tools/index, plus ./mcp-client for MCP servers
+//   guards     ./penjaga-agent (approval, evidence, repeat backstop)
+//   planning   ./perencana-agent (the checklist re-injected each step)
+//   memory     ./temuan (findings journal), ./pemadatan (context compaction)
+//   safety     ./snapshot (restore points), ./attachment-bridge
+//   prompt     ./sysprompt_opt, ./pseudo-tag-filter, ./debug
+//   used by    server.ts, on the /self-agent route
+//
+// Install the .ts hook FIRST: the modules below require TypeScript files, and
 // this file can itself be an entry point — tests require it directly, and
 // `node -e` subprocesses load it without ever going through server.cjs.
 require("../scripts/ts-register.cjs");
-// Self-agent stream implementation (extracted and modularized from server.cjs)
-// Dependencies – same as original server.cjs
 const { dlog } = require("./debug.ts");
+const { mulaiDetak } = require("./detak.ts");
 const {
   fillCloudKey,
   detectProvider,
@@ -347,7 +366,111 @@ function salvageReasoning(reasoning) {
 //
 // So the only distinction drawn is whether WAITING helps, because that is the only
 // thing that changes what the user does next.
-function _ringkasGagalCloud(provider, err, gagal) {
+/**
+ * What KIND of failure this is, and what the person reading it should do.
+ *
+ * FROM A REAL RUN, where three providers failed for three unrelated reasons:
+ *
+ *   opencode  401 AuthError: Invalid API key.
+ *   github    getaddrinfo ENOTFOUND models.inference.ai.azure.com
+ *   custom    write EPROTO ... SSLV3_ALERT_HANDSHAKE_FAILURE
+ *
+ * and the summary showed only the LAST one, so it read as though TLS had
+ * stopped everything. The user's own conclusion was that the model had failed
+ * — when no request had reached a model at all: one key was invalid and one
+ * host no longer existed.
+ *
+ * The categories are chosen by what they CHANGE FOR THE READER rather than by
+ * protocol layer: a key to replace, an address to correct, a connection to
+ * look into, or a wait that will actually help.
+ */
+function _klasifikasiGagal(pesanMentah) {
+  const p = String(pesanMentah || "");
+  if (/ENOTFOUND|EAI_AGAIN|getaddrinfo/i.test(p))
+    return {
+      jenis: "address",
+      saran:
+        "host does not resolve — the endpoint may have moved or been retired",
+    };
+  if (/EPROTO|SSL|TLS|handshake|CERT_|self.signed/i.test(p))
+    return {
+      jenis: "tls",
+      saran:
+        "TLS handshake refused — check the endpoint, a VPN, or software intercepting HTTPS",
+    };
+  if (/ECONNREFUSED|ECONNRESET|EHOSTUNREACH|ENETUNREACH|EPIPE/i.test(p))
+    return {
+      jenis: "connection",
+      saran: "could not connect — the endpoint may be down or blocked",
+    };
+  if (/ETIMEDOUT|timeout|timed out/i.test(p))
+    return {
+      jenis: "timeout",
+      saran: "no answer in time — try again, or check the connection",
+    };
+  if (
+    /\b40[13]\b|unauthorized|forbidden|invalid[_ ]?api[_ ]?key|AuthError/i.test(
+      p,
+    )
+  )
+    return {
+      jenis: "auth",
+      saran: "the key was rejected — replace it in settings",
+    };
+  if (/\b402\b|insufficient|quota|credit|billing|payment/i.test(p))
+    return {
+      jenis: "quota",
+      saran: "credit or quota is spent — waiting will not help",
+    };
+  if (/\b429\b|rate[ _-]?limit|too many requests/i.test(p))
+    return {
+      jenis: "rate",
+      saran: "rate limited — this one clears on its own, try again shortly",
+    };
+  if (/\b410\b|retirement|deprecat/i.test(p))
+    return {
+      jenis: "retired",
+      saran: "the service is being retired — this provider needs replacing",
+    };
+  if (/\b5\d\d\b/.test(p))
+    return {
+      jenis: "server",
+      saran: "the provider had an internal error — try again shortly",
+    };
+  return { jenis: "unknown", saran: "" };
+}
+
+/**
+ * One line per provider, each saying what actually went wrong THERE.
+ *
+ * Without this the run reports a single reason for a chain of unrelated
+ * failures, and every provider after the first is invisible.
+ */
+function _rincianGagal(alasan) {
+  if (!Array.isArray(alasan) || !alasan.length) return "";
+  return (
+    "\n\nWhat happened with each:\n" +
+    alasan
+      .map((a) => {
+        const k = _klasifikasiGagal(a && a.error);
+        const inti = String((a && a.error) || "")
+          .replace(/\s+/g, " ")
+          .slice(0, 110);
+        return (
+          "- " +
+          (a && a.provider) +
+          " [" +
+          k.jenis +
+          "] " +
+          inti +
+          (k.saran ? "\n    -> " + k.saran : "")
+        );
+      })
+      .join("\n")
+  );
+}
+
+function _ringkasGagalCloud(provider, err, gagal, alasan) {
   const pesan = String((err && err.message) || err || "");
   const dicoba = Array.isArray(gagal) && gagal.length ? gagal : [];
   const semua = dicoba.concat(
@@ -369,7 +492,8 @@ function _ringkasGagalCloud(provider, err, gagal) {
       ". This is not a passing glitch — waiting will not help: the quota or credit is spent " +
       "or the key was rejected. Top up credit in the provider dashboard, or add " +
       "a key for another provider.\n\nLast reply: " +
-      inti
+      inti +
+      _rincianGagal(alasan)
     );
 
   // Rate limit: waiting DOES help.
@@ -378,14 +502,16 @@ function _ringkasGagalCloud(provider, err, gagal) {
       "Every cloud provider is rate limiting" +
       daftar +
       ". This one is temporary — try again shortly.\n\nLast reply: " +
-      inti
+      inti +
+      _rincianGagal(alasan)
     );
 
   return (
     "The request to the cloud providers failed" +
     daftar +
     ".\n\nLast reply: " +
-    inti
+    inti +
+    _rincianGagal(alasan)
   );
 }
 
@@ -1021,6 +1147,7 @@ async function selfAgentStream(payload, emit, ctl: any = {}) {
     hitl_response,
     continue_response,
     workspace_root,
+    hanyaBaca,
   } = payload;
   thread_id =
     thread_id ||
@@ -1065,6 +1192,11 @@ async function selfAgentStream(payload, emit, ctl: any = {}) {
   let finalSummary = "";
   const emitPhase = makePhaseEmitter(emit);
   const failedProviders: any[] = []; // Track providers that already failed so the fallback does not ping-pong
+  // The REASON each provider failed, not just that it did. A run can fail
+  // three times for three unrelated causes — a bad key, a dead DNS name, a TLS
+  // handshake — and reporting only the last one sent the user looking at the
+  // wrong thing entirely.
+  const failureReasons: any[] = [];
   loadCloudKeys(); // ensure keys are loaded
   fillCloudKey(cloud);
 
@@ -1178,6 +1310,26 @@ async function selfAgentStream(payload, emit, ctl: any = {}) {
   const effortModeName =
     effortLevel === 0 ? "LOW" : effortLevel === 2 ? "HIGH" : "MEDIUM";
 
+  // TOKEN ACCOUNTING FOR THE WHOLE RUN.
+  //
+  // Every step is a separate request, so these are SUMMED across steps -- unlike
+  // the per-request accumulator in cloud.ts, where each shape reports a running
+  // total and summing would double-count.
+  //
+  // The denominator is effortTokenBudget, which this file already declares and
+  // already tells the model about ("Context Token Budget" in the system prompt).
+  // It is a real number this app defines. A model's true context window is NOT
+  // used, because there is no honest table of it here: the configured models
+  // include names whose windows are not knowable from this repo, and a cost
+  // display that guesses its own denominator is worse than one that omits it.
+  const pakaiRun: Record<string, number> = {
+    masuk: 0,
+    keluar: 0,
+    cacheBaca: 0,
+    cacheTulis: 0,
+    panggilan: 0,
+  };
+
   // THE BLIND TRIM, replaced.
   //
   // This used to be `history.slice(-effortMaxTurns)` — cut from the tail, keep
@@ -1236,6 +1388,97 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   // it describes. Empty string when nothing was trimmed, which is the common
   // case and costs nothing.
   messages[0].content += blokRiwayat;
+
+  // ── WHAT THE USER HAS ATTACHED ───────────────────────────────────────────
+  //
+  // WHY THE AGENT WENT LOOKING IN THE WORKSPACE. The system prompt never
+  // mentioned attachments at all — the word does not appear in this file or in
+  // config/prompts.json. Everything the model knew came from one line inside
+  // the user's own message ("- [Terlampir] x.html … id: att_…"), and a filename
+  // in a message reads like a filename anywhere else: so it called read, glob,
+  // grep, found nothing, and searched harder. An attached file is USUALLY NOT
+  // from the project folder, so that search could not have succeeded.
+  //
+  // WHAT IS DELIBERATELY NOT ADDED HERE: where the file came from. The bridge
+  // never receives a path (agent/attachment-bridge.ts: "the address is not
+  // removed — it NEVER ARRIVES"), and that property is left exactly as it is.
+  // The agent is told WHAT it has and HOW to open it, never WHERE it was.
+  //
+  // Listed by NAME as well as id, because the user refers to attachments by
+  // name and the model has to be able to match the two without asking.
+  try {
+    const _lamp = require("./attachment-bridge.ts").daftar();
+    if (Array.isArray(_lamp) && _lamp.length) {
+      const _tampil = _lamp.slice(0, 20);
+      messages[0].content +=
+        "\n\n[ATTACHED FILES — " +
+        _lamp.length +
+        " in this session]\n" +
+        _tampil
+          .map(
+            (a: any) =>
+              "- " +
+              a.nama +
+              " (" +
+              Math.max(1, Math.round(a.bytes / 1024)) +
+              " KB" +
+              (a.tipe ? ", " + a.tipe : "") +
+              ") — id: " +
+              a.id,
+          )
+          .join("\n") +
+        (_lamp.length > _tampil.length
+          ? "\n- …and " +
+            (_lamp.length - _tampil.length) +
+            " more; attachment_list shows all of them."
+          : "") +
+        "\nThese files are NOT on disk and NOT in your workspace. read, glob," +
+        " grep and list will never find them, and an attached file usually did" +
+        " not come from the project folder — so do NOT search the workspace" +
+        " for one. Open it with attachment_read using the id above. Where the" +
+        " file came from is not recorded anywhere and cannot be looked up; if" +
+        " you need something that was not attached, ask the user to attach it.";
+    }
+  } catch (_) {
+    // The bridge is optional and holds nothing on a fresh session. No
+    // attachments is the ordinary state, not a condition worth reporting.
+  }
+
+  // ── THE LINKED GITHUB REPOSITORY ─────────────────────────────────────────
+  //
+  // WHY THIS LINE EXISTS. The only place the agent was ever told where anything
+  // is was the workspace confinement notice, so it knew its own folder and
+  // nothing else. Linking a repository in the GitHub panel wrote a line into
+  // github.json that NOTHING on this side read — agent/github.ts was required
+  // by the panel's routes alone. Picking a repository looked like it connected
+  // the agent to it, and did not.
+  //
+  // A tool the model is never told about is a tool it will not reach for, so
+  // the link is NAMED here, the same way MCP availability is announced below.
+  // Only when one exists: an unconditional line about a repository that is not
+  // there would be noise on every run.
+  try {
+    const _tautGh = require("./github.ts").keadaan();
+    if (_tautGh && _tautGh.tersambung && _tautGh.taut) {
+      const _t = _tautGh.taut;
+      messages[0].content +=
+        "\n\n[LINKED GITHUB REPOSITORY]: " +
+        _t.owner +
+        "/" +
+        _t.repo +
+        " @ " +
+        _t.branch +
+        ". This is SEPARATE from your workspace folder: read/grep/glob/list see" +
+        " the local files, and the `github_repo` tool sees this repository on" +
+        " github.com. When the user asks about this repository, or a file they" +
+        " name is not in the workspace, use `github_repo` before concluding it" +
+        " does not exist. It is read-only.";
+    }
+  } catch (_) {
+    // No link, no credentials file, or it could not be read. The agent simply
+    // is not told about a repository — which is the correct state, not an error
+    // worth interrupting a run for.
+  }
   const MAX_STEPS = effortLevel === 0 ? 6 : effortLevel === 2 ? 20 : 14;
   let edits = 0;
   // The Mermaid diagram from architecture_map: THE DIAGRAM IS the answer. The prompt
@@ -1329,20 +1572,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
   try {
     const _mcpT0 = Date.now();
     emit({ t: "model_wait", m: "Preparing MCP connection…" });
-    const _mcpHb = setInterval(() => {
-      emit({
-        t: "model_wait",
-        m:
-          "Still setting up MCP (" +
-          Math.round((Date.now() - _mcpT0) / 1000) +
-          "s)…",
-      });
-    }, 10000);
+    const _mcpHb = mulaiDetak(emit, "MCP setup", { jeda: 10000 });
     let mcpTools;
     try {
       mcpTools = await mcpClient.getTools();
     } finally {
-      clearInterval(_mcpHb);
+      _mcpHb();
     }
     if (mcpTools.length > 0) {
       currentTools = currentTools.concat(mcpTools);
@@ -1399,7 +1634,38 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     "question",
     "todowrite",
     "terminal_read",
+    // Reads a repository over the API; writes nothing anywhere.
+    "github_repo",
   ];
+  // ── A RUN THAT MAY ONLY READ ─────────────────────────────────────────────
+  //
+  // Set by the reactive reporter (agent/reaktif.ts), which wakes WITHOUT the
+  // user asking. Such a run may look and report; it may not change anything.
+  //
+  // ENFORCED BY REMOVING THE TOOLS, not by telling the model to behave. A
+  // prompt is advice — it can be misread, argued with, or lost when the history
+  // is trimmed. A tool that is not in the array cannot be called at all, and
+  // that is the difference between a policy and a guarantee.
+  //
+  // MCP TOOLS ARE DROPPED WHOLESALE, including read-sounding ones. What an MCP
+  // server does behind a name is decided by that server, not by this file: a
+  // tool called `search` may write. Nothing here can tell, so nothing here
+  // admits them.
+  //
+  // The same READ_ONLY_TOOLS list the CoT injection below uses — one list, so a
+  // tool cannot be considered read-only for one purpose and not the other.
+  if (hanyaBaca) {
+    const sebelum = currentTools.length;
+    currentTools = currentTools.filter((t: any) =>
+      READ_ONLY_TOOLS.includes(t.function && t.function.name),
+    );
+    dlog("self", "info", "read-only run: tools restricted", {
+      dari: sebelum,
+      jadi: currentTools.length,
+      alat: currentTools.map((t: any) => t.function.name).join(","),
+    });
+  }
+
   currentTools = currentTools.map((t) => {
     const newTool = JSON.parse(JSON.stringify(t));
     const isReadOnly = READ_ONLY_TOOLS.includes(t.function.name);
@@ -1463,7 +1729,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         emit({
           t: "act",
           kind: "planner",
-          arg: "Rencana selesai",
+          arg: "Plan ready",
           ok: true,
           output: lines.join("\n"),
         });
@@ -1625,19 +1891,58 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           m: "Waiting for the model…",
           ctxChars: _ctxChars,
         });
-        const _hbInterval = setInterval(() => {
-          emit({
-            t: "model_wait",
-            m:
-              "Still waiting for the model (" +
-              Math.round((Date.now() - _askT0) / 1000) +
-              "s)…",
-            ctxChars: _ctxChars,
-          });
-        }, 10000);
+        const _hbInterval = mulaiDetak(emit, "The model", {
+          jeda: 10000,
+          ctxChars: _ctxChars,
+        });
         try {
-          msg = await askCloudTools(cloud, activeMessages, currentTools);
-          clearInterval(_hbInterval);
+          msg = await askCloudTools(
+            cloud,
+            activeMessages,
+            currentTools,
+            (p: any) => {
+              // TWO KINDS OF REPORT arrive here, and they must be handled
+              // differently or the total is nonsense.
+              //
+              // `selesai` -- the call is over and its figures are final, so
+              // they FOLD INTO the run total.
+              //
+              // Anything else is a live progress report for a call still in
+              // flight. It arrives MANY TIMES for the same call, so it is
+              // added ON TOP of the settled total and never folded in;
+              // accumulating it would multiply that one call's cost by the
+              // number of updates it happened to send.
+              if (p.selesai) {
+                pakaiRun.masuk += p.masuk || 0;
+                pakaiRun.keluar += p.keluar || 0;
+                pakaiRun.cacheBaca += p.cacheBaca || 0;
+                pakaiRun.cacheTulis += p.cacheTulis || 0;
+                pakaiRun.panggilan += 1;
+                emit({
+                  t: "usage",
+                  ...pakaiRun,
+                  model: p.model,
+                  provider: p.provider,
+                  anggaran: effortTokenBudget,
+                  taksiran: Boolean(p.taksiran),
+                });
+                return;
+              }
+              emit({
+                t: "usage",
+                masuk: pakaiRun.masuk + (p.masuk || 0),
+                keluar: pakaiRun.keluar + (p.keluar || 0),
+                cacheBaca: pakaiRun.cacheBaca,
+                cacheTulis: pakaiRun.cacheTulis,
+                panggilan: pakaiRun.panggilan + 1,
+                model: p.model,
+                provider: p.provider,
+                anggaran: effortTokenBudget,
+                taksiran: Boolean(p.taksiran),
+              });
+            },
+          );
+          _hbInterval();
           dlog("self", "info", "model_request_done", {
             step: state.step,
             ms: Date.now() - _askT0,
@@ -1646,7 +1951,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             toolCalls: (msg && msg.tool_calls && msg.tool_calls.length) || 0,
           });
         } catch (e) {
-          clearInterval(_hbInterval);
+          _hbInterval();
           dlog("self", "error", "model_request_failed", {
             step: state.step,
             ms: Date.now() - _askT0,
@@ -1657,6 +1962,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             state.fallbackCount < 3
           ) {
             failedProviders.push(cloud.provider);
+            failureReasons.push({
+              provider: cloud.provider,
+              error: String((e && e.message) || e || ""),
+            });
             const fb = Object.keys(CLOUD_KEYS).find(
               (p) =>
                 !failedProviders.includes(p) &&
@@ -1700,6 +2009,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               cloud && cloud.provider,
               e,
               failedProviders,
+              failureReasons,
             ),
           };
         }
@@ -1945,7 +2255,27 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               output: "⟳ running…",
             });
           }
-          const r = await runSelfTool(tc.function.name, args, emit, agentCtx);
+          // ── SAYING SOMETHING WHILE A TOOL RUNS ───────────────────────────
+          //
+          // THE GAP THIS FILLS. The two heartbeats below are both about
+          // WAITING — for MCP, and for the model. Neither covers the third
+          // silence, which is the longest: a TOOL that is actually working. A
+          // bash build, a sandbox_run, a github_repo tree over a slow link —
+          // the run emits `act` when the call starts and nothing again until it
+          // returns.
+          //
+          // FIVE SECONDS, not ten. A tool is where a user is most likely to
+          // think the agent has hung, because unlike a model call there is not
+          // even a token trickling in to prove otherwise.
+          const hentikanDetak = mulaiDetak(emit, tc.function.name, {
+            jeda: 5000,
+          });
+          let r;
+          try {
+            r = await runSelfTool(tc.function.name, args, emit, agentCtx);
+          } finally {
+            hentikanDetak();
+          }
           // Increment BOTH: localEdits feeds graph state; the outer `edits` is what
           // the catch-block's rollback guard reads — without this it stays 0 forever
           // and a crash after successful edits would always roll them back.
@@ -2148,7 +2478,12 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               callCountsByName[tc.function.name] +
               "x. Ganti pendekatan atau berikan jawaban kepada user sekarang.]";
           if (r.needsAnswer) {
-            emit({ t: "ask", question: r.question, choices: r.choices });
+            emit({
+              t: "ask",
+              question: r.question,
+              choices: r.choices,
+              fields: r.fields,
+            });
             out =
               'You asked the user: "' +
               r.question +

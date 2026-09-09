@@ -1140,44 +1140,9 @@ select {
   margin-bottom: 6px;
   justify-content: flex-end;
 }
-.msg-att {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  padding: 6px 10px 6px 7px;
-  border-radius: 10px;
-  background: var(--surface-3);
-  border: 1px solid var(--border-soft, rgba(255, 255, 255, 0.08));
-  box-shadow: var(--shadow-soft);
-  font-size: 12px;
-  max-width: 100%;
-}
-.msg-att.err {
-  border-color: rgba(224, 108, 117, 0.45);
-}
-.msg-att-thumb {
-  width: 26px;
-  height: 26px;
-  border-radius: 6px;
-  object-fit: cover;
-  flex: 0 0 auto;
-}
-.msg-att-ico {
-  font-size: 14px;
-  line-height: 1;
-  flex: 0 0 auto;
-}
-.msg-att-name {
-  color: #fff;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  max-width: 220px;
-}
-.msg-att-size {
-  color: var(--text-dim, #8b949e);
-  flex: 0 0 auto;
-}
+/* .msg-att* removed: sent attachments now render the same .lam chip as the
+ * composer, so a file no longer looked like two different things before and
+ * after being sent. */
 /* Checklist hidup di timeline agent (event t:"todos").
    Sebelumnya event itu tak punya penanganan maupun gaya sama sekali. */
 .bubble-model {
@@ -3009,6 +2974,73 @@ img.ar-fs-icon {
   border-top: 1px solid var(--line);
   padding-top: 8px;
 }
+
+/* ── Token badge on the answer bubble ────────────────────────────────────────
+ *
+ * FLOATED, so it sits on the SAME LINE as the first line of the answer. It was
+ * a row of its own above the text before, which pushed the paragraph down and
+ * read as a separate label rather than something level with it.
+ *
+ * A float is what lets text run beside it without either one knowing the
+ * other's size: no measured offsets, no reserved row, and it stays right where
+ * it belongs at any window width or answer length.
+ *
+ * In the busy status row the parent is a flex container, where floats are
+ * ignored -- `margin-left: auto` is what pushes it to the end there. One class
+ * covers both because each context uses the property the other drops.
+ *
+ * NO BORDER, NO FILL. Asked for plainly: just the number. Nothing boxes it in,
+ * so it reads as part of the answer rather than a chip stuck on top of it.
+ *
+ * `tabular-nums` is not cosmetic. The figure counts up frame by frame, and with
+ * proportional digits every frame is a different width, so it would twitch
+ * sideways for the whole animation.
+ */
+/* THE ANSWER BUBBLE IS A ROW: text on the left, token count at its end.
+ *
+ * Three shapes were tried before this one. A wrapper row above the text pushed
+ * the answer down. A right float did not hold here at all -- the badge landed
+ * on its own line AND on the left. Both were attempts to make block flow do
+ * something it would only sometimes do; a flex row simply does it.
+ *
+ * .av2-isi keeps the answer in NORMAL BLOCK FLOW inside the row. Without it the
+ * paragraphs and code blocks Blocks renders would each become a flex item and
+ * lay themselves out sideways. min-width:0 lets long lines shrink instead of
+ * pushing the badge off the edge. */
+.av2-result-bubble {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+}
+.av2-isi {
+  flex: 1;
+  min-width: 0;
+}
+.lencana-token {
+  flex: 0 0 auto;
+  /* Also covers the busy status row, which is a flex line of its own. */
+  margin-left: auto;
+  /* The answer sets 13px/1.5 and this is 11px/1.5, so the two tops do not meet
+   * on their own. A couple of pixels puts the figure on the text's first line
+   * rather than slightly above it. */
+  padding-top: 2px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1.5;
+  font-variant-numeric: tabular-nums;
+  color: var(--text-muted);
+  cursor: default;
+  user-select: none;
+  white-space: nowrap;
+  transition: color 0.2s ease;
+}
+.lencana-token:hover {
+  color: var(--text-soft);
+}
+.lencana-token-unit {
+  opacity: 0.7;
+}
+
 @keyframes av2-shimmer {
   to {
     left: 160%;
@@ -3060,7 +3092,12 @@ img.ar-fs-icon {
 
 .aal-row {
   display: flex;
-  align-items: flex-start;
+  /* CENTER, and the icon no longer nudges itself down to compensate.
+     .aal-icon carried margin-top: 2px to sit right under flex-start — which
+     put it 2px BELOW the text in every row that centred its children instead.
+     One rule cannot be correct for two different alignments, so the alignment
+     is decided here, once, and the nudge is gone. */
+  align-items: center;
   gap: 8px;
   padding: 4px 8px;
   border-radius: 4px;
@@ -3293,12 +3330,31 @@ img.ar-fs-icon {
   display: none;
 }
 
+/* ── Kolom di baris aktivitas agent ──
+ *
+ * SATU WARNA, dan lebarnya tetap. Tiap jenis tool dulu punya warnanya sendiri —
+ * biru untuk read, merah untuk edit, hijau untuk browser, ungu untuk planner —
+ * jadi satu daftar sepuluh baris memakai enam warna sekaligus, di sebelah kode
+ * yang justru butuh perhatian. Warnanya juga tak membawa informasi yang tak
+ * sudah ditulis kata kerjanya.
+ *
+ * Lebar tetap pada ikon DAN kata kerja itulah yang membuat targetnya sejajar.
+ * Tanpa keduanya, "Ran" dan "Analyzed" mendorong kolom berikutnya ke tempat
+ * yang berbeda-beda dan daftarnya jadi bergerigi. 66px memuat kata terpanjang
+ * ("Analyzed", "Searched", "Explored") pada 13px.
+ */
 .aal-icon {
   display: flex;
   align-items: center;
   justify-content: center;
-  color: var(--text-muted);
-  margin-top: 2px;
+  flex: none;
+  width: 16px;
+  color: var(--text);
+}
+.aal-verb {
+  flex: none;
+  min-width: 66px;
+  color: var(--text-soft, #8b949e);
 }
 .aal-icon svg {
   width: 14px;
@@ -3650,54 +3706,232 @@ img.ar-fs-icon {
   border-bottom: 1px solid var(--line-strong);
   margin-bottom: 8px;
 }
-.composer-attachment-item {
+/* ── ATTACHMENT CHIPS ────────────────────────────────────────────────────────
+ *
+ * Two shapes, because attachments are two different things. A document is an
+ * ICON ROW: you read its name. An image is a THUMBNAIL: you look at it. The
+ * previous version forced both into one 60x60 square, which meant a text file
+ * showed its own source at 6.5px instead of its name.
+ *
+ * Everything here takes its colour from the theme tokens. The old tiles carried
+ * literal #4ec9b0 and #0d1117 and stayed dark whatever the theme said. */
+.lam {
   position: relative;
-  background: var(--surface-2, #161b22);
-  border: 1px solid var(--line-strong, #30363d);
-  border-radius: 8px;
-  padding: 8px;
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  border-radius: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  transition:
+    border-color 0.14s ease,
+    background 0.14s ease,
+    transform 0.14s ease;
+}
+.lam-clickable {
+  cursor: pointer;
+}
+.lam:hover {
+  border-color: var(--line-strong);
+}
+.lam-clickable:active {
+  transform: translateY(1px);
+}
+
+/* The icon row. max-width keeps one long name from pushing the rest off the
+ * line; min-width stops a two-letter name from collapsing to a stub. */
+.lam-berkas {
+  padding: 8px 10px;
+  min-width: 168px;
+  max-width: 252px;
+}
+.lam-ikon {
+  flex: none;
+  width: 30px;
+  height: 30px;
+  display: grid;
+  place-items: center;
+  border-radius: 7px;
+  background: var(--surface-3);
+  color: var(--text-muted);
+}
+.lam-ikon svg,
+.lam-ikon span {
+  width: 18px;
+  height: 18px;
+  display: block;
+}
+.lam-teks {
   display: flex;
   flex-direction: column;
-  justify-content: center;
-  align-items: center;
-  width: 60px;
-  height: 60px;
-  overflow: visible;
+  min-width: 0;
+  gap: 1px;
 }
-.composer-attachment-icon {
-  font-size: 18px;
-  margin-bottom: 4px;
+
+/* THE EXTENSION NEVER TRUNCATES. A plain ellipsis on the whole name eats it,
+ * and ".html" is the part that says what the file actually is -- so the stem
+ * shrinks and the extension is pinned beside it. */
+.lam-nama {
+  display: flex;
+  font-size: 12.5px;
+  color: var(--text);
+  line-height: 1.35;
 }
-.composer-attachment-name {
-  font-size: 9px;
-  color: var(--text-muted);
-  text-align: center;
-  word-break: break-all;
-  display: -webkit-box;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  -webkit-box-orient: vertical;
+.lam-batang {
   overflow: hidden;
-  width: 100%;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  min-width: 0;
 }
-.composer-attachment-remove {
+.lam-ekor {
+  flex: none;
+}
+.lam-bawah {
+  font-size: 10.5px;
+  letter-spacing: 0.02em;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* The thumbnail. The picture is the label, so the name only appears on hover
+ * and in the tooltip. */
+.lam-gambar {
+  width: 62px;
+  height: 62px;
+  padding: 0;
+  overflow: hidden;
+  cursor: pointer;
+}
+.lam-gambar img,
+.lam-gambar video {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  display: block;
+}
+.lam-sampul {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  padding: 8px 5px 3px;
+  font-size: 9.5px;
+  color: #fff;
+  background: linear-gradient(transparent, rgba(0, 0, 0, 0.78));
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  opacity: 0;
+  transition: opacity 0.14s ease;
+}
+.lam-gambar:hover .lam-sampul {
+  opacity: 1;
+}
+
+/* REMOVE APPEARS ON HOVER, not permanently. A row of little × marks reads as
+ * clutter; keyboard focus brings it back so it stays reachable without a
+ * mouse. */
+.lam-buang {
   position: absolute;
   top: -6px;
   right: -6px;
-  width: 16px;
-  height: 16px;
-  background: var(--surface-3, #21262d);
-  border: 1px solid var(--line-strong);
+  width: 17px;
+  height: 17px;
+  display: grid;
+  place-items: center;
+  padding: 0;
   border-radius: 50%;
-  color: var(--text);
-  font-size: 12px;
-  display: flex;
-  align-items: center;
-  justify-content: center;
+  background: var(--surface-3);
+  border: 1px solid var(--line-strong);
+  color: var(--text-muted);
   cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.14s ease,
+    color 0.14s ease;
 }
-.composer-attachment-remove:hover {
-  background: var(--surface-1);
+.lam:hover .lam-buang,
+.lam-buang:focus-visible {
+  opacity: 1;
+}
+.lam-buang:hover {
+  color: var(--text);
+  border-color: var(--text-muted);
+}
+
+/* Uploading: a moving hairline along the bottom edge. The old version covered
+ * the whole tile with a black scrim and an hourglass emoji, which hid the very
+ * thing the user was checking. */
+.lam-garis {
+  position: absolute;
+  left: 0;
+  bottom: 0;
+  height: 2px;
+  width: 40%;
+  border-radius: 0 0 10px 10px;
+  background: var(--accent, #3b82f6);
+  animation: lam-jalan 1.1s ease-in-out infinite;
+}
+@keyframes lam-jalan {
+  0% {
+    transform: translateX(-100%);
+  }
+  100% {
+    transform: translateX(250%);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .lam-garis {
+    animation: none;
+    width: 100%;
+    opacity: 0.5;
+  }
+}
+
+/* The failure says what failed, in the line the eye is already reading. */
+.lam-error {
+  border-color: rgba(224, 108, 117, 0.5);
+}
+.lam-error .lam-bawah {
+  color: var(--danger, #e06c75);
+}
+.lam-error .lam-ikon {
+  color: var(--danger, #e06c75);
+}
+
+/* The code preview inside the attachment modal. It used to carry a literal
+ * #4ec9b0 on #0d1117 -- one theme's colours, applied in every theme -- plus
+ * `word-break: break-all`, which on CODE splits identifiers mid-token so the
+ * preview stops reading as the language it is. Code scrolls sideways instead. */
+.lam-pratayang {
+  margin: 0;
+  width: 100%;
+  max-height: calc(82vh - 80px);
+  padding: 16px;
+  overflow: auto;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  line-height: 1.6;
+  tab-size: 2;
+  white-space: pre;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: 8px;
+}
+.lam-kosong-ikon {
+  margin: 0 auto 16px;
+  width: 48px;
+  height: 48px;
+  color: var(--text-muted);
+}
+.lam-kosong-ikon svg,
+.lam-kosong-ikon span {
+  width: 48px;
+  height: 48px;
+  display: block;
 }
 
 /* HITL Modal UI */
@@ -4049,6 +4283,15 @@ img.ar-fs-icon {
   justify-content: space-between;
   align-items: center;
 }
+/* The left-hand buttons as one unit. Without this the toolbar's
+ * space-between would push a third child into the middle instead of keeping
+ * it beside the first. 8px matches .composer-action-btns, so the same button
+ * lands in the same place on both surfaces. */
+.picker-kiri {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .picker-plus-btn {
   width: 34px;
   height: 34px;
@@ -4199,94 +4442,73 @@ img.ar-fs-icon {
   cursor: pointer;
 }
 
-/* ── Tombol aksi editor & debug ──
+/* ── Tombol aksi editor (Run, Save) ──
  *
- * Ditulis DENGAN GAYA uiverse (pil, gradasi lembut, tepi bercahaya, terangkat
- * saat disentuh, tertekan saat diklik), bukan disalin dari satu komponen di
- * sana: uiverse.io menolak diambil dari sini (HTTP 403), jadi menyebut nomor
- * komponen tertentu berarti mengaku menyalin sesuatu yang tak pernah dilihat.
+ * DUA KALI DITENANGKAN, dan yang kedua diminta dengan sebuah tangkapan layar.
  *
- * Semua transisi dimatikan lewat prefers-reduced-motion di bawah. Tombol yang
- * bergerak sendiri bukan sekadar selera: bagi sebagian orang ia memicu mual,
- * dan tombol Run/Debug adalah hal yang ditekan berkali-kali dalam semenit.
+ * Versi pertama ditulis dengan gaya uiverse: pil, gradasi, tepi bercahaya,
+ * terangkat saat disentuh, dan kilau yang MENYAPU melintasinya tiap kali kursor
+ * lewat. Lima efek pada kontrol yang duduk di sebelah kode dan ditekan beberapa
+ * kali semenit. Kata penggunanya: "lebay".
+ *
+ * Versi kedua membuang efeknya tapi mempertahankan tepi dan label, dan itu
+ * masih sebuah kotak. Yang diminta akhirnya adalah bentuk yang dipakai toolbar
+ * editor di mana-mana: IKON TELANJANG, tanpa tepi, tanpa label, dengan
+ * permukaan yang baru muncul di bawah kursor.
+ *
+ * Labelnya hilang, bukan disembunyikan: `title` masih membawa kalimat lengkap
+ * (termasuk pintasan dan fakta bahwa Run menyimpan lebih dulu) dan `aria-label`
+ * memberi tombol ini nama yang bisa dibacakan — sebuah tombol yang seluruh
+ * isinya svg tak punya nama sama sekali tanpanya.
+ *
+ * Kotak 24px, bukan sebesar ikonnya: sasaran klik yang lebih kecil dari itu
+ * meleset, dan ikon 13px yang berdiri sendiri persis sekecil itu.
  */
 .aksi-btn {
-  --aksi-warna: #2f81f7;
-  --aksi-warna2: #58a6ff;
-  position: relative;
+  --aksi-warna: #3fb950;
   display: inline-flex;
   align-items: center;
-  gap: 6px;
+  justify-content: center;
   flex-shrink: 0;
-  padding: 4px 12px;
-  border: 1px solid color-mix(in srgb, var(--aksi-warna) 55%, transparent);
-  border-radius: 999px;
-  background: linear-gradient(
-    180deg,
-    color-mix(in srgb, var(--aksi-warna2) 22%, transparent),
-    color-mix(in srgb, var(--aksi-warna) 12%, transparent)
-  );
-  color: var(--aksi-warna2);
-  font: inherit;
-  font-size: 11px;
-  font-weight: 600;
-  letter-spacing: 0.02em;
+  width: 24px;
+  height: 24px;
+  padding: 0;
+  border: none;
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted, #8b949e);
   cursor: pointer;
-  overflow: hidden;
   transition:
-    transform 0.12s ease,
-    box-shadow 0.18s ease,
-    border-color 0.18s ease;
+    background 0.12s ease,
+    color 0.12s ease;
 }
-/* Kilau yang menyapu saat disentuh. Elemen semu, bukan lapisan tambahan di
- * DOM — tombol ini dirender ulang tiap ketukan tombol di editor. */
-.aksi-btn::after {
-  content: "";
-  position: absolute;
-  inset: 0;
-  background: linear-gradient(
-    115deg,
-    transparent 35%,
-    rgba(255, 255, 255, 0.22) 50%,
-    transparent 65%
-  );
-  transform: translateX(-120%);
-  transition: transform 0.55s ease;
-  pointer-events: none;
+.aksi-btn svg {
+  flex: none;
 }
+/* Warnanya datang SAAT DISENTUH, bukan sebelumnya. Diam-diam tombol ini abu
+   seperti ikon toolbar lain; hijau muncul untuk membenarkan bahwa yang akan
+   ditekan memang Run. */
 .aksi-btn:hover:not(:disabled) {
-  transform: translateY(-1px);
-  border-color: var(--aksi-warna);
-  box-shadow:
-    0 0 0 1px color-mix(in srgb, var(--aksi-warna) 30%, transparent),
-    0 4px 14px -4px var(--aksi-warna);
-}
-.aksi-btn:hover:not(:disabled)::after {
-  transform: translateX(120%);
+  background: rgba(255, 255, 255, 0.075);
+  color: var(--aksi-warna);
 }
 .aksi-btn:active:not(:disabled) {
-  transform: translateY(0);
-  box-shadow: 0 0 0 1px color-mix(in srgb, var(--aksi-warna) 40%, transparent);
+  background: rgba(255, 255, 255, 0.12);
 }
-/* Fokus papan ketik TIDAK boleh ikut hilang bersama outline bawaan. */
+/* Fokus papan ketik TIDAK boleh ikut hilang bersama tepi yang dibuang. */
 .aksi-btn:focus-visible {
-  outline: 2px solid var(--aksi-warna2);
-  outline-offset: 2px;
+  outline: 2px solid var(--aksi-warna);
+  outline-offset: 1px;
 }
 .aksi-btn:disabled {
   cursor: not-allowed;
-  color: #54606d;
-  border-color: #212a36;
-  background: transparent;
-  box-shadow: none;
+  opacity: 0.35;
 }
 .aksi-btn.aksi-run {
-  --aksi-warna: #238636;
-  --aksi-warna2: #3fb950;
+  --aksi-warna: #3fb950;
 }
 .aksi-btn.aksi-simpan {
-  --aksi-warna: #2f81f7;
-  --aksi-warna2: #79c0ff;
+  --aksi-warna: #79c0ff;
 }
 
 /* Bilah kendali debug: tombol berlabel, bukan ikon telanjang. Ikon panah
@@ -4347,17 +4569,15 @@ img.ar-fs-icon {
 }
 
 @media (prefers-reduced-motion: reduce) {
+  /* .aksi-btn no longer moves or sweeps at all, so only its colour transition
+     is left to switch off. The ::after rules that used to live here went with
+     the highlight that swept across the button. */
   .aksi-btn,
-  .aksi-btn::after,
   .dbg-btn {
     transition: none;
   }
-  .aksi-btn:hover:not(:disabled),
   .dbg-btn:hover:not(:disabled) {
     transform: none;
-  }
-  .aksi-btn:hover:not(:disabled)::after {
-    transform: translateX(-120%);
   }
 }
 
@@ -4914,4 +5134,1003 @@ img.ar-fs-icon {
 }
 .git-utama:not(:disabled):active {
   filter: brightness(0.92);
+}
+
+/* ── GitHub panel ────────────────────────────────────────────────────────────
+ *
+ * The mark is FILLED, so it needs no stroke width and no colour of its own --
+ * currentColor puts it at the same weight as the button beside it. Sized 18 in
+ * a 34 button, matching the plus it sits next to rather than the measurement
+ * box it was specified from.
+ */
+.composer-github svg,
+.picker-github svg {
+  display: block;
+}
+/* NO BORDER UNTIL IT IS POINTED AT.
+ *
+ * The mark is a filled silhouette, so it already reads as a solid shape; a box
+ * around it made two competing outlines in a 34px square. The button keeps its
+ * hit area and its hover affordance -- the border is transparent, not removed,
+ * so nothing shifts by a pixel when it appears.
+ *
+ * BRIGHTER THAN ITS NEIGHBOURS, on purpose. --text-muted is tuned for stroked
+ * glyphs, where the line weight carries the shape. A filled mark at the same
+ * colour reads heavier and muddier, so it needs a lighter value to sit at the
+ * same visual weight as the plus beside it. */
+.composer-github,
+.picker-github {
+  border-color: transparent;
+  color: var(--text-soft);
+}
+.composer-github:hover,
+.picker-github:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.gh-overlay {
+  position: fixed;
+  inset: 0;
+  /* So the modal never touches the edge of whatever box it lands in. */
+  padding: 16px;
+  box-sizing: border-box;
+  background: rgba(0, 0, 0, 0.55);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  /* ── WHY THIS HIGH ──
+     60 was enough for as long as this panel was a child of the screen that
+     opened it: it stacked INSIDE that screen's stacking context, so it always
+     won against its siblings. The portal above moved it to <body>, and from
+     then on it competed directly with full-window screens. Measured in the
+     running app: the panel really did open — a 1400x900 overlay, a 560x307
+     modal, opacity 1, no console error — but elementFromPoint at its centre
+     hit DIV.project-picker-screen (position: fixed, z-index 9999, set inline
+     in Screens.tsx). Completely covered, which from the user's side reads as a
+     button that does not respond.
+
+     999999 is not a new number: it is the tier ALREADY used by the two other
+     full-window modal overlays here, .attachment-modal-overlay and the
+     VisualTools curtain. This panel was the outlier. */
+  z-index: 999999;
+}
+.gh-modal {
+  /* 100%, NOT 92vw. `vw` is the window; the overlay is whatever box it ended up
+     in. When those two differ — a split view, a narrow pane — a modal sized to
+     the window overflows its own overlay and is clipped, which is how the left
+     half of this panel's text and most of its button disappeared. Sized against
+     the overlay it fits either way, and the portal above keeps the overlay
+     itself the size of the window in the normal case. */
+  width: min(560px, 100%);
+  max-height: min(78vh, 100%);
+  overflow: auto;
+  background: var(--surface-1);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-lg);
+  padding: 20px;
+}
+.gh-head {
+  display: flex;
+  align-items: flex-start;
+  gap: 12px;
+  margin-bottom: 16px;
+  color: var(--text);
+  /* The title's line box, named once so the mark can match it. */
+  --gh-judul-baris: calc(15px * 1.55);
+}
+/* ── THE MARK ALIGNS TO THE LETTERS, NOT TO A BOX EDGE ──
+   With align-items: flex-start the mark's top meets the top of the title
+   BLOCK. The letters do not start there: a line-height of 23.25px on a 15px
+   font leaves 6.25px of leading, half of it above. Measured — the mark sat 3px
+   higher than its line of text, its centre 1.5px off. Giving the mark the line
+   box's height lets preserveAspectRatio centre the 20px mark inside it, so it
+   lines up with the letters rather than with an invisible edge. Its width stays
+   20px because the width attribute is untouched. */
+.gh-head > svg {
+  flex: none;
+  height: var(--gh-judul-baris);
+}
+.gh-judul {
+  font-size: 15px;
+  /* Stated explicitly: --gh-judul-baris above is computed from these two
+     numbers, and an inherited value that quietly changed would break the
+     alignment with nothing to show for it. */
+  line-height: 1.55;
+  font-weight: 600;
+}
+.gh-sub {
+  font-size: 12.5px;
+  color: var(--text-muted);
+  line-height: 1.55;
+}
+.gh-tutup {
+  margin-left: auto;
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 20px;
+  line-height: 1;
+  cursor: pointer;
+}
+.gh-sambung {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+.gh-daftar {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.gh-baris {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  border-radius: var(--r-sm);
+  border: 1px solid transparent;
+  background: none;
+  color: var(--text);
+  font-size: 13px;
+  cursor: pointer;
+}
+.gh-baris:hover {
+  background: var(--surface-2);
+  border-color: var(--line);
+}
+
+/* The callback URL, which has to be copied into the OAuth App EXACTLY -- one
+ * wrong character and GitHub refuses the redirect. So it is a copy button
+ * rather than text to retype. */
+
+/* WHO IS SIGNED IN. Sits above the list because switching accounts is only
+ * possible once the panel says which account it is using. */
+.gh-akun {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 8px 10px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.gh-akun img {
+  width: 26px;
+  height: 26px;
+  border-radius: 50%;
+  flex: none;
+}
+.gh-akun-nama {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  flex: 1;
+}
+.gh-akun-nama b {
+  font-size: 13px;
+  color: var(--text);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-akun-nama span {
+  font-size: 11px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.gh-akun-aksi {
+  flex: none;
+  background: none;
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  color: var(--text-muted);
+  font-size: 11.5px;
+  padding: 3px 10px;
+  cursor: pointer;
+}
+.gh-akun-aksi:hover:not(:disabled) {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.gh-akun-aksi:disabled {
+  opacity: 0.5;
+  cursor: default;
+}
+
+/* Creating a repository. */
+.gh-baru {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  margin-bottom: 6px;
+  background: none;
+  border: 1px dashed var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  font-size: 13px;
+  cursor: pointer;
+}
+.gh-baru:hover {
+  color: var(--text);
+  border-color: var(--line-strong);
+}
+.gh-buat {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 12px;
+  margin-bottom: 10px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+}
+.gh-pilihan {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12.5px;
+  color: var(--text-muted);
+  cursor: pointer;
+}
+.gh-buat-aksi {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+.gh-buat-aksi .gh-kembali {
+  padding: 0;
+}
+.gh-salin {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  text-align: left;
+  padding: 9px 12px;
+  margin-bottom: 4px;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  cursor: pointer;
+}
+.gh-salin:hover {
+  border-color: var(--line-strong);
+}
+.gh-salin code {
+  flex: 1;
+  min-width: 0;
+  overflow-x: auto;
+  white-space: nowrap;
+  font-family: var(--mono);
+  font-size: 12px;
+  color: var(--text);
+}
+.gh-salin span {
+  font-size: 11px;
+  color: var(--text-muted);
+}
+.gh-kembali {
+  background: none;
+  border: 0;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  text-align: left;
+  padding: 6px 0 10px;
+  cursor: pointer;
+}
+.gh-tag {
+  margin-left: auto;
+  font-size: 10px;
+  letter-spacing: 0.05em;
+  text-transform: uppercase;
+  color: var(--text-faint);
+  border: 1px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 1px 6px;
+}
+.gh-tertaut {
+  font-size: 12px;
+  color: var(--ok);
+  padding: 8px 12px;
+  margin-bottom: 6px;
+  border: 1px solid rgba(52, 211, 153, 0.3);
+  border-radius: var(--r-sm);
+}
+.gh-galat {
+  font-size: 12.5px;
+  color: var(--danger);
+  margin-bottom: 12px;
+}
+.gh-kosong {
+  font-size: 13px;
+  color: var(--text-muted);
+  padding: 18px 0;
+  text-align: center;
+}
+
+/* The device code. Monospace and spaced out because it is READ OFF THE SCREEN
+ * and typed into a browser by hand -- the one string here where telling 0 from
+ * O actually matters. */
+.gh-kode {
+  font-family: var(--mono);
+  font-size: 26px;
+  letter-spacing: 0.22em;
+  text-align: center;
+  padding: 14px 10px;
+  margin: 4px 0;
+  color: var(--text);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-md);
+  user-select: all;
+}
+
+/* ── THE INFO SEVERITY RAIL ──────────────────────────────────────────────────
+ *
+ * It was a 56px column of a text glyph stacked over a bare number, three times,
+ * with the name only in a tooltip. Nothing on screen said which count was
+ * which, and a zero looked the same as a real one.
+ *
+ * Each row now names itself, the NUMBER is the largest thing in it — that is
+ * what the panel exists to show — and an empty row fades instead of competing
+ * with the ones that matter. Wide enough for four digits plus a word: a
+ * problems rail that clips its own numbers has failed at its one job. */
+.info-rail {
+  /* Wide enough for "Warnings" beside a four-digit count. MEASURED: at 132px
+     the label clipped to "Warni…" on a real render — a rail that hides the
+     word telling you what the number counts has lost the point. */
+  width: 158px;
+  flex-shrink: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding: 8px 6px;
+  border-right: 1px solid var(--line);
+  background: var(--surface-1);
+}
+.info-rail-baris {
+  display: grid;
+  /* icon | number | name. The number column is fixed so the names line up
+     whatever the counts are — a rail whose labels shift as you work is harder
+     to read at a glance than one that stays still. */
+  grid-template-columns: 16px 2.9em 1fr;
+  align-items: center;
+  gap: 8px;
+  width: 100%;
+  padding: 7px 8px;
+  border: 0;
+  border-radius: var(--r-sm);
+  background: none;
+  text-align: left;
+  font-family: inherit;
+  cursor: pointer;
+  color: var(--warna-tingkat, var(--text-muted));
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.info-rail-baris:hover {
+  background: var(--surface-2);
+}
+.info-rail-baris.aktif {
+  background: color-mix(in srgb, var(--warna-tingkat) 16%, transparent);
+  box-shadow: inset 2px 0 0 var(--warna-tingkat);
+}
+.info-rail-baris:focus-visible {
+  outline: 1px solid var(--warna-tingkat);
+  outline-offset: -1px;
+}
+.info-rail-ikon {
+  display: grid;
+  place-items: center;
+  color: var(--warna-tingkat, var(--text-muted));
+}
+.info-rail-jml {
+  font-size: 15px;
+  font-weight: 650;
+  /* Digits of equal width: without it "1" and "7" shift the label beside them,
+     and a column of counts stops reading as a column. */
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+  text-align: right;
+}
+.info-rail-nama {
+  font-size: 11.5px;
+  color: var(--text-muted);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+/* NOTHING TO SEE, AND IT SAYS SO. A zero that looks like a count invites the
+ * eye to check it; faded, it is read once and skipped. */
+.info-rail-baris.nol {
+  cursor: default;
+}
+.info-rail-baris.nol:hover {
+  background: none;
+}
+.info-rail-baris.nol .info-rail-ikon {
+  opacity: 0.35;
+}
+.info-rail-baris.nol .info-rail-jml {
+  color: var(--text-faint);
+  font-weight: 500;
+}
+.info-rail-baris.nol .info-rail-nama {
+  color: var(--text-faint);
+}
+
+/* ── THE AGENT'S OWN REPORTS ─────────────────────────────────────────────────
+ *
+ * Unsolicited, so the rules are different from anything else in the composer:
+ * it must be readable without hunting, dismissible without a dialog, and
+ * ABSENT when there is nothing to say. There is no idle state to style — the
+ * component renders nothing at all until a report exists, because a permanent
+ * "watching…" strip is exactly the kind of ambient noise that gets tuned out,
+ * and then the one time it matters it is tuned out too. */
+.rk-bar {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding-bottom: 8px;
+  margin-bottom: 8px;
+  border-bottom: 1px solid var(--line-strong);
+}
+.rk-lapor {
+  display: flex;
+  align-items: flex-start;
+  gap: 9px;
+  padding: 9px 10px;
+  border-radius: var(--r-sm);
+  background: var(--surface-2);
+  /* A quiet accent rather than a warning colour: this is the agent noticing
+     something, not the app failing. */
+  border: 1px solid var(--line);
+  box-shadow: inset 2px 0 0 #58a6ff;
+}
+.rk-lapor-ikon {
+  flex: none;
+  display: inline-flex;
+  align-items: center;
+  height: 17px;
+  color: #58a6ff;
+}
+.rk-lapor-isi {
+  flex: 1;
+  min-width: 0;
+}
+.rk-lapor-teks {
+  font-size: 12.5px;
+  line-height: 1.5;
+  color: var(--text);
+  /* The report names files and lines, and a wrapped path is unreadable. */
+  white-space: pre-wrap;
+  word-break: break-word;
+}
+.rk-lapor-kaki {
+  margin-top: 4px;
+  font-size: 10.5px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.rk-tutup {
+  flex: none;
+  background: none;
+  border: 0;
+  padding: 2px 6px;
+  border-radius: var(--r-pill);
+  color: var(--text-muted);
+  font-family: inherit;
+  font-size: 11px;
+  cursor: pointer;
+}
+.rk-tutup:hover {
+  color: var(--text);
+  background: var(--surface-3);
+}
+
+/* ── CHOOSING PRIVATE OR PUBLIC ──────────────────────────────────────────────
+ *
+ * It was a "Private" checkbox, which made PUBLIC the thing you get by not
+ * doing something. Publishing code is not a state anyone should arrive at by
+ * omission, so both options are shown and each says what it actually means. */
+.gh-pilih-jenis {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 8px;
+}
+.gh-jenis {
+  display: flex;
+  align-items: flex-start;
+  gap: 8px;
+  padding: 9px 10px;
+  text-align: left;
+  background: var(--surface-2);
+  border: 1px solid var(--line);
+  border-radius: var(--r-sm);
+  color: var(--text-muted);
+  font-family: inherit;
+  cursor: pointer;
+  transition:
+    border-color 0.12s ease,
+    background 0.12s ease;
+}
+.gh-jenis:hover {
+  border-color: var(--line-strong);
+}
+.gh-jenis.aktif {
+  border-color: var(--brand, #5eead4);
+  background: color-mix(in srgb, var(--brand, #5eead4) 10%, transparent);
+  color: var(--text);
+}
+.gh-jenis-ikon {
+  flex: none;
+  display: grid;
+  place-items: center;
+  height: 17px;
+}
+.gh-jenis-teks {
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  min-width: 0;
+}
+.gh-jenis-teks b {
+  font-size: 12.5px;
+  color: var(--text);
+  font-weight: 600;
+}
+.gh-jenis-teks span {
+  font-size: 10.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+}
+.gh-label {
+  display: flex;
+  flex-direction: column;
+  gap: 5px;
+  font-size: 11px;
+  letter-spacing: 0.03em;
+  color: var(--text-muted);
+}
+
+/* ── THE REPOSITORY CONTEXT MENU ─────────────────────────────────────────────
+ *
+ * Positioned at the pointer, above everything, and closed by a full-screen
+ * transparent layer beneath it. The layer is what makes "click anywhere else"
+ * work without listening on document — and without a listener that outlives
+ * the menu. */
+.gh-menu-tirai {
+  position: fixed;
+  inset: 0;
+  z-index: 60;
+}
+.gh-menu {
+  position: fixed;
+  z-index: 61;
+  min-width: 190px;
+  padding: 5px;
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  border-radius: var(--r-sm);
+  box-shadow: 0 10px 30px rgba(0, 0, 0, 0.45);
+}
+.gh-menu-judul {
+  padding: 5px 9px 7px;
+  font-size: 10.5px;
+  color: var(--text-faint);
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  border-bottom: 1px solid var(--line);
+  margin-bottom: 4px;
+}
+.gh-menu-item {
+  display: block;
+  width: 100%;
+  text-align: left;
+  padding: 7px 9px;
+  border: 0;
+  border-radius: 5px;
+  background: none;
+  color: var(--text);
+  font-family: inherit;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.gh-menu-item:hover {
+  background: var(--surface-3);
+}
+/* Destructive, and coloured as such only on hover: red text sitting in a menu
+ * at rest reads as an error message rather than as a choice. */
+.gh-menu-item.bahaya:hover {
+  background: rgba(248, 81, 73, 0.14);
+  color: #f85149;
+}
+.gh-menu-nota {
+  padding: 6px 9px 4px;
+  font-size: 10.5px;
+  line-height: 1.4;
+  color: var(--text-muted);
+}
+
+/* Renaming, in place on the row. */
+.gh-baris-ubah {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  cursor: default;
+}
+.gh-baris-ubah .input {
+  flex: 1;
+  min-width: 0;
+}
+.gh-kecil {
+  padding: 5px 10px;
+  font-size: 11.5px;
+}
+
+/* ── THE DELETE CONFIRMATION ─────────────────────────────────────────────────
+ *
+ * Deliberately NOT styled as an alarm. Red everywhere makes the words harder
+ * to read, and the words are the whole safeguard: what is going, that it does
+ * not come back, and the name that has to be typed. Only the button that
+ * performs it is red. */
+.gh-hapus {
+  display: flex;
+  flex-direction: column;
+  gap: 9px;
+  padding: 14px;
+  margin-top: 10px;
+  background: var(--surface-2);
+  border: 1px solid rgba(248, 81, 73, 0.45);
+  border-radius: var(--r-sm);
+}
+.gh-hapus-judul {
+  font-size: 13px;
+  color: var(--text);
+}
+.gh-hapus-teks {
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--text-muted);
+}
+.gh-hapus-teks b {
+  color: var(--text);
+}
+.gh-btn-bahaya {
+  background: #b62324;
+  border-color: #b62324;
+  color: #fff;
+}
+.gh-btn-bahaya:hover:not(:disabled) {
+  background: #d02f30;
+}
+.gh-btn-bahaya:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── A file dragged in from an editor tab ──
+   It is NOT an upload, and it should not look like one: the file is already in
+   the project, nothing was copied, and nothing can fail to arrive. The left
+   edge says so quietly, and the monospace subtitle carries the folder — the one
+   thing a bare filename loses. */
+.lam-ref {
+  border-left: 2px solid var(--accent, #2f81f7);
+}
+.lam-ref .lam-bawah {
+  font-family: "JetBrains Mono", Consolas, "Cascadia Code", monospace;
+  font-size: 10.5px;
+  opacity: 0.75;
+}
+
+/* The composer while a tab is being dragged over it. Without a visible target
+   the gesture is a guess: the user drags, lets go, and finds out afterwards
+   whether the drop landed. */
+.komposer-terima {
+  outline: 1.5px dashed var(--accent, #2f81f7);
+  outline-offset: 3px;
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--accent, #2f81f7) 6%, transparent);
+}
+
+/* ── What the agent changed ──
+   Added lines get a green wash and a green gutter bar; a removal has no line of
+   its own in the new file, so it is marked in the gutter beside the line that
+   took its place. Backgrounds are translucent on purpose: the syntax colours
+   underneath have to stay readable, which a solid fill would destroy. */
+.agen-baris-tambah {
+  background: rgba(63, 185, 80, 0.13);
+}
+.agen-gutter-tambah {
+  background: #3fb950;
+  width: 3px !important;
+  margin-left: 3px;
+}
+.agen-gutter-hapus {
+  background: #f85149;
+  width: 3px !important;
+  margin-left: 3px;
+}
+
+/* ── A checkpoint in the agent timeline ──
+   A thin line, not a card: it appears between the agent's steps and must not
+   break the reading flow. The button only becomes a question on hover, because
+   rolling back OVERWRITES files and cannot be undone from here — a single click
+   inside a scrolling log is far too easy to hit by accident. */
+.cp-baris {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 5px 10px;
+  margin: 3px 0;
+  border-left: 2px solid #7c3aed;
+  background: rgba(124, 58, 237, 0.06);
+  border-radius: 0 6px 6px 0;
+  font-size: 11.5px;
+  color: #8b949e;
+}
+.cp-ikon {
+  display: inline-flex;
+  color: #a371f7;
+  flex: none;
+}
+.cp-judul {
+  color: #c9d1d9;
+  font-weight: 600;
+  flex: none;
+}
+.cp-detail {
+  color: #6b7280;
+  font-variant-numeric: tabular-nums;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.cp-aksi {
+  margin-left: auto;
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  flex: none;
+}
+.cp-tanya {
+  color: #d29922;
+}
+.cp-hasil {
+  color: #3fb950;
+}
+.cp-btn {
+  border: 1px solid #30363d;
+  border-radius: 5px;
+  background: transparent;
+  color: #8b949e;
+  font: inherit;
+  font-size: 11px;
+  padding: 2px 8px;
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.cp-btn:hover {
+  background: rgba(255, 255, 255, 0.07);
+  color: #e6edf3;
+}
+/* What OVERWRITES files gets the warning colour, not the ordinary action one. */
+.cp-btn.cp-ya {
+  border-color: #9e6a03;
+  color: #d29922;
+}
+.cp-btn.cp-ya:hover {
+  background: rgba(210, 153, 34, 0.12);
+  color: #e3b341;
+}
+
+/* The top row of the agent timeline is a <button>, not a <div> with onClick:
+   without that it cannot be reached by Tab and has no pressed state to announce.
+   .aal-row is also used by the action rows, so this reset is pinned to the
+   button element alone and leaves the others untouched. */
+button.aal-row {
+  width: 100%;
+  border: none;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+}
+button.aal-row:focus-visible {
+  outline: 2px solid var(--accent, #2f81f7);
+  outline-offset: 1px;
+}
+
+/* The agent timeline WHILE it runs: bounded height, scrolling itself, with a
+   faded top edge so it is clear there is more above. The class is dropped once
+   the run ends — a finished run is shown whole, not peered at through a small
+   window. */
+.aal-mengalir {
+  max-height: 240px;
+  overflow-y: auto;
+  scroll-behavior: smooth;
+  -webkit-mask-image: linear-gradient(to bottom, transparent, #000 16px);
+  mask-image: linear-gradient(to bottom, transparent, #000 16px);
+}
+@media (prefers-reduced-motion: reduce) {
+  .aal-mengalir {
+    scroll-behavior: auto;
+  }
+}
+
+/* ── A form the agent asked for ──
+   Deliberately built from the browser's own controls: a real select and a real
+   checkbox are keyboard-reachable and announced by a screen reader without one
+   extra line of code, and nothing here is special enough to trade that away for
+   appearance. */
+.hitl-form {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  margin: 12px 0 4px;
+  max-height: 320px;
+  overflow-y: auto;
+}
+.hitl-field {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  font-size: 12px;
+  color: var(--text-soft, #8b949e);
+}
+.hitl-field-label {
+  font-weight: 500;
+}
+.hitl-wajib {
+  color: #d29922;
+}
+.hitl-field input[type="text"],
+.hitl-field input[type="number"],
+.hitl-field select {
+  background: var(--surface-2, #161b22);
+  border: 1px solid var(--line, #30363d);
+  border-radius: 5px;
+  color: var(--text, #e6edf3);
+  font: inherit;
+  font-size: 12.5px;
+  padding: 5px 8px;
+  outline: none;
+}
+.hitl-field input:focus-visible,
+.hitl-field select:focus-visible {
+  border-color: var(--accent, #2f81f7);
+}
+.hitl-field input[type="checkbox"] {
+  width: 15px;
+  height: 15px;
+  align-self: flex-start;
+  accent-color: var(--accent, #2f81f7);
+}
+/* A disabled submit button must LOOK disabled — otherwise people press it
+   repeatedly and conclude the form is broken. */
+.hitl-btn-submit:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+
+/* ── A diagram, seen whole ──
+   The in-chat canvas uses overflow-x: auto, so anything wider than the column
+   can only be read a piece at a time — and a flowchart is exactly the kind of
+   picture that is useless in pieces. This is the full-window layer. */
+.diag-lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 80;
+  background: rgba(2, 4, 8, 0.88);
+  display: flex;
+  flex-direction: column;
+}
+.diag-bar {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  padding: 8px 12px;
+  color: var(--text-muted, #8b949e);
+  font-size: 11.5px;
+  flex: none;
+}
+.diag-hint {
+  margin-right: auto;
+}
+.diag-tutup {
+  border: 1px solid var(--line, #30363d);
+  border-radius: 5px;
+  background: transparent;
+  color: var(--text-muted, #8b949e);
+  font: inherit;
+  font-size: 12px;
+  padding: 2px 9px;
+  cursor: pointer;
+}
+.diag-tutup:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text, #e6edf3);
+}
+/* The STAGE catches the drag, not the picture: an <svg> swallows the pointer on
+   its own paths, and a drag would stutter at every node. */
+.diag-panggung {
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+  display: grid;
+  place-items: center;
+  cursor: grab;
+  user-select: none;
+}
+.diag-panggung:active {
+  cursor: grabbing;
+}
+.diag-isi {
+  transform-origin: center center;
+  /* Without this, dragging over the picture selects SVG text instead of panning. */
+  pointer-events: none;
+}
+.diag-isi svg {
+  max-width: none !important;
+  max-height: none !important;
+  /* ── THE CANVAS IS THE STAGE, NOT THE DRAWING ──
+     An <svg> clips its content at its own viewport. A box dragged past that
+     edge is not covered, it is GONE — which from the user's side looks like it
+     was swallowed by an invisible boundary. Measured: a box moved 400 units
+     down-right was still on screen, but elementFromPoint at its centre hit
+     .diag-panggung, because the box was simply not drawn. With visible, a box
+     reached all five test targets to the pixel, including 4px from the stage's
+     bottom edge. The only thing that clips now is .diag-panggung — which is
+     the canvas. */
+  overflow: visible;
+}
+/* ── Two drag targets on one canvas ──
+   The drawing is `pointer-events: none` (the rule above) so a drag on the
+   background falls through to the stage and pans everything. A box turns the
+   pointer back on for itself, so a drag on a box moves only that box. Boxes
+   only: edges, labels and background stay transparent to the pointer, because
+   a line has no independent position to be moved to. */
+.diag-isi svg g.node {
+  pointer-events: all;
+  cursor: grab;
+}
+.diag-isi svg g.node:active {
+  cursor: grabbing;
+}
+
+/* ── A diagram in the chat: medium, not tall ──
+   Diagrams used to render at whatever height dagre decided — nine hundred
+   pixels was ordinary — so the first thing a reader met was a picture that had
+   to be scrolled before it could be recognised. It is now scaled whole into a
+   medium box, with full size one click away.
+
+   360px was chosen so a typical chart fits entirely without pushing the
+   conversation below it off screen. */
+.mermaid-canvas svg {
+  width: 100%;
+  height: auto;
+  max-height: 360px;
+}
+
+/* A stage filled by a live component (the cytoscape graph). It handles its own
+   pointer and zoom, so there is no transform and no 'grab' cursor here to fight
+   it for the pointer. */
+.diag-panggung.diag-hidup {
+  display: block;
+  cursor: default;
+  padding: 8px 12px 12px;
+}
+.diag-panggung.diag-hidup > * {
+  height: 100%;
 }

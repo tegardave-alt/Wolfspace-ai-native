@@ -1,11 +1,18 @@
 "use strict";
 /**
- * ── A Debug Adapter Protocol client ──
+ * dap.ts — a Debug Adapter Protocol client: the EDITOR side of a debug session.
  *
- * DAP is the standard language between an editor and a debugger — the same open
- * specification (MIT, from Microsoft) VS Code uses. This file is the EDITOR
- * side: it talks to an adapter process (debugpy, js-debug, dlv dap) and turns
- * its messages into promises and events.
+ * ROLE IN THE SYSTEM. DAP is the open specification (MIT, from Microsoft) that
+ * VS Code uses between an editor and a debugger. This file talks to an adapter
+ * process — debugpy, js-debug, dlv dap — and turns its messages into promises
+ * and events. It holds no session state; that is core/dap-sesi.ts.
+ *
+ * The wire format is identical to LSP (JSON-RPC over stdio with Content-Length
+ * framing), so core/lsp.ts is worth reading alongside it.
+ *
+ * CONNECTS TO
+ *   imports  child_process only
+ *   used by  core/dap-sesi.ts
  *
  * WHY IT EXISTS. The previous debug path read TEXT from a PTY: wait for a
  * `debug>`/`(Pdb)` prompt to appear, then infer the state from it. That worked,

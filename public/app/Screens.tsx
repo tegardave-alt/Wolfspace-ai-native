@@ -1,7 +1,11 @@
-// Screens — extracted from app.tsx (see public/app.tsx for the App
-// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.tsx (prepended), then Babel once -> a single global scope. Function
-// bodies (hooks/React/SB) run at render time.
+// Screens.tsx — the full-window screens, chiefly ProjectPickerScreen: the first
+// thing WOLFSPACE shows.
+//
+// ROLE IN THE SYSTEM. A screen here covers everything else (the picker is
+// position:fixed at a very high layer), so anything that must appear over one —
+// a modal, a panel — has to be above it too, not merely later in the DOM.
+//
+// See public/app.tsx for how the renderer is assembled.
 
 function PickerFolderIcon({ size = 15 }: any) {
   return React.createElement(
@@ -228,8 +232,15 @@ function ProjectPickerScreen({
   }, []);
   const [dropOpen, setDropOpen] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [showGithub, setShowGithub] = useState(false);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<any[]>([]);
+  // Files dragged in from an editor tab. SEPARATE from `attachments` on
+  // purpose — see the note above fileRefDari in Components.tsx: an upload needs
+  // an att_… handle, a file already in the workspace needs a path, and mixing
+  // them would send the agent to read a copy of the file it is looking at.
+  const [fileRefs, setFileRefs] = useState<any[]>([]);
+  const [seretMasuk, setSeretMasuk] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMcpMenu, setShowMcpMenu] = useState(false);
   const [pickerEffort, setPickerEffort] = useState(() => {
@@ -290,6 +301,10 @@ function ProjectPickerScreen({
     return () =>
       window.removeEventListener("wolfspace_mcp_changed", loadPickerMcp);
   }, [loadPickerMcp]);
+
+  // The same gap as the composer's list, closed the same way and by the same
+  // helper — two copies of this would be the drift this repo keeps paying for.
+  useMcpMenunggu(pickerMcp, loadPickerMcp);
 
   const [showPickerMcpInput, setShowPickerMcpInput] = useState(false);
   const [pickerMcpInputUrl, setPickerMcpInputUrl] = useState("");
@@ -591,7 +606,7 @@ function ProjectPickerScreen({
     setAttachments((prev: any) => prev.filter((a: any) => a.id !== id));
   const submit = () => {
     const v = text.trim();
-    if (!v && attachments.length === 0) return;
+    if (!v && attachments.length === 0 && fileRefs.length === 0) return;
     let fullText = v;
     if (attachments.length > 0) {
       // A HANDLE, not a path — the full reasoning is in Components.tsx. The
@@ -622,8 +637,12 @@ function ProjectPickerScreen({
     // The THIRD argument separates what the user sees from what is sent to the
     // model — the same as Composer. Without it, the attachment lines and their
     // att_… handles land raw in the first chat bubble.
+    // The referenced files are appended LAST, after any attachment lines, so
+    // the two blocks stay legible as two separate things.
+    fullText = gabungDenganRef(fullText, fileRefs);
     onStart(fullText, chosenPath, {
       text: v,
+      fileRefs: fileRefs.map((r: any) => ({ name: r.name, path: r.path })),
       attachments: attachments.map((a: any) => ({
         name: a.name,
         size: a.size,
@@ -1475,45 +1494,53 @@ function ProjectPickerScreen({
               </div>
             </div>
           )}
-          <div className="picker-input-area">
-            {attachments.length > 0 && (
-              <div
-                className="composer-attachments"
-                style={{ paddingBottom: "10px" }}
-              >
+          <div
+            className={
+              "picker-input-area" + (seretMasuk ? " komposer-terima" : "")
+            }
+            onDragOver={(e: any) => {
+              // Without preventDefault the browser refuses the drop and the
+              // whole gesture silently does nothing — the same trap the tab
+              // strip documents.
+              if (!e.dataTransfer.types.includes(DRAG_JENIS_BERKAS)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+              setSeretMasuk(true);
+            }}
+            onDragLeave={(e: any) => {
+              // Only when the pointer leaves the whole area, not when it
+              // crosses onto a child: dragleave fires for those too, and the
+              // outline would flicker on every internal boundary.
+              if (!e.currentTarget.contains(e.relatedTarget))
+                setSeretMasuk(false);
+            }}
+            onDrop={(e: any) => {
+              const ref = fileRefDariDrop(e.dataTransfer);
+              setSeretMasuk(false);
+              if (!ref) return;
+              e.preventDefault();
+              setFileRefs((prev: any) => tambahFileRef(prev, ref));
+            }}
+          >
+            {(attachments.length > 0 || fileRefs.length > 0) && (
+              <div className="composer-attachments">
+                {fileRefs.map((r: any) => (
+                  <AttachmentChip
+                    key={r.id}
+                    att={r}
+                    onRemove={(x: any) =>
+                      setFileRefs((prev: any) =>
+                        prev.filter((y: any) => y.id !== x.id),
+                      )
+                    }
+                  />
+                ))}
                 {attachments.map((a: any) => (
-                  <div key={a.id} className="composer-attachment-item">
-                    {a.previewUrl ? (
-                      <img
-                        src={a.previewUrl}
-                        className="composer-attachment-icon"
-                        alt=""
-                      />
-                    ) : (
-                      <div className="composer-attachment-icon">
-                        {a.name.slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                    <div
-                      className="composer-attachment-name"
-                      style={{
-                        fontSize: "9px",
-                        width: "100%",
-                        textAlign: "center",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {a.name}
-                    </div>
-                    <button
-                      className="composer-attachment-remove"
-                      onClick={() => onRemoveAttachment(a.id)}
-                    >
-                      ×
-                    </button>
-                  </div>
+                  <AttachmentChip
+                    key={a.id}
+                    att={a}
+                    onRemove={(x: any) => onRemoveAttachment(x.id)}
+                  />
                 ))}
               </div>
             )}
@@ -1535,16 +1562,35 @@ function ProjectPickerScreen({
               }}
             />
             <div className="picker-toolbar">
-              <button
-                className={"picker-plus-btn" + (menu ? " open" : "")}
-                onClick={() => setMenu((m: any) => !m)}
-              >
-                <PickerPlusIcon />
-              </button>
+              {/* GROUPED, because this toolbar is space-between with two direct
+                  children. A third one would have been spread to the middle
+                  rather than placed beside the first. */}
+              <div className="picker-kiri">
+                <button
+                  className={"picker-plus-btn" + (menu ? " open" : "")}
+                  onClick={() => setMenu((m: any) => !m)}
+                >
+                  <PickerPlusIcon />
+                </button>
+                <button
+                  className="picker-plus-btn picker-github"
+                  title="GitHub"
+                  onClick={() => setShowGithub((v: any) => !v)}
+                >
+                  <Icon.githubMark width={18} height={18} />
+                </button>
+              </div>
+              {showGithub ? (
+                <GithubPanel onClose={() => setShowGithub(false)} />
+              ) : null}
               <button
                 className="picker-send-btn"
                 onClick={submit}
-                disabled={!text.trim() && attachments.length === 0}
+                disabled={
+                  !text.trim() &&
+                  attachments.length === 0 &&
+                  fileRefs.length === 0
+                }
               >
                 <PickerSendIcon />
               </button>
@@ -1637,10 +1683,65 @@ const SHELL_PILIHAN = [
 // style hints. `kunci` matches the severity word tsc prints, so the rows filter
 // without a translation table in between.
 const TINGKAT_INFO = [
-  { kunci: "error", ikon: "⊗", judul: "Errors", warna: "#f85149" },
-  { kunci: "warning", ikon: "⚠", judul: "Warnings", warna: "#e3b341" },
-  { kunci: "info", ikon: "ⓘ", judul: "Info", warna: "#58a6ff" },
+  // No `ikon` field: the shapes are DRAWN by IkonTingkat. A glyph is whatever
+  // the font decides, and the three arrived at different optical sizes.
+  { kunci: "error", judul: "Errors", warna: "#f85149" },
+  { kunci: "warning", judul: "Warnings", warna: "#e3b341" },
+  { kunci: "info", judul: "Info", warna: "#58a6ff" },
 ];
+
+/**
+ * The severity icons, drawn rather than typed.
+ *
+ * They used to be the characters ⊗ ⚠ ⓘ. A glyph is whatever the font decides:
+ * the three arrived at different optical sizes and weights, so a row of them
+ * read as ragged even before anyone tried to compare the numbers beside them.
+ * These are the same three shapes VS Code uses, at one stroke width, on one
+ * baseline.
+ */
+function IkonTingkat({ jenis, kecil }: any) {
+  const n = kecil ? 12 : 15;
+  const bersama = {
+    width: n,
+    height: n,
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  if (jenis === "error")
+    return (
+      <svg {...bersama}>
+        <circle cx="8" cy="8" r="6.25" />
+        <path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" />
+      </svg>
+    );
+  if (jenis === "warning")
+    return (
+      <svg {...bersama}>
+        <path d="M8 2.4L14.4 13.2H1.6z" />
+        <path d="M8 6.4v3.1" />
+        <path d="M8 11.4h.01" />
+      </svg>
+    );
+  if (jenis === "info")
+    return (
+      <svg {...bersama}>
+        <circle cx="8" cy="8" r="6.25" />
+        <path d="M8 7.3v3.4" />
+        <path d="M8 5.1h.01" />
+      </svg>
+    );
+  // "All": a stack, because that is what the row stands for.
+  return (
+    <svg {...bersama}>
+      <path d="M2.6 4.6h10.8M2.6 8h10.8M2.6 11.4h10.8" />
+    </svg>
+  );
+}
 
 /**
  * The workspace root, from whichever shape the caller holds it in.
@@ -2519,9 +2620,18 @@ function VSCodeTerminal({
               ).map((t) => (
                 <span
                   key={t.kunci}
-                  style={{ fontSize: "10px", color: t.warna }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "3px",
+                    fontSize: "10.5px",
+                    fontVariantNumeric: "tabular-nums",
+                    color: t.warna,
+                  }}
                 >
-                  {t.ikon}{" "}
+                  {/* The SAME icon the rail draws. Two sources for one symbol
+                      is how the tab and the panel would come to disagree. */}
+                  <IkonTingkat jenis={t.kunci} kecil />
                   {infoDiag.filter((d: any) => d.severity === t.kunci).length}
                 </span>
               ))}
@@ -3305,57 +3415,55 @@ function VSCodeTerminal({
             minHeight: 0,
           }}
         >
-          <div
-            style={{
-              width: "56px",
-              flexShrink: 0,
-              borderRight: "1px solid var(--line, #1f2733)",
-              display: "flex",
-              flexDirection: "column",
-              padding: "6px 0",
-              gap: "2px",
-              background: "var(--surface-1, #0f1318)",
-            }}
-          >
-            {TINGKAT_INFO.map((t) => {
-              const jml = infoDiag.filter(
-                (d: any) => d.severity === t.kunci,
-              ).length;
-              const aktif = infoSaring === t.kunci;
-              return (
-                <button
-                  key={t.kunci}
-                  className="btn-reset"
-                  title={t.judul + " (" + jml + ")"}
-                  onClick={() => setInfoSaring(aktif ? "all" : t.kunci)}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "1px",
-                    padding: "6px 0",
-                    borderLeft: aktif
-                      ? "2px solid " + t.warna
-                      : "2px solid transparent",
-                    background: aktif ? "rgba(255,255,255,0.05)" : "none",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  <span style={{ fontSize: "14px", color: t.warna }}>
-                    {t.ikon}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: jml ? "#c9d1d9" : "#6e7681",
-                    }}
+          {/* ── THE SEVERITY RAIL ──
+              It used to be a 56px column of a text glyph over a bare number,
+              with the name only in a tooltip: three near-identical stacks, and
+              nothing on screen saying which was which. Now each row names
+              itself, the count is the largest thing in it, and a row with
+              nothing in it says so by fading rather than by looking the same
+              as the others. */}
+          <div className="info-rail">
+            {(() => {
+              const hitung = (k: string) =>
+                k === "all"
+                  ? infoDiag.length
+                  : infoDiag.filter((d: any) => d.severity === k).length;
+              const baris = [
+                { kunci: "all", judul: "All", warna: "var(--text-muted)" },
+                ...TINGKAT_INFO,
+              ];
+              return baris.map((t: any) => {
+                const jml = hitung(t.kunci);
+                const aktif = infoSaring === t.kunci;
+                return (
+                  <button
+                    key={t.kunci}
+                    type="button"
+                    className={
+                      "info-rail-baris" +
+                      (aktif ? " aktif" : "") +
+                      (jml ? "" : " nol")
+                    }
+                    style={{ ["--warna-tingkat" as any]: t.warna }}
+                    aria-pressed={aktif}
+                    title={
+                      jml + " " + t.judul.toLowerCase() + " — click to filter"
+                    }
+                    onClick={() =>
+                      setInfoSaring(
+                        aktif && t.kunci !== "all" ? "all" : t.kunci,
+                      )
+                    }
                   >
-                    {jml}
-                  </span>
-                </button>
-              );
-            })}
+                    <span className="info-rail-ikon">
+                      <IkonTingkat jenis={t.kunci} />
+                    </span>
+                    <span className="info-rail-jml">{jml}</span>
+                    <span className="info-rail-nama">{t.judul}</span>
+                  </button>
+                );
+              });
+            })()}
           </div>
           <div
             style={{
@@ -3403,7 +3511,7 @@ function VSCodeTerminal({
                 .map((d: any, i: any) => {
                   const t = TINGKAT_INFO.find((x) => x.kunci === d.severity);
                   const warna = t ? t.warna : "#58a6ff";
-                  const ikon = t ? t.ikon : "ⓘ";
+                  const jenis = t ? t.kunci : "info";
                   return (
                     <div
                       key={i}
@@ -3417,8 +3525,16 @@ function VSCodeTerminal({
                         borderBottom: "1px solid rgba(255,255,255,0.03)",
                       }}
                     >
-                      <span style={{ color: warna, flexShrink: 0 }}>
-                        {ikon}
+                      <span
+                        style={{
+                          color: warna,
+                          flexShrink: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          height: "18px",
+                        }}
+                      >
+                        <IkonTingkat jenis={jenis} kecil />
                       </span>
                       <span style={{ minWidth: 0 }}>
                         <span style={{ color: "#58a6ff" }}>
@@ -3444,9 +3560,184 @@ function VSCodeTerminal({
                 </div>
               )}
             </div>
+            <LanguageServerBar akar={akarProyek(selectedProject)} />
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * ── Which language servers this machine actually has ──
+ *
+ * WHY IT EXISTS. The LSP client shipped with a registry covering nine
+ * languages and no way whatsoever to see it, and the first question it produced
+ * was "why is the LSP only for TypeScript?" — asked about a machine that had no
+ * server installed at all, TypeScript included. The feature was working exactly
+ * as designed and looked like it supported one language.
+ *
+ * A panel that reports "not installed" and stops is a dead end, so every row
+ * that is missing carries the command that installs it, ready to copy. Nothing
+ * here installs anything: see the note at the top of core/lsp-session.ts.
+ */
+function LanguageServerBar({ akar }: any) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState("");
+
+  const muat = async () => {
+    setBusy(true);
+    try {
+      const r = await wwApi(
+        "/lsp/status?root=" + encodeURIComponent(akar || ""),
+      );
+      setRows(r && r.ok ? r.servers || [] : []);
+    } catch (_) {
+      setRows([]);
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Re-read on every open, not once: the whole point is that installing a
+  // server while the app is running should show up here without a restart.
+  useEffect(() => {
+    muat();
+  }, [akar]);
+
+  if (!rows.length) return null;
+  const ada = rows.filter((r: any) => r.available);
+  const salin = (teks: string) => {
+    try {
+      navigator.clipboard.writeText(teks);
+      setCopied(teks);
+      setTimeout(() => setCopied((c) => (c === teks ? "" : c)), 1800);
+    } catch (_) {}
+  };
+
+  return (
+    <div style={{ borderTop: "1px solid #21262d", flexShrink: 0 }}>
+      <button
+        className="btn-reset"
+        onClick={() => {
+          setOpen((o) => !o);
+          if (!open) muat();
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          width: "100%",
+          padding: "6px 10px",
+          fontSize: "11.5px",
+          color: "#8b949e",
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        <span
+          style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            background: ada.length ? "#3fb950" : "#6b7280",
+            flexShrink: 0,
+          }}
+        />
+        <span>Language servers</span>
+        <span style={{ color: "#6b7280" }}>
+          {busy
+            ? "checking…"
+            : ada.length + " of " + rows.length + " installed"}
+        </span>
+        <span style={{ flex: 1 }} />
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#6b7280"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform .15s",
+          }}
+        >
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      {open && (
+        <div
+          style={{ maxHeight: "168px", overflowY: "auto", padding: "0 0 6px" }}
+        >
+          {rows.map((r: any) => (
+            <div
+              key={r.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "4px 10px 4px 24px",
+                fontSize: "11.5px",
+              }}
+            >
+              <span
+                style={{
+                  color: r.available ? "#3fb950" : "#4b5563",
+                  flexShrink: 0,
+                  width: "10px",
+                }}
+              >
+                {r.available ? "●" : "○"}
+              </span>
+              <span style={{ color: "#c9d1d9", minWidth: "112px" }}>
+                {r.label}
+              </span>
+              {r.available ? (
+                <span
+                  style={{
+                    color: "#6b7280",
+                    fontFamily: "ui-monospace, monospace",
+                  }}
+                >
+                  {r.command}
+                  {/* RUNNING BUT SILENT IS ITS OWN STATE. A server can be up,
+                      answering hover and definition, and still publishing no
+                      diagnostics because it has not finished reading the
+                      project — measured at four minutes on a large folder.
+                      Without this the editor looks broken while every part of
+                      it works. */}
+                  {r.running
+                    ? r.published
+                      ? " · running"
+                      : " · indexing… (" +
+                        r.upSeconds +
+                        "s, no diagnostics yet)"
+                    : ""}
+                </span>
+              ) : (
+                <button
+                  className="btn-reset"
+                  title="Copy the install command"
+                  onClick={() => salin(r.install)}
+                  style={{
+                    color: copied === r.install ? "#3fb950" : "#6b7280",
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  {copied === r.install ? "copied" : r.install}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

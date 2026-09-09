@@ -2,7 +2,27 @@
 // this file can itself be an entry point — tests require it directly, and
 // `node -e` subprocesses load it without ever going through server.cjs.
 require("../../scripts/ts-register.cjs");
-// Tool aggregator - imports all sub-modules and provides runSelfTool dispatcher
+// index.ts — THE tool registry: every tool the agent can call is defined,
+// dispatched and guarded from here.
+//
+// ROLE IN THE SYSTEM. runSelfTool() is the single entry point, and both
+// orchestrators go through it — agent/self_agent.ts (the JS loop) and
+// agent/python-agent.ts (the Python graph). That is what makes a tool run
+// inside the same containment, through the same broker, into the same audit
+// ledger whichever one asked. A security boundary that depended on the calling
+// path would be no boundary at all.
+//
+// CONNECTS TO
+//   tool modules  ./file-tools, ./exec-tools, ./disk-tools, ./git-tool,
+//                 ./web-tools, ./sandbox-tools, ./net-diag, ./gen3d-tools,
+//                 and ./arch-tools (loaded lazily, so one broken module costs
+//                 one tool rather than the whole registry)
+//   containment   ../sandbox, ../sandbox-policy, ./bash-jail,
+//                 ./appcontainer-jail, ./wsl-jail
+//   memory        ../temuan (findings are written here, inside the dispatcher,
+//                 so both orchestrators record them without either doing it)
+//   external      ../mcp-client, which adds the MCP servers' tools alongside
+//   used by       agent/tools.ts, and through it both agent loops
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
@@ -776,6 +796,95 @@ async function _brokeredFileOp(name, args, wsRoot) {
 }
 
 // ── Core tool dispatcher ──
+/**
+ * ── THE CHECKPOINT THE TIMELINE CAN ACTUALLY RESTORE ──
+ *
+ * There are TWO backup mechanisms in this repo and they are not the same thing:
+ *
+ *   qBackup() in server.ts   copies into _agent_backups/bak-<iso>/ and emits
+ *                            t:"backup" with that DIRECTORY. It has no
+ *                            _meta.json and is not registered anywhere, so
+ *                            POST /api/rollback answers "not found" for it —
+ *                            measured.
+ *   createSnapshot() here    writes .wolfspace/snapshots/<id>/ with metadata,
+ *                            and is exactly what /api/rollback restores.
+ *
+ * Only the second one can be offered to a user as "restore", so it is the one
+ * that gets an event. Emitted per snapshot rather than once per session,
+ * because that is how often it is taken: one before each edit.
+ */
+/**
+ * ── WHAT THE MODEL IS ALLOWED TO ASK FOR ──
+ *
+ * The model chooses WHAT to ask. It does NOT choose how the form looks, and
+ * that boundary is this function.
+ *
+ * Generative-UI systems hand component choice to the model; this deliberately
+ * does not. A schema the model fills in keeps the surface the app's own — the
+ * same set of field types every time, laid out by the app's own components —
+ * while still letting the agent ask for five specific things in one go instead
+ * of one flat question at a time.
+ *
+ * Everything here is a REFUSAL of something a model can plausibly emit: a field
+ * with no name, a type nobody implements, thirty fields, a label the width of a
+ * paragraph, `options` on something that is not a select. Anything unrecognised
+ * degrades to a text box rather than failing the whole form — a question that
+ * cannot be rendered is a run that stops for nothing.
+ */
+const FIELD_TYPES = ["text", "number", "select", "boolean"];
+const MAX_FIELDS = 8;
+
+function _normalizeFields(raw: any) {
+  if (!Array.isArray(raw)) return [];
+  const out: any[] = [];
+  const seen = new Set();
+  for (const f of raw) {
+    if (out.length >= MAX_FIELDS) break;
+    if (!f || typeof f !== "object") continue;
+    const nama = String(f.name || "")
+      .trim()
+      .slice(0, 40);
+    // No name means no answer can be attributed to it.
+    if (!nama || seen.has(nama)) continue;
+    seen.add(nama);
+    const tipe = FIELD_TYPES.includes(String(f.type)) ? String(f.type) : "text";
+    const opsi =
+      tipe === "select" && Array.isArray(f.options)
+        ? f.options
+            .map((o: any) => String(o).trim().slice(0, 80))
+            .filter(Boolean)
+            .slice(0, 12)
+        : [];
+    // A select with nothing to select from is a text box wearing a costume.
+    const tipeAkhir = tipe === "select" && !opsi.length ? "text" : tipe;
+    out.push({
+      name: nama,
+      label: String(f.label || nama)
+        .trim()
+        .slice(0, 120),
+      type: tipeAkhir,
+      options: opsi,
+      required: !!f.required,
+      placeholder: String(f.placeholder || "").slice(0, 80),
+    });
+  }
+  return out;
+}
+
+function _emitCheckpoint(emit: any, hasil: any, label: string) {
+  if (!emit || !hasil || !hasil.id) return;
+  try {
+    emit({
+      t: "checkpoint",
+      id: hasil.id,
+      label,
+      files: (hasil.files || []).length,
+    });
+  } catch (_) {
+    // A listener that throws must not take the edit down with it.
+  }
+}
+
 async function _runSelfToolInner(name, args, emit, context: any = {}) {
   try {
     // Check if required module is available before dispatching
@@ -1080,7 +1189,11 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
       }
 
       // Commit
-      createSnapshot([dest], "agent-edit: " + path.basename(dest));
+      _emitCheckpoint(
+        emit,
+        createSnapshot([dest], "agent-edit: " + path.basename(dest)),
+        "agent-edit: " + path.basename(dest),
+      );
       sbx.mirrorOut(path.basename(dest), dest);
       sbx.destroy();
 
@@ -1166,7 +1279,11 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
       }
 
       // Commit
-      createSnapshot([dest], "agent-edit-adv: " + path.basename(dest));
+      _emitCheckpoint(
+        emit,
+        createSnapshot([dest], "agent-edit-adv: " + path.basename(dest)),
+        "agent-edit-adv: " + path.basename(dest),
+      );
       sbx.mirrorOut(path.basename(dest), dest);
       sbx.destroy();
 
@@ -1258,7 +1375,11 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
 
       // Commit
       fs.mkdirSync(path.dirname(dest), { recursive: true });
-      createSnapshot([dest], "agent-write: " + path.basename(dest));
+      _emitCheckpoint(
+        emit,
+        createSnapshot([dest], "agent-write: " + path.basename(dest)),
+        "agent-write: " + path.basename(dest),
+      );
       sbx.mirrorOut(path.basename(dest), dest);
       sbx.destroy();
 
@@ -2055,16 +2176,27 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
     if (name === "question") {
       const q = args.question || "";
       const choices = args.choices || [];
+      const fields = _normalizeFields((args as any).fields);
       const choicesText = choices.length
         ? "\n\nSuggested answers:\n" +
           choices.map((c, i) => `${i + 1}. ${c}`).join("\n")
         : "";
+      const fieldsText = fields.length
+        ? "\n\nForm fields:\n" +
+          fields
+            .map(
+              (f: any) =>
+                `- ${f.name} (${f.type}${f.required ? ", required" : ""}): ${f.label}`,
+            )
+            .join("\n")
+        : "";
       return {
         ok: true,
-        output: `Question: ${q}${choicesText}`,
+        output: `Question: ${q}${choicesText}${fieldsText}`,
         needsAnswer: true,
         question: q,
         choices,
+        fields,
       };
     }
     if (name === "terminal_open") {
@@ -2154,6 +2286,33 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         (r) => ({ ok: true, output: r }),
         (e) => ({ ok: false, output: e.message }),
       );
+    if (name === "browser") {
+      // Gated like web_extract, and for a stronger reason: this one keeps a
+      // browser open across steps and can click and type, so it reaches further
+      // than a single read ever does.
+      const cc = require("../broker/commandchain.ts");
+      const adm = cc.periksa(cc.sesiRuleset(), "network:https");
+      if (!adm.allow) {
+        cc.catat({
+          capability: "network:https",
+          decision: "DENY",
+          reason: adm.alasan,
+          params: { tool: "browser", action: args.action, url: args.url },
+          kurungan: {
+            enforced: true,
+            mekanisme:
+              "genesis admission + destination guard (loopback/private refused)",
+          },
+        });
+        return { ok: false, output: "browser refused: " + adm.alasan };
+      }
+      return require("../web.ts")
+        .browserLangsung(args || {})
+        .then(
+          (r: any) => ({ ok: true, output: r }),
+          (e: any) => ({ ok: false, output: e.message }),
+        );
+    }
     if (name === "web_extract") {
       // Admission-gated, unlike web_fetch.
       //
@@ -2244,6 +2403,28 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         (context && context.workspaceRoot) ||
           process.env.WW_WORKSPACE_ROOT ||
           QROOT,
+      );
+    }
+    if (name === "github_repo") {
+      // NOT ADMISSION-GATED, and that is a decision rather than an omission:
+      // every operation here is a GET against a repository the user chose in
+      // the panel, with a token they signed in with themselves. There is no
+      // path argument that reaches this machine, nothing spawns, and nothing is
+      // written — so there is no authority here for a gate to withhold.
+      //
+      // The confinement that matters still holds: this cannot see any
+      // repository except the linked one, because owner/repo/branch come from
+      // github.json and not from the model.
+      const gh = require("../github.ts");
+      const a: any = args || {};
+      const op = String(a.operasi || "");
+      if (op === "pohon") {
+        return gh.daftarBerkas(a.jalur, Number(a.batas) || 400);
+      }
+      if (op === "baca") return gh.bacaBerkas(a.jalur);
+      if (op === "cari") return gh.cariKode(a.kueri, Number(a.batas) || 30);
+      throw new Error(
+        "unknown github_repo operation '" + op + "' — pohon, baca or cari",
       );
     }
     if (name === "net_diag") {
@@ -2437,10 +2618,72 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
   }
 }
 
+// ── POINTING AT THE ATTACHMENT INSTEAD OF LETTING THE SEARCH CONTINUE ────────
+//
+// The prompt now tells the agent that attached files are not on disk, but a
+// prompt is advice and a failed lookup is a fact. This is the fact: when a
+// workspace search fails AND the thing being searched for is the name of
+// something the user attached, the miss says so and hands over the id.
+//
+// It exists because the failure it catches is silent and self-reinforcing — a
+// miss looks like "wrong path", so the agent tries another path, and an
+// attached file usually came from outside the project folder so no path can
+// ever work. One line turns an unbounded search into one more call.
+//
+// STILL NO ADDRESS. This matches on the NAME the model already typed against
+// the NAME the user attached. It reveals nothing about where either lives, and
+// the bridge is still never given a path.
+const _CARI_BERKAS = ["read", "glob", "grep", "list"];
+
+function _petunjukLampiran(name: string, args: any, hasil: any) {
+  try {
+    if (!_CARI_BERKAS.includes(name)) return hasil;
+    const keluar =
+      hasil && typeof hasil.output === "string" ? hasil.output : "";
+    // Only on a MISS. Appending this to a successful read would be noise on
+    // every file the agent opens.
+    const meleset =
+      /no matching file|read failed|ENOENT|not found|no such file/i.test(
+        keluar,
+      );
+    if (!meleset) return hasil;
+    const diminta = String(
+      (args && (args.path || args.pattern || args.file || args.glob)) || "",
+    );
+    if (!diminta) return hasil;
+    const dasar = diminta.split(/[\\/]/).pop() || diminta;
+    if (!dasar) return hasil;
+    const lampiran = require("../attachment-bridge.ts").daftar();
+    const cocok = (Array.isArray(lampiran) ? lampiran : []).filter(
+      (a: any) => String(a.nama).toLowerCase() === dasar.toLowerCase(),
+    );
+    if (!cocok.length) return hasil;
+    return {
+      ...hasil,
+      output:
+        keluar +
+        "\n\nNOTE: '" +
+        dasar +
+        "' is ATTACHED to this conversation, not present in the workspace." +
+        " Stop searching the directory and read it with attachment_read id=" +
+        cocok.map((a: any) => a.id).join(" or id=") +
+        ".",
+    };
+  } catch (_) {
+    // A hint is a convenience. It must never turn a working tool call into a
+    // failed one.
+    return hasil;
+  }
+}
+
 async function runSelfTool(name, args, emit, context: any = {}) {
   const _t0 = performance.now();
   try {
-    return await _runSelfToolInner(name, args, emit, context);
+    return _petunjukLampiran(
+      name,
+      args,
+      await _runSelfToolInner(name, args, emit, context),
+    );
   } finally {
     const ms = performance.now() - _t0;
     if (ms >= 300 && global.__probe && global.__probe.say)
@@ -2449,6 +2692,7 @@ async function runSelfTool(name, args, emit, context: any = {}) {
 }
 
 module.exports = {
+  _normalizeFields,
   QROOT,
   Q_ALLOWED,
   Q_FORBID,

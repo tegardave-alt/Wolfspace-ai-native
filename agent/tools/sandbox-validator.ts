@@ -1,6 +1,14 @@
-// Sandbox Validator — semantic, intent-aware pre-execution safety layer for edit/write/bash
-// Intercepts destructive operations, validates in isolation before applying to repo
-// Supports LEXICAL (literal regex) + SEMANTIC (intent-based) matching
+// sandbox-validator.ts — the last check before an edit, write or command is
+// allowed to happen.
+//
+// ROLE IN THE SYSTEM. It reads INTENT, not just text: a lexical pass catches
+// literal destructive patterns, and a semantic pass catches the same intent
+// written differently. Whatever it lets through is still applied through the
+// snapshot engine, so this is the first of two safety nets, not the only one.
+//
+// CONNECTS TO
+//   imports  fs, path, child_process, ./file-tools (Q_FORBID, qSyntaxOk)
+//   used by  agent/tools/file-tools.ts, on every write
 import * as fs from "fs";
 import * as path from "path";
 import { execSync } from "child_process";

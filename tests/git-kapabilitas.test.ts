@@ -185,3 +185,188 @@ describe("perilaku nyata di repo ini", () => {
     expect(r.terkurungOs).toBe(false);
   });
 });
+
+// ── DIUJI DI REPO SUNGGUHAN, BUKAN DI REPO INI ───────────────────────────────
+//
+// Everything above runs against WOLFSPACE's own checkout, which means it can
+// only ever exercise READ operations — nothing may commit to the repo it is
+// testing. That is why three bugs lived here undisturbed:
+//
+//   1. `blame` had NEVER worked. Not once. git blame has no --no-color (only
+//      --color-lines and --color-by-age), so git answered
+//        error: ambiguous option: no-color
+//      and printed its usage. Every other operation takes --no-color happily,
+//      which is exactly why it was copied across without being tried — and no
+//      test above ever called blame.
+//
+//   2. A SUBFOLDER of a repository was refused. The check was
+//      fs.existsSync(ws + "/.git"), true only at the top of a repo. MEASURED:
+//        git -C <repo>/sub status --porcelain=v1 --branch  ->  ## master
+//        the tool                                          ->  "not a git repo"
+//      Open a package inside a monorepo and git vanished entirely.
+//
+//   3. `git add .` was impossible. _validasiBerkas refused rel === "" with
+//      "path di luar workspace: ." — untrue, and it left no way to stage a
+//      DELETION at all, since enumerating changed files cannot name a file that
+//      is gone.
+//
+// A throwaway repository in a temp folder fixes the gap: writes are safe there,
+// so the write half is finally reachable.
+describe("perilaku di repo sekali pakai", () => {
+  const os = require("os");
+  const { execFileSync } = require("child_process");
+  let dir = "";
+  // THE IDENTITY IS PINNED IN THE ENVIRONMENT, not only in git config.
+  //
+  // `git config user.name` is OUTRANKED by GIT_AUTHOR_NAME / GIT_COMMITTER_NAME
+  // when those are present, and inside a git hook they are: running this suite
+  // from .husky/pre-commit made the commit below carry the MACHINE's identity,
+  // and "blame actually works" then failed looking for "Uji" in output that
+  // read "tegar". The test was right about blame and wrong about who it could
+  // count on being the author.
+  //
+  // Reproduced directly: the same commit with GIT_AUTHOR_NAME set produces
+  // exactly the observed line. Setting both here makes the repo's identity a
+  // property of the test rather than of wherever it happens to run.
+  const ENV_UJI = {
+    ...process.env,
+    GIT_AUTHOR_NAME: "Uji",
+    GIT_AUTHOR_EMAIL: "uji@example.com",
+    GIT_COMMITTER_NAME: "Uji",
+    GIT_COMMITTER_EMAIL: "uji@example.com",
+  };
+  const g = (...a) =>
+    execFileSync("git", ["-C", dir, ...a], {
+      encoding: "utf8",
+      env: ENV_UJI,
+    });
+
+  beforeEach(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "uji-git-"));
+    g("init", "-q");
+    g("config", "user.email", "uji@example.com");
+    g("config", "user.name", "Uji");
+    fs.writeFileSync(path.join(dir, "a.txt"), "satu\ndua\n");
+    fs.mkdirSync(path.join(dir, "sub"));
+    fs.writeFileSync(path.join(dir, "sub", "b.txt"), "isi\n");
+    g("add", "-A");
+    g("commit", "-qm", "commit pertama");
+  });
+
+  test("blame actually works", async () => {
+    // The regression that mattered most: it answered git's usage text, every
+    // single time, and nothing noticed.
+    const r = await G.jalankan({ operasi: "blame", berkas: ["a.txt"] }, dir);
+    expect(r.ok).toBe(true);
+    expect(r.output).not.toMatch(/ambiguous option/);
+    expect(r.output).not.toMatch(/usage: git blame/);
+    // Real blame output names the author and the line.
+    expect(r.output).toMatch(/Uji/);
+    expect(r.output).toMatch(/satu/);
+  });
+
+  test("a subfolder of a repository is still that repository", async () => {
+    const r = await G.jalankan({ operasi: "status" }, path.join(dir, "sub"));
+    expect(r.ok).toBe(true);
+    expect(String(r.output)).toMatch(/^##/m);
+  });
+
+  test("a folder in no repository at all is still refused", async () => {
+    // The walk upward must not turn "no repo" into "some repo far above".
+    const kosong = fs.mkdtempSync(path.join(os.tmpdir(), "bukan-repo-"));
+    const r = await G.jalankan({ operasi: "status" }, kosong);
+    expect(r.ok).toBe(false);
+    expect(r.output).toMatch(/not inside a git repo/);
+  });
+
+  test("staging '.' works, and it is the only way to stage a deletion", async () => {
+    fs.unlinkSync(path.join(dir, "sub", "b.txt"));
+    fs.writeFileSync(path.join(dir, "c.txt"), "c\n");
+    const r = await G.jalankan({ operasi: "tambah", berkas: ["."] }, dir);
+    expect(r.ok).toBe(true);
+    const s = await G.jalankan({ operasi: "diff", bertahap: true }, dir);
+    expect(s.output).toMatch(/deleted file/);
+    expect(s.output).toMatch(/new file/);
+  });
+
+  test("'..' is still outside, whatever '.' now means", async () => {
+    const r = await G.jalankan({ operasi: "diff", berkas: [".."] }, dir);
+    expect(r.ok).toBe(false);
+    expect(r.output).toMatch(/di luar workspace/);
+  });
+
+  test("the write operations do what they say", async () => {
+    fs.writeFileSync(path.join(dir, "a.txt"), "satu\ndua\ntiga\n");
+    expect(
+      (await G.jalankan({ operasi: "tambah", berkas: ["a.txt"] }, dir)).ok,
+    ).toBe(true);
+    const c = await G.jalankan({ operasi: "commit", pesan: "kedua" }, dir);
+    expect(c.ok).toBe(true);
+    expect(c.output).toMatch(/1 file changed/);
+    const b = await G.jalankan({ operasi: "cabang_baru", ref: "fitur/x" }, dir);
+    expect(b.ok).toBe(true);
+    expect(g("rev-parse", "--abbrev-ref", "HEAD").trim()).toBe("fitur/x");
+  });
+
+  test("restore really discards", async () => {
+    fs.writeFileSync(path.join(dir, "a.txt"), "dirusak\n");
+    const r = await G.jalankan({ operasi: "pulihkan", berkas: ["a.txt"] }, dir);
+    expect(r.ok).toBe(true);
+    expect(fs.readFileSync(path.join(dir, "a.txt"), "utf8")).toMatch(/satu/);
+  });
+});
+
+describe("batas jumlah log", () => {
+  test("0 no longer means 20", () => {
+    // `Number(a.jumlah) || 20` turned 0 into 20 because 0 is falsy: a caller
+    // asking for none silently got the default.
+    expect(G._batasJumlah(0)).toBe(1);
+    expect(G._batasJumlah(-5)).toBe(1);
+  });
+
+  test("only an absent or unreadable value takes the default", () => {
+    expect(G._batasJumlah(undefined)).toBe(20);
+    expect(G._batasJumlah("abc")).toBe(20);
+    expect(G._batasJumlah(null)).toBe(20);
+    // Number("") and Number([]) are both 0, which would look like a request
+    // for none rather than an omission.
+    expect(G._batasJumlah("")).toBe(20);
+    expect(G._batasJumlah([])).toBe(20);
+  });
+
+  test("a number given is clamped, not replaced", () => {
+    expect(G._batasJumlah(1)).toBe(1);
+    expect(G._batasJumlah(7)).toBe(7);
+    expect(G._batasJumlah("7")).toBe(7);
+    expect(G._batasJumlah(99999)).toBe(200);
+    // A fraction cannot reach git's -n.
+    expect(G._batasJumlah(3.9)).toBe(3);
+  });
+});
+
+describe("blame tidak boleh memakai flag yang tak ada", () => {
+  const src = fs.readFileSync(
+    path.join(AKAR, "agent", "tools", "git-tool.ts"),
+    "utf8",
+  );
+
+  test("--no-color is gone from blame, and only from blame", () => {
+    // COMMENTS STRIPPED: the note left where the flag used to be quotes the
+    // flag and git's complaint about it, so matching the raw source would fail
+    // against the very record of the fix.
+    const KODE = src
+      .replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\s*\/\/.*$/gm, "");
+    const i = KODE.indexOf("  blame: {");
+    const blok = KODE.slice(i, KODE.indexOf("},", i));
+    expect(blok).not.toMatch(/--no-color/);
+    // The others genuinely accept it, so it must stay there.
+    expect(KODE.slice(KODE.indexOf("  diff: {"))).toMatch(/--no-color/);
+  });
+
+  test("the reason is written down where the flag used to be", () => {
+    // Otherwise it comes back the next time someone tidies the table.
+    const i = src.indexOf("  blame: {");
+    expect(src.slice(i, i + 900)).toMatch(/ambiguous option/);
+  });
+});
