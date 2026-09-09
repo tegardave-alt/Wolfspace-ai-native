@@ -276,6 +276,25 @@ jobs:
               process.exit(1);
             }
             console.log('  ok      agent/self_agent.ts (+ dependensinya)');
+            // KELUAR EKSPLISIT, dan ini bukan kerapian melainkan syarat.
+            //
+            // Langkah ini MEMBUKTIKAN rantai require bisa diselesaikan dari
+            // lokasi hasil paket. Tapi me-require server.ts BUKAN pemeriksaan
+            // murah: ia memanggil startJedi() di tingkat modul (server.ts),
+            // yang mencari Python lalu men-spawn jedi_worker.py sebagai proses
+            // persisten dengan stdio berpipa. Handle-nya terukur --
+            // { ChildProcess: 1, Socket: 3 } -- dan node tak akan pernah keluar
+            // selama itu hidup.
+            //
+            // Untuk SERVER itu benar: ia memang proses panjang umur. Untuk
+            // pemeriksaan ini tidak: skripnya selesai dalam 267 ms lalu
+            // menggantung sampai batas job. Terukur di CI: langkah ini memakan
+            // 2634 detik (44 menit) dan dibatalkan, sementara packaging-nya
+            // sendiri cuma 37 detik.
+            //
+            // Semua kegagalan di atas sudah exit(1) lebih dulu, jadi exit(0) di
+            // sini hanya menutup proses yang pekerjaannya memang sudah selesai.
+            process.exit(0);
           "
 
       # KREDENSIAL TIDAK BOLEH ADA DI DALAM PAKET.
