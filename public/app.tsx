@@ -827,6 +827,8 @@ function LogicCodePane({
   fokus,
   onFokus,
   onPecah,
+  // Given ONLY when the explorer is hidden — see the button in the tab bar.
+  onTampilkanExplorer,
   bisaPecah,
   sudahPecah,
   onTutupPecah,
@@ -1354,6 +1356,27 @@ function LogicCodePane({
           overflow: "hidden",
         }}
       >
+        {/* THE ONLY WAY BACK, so it lives OUTSIDE the panel it reopens.
+            Hiding the explorer removes it from the DOM, and a button inside it
+            would go with it — the first version collapsed to a 34px rail
+            precisely so the control survived, and the result was a panel
+            squeezed to the point of collision rather than one that was gone.
+            The tab bar is always here whenever the Logic panel is open, which
+            is exactly when an explorer could be wanted.
+
+            Shown ONLY while hidden: a permanent toggle beside the tabs would
+            compete with them for a bar that already scrolls. */}
+        {onTampilkanExplorer && (
+          <button
+            className="btn-reset editor-explorer-btn"
+            onClick={onTampilkanExplorer}
+            title="Show the explorer"
+            aria-label="Show the explorer"
+          >
+            <span aria-hidden="true">&#9656;</span>
+            <span>Explorer</span>
+          </button>
+        )}
         {/* ── Tab strip ──
             The open files, the way any editor shows them. It replaces the
             single filename that used to sit here: with several files open, one
@@ -1833,6 +1856,7 @@ function LogicFileTree({
   onBuatFolder,
   onHapus,
   onHapusFolder,
+  onSembunyi,
 }: any) {
   // The "Changes" tab was REMOVED. It always read "No changes." — it was never
   // wired to real data in the first place — so it was not a disabled feature
@@ -1898,6 +1922,7 @@ function LogicFileTree({
     }
   });
   const [lfResizing, setLfResizing] = React.useState(false);
+
   const handleLfResizerMouseDown = (e: any) => {
     e.preventDefault();
     e.stopPropagation();
@@ -2278,18 +2303,34 @@ function LogicFileTree({
           gap: "4px",
         }}
       >
-        <div style={{ display: "flex", gap: "16px", flex: 1 }}>
+        {/* THE LABEL IS THE CONTROL, and it is a real <button>. A <span> with
+            onClick cannot be reached by Tab and announces nothing to a screen
+            reader — the agent timeline in this repo was fixed for exactly that
+            reason. */}
+        <button
+          className="btn-reset lf-judul"
+          onClick={onSembunyi}
+          title="Hide the explorer"
+          style={{
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            flex: 1,
+            fontSize: "13px",
+            padding: "9px 0",
+            color: "#e6edf3",
+            cursor: "pointer",
+            borderBottom: "2px solid #4c8bf5",
+          }}
+        >
           <span
-            style={{
-              fontSize: "13px",
-              padding: "9px 0",
-              color: "#e6edf3",
-              borderBottom: "2px solid #4c8bf5",
-            }}
+            aria-hidden="true"
+            style={{ fontSize: "10px", color: "#6f7d92" }}
           >
-            Files
+            ▾
           </span>
-        </div>
+          <span>Explorer</span>
+        </button>
         <div
           style={{
             display: "flex",
@@ -2693,6 +2734,13 @@ function LogicFileTree({
                   color: n.type === "folder" ? "#cdd9e5" : "#adbac7",
                   fontSize: "13px",
                   whiteSpace: "nowrap",
+                  // A ROW NEVER WIDENS THE PANEL. The tree is a width the user
+                  // chose, so a long name has to be cut rather than pushing the
+                  // row past the panel holding it. minWidth:0 is what allows
+                  // that: a flex item's default minimum is its CONTENT, so
+                  // without it the row simply refuses to shrink.
+                  minWidth: 0,
+                  overflow: "hidden",
                   // The open file is marked PERSISTENTLY, not only on hover —
                   // without that, once the mouse moves nothing tells you which
                   // file the editor on the right belongs to.
@@ -2735,7 +2783,15 @@ function LogicFileTree({
                   {icon(n.type)}
                 </span>
                 <span
+                  // The title is what makes truncation acceptable: the full
+                  // name is one hover away rather than lost.
+                  title={n.name}
                   style={{
+                    // Both halves are needed. text-overflow only draws the
+                    // ellipsis once the element is ALLOWED to be narrower than
+                    // its text, and in a flex row that takes minWidth:0 here as
+                    // well as on the row above.
+                    minWidth: 0,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     color: tk ? tk.warna : undefined,
@@ -2909,6 +2965,32 @@ function App() {
   // only files the agent genuinely touched this session. Reset on workspace
   // change.
   const [devFiles, setDevFiles] = useState<any[]>([]);
+
+  // ── HIDING THE EXPLORER ───────────────────────────────────────────────────
+  //
+  // Hidden means NOT RENDERED, not narrow. The first attempt collapsed the
+  // panel to a 34px rail so its own button could survive to reopen it, and what
+  // that produced was a panel squeezed until its contents collided — the empty
+  // state's sentence wrapped one character per line. A rail is not a hidden
+  // panel, it is a broken one.
+  //
+  // So the panel goes entirely and the way back moves to the editor's tab bar,
+  // which is present whenever this panel is. The remembered WIDTH is untouched
+  // by any of this: it lives in its own key, so reopening restores the panel
+  // the user had rather than a default.
+  const [explorerSembunyi, setExplorerSembunyi] = useState(() => {
+    try {
+      return localStorage.getItem("wolfspace_explorer_sembunyi") === "1";
+    } catch (_) {
+      return false;
+    }
+  });
+  const putarExplorer = React.useCallback((sembunyi: boolean) => {
+    setExplorerSembunyi(sembunyi);
+    try {
+      localStorage.setItem("wolfspace_explorer_sembunyi", sembunyi ? "1" : "0");
+    } catch (_) {}
+  }, []);
   // Folders created by hand. Kept apart from devFiles because that list is
   // FILES: a folder with nothing in it would leave no trace there and would
   // vanish from the tree the moment it was created.
@@ -5256,62 +5338,65 @@ function App() {
                       tab group beside TERMINAL and DEBUG
                       — the same layout as VS Code. */}
                     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-                      <LogicFileTree
-                        files={devFiles}
-                        folders={devFolders}
-                        tanda={tandaBerkas}
-                        onImpor={(rels: any[]) =>
-                          setDevFiles((prev: any) =>
-                            prev.concat(
-                              rels.filter((r: any) => prev.indexOf(r) < 0),
-                            ),
-                          )
-                        }
-                        root={webProjectRoot(preview.url, selectedProject)}
-                        active={!!preview.url}
-                        terpilih={logicBerkas}
-                        onPilih={(rel: any, keSamping: any) =>
-                          keSamping ? bukaDiSamping(rel) : bukaTab(rel)
-                        }
-                        onHapus={(rel: any) => {
-                          // The file is gone from disk, so both the list and its
-                          // tab have to go with it. Leaving either behind means a
-                          // row that opens nothing and a tab that loads a 404.
-                          setDevFiles((prev: any) =>
-                            prev.filter((x: any) => x !== rel),
-                          );
-                          tutupTab(rel);
-                        }}
-                        onHapusFolder={(rel: any) => {
-                          // Everything under the folder is gone from disk, so it
-                          // has to go from both lists and from any open tab.
-                          // Leaving a child behind means a row that opens
-                          // nothing and a tab that loads a 404.
-                          const di = (x: any) =>
-                            x === rel || x.startsWith(rel + "/");
-                          setDevFiles((prev: any) => {
-                            prev.filter(di).forEach((x: any) => tutupTab(x));
-                            return prev.filter((x: any) => !di(x));
-                          });
-                          setDevFolders((prev: any) =>
-                            prev.filter((x: any) => !di(x)),
-                          );
-                        }}
-                        onBuatFolder={(rel: any) =>
-                          setDevFolders((prev: any) =>
-                            prev.includes(rel) ? prev : prev.concat(rel),
-                          )
-                        }
-                        onBuat={(rel: any) => {
-                          // devFiles is the list of files being worked on. A file
-                          // the user just created belongs in it, exactly like one
-                          // the agent wrote.
-                          setDevFiles((prev: any) =>
-                            prev.indexOf(rel) >= 0 ? prev : prev.concat(rel),
-                          );
-                          bukaTab(rel);
-                        }}
-                      />
+                      {!explorerSembunyi && (
+                        <LogicFileTree
+                          files={devFiles}
+                          folders={devFolders}
+                          tanda={tandaBerkas}
+                          onImpor={(rels: any[]) =>
+                            setDevFiles((prev: any) =>
+                              prev.concat(
+                                rels.filter((r: any) => prev.indexOf(r) < 0),
+                              ),
+                            )
+                          }
+                          root={webProjectRoot(preview.url, selectedProject)}
+                          active={!!preview.url}
+                          terpilih={logicBerkas}
+                          onPilih={(rel: any, keSamping: any) =>
+                            keSamping ? bukaDiSamping(rel) : bukaTab(rel)
+                          }
+                          onHapus={(rel: any) => {
+                            // The file is gone from disk, so both the list and its
+                            // tab have to go with it. Leaving either behind means a
+                            // row that opens nothing and a tab that loads a 404.
+                            setDevFiles((prev: any) =>
+                              prev.filter((x: any) => x !== rel),
+                            );
+                            tutupTab(rel);
+                          }}
+                          onSembunyi={() => putarExplorer(true)}
+                          onHapusFolder={(rel: any) => {
+                            // Everything under the folder is gone from disk, so it
+                            // has to go from both lists and from any open tab.
+                            // Leaving a child behind means a row that opens
+                            // nothing and a tab that loads a 404.
+                            const di = (x: any) =>
+                              x === rel || x.startsWith(rel + "/");
+                            setDevFiles((prev: any) => {
+                              prev.filter(di).forEach((x: any) => tutupTab(x));
+                              return prev.filter((x: any) => !di(x));
+                            });
+                            setDevFolders((prev: any) =>
+                              prev.filter((x: any) => !di(x)),
+                            );
+                          }}
+                          onBuatFolder={(rel: any) =>
+                            setDevFolders((prev: any) =>
+                              prev.includes(rel) ? prev : prev.concat(rel),
+                            )
+                          }
+                          onBuat={(rel: any) => {
+                            // devFiles is the list of files being worked on. A file
+                            // the user just created belongs in it, exactly like one
+                            // the agent wrote.
+                            setDevFiles((prev: any) =>
+                              prev.indexOf(rel) >= 0 ? prev : prev.concat(rel),
+                            );
+                            bukaTab(rel);
+                          }}
+                        />
+                      )}
                       {/* ── The editor groups ──
                           One row holding every group and the dividers between
                           them. Measured separately from the file tree so the
@@ -5343,6 +5428,14 @@ function App() {
                               tabsSemua={logicTabsSemua}
                               fokus={i === grupFokus}
                               banyakGrup={logicGrup.length > 1}
+                              onTampilkanExplorer={
+                                // Only the FIRST group offers it. With the area
+                                // split, three panes each showing the same
+                                // button would be three ways to do one thing.
+                                explorerSembunyi && i === 0
+                                  ? () => putarExplorer(false)
+                                  : null
+                              }
                               bisaPecah={logicGrup.length < MAKS_GRUP}
                               sudahPecah={logicGrup.length > 1}
                               onTutupPecah={tutupGrup}

@@ -173,6 +173,15 @@ function jalankan(cmd, root, opts: any = {}) {
       resolve({ ok: false, output: "gagal menjalankan jail: " + e.message });
     });
 
+    // A CHILD THAT DIES MID-WRITE MUST NOT KILL THIS PROCESS.
+    //
+    // `unshare` refuses outright on a kernel without the namespaces, or when
+    // the binary is missing — and the jail script written below is large, so
+    // the write is queued rather than instant. Reproduced: a write accepted and
+    // then failed raises `Error: write EOF` on the pipe (a Socket on Windows)
+    // with no listener, which server.ts rethrows, taking the backend with it.
+    // The resolve() paths above already report the failure properly.
+    child.stdin.on("error", () => {});
     child.stdin.write(_skripJail(jail, root, workdir, cmd));
     child.stdin.end();
   });

@@ -164,6 +164,85 @@ function uriToLocalPath(uri: any) {
   return s;
 }
 
+// ── A LOCATION MONACO CAN ACTUALLY OPEN ─────────────────────────────────────
+//
+// WHAT CRASHED. Go to Definition and Find All References handed Monaco a URI
+// and it asked its model service to open it:
+//
+//   Error: Model not found
+//     at f0.createModelReference (.../editor-*.js)
+//     at gs.resolve            (the references widget)
+//     at Ih.getChildren        (its tree)
+//
+// Nothing caught it, so it reached window.onerror and the app went into
+// Auto-Rollback. A peek widget took the whole UI down.
+//
+// THE CAUSE IS SIMPLE, and one theory about it was WRONG — recorded here
+// because the wrong one is the more plausible-sounding of the two.
+//
+//   THE REAL ONE: references point wherever a symbol is USED, and most of those
+//   files have never been opened. Monaco only has models for files the editor
+//   opened, so there was nothing to open and nothing created one.
+//
+//   THE ONE THAT WAS WRONG: that the URIs disagreed — the app registers models
+//   under monaco.Uri.file("C:/..."), a language server answers
+//   "file:///c%3A/Users/..." and this repo has already been bitten by exactly
+//   that difference (diagnostics stayed invisible until core/lsp-session.ts
+//   grew docKey()). Measured against the VENDORED Monaco rather than assumed,
+//   and it does not happen here: all four spellings a server might send —
+//   encoded or plain, upper- or lower-case drive — parse to the SAME string as
+//   Uri.file, and each one finds the model directly:
+//
+//     model terdaftar : file:///c%3A/Users/dave/.../Lsp.ts
+//     file:///c%3A/... -> KETEMU     file:///C%3A/... -> KETEMU
+//     file:///C:/...   -> KETEMU     file:///c:/...   -> KETEMU
+//
+//   Uri.parse normalises both the drive letter and the encoding itself. So no
+//   normalising is done here, because none is needed.
+
+/**
+ * A URI Monaco is guaranteed to be able to open, or null.
+ *
+ * Returning null rather than throwing is the point: a location that cannot be
+ * materialised is dropped from the list and the widget shows the rest. One
+ * unreadable file costs one row, not the application.
+ */
+async function pastikanModel(monaco: any, lspUri: any) {
+  const uri = monaco.Uri.parse(String(lspUri || ""));
+  if (!uri) return null;
+  if (monaco.editor.getModel(uri)) return uri;
+  // The path, not the URI: this is what the file-reading route wants.
+  const abs = uriToLocalPath(lspUri);
+  if (!abs) return null;
+  try {
+    const r = await fetch(
+      "/preview-file?raw=1&path=" + encodeURIComponent(abs),
+    );
+    if (!r.ok) return null;
+    const teks = await r.text();
+    // getModel AGAIN, and not out of caution: several locations in one result
+    // can name the same file, they are fetched concurrently, and createModel
+    // THROWS when the URI is already taken.
+    return (
+      monaco.editor.getModel(uri) ||
+      monaco.editor.createModel(teks, bahasaMonaco(abs), uri)
+    ).uri;
+  } catch (_) {
+    return null;
+  }
+}
+
+/** Locations turned into something the peek widget can open. */
+async function keLokasiMonaco(monaco: any, list: any[]) {
+  const hasil = await Promise.all(
+    list.map(async (l: any) => {
+      const uri = await pastikanModel(monaco, l.uri);
+      return uri ? { uri, range: toMonacoRange(l.range) } : null;
+    }),
+  );
+  return hasil.filter(Boolean);
+}
+
 // ── Talking to the backend ──────────────────────────────────────────────────
 
 async function lspPost(path: string, body: any) {
@@ -307,20 +386,14 @@ async function installLsp(monaco: any) {
   monaco.languages.registerDefinitionProvider(_lspLanguages, {
     provideDefinition: async (model: any, position: any) => {
       const list = toLocationList(await lspAsk(model, "definition", position));
-      return list.map((l) => ({
-        uri: monaco.Uri.parse(l.uri),
-        range: toMonacoRange(l.range),
-      }));
+      return await keLokasiMonaco(monaco, list);
     },
   });
 
   monaco.languages.registerReferenceProvider(_lspLanguages, {
     provideReferences: async (model: any, position: any) => {
       const list = toLocationList(await lspAsk(model, "references", position));
-      return list.map((l) => ({
-        uri: monaco.Uri.parse(l.uri),
-        range: toMonacoRange(l.range),
-      }));
+      return await keLokasiMonaco(monaco, list);
     },
   });
 

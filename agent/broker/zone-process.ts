@@ -648,7 +648,20 @@ function runInCapabilityZone(
       });
     }
 
-    // Satu cara mengirim, apa pun transportnya.
+    // ONE WAY TO SEND, whatever the transport is.
+    //
+    // THE try/catch BELOW IS NOT ENOUGH ON ITS OWN, and that is why the
+    // listener above exists. A write to a dying pipe is ACCEPTED and fails
+    // afterwards, in WriteWrap.onWriteComplete — nothing is thrown at this
+    // call site to be caught. Reproduced: `Error: write EOF` on the pipe (a
+    // Socket on Windows), unhandled, which server.ts rethrows and the whole
+    // backend stops. The try/catch still covers the synchronous case, where
+    // the stream is already destroyed.
+    // A zone that dies mid-write must not take the backend with it. Only the
+    // wsl branch pipes stdin; the other two leave it null, so this is guarded
+    // the same way the write below is.
+    if (wsl && child.stdin) child.stdin.on("error", () => {});
+
     const kirimKeZona = (msg) => {
       if (wsl) {
         try {

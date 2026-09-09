@@ -94,6 +94,34 @@ class LspClient extends EventEmitter {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    // A CHILD THAT DIES MID-WRITE MUST NOT KILL THIS PROCESS.
+    //
+    // REPRODUCED, not guessed: queue a large write into a child's stdin, let the
+    // child exit while that write is still in flight, and Node raises
+    //
+    //     Error: write EOF   errno -4095  syscall 'write'
+    //       at WriteWrap.onWriteComplete
+    //     Emitted 'error' event on Socket instance
+    //
+    // On Windows a stdio pipe IS a Socket, which is what that line names. With no
+    // 'error' listener it is an uncaught exception, and server.ts rethrows every one
+    // of those — so one dying child takes the whole backend down. It was seen exactly
+    // that way: the agent was running, and the process simply stopped.
+    //
+    // Writing after the child has ALREADY gone is harmless — the stream is destroyed
+    // and the write is dropped. The dangerous window is the write that gets accepted
+    // and then fails, which is why a listener is needed rather than a check.
+    //
+    // agent/mcp-client.ts has had this guard for a while; it was never applied here.
+    this.process.stdin.on("error", (e: any) => {
+      // Recorded the way stderr is, so a server dying mid-request is visible
+      // rather than silent — but it must never be thrown.
+      this._stderr = (
+        this._stderr +
+        "\n[stdin] " +
+        ((e && e.message) || e)
+      ).slice(-8000);
+    });
     this.process.stdout.on("data", (b: any) => this._receive(b));
     this.process.stderr.on("data", (b: any) => {
       const s = b.toString("utf8");

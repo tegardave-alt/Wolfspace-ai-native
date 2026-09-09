@@ -6134,3 +6134,59 @@ button.aal-row:focus-visible {
 .diag-panggung.diag-hidup > * {
   height: 100%;
 }
+
+/* ── The file tree, collapsed ──
+   One click on its own header puts the panel out of the way and gives the width
+   to the editor, the same idea as the left sidebar.
+
+   Everything BELOW the header is hidden by one rule rather than by four
+   conditionals in the JSX. The header is the first child while collapsed — the
+   resizer is not rendered then — so nth-child(n+2) is exactly "the body", and
+   it cannot drift out of step with the markup the way four separate checks
+   would. */
+.logic-filetree.ciut > *:nth-child(n + 2) {
+  display: none !important;
+}
+.logic-filetree.ciut {
+  /* No horizontal room to spare: a scrollbar here would be wider than the
+     content it scrolls. */
+  overflow: hidden;
+}
+.lf-judul {
+  background: none;
+  border: 0;
+  font: inherit;
+  color: inherit;
+}
+.lf-judul:hover {
+  color: #fff;
+}
+/* Keyboard focus must NOT disappear with the border that was removed when the
+   panel collapsed. */
+.lf-judul:focus-visible {
+  outline: 2px solid #4c8bf5;
+  outline-offset: -2px;
+  border-radius: 3px;
+}
+
+/* The way back to a hidden explorer, in the editor's tab bar. Sized and
+   coloured like the tabs beside it so it reads as part of that row rather than
+   as something bolted on. */
+.editor-explorer-btn {
+  display: flex;
+  align-items: center;
+  gap: 5px;
+  flex: none;
+  padding: 3px 8px;
+  border-radius: 4px;
+  font-size: 11.5px;
+  font-family: inherit;
+  color: #8b98ac;
+  background: transparent;
+  border: 1px solid #212a36;
+  cursor: pointer;
+}
+.editor-explorer-btn:hover {
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.05);
+}
