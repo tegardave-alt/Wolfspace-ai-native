@@ -57,6 +57,43 @@ const tanpaKomentar = (t: string) =>
 const bisaJalan = process.platform === "win32" && fs.existsSync(EXE);
 const bila = bisaJalan ? describe : describe.skip;
 
+// MELEWATI DIAM-DIAM ADALAH KEGAGALAN, DI CI.
+//
+// Kalau AcLaunch.exe tak terbangun, `bila` di atas menjadi describe.skip dan
+// seluruh berkas ini lulus tanpa menguji apa pun -- persis cara bug ini
+// bertahan begitu lama. Di mesin pengembang itu wajar: belum semua orang
+// menjalankan `npm run build:aclaunch`. Di CI tidak: langkah itu ada di ci.yml
+// justru supaya uji ini berjalan, dan hilangnya langkah tersebut harus terdengar.
+//
+// Dua penjaga di bawah ini ada karena log CI TIDAK BISA DIBACA tanpa
+// autentikasi (endpoint log menjawab 403 untuk permintaan anonim), jadi
+// "apakah ujinya benar-benar berjalan di sana" tak bisa diperiksa dengan mata.
+// Ia harus dijawab oleh ujinya sendiri.
+describe("penjaga ini tidak boleh menghilang tanpa suara", () => {
+  test("di CI Windows, peluncurnya WAJIB sudah terbangun", () => {
+    if (process.platform !== "win32" || !process.env.CI) {
+      expect(true).toBe(true); // bukan mesin yang dijanjikan apa-apa
+      return;
+    }
+    expect(bisaJalan).toBe(true);
+  });
+
+  test("job uji di ci.yml membangun peluncurnya", () => {
+    // Sumber kebenaran untuk janji di atas. Kalau langkah ini dicabut, uji
+    // mesin-bersih akan melewati dirinya sendiri di setiap run berikutnya.
+    const yml = baca(".github/workflows/ci.yml");
+    const i = yml.indexOf("Test & syntax");
+    expect(i).toBeGreaterThan(-1);
+    const jobUji = yml.slice(
+      i,
+      yml.indexOf("Build Electron") > i
+        ? yml.indexOf("Build Electron", i)
+        : yml.length,
+    );
+    expect(jobUji).toContain("npm run build:aclaunch");
+  });
+});
+
 let _sisa: string[] = [];
 
 /** Removes a profile this test created. Real cleanup, not best effort: these
