@@ -805,7 +805,20 @@ class MCPClient {
         });
       });
 
+      // THE SPAWN ERROR IS KEPT, for the same reason stderr is kept above: it
+      // used to be logged and then dropped, so the single most informative line
+      // never reached the person who needed it.
+      //
+      // MEASURED ON LINUX, because Windows hid the gap. There a missing command
+      // goes through cmd.exe, which writes "is not recognized" to stderr, and
+      // the stderr tail carried the reason. On Linux there is no shell in the
+      // path: spawn fails outright, stderr is EMPTY, and close reports code -2.
+      // So the whole report was "the server exited with code -2 before it was
+      // ready" -- a number, with the words `spawn npx ENOENT` sitting in the
+      // debug log where nobody would look.
+      let galatSpawn = "";
       proc.on("error", (err) => {
+        galatSpawn = String((err && err.message) || err || "");
         dlog("mcp", "error", `[MCP ${name} process error]`, {
           err: err.message,
         });
@@ -832,7 +845,9 @@ class MCPClient {
           sudahSelesai = true;
           const sebab = kata.length
             ? " — " + kata.slice(-4).join(" | ").slice(0, 500)
-            : "";
+            : galatSpawn
+              ? " — " + galatSpawn.slice(0, 300)
+              : "";
           reject(
             new Error(
               "the server exited with code " +

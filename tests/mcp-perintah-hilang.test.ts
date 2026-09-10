@@ -81,16 +81,31 @@ describe("perintah yang tak ada di PATH menjelaskan dirinya", () => {
   }, 60000);
 
   test("galat asli TETAP ada — penjelasan ditambahkan, bukan menggantikan", async () => {
-    // The stderr tail is what makes an unexpected failure diagnosable at all.
+    // The raw failure is what makes an UNEXPECTED one diagnosable at all.
     // Replacing it with a friendlier sentence would trade a real reason for a
     // guess.
+    //
+    // PLATFORM-AWARE, and the first version was not -- it asserted cmd.exe's
+    // wording ("is not recognized") everywhere and went red on the Linux CI
+    // runner while passing on the Windows machine it was written on. Measured
+    // in a real Linux shell afterwards: there is no shell in that path at all,
+    // spawn fails outright, stderr is EMPTY and close reports code -2. Two
+    // different worlds, one property.
     const pesan = await alasanGagal({
       command: "perintah-yang-tak-ada-xyz",
       args: [],
       env: {},
     });
     expect(pesan).toContain("the server exited with code");
-    expect(pesan).toContain("is not recognized");
+    expect(pesan).toContain("was not found on PATH");
+    if (process.platform === "win32") {
+      // Windows routes it through cmd.exe, which says so on stderr.
+      expect(pesan).toContain("is not recognized");
+    } else {
+      // Elsewhere the reason is the spawn error, which used to be logged and
+      // dropped. It is carried into the message now.
+      expect(pesan).toContain("ENOENT");
+    }
   }, 60000);
 });
 
