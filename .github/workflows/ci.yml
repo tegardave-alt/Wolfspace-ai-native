@@ -94,8 +94,25 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
+      # SATU PERCOBAAN ULANG, DAN INI BUKAN DIAGNOSIS.
+      #
+      # Langkah ini gagal dalam 8 DETIK pada run 692fae8, dan seluruh Jest
+      # dilewati karenanya -- satu langkah infrastruktur menjatuhkan pemeriksaan
+      # yang sebenarnya. Empat run sebelumnya, dengan isi langkah yang sama
+      # persis, sukses dalam 22-25 detik.
+      #
+      # Sebabnya TIDAK diketahui: endpoint log GitHub menjawab 403 untuk
+      # permintaan anonim, jadi tak ada yang bisa dibaca. Yang bisa dikatakan
+      # dari angkanya: 8 detik terlalu cepat untuk unduhan browser gagal, dan
+      # lebih cocok dengan bagian `--with-deps`, yang menjalankan apt-get.
+      # `playwright` sendiri sudah terdeklarasi dan ada di node_modules, jadi
+      # ini bukan pengambilan paket dari registry.
+      #
+      # Jadi ini penanganan, bukan perbaikan: satu ulangan tak berbiaya apa pun
+      # ketika percobaan pertama berhasil, dan kalau ia gagal DUA kali, itu
+      # sendiri informasi -- artinya bukan kedipan jaringan dan layak dikejar.
       - name: Pasang browser Playwright
-        run: npx playwright install --with-deps chromium
+        run: npx playwright install --with-deps chromium || (sleep 15 && npx playwright install --with-deps chromium)
 
       - name: Jest
         shell: bash
