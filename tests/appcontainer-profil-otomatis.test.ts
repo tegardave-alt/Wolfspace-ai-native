@@ -23,11 +23,17 @@
 // folder holding no grant for its SID -- so there is no ordering trap where the
 // probe must pass before siapUntuk() is allowed to grant anything.
 //
-// WHY CI IS THE REAL TEST HERE. A GitHub runner is a fresh VM with no profile
-// and nobody who ever ran a setup script: exactly the machine this is about.
-// The developer machine cannot prove it, because it was prepared by hand long
-// ago. ci.yml builds AcLaunch.exe in the test job so this file actually runs
-// there instead of skipping itself.
+// WHY CI IS THE REAL TEST HERE, once it is pointed at the right runner. A
+// fresh GitHub VM has no profile and nobody who ever ran a setup script:
+// exactly the machine this is about. The developer machine cannot prove it,
+// because it was prepared by hand long ago.
+//
+// THE FIRST ATTEMPT AIMED AT THE WRONG JOB. The build step was added to the
+// `test` job and called a clean-machine run -- but `test` is ubuntu-latest,
+// so every describe here skipped itself and building AcLaunch.exe there did
+// nothing at all. The claim read true for as long as nobody checked which
+// runner it named. It is now run from `build-electron`, which is
+// windows-latest.
 
 const fs = require("fs");
 const path = require("path");
@@ -78,19 +84,18 @@ describe("penjaga ini tidak boleh menghilang tanpa suara", () => {
     expect(bisaJalan).toBe(true);
   });
 
-  test("job uji di ci.yml membangun peluncurnya", () => {
-    // Sumber kebenaran untuk janji di atas. Kalau langkah ini dicabut, uji
-    // mesin-bersih akan melewati dirinya sendiri di setiap run berikutnya.
+  test("ci.yml menjalankan berkas ini di job WINDOWS, bukan di job ubuntu", () => {
+    // Sumber kebenaran untuk janji di atas, dan ia dulu menunjuk job yang
+    // SALAH: ia memeriksa job `test`, yang berjalan di ubuntu-latest -- di
+    // mana seluruh berkas ini melewati dirinya sendiri. Asersinya lulus, dan
+    // yang dijaganya tidak pernah berjalan sekali pun.
     const yml = baca(".github/workflows/ci.yml");
-    const i = yml.indexOf("Test & syntax");
+    const i = yml.indexOf("build-electron:");
     expect(i).toBeGreaterThan(-1);
-    const jobUji = yml.slice(
-      i,
-      yml.indexOf("Build Electron") > i
-        ? yml.indexOf("Build Electron", i)
-        : yml.length,
-    );
-    expect(jobUji).toContain("npm run build:aclaunch");
+    const jobWin = yml.slice(i);
+    expect(jobWin).toContain("runs-on: windows-latest");
+    expect(jobWin).toContain("npm run build:aclaunch");
+    expect(jobWin).toContain("tests/appcontainer-profil-otomatis.test.ts");
   });
 });
 

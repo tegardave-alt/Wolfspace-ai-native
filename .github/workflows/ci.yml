@@ -40,7 +40,22 @@ jobs:
   test:
     name: Test & syntax
     runs-on: ubuntu-latest
-    timeout-minutes: 10
+    # 20, DAN ANGKA INI DARI SEBUAH KEHABISAN WAKTU, bukan dari kehati-hatian.
+    #
+    # Batas 10 menit ditabrak: langkah Jest DIBATALKAN pada 558 detik dan
+    # job-nya berhenti di 10 menit 14 detik. Bukan uji yang gagal -- tak satu
+    # pun sempat merah, waktunya yang habis.
+    #
+    # Sebabnya pertumbuhan: Jest 141 detik pada run 247, lalu lima berkas uji
+    # baru ditambahkan dalam satu hari, beberapa di antaranya men-spawn proses
+    # sungguhan dan menunggu detik demi detik (tulisan yang gagal di tengah,
+    # loop yang diblokir 900 ms, server MCP yang dinyalakan betulan). Run
+    # terakhir yang lolos memakai 4 menit; marginnya tinggal sedikit dan satu
+    # runner yang lambat menghabiskannya.
+    #
+    # Batasnya TIDAK dihapus. Ia ada supaya suite yang MENGGANTUNG tidak
+    # menghabiskan menit build tanpa ada yang tahu; yang dinaikkan marginnya.
+    timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -61,21 +76,6 @@ jobs:
       # Jadi tesnya bukan menguji aplikasi, melainkan kecepatan runner.
       - name: Bangun renderer
         run: npm run build:app
-
-      # PELUNCUR AppContainer DIBANGUN DI JOB INI JUGA, dan bukan demi paketnya
-      # -- job ini tidak memaketkan apa pun. Ia dibangun supaya
-      # tests/appcontainer-profil-otomatis.test.ts bisa BERJALAN.
-      #
-      # Uji itu mensimulasikan mesin yang belum pernah menyiapkan apa pun, dan
-      # runner GitHub ADALAH mesin seperti itu: VM baru tiap run, tanpa profil
-      # AppContainer, tanpa seorang pun yang pernah menjalankan skrip penyiapan.
-      # Jadi di sinilah klaim "jalan di mesin orang lain" benar-benar diuji,
-      # bukan di mesin pengembang yang sudah disiapkan bertahun lalu.
-      #
-      # Tanpa langkah ini AcLaunch.exe tak ada, ujinya melewati diri sendiri,
-      # dan penjaganya diam-diam berhenti menjaga.
-      - name: Bangun peluncur AppContainer
-        run: npm run build:aclaunch
 
       # KENAPA typecheck ADA DI SINI SEKARANG.
       #
@@ -178,6 +178,24 @@ jobs:
       # takes under a second.
       - name: Bangun peluncur AppContainer
         run: npm run build:aclaunch
+
+      # UJI SANDBOX DIJALANKAN DI SINI, DAN HANYA BISA DI SINI.
+      #
+      # Saya sempat menaruh langkah ini di job `test` dan menyebutnya "uji mesin
+      # bersih". Itu SALAH: job `test` berjalan di ubuntu-latest, jadi seluruh
+      # berkas uji AppContainer melewati dirinya sendiri di sana dan membangun
+      # AcLaunch.exe pun tak ada gunanya. Klaimnya terdengar benar selama tak
+      # ada yang memeriksa runner-nya.
+      #
+      # Job INI windows-latest, dan runner-nya VM baru tiap run: tanpa profil
+      # AppContainer, tanpa seorang pun yang pernah menjalankan skrip penyiapan.
+      # Itulah mesin yang dipersoalkan -- pengguna yang memasang installer dan
+      # belum menyiapkan apa pun.
+      #
+      # Satu berkas saja, bukan seluruh suite: sisanya sudah dijalankan job
+      # `test`, dan mengulangnya di sini membayar dua kali untuk jawaban sama.
+      - name: Uji sandbox di mesin Windows yang bersih
+        run: npx jest tests/appcontainer-profil-otomatis.test.ts
 
       # PENANDATANGANAN DIMATIKAN, dan flag-nya dipilih dengan mengukur.
       #
