@@ -1642,10 +1642,18 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
             // Not being ready is no reason to stay quiet. If the container is
             // gone the boundary drops sharply, and that has to be readable —
             // not merely run more slowly.
-            _catatan_ac =
-              "\n[AppContainer not active: " +
-              siapAc.alasan +
-              " — jalankan scripts/appcontainer/pasang.ps1]";
+            // NO LONGER TELLS ANYONE TO RUN A SCRIPT.
+            //
+            // It used to end with "jalankan scripts/appcontainer/pasang.ps1",
+            // and that instruction was wrong twice over: the profile is now
+            // registered automatically on the first failed probe, and the file
+            // was never in the installer to begin with -- build.files is an
+            // explicit allowlist naming only AcLaunch.exe. So the one hint a user
+            // got pointed at a file that was not on their machine.
+            //
+            // What is left is the reason itself, which is the part that can
+            // actually be acted on.
+            _catatan_ac = "\n[AppContainer not active: " + siapAc.alasan + "]";
           }
         }
         // The separate-account path (WOLFSPACE_BASH_ACL) was REMOVED.

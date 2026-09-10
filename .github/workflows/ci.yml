@@ -62,6 +62,21 @@ jobs:
       - name: Bangun renderer
         run: npm run build:app
 
+      # PELUNCUR AppContainer DIBANGUN DI JOB INI JUGA, dan bukan demi paketnya
+      # -- job ini tidak memaketkan apa pun. Ia dibangun supaya
+      # tests/appcontainer-profil-otomatis.test.ts bisa BERJALAN.
+      #
+      # Uji itu mensimulasikan mesin yang belum pernah menyiapkan apa pun, dan
+      # runner GitHub ADALAH mesin seperti itu: VM baru tiap run, tanpa profil
+      # AppContainer, tanpa seorang pun yang pernah menjalankan skrip penyiapan.
+      # Jadi di sinilah klaim "jalan di mesin orang lain" benar-benar diuji,
+      # bukan di mesin pengembang yang sudah disiapkan bertahun lalu.
+      #
+      # Tanpa langkah ini AcLaunch.exe tak ada, ujinya melewati diri sendiri,
+      # dan penjaganya diam-diam berhenti menjaga.
+      - name: Bangun peluncur AppContainer
+        run: npm run build:aclaunch
+
       # KENAPA typecheck ADA DI SINI SEKARANG.
       #
       # Ia tak pernah dijalankan CI, dan itu bukan kelalaian yang tak berakibat:

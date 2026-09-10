@@ -92,6 +92,10 @@ const _G = (globalThis.__wolfspaceAc = globalThis.__wolfspaceAc || {
   sid: null,
   diberi: new Set(),
   sementara: new Set(),
+  // One attempt at registering the profile per process. Not a cache of the
+  // result -- of the ATTEMPT -- so a machine where registration genuinely
+  // cannot happen is not asked again on every probe.
+  profilDicoba: false,
 });
 
 /**
@@ -183,17 +187,57 @@ function _nilaiGagal(e) {
   };
 }
 
-function tersedia() {
-  if (_G.cache) return _G.cache;
-  const murah = _tersediaMurah();
-  if (murah) return (_G.cache = murah);
+/**
+ * REGISTERS THE CONTAINER PROFILE, which is the one thing a fresh machine is
+ * missing and the one thing nothing used to do.
+ *
+ * MEASURED, and the measurement is the whole reason this exists. With the SID
+ * derived and the workspace ACL granted, but no registered profile:
+ *
+ *   AcLaunch <container> <dir> powershell -Command 'ready'
+ *     -> CreateProcessW gagal: kode 2   (ERROR_FILE_NOT_FOUND), exit 7
+ *
+ * After ONE --buat-profil call, byte-for-byte the same command prints "ready".
+ * Deriving a SID does not register anything; only CreateAppContainerProfile
+ * does, and it lived solely in scripts/appcontainer/pasang.ps1 -- a file named
+ * in three error messages, called by none of them, and not even shipped in the
+ * installer. So every user but the one who ran it by hand had no sandbox at
+ * all, silently.
+ *
+ * NO ELEVATION. Registering a profile is a per-user operation; nothing here
+ * asks for Administrator, and nothing here should.
+ *
+ * ONCE PER PROCESS. The call is idempotent on its own (an existing profile
+ * answers "ada" and exits 0), but a machine where registration truly fails must
+ * not pay for a spawn on every probe.
+ */
+function _pastikanProfil() {
+  if (_G.profilDicoba) return false;
+  _G.profilDicoba = true;
+  try {
+    execFileSync(EXE, ["--buat-profil", CONTAINER], {
+      encoding: "utf8",
+      timeout: 15000,
+      windowsHide: true,
+    });
+    return true;
+  } catch (_e) {
+    // The reason is not swallowed: the probe runs again either way, and its
+    // failure carries the message the user actually sees.
+    return false;
+  }
+}
+
+/** One run of the real probe. Separated so it can be run again after the
+ *  profile is registered, without duplicating the call. */
+function _ujiSekali() {
   try {
     // A real test, not an assumption: if the container profile has not been
     // created or its ACLs are not installed, this fails here rather than on the
     // agent's first command.
     // 30000 ms on the window-drawing thread. Named so a freeze here stops
     // being anonymous.
-    _G.cache = _nilaiUji(
+    return _nilaiUji(
       ukurBlok("appcontainer:uji-kapabilitas", () =>
         execFileSync(EXE, _ARGV_UJI(), {
           encoding: "utf8",
@@ -203,9 +247,19 @@ function tersedia() {
       ),
     );
   } catch (e) {
-    _G.cache = _nilaiGagal(e);
+    return _nilaiGagal(e);
   }
-  return _G.cache;
+}
+
+function tersedia() {
+  if (_G.cache) return _G.cache;
+  const murah = _tersediaMurah();
+  if (murah) return (_G.cache = murah);
+  let hasil = _ujiSekali();
+  // A first failure is not the answer on a machine that has never run this
+  // before -- it is the expected state of one. Register, then ask once more.
+  if (!hasil.siap && _pastikanProfil()) hasil = _ujiSekali();
+  return (_G.cache = hasil);
 }
 
 /**
@@ -227,26 +281,52 @@ function tersedia() {
  * off the path the user sees. Both share _G.cache, so whichever runs first pays
  * for both.
  */
-function tersediaAsync() {
-  if (_G.cache) return Promise.resolve(_G.cache);
-  const murah = _tersediaMurah();
-  if (murah) return Promise.resolve((_G.cache = murah));
+/** One asynchronous run of the real probe. */
+function _ujiSekaliAsync() {
   return new Promise((res) => {
     execFile(
       EXE,
       _ARGV_UJI(),
       { encoding: "utf8", timeout: 30000, windowsHide: true },
-      (err, stdout, stderr) => {
+      (err: any, stdout: any, stderr: any) => {
         if (err) {
           err.stderr = stderr;
-          _G.cache = _nilaiGagal(err);
+          res(_nilaiGagal(err));
         } else {
-          _G.cache = _nilaiUji(stdout);
+          res(_nilaiUji(stdout));
         }
-        res(_G.cache);
       },
     );
   });
+}
+
+/** Registering the profile, off the window thread. Same contract as
+ *  _pastikanProfil(): at most one attempt per process, resolves true when the
+ *  profile is there afterwards. Both share _G.profilDicoba, so whichever runs
+ *  first pays for both -- the same arrangement the two probes already have. */
+function _pastikanProfilAsync() {
+  if (_G.profilDicoba) return Promise.resolve(false);
+  _G.profilDicoba = true;
+  return new Promise((res) => {
+    execFile(
+      EXE,
+      ["--buat-profil", CONTAINER],
+      { encoding: "utf8", timeout: 15000, windowsHide: true },
+      (err: any) => res(!err),
+    );
+  });
+}
+
+async function tersediaAsync() {
+  if (_G.cache) return _G.cache;
+  const murah = _tersediaMurah();
+  if (murah) return (_G.cache = murah);
+  let hasil: any = await _ujiSekaliAsync();
+  // See _pastikanProfil: on a machine that has never registered the profile the
+  // first failure IS the expected state, not the answer.
+  if (!hasil.siap && (await _pastikanProfilAsync()))
+    hasil = await _ujiSekaliAsync();
+  return (_G.cache = hasil);
 }
 
 // The one remaining failure, and it is PERMANENT for this path.
@@ -355,7 +435,10 @@ function jelaskanKode(kode) {
     "Empty output here does NOT mean the result was empty.\n" +
     "Two causes, and only one of them can be fixed:\n" +
     "  1. The DLL sits in a folder not yet opened to the container — grant read " +
-    "access to its runtime folder through scripts/appcontainer/pasang.ps1.\n" +
+    "access to that folder with: icacls <folder> /grant *<SID>:(OI)(CI)(RX), " +
+    "where <SID> comes from AcLaunch.exe --sid. Spelled out rather than " +
+    "naming scripts/appcontainer/pasang.ps1, which is not shipped in the " +
+    "installer and so leaves a user with nothing to run.\n" +
     "  2. The program uses the MSYS/Cygwin runtime (ls, grep, sed and " +
     "friends from Git for Windows). That runtime needs a kernel object the " +
     "shared component AppContainer closes off, so it fails EVEN when the file is " +
@@ -533,8 +616,17 @@ const BERKAS_HIBAH = path.join(
 
 // Folders NEVER revoked automatically: shared runtimes (node, git) and traverse
 // grants near the root. All are read+execute only, hold no user data, and
-// revoking them would kill every command. Installed once by
-// scripts/appcontainer/pasang.ps1.
+// revoking them would kill every command.
+//
+// NOT INSTALLED BY ANYTHING, and that is deliberate rather than an
+// omission. They only ever existed if someone ran
+// scripts/appcontainer/pasang.ps1 by hand, and the probe was MEASURED
+// working without them: a freshly registered profile runs PowerShell from
+// System32, which already grants ALL APPLICATION PACKAGES read+execute.
+// The paths below are also one machine's layout -- C:\langs is not where
+// anyone else keeps node -- so granting them automatically would be
+// guessing. They stay on this list so a machine where someone DID install
+// them by hand does not have them revoked.
 const TETAP = (process.env.WOLFSPACE_AC_TETAP || "")
   .split(";")
   .map((x) => x.trim())
