@@ -267,9 +267,20 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
     const i = SRC.indexOf("async connectServer");
     const j = SRC.indexOf("\n  }", i);
     const blok = SRC.slice(i, j > i ? j : i + 2400);
-    expect(blok).toMatch(
-      /if \(ada && ada\.ready\) return \{ ok: true, already: true \}/,
-    );
+    // DIURAI JADI TOKEN, bukan satu baris utuh, dan ini kali KEDUA tes ini
+    // patah tanpa sifatnya berubah. Yang pertama karena komentar memanjang
+    // (dicatat di atas); yang kedua karena penjaganya memperoleh syarat baru:
+    // server yang `ready` tapi panggilan terakhirnya GAGAL tidak lagi dihitung
+    // "sudah tersambung", supaya tombol Connect bisa menghidupkannya kembali.
+    // Sebelumnya itu jalan buntu — UI menghitung lastCallOk, klien tidak, jadi
+    // server yang sekali gagal tak bisa dipulihkan dari mana pun.
+    //
+    // Yang dijaga di sini tinggal sifatnya: masih ADA jalan pintas untuk server
+    // siap, dan jawabannya masih `already`. PERILAKUNYA dimiliki
+    // tests/mcp-connect-hidupkan-gagal.test.ts, yang menjalankannya betulan
+    // untuk lastCallOk true / null / undefined / false.
+    expect(blok).toMatch(/ada && ada\.ready/);
+    expect(blok).toMatch(/already: true/);
     // Server yang setengah jalan dibersihkan dulu, kalau tidak prosesnya jadi
     // yatim dan tak tercatat di this.servers.
     expect(blok).toMatch(/if \(ada && ada\.proc\) this\.stopServer\(name\)/);

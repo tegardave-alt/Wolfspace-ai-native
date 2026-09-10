@@ -549,7 +549,28 @@ class MCPClient {
     if (!conf) return { ok: false, error: "MCP server is not in the config" };
     if (conf.disabled) return { ok: false, error: "MCP server dinonaktifkan" };
     const ada = this.servers[name];
-    if (ada && ada.ready) return { ok: true, already: true };
+    // A READY SERVER WHOSE LAST CALL FAILED IS NOT "ALREADY CONNECTED".
+    //
+    // The UI and this method disagreed about the word, and the disagreement
+    // made Connect a dead button. The list computes
+    //
+    //   active = !disabled && ready && lastCallOk !== false
+    //
+    // so a server whose last tool call failed shows "✕ Failed" and counts as
+    // NOT active. Clicking it therefore sends /mcp/connect -- correctly, that
+    // is the user asking for it to be fixed -- and this method looked only at
+    // `ready`, said "already", and did nothing at all. The badge went to
+    // "Connecting…" for one refresh and straight back to "✕ Failed", for ever:
+    // there was no way, anywhere in the UI, to revive that server.
+    //
+    // Restarting is the honest answer to the request. It cannot repair a cause
+    // that lives outside the process -- a revoked token stays revoked -- but it
+    // does clear a stale verdict: a fresh process starts with lastCallOk null,
+    // so the badge stops asserting a failure that may no longer be true, and
+    // the next call decides it again.
+    const gagalPanggilanTerakhir = !!(ada && ada.lastCallOk === false);
+    if (ada && ada.ready && !gagalPanggilanTerakhir)
+      return { ok: true, already: true };
     if (this._mulai[name]) return { ok: true, status: "starting" };
     if (ada && ada.proc) this.stopServer(name); // setengah jalan -> mulai bersih
     return this._mulaiServer(name, conf, opsi.tunggu === true);
