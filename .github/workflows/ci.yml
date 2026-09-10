@@ -40,21 +40,22 @@ jobs:
   test:
     name: Test & syntax
     runs-on: ubuntu-latest
-    # 20, DAN ANGKA INI DARI SEBUAH KEHABISAN WAKTU, bukan dari kehati-hatian.
+    # 20, DAN TEORI PERTAMA SAYA SOAL ANGKA INI SALAH.
     #
-    # Batas 10 menit ditabrak: langkah Jest DIBATALKAN pada 558 detik dan
-    # job-nya berhenti di 10 menit 14 detik. Bukan uji yang gagal -- tak satu
-    # pun sempat merah, waktunya yang habis.
+    # Batas 10 menit ditabrak sekali: langkah Jest DIBATALKAN pada 558 detik
+    # dan job-nya berhenti di 10 menit 14 detik. Tak satu pun uji merah --
+    # waktunya yang habis.
     #
-    # Sebabnya pertumbuhan: Jest 141 detik pada run 247, lalu lima berkas uji
-    # baru ditambahkan dalam satu hari, beberapa di antaranya men-spawn proses
-    # sungguhan dan menunggu detik demi detik (tulisan yang gagal di tengah,
-    # loop yang diblokir 900 ms, server MCP yang dinyalakan betulan). Run
-    # terakhir yang lolos memakai 4 menit; marginnya tinggal sedikit dan satu
-    # runner yang lambat menghabiskannya.
+    # Saya menyimpulkan suite-nya membengkak: lima berkas uji baru ditambahkan
+    # hari itu, beberapa men-spawn proses sungguhan. Run BERIKUTNYA menggugurkan
+    # itu -- Jest 147 detik, praktis sama dengan 141 detik pada run 247, dengan
+    # kelima berkas itu sudah di dalamnya. Jadi pertumbuhannya nyaris nol dan
+    # yang 558 detik itu runner yang tersendat, bukan pekerjaan yang bertambah.
     #
-    # Batasnya TIDAK dihapus. Ia ada supaya suite yang MENGGANTUNG tidak
-    # menghabiskan menit build tanpa ada yang tahu; yang dinaikkan marginnya.
+    # Batasnya tetap dinaikkan, tapi alasannya berbeda dari yang saya kira:
+    # bukan menampung suite yang lebih berat, melainkan menyisakan margin
+    # terhadap runner yang sesekali lambat 4x. Batas itu TIDAK dihapus -- ia
+    # menjaga suite yang MENGGANTUNG agar tak menghabiskan menit build diam-diam.
     timeout-minutes: 20
     steps:
       - uses: actions/checkout@v7
