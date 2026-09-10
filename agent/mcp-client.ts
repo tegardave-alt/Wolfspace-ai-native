@@ -222,6 +222,49 @@ function _kutipCmd(token: any): string {
   return '"' + isi + '"';
 }
 
+/**
+ * Why a server could not start, when the cause is the MACHINE rather than the
+ * server.
+ *
+ * WHAT THE USER USED TO GET. On a machine with no Node.js installed, an entry
+ * like `npx -y @modelcontextprotocol/server-github` fails, and the only thing
+ * reported was whatever cmd.exe said:
+ *
+ *   'npx' is not recognized as an internal or external command
+ *
+ * True, and useless to anyone who does not already know that npx ships with
+ * Node.js. WOLFSPACE bundles Electron's Node RUNTIME, but that is not the same
+ * thing as the npx COMMAND -- there is no npx inside the installed app, and
+ * _cariExe searches PATH and nothing else.
+ *
+ * SAID ONLY WHEN IT IS TRUE. The text below is appended on a real failure, and
+ * only when the command could not be resolved on PATH at all. An unresolvable
+ * command is deliberately still ATTEMPTED (see _startServer) because the
+ * resolver can be wrong where cmd.exe is right; so this explains a failure that
+ * already happened rather than predicting one.
+ */
+function _sebabPerintahHilang(cmd: string, tersolusi: string | null): string {
+  if (tersolusi) return "";
+  const dasar = String(cmd || "")
+    .toLowerCase()
+    .replace(/\.(cmd|bat|exe)$/, "");
+  if (dasar === "npx" || dasar === "npm" || dasar === "node")
+    return (
+      " — `" +
+      dasar +
+      "` was not found on PATH. It comes with Node.js, which is a separate " +
+      "install: the Node runtime bundled inside WOLFSPACE is not available as " +
+      "a command. Install Node.js from nodejs.org, restart WOLFSPACE so it " +
+      "picks up the new PATH, then press Connect again."
+    );
+  return (
+    " — `" +
+    cmd +
+    "` was not found on PATH, so it could only be attempted through the shell. " +
+    "Check the command in config/mcp.json, or give it an absolute path."
+  );
+}
+
 function _cariExe(cmd: string, env: any): string | null {
   if (!cmd) return null;
   if (cmd.includes("/") || cmd.includes("\\")) {
@@ -795,7 +838,8 @@ class MCPClient {
               "the server exited with code " +
                 code +
                 " before it was ready" +
-                sebab,
+                sebab +
+                _sebabPerintahHilang(cmd, tersolusi),
             ),
           );
         }
