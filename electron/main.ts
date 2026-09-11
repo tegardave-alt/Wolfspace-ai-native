@@ -1273,6 +1273,20 @@ function backendHost(nama: string) {
 }
 
 /** Send to the host that owns this work. null means fall back to core(). */
+// THE `api` CHANNEL CARRIES WORK THAT LEGITIMATELY TAKES MINUTES.
+//
+// 30 seconds is the default for a message that should answer immediately. A
+// branch switch is not that: a cold `git checkout` of this repository was
+// MEASURED at 44.9 seconds, because 35 MB has to come out of the pack with an
+// empty OS cache -- the ordinary state after a build or a test run.
+//
+// The budget is not removed. A host that is GONE is already reported by the
+// exit handler, by name and immediately; this number only decides how long a
+// LIVE host is trusted to still be working. Larger than the git write budget in
+// scripts/ww.ts (90 s) on purpose, so git's own message wins the race and the
+// user is told what git said rather than that something timed out.
+const BATAS_API_MS = 120000;
+
 function backendInvoke(channel: string, payload: any, batasMs = 30000) {
   const nama = _hostUntuk(channel, payload);
   const h = backendHost(nama);
@@ -1475,10 +1489,52 @@ function registerIpc() {
         // The claim above that a boot route "runs tsc" is also no longer true:
         // no route invokes the compiler any more. It is kept as the reason the
         // three-second budget was removed, which still stands.
-        const lewatHost = await backendInvoke(channel, payload);
+        const lewatHost = await backendInvoke(channel, payload, BATAS_API_MS);
         if (lewatHost && lewatHost.ok && lewatHost.value != null)
           return lewatHost.value;
-        if (lewatHost) probe.say("backend-host gagal api: " + lewatHost.error);
+        if (lewatHost) {
+          probe.say("backend-host gagal api: " + lewatHost.error);
+          // A WRITE IS NEVER RE-RUN, and this is where the lock came from.
+          //
+          // The fallback below re-runs the SAME request in this process. For a
+          // GET that is merely wasteful. For a POST it is a second write
+          // against a repository the first one is still writing to -- and that
+          // is a self-inflicted .git/index.lock, from the only writer that was
+          // ever observed taking one.
+          //
+          // TRACED FROM THE USER'S OWN LOG, and only after the timeout message
+          // was made to name its route:
+          //
+          //   POST /ww/branch/switch
+          //   "host backend tak menjawab dalam 30007 ms (batas 30000)"
+          //   "[POST /ww/branch/switch], 0 permintaan lain masih menunggu"
+          //
+          // "0 others waiting" is the part that settles it: the host was not
+          // wedged behind a queue, this one request simply needed longer than
+          // the budget. A cold checkout of this repository was MEASURED at
+          // 44.9 seconds -- 35 MB out of the pack with an empty OS cache.
+          //
+          // So the timeout fired at 30 s, main started a SECOND `git checkout`,
+          // and the two collided. Every lock hunted in this repository traces
+          // back to here; watching the live repository for 60 seconds while it
+          // was idle produced none.
+          //
+          // The honest answer for a write is the failure itself. The host is
+          // still working, and its result will land or its exit handler will
+          // report it -- neither needs a duplicate.
+          const metode = String(
+            (payload && (payload as any).method) || "GET",
+          ).toUpperCase();
+          if (metode !== "GET" && metode !== "HEAD")
+            return {
+              ok: false,
+              err:
+                "the backend is still working on this (" +
+                lewatHost.error +
+                "). It was NOT retried here, because running a second write " +
+                "against the same repository is what causes a lock.",
+            };
+        }
       }
       if (channel === "api") return apiCall(payload); // generic in-process HTTP-handler proxy
       const c = core();
