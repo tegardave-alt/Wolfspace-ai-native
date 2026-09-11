@@ -1,4 +1,7 @@
-// Terminal ANSI palette, taken from VS Code.
+// TemaTerminalVSCode.ts — the terminal's ANSI palette, taken verbatim from
+// VS Code so colours match what people already recognise.
+//
+// CONNECTS TO: the xterm.js terminal set up in public/app.tsx.
 //
 // Source: microsoft/vscode, MIT licensed.
 //   src/vs/workbench/contrib/terminal/common/terminalColorRegistry.ts

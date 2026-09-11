@@ -1,3 +1,4 @@
-// 'react' di-resolve ke React global UMD (window.React) yang sudah dimuat WOLFSPACE,
-// jadi React TIDAK ikut dibundel dan instance-nya SAMA dengan app.jsx (hooks tak pecah).
+// react-shim.js — resolves 'react' to the UMD global (window.React) WOLFSPACE has
+// already loaded. React is therefore NOT bundled, and the instance is the SAME one
+// the renderer uses — two copies of React would break hooks.
 module.exports = window.React;

@@ -172,17 +172,27 @@ describe("INFO panel", () => {
     expect(urutan).toEqual(["error", "warning", "info"]);
   });
 
+  // THE RAIL MOVED FROM INLINE STYLES TO A CLASS. It used to be a 56px column
+  // of a glyph over a bare number, styled inline; it is now `.info-rail` with a
+  // named row per tier. The property being guarded did not change — the rail is
+  // still the vertical second layer, divided from the list beside it — so the
+  // assertion follows it into the stylesheet instead of being deleted.
   test("the rail is the second layer and it is vertical", () => {
-    const m = LAYAR.match(
-      /display: activeTab === "INFO" \? "flex" : "none",[\s\S]*?TINGKAT_INFO\.map/,
+    expect(LAYAR).toMatch(/className="info-rail"/);
+    const CSS = baca("public/styles.css");
+    const blok = CSS.slice(CSS.indexOf(".info-rail {"));
+    expect(blok.slice(0, blok.indexOf("}"))).toMatch(
+      /flex-direction: column[\s\S]*border-right/,
     );
-    expect(m).toBeTruthy();
-    expect(m[0]).toMatch(/flexDirection: "column"/);
-    expect(m[0]).toMatch(/borderRight/);
   });
 
   test("clicking the lit tier clears the filter rather than stranding it", () => {
-    expect(LAYAR).toMatch(/setInfoSaring\(aktif \? "all" : t\.kunci\)/);
+    // The "all" row joined the rail later, and clearing a filter that is
+    // ALREADY "all" would be a no-op that reads as a dead click — hence the
+    // extra guard. Clicking any lit tier still returns to "all".
+    expect(LAYAR).toMatch(
+      /setInfoSaring\(\s*aktif && t\.kunci !== "all" \? "all" : t\.kunci,?\s*\)/,
+    );
   });
 
   test("an unscanned panel never claims the workspace is clean", () => {

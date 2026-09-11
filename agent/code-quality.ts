@@ -1,26 +1,24 @@
-// ── WOLFSPACE Code-Quality Gate (HARDCODED) ──
+// code-quality.ts — the gate that stops the codebase getting structurally
+// worse, enforced on the write path rather than asked for in a prompt.
 //
-// WHY IN CODE RATHER THAN IN THE PROMPT.
-// config/prompts.json tells the agent to "Write clean, correct code". That is an
-// aspiration with no unit: unmeasurable, unfailable, therefore never enforced.
-// The real result is measurable in this repo — Components.jsx reached 48 spaces
-// of indentation (24 levels), function App() ran to 2,310 lines, and 62% of CSS
-// classes were dead. Most of it was written by an agent that WAS READING that
-// "write clean code" prompt.
+// WHY IN CODE, NOT IN THE PROMPT. config/prompts.json already says "write
+// clean, correct code" — an aspiration with no unit, so it can never fail and
+// was never enforced. The result is measurable here: Components.jsx reached 48
+// spaces of indentation, function App() ran to 2,310 lines, and 62% of CSS
+// classes were dead, all written by an agent that WAS reading that prompt. The
+// two rules in this repo that do hold (SYSTEM_RULES in self_agent.ts,
+// _HOST_PATH_RE in tools/index.ts) both moved onto the execution path.
 //
-// The same pattern has been used twice in this repo and proven:
-//   - SYSTEM_RULES in agent/self_agent.ts ("moved from the prompt into the
-//     system for 100% compliance")
-//   - _HOST_PATH_RE in agent/tools/index.ts (the host-path guard for bash)
-// Both enforce on the execution path rather than asking nicely.
+// THE RULE IS RELATIVE, NOT ABSOLUTE. An absolute "must be clean" would refuse
+// every edit to an already-dirty file, including the edit that cleans it. So
+// the rule is MUST NOT BE WORSE than before: a dirty file stays editable, an
+// improvement always passes, a worsening always fails, and the debt stops
+// growing without blocking work. A NEW file has no baseline, so it gets the
+// hard limit — that is where the clean standard applies in full.
 //
-// edit would be refused, including the edit that fixes it. So the rule is not
-// "must be clean" but "MUST NOT BE WORSE than before". A dirty file can still be
-// edited, an improvement always passes, a worsening always fails. Technical debt
-// stops growing without blocking work.
-//
-// A NEW file has no baseline, so it gets the hard limit — that is where the
-// clean standard is enforced in full.
+// CONNECTS TO
+//   imports  path only
+//   used by  agent/safe-edit.ts and agent/tools/index.ts, on every write
 
 "use strict";
 

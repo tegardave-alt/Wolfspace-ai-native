@@ -116,3 +116,7 @@ public/app.build.js
 /vk_swiftshader_icd.json
 /LICENSE.electron.txt
 /LICENSES.chromium.html
+
+# The shipped OAuth App credentials: kept out of the repository, but shipped
+# in the installer (build.files includes agent/**).
+agent/github-app.local.json

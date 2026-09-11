@@ -1,21 +1,22 @@
 "use strict";
 /**
- * ── Pra-kompres aset statis ──
+ * kompres-aset.cjs — pre-compresses the static assets, once.
  *
- * Dijalankan SEKALI (saat build / sesudah aset berubah), bukan per permintaan.
- * Itu bedanya dengan kompresi biasa, dan itu yang membuat pilihan levelnya
- * terbalik dari yang lazim:
- *
- *   per permintaan  -> level rendah, karena tiap milidetik dibayar berulang
- *                      dan di proses utama Electron itu berarti jendela beku
- *   sekali di sini  -> level MAKSIMAL, karena ongkosnya dibayar sekali dan
- *                      tak pernah menyentuh thread yang menggambar apa pun
- *
- * Terukur di sesi ini: brotli kualitas 11 mengunci thread 913 ms untuk berkas
- * 213 KB. Angka itu mustahil diterima saat melayani permintaan — dan sama
- * sekali tak berarti saat dijalankan dari baris perintah.
+ * ROLE IN THE SYSTEM. server.ts serves the .br/.gz files this produces, and
+ * SKIPS any that are older than their source — so a stale pair is harmless, it
+ * simply is not used. Run it after changing anything under public/:
  *
  *     node scripts/kompres-aset.cjs
+ *
+ * WHY THE COMPRESSION LEVEL IS THE OPPOSITE OF THE USUAL CHOICE. Compressing
+ * per request must stay cheap, because every millisecond is paid again and, in
+ * Electron's main process, is paid by the window. Compressing once here can
+ * afford the MAXIMUM level, because the cost is paid a single time and never
+ * touches a thread that draws anything.
+ *
+ * Measured: brotli quality 11 held the thread for 913 ms on one 213 KB file —
+ * impossible while serving a request, and completely irrelevant from a command
+ * line.
  */
 
 const fs = require("fs");
@@ -23,10 +24,11 @@ const path = require("path");
 const zlib = require("zlib");
 
 const PUB = path.join(__dirname, "..", "public");
-// Hanya yang memang mampat. Gambar dan font modern sudah terkompresi di
-// dalamnya; memampatkannya lagi menambah berkas tanpa mengecilkan apa pun.
+// Only what actually compresses. Images and modern fonts are already
+// compressed internally; compressing them again adds files without shrinking
+// anything.
 const BISA = /\.(js|jsx|mjs|cjs|css|html|json|svg|map|txt)$/i;
-// Di bawah ini, ongkos header dan perjalanan ekstra lebih besar dari hematnya.
+// Below this size, the header cost and the extra round trip outweigh the saving.
 const MIN_BYTE = 1024;
 
 let jumlah = 0,
@@ -53,9 +55,9 @@ function jalan(dir) {
     const st = fs.statSync(p);
     if (st.size < MIN_BYTE) continue;
 
-    // Dilewati kalau hasilnya sudah lebih baru dari sumbernya. Tanpa ini,
-    // menjalankan ulang skrip berarti memampatkan ulang 3,5 MB Monaco setiap
-    // kali — pekerjaan yang hasilnya sudah ada.
+    // Skipped when the output is already newer than its source. Without this,
+    // re-running the script recompresses 3.5 MB of Monaco every time — work
+    // whose result already exists.
     const br = p + ".br";
     const gz = p + ".gz";
     const segar =

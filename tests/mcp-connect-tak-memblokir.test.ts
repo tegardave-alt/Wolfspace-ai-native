@@ -15,8 +15,16 @@
 // Nothing was broken. A connection that was merely slow made the whole app look
 // hung, and the only evidence the user had was a window that stopped painting.
 //
-// Readiness was never the missing information — status() already reported it,
-// and the UI already polls it. The waiting was the bug.
+// Readiness was never the missing information: status() reported it all along.
+// The waiting was the bug.
+//
+// BUT THE OTHER HALF WAS MISSING FOR A WHILE, and this file used to assert it
+// was not — it said "the UI already polls it", and so did the comment on
+// _mulaiServer. Neither list polled. Both refreshed once, immediately after
+// connect returned, saw starting:true, and were never told again. The user saw
+// it before any test did: the log said "MCP server <name> ready." while the
+// badge still read "Connecting...". The tests at the bottom of this file cover
+// that half now.
 
 const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
@@ -122,5 +130,112 @@ describe("bentuk kodenya", () => {
       SRC.indexOf("async connectServer"),
     );
     expect(initBody).not.toMatch(/_startServer|connectAll/);
+  });
+});
+
+// ── AND THE UI HAS TO ASK AGAIN ─────────────────────────────────────────────
+//
+// Returning early is only half a design. Something has to notice when the
+// handshake finishes, and connect's own response cannot — it has already gone.
+//
+// Measured shape of the gap, from the code paths above:
+//   t=0     connect resolves { status: "starting" }; the list refreshes and
+//           shows "Connecting..." — correct, and the last thing it is told
+//   t~4.3s  the handshake resolves: _mulai[name] is deleted, ready = true, and
+//           dlog prints "MCP server <name> ready."
+//   after   no event, no interval, no refresh. The badge never changes.
+
+const HOOK = fs.readFileSync(
+  path.join(AKAR, "public", "app", "Config.tsx"),
+  "utf8",
+);
+const KOMPOSER = fs.readFileSync(
+  path.join(AKAR, "public", "app", "Components.tsx"),
+  "utf8",
+);
+const PICKER = fs.readFileSync(
+  path.join(AKAR, "public", "app", "Screens.tsx"),
+  "utf8",
+);
+const BUNDEL = fs.readFileSync(
+  path.join(AKAR, "public", "app.build.js"),
+  "utf8",
+);
+
+// The pure half, taken from the source and run rather than described.
+globalThis.self = globalThis;
+const Babel = require(path.join(AKAR, "public/vendor/babel.min.js"));
+const C = new Function(
+  "React",
+  "window",
+  "localStorage",
+  Babel.transform(HOOK, {
+    presets: ["react", "typescript"],
+    filename: "/app/Config.tsx",
+  }).code + "\n; return { adaMcpMulai, MCP_POLL_MS, MCP_POLL_MAKS_MS };",
+)(
+  { useEffect() {} },
+  { WOLFSPACE: null },
+  { getItem: () => null, setItem() {} },
+);
+
+describe("the badge is told again when the handshake ends", () => {
+  test("a server still shaking hands is recognised", () => {
+    expect(C.adaMcpMulai([{ status: { starting: true } }])).toBe(true);
+    expect(
+      C.adaMcpMulai([
+        { status: { starting: false, ready: true } },
+        { status: { starting: true } },
+      ]),
+    ).toBe(true);
+  });
+
+  test("nothing starting means nothing to poll for", () => {
+    // An idle app must make no requests at all.
+    expect(C.adaMcpMulai([{ status: { starting: false, ready: true } }])).toBe(
+      false,
+    );
+    expect(C.adaMcpMulai([])).toBe(false);
+    for (const rusak of [
+      null,
+      undefined,
+      "x",
+      [null],
+      [{}],
+      [{ status: null }],
+    ])
+      expect(C.adaMcpMulai(rusak)).toBe(false);
+  });
+
+  test("the interval is short enough to feel immediate, and it is bounded", () => {
+    // A request loop with no exit would be worse than a stale badge.
+    expect(C.MCP_POLL_MS).toBeLessThanOrEqual(2000);
+    expect(C.MCP_POLL_MAKS_MS).toBeGreaterThan(60000); // past the handshake ceiling
+    expect(C.MCP_POLL_MAKS_MS).toBeLessThanOrEqual(300000);
+  });
+
+  test("BOTH lists use it, and neither carries its own copy", () => {
+    // Two implementations of one decision is the drift this repo has paid for
+    // repeatedly, and the copy is always the one that goes stale.
+    expect(KOMPOSER).toMatch(/useMcpMenunggu\(mcpServers, loadMcpServers\)/);
+    expect(PICKER).toMatch(/useMcpMenunggu\(pickerMcp, loadPickerMcp\)/);
+    expect(KOMPOSER).not.toMatch(/function useMcpMenunggu/);
+    expect(PICKER).not.toMatch(/function useMcpMenunggu/);
+    expect(HOOK).toMatch(/function useMcpMenunggu/);
+  });
+
+  test("and it ships", () => {
+    expect(BUNDEL).toMatch(/useMcpMenunggu/);
+  });
+
+  test("the source no longer claims the UI polls when it might not", () => {
+    // This exact sentence sent three readers, including its own test, past the
+    // missing half. It may only claim polling while the polling exists.
+    const MC = fs.readFileSync(
+      path.join(AKAR, "agent", "mcp-client.ts"),
+      "utf8",
+    );
+    expect(MC).not.toMatch(/which the UI already polls/);
+    expect(MC).toMatch(/useMcpMenunggu/);
   });
 });

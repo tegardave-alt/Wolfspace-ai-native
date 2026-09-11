@@ -1,19 +1,21 @@
 "use strict";
 /**
- * Mengambil js-debug — adapter DAP resmi untuk Node/JavaScript, dari
- * microsoft/vscode-js-debug (MIT). Ini adapter YANG SAMA dengan yang dipakai
- * VS Code untuk men-debug JavaScript.
+ * ambil-js-debug.cjs — downloads js-debug, the official DAP adapter for
+ * Node/JavaScript, from microsoft/vscode-js-debug (MIT). It is the SAME adapter
+ * VS Code uses to debug JavaScript.
  *
- * KENAPA DIUNDUH, BUKAN DIJADIKAN DEPENDENSI npm. Tak ada paket npm-nya:
- * @vscode/js-debug maupun js-debug-adapter dua-duanya 404 di registry.
- * Microsoft merilisnya sebagai berkas rilis GitHub (`js-debug-dap-*.tar.gz`,
- * ~1,2 MB) — dan itulah yang dipakai klien DAP lain di luar VS Code.
+ * ROLE IN THE SYSTEM. It supplies the adapter that core/dap.ts talks to. Run it
+ * once, by hand:
  *
- * Dijalankan sendiri, bukan otomatis saat aplikasi mulai: mengunduh sesuatu
- * diam-diam saat pemakai menekan tombol Debug adalah hal yang tak boleh
- * dilakukan aplikasi tanpa diminta.
+ *     node scripts/ambil-js-debug.cjs
  *
- *     node scripts/ambil-js-debug.ts
+ * WHY A DOWNLOAD AND NOT AN npm DEPENDENCY. There is no npm package —
+ * @vscode/js-debug and js-debug-adapter are both 404 in the registry. Microsoft
+ * ships it as a GitHub release asset (js-debug-dap-*.tar.gz, ~1.2 MB), which is
+ * what every DAP client outside VS Code uses.
+ *
+ * WHY BY HAND AND NOT ON STARTUP. Downloading something quietly because the
+ * user pressed Debug is not a thing an application should do unasked.
  */
 
 const fs = require("fs");
@@ -61,17 +63,17 @@ function unduh(url, keBerkas, sisaRedirect = 5) {
   await unduh(URL, arsip);
   console.log("  " + fs.statSync(arsip).size + " byte");
 
-  // `tar` bawaan Windows 10 1803+ dan bawaan Unix, dipakai alih-alih menambah
-  // dependensi npm hanya untuk sekali ekstrak.
+  // The `tar` built into Windows 10 1803+ and into Unix, used instead of adding
+  // an npm dependency for a single extraction.
   //
-  // TAK SATU PUN path Windows dioper ke tar. Dua alasan, dan dua-duanya sudah
-  // terbukti di mesin ini:
+  // NO Windows path is passed to tar. Two reasons, both reproduced on this
+  // machine:
   //   -f "C:\..."  -> GNU tar membacanya sebagai <host>:<path> gaya rsh dan
   //                   menjawab "Cannot connect to C: resolve failed" — galat
-  //                   yang menyebut jaringan untuk berkas di disk lokal;
-  //   -C "C:\..."  -> garis miring terbaliknya di-escape, lalu "Cannot open".
-  // Jadi tar dijalankan DI DALAM folder arsipnya dengan nama relatif, dan
-  // pemindahannya diserahkan ke fs yang memang paham path Windows.
+  //                   which talks about the network for a file on local disk;
+  //   -C "C:\..."  -> its backslashes are escaped, then "Cannot open".
+  // So tar runs INSIDE the archive's own folder with relative names, and the
+  // moving is left to fs, which does understand Windows paths.
   execFileSync("tar", ["-xzf", path.basename(arsip)], {
     cwd: path.dirname(arsip),
     stdio: "inherit",

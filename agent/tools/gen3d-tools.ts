@@ -1,16 +1,23 @@
-// gen3d-tools — generate a 3D model from TEXT or an IMAGE through Replicate
-// (open-source models that we orchestrate; not a sprawling procedural script).
+// gen3d-tools.ts — generates a 3D model from TEXT or from an IMAGE, by
+// orchestrating open-source models on Replicate.
 //
-// When 'image' is supplied, the text->image stage is skipped (straight to
-// image->3D).
+// ROLE IN THE SYSTEM. It is an orchestrator, not a procedural mesh generator:
+// the shape comes from the remote model, this file only runs the stages and
+// polls for the result. Supplying an image skips the text->image stage and goes
+// straight to image->3D.
+//
+// CONNECTS TO
+//   imports  fs, path, ../keys-path (the Replicate key)
+//   used by  agent/tools/index.ts
+//   viewer   public/app/Model3DViewer.tsx renders the result
 import * as fs from "fs";
 import * as path from "path";
 
 const API = "https://api.replicate.com/v1";
 
 function replicateKey() {
-  // Cari replicate.key di beberapa lokasi cloud-keys.json (canonical, server/,
-  // legacy QROOT). Cadangan terakhir: env REPLICATE_API_TOKEN.
+  // Look for replicate.key in several cloud-keys.json locations (canonical,
+  // legacy QROOT). Last resort: the REPLICATE_API_TOKEN environment variable.
   const QROOT = path.resolve(__dirname, "..", "..");
   const candidates: any[] = [];
   try {
@@ -107,7 +114,7 @@ async function generate3d(args, ctx) {
       if (/^https?:\/\//.test(args.image)) {
         imageUrl = args.image; // URL langsung
       } else {
-        // File lokal (dalam workspace) -> data URI.
+        // A local file (inside the workspace) becomes a data URI.
         const abs = path.isAbsolute(args.image)
           ? path.resolve(args.image)
           : path.resolve(workspace, args.image);

@@ -1,23 +1,30 @@
 #!/usr/bin/env node
-// Pengawas beku: merekam SENDIRI saat jendela berhenti menjawab.
+// profil-beku.cjs — a freeze watchdog: it records the moment the window stops
+// answering, by itself.
 //
-// KENAPA PENGAWAS, BUKAN PERINTAH SEKALI JALAN. Saat Anda melihat "Not
-// Responding" lalu berpindah ke terminal dan mengetik sesuatu, macetnya sudah
-// lewat. Profil yang diambil sesudahnya merekam aplikasi yang sedang sehat, dan
-// itu tak memberi tahu apa pun. Jadi profiler di sini terus berjalan, dan yang
-// ditulis ke disk adalah potongan TEPAT saat macet terjadi.
+// ROLE IN THE SYSTEM. Run it alongside the app when investigating a hang:
 //
-// DUA PROSES DIAWASI, karena keduanya bisa jadi penyebab dan gejalanya sama:
+//     npm run profil
 //
-//   MAIN     backend hidup di sini (main.js -> core.js -> server.cjs) DAN proses
-//            ini memiliki BrowserWindow serta memompa antrian pesan Windows.
-//            Kerja sinkron di sini = Windows menandai jendela "Not Responding".
-//   RENDERER mem-parse ~9 MB skrip vendor lalu mengompilasi 15 modul dengan
-//            Babel DI DALAM browser sebelum satu piksel pun tergambar. Renderer
-//            yang tersumbat membuat jendela tampak beku walau OS belum menandai.
+// WHY A WATCHDOG AND NOT A ONE-SHOT COMMAND. By the time you have seen "Not
+// Responding", switched to a terminal and typed something, the freeze is over.
+// A profile taken afterwards records a healthy application and says nothing. So
+// the profiler here runs continuously, and what reaches disk is the slice from
+// exactly when the freeze happened.
 //
-// Mengukur yang salah satunya adalah kesalahan yang mudah dilakukan dan mahal:
-// renderer bisa terlihat sehat sementara main terkunci, dan sebaliknya.
+// TWO PROCESSES ARE WATCHED, because either can be the cause and the symptom
+// looks identical:
+//
+//   MAIN     the backend lives here (main.js -> core.js -> server.cjs) AND this
+//            process owns the BrowserWindow and pumps the Windows message
+//            queue. Synchronous work here IS "Not Responding".
+//   RENDERER parses ~9 MB of vendor script and compiles 15 modules with Babel
+//            INSIDE the browser before one pixel is drawn. The renderer
+//            a blocked renderer makes the window look frozen even before the
+//            OS has marked it.
+//
+// Watching only one of them is an easy mistake and an expensive one: the
+// renderer can look healthy while main is locked, and the other way round.
 //
 // PAKAI:
 //   terminal 1:  WOLFSPACE_PROFILE=1 npm run app     (PowerShell: $env:WOLFSPACE_PROFILE=1)
@@ -25,7 +32,7 @@
 //
 // HASILNYA di _profil/:
 //   beku.log                        satu baris per kejadian + tersangka teratas
-//   beku-<waktu>-<proses>.cpuprofile  profil V8, bisa dibuka di DevTools
+//   beku-<time>-<process>.cpuprofile  a V8 profile, openable in DevTools
 "use strict";
 
 const fs = require("fs");
@@ -41,15 +48,15 @@ const PORT_RENDERER = Number(
   process.env.WOLFSPACE_PROFILE_PORT_RENDERER || 9444,
 );
 
-// Ambang. 400 ms dipilih karena di bawah itu manusia belum merasakannya sebagai
-// "macet"; di atasnya mulai terasa sebagai kursor yang tak menjawab.
+// The threshold. 400 ms was chosen because below it a person does not yet
+// register a "stall"; above it, it starts to feel like an unresponsive cursor.
 const AMBANG_MS = Number(process.env.WOLFSPACE_PROFILE_AMBANG || 400);
-// Sampel rapat: sepuluh blokir 300 ms sama merusaknya dengan satu blokir 3 detik,
-// dan sampling yang jarang akan melewatkan bentuk yang pertama.
+// Sample densely: ten 300 ms blocks are as damaging as one 3-second block, and
+// sparse sampling misses the first shape entirely.
 const INTERVAL_SAMPEL_US = 200;
-// Berapa lama menunggu proses yang beku sadar kembali sebelum menyerah. Macet
-// 30 detik masih layak direkam; yang lebih lama biasanya berarti hang permanen,
-// dan untuk itu profil tak akan pernah datang berapa pun kita menunggu.
+// How long to wait for a frozen process to come back before giving up. A
+// 30-second stall is still worth recording; anything longer usually means a
+// permanent hang, and no amount of waiting will produce a profile for that.
 const BATAS_TUNGGU_MS = Number(process.env.WOLFSPACE_PROFILE_TUNGGU || 45000);
 
 const T0 = Date.now();
@@ -115,8 +122,8 @@ class Cdp {
       } catch (_) {
         return tuntas(null);
       }
-      // Batas waktu WAJIB: proses yang terkunci tak akan pernah menjawab, dan
-      // tanpa ini pengawas ikut menggantung bersama yang diawasinya.
+      // A timeout is MANDATORY: a locked process will never answer, and without
+      // one the watchdog hangs alongside what it is watching.
       if (batasMs) setTimeout(() => tuntas(null), batasMs);
     });
   }
@@ -133,12 +140,12 @@ async function targetList(port) {
   }
 }
 
-// ── ringkas profil jadi tersangka ───────────────────────────────────────────
+// ── reduce a profile to a list of suspects ──────────────────────────────────
 //
-// Yang dilaporkan SELF-TIME, bukan total. Total selalu menunjuk ke pemanggil
-// paling luar (main, require, dst) dan tak pernah menyebut penyebabnya.
-// (idle) dibuang dari daftar tersangka: itu MENUNGGU, bukan bekerja — dan
-// kebingungan itulah yang membuat orang mengejar hal yang salah.
+// SELF-TIME is reported, not total. Total always points at the outermost
+// caller (main, require and so on) and never names the cause. (idle) is dropped
+// from the suspects: that is WAITING, not working — and confusing the two is
+// what sends people chasing the wrong thing.
 function tersangka(profil, n) {
   const node = new Map();
   for (const x of profil.nodes || []) node.set(x.id, x);
@@ -166,8 +173,9 @@ function tersangka(profil, n) {
       berkas +
       (cf.lineNumber >= 0 ? ":" + (cf.lineNumber + 1) : "");
     self.set(kunci, (self.get(kunci) || 0) + dt);
-    // Jarak antar-sampel yang besar = profiler tak sempat mengambil sampel =
-    // thread terkunci di dalam SATU panggilan. Inilah bentuk yang membekukan.
+    // A large gap between samples means the profiler could not take one, which
+    // means the thread was locked inside ONE call. That is the shape that
+    // freezes a window.
     if (dt > blokirMaks) {
       blokirMaks = dt;
       blokirDi = kunci;
@@ -184,7 +192,7 @@ function tersangka(profil, n) {
   };
 }
 
-// ── satu proses yang diawasi ────────────────────────────────────────────────
+// ── one watched process ─────────────────────────────────────────────────────
 class Awasi {
   constructor(nama, cdp) {
     this.nama = nama;
@@ -203,18 +211,18 @@ class Awasi {
     return this.jalan;
   }
   /**
-   * Tunggu sampai proses ini sanggup menjawab lagi.
+   * Wait until this process can answer again.
    *
-   * KENAPA HARUS. Perintah CDP diproses di thread yang SAMA dengan yang sedang
-   * terkunci. Jadi selama macet, Profiler.stop tak akan pernah dijawab — dan
-   * versi pertama alat ini menyerah setelah 8 detik lalu melaporkan
-   * "Profiler.stop TIDAK menjawab". Akibatnya persis kebalikan dari yang
-   * dibutuhkan: profil tertulis untuk semua proses KECUALI yang benar-benar
+   * WHY IT IS NECESSARY. CDP commands are handled on the SAME thread that is
+   * locked, so during a stall Profiler.stop is never answered — and the first
+   * version of this tool gave up after 8 seconds and reported "Profiler.stop
+   * did not answer". The effect was the exact opposite of what was needed: a
+   * profile was written for every process EXCEPT the one that was actually
    * beku. Terukur: dua penangkapan, dua-duanya main, nol renderer.
    *
-   * Menunggu aman karena sampler V8 berjalan di thread TERPISAH — ia tetap
-   * mengambil sampel selama JS terkunci. Jadi profil yang diambil SESUDAH macet
-   * berakhir tetap memuat macetnya, lengkap dengan tumpukan pemanggilannya.
+   * Waiting is safe because V8's sampler runs on a SEPARATE thread and keeps
+   * sampling while JS is locked. A profile collected AFTER the stall ends
+   * therefore still contains the stall, call stacks and all.
    */
   async siapKembali(batasMs) {
     const tenggat = Date.now() + batasMs;
@@ -233,7 +241,8 @@ class Awasi {
   async tangkap(sebab, bekuMs, bekuPada) {
     if (!this.jalan) return null;
 
-    // Tunggu dulu, jangan menyerah. Inilah bedanya antara merekam macetnya dan
+    // Wait rather than give up. This is the difference between recording the
+    // stall and
     // merekam segalanya kecuali macetnya.
     const sadar = await this.siapKembali(BATAS_TUNGGU_MS);
     if (!sadar) {
@@ -264,9 +273,10 @@ class Awasi {
       catat(`[${this.nama}] failed to write the profile: ${e.message}`);
     }
     const t = tersangka(profil, 5);
-    // Dua label berbeda, dan bedanya penting: yang BEKU belum tentu yang sedang
-    // dilaporkan. Versi pertama alat ini menulis "proses=main" untuk macet yang
-    // terjadi di renderer, dan itu menuntun ke arah yang salah.
+    // Two different labels, and the difference matters: the process that FROZE
+    // is not necessarily the one being reported. The first version of this tool
+    // wrote "process=main" for a stall that happened in the renderer, which led
+    // in entirely the wrong direction.
     catat(
       `BEKU ${bekuMs} ms pada [${bekuPada}] (${sebab}) | profil dari [${this.nama}] | ` +
         `blokir terpanjang ${t.blokirMaksMs} ms di ${t.blokirDi}`,
@@ -274,16 +284,16 @@ class Awasi {
     for (const a of t.atas)
       catat(`    tersangka: ${String(a.ms).padStart(6)} ms  ${a.di}`);
     catat(`    profile: ${path.relative(AKAR, berkas)}`);
-    // Langsung mulai lagi — macet berikutnya bisa datang beberapa detik lagi.
+    // Start again immediately: the next stall may be seconds away.
     await this.mulaiProfil();
     return t;
   }
 }
 
-// ── pemantau .Responding milik Windows ──────────────────────────────────────
+// ── Windows' own .Responding flag ───────────────────────────────────────────
 //
-// Ini gejala yang BENAR-BENAR DILIHAT user, bukan proksinya. Diambil dari OS,
-// bukan disimpulkan dari dalam aplikasi yang sedang bermasalah.
+// This is the symptom the user ACTUALLY SEES, not a proxy for it. Taken from
+// the OS rather than inferred from inside the application that is in trouble.
 function pantauResponding(onBeku) {
   const PS = `
 while ($true) {
@@ -369,12 +379,12 @@ while ($true) {
   let sedangTangkap = false;
   let tangkapTerakhir = 0;
   const tangkapSemua = async (lamaMs, sebab, bekuPada) => {
-    // Satu penangkapan pada satu waktu: dua Profiler.stop bersamaan menghasilkan
+    // One capture at a time: two concurrent Profiler.stop calls produce
     // profil sobek dan saling menimpa.
     if (sedangTangkap) return;
-    // Jeda pendek sesudah satu penangkapan. Tanpa ini, SATU macet panjang
-    // terdeteksi berkali-kali oleh dua detektor dan menghasilkan tumpukan
-    // profil yang isinya kejadian yang sama.
+    // A short pause after a capture. Without it, ONE long stall is detected
+    // repeatedly by both detectors and produces a pile of profiles all
+    // describing the same event.
     if (Date.now() - tangkapTerakhir < 5000) return;
     sedangTangkap = true;
     try {
@@ -389,10 +399,10 @@ while ($true) {
     (lama, sebab) => void tangkapSemua(lama, sebab, "main/window"),
   );
 
-  // Detektor kedua, dari SISI DALAM: berapa lama renderer membalas evaluate
-  // sepele. Ini menangkap renderer yang tersumbat SEBELUM Windows menandainya
-  // "Not Responding" — dan macet yang paling sering dikeluhkan justru yang
-  // belum sempat ditandai OS.
+  // The second detector, from the INSIDE: how long the renderer takes to answer
+  // a trivial evaluate. This catches a blocked renderer BEFORE Windows marks it
+  // "Not Responding" — and the stalls people complain about most are exactly
+  // the ones the OS never got round to flagging.
   const ren = awas.find((a) => a.nama === "renderer");
   if (ren) {
     setInterval(async () => {

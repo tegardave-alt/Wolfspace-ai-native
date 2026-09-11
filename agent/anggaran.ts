@@ -1,47 +1,35 @@
 /**
- * The performance budget, in one place, with where each number came from.
+ * anggaran.ts — WOLFSPACE's performance budget: every limit that protects the
+ * window from freezing, in one file, each with the measurement behind it.
  *
- * WHY THIS FILE EXISTS. The limits were already here — ten of them, spread over
- * eight files, none aware of the others. That is workable until you ask the
- * question this file answers: how much load is WOLFSPACE allowed to take before
- * the window freezes? You cannot answer that from scattered constants, because
- * the thing they all spend from is one shared resource — the main thread.
+ * ROLE IN THE SYSTEM. In desktop mode the backend runs in-process in Electron's
+ * MAIN process (electron/main.ts), so synchronous work anywhere in agent/ holds
+ * the same thread that draws the window: block for N ms and the UI freezes for
+ * N ms. Every constant here is a share of that one thread's time.
+ *
+ * CONNECTS TO
+ *   imports  nothing — this file is the bottom of the stack on purpose
+ *   read by  agent/pemadatan.ts        (conversation compaction)
+ *            agent/pemantau-blokir.ts  (block watchdog, vonisBlokir)
+ *            agent/tools/exec-tools.ts (command output buffer)
+ *            agent/tools/appcontainer-jail.ts (Windows Job Object limits)
+ *   enforced in scripts/appcontainer/AcLaunch.cs, which reads JOB_ENV
  *
  * THE ONE NUMBER EVERYTHING DERIVES FROM. Windows marks a window "Not
- * Responding" after 5000 ms without the message queue being drained. That is
- * not quoted from documentation; it was measured on this machine three times
- * (5011 / 5028 / 5034 ms, sampled at 20 ms) by blocking a real window's UI
- * thread and polling IsHungAppWindow until it flipped, with the ghost window's
- * "(Not Responding)" title captured verbatim as confirmation.
+ * Responding" after 5000 ms without the message queue draining. Measured on
+ * this machine, not quoted: 5011 / 5028 / 5034 ms, sampled at 20 ms, by
+ * blocking a real window's UI thread and polling IsHungAppWindow.
  *
- * Two properties of that budget decide everything below:
+ * It is CONSECUTIVE, not cumulative — the count resets whenever the queue
+ * drains, so thirty 150 ms edits freeze nothing and one unbroken stretch does.
  *
- *   It is CONSECUTIVE, not cumulative. The count resets every time the queue
- *   drains, so thirty 150 ms edits never freeze anything. Only one unbroken
- *   stretch does.
- *
- *   It is spent by the BACKEND. In desktop mode the backend runs in-process in
- *   Electron's main process (electron/main.ts), so synchronous work in agent/
- *   holds the same thread that draws the window. A component blocking for N ms
- *   freezes the UI for N ms.
- *
- * WHAT IS DELIBERATELY NOT HERE. Limits that bound a DOMAIN rather than the
- * time budget stay where they are, because moving them would add churn without
- * making anything safer. They are listed so the next reader does not conclude
- * they were forgotten:
- *
- *   agent/code-quality.ts   NEW_FILE_MAX_LINES 800, NEW_FILE_MAX_INDENT 24
- *   agent/rag.ts            MAX_RECORDS 2000
- *   agent/snapshot.ts       MAX_SNAPS 50, MAX_AGE_MS 7 days
- *   agent/debug.ts          LOG_MAX 800, LOG_MAX_BYTES 50 MB
- *   core/terminal.ts        OUTPUT_MAX 4096
- *   agent/tools/bash-jail.ts  MAX_PROC/MAX_VMEM_KB/MAX_CPU_SEC (Linux jail)
- *
- * The RAG one is worth singling out. A load curve run against agent/rag.ts
- * reached 1296 ms at one million vectors — but MAX_RECORDS caps the store at
- * 2000, where the same measurement is about 6 ms. The cap makes that component
- * structurally incapable of costing anything, which is why no budget entry for
- * it appears below.
+ * NOT HERE, ON PURPOSE. Limits that bound a DOMAIN rather than thread time stay
+ * where they are; listed so nobody concludes they were forgotten:
+ * code-quality.ts (file size), rag.ts (MAX_RECORDS 2000), snapshot.ts (count
+ * and age), debug.ts (log size), core/terminal.ts (OUTPUT_MAX), bash-jail.ts
+ * (Linux jail). RAG is the instructive one: it measured 1296 ms at a million
+ * vectors, but MAX_RECORDS caps it at 2000, where the same measurement is ~6 ms
+ * — the cap makes it structurally incapable of costing anything.
  */
 
 /** Windows' hang threshold. Measured, not quoted. Everything else is a

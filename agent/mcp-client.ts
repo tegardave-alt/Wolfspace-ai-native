@@ -1,29 +1,36 @@
+// mcp-client.ts — WOLFSPACE's Model Context Protocol client: it starts MCP
+// servers, speaks the protocol to them, and presents their tools to the agent
+// alongside the built-in ones.
+//
+// ROLE IN THE SYSTEM. Everything an MCP server offers reaches the agent through
+// here. It owns the whole lifetime of those child processes — spawn, handshake,
+// tool listing, calls, and cleaning up what an earlier session left behind.
+//
+// CONNECTS TO
+//   imports  fs, path, child_process, ./debug
+//   used by  agent/self_agent.ts and agent/tools/index.ts (tool calls),
+//            server.ts (the MCP management routes)
+//   registry the command and credential list lives in the MCP registry, not here
 import * as fs from "fs";
 import * as path from "path";
 import { spawn, execFile } from "child_process";
 const { dlog } = require("./debug.ts");
 
-// Tracks the PIDs of MCP processes so leftovers from an earlier session can be
-// cleaned up.
+// ── Tracking server PIDs, so an earlier session's leftovers can be cleaned up ──
 //
-// ONE FILE PER OWNER: config/.mcp-pids/<owner-pid>.json, holding the list of
-// server PIDs that process spawned. The owner is in the file NAME, not in its
-// contents.
+// ONE FILE PER OWNER: config/.mcp-pids/<owner-pid>.json, listing the servers
+// that process spawned. The owner is the file NAME, not its contents.
 //
-// Why this way and not one shared file. A shared file forces read-modify-write
-// from many processes at once, and that is a race: two processes reading at the
-// same time overwrite each other, one record is lost, and the unrecorded server
-// is later killed as an "orphan" despite having an owner. Locking would work,
-// but file locks on Windows bring their own problems (a stale lock when the
-// holder dies, then a mechanism to seize it). With one file per owner, NO
-// process ever writes another process's file — the race is gone by
-// construction, without locks.
+// A single shared file would force read-modify-write from several processes at
+// once: two read together, one overwrites the other, and the lost record is
+// later killed as an "orphan" despite having a live owner. Locking would work
+// but file locks on Windows bring stale-lock recovery with them. One file per
+// owner means no process ever writes another's — the race is gone by
+// construction.
 //
-// Orphan = a file whose OWNER is dead. Before this, the file was shared and held
-// only [pid, pid] with no trace of ownership, so every new process killed its
-// neighbour's live servers. Measured across 3 concurrent processes: one waited
-// 127 seconds and then ran with 26 of 50 tools — with no error at all.
-// Afterwards: 22 seconds and 50 tools for all three.
+// Measured before, across 3 concurrent processes: one waited 127 seconds and
+// then ran with 26 of 50 tools, reporting no error at all. After: 22 seconds
+// and 50 tools for all three.
 const PID_DIR = path.join(__dirname, "..", "config", ".mcp-pids");
 // The old file format. Read once, only to clean it up during the upgrade.
 const LEGACY_PID_FILE = path.join(__dirname, "..", "config", ".mcp-pids.json");
@@ -215,6 +222,49 @@ function _kutipCmd(token: any): string {
   return '"' + isi + '"';
 }
 
+/**
+ * Why a server could not start, when the cause is the MACHINE rather than the
+ * server.
+ *
+ * WHAT THE USER USED TO GET. On a machine with no Node.js installed, an entry
+ * like `npx -y @modelcontextprotocol/server-github` fails, and the only thing
+ * reported was whatever cmd.exe said:
+ *
+ *   'npx' is not recognized as an internal or external command
+ *
+ * True, and useless to anyone who does not already know that npx ships with
+ * Node.js. WOLFSPACE bundles Electron's Node RUNTIME, but that is not the same
+ * thing as the npx COMMAND -- there is no npx inside the installed app, and
+ * _cariExe searches PATH and nothing else.
+ *
+ * SAID ONLY WHEN IT IS TRUE. The text below is appended on a real failure, and
+ * only when the command could not be resolved on PATH at all. An unresolvable
+ * command is deliberately still ATTEMPTED (see _startServer) because the
+ * resolver can be wrong where cmd.exe is right; so this explains a failure that
+ * already happened rather than predicting one.
+ */
+function _sebabPerintahHilang(cmd: string, tersolusi: string | null): string {
+  if (tersolusi) return "";
+  const dasar = String(cmd || "")
+    .toLowerCase()
+    .replace(/\.(cmd|bat|exe)$/, "");
+  if (dasar === "npx" || dasar === "npm" || dasar === "node")
+    return (
+      " — `" +
+      dasar +
+      "` was not found on PATH. It comes with Node.js, which is a separate " +
+      "install: the Node runtime bundled inside WOLFSPACE is not available as " +
+      "a command. Install Node.js from nodejs.org, restart WOLFSPACE so it " +
+      "picks up the new PATH, then press Connect again."
+    );
+  return (
+    " — `" +
+    cmd +
+    "` was not found on PATH, so it could only be attempted through the shell. " +
+    "Check the command in config/mcp.json, or give it an absolute path."
+  );
+}
+
 function _cariExe(cmd: string, env: any): string | null {
   if (!cmd) return null;
   if (cmd.includes("/") || cmd.includes("\\")) {
@@ -224,12 +274,33 @@ function _cariExe(cmd: string, env: any): string | null {
       return null;
     }
   }
+  // A COMMAND THAT ALREADY CARRIES ITS EXTENSION IS SEARCHED FOR AS WRITTEN.
+  //
+  // Without this the loop below only ever tried `cmd + ext`, so for "npx.cmd" it
+  // looked for npx.cmd.COM, npx.cmd.EXE, npx.cmd.BAT ... and never npx.cmd.
+  // MEASURED: C:/langs/node/npx.cmd exists and was on PATH the whole time, and
+  // _cariExe returned null for it every single call.
+  //
+  // It looked harmless because the fallback is correct -- an unresolved command
+  // on Windows goes through cmd.exe, which is exactly right for a .cmd. The
+  // damage showed up somewhere else: _sebabPerintahHilang keys off `tersolusi`,
+  // so EVERY npx failure on Windows was labelled "`npx` was not found on PATH
+  // ... install Node.js". A typo in a package name produced npm 404 AND an
+  // instruction to install a Node.js that was already there.
+  //
+  // This is how Windows resolves a command, and the two halves must not be
+  // mixed: a name with a known extension is looked up literally, a bare name
+  // gets the PATHEXT list appended. Appending "" for BARE names as well would
+  // be wrong -- on Windows it would match extensionless shell scripts that
+  // cannot be executed directly.
+  const daftarExt = String(env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .filter(Boolean);
+  const sudahBerekstensi =
+    process.platform === "win32" &&
+    daftarExt.some((e: string) => cmd.toLowerCase().endsWith(e.toLowerCase()));
   const exts =
-    process.platform === "win32"
-      ? String(env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
-          .split(";")
-          .filter(Boolean)
-      : [""];
+    process.platform === "win32" ? (sudahBerekstensi ? [""] : daftarExt) : [""];
   const dirs = String(env.PATH || env.Path || "")
     .split(path.delimiter)
     .filter(Boolean);
@@ -328,10 +399,46 @@ const CONFIG_PATH = path.join(__dirname, "..", "config", "mcp.json");
 // useful for diagnosing a wrong command.
 const _RAHASIA_ARG =
   /(key|token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+// THE SEPARATED FORM LEAKED, and only the joined one was ever covered.
+//
+// MEASURED against the real function:
+//
+//   ["--figma-api-key=figd_X"]                  -> ["--figma-api-key=***"]  ok
+//   ["--token", "ghp_X"]                        -> UNREDACTED
+//   ["--header", "Authorization: Bearer sk-X"]  -> UNREDACTED
+//
+// Both shapes are ordinary: `--token <value>` is how most CLIs take one, and an
+// Authorization header is how a remote MCP server is given a credential. The
+// old rules could not see either, and for the same underlying reason -- they
+// looked for a secret-ish WORD inside the value, while in these two shapes the
+// word is in the PRECEDING FLAG or in the header NAME. A bare value was also
+// skipped outright when it contained a space, which every header does.
+//
+// THE PATTERN IS DELIBERATELY NARROW. Over-redaction is its own failure: this
+// log exists to diagnose a wrong command, and a run of *** tells nobody
+// anything. Word boundaries matter -- `--auth` is a credential flag, `--author`
+// is not, and a rule that cannot tell them apart would blind the log to make a
+// point.
+const _FLAG_RAHASIA =
+  /(^|[-_])(authorization|apikey|api|key|token|secret|password|passwd|credential|auth)([-_]|$)/i;
+
 function _argsAman(args) {
   if (!Array.isArray(args)) return args;
+  let flagRahasiaSebelumnya = false;
   return args.map((a) => {
     const s = String(a);
+    // Set from the PREVIOUS element, before this one overwrites it.
+    const ikutFlag = flagRahasiaSebelumnya;
+    flagRahasiaSebelumnya =
+      /^--?[\w-]+$/.test(s) && _FLAG_RAHASIA.test(s.replace(/^-+/, ""));
+    if (ikutFlag) return "***";
+    // A header line: the field NAME stays, so "which header" is still legible.
+    const h = s.match(/^([\w-]+)\s*:\s*(.+)$/);
+    if (
+      h &&
+      (_FLAG_RAHASIA.test(h[1]) || /^(bearer|basic|token)\s+\S/i.test(h[2]))
+    )
+      return h[1] + ": ***";
     // --flag=nilai
     const m = s.match(
       /^(--?[\w-]*(?:key|token|secret|password|auth)[\w-]*)=(.+)$/i,
@@ -542,7 +649,28 @@ class MCPClient {
     if (!conf) return { ok: false, error: "MCP server is not in the config" };
     if (conf.disabled) return { ok: false, error: "MCP server dinonaktifkan" };
     const ada = this.servers[name];
-    if (ada && ada.ready) return { ok: true, already: true };
+    // A READY SERVER WHOSE LAST CALL FAILED IS NOT "ALREADY CONNECTED".
+    //
+    // The UI and this method disagreed about the word, and the disagreement
+    // made Connect a dead button. The list computes
+    //
+    //   active = !disabled && ready && lastCallOk !== false
+    //
+    // so a server whose last tool call failed shows "✕ Failed" and counts as
+    // NOT active. Clicking it therefore sends /mcp/connect -- correctly, that
+    // is the user asking for it to be fixed -- and this method looked only at
+    // `ready`, said "already", and did nothing at all. The badge went to
+    // "Connecting…" for one refresh and straight back to "✕ Failed", for ever:
+    // there was no way, anywhere in the UI, to revive that server.
+    //
+    // Restarting is the honest answer to the request. It cannot repair a cause
+    // that lives outside the process -- a revoked token stays revoked -- but it
+    // does clear a stale verdict: a fresh process starts with lastCallOk null,
+    // so the badge stops asserting a failure that may no longer be true, and
+    // the next call decides it again.
+    const gagalPanggilanTerakhir = !!(ada && ada.lastCallOk === false);
+    if (ada && ada.ready && !gagalPanggilanTerakhir)
+      return { ok: true, already: true };
     if (this._mulai[name]) return { ok: true, status: "starting" };
     if (ada && ada.proc) this.stopServer(name); // setengah jalan -> mulai bersih
     return this._mulaiServer(name, conf, opsi.tunggu === true);
@@ -562,9 +690,15 @@ class MCPClient {
    * Nothing was broken; a connection that was merely slow made the whole app
    * look hung, and the user's only evidence was a window that stopped painting.
    *
-   * So connecting now returns once the process EXISTS. Readiness is reported by
-   * status(), which the UI already polls — the information was always there, it
-   * was the waiting that was wrong.
+   * So connecting now returns once the process EXISTS, and readiness is
+   * reported by status() instead.
+   *
+   * THE UI HAS TO POLL THAT, and for a while it did not — this comment used to
+   * assert that it "already polls", which was untrue. Both MCP lists refreshed
+   * once, right after connect returned, saw starting:true, and were never told
+   * again: the badge then read "Connecting..." for ever while the log said the
+   * server was ready. The polling lives in useMcpMenunggu
+   * (public/app/Config.tsx) and runs only while something is starting.
    */
   _mulaiServer(name, conf, tunggu) {
     const p = this._startServer(name, conf);
@@ -728,7 +862,20 @@ class MCPClient {
         });
       });
 
+      // THE SPAWN ERROR IS KEPT, for the same reason stderr is kept above: it
+      // used to be logged and then dropped, so the single most informative line
+      // never reached the person who needed it.
+      //
+      // MEASURED ON LINUX, because Windows hid the gap. There a missing command
+      // goes through cmd.exe, which writes "is not recognized" to stderr, and
+      // the stderr tail carried the reason. On Linux there is no shell in the
+      // path: spawn fails outright, stderr is EMPTY, and close reports code -2.
+      // So the whole report was "the server exited with code -2 before it was
+      // ready" -- a number, with the words `spawn npx ENOENT` sitting in the
+      // debug log where nobody would look.
+      let galatSpawn = "";
       proc.on("error", (err) => {
+        galatSpawn = String((err && err.message) || err || "");
         dlog("mcp", "error", `[MCP ${name} process error]`, {
           err: err.message,
         });
@@ -755,13 +902,16 @@ class MCPClient {
           sudahSelesai = true;
           const sebab = kata.length
             ? " — " + kata.slice(-4).join(" | ").slice(0, 500)
-            : "";
+            : galatSpawn
+              ? " — " + galatSpawn.slice(0, 300)
+              : "";
           reject(
             new Error(
               "the server exited with code " +
                 code +
                 " before it was ready" +
-                sebab,
+                sebab +
+                _sebabPerintahHilang(cmd, tersolusi),
             ),
           );
         }

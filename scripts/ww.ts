@@ -47,9 +47,27 @@ function git(args: any, cwd: any) {
   }).trim();
 }
 // The non-throwing version (for probing) — returns null on failure.
+//
+// --no-optional-locks, AND IT IS NOT COSMETIC. `git status` refreshes the index
+// while it reads, and to do that it takes .git/index.lock -- so a poll that only
+// ever LOOKS at the repository can make a checkout the user just asked for fail
+// with "Another git process seems to be running".
+//
+// REPRODUCED, and the numbers are from a 400-file repo with a status poll
+// running against the same folder:
+//
+//   git status --porcelain                    40 checkouts -> 3 failed on the lock
+//   git --no-optional-locks status ...        40 checkouts -> 0 failed
+//
+// with the same number of status runs either way (53 vs 55). The flag tells git
+// not to take locks it does not need, which is exactly what a read is.
+//
+// IT GOES HERE AND NOT IN git(), because git() is also how this file COMMITS and
+// CHECKS OUT. Those must keep their locks; the whole point is that only the
+// probes give theirs up. Requires git >= 2.15 (2017).
 function gitTry(args: any, cwd: any) {
   try {
-    return git(args, cwd);
+    return git(["--no-optional-locks", ...args], cwd);
   } catch {
     return null;
   }
@@ -112,7 +130,7 @@ function ensureRoot(root: any) {
   assertRootNotNested(root);
 }
 
-// ── inti: jadikan sebuah folder repo independen + branch sendiri ───────────────
+// ── core: turn a folder into an independent repo with its own branch ─────────
 function initWorkspace(dir: any, name: any, branchArg?: any) {
   const branch = toBranch(branchArg || name);
 
@@ -503,7 +521,8 @@ function lupakanGit(dir: any) {
 // WHY IT MATTERS. These run on the "kerja" host, and execFileSync there holds
 // that host's only thread: a slow commit stalled every other /ww call behind
 // it, so the file tree went quiet while git worked.
-function gitRunAsync(args: any, cwd: any): Promise<any> {
+/** One attempt, with no opinion about what its failure means. */
+function _gitRunSekali(args: any, cwd: any): Promise<any> {
   return new Promise((resolve) => {
     execFile(
       "git",
@@ -513,14 +532,101 @@ function gitRunAsync(args: any, cwd: any): Promise<any> {
         encoding: "utf8",
         maxBuffer: 8 * 1024 * 1024,
         windowsHide: true,
-        timeout: BATAS_GIT_MS,
+        // Writes move data; reads do not. See BATAS_TULIS_MS.
+        timeout: BATAS_TULIS_MS,
       },
       (e: any, stdout: any, stderr: any) => {
         if (!e) return resolve({ ok: true, out: String(stdout || "").trim() });
-        resolve({ ok: false, err: _sebabGit(e, stderr, stdout) });
+        resolve({ ok: false, err: _sebabGit(e, stderr, stdout, args) });
       },
     );
   });
+}
+
+// A LOCKED INDEX IS A WAIT, NOT AN ANSWER.
+//
+// Asked directly by the user, and the question was the right one: switching
+// branch failed with
+//
+//   repository is locked by another git process (.git/index.lock)
+//
+// "but shouldn't it just be able to switch?" -- yes. That lock is held for
+// MILLISECONDS by whatever is reading the repository at that instant, and
+// giving up on it turns a transient condition into a refusal the user has to
+// understand and act on. No other git client behaves that way.
+//
+// WHY RETRYING IS SAFE HERE, and only here: index.lock is taken BEFORE the work
+// begins. A command that could not take it did nothing at all -- there is no
+// half-done state to repeat. That is not true of other failures, so ONLY the
+// lock is retried; "would be overwritten by checkout" is a real refusal and is
+// returned on the first attempt, unchanged.
+//
+// The budget is small on purpose. A lock still held after roughly a second is
+// not a passing reader, it is a stuck or crashed process, and then the honest
+// answer IS the message -- with a stale .git/index.lock the user may have to
+// delete by hand.
+const LOCK_COBA_LAGI = 6;
+const LOCK_JEDA_MS = 180;
+
+function _terkunci(err: any) {
+  return /index\.lock|Another git process|locked by another git/i.test(
+    String(err || ""),
+  );
+}
+
+/**
+ * What the lock looks like RIGHT NOW, said in the failure itself.
+ *
+ * WHY THIS EXISTS. The lock message was reported from the real app and could
+ * not be reproduced afterwards -- five explanations were tested and every one
+ * was eliminated by measurement: the repository was watched for 60 seconds with
+ * the app and the editor running and .git/index.lock never appeared once; no
+ * stale lock file existed anywhere under the user's folders; overlapping
+ * switches were absorbed by the retry; the git version accepts every flag used
+ * here; and the running app was started after the fix was on disk.
+ *
+ * A failure nobody can reproduce is a failure nobody can fix, so the next
+ * occurrence carries its own evidence instead of a description.
+ *
+ * THE AGE OF THE LOCK FILE IS THE PART THAT DECIDES IT. A lock a few hundred
+ * milliseconds old is another process reading, and waiting longer would have
+ * helped. A lock minutes old is a crashed git that will never let go, and no
+ * amount of waiting will do anything -- that one has to be deleted by hand.
+ * Those two need opposite responses and used to produce the identical sentence.
+ */
+function _potretLock(cwd: any, menungguMs: number, percobaan: number) {
+  let bagian = "waited " + menungguMs + "ms over " + percobaan + " attempts";
+  try {
+    const berkas = path.join(String(cwd), ".git", "index.lock");
+    const st = fs.statSync(berkas);
+    const umur = Date.now() - st.mtimeMs;
+    bagian +=
+      "; .git/index.lock still there, " +
+      (umur < 5000
+        ? Math.round(umur) + "ms old (another git is working - it should clear)"
+        : Math.round(umur / 1000) +
+          "s old (STALE: a git process died holding it. Delete .git/index.lock)");
+  } catch (_) {
+    // Gone by the time we looked: the holder let go a moment too late for us.
+    bagian += "; the lock was already gone when this was written";
+  }
+  return bagian;
+}
+
+async function gitRunAsync(args: any, cwd: any): Promise<any> {
+  const t0 = Date.now();
+  let percobaan = 1;
+  let r = await _gitRunSekali(args, cwd);
+  for (let i = 0; i < LOCK_COBA_LAGI && !r.ok && _terkunci(r.err); i++) {
+    await new Promise((s) => setTimeout(s, LOCK_JEDA_MS));
+    percobaan++;
+    r = await _gitRunSekali(args, cwd);
+  }
+  // Only a lock that OUTLASTED the retries is worth describing. Everything else
+  // already says what it is.
+  if (!r.ok && _terkunci(r.err))
+    r.err = r.err + " - " + _potretLock(cwd, Date.now() - t0, percobaan);
+  return r;
 }
 
 // Git calls get a CEILING.
@@ -529,28 +635,74 @@ function gitRunAsync(args: any, cwd: any): Promise<any> {
 // gives you: another program holding .git/index.lock, or a `git status -uall`
 // grinding through a deep tree. Seen in the real app -- the panel span its
 // loader indefinitely while the failure surfaced somewhere else entirely, as
-// "host tak menjawab", which names neither git nor the lock.
+// "the host is not answering", which names neither git nor the lock.
 const BATAS_GIT_MS = 15000;
 
+// WRITES GET THEIR OWN BUDGET, and one number for both was the bug.
+//
+// 15 seconds is right for a READ: it runs on a 6-second poll, and a `git
+// status` that needs 15 seconds is already broken. For a WRITE the same number
+// is wrong, because a write actually moves data.
+//
+// MEASURED on this repository, in an isolated clone with nothing else running:
+//
+//   git clone --local        3624 ms
+//   git checkout <branch>    2852 ms   (445 files changed)
+//   git checkout main        1892 ms
+//   git status                758 ms
+//
+// A checkout is 2.9 seconds on an idle machine. In a real working tree it
+// competes with a virus scanner inspecting every file git writes, with the
+// app's own watcher reacting to hundreds of those changes, and with whatever
+// the user is doing. Five times slower reaches the limit -- and what the user
+// sees is a branch switch that FAILED, killed just before it finished.
+//
+// The limit is not removed: a git that has genuinely hung must still die. What
+// is fixed is telling "slow because it is working" apart from "not answering".
+const BATAS_TULIS_MS = 90000;
+
 /** Reads a git failure and says what it actually was. */
-function _sebabGit(e: any, stderr: any, stdout: any) {
+/**
+ * Reads a git failure and says what it actually was.
+ *
+ * A TIMEOUT IS NOT A LOCK, and saying it might be cost hours.
+ *
+ * The old text for a killed process read "the repository may be locked by
+ * another program". That is a GUESS, printed as though it were a finding, and
+ * it was wrong: a killed git means the command ran past its budget and was
+ * stopped -- nothing about it says a lock was involved. The guess sent a whole
+ * investigation after .git/index.lock, which was measured never to appear:
+ * sixty seconds of watching the live repository with the app and the editor
+ * running produced zero locks, and there was no stale lock file anywhere.
+ *
+ * So a timeout now reports the timeout, names the command, and stops there.
+ * Where a lock IS the cause, git says so itself and the branch below reads it
+ * from git's own words rather than inventing them.
+ */
+function _sebabGit(e: any, stderr: any, stdout: any, args?: any) {
   const teks = ((stderr || "") + (stdout || "")).toString().trim();
-  if (e && (e.killed || e.signal))
+  if (e && (e.killed || e.signal)) {
+    const perintah = Array.isArray(args) ? "`git " + args[0] + "` " : "git ";
     return (
-      "git did not answer in " +
-      Math.round(BATAS_GIT_MS / 1000) +
-      "s - the repository may be locked by another program"
+      perintah +
+      "was still running after " +
+      Math.round((e.timeout || BATAS_GIT_MS) / 1000) +
+      "s and was stopped. The repository may be large, the disk busy, or a " +
+      "virus scanner may be inspecting every file git writes"
     );
+  }
   if (/index\.lock|Another git process|Unable to create/i.test(teks))
     return "repository is locked by another git process (.git/index.lock)";
   return teks || (e && e.message) || "git failed";
 }
 
 function gitTryAsync(args: any, cwd: any): Promise<any> {
+  // Same reason as gitTry above: a read must not hold .git/index.lock, or the
+  // 6-second panel refresh competes with the user's own checkout.
   return new Promise((selesai: any) => {
     execFile(
       "git",
-      args,
+      ["--no-optional-locks", ...args],
       { cwd, encoding: "utf8", windowsHide: true, timeout: BATAS_GIT_MS },
       (galat: any, keluar: any) =>
         selesai(galat ? null : String(keluar).trim()),
@@ -606,6 +758,14 @@ async function _listBranchesTarik(dir: any) {
     .split("\n")
     .map((s: any) => s.trim())
     .filter(Boolean);
+  // A DETACHED HEAD IS NOT A BRANCH NAMED "HEAD". `rev-parse --abbrev-ref HEAD`
+  // answers with the literal string "HEAD" when nothing is checked out by name,
+  // and the panel printed that in the branch button as though it were a branch —
+  // while no row in the list matched it, so every branch also looked inactive.
+  if (current === "HEAD") {
+    const sha = await gitTryAsync(["rev-parse", "--short", "HEAD"], dir);
+    return { repo: true, current: null, detached: sha || "?", branches };
+  }
   return { repo: true, current: current || null, branches };
 }
 
@@ -619,6 +779,17 @@ function listBranchesAsync(dir: any) {
 }
 
 // The local branches plus the active one. Does not throw.
+//
+// IT MUST ANSWER EXACTLY WHAT _listBranchesTarik ANSWERS. These are the sync
+// and async halves of one question, and tests/execsync-terikat.test.ts compares
+// them precisely because a difference here is not an optimisation — it is a
+// silent change of behaviour depending on which caller asked.
+//
+// The detached-HEAD branch below went into the async half alone, and the
+// divergence was invisible on an ordinary checkout: both halves agree whenever
+// a branch is checked out by name. CI is what found it, because
+// actions/checkout leaves HEAD DETACHED for a pull request — there the sync
+// half reported a branch called "HEAD" while the async half reported a sha.
 function listBranches(dir: any) {
   if (!dir || !isRepo(dir)) return { repo: false, current: null, branches: [] };
   const current = gitTry(["rev-parse", "--abbrev-ref", "HEAD"], dir);
@@ -632,14 +803,250 @@ function listBranches(dir: any) {
         .map((s: any) => s.trim())
         .filter(Boolean)
     : [];
+  // A DETACHED HEAD IS NOT A BRANCH NAMED "HEAD" — see _listBranchesTarik for
+  // what that looked like in the panel.
+  if (current === "HEAD") {
+    const sha = gitTry(["rev-parse", "--short", "HEAD"], dir);
+    return { repo: true, current: null, detached: sha || "?", branches };
+  }
   return { repo: true, current: current || null, branches };
 }
 
-// Switch to another branch (checkout). Fails when a conflict or change blocks it.
-async function switchBranch(dir: any, branch: any) {
+/**
+ * Does this repository have a LOCAL BRANCH by exactly this name?
+ *
+ * refs/heads/ is the whole point. `git checkout` is not a branch command — it is
+ * four commands wearing one name — so anything at all could be handed to it and
+ * something would happen. MEASURED against a real repository holding
+ * uncommitted work:
+ *
+ *   switchBranch(dir, ".")      -> { ok: true }  and a.txt came back from HEAD:
+ *                                  the uncommitted work was DESTROYED, while
+ *                                  the panel flashed "switched to .".
+ *   switchBranch(dir, "--help") -> { ok: true }  HEAD never moved; git printed
+ *                                  its usage and exited 0.
+ *   switchBranch(dir, <sha>)    -> { ok: true }  HEAD detached, after which the
+ *                                  panel showed a branch named "HEAD".
+ *
+ * Verifying the ref first removes all three by construction rather than by
+ * blacklist: `.`, `--help` and a sha are not refs/heads/*. It also settles the
+ * option-injection question for good, because git's own check-ref-format
+ * forbids a ref beginning with `-`, so a name that verifies can never be read
+ * as a flag.
+ */
+async function _localBranchExists(dir: any, branch: any) {
+  const sha = await gitTryAsync(
+    ["rev-parse", "--verify", "--quiet", "refs/heads/" + branch],
+    dir,
+  );
+  return !!sha;
+}
+
+/**
+ * Reads git's refusal and says it in a sentence the panel can actually show.
+ *
+ * The everyday refusal is four lines long — the cause, a tab-indented list of
+ * files, the advice, then "Aborting" — and the panel has one small line for it.
+ * It was passed straight through, so what reached the user was
+ *
+ *   error: Your local changes to the following fi…
+ *
+ * and then it vanished after 2.8 seconds. The switch looked broken when git had
+ * in fact answered clearly: commit first. That is the reported bug.
+ */
+function _switchFailureReason(err: any) {
+  const text = String(err || "").trim();
+  if (!text) return "git refused the switch without saying why";
+  const lower = text.toLowerCase();
+  if (lower.includes("would be overwritten by checkout")) {
+    const files = text
+      .split("\n")
+      .filter((l: any) => l.startsWith("\t"))
+      .map((l: any) => l.trim())
+      .filter(Boolean);
+    const listed = files.slice(0, 3).join(", ");
+    const rest = files.length > 3 ? " +" + (files.length - 3) + " more" : "";
+    const kind = lower.includes("untracked working tree")
+      ? "untracked files"
+      : "uncommitted changes";
+    return (
+      "cannot switch: " +
+      kind +
+      " here would be lost" +
+      (listed ? " (" + listed + rest + ")" : "") +
+      ". Commit them first, then switch."
+    );
+  }
+  if (lower.includes("did not match any file"))
+    return "no branch by that name in this repository";
+  // Anything else: git puts the cause on the first line and the advice after
+  // it, and "error: " in front of a message the panel already colours red adds
+  // nothing.
+  const first = text.split("\n")[0].trim();
+  return first.startsWith("error: ") ? first.slice(7) : first;
+}
+
+// Switch to another branch. Refuses anything that is not a local branch, and
+// reports what HEAD IS afterwards rather than what it was asked to be.
+/**
+ * Switch to another branch, and OFFER A WAY THROUGH when local work blocks it.
+ *
+ * THE COMPLAINT THAT PRODUCED THIS, and it was right: "you fixed the jam, not
+ * the problem -- I am on branch A, I want branch B, it errors, and it keeps
+ * happening." Everything before this made the refusal faster, clearer and
+ * better logged. None of it made the switch POSSIBLE. Telling someone to commit
+ * first is an explanation, not a solution.
+ *
+ * WHY IT KEEPS HAPPENING HERE IN PARTICULAR. This repository's branches differ
+ * by 445 files, 144 of them under public/vendor/monaco, so almost any work in
+ * progress touches a file that also differs -- and git must refuse, or it would
+ * destroy that work. The refusal is correct every single time. What was missing
+ * is what every other client offers:
+ *
+ *   mode "bawa"    `git checkout -m` -- carry the changes onto the new branch.
+ *                  What people usually mean: the work belongs on B, they were
+ *                  simply standing on A. Merges cleanly or leaves real conflict
+ *                  markers, which is reported rather than hidden.
+ *   mode "simpan"  `git stash push -u` then switch -- park the work, arrive
+ *                  clean. The stash REF IS RETURNED, because work that moves
+ *                  without saying where it went is work the user thinks is
+ *                  gone.
+ *
+ * NEITHER IS THE DEFAULT, and that is deliberate. Both move uncommitted work,
+ * and moving someone's work without being asked is not a convenience. The plain
+ * call still refuses exactly as before; a mode is an explicit answer to the
+ * refusal.
+ */
+async function switchBranch(dir: any, branch: any, opts: any = {}) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
-  if (!branch) return { ok: false, err: "empty branch name" };
-  return gitRunAsync(["checkout", branch], dir);
+  const wanted = String(branch == null ? "" : branch);
+  if (!wanted.trim()) return { ok: false, err: "empty branch name" };
+  if (!(await _localBranchExists(dir, wanted)))
+    return {
+      ok: false,
+      err: "no local branch named " + JSON.stringify(wanted),
+    };
+
+  const mode = String(opts.mode || "").toLowerCase();
+  let simpanan: string | null = null;
+
+  if (mode === "simpan" || mode === "bawa") {
+    // -u INCLUDES UNTRACKED FILES. Without it they stay behind and then block
+    // the very checkout this was meant to unblock -- the stash would appear to
+    // do nothing.
+    const label = "wolfspace: sebelum pindah ke " + wanted;
+    const st = await gitRunAsync(["stash", "push", "-u", "-m", label], dir);
+    if (!st.ok) return { ok: false, err: "could not stash: " + st.err };
+    // "No local changes to save" is a SUCCESS with nothing stashed, and it must
+    // not be reported as a stash the user could restore.
+    if (!/No local changes/i.test(String(st.out || "")))
+      simpanan =
+        (await gitTryAsync(["rev-parse", "stash@{0}"], dir)) || "stash@{0}";
+  }
+
+  const r = await gitRunAsync(
+    mode === "paksa" ? ["checkout", "--force", wanted] : ["checkout", wanted],
+    dir,
+  );
+  if (!r.ok) {
+    // THE STASH MUST BE NAMED EVEN WHEN THE SWITCH FAILED. Otherwise the work
+    // is off the working tree, the branch did not change, and nothing on screen
+    // says where it went.
+    const sebab = _switchFailureReason(r.err);
+    return {
+      ok: false,
+      err: simpanan
+        ? sebab +
+          " Your changes are safe in the stash (" +
+          simpanan +
+          ") - restore them with `git stash pop`."
+        : sebab,
+      simpanan,
+    };
+  }
+  // EXIT 0 IS NOT "THE BRANCH CHANGED". The measurements above are exactly that
+  // case: git succeeded and HEAD stayed where it was. So HEAD is read back, and
+  // the answer describes the repository rather than the request.
+  const actual = await gitTryAsync(["rev-parse", "--abbrev-ref", "HEAD"], dir);
+  if (actual !== wanted)
+    return {
+      ok: false,
+      err:
+        "git reported success but HEAD is now " +
+        (actual || "unreadable") +
+        ", not " +
+        wanted,
+    };
+  // MODE "bawa": THE WORK IS BROUGHT BACK AFTER THE SWITCH, not merged during
+  // it. This is lifted from the VS Code git extension, which implements its
+  // "Migrate Changes" as stash -> checkout -> stash pop rather than as
+  // `checkout -m`:
+  //
+  //   } else if (choice === stash || choice === migrate) {
+  //     if (await this._stash(repository, true)) {
+  //       await item.run(repository, opts);
+  //       if (choice === migrate) { await this.stashPopLatest(repository); }
+  //
+  // The first version here used `checkout -m`, and the difference is not
+  // cosmetic: a conflicted merge leaves markers in the working tree and NOTHING
+  // held in reserve, while `git stash pop` DOES NOT DROP THE STASH when it
+  // conflicts. So the work survives a bad outcome in one form and not the
+  // other -- and the safer one costs nothing extra.
+  if (mode === "bawa" && simpanan) {
+    const pop = await gitRunAsync(["stash", "pop"], dir);
+    if (!pop.ok)
+      return {
+        ok: true,
+        current: actual,
+        simpanan,
+        mode,
+        bentrok: [],
+        catatan:
+          "Switched to " +
+          actual +
+          ", but your changes could not be re-applied cleanly. They are STILL " +
+          "in the stash (" +
+          simpanan +
+          ") - nothing was lost. Resolve and run `git stash pop` yourself.",
+      };
+    // A clean pop drops the stash, so there is no longer one to name.
+    simpanan = null;
+  }
+
+  // A CARRIED CHANGE CAN ARRIVE CONFLICTED, and that must be said out loud.
+  // Reporting it as a clean switch would leave the user editing a file full of
+  // <<<<<<< without being told why.
+  const bentrok =
+    mode === "bawa"
+      ? String(
+          (await gitTryAsync(
+            ["diff", "--name-only", "--diff-filter=U"],
+            dir,
+          )) || "",
+        )
+          .split(String.fromCharCode(10))
+          .map((x: string) => x.trim())
+          .filter(Boolean)
+      : [];
+
+  return {
+    ok: true,
+    current: actual,
+    simpanan,
+    mode: mode || "biasa",
+    bentrok,
+    catatan: bentrok.length
+      ? "Your changes came across, but " +
+        bentrok.length +
+        " file(s) need you to resolve conflict markers: " +
+        bentrok.slice(0, 3).join(", ") +
+        (bentrok.length > 3 ? " +" + (bentrok.length - 3) + " more" : "")
+      : simpanan
+        ? "Your changes are in the stash (" +
+          simpanan +
+          ") - restore them with `git stash pop`."
+        : "",
+  };
 }
 
 // Create a new branch (optionally from another branch/ref) and switch to it.
@@ -750,6 +1157,8 @@ module.exports = {
   listBranches,
   listBranchesAsync,
   switchBranch,
+  _localBranchExists,
+  _switchFailureReason,
   createBranch,
   renameBranch,
   deleteBranch,

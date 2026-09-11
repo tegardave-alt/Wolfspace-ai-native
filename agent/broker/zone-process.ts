@@ -1,38 +1,30 @@
-// ── Capability zone (process-isolated) ──
-// Runs untrusted task code in a SEPARATE Node process launched with
-// `--permission` and zero --allow-fs-read/--allow-fs-write grants. Node's
-// runtime denies fs access at the native binding layer for that whole
-// process — this holds even against the classic vm-escape technique that
-// broke the earlier vm.createContext-based zone (see agent/broker/README.md
-// for the side-by-side test result).
+// zone-process.ts — runs untrusted task code in a SEPARATE Node process,
+// launched with `--permission` and no fs grants at all.
 //
-// The zone process's ONLY channel to the outside world is IPC messages
-// forwarded here and validated by the Broker before anything executes.
+// ROLE IN THE SYSTEM. Node denies fs access at the native binding layer for
+// that whole process, which holds even against the classic vm-escape that broke
+// the earlier vm.createContext zone (side-by-side result in
+// agent/broker/README.md). The zone's ONLY channel out is IPC messages
+// forwarded here and validated by the Broker before anything runs.
+//
+// CONNECTS TO
+//   spawns   agent/broker/zone-worker.cjs, the process that hosts the task
+//   used by  agent/broker/index.ts
 // @ts-check
 "use strict";
 
 /**
- * The zone's network containment status.
+ * The zone's network containment status, as a UNION.
  *
- * A UNION, and its shape here enforces something real: `alasan` exists ONLY
- * on the branch that is NOT contained. So there can be no "contained, but
- * here is why it is not" — and no "not contained" without saying why. That
- * reason is the only thing separating a safeguard that was unavailable from
- * one that died quietly.
+ * `alasan` exists ONLY on the un-contained branch. That makes two states
+ * unspeakable — "contained, and here is why it is not", and "not contained"
+ * with no reason — and it makes laporSekali()'s guard machine-checked: delete
+ * the narrowing and reading `st.alasan` is a type error instead of an
+ * `undefined` printed silently into a security warning.
  *
- * The second effect is in laporSekali(): the guard
- * `if (... || st.jaringanTerkurung) return;` is now MACHINE-CHECKED. Delete
- * that guard and the `st.alasan` read below becomes a type error, rather
- * than an `undefined` printed silently into a security warning.
- *
- * The union is declared below as a real TypeScript type.
+ * Members are comma-separated to match the shape tests/kontrak-tipe.test.js
+ * pins.
  */
-
-// `alasan` exists ONLY on the un-contained branch, and that is the whole
-// point: reading st.alasan without first narrowing on jaringanTerkurung is a
-// type error rather than an `undefined` quietly printed into a security
-// warning. Members are comma-separated to match the shape the ratchet test
-// pins (tests/kontrak-tipe.test.js).
 type StatusKurungan =
   | { transport: "linux-netns"; jaringanTerkurung: true }
   | {
@@ -656,7 +648,20 @@ function runInCapabilityZone(
       });
     }
 
-    // Satu cara mengirim, apa pun transportnya.
+    // ONE WAY TO SEND, whatever the transport is.
+    //
+    // THE try/catch BELOW IS NOT ENOUGH ON ITS OWN, and that is why the
+    // listener above exists. A write to a dying pipe is ACCEPTED and fails
+    // afterwards, in WriteWrap.onWriteComplete — nothing is thrown at this
+    // call site to be caught. Reproduced: `Error: write EOF` on the pipe (a
+    // Socket on Windows), unhandled, which server.ts rethrows and the whole
+    // backend stops. The try/catch still covers the synchronous case, where
+    // the stream is already destroyed.
+    // A zone that dies mid-write must not take the backend with it. Only the
+    // wsl branch pipes stdin; the other two leave it null, so this is guarded
+    // the same way the write below is.
+    if (wsl && child.stdin) child.stdin.on("error", () => {});
+
     const kirimKeZona = (msg) => {
       if (wsl) {
         try {

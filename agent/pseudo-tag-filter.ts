@@ -1,8 +1,15 @@
-// ── Pseudo tool-call tag filter ──
-// Weak / local models sometimes emit tool calls as text (`<function=name>{...}</function>`)
-// instead of using native tool_calls. This module (a) parses those tags into real calls
-// when possible, and (b) guarantees the raw tag NEVER reaches the user — whether it parsed
-// successfully, used a different separator dialect, or never closed at all.
+// pseudo-tag-filter.ts — rescues tool calls that a model wrote as TEXT instead
+// of using the native tool_calls field.
+//
+// ROLE IN THE SYSTEM. Weak and local models emit things like
+// `<function=name>{...}</function>` in the middle of a reply. This does two
+// jobs, and the second is the one that must never fail: it parses such tags
+// into real calls where it can, and it guarantees the raw tag NEVER reaches the
+// user — whether it parsed, used an unknown separator dialect, or never closed.
+//
+// CONNECTS TO
+//   imports  nothing
+//   used by  agent/chat.ts, wrapped around the reply stream
 "use strict";
 
 // Documented dialect (server.cjs): `<function=name={"path":"x"}>` or `<function=list>`

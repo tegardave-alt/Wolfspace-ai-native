@@ -1,6 +1,11 @@
-// DAP debug-session routes.
-// Ported from the former server/routes/dap.ts; behavior is unchanged. Session
-// logic lives in core/dap-sesi.ts — this file is only its HTTP layer.
+// dap.ts — the HTTP layer over a debug session, and nothing more.
+//
+// ROLE IN THE SYSTEM. Session logic lives in core/dap-sesi.ts and the protocol
+// in core/dap.ts; this file only routes.
+//
+// CONNECTS TO
+//   imports  core/dap-sesi
+//   mounted  by server.ts
 //
 // PATH CONTAINMENT HAPPENS HERE, NOT IN THE UI. `program` arrives from the
 // renderer and therefore cannot be trusted; it reuses the same `kurungDiAkar`

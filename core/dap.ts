@@ -1,11 +1,18 @@
 "use strict";
 /**
- * ── A Debug Adapter Protocol client ──
+ * dap.ts — a Debug Adapter Protocol client: the EDITOR side of a debug session.
  *
- * DAP is the standard language between an editor and a debugger — the same open
- * specification (MIT, from Microsoft) VS Code uses. This file is the EDITOR
- * side: it talks to an adapter process (debugpy, js-debug, dlv dap) and turns
- * its messages into promises and events.
+ * ROLE IN THE SYSTEM. DAP is the open specification (MIT, from Microsoft) that
+ * VS Code uses between an editor and a debugger. This file talks to an adapter
+ * process — debugpy, js-debug, dlv dap — and turns its messages into promises
+ * and events. It holds no session state; that is core/dap-sesi.ts.
+ *
+ * The wire format is identical to LSP (JSON-RPC over stdio with Content-Length
+ * framing), so core/lsp.ts is worth reading alongside it.
+ *
+ * CONNECTS TO
+ *   imports  child_process only
+ *   used by  core/dap-sesi.ts
  *
  * WHY IT EXISTS. The previous debug path read TEXT from a PTY: wait for a
  * `debug>`/`(Pdb)` prompt to appear, then infer the state from it. That worked,
@@ -64,6 +71,26 @@ class KlienDap extends EventEmitter {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    // A CHILD THAT DIES MID-WRITE MUST NOT KILL THIS PROCESS.
+    //
+    // REPRODUCED, not guessed: queue a large write into a child's stdin, let the
+    // child exit while that write is still in flight, and Node raises
+    //
+    //     Error: write EOF   errno -4095  syscall 'write'
+    //       at WriteWrap.onWriteComplete
+    //     Emitted 'error' event on Socket instance
+    //
+    // On Windows a stdio pipe IS a Socket, which is what that line names. With no
+    // 'error' listener it is an uncaught exception, and server.ts rethrows every one
+    // of those — so one dying child takes the whole backend down. It was seen exactly
+    // that way: the agent was running, and the process simply stopped.
+    //
+    // Writing after the child has ALREADY gone is harmless — the stream is destroyed
+    // and the write is dropped. The dangerous window is the write that gets accepted
+    // and then fails, which is why a listener is needed rather than a check.
+    //
+    // agent/mcp-client.ts has had this guard for a while; it was never applied here.
+    this.proses.stdin.on("error", () => {});
     this.proses.stdout.on("data", (b) => this._terima(b));
     // The adapter's stderr is NOT the debugged program's output — that arrives as
     // an `output` event. What comes here is the adapter's own message when it is

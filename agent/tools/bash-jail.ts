@@ -1,13 +1,17 @@
-// ── bash containment through Linux namespaces (replacing the Docker container) ──
+// bash-jail.ts — the Linux containment for `bash`, built from kernel
+// namespaces with no daemon involved.
 //
-// WHY IT EXISTS. Workspace containment for `bash` used to have only two levels:
-// a single-use Docker container when the daemon was alive, or a regex guard
-// whose own code labelled it "leaky". Docker meant depending on a daemon that
-// has to be installed and running — on this development machine it is off, so
-// what actually ran day to day was that regex guard.
+// ROLE IN THE SYSTEM. The Linux counterpart to appcontainer-jail.ts (Windows
+// AppContainer). Containment used to have only two levels: a single-use Docker
+// container when the daemon happened to be running, or a regex guard whose own
+// code called itself "leaky" — and since the daemon is usually off, the regex
+// is what actually ran. The kernel provides the same ingredients directly.
 //
-// The kernel already provides the same ingredients with no daemon at all. What
-// is reproduced, one by one, from the old `docker run` arguments:
+// CONNECTS TO
+//   imports  ../ukur-blok (block timing)
+//   used by  agent/tools/index.ts
+//
+// What is reproduced, one by one, from the old `docker run` arguments:
 //
 //   --network none          -> unshare -n            (empty network namespace)
 //   -v <ws>:/work           -> mount --bind ws       (only that folder visible)
@@ -169,6 +173,15 @@ function jalankan(cmd, root, opts: any = {}) {
       resolve({ ok: false, output: "gagal menjalankan jail: " + e.message });
     });
 
+    // A CHILD THAT DIES MID-WRITE MUST NOT KILL THIS PROCESS.
+    //
+    // `unshare` refuses outright on a kernel without the namespaces, or when
+    // the binary is missing — and the jail script written below is large, so
+    // the write is queued rather than instant. Reproduced: a write accepted and
+    // then failed raises `Error: write EOF` on the pipe (a Socket on Windows)
+    // with no listener, which server.ts rethrows, taking the backend with it.
+    // The resolve() paths above already report the failure properly.
+    child.stdin.on("error", () => {});
     child.stdin.write(_skripJail(jail, root, workdir, cmd));
     child.stdin.end();
   });

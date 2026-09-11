@@ -1,6 +1,20 @@
-// WOLFSPACE desktop app (Electron): launches the backend + local models, then
-// opens a native window. Spawns the server as a SEPARATE process so the
-// executor's process.execPath stays a real JS runtime (bun/node), not electron.
+// main.ts — the Electron main process: WOLFSPACE's desktop entry point.
+//
+// ROLE IN THE SYSTEM. It owns the window, starts the backend and the local
+// models, and answers the renderer's IPC. Two placement decisions matter more
+// than anything else here:
+//
+//   the server runs as a SEPARATE process, so the agent's process.execPath
+//   stays a real JS runtime (node/bun) rather than electron;
+//
+//   the BACKEND is hosted off this thread by electron/backend-host.cjs,
+//   because this process draws the window and a 5000 ms block here is what
+//   Windows calls "Not Responding".
+//
+// CONNECTS TO
+//   imports  electron, child_process, http, fs, path, ./probe (startup timing)
+//   spawns   the backend host and the server
+//   bridge   electron/preload.ts exposes window.WOLFSPACE to the renderer
 const { app, BrowserWindow, shell, ipcMain, protocol } = require("electron");
 const { spawn, execSync } = require("child_process");
 const http = require("http");
@@ -774,6 +788,173 @@ function browserAksi(p: any) {
  * api routes at all; they are their own channels and stay in main untouched.
  */
 const _TETAP_DI_MAIN: string[] = [];
+/**
+ * The live browser: the <webview> the user is looking at, driven by the agent.
+ *
+ * PROVEN BEFORE IT WAS BUILT. A harness attached to a guest <webview>, read its
+ * content and wrote it back. Two things came out of that:
+ *
+ *   1. Playwright over a CDP PORT cannot see a guest at all. Connecting to
+ *      Electron with --remote-debugging-port lists exactly one target, the host
+ *      page; the guest is not published. The port would have been opened for
+ *      nothing.
+ *   2. Reaching the guest from HERE needs no port whatsoever. That removes the
+ *      whole exposure the port would have created -- there is nothing to bind
+ *      to localhost and nothing to randomise, because nothing listens.
+ *
+ * executeJavaScript rather than the debugger: it is the same Runtime.evaluate
+ * underneath, without an attach/detach lifecycle to leak. The debugger is only
+ * needed for what script cannot do, such as real input events.
+ */
+async function _browserDalam(args: any) {
+  const aksi = String((args && args.action) || "").toLowerCase();
+  const sel = String((args && args.selector) || "");
+
+  // THE HANDLE IS _br, not a search by type.
+  //
+  // The first version looked for a WebContents whose getType() is "webview",
+  // which found nothing and reported the panel as closed while it was open in
+  // front of the user. The panel has not been a <webview> tag for some time:
+  // it is a WebContentsView created HERE and floated above the window, and
+  // this module already holds it. Searching for what this file itself owns was
+  // the mistake.
+  const tamu = _br && _br.tampil && _br.tampil.webContents;
+  if (!tamu || tamu.isDestroyed()) {
+    // WHAT MAIN ACTUALLY SEES, not a flat claim.
+    //
+    // "The panel is not open" was reported to a user looking straight at an
+    // open panel, twice, and there was no way to tell from the message which
+    // assumption was wrong. _brKeadaan() is the diagnostic this file already
+    // keeps for exactly this; the answer names the state instead of asserting
+    // one.
+    //
+    // The likeliest cause is real and worth naming: the view is created only
+    // when the panel shows an EXTERNAL site. A local file preview renders in an
+    // <iframe> in the renderer, so there is no WebContentsView to drive at all.
+    let keadaan = "";
+    try {
+      keadaan = JSON.stringify(_brKeadaan());
+    } catch (_: any) {
+      keadaan = "(state unreadable)";
+    }
+    throw new Error(
+      "no live browser view to drive. Main reports: " +
+        keadaan +
+        ". The panel only creates one for an EXTERNAL site — a local file preview " +
+        "renders in an iframe and cannot be driven this way. Open a http(s) page in " +
+        "the panel, or use target 'luar' for a separate window.",
+    );
+  }
+  // Open but blank is a different state, and worth saying so rather than
+  // letting a read come back mysteriously empty.
+  const alamatKini = String(tamu.getURL() || "");
+  if (!alamatKini && aksi !== "goto" && aksi !== "open") {
+    throw new Error(
+      "the browser panel is open but has no page loaded — use action 'goto' with a url first",
+    );
+  }
+
+  // A selector is interpolated into script, so it is passed as DATA through
+  // JSON.stringify rather than pasted into the source. Anything else lets a
+  // selector close the string and become code.
+  const S = JSON.stringify(sel);
+
+  if (aksi === "goto" || aksi === "open") {
+    // The host has already put this through the destination guard.
+    await tamu.loadURL(String(args.url));
+  } else if (aksi === "click") {
+    const ok = await tamu.executeJavaScript(
+      "(() => { const e = document.querySelector(" +
+        S +
+        "); if (!e) return false; e.click(); return true; })()",
+    );
+    if (!ok) throw new Error("selector matched nothing: " + sel);
+  } else if (aksi === "type") {
+    const T = JSON.stringify(String((args && args.text) || ""));
+    const ok = await tamu.executeJavaScript(
+      "(() => { const e = document.querySelector(" +
+        S +
+        "); if (!e) return false; e.focus(); e.value = " +
+        T +
+        "; e.dispatchEvent(new Event('input', { bubbles: true }));" +
+        " e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()",
+    );
+    if (!ok) throw new Error("selector matched nothing: " + sel);
+  } else if (aksi === "screenshot") {
+    const img = await tamu.capturePage();
+    const b = img.toPNG();
+    return (
+      "screenshot taken: " +
+      b.length +
+      " bytes, " +
+      tamu.getURL() +
+      " (not returned inline)"
+    );
+  } else if (aksi !== "read") {
+    throw new Error("unknown action: " + aksi);
+  }
+
+  const teks = await tamu.executeJavaScript(
+    sel
+      ? "(() => { const e = document.querySelector(" +
+          S +
+          "); return e ? e.innerText : null; })()"
+      : "document.body ? document.body.innerText : ''",
+  );
+  if (sel && teks === null) throw new Error("selector matched nothing: " + sel);
+  return (
+    "url: " +
+    tamu.getURL() +
+    " | title: " +
+    tamu.getTitle() +
+    " " +
+    String(teks || "").slice(0, 4000)
+  );
+}
+
+/**
+ * Opens GitHub's Authorize page in the user's real browser.
+ *
+ * DELIBERATELY NOT a general "open this URL" operation. shell.openExternal
+ * hands a string to the operating system's handler, which is the widest thing
+ * this process can do on request — so it accepts exactly the one origin and
+ * path the sign-in needs, and nothing else reaches the shell.
+ */
+function _bukaMasukGithub(args: any) {
+  const mentah = String((args && args.url) || "");
+  let u: any = null;
+  try {
+    u = new URL(mentah);
+  } catch (_e: any) {
+    throw new Error("not a URL");
+  }
+  if (
+    u.protocol !== "https:" ||
+    u.hostname !== "github.com" ||
+    u.pathname !== "/login/oauth/authorize"
+  ) {
+    throw new Error("only GitHub's authorize page can be opened this way");
+  }
+  shell.openExternal(u.toString());
+  return { ok: true };
+}
+
+/**
+ * The fixed set of things the host may ask this process to do.
+ *
+ * The return type is stated as `any` on purpose. The two branches genuinely
+ * differ — _browserDalam answers a Promise<string>, _bukaMasukGithub a plain
+ * { ok } — and without an annotation TypeScript narrows the caller's
+ * Promise.resolve().then() to the first branch's type and then rejects the
+ * second. The union is real, the caller passes whatever it gets straight back
+ * over IPC, and nothing downstream depends on which shape arrived.
+ */
+function _layaniMintaMain(apa: any, args: any): any {
+  if (apa === "browser-dalam") return _browserDalam(args);
+  if (apa === "buka-masuk-github") return _bukaMasukGithub(args);
+  throw new Error("unknown main request: " + apa);
+}
+
 function _jalurKeHost(payload: any) {
   const jalur = String((payload && payload.path) || "");
   if (!jalur.startsWith("/")) return false;
@@ -1010,6 +1191,37 @@ function backendHost(nama: string) {
       stdio: "inherit",
     });
     proc.on("message", (m: any) => {
+      // A REQUEST FROM THE HOST, not a reply to one of ours.
+      //
+      // The only direction that used to exist was main -> host. The live
+      // browser needs the other one: <webview> guests are WebContents, and
+      // WebContents exist only here. A utilityProcess has no handle to them at
+      // all.
+      //
+      // `apa` names one of a fixed set of operations, deliberately. A channel
+      // that ran arbitrary work on request would put the agent back on the
+      // window thread, which is what splitting these processes was for.
+      if (m && m.kind === "minta-main") {
+        Promise.resolve()
+          .then(() => _layaniMintaMain(m.apa, m.args))
+          .then(
+            (value) =>
+              proc.postMessage({
+                id: m.id,
+                kind: "jawab-main",
+                ok: true,
+                value,
+              }),
+            (err) =>
+              proc.postMessage({
+                id: m.id,
+                kind: "jawab-main",
+                ok: false,
+                error: (err && err.message) || String(err),
+              }),
+          );
+        return;
+      }
       // Streams answer many times, so they are routed before the one-shot map.
       if (m && (m.kind === "chunk" || m.kind === "end")) {
         const al = _aliranHost.get(m.id);
@@ -1061,17 +1273,65 @@ function backendHost(nama: string) {
 }
 
 /** Send to the host that owns this work. null means fall back to core(). */
+// THE `api` CHANNEL CARRIES WORK THAT LEGITIMATELY TAKES MINUTES.
+//
+// 30 seconds is the default for a message that should answer immediately. A
+// branch switch is not that: a cold `git checkout` of this repository was
+// MEASURED at 44.9 seconds, because 35 MB has to come out of the pack with an
+// empty OS cache -- the ordinary state after a build or a test run.
+//
+// The budget is not removed. A host that is GONE is already reported by the
+// exit handler, by name and immediately; this number only decides how long a
+// LIVE host is trusted to still be working. Larger than the git write budget in
+// scripts/ww.ts (90 s) on purpose, so git's own message wins the race and the
+// user is told what git said rather than that something timed out.
+const BATAS_API_MS = 120000;
+
 function backendInvoke(channel: string, payload: any, batasMs = 30000) {
   const nama = _hostUntuk(channel, payload);
   const h = backendHost(nama);
   if (!h) return null;
   const id = ++_backendId;
+  // NAME THE REQUEST, not just the host.
+  //
+  // The old message was "host backend tak menjawab dalam 30000 ms" and nothing
+  // else. A user hit it and the line could not be acted on: it does not say
+  // which route hung, how long it really waited, or whether anything was queued
+  // behind it. Two plausible causes were measured and BOTH were wrong --
+  // requiring core.js costs 1162 ms with the cache off, not 30 s, and
+  // startJedi() is async and spawns rather than blocks -- so the guessing was
+  // paid for in full before the gap in the message was noticed.
+  //
+  // `antre` is what separates the two shapes of this failure: one slow route
+  // reports 0 others waiting, a wedged host reports the pile behind it.
+  const rute =
+    channel === "api"
+      ? " [" +
+        String((payload && payload.method) || "GET") +
+        " " +
+        String((payload && payload.path) || "?") +
+        "]"
+      : " [" + channel + "]";
+  const t0 = Date.now();
   return new Promise<any>((resolve) => {
     const jam = setTimeout(() => {
       if (_backendMenunggu.delete(id)) {
+        let antre = 0;
+        for (const [, t] of _backendMenunggu) if (t.nama === nama) antre++;
         resolve({
           ok: false,
-          error: "host " + nama + " tak menjawab dalam " + batasMs + " ms",
+          error:
+            "host " +
+            nama +
+            " tak menjawab dalam " +
+            (Date.now() - t0) +
+            " ms (batas " +
+            batasMs +
+            ")" +
+            rute +
+            ", " +
+            antre +
+            " permintaan lain masih menunggu",
         });
       }
     }, batasMs);
@@ -1096,6 +1356,19 @@ function registerIpc() {
   ipcMain.on("WOLFSPACE:probe", (_e: any, d: any) => {
     if (d && d.t === "renderer-stop")
       probe.say("RENDERER-STOP ~" + Math.round(d.overshoot) + "ms");
+    // The same freeze, with the script that caused it. See
+    // _probeSiapaYangMembekukan in electron/preload.ts: the numeric probe above
+    // says a frame was lost, this says what was running inside it.
+    if (d && d.t === "renderer-stop-sebab")
+      probe.say(
+        "RENDERER-STOP sebab: " +
+          d.sumber +
+          " (frame " +
+          d.durasi +
+          "ms, memblokir " +
+          d.memblokir +
+          "ms)",
+      );
   });
   ipcMain.handle(
     "WOLFSPACE:invoke",
@@ -1200,11 +1473,78 @@ function registerIpc() {
         // The case a timeout exists for -- a host that is gone -- is already
         // covered, and covered better, by the exit handler above: it fails that
         // host's waiters immediately and by name. This budget only catches a
-        // host that is alive and silent, which has not been observed.
-        const lewatHost = await backendInvoke(channel, payload);
+        // host that is alive and silent.
+        //
+        // WHICH HAS NOW BEEN OBSERVED, and this comment used to end by saying it
+        // had not. From a user's log:
+        //
+        //   "[probe] backend-host gagal api: host backend tak menjawab dalam ..."
+        //
+        // The wording is itself the evidence: a host that had EXITED fails its
+        // waiters with "host backend berhenti" from the exit handler above, so
+        // reaching the timeout text at all means the process was alive and
+        // simply never answered. What the line could not say was WHICH route and
+        // for how long -- backendInvoke now says both.
+        //
+        // The claim above that a boot route "runs tsc" is also no longer true:
+        // no route invokes the compiler any more. It is kept as the reason the
+        // three-second budget was removed, which still stands.
+        const lewatHost = await backendInvoke(channel, payload, BATAS_API_MS);
         if (lewatHost && lewatHost.ok && lewatHost.value != null)
           return lewatHost.value;
-        if (lewatHost) probe.say("backend-host gagal api: " + lewatHost.error);
+        if (lewatHost) {
+          probe.say("backend-host gagal api: " + lewatHost.error);
+          // A WRITE IS NEVER RE-RUN, and this is where the lock came from.
+          //
+          // The fallback below re-runs the SAME request in this process. For a
+          // GET that is merely wasteful. For a POST it is a second write
+          // against a repository the first one is still writing to -- and that
+          // is a self-inflicted .git/index.lock, from the only writer that was
+          // ever observed taking one.
+          //
+          // TRACED FROM THE USER'S OWN LOG, and only after the timeout message
+          // was made to name its route:
+          //
+          //   POST /ww/branch/switch
+          //   "host backend tak menjawab dalam 30007 ms (batas 30000)"
+          //   "[POST /ww/branch/switch], 0 permintaan lain masih menunggu"
+          //
+          // "0 others waiting" is the part that settles it: the host was not
+          // wedged behind a queue, this one request simply needed longer than
+          // the budget. A cold checkout of this repository was MEASURED at
+          // 44.9 seconds -- 35 MB out of the pack with an empty OS cache.
+          //
+          // So the timeout fired at 30 s, main started a SECOND `git checkout`,
+          // and the two collided. Every lock hunted in this repository traces
+          // back to here; watching the live repository for 60 seconds while it
+          // was idle produced none.
+          //
+          // The honest answer for a write is the failure itself. The host is
+          // still working, and its result will land or its exit handler will
+          // report it -- neither needs a duplicate.
+          const metode = String(
+            (payload && (payload as any).method) || "GET",
+          ).toUpperCase();
+          if (metode !== "GET" && metode !== "HEAD")
+            // THE SHAPE MATTERS AS MUCH AS THE MESSAGE. Everything on this
+            // channel is an HTTP-like { status, headers, body }, and the
+            // renderer reads it as JSON.parse(r.body) -- so an object without a
+            // `body` parses to null and the panel shows a bare "failed" with
+            // the explanation thrown away. The first version of this return did
+            // exactly that: it replaced a useless message with no message.
+            return {
+              status: 504,
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                ok: false,
+                err:
+                  "the backend is still working on this (" +
+                  lewatHost.error +
+                  "). It was NOT retried here, because a second write against " +
+                  "the same repository is what causes a lock.",
+              }),
+            };
+        }
       }
       if (channel === "api") return apiCall(payload); // generic in-process HTTP-handler proxy
       const c = core();

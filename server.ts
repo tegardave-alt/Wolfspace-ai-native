@@ -1,5 +1,23 @@
 "use strict";
-// DEBUG: capture full stack for Maximum call stack errors
+// server.ts — the WOLFSPACE application itself: the HTTP server, its routes,
+// and everything they hold open.
+//
+// ROLE IN THE SYSTEM. This is the backend, whatever launches it. `npm start`
+// reaches it through server.cjs (the launcher, which installs the .ts require
+// hook); the desktop app reaches the same code in-process through core.js and
+// electron/backend-host.cjs, with no port involved.
+//
+// CONNECTS TO
+//   routes    server/routes/* — cloud, dap, debug, github, lsp, reaktif,
+//             snapshots, terminal — mounted here and given their state via deps
+//   agent     agent/self_agent (the JS loop), agent/python-agent (the Python
+//             graph), agent/chat (plain chat), agent/tools, agent/mcp-client
+//   platform  core/terminal (PTY), agent/snapshot, agent/safe-edit
+//
+// The two blocks below run BEFORE anything else on purpose: they are what makes
+// a crash or an exit leave something to read.
+
+// Full stack for "Maximum call stack" errors, which otherwise truncate.
 process.on("uncaughtException", (err: any) => {
   try {
     require("fs").appendFileSync(
@@ -15,6 +33,39 @@ process.on("uncaughtException", (err: any) => {
   } catch (_) {}
   throw err;
 });
+
+// OUR OWN stdout IS A PIPE, AND A PIPE CAN BREAK UNDER US.
+//
+// The handler above rethrows, which is correct for a real bug and fatal for
+// this: an uncaughtException handler that throws makes Node exit with code 7,
+// "Internal Exception Handler Run-Time Failure". The user saw exactly that:
+//
+//     Error: write EOF ... at WriteWrap.onWriteComplete
+//     [probe] host backend keluar, kode 7
+//
+// This process writes to a pipe owned by electron/main.ts, not to a terminal.
+// When the reader goes away while a write is in flight, the stream raises --
+// EPIPE, or EOF on Windows, where the pipe is a Socket -- and with no listener
+// that is an uncaught exception, which the handler above then turns into a
+// hard exit.
+//
+// try/catch DOES NOT HELP, and _writeSafe below is the proof: it wraps every
+// console write in one and the crash still happened. REPRODUCED both ways --
+// a child writing 64 KB at a time with its writes inside try/catch, whose
+// reader is destroyed mid-write, dies with EPIPE at exit 1; the same child with
+// this one listener finishes at exit 0. The write is ACCEPTED and fails
+// afterwards, so there is nothing on the stack to catch by then.
+//
+// The stdin guards added earlier were the same failure in the other direction,
+// and their scanner did not find this one: it looked for writes to a CHILD's
+// stdin, and never asked what this process does with its own.
+//
+// Nothing is logged here. The one place a message could go is the pipe that
+// just broke.
+try {
+  process.stdout.on("error", () => {});
+  process.stderr.on("error", () => {});
+} catch (_) {}
 
 // ── A trace on EXIT, not only a trace on CRASH ──
 //
@@ -263,11 +314,31 @@ function dlog(cat: any, level: any, msg: any, data?: any) {
   if (VERBOSE && cat !== "console") {
     const prefix = `[WOLFSPACE:${cat}]`;
     if (level === "error")
+      // THE ERROR LEVEL USED TO THROW ITS OWN EVIDENCE AWAY.
+      //
+      // It printed `data.error` and nothing else, so every field with any other
+      // name was discarded -- at the one level where the payload is the whole
+      // point. Seen in a real report: two route failures logged side by side
+      // with their successful sibling,
+      //
+      //   "/ww/branch/create -> ok  {ms:514, cabang:hy}"
+      //   "/ww/commit        -> GAGAL"
+      //   "/ww/branch/switch -> GAGAL"
+      //
+      // The successes carried their data and the failures carried none, because
+      // the reason was under `err` rather than `error`. A user asking why the
+      // switch failed could not be answered from a log that had dropped the
+      // answer.
+      //
+      // Both are printed now: the whole object the way info does it, and
+      // data.error on top when it is there -- an Error object loses its stack
+      // through JSON.stringify, and the stack is usually the useful half.
       _writeSafe(
         _origError,
         console,
         prefix,
         msg,
+        ...(data ? [JSON.stringify(data, null, 0)] : []),
         ...(data && data.error ? [data.error] : []),
       );
     else
@@ -651,6 +722,26 @@ async function startJedi() {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    // A CHILD THAT DIES MID-WRITE MUST NOT KILL THIS PROCESS.
+    //
+    // REPRODUCED, not guessed: queue a large write into a child's stdin, let the
+    // child exit while that write is still in flight, and Node raises
+    //
+    //     Error: write EOF   errno -4095  syscall 'write'
+    //       at WriteWrap.onWriteComplete
+    //     Emitted 'error' event on Socket instance
+    //
+    // On Windows a stdio pipe IS a Socket, which is what that line names. With no
+    // 'error' listener it is an uncaught exception, and server.ts rethrows every one
+    // of those — so one dying child takes the whole backend down. It was seen exactly
+    // that way: the agent was running, and the process simply stopped.
+    //
+    // Writing after the child has ALREADY gone is harmless — the stream is destroyed
+    // and the write is dropped. The dangerous window is the write that gets accepted
+    // and then fails, which is why a listener is needed rather than a check.
+    //
+    // agent/mcp-client.ts has had this guard for a while; it was never applied here.
+    jediProc.stdin.on("error", () => {});
     jediProc.stdout.on("data", (d: any) => {
       jediBuf += d.toString();
       let i;
@@ -1523,6 +1614,66 @@ function _pindaiInfo(akar: string): Promise<any> {
       _infoJalan.delete(akar);
     });
   return janji;
+}
+
+/**
+ * The routes served by the vendored VS Code git layer.
+ *
+ * Each maps one request onto one Repository method and returns the same
+ * { ok, ... } shape the ww.ts routes do, so the panel treats them alike.
+ * `path` is the workspace folder; the layer resolves .git from it the way VS
+ * Code does, so a subfolder of a repository works too.
+ */
+async function _gitVscode(url: any, b: any) {
+  const gv = require("./core/git-vscode.ts");
+  if (!b || !b.path) return { ok: false, err: "path is required" };
+  const r = await gv.repo(String(b.path));
+  const remote = b.remote || "origin";
+  switch (url) {
+    case "/ww/remote/push":
+      // setUpstream on the FIRST push of a branch, so the next pull knows
+      // where it came from. Harmless when the upstream already exists.
+      await r.push(remote, b.branch || undefined, !!b.setUpstream);
+      return { ok: true, remote, branch: b.branch || null };
+    case "/ww/remote/pull":
+      await r.pull(!!b.rebase, remote, b.branch || undefined);
+      return { ok: true, remote };
+    case "/ww/remote/fetch":
+      await r.fetch({ remote, prune: !!b.prune });
+      return { ok: true, remote };
+    case "/ww/stash/list": {
+      const daftar = await r.getStashes();
+      return {
+        ok: true,
+        stashes: daftar.map((s: any) => ({
+          index: s.index,
+          description: s.description,
+          branchName: s.branchName || null,
+        })),
+      };
+    }
+    case "/ww/stash/pop":
+      await r.popStash(typeof b.index === "number" ? b.index : 0);
+      return { ok: true };
+    case "/ww/stash/drop":
+      await r.dropStash(typeof b.index === "number" ? b.index : 0);
+      return { ok: true };
+    case "/ww/log": {
+      const n = Math.max(1, Math.min(200, Number(b.maxEntries) || 30));
+      const log = await r.log({ maxEntries: n });
+      return {
+        ok: true,
+        commits: log.map((c: any) => ({
+          hash: c.hash,
+          message: c.message,
+          authorName: c.authorName,
+          authorDate: c.authorDate,
+          parents: c.parents,
+        })),
+      };
+    }
+  }
+  return { ok: false, err: "unknown route " + url };
 }
 
 function _kurungDiAkar(root: any, p: any) {
@@ -2645,6 +2796,17 @@ const _terminalRoutes = require("./server/routes/terminal.ts");
 const _snapshotRoutes = require("./server/routes/snapshots.ts");
 const _cloudRoutes = require("./server/routes/cloud.ts");
 const _dapRoutes = require("./server/routes/dap.ts");
+const _githubRoutes = require("./server/routes/github.ts");
+const _reaktifRoutes = require("./server/routes/reaktif.ts");
+const _lspRoutes = require("./server/routes/lsp.ts");
+// A language server is a compiler-sized process, and it is not reaped for free:
+// on Windows a child outlives its parent. Synchronous on purpose — an `exit`
+// handler returns and the process is gone, so nothing asynchronous would run.
+process.on("exit", () => {
+  try {
+    require("./core/lsp-session.ts").killAll();
+  } catch (_) {}
+});
 
 // Recover tool calls that a model wrote as plain text instead of real tool_calls,
 // e.g. `<function=read={"path":"x"}>` or `<function=list>` (groq/llama quirk).
@@ -2958,6 +3120,9 @@ const server = http.createServer(async (req: any, res: any) => {
   // The confinement is DELEGATED, not copied: `program` comes from the renderer, and
   // two copies of the same security rule will certainly diverge.
   if (_dapRoutes.handle(req, res, { kurungDiAkar: _kurungDiAkar })) return;
+  // The SAME confinement, and for the same reason: a language server reads
+  // whatever it is pointed at, and `path` comes from the renderer.
+  if (_lspRoutes.handle(req, res, { kurungDiAkar: _kurungDiAkar })) return;
   if (
     _terminalRoutes.handle(req, res, {
       terminalSessions,
@@ -2969,6 +3134,32 @@ const server = http.createServer(async (req: any, res: any) => {
   )
     return;
   if (_snapshotRoutes.handle(req, res, { listSnapshots, rollback })) return;
+  // ASYNC, unlike the handlers above: every GitHub route makes a network call,
+  // so it returns a promise. Awaiting it here would hold this dispatcher for
+  // the round trip; the handler answers the response itself, and this only
+  // needs to know whether the request was claimed.
+  if (String(req.url || "").startsWith("/github/")) {
+    _githubRoutes.ruteGithub(req, res).catch((e: any) => {
+      try {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      } catch (_) {}
+    });
+    return;
+  }
+  // Same shape as /github/ above: async because enabling starts a watcher and
+  // the handler answers for itself.
+  if (String(req.url || "").startsWith("/reaktif/")) {
+    _reaktifRoutes
+      .ruteReaktif(req, res, { akarBawaan: QROOT })
+      .catch((e: any) => {
+        try {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: e.message }));
+        } catch (_) {}
+      });
+    return;
+  }
   if (
     _cloudRoutes.handle(req, res, {
       CLOUD_KEYS,
@@ -4332,7 +4523,18 @@ const server = http.createServer(async (req: any, res: any) => {
       req.url === "/ww/branch/rename" ||
       req.url === "/ww/branch/delete" ||
       req.url === "/ww/commit" ||
-      req.url === "/ww/rename")
+      req.url === "/ww/rename" ||
+      // The remote and stash operations WOLFSPACE never had, served by the
+      // VS Code git layer in vendor/vscode-git through core/git-vscode.ts.
+      // In THIS block on purpose: they change git state, so they need the
+      // same cache invalidation and the same outcome log as the rest.
+      req.url === "/ww/remote/push" ||
+      req.url === "/ww/remote/pull" ||
+      req.url === "/ww/remote/fetch" ||
+      req.url === "/ww/stash/list" ||
+      req.url === "/ww/stash/pop" ||
+      req.url === "/ww/stash/drop" ||
+      req.url === "/ww/log")
   ) {
     let body = "";
     req.on("data", (c: any) => (body += c));
@@ -4342,10 +4544,11 @@ const server = http.createServer(async (req: any, res: any) => {
         b = JSON.parse(body || "{}");
       } catch (_) {}
       const ww = require("./scripts/ww.ts");
+      const _mulaiWw = Date.now();
       let out;
       try {
         if (req.url === "/ww/branch/switch")
-          out = await ww.switchBranch(b.path, b.branch);
+          out = await ww.switchBranch(b.path, b.branch, { mode: b.mode });
         else if (req.url === "/ww/branch/create")
           out = await ww.createBranch(b.path, b.branch, b.from);
         else if (req.url === "/ww/branch/rename")
@@ -4356,8 +4559,16 @@ const server = http.createServer(async (req: any, res: any) => {
           out = await ww.commitAll(b.path, b.message);
         else if (req.url === "/ww/rename")
           out = ww.renameWorkspaceFolder(b.path, b.newName);
+        else out = await _gitVscode(req.url, b);
       } catch (e) {
-        out = { ok: false, err: e.message };
+        // The VS Code layer throws GitError with git's own stderr attached and
+        // a gitErrorCode it already classified. Both are kept: the code is
+        // what a caller can branch on, the stderr is what a person can read.
+        out = {
+          ok: false,
+          err: (e && e.stderr && String(e.stderr).trim()) || e.message,
+          kode: e && e.gitErrorCode,
+        };
       }
       // The /ww/git and /ww/branches caches are INVALIDATED here. Everything above
       // CHANGES git state, and without this the user commits and their panel still
@@ -4369,6 +4580,25 @@ const server = http.createServer(async (req: any, res: any) => {
       try {
         ww.lupakanGit(b.path);
         if (b.newName) ww.lupakanGit(b.newName);
+      } catch (_) {}
+      // THE OUTCOME IS LOGGED, not only the arrival.
+      //
+      // The debug log recorded "POST /ww/branch/switch" and then nothing at
+      // all: no result, no error, no duration. A user reporting "it stops and
+      // fails" could not be answered from it, because the log said only that
+      // the request had been received. Every layer below this one reports what
+      // it did; this one did not.
+      try {
+        dlog(
+          "ww",
+          out && out.ok ? "info" : "error",
+          req.url + " -> " + (out && out.ok ? "ok" : "GAGAL"),
+          {
+            ms: Date.now() - _mulaiWw,
+            err: out && out.ok ? undefined : (out && out.err) || "no-op",
+            cabang: b.branch || b.newName || undefined,
+          },
+        );
       } catch (_) {}
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(out || { ok: false, err: "no-op" }));
@@ -4461,6 +4691,7 @@ const server = http.createServer(async (req: any, res: any) => {
   }
 
   // Python autocomplete via Jedi (static analysis, no model)
+
   if (req.method === "POST" && req.url === "/pycomplete") {
     let body = "";
     req.on("data", (c: any) => (body += c));
@@ -4861,7 +5092,36 @@ if (_dijalankanLangsung) {
       `\n  WOLFSPACE  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`,
     );
     startWwWatcher();
+    startReaktif();
   });
+}
+
+// ── THE REACTIVE REPORTER STARTS BY ITSELF ───────────────────────────────────
+//
+// A reactive agent you have to switch on is not reactive, it is a feature with
+// a setup step. It starts with the server, on the folder the app was opened
+// against, and says nothing at all until it has something to say.
+//
+// WHAT IT MAY DO IS NOT A MATTER OF TRUST. The run is handed a tool array with
+// no writing tools in it (see `hanyaBaca` in agent/self_agent.ts), so it cannot
+// edit, cannot run a command, cannot spawn anything — a tool that is absent
+// cannot be called. The limits that stop it becoming an expensive background
+// leak live in agent/reaktif.ts and are deliberately conservative.
+//
+// AFTER the listen callback, and inside its own try: a watcher that fails to
+// start must never be the reason the server does not come up.
+function startReaktif() {
+  try {
+    if (!(CONFIG.reaktif && CONFIG.reaktif.aktif)) return;
+    _reaktifRoutes.mulaiOtomatis(QROOT);
+    console.log(
+      "  [reaktif] watching " +
+        QROOT +
+        " — the agent may report on its own (reads only, max 12/hour)",
+    );
+  } catch (e: any) {
+    console.log("  [reaktif] did not start: " + e.message);
+  }
 }
 
 // ── ww auto-watcher ──

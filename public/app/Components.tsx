@@ -1,7 +1,12 @@
-// Components — extracted from app.tsx (see public/app.tsx for the App
-// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.tsx (prepended), then Babel once -> a single global scope. Function
-// bodies (hooks/React/SB) run at render time.
+// Components.tsx — the chat surface: the message list, the composer, the top
+// bar, attachments, and the GitHub panel.
+//
+// ROLE IN THE SYSTEM. This is where the user actually types and reads. Blocks()
+// near the middle decides how each part of a reply is rendered — prose, a code
+// block, or a diagram (DiagramBlock, from CodeBlocks.tsx).
+//
+// See public/app.tsx for how the renderer is assembled and why load order
+// matters.
 
 /* ----------------------------- Top bar ----------------------------- */
 // ── Menu tata letak (☰) ──
@@ -341,24 +346,16 @@ function MessageDasar({ msg }: any) {
             point in a human reading it. */}
         {msg.attachments && msg.attachments.length > 0 && (
           <div className="msg-attachments">
+            {/* The SAME chip as the composer, minus the remove button -- a sent
+                attachment cannot be unsent. Two different looks for the same
+                file before and after sending was the odd part. */}
             {msg.attachments.map((a: any, i: number) => (
-              <div
-                className={"msg-att" + (a.ok ? "" : " err")}
+              <AttachmentChip
                 key={i}
-                title={a.ok ? a.name : a.name + " — handoff failed"}
-              >
-                {a.previewUrl && /^image\//.test(a.type || "") ? (
-                  <img className="msg-att-thumb" src={a.previewUrl} alt="" />
-                ) : (
-                  <span className="msg-att-ico">{a.ok ? "📎" : "⚠"}</span>
-                )}
-                <span className="msg-att-name">{a.name}</span>
-                <span className="msg-att-size">
-                  {a.size < 1024
-                    ? a.size + " B"
-                    : Math.round(a.size / 1024) + " KB"}
-                </span>
-              </div>
+                att={
+                  a.ok ? a : { ...a, status: "error", error: "Handoff failed" }
+                }
+              />
             ))}
           </div>
         )}
@@ -394,6 +391,384 @@ function MessageDasar({ msg }: any) {
 }
 const Message = React.memo(MessageDasar);
 
+/* --------------------------- Attachment chips --------------------------- */
+//
+// WHAT WAS WRONG. Every attachment was forced into the same 60x60 square, and a
+// text file filled that square with the first ~200 characters of its own source
+// at 6.5px with `word-break: break-all`. A staged index.html read as a grey
+// tile of shredded "<!DOCTYPE html> <ht ml lang= "en"> <he ad> <met" -- no
+// name, no type, no size, nothing anyone could act on. It also hardcoded
+// #4ec9b0 and #0d1117, so it ignored the theme entirely.
+//
+// WHAT THE PATTERN ACTUALLY IS, from how this problem is solved elsewhere:
+// documents are an ICON ROW -- icon, filename, and a quiet subtitle of type and
+// size -- while images and video are THUMBNAILS. assistant-ui describes exactly
+// that split ("images render as filled thumbnail buttons with name and size
+// overlaid, while documents/files appear as icon rows"), and both it and
+// ChatGPT's composer keep the same three staged states: a spinner while
+// uploading, an error state, and a remove affordance.
+//
+// One more detail worth copying: the EXTENSION STAYS VISIBLE when the name is
+// too long. A plain ellipsis eats it, and ".html" is the part that says what
+// the file is. So the name is split and only the stem is allowed to truncate.
+
+/** The icons are the material-icon-theme set already vendored for the tree. */
+function ikonBerkas(nama: string) {
+  const ext = String(nama || "")
+    .split(".")
+    .pop()!
+    .toLowerCase();
+  return (typeof IKON_BAHASA !== "undefined" && IKON_BAHASA[ext]) || "";
+}
+
+/** "4.2 KB". Bytes below a kilobyte stay bytes; nobody wants "0.0 KB". */
+function ukuranBerkas(n?: number) {
+  if (typeof n !== "number" || !isFinite(n) || n < 0) return "";
+  if (n < 1024) return n + " B";
+  if (n < 1024 * 1024) return (n / 1024).toFixed(n < 10240 ? 1 : 0) + " KB";
+  return (n / 1048576).toFixed(1) + " MB";
+}
+
+/** Stem and extension, kept apart so only the stem is allowed to truncate. */
+function belahNama(nama: string) {
+  const n = String(nama || "file");
+  const i = n.lastIndexOf(".");
+  return i > 0
+    ? { batang: n.slice(0, i), ekor: n.slice(i) }
+    : { batang: n, ekor: "" };
+}
+
+/**
+ * The file's own icon, or a generic document outline when the type is unknown.
+ *
+ * Used by the chip AND by the preview modal, which previously showed 📄 for
+ * every file type there is.
+ */
+function IkonLampiran({ nama }: any) {
+  const svg = ikonBerkas(nama);
+  // The vendored icons are SVG source strings — the file tree renders them the
+  // same way.
+  if (svg) return <span dangerouslySetInnerHTML={{ __html: svg }} />;
+  return (
+    <svg viewBox="0 0 24 24" width="18" height="18" aria-hidden="true">
+      <path
+        d="M14 3H7a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h10a2 2 0 0 0 2-2V8zM14 3v5h5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinejoin="round"
+        fill="none"
+      />
+    </svg>
+  );
+}
+
+// ── A FILE ALREADY IN THE PROJECT, DRAGGED INTO THE CHAT ────────────────────
+//
+// This is NOT an attachment, and keeping the two apart is the whole point.
+//
+// An attachment is a file from OUTSIDE the project: it is uploaded, it gets an
+// att_… handle, and the agent reads it through attachment_read because it has
+// no address inside the worktree. A file dragged out of an editor tab is the
+// opposite — it is already in the workspace, at a path the agent's own read and
+// edit tools can reach. Routing it through the upload pipeline would copy it,
+// give the agent a handle to a duplicate, and leave edits landing on the copy
+// rather than on the file the user is looking at.
+//
+// So a reference carries a PATH and nothing else, and it travels in its own
+// state alongside the attachments rather than mixed into them.
+const DRAG_JENIS_BERKAS = "application/x-wolfspace-file";
+
+/** The chip object for one referenced file. `rel` is workspace-relative. */
+function fileRefDari(rel: any) {
+  const p = String(rel || "").replace(/\\/g, "/");
+  if (!p) return null;
+  const potongan = p.split("/");
+  return {
+    id: "ref:" + p,
+    kind: "ref",
+    path: p,
+    name: potongan[potongan.length - 1] || p,
+    dir: potongan.slice(0, -1).join("/"),
+  };
+}
+
+/**
+ * Read a dropped editor tab, if that is what was dropped.
+ *
+ * The dedicated MIME type is what keeps this from firing on ordinary text: the
+ * tab strip already drags `text/plain` for REORDERING, and accepting that here
+ * would turn every tab drag into an attempt to attach something.
+ */
+function fileRefDariDrop(dataTransfer: any) {
+  if (!dataTransfer) return null;
+  const rel = dataTransfer.getData(DRAG_JENIS_BERKAS);
+  return rel ? fileRefDari(rel) : null;
+}
+
+/** Add one reference, without duplicating a file that is already listed. */
+function tambahFileRef(daftar: any, ref: any) {
+  if (!ref) return daftar;
+  return daftar.some((r: any) => r.id === ref.id) ? daftar : [...daftar, ref];
+}
+
+/**
+ * The block the MODEL reads. Paths, workspace-relative, one per line.
+ *
+ * Deliberately not the `[Terlampir] … id: att_…` shape used for uploads: that
+ * line tells the agent to use attachment_read, which is exactly wrong for a
+ * file it can simply open.
+ */
+function blokFileRef(refs: any) {
+  if (!refs || !refs.length) return "";
+  return (
+    "Files in context (already in the workspace, open them directly):\n" +
+    refs.map((r: any) => "- " + r.path).join("\n")
+  );
+}
+
+/** Join the user's text with the reference block, skipping empties. */
+function gabungDenganRef(teks: any, refs: any) {
+  const blok = blokFileRef(refs);
+  if (!blok) return teks;
+  return teks ? teks + "\n\n" + blok : blok;
+}
+
+function AttachmentChip({ att, onRemove, onOpen }: any) {
+  // A REFERENCE, not an upload: no size, no progress, no preview. The subtitle
+  // is the folder it lives in, which is the one thing a bare filename loses.
+  if (att && att.kind === "ref") {
+    return (
+      // lam-berkas carries the row layout; lam-ref only marks it as a
+      // reference, so the two kinds sit on one line without drifting apart.
+      <div className="lam lam-berkas lam-ref" title={att.path}>
+        <span className="lam-ikon">
+          <IkonLampiran nama={att.name} />
+        </span>
+        <span className="lam-teks">
+          <span className="lam-nama">{att.name}</span>
+          <span className="lam-bawah">{att.dir || "in project"}</span>
+        </span>
+        {onRemove ? (
+          <button
+            type="button"
+            className="lam-buang"
+            title="Remove"
+            aria-label={"Remove " + att.name}
+            onClick={(e: any) => {
+              e.stopPropagation();
+              onRemove(att);
+            }}
+          >
+            <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+              <path
+                d="M4 4l8 8M12 4l-8 8"
+                stroke="currentColor"
+                strokeWidth="1.8"
+                strokeLinecap="round"
+                fill="none"
+              />
+            </svg>
+          </button>
+        ) : null}
+      </div>
+    );
+  }
+  const nama = att.name || att.path || "file";
+  const isImg =
+    /\.(png|jpe?g|webp|gif|svg|bmp|ico|avif)$/i.test(nama) ||
+    (att.type && att.type.startsWith("image/"));
+  const isVid =
+    /\.(mp4|webm|mov|mkv)$/i.test(nama) ||
+    (att.type && att.type.startsWith("video/"));
+  const url = att.previewUrl || att.url;
+  const { batang, ekor } = belahNama(nama);
+  const ext = ekor.replace(".", "").toUpperCase();
+  const bisaBuka = Boolean(url || att.snippet);
+  const gagal = att.status === "error";
+  const naik = att.status === "uploading";
+
+  // The subtitle carries the state when there is one, because that is the line
+  // the eye is already on -- a separate error badge elsewhere is missed.
+  const bawah = gagal
+    ? att.error || "Upload failed"
+    : naik
+      ? "Uploading…"
+      : [ext, ukuranBerkas(att.size)].filter(Boolean).join(" · ");
+
+  const buang = onRemove ? (
+    <button
+      type="button"
+      className="lam-buang"
+      title="Remove"
+      aria-label={"Remove " + nama}
+      onClick={(e: any) => {
+        e.stopPropagation();
+        onRemove(att);
+      }}
+    >
+      <svg viewBox="0 0 16 16" width="11" height="11" aria-hidden="true">
+        <path
+          d="M4 4l8 8M12 4l-8 8"
+          stroke="currentColor"
+          strokeWidth="1.8"
+          strokeLinecap="round"
+          fill="none"
+        />
+      </svg>
+    </button>
+  ) : null;
+
+  // ── IMAGES AND VIDEO: A THUMBNAIL ──
+  // The picture is the label. A filename under it would say less than the
+  // picture already does, so it moves to a hover strip and the tooltip.
+  if ((isImg || isVid) && url) {
+    return (
+      <div
+        className={"lam lam-gambar" + (gagal ? " lam-error" : "")}
+        title={nama}
+        onClick={() => bisaBuka && onOpen && onOpen(att)}
+      >
+        {isVid ? <video src={url} muted /> : <img src={url} alt={nama} />}
+        <span className="lam-sampul">{nama}</span>
+        {naik ? <span className="lam-garis" /> : null}
+        {buang}
+      </div>
+    );
+  }
+
+  // ── EVERYTHING ELSE: AN ICON ROW ──
+  const svg = ikonBerkas(nama);
+  return (
+    <div
+      className={
+        "lam lam-berkas" +
+        (gagal ? " lam-error" : "") +
+        (bisaBuka ? " lam-clickable" : "")
+      }
+      title={nama}
+      onClick={() => bisaBuka && onOpen && onOpen(att)}
+    >
+      <span className="lam-ikon">
+        <IkonLampiran nama={nama} />
+      </span>
+      <span className="lam-teks">
+        <span className="lam-nama">
+          <span className="lam-batang">{batang}</span>
+          <span className="lam-ekor">{ekor}</span>
+        </span>
+        <span className="lam-bawah">{bawah}</span>
+      </span>
+      {naik ? <span className="lam-garis" /> : null}
+      {buang}
+    </div>
+  );
+}
+
+/**
+ * The agent saying something without being asked.
+ *
+ * ── IT STARTS BY ITSELF; THERE IS NOTHING TO SWITCH ON ───────────────────────
+ *
+ * An earlier version put a "Watch this folder" toggle here. That was wrong: a
+ * reactive agent you have to enable is not reactive, it is a feature with a
+ * setup step. The watcher starts with the server (config.json → reaktif) and
+ * this component renders NOTHING until there is an actual report — no bar, no
+ * indicator, no standing control.
+ *
+ * ── WHY IT POLLS INSTEAD OF BEING PUSHED ─────────────────────────────────────
+ *
+ * A push would need a third stream channel, and that means main.ts,
+ * backend-host.cjs, the preload bridge and the in-process fallback — four
+ * surfaces to keep in step, for something that speaks at most twelve times an
+ * hour. One small request every twenty seconds costs nothing measurable, works
+ * the same in the desktop app and in a browser, and adds no contract.
+ */
+function ReaktifBar() {
+  const [laporan, setLaporan] = useState<any[]>([]);
+  const [sisa, setSisa] = useState<any>(null);
+
+  useEffect(() => {
+    let hidup = true;
+    const tarik = async () => {
+      try {
+        const j = await (await fetch("/reaktif/status")).json();
+        if (!hidup) return;
+        setSisa(j);
+        // The server hands each report over ONCE, so anything that arrives
+        // here has to be kept — dropping it loses it for good.
+        if (j.laporan && j.laporan.length) {
+          setLaporan((p: any) => [...j.laporan, ...p].slice(0, 5));
+        }
+      } catch (_) {}
+    };
+    void tarik();
+    const jam = setInterval(tarik, 20000);
+    return () => {
+      hidup = false;
+      clearInterval(jam);
+    };
+  }, []);
+
+  // NOTHING ON SCREEN WHEN THERE IS NOTHING TO SAY. A permanent strip saying
+  // "watching…" is the kind of ambient noise that gets tuned out, and then the
+  // one time it matters it is tuned out too.
+  if (!laporan.length) return null;
+
+  const berhenti = async () => {
+    setLaporan([]);
+    try {
+      await fetch("/reaktif/aktif", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ aktif: false }),
+      });
+    } catch (_) {}
+  };
+
+  return (
+    <div className="rk-bar">
+      {laporan.map((l: any, i: number) => (
+        <div className="rk-lapor" key={l.ts + "-" + i}>
+          <span className="rk-lapor-ikon">
+            <IkonTingkat jenis="info" kecil />
+          </span>
+          <div className="rk-lapor-isi">
+            <div className="rk-lapor-teks">{l.teks}</div>
+            <div className="rk-lapor-kaki">
+              {(l.berkas || []).length} file
+              {(l.berkas || []).length === 1 ? "" : "s"} changed ·{" "}
+              {new Date(l.ts).toLocaleTimeString()} · the agent only read them
+              {sisa && sisa.maksPerJam
+                ? " · " + sisa.dalamJam + "/" + sisa.maksPerJam + " this hour"
+                : ""}
+            </div>
+          </div>
+          {/* The way out, offered where the interruption happened rather than
+              in a settings panel this would never send anyone to. */}
+          <button
+            type="button"
+            className="rk-tutup"
+            title="Stop the agent watching this folder"
+            onClick={berhenti}
+          >
+            stop
+          </button>
+          <button
+            type="button"
+            className="rk-tutup"
+            title="Dismiss"
+            onClick={() =>
+              setLaporan((p: any) => p.filter((x: any) => x !== l))
+            }
+          >
+            ×
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
 /* ----------------------------- Composer ----------------------------- */
 // Line icons for the composer "+" menu (match the reference design).
 const svg = (p: any) => (
@@ -410,6 +785,999 @@ const svg = (p: any) => (
     {p}
   </svg>
 );
+
+/**
+ * Private and public, drawn — a padlock and an open book.
+ *
+ * These are the shapes GitHub itself uses for the two states, so the meaning is
+ * already learned. Drawn rather than typed for the same reason the severity
+ * icons are: a glyph arrives at whatever optical size the font decides.
+ */
+function IkonRepo({ pribadi }: any) {
+  const b = {
+    width: 15,
+    height: 15,
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.4,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  if (pribadi)
+    return (
+      <svg {...b}>
+        <rect x="3" y="7" width="10" height="7" rx="1.5" />
+        <path d="M5.5 7V5a2.5 2.5 0 0 1 5 0v2" />
+      </svg>
+    );
+  return (
+    <svg {...b}>
+      <path d="M2.5 3.5A1.5 1.5 0 0 1 4 2h3.5v11H4a1.5 1.5 0 0 0-1.5 1.5z" />
+      <path d="M13.5 3.5A1.5 1.5 0 0 0 12 2H8.5v11H12a1.5 1.5 0 0 1 1.5 1.5z" />
+    </svg>
+  );
+}
+
+/**
+ * Connect GitHub, then pick a repository and a branch.
+ *
+ * READS EXISTING REPOSITORIES, and creates new ones -- nothing in between.
+ * The linked repo is read through the API when the agent needs it; nothing is
+ * cloned. agent/tools/git-tool.ts has no network operations at all -- its own
+ * comment says "push/pull/fetch/clone/remote-set DO NOT EXIST" -- and reading
+ * over HTTP leaves that decision untouched.
+ *
+ * The one exception is creating a repository, which is a write and is named as
+ * one here rather than hidden behind "read-only". No EXISTING repository is
+ * ever modified: no push, no commit, no branch, no delete.
+ *
+ * The token is posted once and never comes back: /github/status answers whether
+ * a connection exists and who is signed in, not what the credential is.
+ */
+function GithubPanel({ onClose }: any) {
+  const [keadaan, setKeadaan] = useState<any>(null);
+  const [token, setToken] = useState("");
+  // The device-flow screen: the code GitHub gave, and where to type it.
+  const [masuk, setMasuk] = useState<any>(null);
+  const [pakaiToken, setPakaiToken] = useState(false);
+  // The browser sign-in, once started: the panel is waiting for the user to
+  // come back from GitHub's own Authorize page.
+  const [menungguWeb, setMenungguWeb] = useState(false);
+  const [pakaiKode, setPakaiKode] = useState(false);
+  // Someone who deliberately wants to sign in as their OWN OAuth App rather
+  // than the one shipped with WOLFSPACE.
+  const [pakaiAppSendiri, setPakaiAppSendiri] = useState(false);
+  const [clientId, setClientId] = useState("");
+  const [clientSecret, setClientSecret] = useState("");
+  const [disalin, setDisalin] = useState(false);
+  // The new-repository form, and its fields.
+  const [buat, setBuat] = useState(false);
+  const [namaBaru, setNamaBaru] = useState("");
+  const [ketBaru, setKetBaru] = useState("");
+  const [pribadiBaru, setPribadiBaru] = useState(true);
+  // Prefilled with what most accounts already produce, so the common case
+  // needs no rename request at all.
+  const [cabangBaru, setCabangBaru] = useState("main");
+  // The right-click menu: which row, and where to draw it.
+  const [menu, setMenu] = useState<any>(null);
+  const menuRef = useRef<any>(null);
+  // Renaming happens in place on the row; deleting opens its own confirmation,
+  // because the two decisions are not the same size.
+  const [ubahNama, setUbahNama] = useState<any>(null);
+  const [namaUbah, setNamaUbah] = useState("");
+  const [hapus, setHapus] = useState<any>(null);
+  const [ketikNama, setKetikNama] = useState("");
+  const [repo, setRepo] = useState<any[]>([]);
+  const [cabang, setCabang] = useState<string[]>([]);
+  const [pilih, setPilih] = useState<any>(null);
+  const [galat, setGalat] = useState("");
+  const [sibuk, setSibuk] = useState(false);
+
+  const muat = useCallback(async () => {
+    try {
+      const j = await (await fetch("/github/status")).json();
+      setKeadaan(j);
+      // A connection made before the account was recorded has a token and no
+      // name. One request backfills it, and only ever runs once.
+      if (j.tersambung && !j.akun) {
+        try {
+          const a = await (await fetch("/github/account")).json();
+          if (a.ok) setKeadaan({ ...j, akun: a.akun });
+        } catch (_) {}
+      }
+      if (j.tersambung) {
+        const r = await (await fetch("/github/repos")).json();
+        if (r.ok) setRepo(r.repo || []);
+        else setGalat(r.error || "");
+      }
+    } catch (e: any) {
+      setGalat(e.message);
+    }
+  }, []);
+
+  useEffect(() => {
+    void muat();
+  }, [muat]);
+
+  // POLLED FROM HERE, not awaited on the server. Each request is short; this
+  // repeats on the interval GitHub asked for. `slow_down` is not an error — it
+  // is GitHub asking for a longer gap, so it widens the interval instead of
+  // being reported.
+  useEffect(() => {
+    if (!masuk) return;
+    let hidup = true;
+    let jeda = (masuk.jeda || 5) * 1000;
+    let jam: any;
+    const tik = async () => {
+      if (!hidup) return;
+      try {
+        const r = await (
+          await fetch("/github/device/poll", { method: "POST" })
+        ).json();
+        if (!hidup) return;
+        if (!r.ok) {
+          setGalat(r.error || "sign-in failed");
+          setMasuk(null);
+          return;
+        }
+        if (r.selesai) {
+          setMasuk(null);
+          await muat();
+          return;
+        }
+        if (r.jeda) jeda = r.jeda * 1000;
+      } catch (_) {}
+      jam = setTimeout(tik, jeda);
+    };
+    jam = setTimeout(tik, jeda);
+    return () => {
+      hidup = false;
+      clearTimeout(jam);
+    };
+  }, [masuk]);
+
+  // ── THE BROWSER SIGN-IN ──
+  //
+  // Start opens GitHub's Authorize page in the real browser and returns at
+  // once; the answer arrives at a loopback callback the backend listens on for
+  // this sign-in only. Polling here is what turns that into a screen.
+  useEffect(() => {
+    if (!menungguWeb) return;
+    let hidup = true;
+    let jam: any;
+    const tik = async () => {
+      if (!hidup) return;
+      try {
+        const r = await (await fetch("/github/web/poll")).json();
+        if (!hidup) return;
+        if (r.keadaan === "selesai") {
+          setMenungguWeb(false);
+          await muat();
+          return;
+        }
+        if (r.keadaan === "gagal") {
+          setGalat(r.galat || "sign-in failed");
+          setMenungguWeb(false);
+          return;
+        }
+      } catch (_) {}
+      jam = setTimeout(tik, 1500);
+    };
+    jam = setTimeout(tik, 1500);
+    return () => {
+      hidup = false;
+      clearTimeout(jam);
+    };
+  }, [menungguWeb, muat]);
+
+  /**
+   * Signing out, and everything on screen that belonged to that account.
+   *
+   * Clearing the React state matters as much as clearing the server's: the repo
+   * list is already rendered, and leaving it there would show the previous
+   * account's repositories -- private ones included -- to whoever signs in next.
+   */
+  const putus = async () => {
+    setGalat("");
+    setRepo([]);
+    setPilih(null);
+    setCabang([]);
+    setBuat(false);
+    await fetch("/github/disconnect", { method: "POST" });
+    await muat();
+  };
+
+  // `ganti` asks GitHub for the account picker. Without it, signing in again
+  // comes straight back with the same account and the switch looks broken.
+  const mulaiWeb = async (ganti?: boolean) => {
+    setSibuk(true);
+    setGalat("");
+    try {
+      const r = await (
+        await fetch("/github/web/start", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ ganti: Boolean(ganti) }),
+        })
+      ).json();
+      if (!r.ok) setGalat(r.error || "could not start sign-in");
+      else setMenungguWeb(true);
+    } catch (e: any) {
+      setGalat(e.message);
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  const mulaiMasuk = async () => {
+    setSibuk(true);
+    setGalat("");
+    try {
+      const r = await (
+        await fetch("/github/device/start", { method: "POST" })
+      ).json();
+      if (!r.ok) setGalat(r.error || "could not start sign-in");
+      else setMasuk(r);
+    } catch (e: any) {
+      setGalat(e.message);
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  const simpanClientId = async () => {
+    setGalat("");
+    await fetch("/github/client-id", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        clientId: clientId.trim(),
+        clientSecret: clientSecret.trim(),
+      }),
+    });
+    setClientId("");
+    setClientSecret("");
+    await muat();
+  };
+
+  const sambung = async () => {
+    setSibuk(true);
+    setGalat("");
+    try {
+      const r = await (
+        await fetch("/github/connect", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ token: token.trim() }),
+        })
+      ).json();
+      if (!r.ok) setGalat(r.error || "connection refused");
+      else {
+        setToken("");
+        await muat();
+      }
+    } catch (e: any) {
+      setGalat(e.message);
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  /** Switching accounts is a sign-out followed by a sign-in that asks who. */
+  const gantiAkun = async () => {
+    await putus();
+    await mulaiWeb(true);
+  };
+
+  const buatRepo = async () => {
+    setSibuk(true);
+    setGalat("");
+    try {
+      const r = await (
+        await fetch("/github/repos", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            nama: namaBaru.trim(),
+            ket: ketBaru.trim(),
+            pribadi: pribadiBaru,
+            cabang: cabangBaru.trim(),
+          }),
+        })
+      ).json();
+      if (!r.ok) {
+        setGalat(r.error || "could not create the repository");
+        return;
+      }
+      setBuat(false);
+      setNamaBaru("");
+      setKetBaru("");
+      // Straight into picking a branch for it. Creating a repository and then
+      // having to find it in the list is a step with no purpose.
+      await muat();
+      await bukaRepo(r.repo);
+    } catch (e: any) {
+      setGalat(e.message);
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  // ── KEEPING THE MENU ON SCREEN ──
+  //
+  // Right-clicking the last row in a long list puts the cursor near the bottom
+  // of the window, and a menu drawn downwards from there is cut off — the
+  // Delete item, which is the one below Rename, is the first thing to go.
+  //
+  // MEASURED rather than estimated: the menu's real size is only known once it
+  // exists, and it changes with the note about delete access. useLayoutEffect
+  // runs before the browser paints, so the correction is never visible.
+  useLayoutEffect(() => {
+    if (!menu || !menuRef.current) return;
+    const r = menuRef.current.getBoundingClientRect();
+    const M = 8; // breathing room, so it never touches the edge
+    const kiri = Math.max(
+      M,
+      Math.min(menu.kiri, window.innerWidth - r.width - M),
+    );
+    // Flipped ABOVE the cursor when there is no room below, rather than merely
+    // pushed up: a menu that overlaps the row it belongs to hides what it is
+    // acting on.
+    const muatBawah = menu.atas + r.height + M <= window.innerHeight;
+    const atas = muatBawah ? menu.atas : Math.max(M, menu.atas - r.height);
+    if (kiri !== menu.kiri || atas !== menu.atas) {
+      setMenu((m: any) => (m ? { ...m, kiri, atas } : m));
+    }
+  }, [menu]);
+
+  // Escape closes whichever popup is open, from anywhere. A menu that can
+  // only be dismissed by clicking exactly the right place is a menu people
+  // click through.
+  useEffect(() => {
+    if (!menu && !hapus) return;
+    const h = (e: any) => {
+      if (e.key !== "Escape") return;
+      setMenu(null);
+      setHapus(null);
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
+  }, [menu, hapus]);
+
+  const kirimGanti = async () => {
+    setSibuk(true);
+    setGalat("");
+    try {
+      const r = await (
+        await fetch("/github/repo/rename", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            owner: ubahNama.owner,
+            repo: ubahNama.repo,
+            nama: namaUbah.trim(),
+          }),
+        })
+      ).json();
+      if (!r.ok) setGalat(r.error || "could not rename it");
+      else {
+        setUbahNama(null);
+        await muat();
+      }
+    } catch (e: any) {
+      setGalat(e.message);
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  const kirimHapus = async () => {
+    setSibuk(true);
+    setGalat("");
+    try {
+      const r = await (
+        await fetch("/github/repo/delete", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            owner: hapus.owner,
+            repo: hapus.repo,
+            // Sent WITH the request. A server that deleted on the strength of
+            // an earlier confirmation would delete whatever is named next.
+            konfirmasi: ketikNama.trim(),
+          }),
+        })
+      ).json();
+      if (!r.ok) setGalat(r.error || "could not delete it");
+      else {
+        setHapus(null);
+        setKetikNama("");
+        await muat();
+      }
+    } catch (e: any) {
+      setGalat(e.message);
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  const bukaRepo = async (x: any) => {
+    setPilih(x);
+    setCabang([]);
+    setGalat("");
+    try {
+      const r = await (
+        await fetch(
+          "/github/branches?owner=" +
+            encodeURIComponent(x.owner) +
+            "&repo=" +
+            encodeURIComponent(x.repo),
+        )
+      ).json();
+      if (r.ok) setCabang(r.cabang || []);
+      else setGalat(r.error || "");
+    } catch (e: any) {
+      setGalat(e.message);
+    }
+  };
+
+  const taut = async (branch: string) => {
+    try {
+      const r = await (
+        await fetch("/github/link", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            owner: pilih.owner,
+            repo: pilih.repo,
+            branch,
+          }),
+        })
+      ).json();
+      if (!r.ok) setGalat(r.error || "");
+      else {
+        await muat();
+        setPilih(null);
+      }
+    } catch (e: any) {
+      setGalat(e.message);
+    }
+  };
+
+  // ── PORTALLED TO document.body ──
+  //
+  // The panel is rendered from deep inside the composer, and in a SPLIT view it
+  // came out clipped: the left half of its text and most of its "Sign in with
+  // GitHub" button were cut off at the pane boundary.
+  //
+  // `position: fixed` is supposed to escape all of that, and usually does — but
+  // a transform, filter, backdrop-filter or will-change anywhere above it turns
+  // that ancestor into the containing block, and the overlay is then measured
+  // and CLIPPED against a pane instead of the window. This repo has already
+  // been bitten by exactly that once, when the right-click menu landed 232px
+  // from the cursor, and the cure was the same one: render somewhere with no
+  // ancestors to inherit.
+  //
+  // Hunting the specific ancestor would fix it until the next one appears. A
+  // portal removes the whole class.
+  const isi = (
+    <div className="gh-overlay" onClick={onClose}>
+      <div className="gh-modal" onClick={(e: any) => e.stopPropagation()}>
+        <div className="gh-head">
+          <Icon.githubMark width={20} height={20} />
+          <div>
+            <div className="gh-judul">Add content from GitHub</div>
+            <div className="gh-sub">
+              Pick a repository and branch to read from
+            </div>
+          </div>
+          <button className="gh-tutup" onClick={onClose} title="Close">
+            ×
+          </button>
+        </div>
+
+        {galat ? <div className="gh-galat">{galat}</div> : null}
+
+        {!keadaan ? (
+          <div className="gh-kosong">Loading…</div>
+        ) : menungguWeb ? (
+          <div className="gh-sambung">
+            <p className="gh-sub">
+              GitHub is open in your browser. Authorize WOLFSPACE there, and
+              this panel will continue on its own.
+            </p>
+            <div className="gh-sub">Waiting for you to finish on GitHub…</div>
+            <button
+              className="gh-kembali"
+              onClick={() => setMenungguWeb(false)}
+            >
+              Cancel
+            </button>
+          </div>
+        ) : masuk ? (
+          <div className="gh-sambung">
+            <p className="gh-sub">
+              Open the page below, sign in to GitHub, and enter this code. No
+              password is typed here — GitHub does the signing in, and you can
+              revoke the access from your GitHub settings at any time.
+            </p>
+            <div className="gh-kode">{masuk.kode}</div>
+            <a
+              className="btn btn-primary"
+              href={masuk.alamat}
+              target="_blank"
+              rel="noreferrer"
+            >
+              Open {masuk.alamat.replace(/^https?:\/\//, "")}
+            </a>
+            <div className="gh-sub">Waiting for you to finish on GitHub…</div>
+            <button className="gh-kembali" onClick={() => setMasuk(null)}>
+              Cancel
+            </button>
+          </div>
+        ) : !keadaan.tersambung ? (
+          <div className="gh-sambung">
+            {/* SETUP IS THE FALLBACK, NOT THE FRONT DOOR.
+                WOLFSPACE ships with its own registered OAuth App, so signing
+                in normally goes straight to GitHub. This form appears only
+                when there is no built-in app to sign in as, or when someone
+                deliberately chooses to use their own. */}
+            {!keadaan.bisaWeb || pakaiAppSendiri ? (
+              <>
+                <p className="gh-sub">
+                  {pakaiAppSendiri
+                    ? "Sign in as your own OAuth App instead of the one WOLFSPACE ships with."
+                    : "This build has no OAuth App of its own, so signing in needs one of yours."}{" "}
+                  Create it at Settings → Developer settings → OAuth Apps, set
+                  the Authorization callback URL to the address below, then
+                  paste its Client ID and a generated Client Secret.
+                </p>
+                <button
+                  className="gh-salin"
+                  onClick={() => {
+                    void navigator.clipboard.writeText(
+                      keadaan.alamatCallback || "",
+                    );
+                    setDisalin(true);
+                    setTimeout(() => setDisalin(false), 1500);
+                  }}
+                  title="Copy"
+                >
+                  <code>{keadaan.alamatCallback}</code>
+                  <span>{disalin ? "Copied" : "Copy"}</span>
+                </button>
+                <input
+                  className="input"
+                  value={clientId}
+                  placeholder="Client ID — Ov23li…"
+                  onChange={(e: any) => setClientId(e.target.value)}
+                />
+                <input
+                  className="input"
+                  type="password"
+                  value={clientSecret}
+                  placeholder="Client Secret"
+                  onChange={(e: any) => setClientSecret(e.target.value)}
+                />
+                <button
+                  className="btn btn-primary"
+                  disabled={!clientId.trim() || !clientSecret.trim()}
+                  onClick={simpanClientId}
+                >
+                  Save and continue
+                </button>
+                {keadaan.bisaWeb ? (
+                  <button
+                    className="gh-kembali"
+                    onClick={() => setPakaiAppSendiri(false)}
+                  >
+                    Back
+                  </button>
+                ) : null}
+              </>
+            ) : (
+              <>
+                <p className="gh-sub">
+                  Sign in with your GitHub account to pick a repository. GitHub
+                  does the signing in — no password is typed here — and you can
+                  revoke the access from your GitHub settings at any time.
+                  Existing repositories are only ever read; the one thing this
+                  writes is a new repository, when you ask for one.
+                </p>
+                <button
+                  className="btn btn-primary"
+                  disabled={sibuk}
+                  onClick={() => mulaiWeb()}
+                >
+                  {sibuk ? "Opening GitHub…" : "Sign in with GitHub"}
+                </button>
+                {/* The device code stays as a fallback, for the case where the
+                    browser cannot come back to this machine. */}
+                {keadaan.bisaMasuk ? (
+                  !pakaiKode ? (
+                    <button
+                      className="gh-kembali"
+                      onClick={() => setPakaiKode(true)}
+                    >
+                      Browser did not open? Use a device code
+                    </button>
+                  ) : (
+                    <button
+                      className="btn btn-ghost"
+                      disabled={sibuk}
+                      onClick={mulaiMasuk}
+                    >
+                      {sibuk ? "Starting…" : "Get a device code"}
+                    </button>
+                  )
+                ) : null}
+                {/* For anyone who would rather not sign in as the shipped app.
+                    An escape hatch, deliberately not the first thing offered. */}
+                {keadaan.appBawaan ? (
+                  <button
+                    className="gh-kembali"
+                    onClick={() => setPakaiAppSendiri(true)}
+                  >
+                    Use your own OAuth App
+                  </button>
+                ) : null}
+              </>
+            )}
+
+            {/* A TOKEN IS STILL ACCEPTED, but it is no longer the front door.
+                Pasting one is a credential the user manages themselves, which
+                is the shape MCP already offers; signing in to an account is a
+                different thing and belongs first. */}
+            {!pakaiToken ? (
+              <button
+                className="gh-kembali"
+                onClick={() => setPakaiToken(true)}
+              >
+                Use a personal access token instead
+              </button>
+            ) : (
+              <>
+                <input
+                  className="input"
+                  type="password"
+                  value={token}
+                  placeholder="ghp_… or github_pat_…"
+                  onChange={(e: any) => setToken(e.target.value)}
+                />
+                <button
+                  className="btn btn-ghost"
+                  disabled={sibuk || !token.trim()}
+                  onClick={sambung}
+                >
+                  {sibuk ? "Checking…" : "Connect with token"}
+                </button>
+              </>
+            )}
+          </div>
+        ) : pilih ? (
+          <div className="gh-daftar">
+            <button className="gh-kembali" onClick={() => setPilih(null)}>
+              ← {pilih.penuh}
+            </button>
+            {cabang.length === 0 ? (
+              <div className="gh-kosong">Loading branches…</div>
+            ) : (
+              cabang.map((b) => (
+                <button key={b} className="gh-baris" onClick={() => taut(b)}>
+                  {b}
+                  {b === pilih.cabangUtama ? (
+                    <span className="gh-tag">default</span>
+                  ) : null}
+                </button>
+              ))
+            )}
+          </div>
+        ) : (
+          <div className="gh-daftar">
+            {/* WHO IS SIGNED IN, shown before anything else. Switching accounts
+                was impossible to even attempt while the panel never said which
+                account it was using. */}
+            {keadaan.akun ? (
+              <div className="gh-akun">
+                {keadaan.akun.avatar ? (
+                  <img src={keadaan.akun.avatar} alt="" />
+                ) : null}
+                <div className="gh-akun-nama">
+                  <b>{keadaan.akun.login}</b>
+                  {keadaan.akun.name ? <span>{keadaan.akun.name}</span> : null}
+                </div>
+                <button
+                  className="gh-akun-aksi"
+                  onClick={gantiAkun}
+                  disabled={sibuk}
+                >
+                  Switch
+                </button>
+                <button className="gh-akun-aksi" onClick={putus}>
+                  Sign out
+                </button>
+              </div>
+            ) : null}
+
+            {keadaan.taut ? (
+              <div className="gh-tertaut">
+                Linked: {keadaan.taut.owner}/{keadaan.taut.repo} @{" "}
+                {keadaan.taut.branch}
+              </div>
+            ) : null}
+
+            {/* CREATING A REPOSITORY IS THE ONE WRITE THIS PANEL DOES, so it
+                says what it will do rather than just taking a name. */}
+            {buat ? (
+              <div className="gh-buat">
+                <input
+                  className="input"
+                  value={namaBaru}
+                  placeholder="Repository name"
+                  autoFocus
+                  onChange={(e: any) => setNamaBaru(e.target.value)}
+                />
+                <input
+                  className="input"
+                  value={ketBaru}
+                  placeholder="Description (optional)"
+                  onChange={(e: any) => setKetBaru(e.target.value)}
+                />
+
+                {/* ── VISIBILITY IS A CHOICE, NOT AN UNTICKED BOX ──
+                    It was a "Private" checkbox, which means public is what you
+                    get by NOT doing something — and publishing code is not a
+                    default anyone should arrive at by omission. Both options
+                    are stated, and each says what it actually means. */}
+                <div className="gh-pilih-jenis">
+                  {[
+                    {
+                      nilai: true,
+                      judul: "Private",
+                      ket: "Only you can see it",
+                    },
+                    {
+                      nilai: false,
+                      judul: "Public",
+                      ket: "Anyone on the internet can see it",
+                    },
+                  ].map((o: any) => (
+                    <button
+                      key={o.judul}
+                      type="button"
+                      className={
+                        "gh-jenis" + (pribadiBaru === o.nilai ? " aktif" : "")
+                      }
+                      aria-pressed={pribadiBaru === o.nilai}
+                      onClick={() => setPribadiBaru(o.nilai)}
+                    >
+                      <span className="gh-jenis-ikon">
+                        <IkonRepo pribadi={o.nilai} />
+                      </span>
+                      <span className="gh-jenis-teks">
+                        <b>{o.judul}</b>
+                        <span>{o.ket}</span>
+                      </span>
+                    </button>
+                  ))}
+                </div>
+
+                {/* ── THE BRANCH NAME ──
+                    GitHub's create endpoint has NO parameter for this — the
+                    name comes from the account's own setting, and only a
+                    rename afterwards can change it. So this is prefilled with
+                    what most accounts already produce, and the extra request
+                    only happens when it differs. */}
+                <label className="gh-label">
+                  Default branch
+                  <input
+                    className="input"
+                    value={cabangBaru}
+                    placeholder="main"
+                    onChange={(e: any) => setCabangBaru(e.target.value)}
+                  />
+                </label>
+
+                <div className="gh-buat-aksi">
+                  <button
+                    className="btn btn-primary"
+                    disabled={sibuk || !namaBaru.trim()}
+                    onClick={buatRepo}
+                  >
+                    {sibuk ? "Creating…" : "Create repository"}
+                  </button>
+                  <button className="gh-kembali" onClick={() => setBuat(false)}>
+                    Cancel
+                  </button>
+                </div>
+              </div>
+            ) : (
+              <button className="gh-baru" onClick={() => setBuat(true)}>
+                + New repository
+              </button>
+            )}
+
+            {repo.length === 0 ? (
+              <div className="gh-kosong">No repositories found.</div>
+            ) : (
+              repo.map((x) =>
+                ubahNama && ubahNama.penuh === x.penuh ? (
+                  // Renaming happens ON the row. A dialog for a reversible
+                  // change costs more attention than the change is worth —
+                  // GitHub redirects the old name, so nothing breaks.
+                  <div className="gh-baris gh-baris-ubah" key={x.penuh}>
+                    <input
+                      className="input"
+                      value={namaUbah}
+                      autoFocus
+                      onChange={(e: any) => setNamaUbah(e.target.value)}
+                      onKeyDown={(e: any) => {
+                        if (e.key === "Enter" && namaUbah.trim()) kirimGanti();
+                        if (e.key === "Escape") setUbahNama(null);
+                      }}
+                    />
+                    <button
+                      className="btn btn-primary gh-kecil"
+                      disabled={sibuk || !namaUbah.trim()}
+                      onClick={kirimGanti}
+                    >
+                      {sibuk ? "…" : "Rename"}
+                    </button>
+                    <button
+                      className="gh-kembali gh-kecil"
+                      onClick={() => setUbahNama(null)}
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    key={x.penuh}
+                    className="gh-baris"
+                    onClick={() => bukaRepo(x)}
+                    onContextMenu={(e: any) => {
+                      e.preventDefault();
+                      setMenu({ x, atas: e.clientY, kiri: e.clientX });
+                    }}
+                  >
+                    {x.penuh}
+                    {x.pribadi ? <span className="gh-tag">private</span> : null}
+                  </button>
+                ),
+              )
+            )}
+          </div>
+        )}
+
+        {/* ── THE RIGHT-CLICK MENU ──
+            Closed by clicking anywhere else, by Escape, and by choosing
+            something. A menu that outlives the click that opened it ends up
+            floating over an unrelated part of the panel. */}
+        {/* ── DRAWN INTO document.body, NOT WHERE IT IS WRITTEN ──
+            REPORTED: the menu appeared far from the cursor, at the bottom
+            right, outside the panel entirely.
+            THE CAUSE, and it is not obvious from reading either file: .page
+            carries `will-change: transform, opacity` (styles.css, for the page
+            transition). Per the CSS spec that makes .page a CONTAINING BLOCK
+            for fixed-positioned descendants — exactly as a real transform
+            would. So `position: fixed` stopped meaning "relative to the
+            viewport" and started meaning "relative to .page", while clientX /
+            clientY are still viewport coordinates.
+            MEASURED in a real browser, reproducing the app's layout: an element
+            asking for top 300 / left 600 landed at 344 / 832 — thrown by
+            exactly the sidebar width (232px) and the topbar height (44px).
+            Without will-change it landed precisely where it asked.
+            A portal to document.body puts the node OUTSIDE .page, so fixed
+            means the viewport again. It also escapes .gh-modal's `overflow:
+            auto`, which would otherwise clip a menu opened near an edge. */}
+        {menu
+          ? ReactDOM.createPortal(
+              <>
+                <div className="gh-menu-tirai" onClick={() => setMenu(null)} />
+                <div
+                  className="gh-menu"
+                  ref={menuRef}
+                  style={{ top: menu.atas + "px", left: menu.kiri + "px" }}
+                >
+                  <div className="gh-menu-judul">{menu.x.penuh}</div>
+                  <button
+                    type="button"
+                    className="gh-menu-item"
+                    onClick={() => {
+                      setUbahNama(menu.x);
+                      setNamaUbah(menu.x.repo);
+                      setMenu(null);
+                    }}
+                  >
+                    Rename…
+                  </button>
+                  <button
+                    type="button"
+                    className="gh-menu-item bahaya"
+                    onClick={() => {
+                      setHapus(menu.x);
+                      setKetikNama("");
+                      setMenu(null);
+                    }}
+                  >
+                    Delete…
+                  </button>
+                  {/* SAID BEFORE THE CLICK, not after it. And the two causes are
+                  not the same: a build that does not yet ASK for delete access
+                  cannot be fixed by signing in again — measured on a real
+                  token, one issued fourteen hours before the scope was added
+                  came back just as narrow from a sign-in made inside the
+                  still-running old build. */}
+                  {keadaan && keadaan.bisaHapus === false ? (
+                    <div className="gh-menu-nota">
+                      {(keadaan.scopeDiminta || []).includes("delete_repo")
+                        ? "Deleting needs a new sign-in — this one was granted " +
+                          (keadaan.scope || []).join(", ")
+                        : "This running build does not ask for delete access yet. " +
+                          "Restart WOLFSPACE, then sign out and sign in again."}
+                    </div>
+                  ) : null}
+                </div>
+              </>,
+              document.body,
+            )
+          : null}
+
+        {/* ── DELETING ASKS FOR THE NAME, NOT FOR A YES ──
+            The shape GitHub itself uses, for the reason GitHub uses it: a
+            yes/no box is answered by reflex, and the reflex is yes. Typing the
+            name cannot be done by accident — and cannot be done to the WRONG
+            repository by accident either, which is the mistake a context menu
+            makes easy, because the row under the cursor is not always the row
+            that was read. */}
+        {hapus ? (
+          <div className="gh-hapus">
+            <div className="gh-hapus-judul">
+              Delete <b>{hapus.penuh}</b>?
+            </div>
+            <div className="gh-hapus-teks">
+              This cannot be undone. Everything in it goes with it — issues,
+              releases, history.
+            </div>
+            <div className="gh-hapus-teks">
+              Type <b>{hapus.repo}</b> to confirm:
+            </div>
+            <input
+              className="input"
+              value={ketikNama}
+              autoFocus
+              placeholder={hapus.repo}
+              onChange={(e: any) => setKetikNama(e.target.value)}
+              onKeyDown={(e: any) => {
+                if (e.key === "Escape") setHapus(null);
+              }}
+            />
+            <div className="gh-buat-aksi">
+              <button
+                className="btn gh-btn-bahaya"
+                disabled={sibuk || ketikNama.trim() !== hapus.repo}
+                onClick={kirimHapus}
+              >
+                {sibuk ? "Deleting…" : "Delete this repository"}
+              </button>
+              <button className="gh-kembali" onClick={() => setHapus(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        ) : null}
+      </div>
+    </div>
+  );
+  // document.body has no transformed ancestor to be measured against, so the
+  // overlay covers the window whatever the panes are doing.
+  return typeof document !== "undefined" && document.body
+    ? ReactDOM.createPortal(isi, document.body)
+    : isi;
+}
+
 const MI = {
   plus: svg(
     <>
@@ -537,7 +1905,10 @@ function LightboxModal({ item, onClose }: any) {
               maxWidth: "80%",
             }}
           >
-            {is3D ? "🧊" : "📄"} {item.name || item.path || "Preview"}
+            {/* The same file icon the chip uses. An emoji here said only
+                "document" for every type there is. */}
+            <IkonLampiran nama={item.name || item.path || ""} />
+            {item.name || item.path || "Preview"}
           </span>
           <button
             className="btn-reset"
@@ -591,25 +1962,11 @@ function LightboxModal({ item, onClose }: any) {
               }}
             />
           ) : item.snippet ? (
-            <pre
-              style={{
-                margin: 0,
-                fontFamily:
-                  '"JetBrains Mono", Consolas, Courier New, monospace',
-                fontSize: "13px",
-                color: "#4ec9b0",
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-all",
-                background: "#0d1117",
-                padding: "16px",
-                borderRadius: "8px",
-                width: "100%",
-                maxHeight: "calc(82vh - 80px)",
-                overflow: "auto",
-              }}
-            >
-              {item.snippet}
-            </pre>
+            // `word-break: break-all` was here too, and on CODE it is worse
+            // than on a filename: it splits identifiers mid-token, so the
+            // preview no longer reads as the language it is. Code scrolls
+            // sideways instead.
+            <pre className="lam-pratayang">{item.snippet}</pre>
           ) : (
             <div
               style={{
@@ -618,13 +1975,15 @@ function LightboxModal({ item, onClose }: any) {
                 color: "var(--text-muted, #858585)",
               }}
             >
-              <div style={{ fontSize: "56px", marginBottom: "16px" }}>📄</div>
+              <div className="lam-kosong-ikon">
+                <IkonLampiran nama={item.name || item.path || ""} />
+              </div>
               <div style={{ fontSize: "15px", color: "var(--text, #e5e5e5)" }}>
                 {item.name || item.path}
               </div>
               {item.size && (
                 <div style={{ fontSize: "12px", marginTop: "8px" }}>
-                  ({Math.round(item.size / 1024)} KB)
+                  {ukuranBerkas(item.size)}
                 </div>
               )}
               {displayUrl && (
@@ -754,8 +2113,15 @@ function Composer({
 }: any) {
   const [val, setVal] = useState("");
   const [attachments, setAttachments] = useState<any[]>([]);
+  // The SAME two states as the picker composer in Screens.tsx. Two surfaces
+  // holding one behaviour is how this repo has produced drift before, so the
+  // rules themselves live in one place (fileRefDari and friends above) and
+  // only the wiring is repeated.
+  const [fileRefs, setFileRefs] = useState<any[]>([]);
+  const [seretMasuk, setSeretMasuk] = useState(false);
   const [previewAttachment, setPreviewAttachment] = useState<any>(null);
   const [menu, setMenu] = useState(false);
+  const [showGithub, setShowGithub] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMcpMenu, setShowMcpMenu] = useState(false);
   const [mcpServers, setMcpServers] = useState<any[]>([]);
@@ -813,6 +2179,10 @@ function Composer({
     return () =>
       window.removeEventListener("wolfspace_mcp_changed", loadMcpServers);
   }, [loadMcpServers]);
+
+  // Connect returns before the handshake finishes, so one refresh is not
+  // enough — see useMcpMenunggu in Config.tsx.
+  useMcpMenunggu(mcpServers, loadMcpServers);
 
   const [showMcpInput, setShowMcpInput] = useState(false);
   const [mcpInputUrl, setMcpInputUrl] = useState("");
@@ -1178,7 +2548,8 @@ function Composer({
       "attachments:",
       attachments.length,
     );
-    if ((!v && attachments.length === 0) || busy) return;
+    if ((!v && attachments.length === 0 && fileRefs.length === 0) || busy)
+      return;
     let fullText = v;
     if (attachments.length > 0) {
       // A HANDLE, not a path. This line used to read
@@ -1203,8 +2574,10 @@ function Composer({
     // handles), the SECOND for the user's eyes. Only one used to be sent, so
     // the attachment lines — including att_… handles, which are of no use to a
     // human — landed raw in the chat bubble.
+    fullText = gabungDenganRef(fullText, fileRefs);
     onSend(fullText, {
       text: v,
+      fileRefs: fileRefs.map((r: any) => ({ name: r.name, path: r.path })),
       attachments: attachments.map((a: any) => ({
         name: a.name,
         size: a.size,
@@ -1284,174 +2657,55 @@ function Composer({
           style={{ display: "none" }}
           onChange={handleAttachmentSelect}
         />
-        <div className="composer-input-col">
-          {attachments.length > 0 && (
+        <div
+          className={
+            "composer-input-col" + (seretMasuk ? " komposer-terima" : "")
+          }
+          onDragOver={(e: any) => {
+            if (!e.dataTransfer.types.includes(DRAG_JENIS_BERKAS)) return;
+            e.preventDefault();
+            e.dataTransfer.dropEffect = "copy";
+            setSeretMasuk(true);
+          }}
+          onDragLeave={(e: any) => {
+            if (!e.currentTarget.contains(e.relatedTarget))
+              setSeretMasuk(false);
+          }}
+          onDrop={(e: any) => {
+            const ref = fileRefDariDrop(e.dataTransfer);
+            setSeretMasuk(false);
+            if (!ref) return;
+            e.preventDefault();
+            setFileRefs((prev: any) => tambahFileRef(prev, ref));
+          }}
+        >
+          {/* The agent's own reports, and the switch that lets it make them.
+              Above the input because they are unsolicited: they must be
+              readable without hunting, and dismissible without a dialog. */}
+          <ReaktifBar />
+          {(attachments.length > 0 || fileRefs.length > 0) && (
             <div className="composer-attachments">
-              {attachments.map((att: any) => {
-                const isImg =
-                  /\.(png|jpe?g|webp|gif|svg|bmp|ico)$/i.test(
-                    att.name || att.path,
-                  ) ||
-                  (att.type && att.type.startsWith("image/"));
-                const isVid =
-                  /\.(mp4|webm|mov|mkv)$/i.test(att.name || att.path) ||
-                  (att.type && att.type.startsWith("video/"));
-                const isCode =
-                  att.snippet ||
-                  /\.(js|py|jsx|ts|tsx|html|css|json|md|txt|sql|java|c|cpp|h|rust|go|sh|yml|yaml)$/i.test(
-                    att.name || att.path,
-                  );
-                const displayUrl = att.previewUrl || att.url;
-
-                return (
-                  <div
-                    key={att.id}
-                    className="composer-attachment-item"
-                    title={att.path + " (Click to view)"}
-                    onClick={() => {
-                      if (att.previewUrl || att.url || att.snippet) {
-                        setPreviewAttachment(att);
-                      }
-                    }}
-                    style={{
-                      width: "60px",
-                      height: "60px",
-                      padding: isImg && displayUrl ? "0" : "6px",
-                      overflow: "hidden",
-                      position: "relative",
-                      display: "flex",
-                      flexDirection: "column",
-                      justifyContent: "center",
-                      alignItems: "center",
-                      background: "var(--surface-2, #161b22)",
-                      border: "1px solid var(--line-strong, #30363d)",
-                      borderRadius: "8px",
-                      cursor:
-                        att.previewUrl || att.url || att.snippet
-                          ? "pointer"
-                          : "default",
-                    }}
-                  >
-                    {isImg && displayUrl ? (
-                      <img
-                        src={displayUrl}
-                        alt={att.name || att.path}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: "8px",
-                        }}
-                      />
-                    ) : isVid && displayUrl ? (
-                      <video
-                        src={displayUrl}
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          objectFit: "cover",
-                          borderRadius: "8px",
-                        }}
-                        muted
-                      />
-                    ) : att.snippet ? (
-                      <div
-                        style={{
-                          width: "100%",
-                          height: "100%",
-                          padding: "4px",
-                          fontSize: "6.5px",
-                          fontFamily: "monospace",
-                          color: "#4ec9b0",
-                          overflow: "hidden",
-                          lineHeight: "1.25",
-                          wordBreak: "break-all",
-                          background: "#0d1117",
-                          borderRadius: "6px",
-                          textAlign: "left",
-                        }}
-                      >
-                        {att.snippet}
-                      </div>
-                    ) : (
-                      <>
-                        <div className="composer-attachment-icon">
-                          {att.status === "uploading"
-                            ? "⏳"
-                            : att.status === "error"
-                              ? "⚠️"
-                              : is3DFile(att.name || att.path)
-                                ? "🧊"
-                                : isCode
-                                  ? "💻"
-                                  : "📄"}
-                        </div>
-                        <div
-                          className="composer-attachment-name"
-                          style={{
-                            fontSize: "9px",
-                            width: "100%",
-                            textAlign: "center",
-                            overflow: "hidden",
-                            textOverflow: "ellipsis",
-                            whiteSpace: "nowrap",
-                          }}
-                        >
-                          {att.name || att.path}
-                        </div>
-                      </>
-                    )}
-
-                    {att.status === "uploading" && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          background: "rgba(0,0,0,0.5)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                        }}
-                      >
-                        ⏳
-                      </div>
-                    )}
-                    {att.status === "error" && (
-                      <div
-                        style={{
-                          position: "absolute",
-                          inset: 0,
-                          background: "rgba(248,113,113,0.3)",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          borderRadius: "8px",
-                          fontSize: "14px",
-                        }}
-                        title={att.error}
-                      >
-                        ⚠️
-                      </div>
-                    )}
-
-                    <button
-                      type="button"
-                      className="composer-attachment-remove"
-                      onClick={(e: any) => {
-                        e.stopPropagation();
-                        setAttachments((p: any) =>
-                          p.filter((x: any) => x.id !== att.id),
-                        );
-                      }}
-                      title={att.status === "error" ? att.error : "Remove"}
-                    >
-                      ×
-                    </button>
-                  </div>
-                );
-              })}
+              {fileRefs.map((r: any) => (
+                <AttachmentChip
+                  key={r.id}
+                  att={r}
+                  onRemove={(x: any) =>
+                    setFileRefs((p: any) => p.filter((y: any) => y.id !== x.id))
+                  }
+                />
+              ))}
+              {attachments.map((att: any) => (
+                <AttachmentChip
+                  key={att.id}
+                  att={att}
+                  onOpen={setPreviewAttachment}
+                  onRemove={(x: any) =>
+                    setAttachments((p: any) =>
+                      p.filter((y: any) => y.id !== x.id),
+                    )
+                  }
+                />
+              ))}
             </div>
           )}
           <textarea
@@ -1512,7 +2766,21 @@ function Composer({
               >
                 {MI.plus}
               </button>
+              {/* Second slot. .composer-action-btns is already a flex row with
+                  gap:8px, so a 34px sibling starts at 34 + 8 = 42px -- the
+                  position this was asked for, arrived at by the layout rather
+                  than by a hardcoded offset. */}
+              <button
+                className="composer-add composer-github"
+                title="GitHub"
+                onClick={() => setShowGithub((v: any) => !v)}
+              >
+                <Icon.githubMark width={18} height={18} />
+              </button>
             </div>
+            {showGithub ? (
+              <GithubPanel onClose={() => setShowGithub(false)} />
+            ) : null}
             {menu && (
               <div
                 className="am-menu"

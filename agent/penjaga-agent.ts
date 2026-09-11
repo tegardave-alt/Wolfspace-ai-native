@@ -1,24 +1,23 @@
-// ── Agent guards, shared by BOTH orchestrators ──
+// penjaga-agent.ts — the agent's guards: which tools need a human to approve
+// them, and what must be refused outright.
 //
-// WHY THIS FILE EXISTS. These checks used to live inside a closure in
-// agent/self_agent.ts, which was fine while there was one agent loop. There are
-// now two — the JS loop and the Python graph in services/agent-python driven by
-// agent/python-agent.ts — and a guard that exists on only one of them is worse
-// than no guard: it makes the SAME request behave differently depending on which
-// orchestrator happened to handle it.
+// ROLE IN THE SYSTEM. WOLFSPACE has TWO orchestrators — the JS loop in
+// agent/self_agent.ts and the Python graph driven by agent/python-agent.ts. A
+// guard living on only one is worse than no guard, because the same request
+// then behaves differently depending on which one handled it. This repo has
+// been bitten by that "two surfaces" pattern repeatedly (the MCP list rendered
+// twice with separate state, attachments handled in two places, findings
+// recorded in one of two `read` branches), and every time the copy is what
+// drifted. So the guards are copied into neither loop: extracted here, called
+// from both.
 //
-// That is not hypothetical. This repo has been bitten by the "two surfaces"
-// pattern repeatedly — the MCP list rendered by two components with separate
-// state, attachment handling duplicated across Composer and the picker screen,
-// findings recorded in only one of two `read` branches. Each time, the fix that
-// held was one implementation with two callers, and each time the version that
-// drifted was the one that had been copied.
+// Everything here is a PURE function of its arguments — no filesystem, no
+// model, no process — which is what makes it both shareable and testable
+// without running an agent.
 //
-// So: copied into neither. Extracted here, called from both.
-//
-// Everything in this file is a PURE function of its arguments. No filesystem, no
-// model, no process. That is what makes it shareable and what makes it testable
-// without an agent run.
+// CONNECTS TO
+//   imports  agent/tools/git-tool.ts
+//   used by  agent/self_agent.ts, agent/python-agent.ts, agent/perencana-agent.ts
 
 /**
  * Tools that run unprotected and therefore need a human to approve them.

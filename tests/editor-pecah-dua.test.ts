@@ -65,7 +65,9 @@ describe("grup editor", () => {
   test("grup yang kehabisan tab MENUTUP, dan yang terakhir tidak", () => {
     const i = APP.indexOf("const tutupTab = useCallback");
     const blok = APP.slice(i, i + 1800);
-    expect(blok).toMatch(/hasil\.length > 1 \? hasil\.filter/);
+    // \s* around the ?: prettier folds this ternary across lines once the block
+    // around it grows. What is guarded is the filter, not where the line wraps.
+    expect(blok).toMatch(/hasil\.length > 1\s*\?\s*hasil\.filter/);
     // Kalau yang terakhir ikut ditutup, area editor hilang tanpa jalan kembali.
     expect(blok).toMatch(/bersih\.length \? bersih : \[hasil\[0\]\]/);
   });
@@ -92,7 +94,7 @@ describe("cara memecahnya", () => {
   test("Ctrl+backslash ditambatkan ke editor, bukan ke window", () => {
     // Pintasan segenerik ini tak boleh menyala saat pemakai sedang mengetik di
     // kotak chat di halaman lain.
-    const i = APP.indexOf('el.addEventListener("keydown", tekan)');
+    const i = APP.indexOf('el.addEventListener("keydown", press)');
     expect(i).toBeGreaterThan(-1);
     const blok = APP.slice(Math.max(0, i - 900), i);
     expect(blok).toMatch(/bisaPecah && onPecah/);

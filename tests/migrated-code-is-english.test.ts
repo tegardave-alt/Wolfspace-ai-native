@@ -87,9 +87,15 @@ const BERKAS_MIGRASI = [
   "public/app/AgentSteps.tsx",
   "public/app/CodeBlocks.tsx",
   "public/app/Components.tsx",
+  // app.tsx joined the list once the last seven half-finished translations
+  // were completed — sentences that began in English and ended in Indonesian,
+  // left behind when the migration stopped mid-file.
+  "public/app.tsx",
   "public/app/Config.tsx",
   "public/app/Icons.tsx",
   "public/app/IkonBahasa.ts",
+  "public/app/AgentDiff.ts",
+  "public/app/Lsp.ts",
   "public/app/Model3DViewer.tsx",
   "public/app/Screens.tsx",
   "public/app/Sidebar.tsx",

@@ -1,7 +1,13 @@
-// System prompts and helper functions for WOLFSPACE
-// Extracted from server.cjs to a dedicated module.
-
-// Load prompts from config/prompts.json (single source of truth)
+// prompts.ts — loads WOLFSPACE's system prompts and picks the right one for a
+// request.
+//
+// ROLE IN THE SYSTEM. The prompt TEXT lives in config/prompts.json, which is
+// the single source of truth and editable without touching code; this file only
+// reads it and decides which prompt a given request gets.
+//
+// CONNECTS TO
+//   imports  fs, path, config/prompts.json
+//   used by  agent/chat.ts, via pickSystem()
 const fs = require("fs");
 const path = require("path");
 const PROMPTS_CFG_PATH = path.join(__dirname, "..", "config", "prompts.json");

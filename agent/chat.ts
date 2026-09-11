@@ -1,5 +1,14 @@
-// Chat streaming and reply handling (extracted from server.cjs)
-// Dependencies – same as original server.cjs
+// chat.ts — plain chat: stream a model reply to the client and handle the
+// self-tool calls it makes along the way.
+//
+// ROLE IN THE SYSTEM. This is the NON-agentic path. The autonomous agent loop
+// lives in agent/self_agent.ts; this file answers one message at a time.
+//
+// CONNECTS TO
+//   imports  ./cloud (providers), ./prompts (system prompt), ./tools
+//            (self-tools), ./pseudo-tag-filter (strips fake tool tags out of
+//            the stream), ./debug
+//   used by  server.ts, which mounts it on the chat route
 import * as http from "http";
 import * as https from "https";
 const { dlog } = require("./debug.ts");

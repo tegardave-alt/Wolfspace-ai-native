@@ -42,6 +42,14 @@ const BERKAS_UI = [
 // TOMBOL dan PESAN tidak sama dengan kosakata prosa. "wajib diisi" lolos dari
 // daftar lama karena kata-katanya memang tak pernah muncul di komentar.
 const KATA_UI = [
+  // Added after each escaped into the running app and was reported by the
+  // user rather than caught here. A word list only covers what it has met.
+  "perintah",
+  "dieksekusi",
+  "operasi",
+  "dijalankan",
+  "berhasil",
+  "gagal",
   "yang",
   "untuk",
   "tidak",
@@ -116,6 +124,19 @@ const KATA_UI = [
 ];
 const POLA = new RegExp("(^|[^a-z])(" + KATA_UI.join("|") + ")([^a-z]|$)", "i");
 
+/**
+ * A CSS class list, which must stay exactly as written.
+ *
+ * REQUIRES A HYPHEN. The old shape -- all lowercase words -- also described
+ * ordinary lowercase prose, so "perintah dieksekusi" was discarded as markup
+ * and reached the screen in Indonesian. Class names in this codebase are
+ * hyphenated ("aal-row aal-group"), and that is what tells the two apart.
+ */
+function _daftarKelas(x) {
+  if (!/^[a-z][a-z0-9-]*( [a-z][a-z0-9-]*)*$/.test(x)) return false;
+  return x.includes("-");
+}
+
 /** Kandidat teks layar: string literal yang berbentuk kalimat atau label. */
 function tekstLayar(isi) {
   const hasil = [];
@@ -132,7 +153,7 @@ function tekstLayar(isi) {
       // Sebuah daftar kelas CSS ("aksi-btn aksi-simpan") juga berisi spasi
       // dan dua kata. Ia wajib tetap seperti adanya, dan bentuknya khas:
       // seluruhnya huruf kecil dengan tanda hubung.
-      if (/^[a-z][a-z0-9-]*( [a-z][a-z0-9-]*)*$/.test(x)) continue;
+      if (_daftarKelas(x)) continue;
       if (/[=<>{}]/.test(x) || x.indexOf(String.fromCharCode(92)) >= 0)
         continue;
       if ((x.match(/[A-Za-z]{2,}/g) || []).length < 2) continue;
@@ -142,8 +163,51 @@ function tekstLayar(isi) {
     //    satu kata seperti "Batal" hidup, dan syarat dua kata di atas buta
     //    terhadapnya.
     const t = b.trim();
-    if (/^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ ,.'’—-]*$/.test(t) && t.length >= 4) {
+    // A LONE IDENTIFIER ENDING IN A COMMA IS CODE, not a label: that is a
+    // destructured prop or a parameter, one per line. Screen copy of a single
+    // word ("Cancel") does not carry a trailing comma, so the two separate
+    // cleanly. Found when `perintah,` in a component's parameter list was
+    // reported as Indonesian screen text.
+    const kodeSatuKata = /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ0-9]*,$/.test(t);
+    if (
+      !kodeSatuKata &&
+      /^[A-Za-zÀ-ÿ][A-Za-zÀ-ÿ ,.'’—-]*$/.test(t) &&
+      t.length >= 4
+    ) {
       hasil.push({ nomor, teks: t });
+    }
+
+    // 3. TEMPLATE LITERAL. Rule 1 only reads double quotes, so a backtick
+    //    string was invisible to it -- and that is where interpolated copy
+    //    lives, which is most of the sentences with a number in them.
+    //    Missed in the wild: `Selesai. ${n} operasi dieksekusi.`
+    const reT = /`([^`]{6,160})`/g;
+    let mt;
+    while ((mt = reT.exec(b)) !== null) {
+      const x = mt[1];
+      if (/^[/#]|^https?:|^wolfspace_/.test(x)) continue;
+      // The interpolations themselves are code, not copy.
+      const polos = x.replace(/\$\{[^}]*\}/g, " ").trim();
+      if (!polos.includes(" ")) continue;
+      if ((polos.match(/[A-Za-z]{2,}/g) || []).length < 2) continue;
+      hasil.push({ nomor, teks: polos });
+    }
+
+    // 4. TEKS JSX YANG BERBAGI BARIS DENGAN {…}. Rule 2 requires the whole
+    //    trimmed line to be prose, so anything beside a tag or an
+    //    interpolation escaped it entirely.
+    //    Missed in the wild: <span>{acts.length} perintah dieksekusi</span>
+    if (b.includes(">") && b.includes("<")) {
+      const tanpaEkspr = b.replace(/\{[^{}]*\}/g, " ");
+      const reJ = />([^<>]{4,160})</g;
+      let mj;
+      while ((mj = reJ.exec(tanpaEkspr)) !== null) {
+        const x = mj[1].trim();
+        if (!x || !/[A-Za-zÀ-ÿ]/.test(x)) continue;
+        if (_daftarKelas(x)) continue;
+        if ((x.match(/[A-Za-z]{2,}/g) || []).length < 2) continue;
+        hasil.push({ nomor, teks: x });
+      }
     }
   });
   return hasil;
@@ -166,6 +230,43 @@ describe("teks antarmuka berbahasa Inggris", () => {
       'const a = "What would you like to build today?";\n      Cancel\n',
     );
     expect(contoh.length).toBeGreaterThanOrEqual(2);
+  });
+
+  test("bentuk yang DULU lolos kini tertangkap", () => {
+    // TWO REAL ESCAPES, both reported by the user rather than caught here.
+    //
+    // The filter read double-quoted strings, and JSX text only when the whole
+    // trimmed line was prose. Neither shape below fits that, so both walked
+    // straight past it into the running app.
+    const jsx = tekstLayar(
+      "        <span>{acts.length} perintah dieksekusi</span>",
+    );
+    expect(jsx.some((x) => POLA.test(x.teks))).toBe(true);
+
+    const templat = tekstLayar(
+      "          ? `Selesai. ${evlist.length} operasi dieksekusi.`",
+    );
+    expect(templat.some((x) => POLA.test(x.teks))).toBe(true);
+  });
+
+  test("bentuk baru itu tidak menyeret kode ikut tertangkap", () => {
+    // A wider net that flags class names, props or expressions would be worn
+    // down by exceptions until it stopped meaning anything.
+    const bersih = [
+      '        <div className="aal-row aal-group">',
+      "        <span>{count} commands run</span>",
+      "          ? `Done. ${n} operations performed.`",
+      "        <Icon.check />",
+    ];
+    for (const baris of bersih) {
+      for (const x of tekstLayar(baris)) {
+        expect([baris, x.teks, POLA.test(x.teks)]).toEqual([
+          baris,
+          x.teks,
+          false,
+        ]);
+      }
+    }
   });
 
   test("kata Indonesia memang tertangkap", () => {

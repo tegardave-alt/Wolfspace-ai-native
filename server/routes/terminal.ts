@@ -1,11 +1,17 @@
-// Terminal API: HTTP routes for PTY sessions.
-// Ported from the former server/routes/terminal.cjs; behavior is unchanged.
-// All state (terminalSessions) and the PTY helpers stay in server.cjs and are
-// injected via deps — this module holds routing logic only.
+// terminal.ts — HTTP routes for PTY sessions.
 //
-// Electron does not use these routes: the desktop path reaches the same helpers
-// through the "terminal" IPC channel (see packages/contracts/ipc.ts). This is
-// the HTTP surface for `npm start` and the WSL backend.
+// ROLE IN THE SYSTEM. Routing only: the sessions and the PTY helpers live in
+// core/terminal.ts and are injected through deps.
+//
+// THE DESKTOP APP DOES NOT USE THESE ROUTES. Electron reaches the same helpers
+// over the "terminal" IPC channel (packages/contracts/ipc.ts). This is the HTTP
+// surface for `npm start` and the WSL backend, so a change here is invisible in
+// the desktop build unless the IPC side changes too.
+//
+// CONNECTS TO
+//   imports  node:http types
+//   deps     core/terminal
+//   mounted  by server.ts
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 

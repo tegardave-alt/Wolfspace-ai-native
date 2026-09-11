@@ -1,7 +1,10 @@
-// Sidebar — extracted from app.tsx (see public/app.tsx for the App
-// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.tsx (prepended), then Babel once -> a single global scope. Function
-// bodies (hooks/React/SB) run at render time.
+// Sidebar.tsx — the sidebar and every panel that lives in it.
+//
+// ROLE IN THE SYSTEM. It is the app's navigation and its control surface at
+// once: projects, history, MCP servers, settings. The agent's own activity feed
+// was split out into AgentSteps.tsx when this file outgrew being readable.
+//
+// See public/app.tsx for how the renderer is assembled.
 
 /* ----------------------------- Sidebar (Claude-style) ----------------------------- */
 const SB = {
@@ -592,7 +595,28 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   const [editingFolder, setEditingFolder] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
   const [pesanCommit, setPesanCommit] = React.useState("");
+  // The stash list. It used to be invisible: the branch switcher created
+  // stashes and then told the user to run `git stash pop` in a terminal to
+  // get their own work back. Loaded on demand (the toggle), not on every
+  // refresh -- a repository with no stashes should cost nothing here.
+  const [stashes, setStashes] = React.useState<any[] | null>(null);
+  const muatStash = async () => {
+    const r = await wwApi("/ww/stash/list", { method: "POST", body: { path } });
+    setStashes(r && r.ok ? r.stashes || [] : []);
+  };
   const [busy, setBusy] = React.useState(false);
+  // WHICH branch is being switched to, not merely THAT something is busy.
+  //
+  // A cold checkout of this repository was MEASURED at 44.9 seconds -- 35 MB of
+  // vendored files have to come out of the pack with an empty OS cache. Warm it
+  // is 4-5 seconds. During the slow case the panel only dimmed, so a switch that
+  // was working looked exactly like a switch that had died.
+  //
+  // This is the part VS Code has and this panel did not: it does not make git
+  // faster -- nothing does, it is the same command -- it says the work is
+  // happening. Naming the branch matters too, because the row the user clicked
+  // is the one that should react.
+  const [pindahKe, setPindahKe] = React.useState("");
   const [msg, setMsg] = React.useState<any>(null); // { ok, text }
 
   React.useEffect(() => {
@@ -610,11 +634,15 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     };
   }, [path, refreshKey]);
 
+  // AN ERROR NEEDS LONGER THAN A CONFIRMATION. Both used to get 2.8 seconds,
+  // and git's refusals are whole sentences ("uncommitted changes here would be
+  // lost… commit them first"): they were gone before they could be read, so a
+  // switch that git had explained perfectly well looked like a dead button.
   const flash = (ok: any, text: any) => {
     setMsg({ ok, text });
     setTimeout(
       () => setMsg((m: any) => (m && m.text === text ? null : m)),
-      2800,
+      ok ? 2800 : 9000,
     );
   };
   const refresh = () => setRefreshKey((k: any) => k + 1);
@@ -632,10 +660,48 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     return false;
   };
 
-  const doSwitch = (b: any) =>
-    run("/ww/branch/switch", { path, branch: b }, "switched to " + b, () =>
-      setPickerOpen(false),
-    );
+  // The confirmation names the branch git REPORTS being on, not the one that was
+  // clicked — the two came apart in testing, and the panel used to claim the one
+  // it had asked for.
+  // THE REFUSAL NEEDS A WAY THROUGH, not a better explanation of itself.
+  //
+  // Branches here differ by 445 files, so almost any work in progress touches
+  // one that also differs, and git MUST refuse -- otherwise it would destroy
+  // that work. Reported as a complaint that was exactly right: you fixed the
+  // jam, not the problem; I am on A, I want B, it errors, and it keeps
+  // happening.
+  //
+  // So the panel now asks what to do with the work instead of only reporting
+  // that it is in the way. Nothing moves on its own: both options are the
+  // user answering their own question, which is the only acceptable way to
+  // relocate uncommitted work.
+  const [halangan, setHalangan] = React.useState<any>(null);
+
+  const doSwitch = async (b: any, mode?: string) => {
+    setPindahKe(b);
+    try {
+      const ok = await run(
+        "/ww/branch/switch",
+        { path, branch: b, mode },
+        (r: any) =>
+          "switched to " +
+          (r.current || b) +
+          (r.catatan ? " - " + r.catatan : ""),
+        () => {
+          setPickerOpen(false);
+          setHalangan(null);
+        },
+      );
+      // Only local work blocks a switch recoverably. A missing branch or a dead
+      // repository has no carry-it-along answer, and offering one would lie.
+      if (!ok) setHalangan({ cabang: b });
+      return ok;
+    } finally {
+      // In a finally: a switch that FAILS must clear the label too, or the row
+      // claims to still be working long after it stopped.
+      setPindahKe("");
+    }
+  };
   const doCreate = (name: any) => {
     const nm = toBranchName(name);
     run(
@@ -708,7 +774,13 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     );
   }
   const dot = g.dirty ? "#d29922" : "#3fb950";
-  const cur = (br && br.current) || g.branch;
+  // A detached HEAD has NO current branch. Both git reads answer "HEAD" there,
+  // and the button printed that as if a branch were called HEAD — while no row
+  // in the list matched, so the repo looked like it had lost its branch.
+  const detached = br && br.detached;
+  const cur = detached
+    ? "detached @ " + br.detached
+    : (br && br.current) || g.branch;
   const branches = (br && br.branches) || [];
   const q = query.trim();
   const norm = q ? toBranchName(q) : "";
@@ -915,6 +987,108 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               overflow: "hidden",
             }}
           >
+            {halangan && (
+              <div
+                style={{
+                  margin: "7px",
+                  padding: "8px 9px",
+                  background: "#1c1408",
+                  border: "1px solid #5a4412",
+                  borderRadius: "5px",
+                  fontSize: "11.5px",
+                  color: "#e6edf3",
+                  lineHeight: 1.5,
+                }}
+              >
+                <div style={{ marginBottom: "6px" }}>
+                  Uncommitted work is in the way of{" "}
+                  <b style={{ fontFamily: "ui-monospace, monospace" }}>
+                    {halangan.cabang}
+                  </b>
+                  . What should happen to it?
+                </div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git checkout -m: the changes move with you. A file that differs on both sides arrives with conflict markers."
+                    onClick={() => doSwitch(halangan.cabang, "bawa")}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #30363d",
+                      background: "#21262d",
+                      color: "#e6edf3",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Bring it along
+                  </button>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git stash push -u, then switch. The panel reports the stash id so you can pop it later."
+                    onClick={() => doSwitch(halangan.cabang, "simpan")}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #30363d",
+                      background: "#21262d",
+                      color: "#e6edf3",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Stash it first
+                  </button>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git checkout --force: the uncommitted changes are DISCARDED. Nothing is stashed and nothing can be recovered."
+                    onClick={() => {
+                      // DESTRUCTIVE, so it asks. VS Code puts this behind a
+                      // modal for the same reason: the other two options move
+                      // work, this one deletes it.
+                      if (
+                        window.confirm(
+                          "Discard your uncommitted changes and switch to " +
+                            halangan.cabang +
+                            "? This cannot be undone.",
+                        )
+                      )
+                        doSwitch(halangan.cabang, "paksa");
+                    }}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #6e2a2a",
+                      background: "#2d1618",
+                      color: "#f0a5a5",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Discard &amp; switch
+                  </button>
+                  <button
+                    className="btn-reset"
+                    onClick={() => setHalangan(null)}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid transparent",
+                      background: "transparent",
+                      color: "#8b949e",
+                      cursor: "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Stay here
+                  </button>
+                </div>
+              </div>
+            )}
             <input
               autoFocus
               value={query}
@@ -1098,6 +1272,17 @@ function WorkspaceGitPanel({ path, onClose }: any) {
                       }}
                     >
                       {b}
+                      {pindahKe === b && (
+                        <span
+                          style={{
+                            marginLeft: "8px",
+                            color: "#8b949e",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          switching...
+                        </span>
+                      )}
                     </span>
                     <span
                       style={{ display: "flex", gap: "1px", flexShrink: 0 }}
@@ -1238,6 +1423,142 @@ function WorkspaceGitPanel({ path, onClose }: any) {
           </div>
         </div>
       )}
+      {/* ── Remote ──
+          Push, pull and fetch, served by the vendored VS Code git layer
+          (vendor/vscode-git). Before this the panel could commit and the
+          commit stayed on one disk: an inventory of the backend found no
+          push, pull or fetch anywhere. The branch shown is the one being
+          pushed; setUpstream is on so the FIRST push of a new branch does not
+          fail asking for "--set-upstream". */}
+      {br && br.current && (
+        <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+          {[
+            ["Fetch", "/ww/remote/fetch", "git fetch origin", {}],
+            [
+              "Pull",
+              "/ww/remote/pull",
+              "git pull origin " + br.current,
+              { branch: br.current },
+            ],
+            [
+              "Push",
+              "/ww/remote/push",
+              "git push origin " + br.current,
+              { branch: br.current, setUpstream: true },
+            ],
+          ].map(([label, url, judul, ekstra]: any) => (
+            <button
+              key={label}
+              className="btn-reset vp-hover"
+              disabled={busy}
+              title={judul}
+              onClick={() =>
+                run(
+                  url,
+                  { path, ...ekstra },
+                  (r: any) =>
+                    label.toLowerCase() +
+                    " ok" +
+                    (r.remote ? " (" + r.remote + ")" : ""),
+                )
+              }
+              style={commitBtnStyle(busy)}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            className="btn-reset vp-hover"
+            title="List stashes"
+            onClick={() => (stashes === null ? muatStash() : setStashes(null))}
+            style={commitBtnStyle(false)}
+          >
+            {stashes === null ? "Stashes" : "Hide stashes"}
+          </button>
+        </div>
+      )}
+      {/* ── Stash list ──
+          Each row is one stash with pop and drop. Pop re-applies it to the
+          current branch and removes it on success; git keeps the stash if the
+          apply conflicts, and the failure says so. Drop is a delete, so it
+          asks first. */}
+      {stashes !== null && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+          {stashes.length === 0 && (
+            <span style={{ fontSize: "11px", color: "#6b7280" }}>
+              no stashes
+            </span>
+          )}
+          {stashes.map((st: any) => (
+            <div
+              key={st.index}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "11px",
+                color: "#c9d1d9",
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontFamily: "ui-monospace, monospace",
+                }}
+                title={st.description}
+              >
+                {"stash@{" + st.index + "} " + st.description}
+              </span>
+              <button
+                className="btn-reset vp-hover"
+                disabled={busy}
+                title="git stash pop"
+                onClick={async () => {
+                  if (
+                    await run(
+                      "/ww/stash/pop",
+                      { path, index: st.index },
+                      () => "stash applied",
+                    )
+                  )
+                    muatStash();
+                }}
+                style={commitBtnStyle(busy)}
+              >
+                Pop
+              </button>
+              <button
+                className="btn-reset vp-hover"
+                disabled={busy}
+                title="git stash drop (cannot be undone)"
+                onClick={async () => {
+                  if (
+                    !window.confirm(
+                      "Drop stash@{" + st.index + "}? This cannot be undone.",
+                    )
+                  )
+                    return;
+                  if (
+                    await run(
+                      "/ww/stash/drop",
+                      { path, index: st.index },
+                      () => "stash dropped",
+                    )
+                  )
+                    muatStash();
+                }}
+                style={{ ...commitBtnStyle(busy), color: "#f0a5a5" }}
+              >
+                Drop
+              </button>
+            </div>
+          ))}
+        </div>
+      )}
       {g.lastCommit && (
         <div
           style={{
@@ -1253,12 +1574,17 @@ function WorkspaceGitPanel({ path, onClose }: any) {
         </div>
       )}
       {msg && (
+        // IT WRAPS. It used to be one clipped line with an ellipsis, and the only
+        // messages long enough to be clipped were the ones that mattered — git's
+        // reason for refusing. The user saw "error: Your local changes to the
+        // following fi…" and no way to read the rest.
         <div
           style={{
             fontSize: "11px",
+            lineHeight: 1.45,
             color: msg.ok ? "#3fb950" : "#f85149",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
           }}
         >
           {msg.text}
@@ -2288,7 +2614,7 @@ function Sidebar({
   );
 }
 
-// Live agent process � animated bubbles showing each file/folder being worked on.
+// Live agent process — animated bubbles showing each file/folder being worked on.
 // ─── Agent Step UI v2 ── SVG icons per tool ────────────────────────────────
 const AG_SVG = {
   list: (p: any) => (

@@ -1,7 +1,15 @@
 ﻿"use strict";
 /**
- * Terminal session manager — wraps node-pty for persistent PTY sessions.
- * Shared by both the HTTP server and the agent tools.
+ * terminal.ts — persistent PTY sessions, wrapping node-pty.
+ *
+ * ROLE IN THE SYSTEM. One session manager serves both the terminal the user
+ * types into and the terminal_* tools the agent calls, so a shell opened by
+ * either is the same object and neither can strand the other's session.
+ *
+ * CONNECTS TO
+ *   imports  os, ../agent/platform/index (which shell this OS uses)
+ *   used by  server.ts (the user's terminal), agent/tools/exec-tools.ts
+ *            (the agent's)
  */
 
 import * as os from "os";

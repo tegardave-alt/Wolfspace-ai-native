@@ -1,21 +1,18 @@
-// ── The planner, as ONE implementation with two callers ──
+// perencana-agent.ts — builds the short checklist the agent works from, as ONE
+// implementation both orchestrators call.
 //
-// The JS loop (agent/self_agent.ts) and the Python graph (services/agent-python)
-// both need a short checklist before work starts, and both were getting it from
-// different places: self_agent built one inline, while the Python path answered
-// its `__plan__` pseudo-tool with a three-line stub that always returned an EMPTY
-// checklist.
+// ROLE IN THE SYSTEM. The checklist is ground truth re-injected at every step:
+// it stops the agent redoing finished work, and because failures are recorded
+// against its items it also carries "already tried, already failed" without the
+// model having to remember. Both loops need it, and both used to get it
+// elsewhere — self_agent built one inline while the Python path answered its
+// `__plan__` pseudo-tool with a stub that always returned an EMPTY checklist,
+// losing the anchor exactly where long runs need it most. Same reasoning as
+// agent/penjaga-agent.ts: one implementation, two callers.
 //
-// An empty checklist is not a small difference. The checklist is the ground truth
-// re-injected at every step — it is what stops the agent redoing finished work,
-// and since failures are recorded against items, it is also what carries "already
-// tried, already failed" without the model having to remember it. Running the
-// Python orchestrator without one meant losing the anchor exactly where it
-// matters most.
-//
-// Same reasoning as agent/penjaga-agent.ts: two copies of a decision is the drift
-// this repo has been bitten by before, and the copy is always the one that
-// drifts.
+// CONNECTS TO
+//   imports  ./cloud (the planning model call), ./penjaga-agent
+//   used by  agent/self_agent.ts, agent/python-agent.ts
 
 const penjaga = require("./penjaga-agent.ts");
 
@@ -41,8 +38,27 @@ export const MAKS_PERCOBAAN_PROVIDER = 4;
  * next key. Collapsing the two would silently disable fallback for dead keys —
  * and on a real run here, 8 of the 10 keys in CLOUD_KEYS were dead when measured.
  */
+/*
+ * 410, 402 and 451 were MISSING, and each of them is the clearest possible
+ * reason to reach for the next key rather than to give up.
+ *
+ * FOUND BY AUDIT, and 410 was found first in a real failure: GitHub Models is
+ * being retired and answers
+ *
+ *   github 410: {"code":"github_models_retirement_brownout"}
+ *
+ * `github` is also the FIRST entry in CLOUD_KEYS, so on a run where the active
+ * provider failed for any reason, the fallback picked github, took the 410 as
+ * final, and stopped -- with gemini, openrouter, puter and qwen all holding
+ * keys and two of the four attempts unused. Measured: dicoba = [opencode,
+ * github], then the chain ended.
+ *
+ * 402 (payment required) and 451 (unavailable for legal reasons) say the same
+ * thing in different words: THIS provider will not serve this caller. They are
+ * the same class as the 401 and 403 already on the list.
+ */
 const _POLA_GANTI_PROVIDER =
-  /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|403|401|RegionError|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
+  /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|403|401|410|402|451|RegionError|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
 
 export function layakGantiProvider(e: unknown): boolean {
   const m = (e as any)?.message ?? e ?? "";

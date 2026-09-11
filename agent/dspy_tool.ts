@@ -1,6 +1,12 @@
-﻿// DSpy tool for WOLFSPACE agent
-// Real native integration: uses WOLFSPACE's own cloud LLM to optimize prompts
-// (ChainOfThought-style prompt optimization, no Python dependency).
+﻿// dspy_tool.ts — ChainOfThought-style prompt optimisation, run through
+// WOLFSPACE's own cloud models.
+//
+// ROLE IN THE SYSTEM. It is a NATIVE implementation, not a binding: no Python
+// and no DSPy package are involved, so it works wherever the app does.
+//
+// CONNECTS TO
+//   imports  ./cloud (the model call), ./debug
+//   used by  agent/sysprompt_opt.ts and the tool registry in agent/tools/index.ts
 
 // `export {}` makes this a MODULE rather than a global script — see
 // agent/mcp-client.ts for what a script-scope collision looks like.

@@ -206,20 +206,41 @@ describe("latar editor mengikuti wadahnya", () => {
   );
 
   test("tema sendiri didefinisikan sekali, saat Monaco siap", () => {
-    expect(HTML).toMatch(/defineTheme\("wolfspace-gelap"/);
+    // The name is unchanged; what changed is where its contents come from —
+    // public/tema-editor.js, generated from VS Code's own default dark theme.
+    // The inline literal is still here as the FALLBACK, so an editor comes up
+    // even if that file is missing.
+    expect(HTML).toMatch(/defineTheme\(\s*"wolfspace-gelap"/);
     expect(HTML).toMatch(/base: "vs-dark"/);
+    expect(HTML).toMatch(/__TEMA_EDITOR/);
   });
+
+  const OPSI2 = (function () {
+    const k = fs.readFileSync(
+      path.join(__dirname, "..", "public", "app", "Config.tsx"),
+      "utf8",
+    );
+    return k.slice(k.indexOf("function opsiEditor("));
+  })();
 
   test("latarnya TRANSPARAN, bukan warna mati", () => {
     // Inilah yang membuat satu tema global tetap cocok di tiga permukaan.
     expect(HTML).toMatch(/"editor\.background": "#00000000"/);
+    const TEMA = fs.readFileSync(
+      path.join(__dirname, "..", "public", "tema-editor.js"),
+      "utf8",
+    );
+    expect(TEMA).toMatch(/"editor\.background": "#00000000"/);
   });
 
   test("SEMUA editor memakai tema itu, tak ada yang tertinggal", () => {
     // Satu editor yang tertinggal di vs-dark akan berlatar #1e1e1e sendirian —
     // dan karena temanya global, ia juga menyeret yang lain saat dibuat.
+    // The theme moved into opsiEditor() with everything else shared, so the
+    // editors name it by using that rather than by repeating the string.
+    expect(OPSI2).toMatch(/theme: "wolfspace-gelap"/);
     for (const src of [APP, STEPS, BLOKS]) {
-      expect(src).toMatch(/theme: "wolfspace-gelap"/);
+      expect(src).toMatch(/\.\.\.opsiEditor\(/);
       expect(src).not.toMatch(/theme: "vs-dark"/);
     }
   });
@@ -346,21 +367,37 @@ describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => 
     "utf8",
   );
 
+  // ── THE THREE OPTIONS NOW LIVE IN ONE PLACE ──
+  //
+  // minimap, renderLineHighlight and overviewRulerLanes used to be written out
+  // in all three editor.create() calls, and these tests pinned all three copies.
+  // They are now opsiEditor() in Config.tsx, spread into each editor — so what
+  // is asserted is the single definition plus the fact that nobody opted out.
+  // That is a stronger guarantee than three matching copies ever were.
+  const KONFIG = fs.readFileSync(
+    path.join(AKAR, "public", "app", "Config.tsx"),
+    "utf8",
+  );
+  const OPSI = KONFIG.slice(KONFIG.indexOf("function opsiEditor("));
+
   test("penyebab #1 — minimap MATI, sama seperti dua editor lainnya", () => {
-    expect(LOGIC).toMatch(/minimap: \{ enabled: false \}/);
-    expect(LOGIC).not.toMatch(/minimap: \{ enabled: true \}/);
+    expect(OPSI).toMatch(/minimap: \{ enabled: false \}/);
+    expect(OPSI).not.toMatch(/minimap: \{ enabled: true \}/);
   });
 
   test("penyebab #2 — highlight baris aktif MATI, sama seperti dua editor lainnya", () => {
     // Panel ini baca-saja; tak ada yang sedang mengedit, jadi menyorot
     // "baris aktif" tak berarti apa-apa selain artefak visual.
-    expect(LOGIC).toMatch(/renderLineHighlight: "none"/);
+    expect(OPSI).toMatch(/renderLineHighlight: "none"/);
   });
 
   test("ketiga editor Monaco konsisten pada KEDUA opsi", () => {
+    // Consistency is now structural: they cannot differ, because they read the
+    // same object. What is checked is that each one still does.
     for (const src of [APP, STEPS, BLOKS]) {
-      expect(src).toMatch(/minimap: \{ enabled: false \}/);
-      expect(src).toMatch(/renderLineHighlight: "none"/);
+      expect(src).toMatch(/\.\.\.opsiEditor\(/);
+      expect(src).not.toMatch(/minimap: \{ enabled: true \}/);
+      expect(src).not.toMatch(/renderLineHighlight: "(all|line|gutter)"/);
     }
   });
 
@@ -368,7 +405,7 @@ describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => 
     // Elemen ini terbukti lewat elementFromPoint pada screenshot terisolasi,
     // bukan ditebak dari dokumentasi Monaco. Garisnya digambar ke kanvas,
     // jadi tak ada aturan CSS yang bisa menghapusnya — harus opsi ini.
-    expect(LOGIC).toMatch(/overviewRulerLanes: 0/);
+    expect(OPSI).toMatch(/overviewRulerLanes: 0/);
   });
 
   test("penyebab #4 — outline fokus DIMATIKAN via className, bukan cuma opsi Monaco", () => {
@@ -395,7 +432,7 @@ describe("garis solid di panel kode: TIGA penyebab, ditemukan berurutan", () => 
       "utf8",
     );
     for (const src of [APP, STEPS, BLOKS])
-      expect(src).toMatch(/overviewRulerLanes: 0/);
+      expect(src).toMatch(/\.\.\.opsiEditor\(/);
     for (const kelas of [
       ".ar-out-mona-host",
       ".monaco-host",

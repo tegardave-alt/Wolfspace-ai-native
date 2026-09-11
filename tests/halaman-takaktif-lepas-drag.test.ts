@@ -32,7 +32,19 @@ const fs = require("fs");
 const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
-const CSS = fs.readFileSync(path.join(AKAR, "public/styles.css"), "utf8");
+// CRLF DINORMALKAN, dan itu bukan kerapian.
+//
+// git di Windows menulis CRLF saat checkout (core.autocrlf=true, dan
+// .gitattributes repo ini tidak mengatur akhir baris sama sekali). Asersi di
+// bawah mencari dua selector yang dipisah newline HARFIAH, jadi pada pohon
+// hasil checkout indexOf mengembalikan -1 dan uji ini merah -- padahal CSS-nya
+// persis benar. TERUKUR: indexOf dengan LF -1, dengan CRLF 46495.
+//
+// CI berjalan di ubuntu (LF), jadi ia TIDAK AKAN PERNAH menangkap ini. Yang
+// kena justru siapa pun yang meng-clone repo ini di Windows.
+const CSS = fs
+  .readFileSync(path.join(AKAR, "public/styles.css"), "utf8")
+  .replace(/\r\n/g, "\n");
 
 function aturan(pemilih: string): string {
   const i = CSS.indexOf(pemilih + " {");

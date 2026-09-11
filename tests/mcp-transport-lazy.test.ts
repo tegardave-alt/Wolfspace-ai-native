@@ -41,6 +41,44 @@ describe("rahasia tidak ikut tercatat saat server MCP dinyalakan", () => {
     expect(out.join(" ")).not.toContain("eyJhbGciOiJBMjU2S1ci");
   });
 
+  // DITEMUKAN LEWAT AUDIT, bukan lewat laporan. Bentuk gabungan --flag=nilai
+  // sudah disensor sejak lama; dua bentuk lain tidak, dan keduanya lazim:
+  //
+  //   ["--token", "ghp_..."]                       -> tercetak UTUH
+  //   ["--header", "Authorization: Bearer sk-..."] -> tercetak UTUH
+  //
+  // Sebabnya satu: aturan lama mencari kata rahasia DI DALAM nilainya,
+  // sementara pada dua bentuk ini katanya ada di FLAG SEBELUMNYA atau di NAMA
+  // header. Aturan "nilai telanjang" juga melewatkan apa pun yang berspasi --
+  // dan setiap header berspasi.
+  test("nilai yang MENGIKUTI flag rahasia ikut disunting", () => {
+    const out = mcp._argsAman(["--token", "ghp_RAHASIAABCDEF1234567890"]);
+    expect(out).toEqual(["--token", "***"]);
+  });
+
+  test("header Authorization disunting, nama headernya tetap", () => {
+    // The field name stays so the log still says WHICH header was sent.
+    const out = mcp._argsAman([
+      "--header",
+      "Authorization: Bearer sk-RAHASIA987",
+    ]);
+    expect(out[1]).toBe("Authorization: ***");
+    expect(out.join(" ")).not.toContain("sk-RAHASIA987");
+  });
+
+  test("--author BUKAN kredensial — batas kata itu bagian dari perbaikannya", () => {
+    // Over-redaction is its own failure. A rule that cannot tell `--auth` from
+    // `--author` would blind the log to make a point.
+    expect(mcp._argsAman(["--author", "Jane Doe"])).toEqual([
+      "--author",
+      "Jane Doe",
+    ]);
+    expect(mcp._argsAman(["--stdio", "nilai-biasa"])).toEqual([
+      "--stdio",
+      "nilai-biasa",
+    ]);
+  });
+
   test("argumen biasa TIDAK diubah — penyuntingan tak boleh membutakan log", () => {
     const asli = ["-y", "@modelcontextprotocol/server-github", "--stdio"];
     expect(mcp._argsAman(asli)).toEqual(asli);
@@ -267,9 +305,20 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
     const i = SRC.indexOf("async connectServer");
     const j = SRC.indexOf("\n  }", i);
     const blok = SRC.slice(i, j > i ? j : i + 2400);
-    expect(blok).toMatch(
-      /if \(ada && ada\.ready\) return \{ ok: true, already: true \}/,
-    );
+    // DIURAI JADI TOKEN, bukan satu baris utuh, dan ini kali KEDUA tes ini
+    // patah tanpa sifatnya berubah. Yang pertama karena komentar memanjang
+    // (dicatat di atas); yang kedua karena penjaganya memperoleh syarat baru:
+    // server yang `ready` tapi panggilan terakhirnya GAGAL tidak lagi dihitung
+    // "sudah tersambung", supaya tombol Connect bisa menghidupkannya kembali.
+    // Sebelumnya itu jalan buntu — UI menghitung lastCallOk, klien tidak, jadi
+    // server yang sekali gagal tak bisa dipulihkan dari mana pun.
+    //
+    // Yang dijaga di sini tinggal sifatnya: masih ADA jalan pintas untuk server
+    // siap, dan jawabannya masih `already`. PERILAKUNYA dimiliki
+    // tests/mcp-connect-hidupkan-gagal.test.ts, yang menjalankannya betulan
+    // untuk lastCallOk true / null / undefined / false.
+    expect(blok).toMatch(/ada && ada\.ready/);
+    expect(blok).toMatch(/already: true/);
     // Server yang setengah jalan dibersihkan dulu, kalau tidak prosesnya jadi
     // yatim dan tak tercatat di this.servers.
     expect(blok).toMatch(/if \(ada && ada\.proc\) this\.stopServer\(name\)/);
