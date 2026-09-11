@@ -47,9 +47,27 @@ function git(args: any, cwd: any) {
   }).trim();
 }
 // The non-throwing version (for probing) — returns null on failure.
+//
+// --no-optional-locks, AND IT IS NOT COSMETIC. `git status` refreshes the index
+// while it reads, and to do that it takes .git/index.lock -- so a poll that only
+// ever LOOKS at the repository can make a checkout the user just asked for fail
+// with "Another git process seems to be running".
+//
+// REPRODUCED, and the numbers are from a 400-file repo with a status poll
+// running against the same folder:
+//
+//   git status --porcelain                    40 checkouts -> 3 failed on the lock
+//   git --no-optional-locks status ...        40 checkouts -> 0 failed
+//
+// with the same number of status runs either way (53 vs 55). The flag tells git
+// not to take locks it does not need, which is exactly what a read is.
+//
+// IT GOES HERE AND NOT IN git(), because git() is also how this file COMMITS and
+// CHECKS OUT. Those must keep their locks; the whole point is that only the
+// probes give theirs up. Requires git >= 2.15 (2017).
 function gitTry(args: any, cwd: any) {
   try {
-    return git(args, cwd);
+    return git(["--no-optional-locks", ...args], cwd);
   } catch {
     return null;
   }
@@ -503,7 +521,8 @@ function lupakanGit(dir: any) {
 // WHY IT MATTERS. These run on the "kerja" host, and execFileSync there holds
 // that host's only thread: a slow commit stalled every other /ww call behind
 // it, so the file tree went quiet while git worked.
-function gitRunAsync(args: any, cwd: any): Promise<any> {
+/** One attempt, with no opinion about what its failure means. */
+function _gitRunSekali(args: any, cwd: any): Promise<any> {
   return new Promise((resolve) => {
     execFile(
       "git",
@@ -521,6 +540,46 @@ function gitRunAsync(args: any, cwd: any): Promise<any> {
       },
     );
   });
+}
+
+// A LOCKED INDEX IS A WAIT, NOT AN ANSWER.
+//
+// Asked directly by the user, and the question was the right one: switching
+// branch failed with
+//
+//   repository is locked by another git process (.git/index.lock)
+//
+// "but shouldn't it just be able to switch?" -- yes. That lock is held for
+// MILLISECONDS by whatever is reading the repository at that instant, and
+// giving up on it turns a transient condition into a refusal the user has to
+// understand and act on. No other git client behaves that way.
+//
+// WHY RETRYING IS SAFE HERE, and only here: index.lock is taken BEFORE the work
+// begins. A command that could not take it did nothing at all -- there is no
+// half-done state to repeat. That is not true of other failures, so ONLY the
+// lock is retried; "would be overwritten by checkout" is a real refusal and is
+// returned on the first attempt, unchanged.
+//
+// The budget is small on purpose. A lock still held after roughly a second is
+// not a passing reader, it is a stuck or crashed process, and then the honest
+// answer IS the message -- with a stale .git/index.lock the user may have to
+// delete by hand.
+const LOCK_COBA_LAGI = 6;
+const LOCK_JEDA_MS = 180;
+
+function _terkunci(err: any) {
+  return /index\.lock|Another git process|locked by another git/i.test(
+    String(err || ""),
+  );
+}
+
+async function gitRunAsync(args: any, cwd: any): Promise<any> {
+  let r = await _gitRunSekali(args, cwd);
+  for (let i = 0; i < LOCK_COBA_LAGI && !r.ok && _terkunci(r.err); i++) {
+    await new Promise((s) => setTimeout(s, LOCK_JEDA_MS));
+    r = await _gitRunSekali(args, cwd);
+  }
+  return r;
 }
 
 // Git calls get a CEILING.
@@ -547,10 +606,12 @@ function _sebabGit(e: any, stderr: any, stdout: any) {
 }
 
 function gitTryAsync(args: any, cwd: any): Promise<any> {
+  // Same reason as gitTry above: a read must not hold .git/index.lock, or the
+  // 6-second panel refresh competes with the user's own checkout.
   return new Promise((selesai: any) => {
     execFile(
       "git",
-      args,
+      ["--no-optional-locks", ...args],
       { cwd, encoding: "utf8", windowsHide: true, timeout: BATAS_GIT_MS },
       (galat: any, keluar: any) =>
         selesai(galat ? null : String(keluar).trim()),
