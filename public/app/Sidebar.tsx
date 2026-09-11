@@ -596,6 +596,18 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   const [committing, setCommitting] = React.useState(false);
   const [pesanCommit, setPesanCommit] = React.useState("");
   const [busy, setBusy] = React.useState(false);
+  // WHICH branch is being switched to, not merely THAT something is busy.
+  //
+  // A cold checkout of this repository was MEASURED at 44.9 seconds -- 35 MB of
+  // vendored files have to come out of the pack with an empty OS cache. Warm it
+  // is 4-5 seconds. During the slow case the panel only dimmed, so a switch that
+  // was working looked exactly like a switch that had died.
+  //
+  // This is the part VS Code has and this panel did not: it does not make git
+  // faster -- nothing does, it is the same command -- it says the work is
+  // happening. Naming the branch matters too, because the row the user clicked
+  // is the one that should react.
+  const [pindahKe, setPindahKe] = React.useState("");
   const [msg, setMsg] = React.useState<any>(null); // { ok, text }
 
   React.useEffect(() => {
@@ -642,13 +654,21 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   // The confirmation names the branch git REPORTS being on, not the one that was
   // clicked — the two came apart in testing, and the panel used to claim the one
   // it had asked for.
-  const doSwitch = (b: any) =>
-    run(
-      "/ww/branch/switch",
-      { path, branch: b },
-      (r: any) => "switched to " + (r.current || b),
-      () => setPickerOpen(false),
-    );
+  const doSwitch = async (b: any) => {
+    setPindahKe(b);
+    try {
+      return await run(
+        "/ww/branch/switch",
+        { path, branch: b },
+        (r: any) => "switched to " + (r.current || b),
+        () => setPickerOpen(false),
+      );
+    } finally {
+      // In a finally: a switch that FAILS must clear the label too, or the row
+      // claims to still be working long after it stopped.
+      setPindahKe("");
+    }
+  };
   const doCreate = (name: any) => {
     const nm = toBranchName(name);
     run(
@@ -1117,6 +1137,17 @@ function WorkspaceGitPanel({ path, onClose }: any) {
                       }}
                     >
                       {b}
+                      {pindahKe === b && (
+                        <span
+                          style={{
+                            marginLeft: "8px",
+                            color: "#8b949e",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          switching...
+                        </span>
+                      )}
                     </span>
                     <span
                       style={{ display: "flex", gap: "1px", flexShrink: 0 }}

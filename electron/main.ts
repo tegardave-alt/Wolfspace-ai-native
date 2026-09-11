@@ -1342,6 +1342,19 @@ function registerIpc() {
   ipcMain.on("WOLFSPACE:probe", (_e: any, d: any) => {
     if (d && d.t === "renderer-stop")
       probe.say("RENDERER-STOP ~" + Math.round(d.overshoot) + "ms");
+    // The same freeze, with the script that caused it. See
+    // _probeSiapaYangMembekukan in electron/preload.ts: the numeric probe above
+    // says a frame was lost, this says what was running inside it.
+    if (d && d.t === "renderer-stop-sebab")
+      probe.say(
+        "RENDERER-STOP sebab: " +
+          d.sumber +
+          " (frame " +
+          d.durasi +
+          "ms, memblokir " +
+          d.memblokir +
+          "ms)",
+      );
   });
   ipcMain.handle(
     "WOLFSPACE:invoke",

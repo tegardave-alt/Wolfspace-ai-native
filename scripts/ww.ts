@@ -532,11 +532,12 @@ function _gitRunSekali(args: any, cwd: any): Promise<any> {
         encoding: "utf8",
         maxBuffer: 8 * 1024 * 1024,
         windowsHide: true,
-        timeout: BATAS_GIT_MS,
+        // Writes move data; reads do not. See BATAS_TULIS_MS.
+        timeout: BATAS_TULIS_MS,
       },
       (e: any, stdout: any, stderr: any) => {
         if (!e) return resolve({ ok: true, out: String(stdout || "").trim() });
-        resolve({ ok: false, err: _sebabGit(e, stderr, stdout) });
+        resolve({ ok: false, err: _sebabGit(e, stderr, stdout, args) });
       },
     );
   });
@@ -573,12 +574,58 @@ function _terkunci(err: any) {
   );
 }
 
+/**
+ * What the lock looks like RIGHT NOW, said in the failure itself.
+ *
+ * WHY THIS EXISTS. The lock message was reported from the real app and could
+ * not be reproduced afterwards -- five explanations were tested and every one
+ * was eliminated by measurement: the repository was watched for 60 seconds with
+ * the app and the editor running and .git/index.lock never appeared once; no
+ * stale lock file existed anywhere under the user's folders; overlapping
+ * switches were absorbed by the retry; the git version accepts every flag used
+ * here; and the running app was started after the fix was on disk.
+ *
+ * A failure nobody can reproduce is a failure nobody can fix, so the next
+ * occurrence carries its own evidence instead of a description.
+ *
+ * THE AGE OF THE LOCK FILE IS THE PART THAT DECIDES IT. A lock a few hundred
+ * milliseconds old is another process reading, and waiting longer would have
+ * helped. A lock minutes old is a crashed git that will never let go, and no
+ * amount of waiting will do anything -- that one has to be deleted by hand.
+ * Those two need opposite responses and used to produce the identical sentence.
+ */
+function _potretLock(cwd: any, menungguMs: number, percobaan: number) {
+  let bagian = "waited " + menungguMs + "ms over " + percobaan + " attempts";
+  try {
+    const berkas = path.join(String(cwd), ".git", "index.lock");
+    const st = fs.statSync(berkas);
+    const umur = Date.now() - st.mtimeMs;
+    bagian +=
+      "; .git/index.lock still there, " +
+      (umur < 5000
+        ? Math.round(umur) + "ms old (another git is working - it should clear)"
+        : Math.round(umur / 1000) +
+          "s old (STALE: a git process died holding it. Delete .git/index.lock)");
+  } catch (_) {
+    // Gone by the time we looked: the holder let go a moment too late for us.
+    bagian += "; the lock was already gone when this was written";
+  }
+  return bagian;
+}
+
 async function gitRunAsync(args: any, cwd: any): Promise<any> {
+  const t0 = Date.now();
+  let percobaan = 1;
   let r = await _gitRunSekali(args, cwd);
   for (let i = 0; i < LOCK_COBA_LAGI && !r.ok && _terkunci(r.err); i++) {
     await new Promise((s) => setTimeout(s, LOCK_JEDA_MS));
+    percobaan++;
     r = await _gitRunSekali(args, cwd);
   }
+  // Only a lock that OUTLASTED the retries is worth describing. Everything else
+  // already says what it is.
+  if (!r.ok && _terkunci(r.err))
+    r.err = r.err + " - " + _potretLock(cwd, Date.now() - t0, percobaan);
   return r;
 }
 
@@ -591,15 +638,59 @@ async function gitRunAsync(args: any, cwd: any): Promise<any> {
 // "the host is not answering", which names neither git nor the lock.
 const BATAS_GIT_MS = 15000;
 
+// WRITES GET THEIR OWN BUDGET, and one number for both was the bug.
+//
+// 15 seconds is right for a READ: it runs on a 6-second poll, and a `git
+// status` that needs 15 seconds is already broken. For a WRITE the same number
+// is wrong, because a write actually moves data.
+//
+// MEASURED on this repository, in an isolated clone with nothing else running:
+//
+//   git clone --local        3624 ms
+//   git checkout <branch>    2852 ms   (445 files changed)
+//   git checkout main        1892 ms
+//   git status                758 ms
+//
+// A checkout is 2.9 seconds on an idle machine. In a real working tree it
+// competes with a virus scanner inspecting every file git writes, with the
+// app's own watcher reacting to hundreds of those changes, and with whatever
+// the user is doing. Five times slower reaches the limit -- and what the user
+// sees is a branch switch that FAILED, killed just before it finished.
+//
+// The limit is not removed: a git that has genuinely hung must still die. What
+// is fixed is telling "slow because it is working" apart from "not answering".
+const BATAS_TULIS_MS = 90000;
+
 /** Reads a git failure and says what it actually was. */
-function _sebabGit(e: any, stderr: any, stdout: any) {
+/**
+ * Reads a git failure and says what it actually was.
+ *
+ * A TIMEOUT IS NOT A LOCK, and saying it might be cost hours.
+ *
+ * The old text for a killed process read "the repository may be locked by
+ * another program". That is a GUESS, printed as though it were a finding, and
+ * it was wrong: a killed git means the command ran past its budget and was
+ * stopped -- nothing about it says a lock was involved. The guess sent a whole
+ * investigation after .git/index.lock, which was measured never to appear:
+ * sixty seconds of watching the live repository with the app and the editor
+ * running produced zero locks, and there was no stale lock file anywhere.
+ *
+ * So a timeout now reports the timeout, names the command, and stops there.
+ * Where a lock IS the cause, git says so itself and the branch below reads it
+ * from git's own words rather than inventing them.
+ */
+function _sebabGit(e: any, stderr: any, stdout: any, args?: any) {
   const teks = ((stderr || "") + (stdout || "")).toString().trim();
-  if (e && (e.killed || e.signal))
+  if (e && (e.killed || e.signal)) {
+    const perintah = Array.isArray(args) ? "`git " + args[0] + "` " : "git ";
     return (
-      "git did not answer in " +
-      Math.round(BATAS_GIT_MS / 1000) +
-      "s - the repository may be locked by another program"
+      perintah +
+      "was still running after " +
+      Math.round((e.timeout || BATAS_GIT_MS) / 1000) +
+      "s and was stopped. The repository may be large, the disk busy, or a " +
+      "virus scanner may be inspecting every file git writes"
     );
+  }
   if (/index\.lock|Another git process|Unable to create/i.test(teks))
     return "repository is locked by another git process (.git/index.lock)";
   return teks || (e && e.message) || "git failed";

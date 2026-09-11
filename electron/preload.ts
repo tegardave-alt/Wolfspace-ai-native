@@ -67,6 +67,62 @@ function _probeRendererStop(): void {
   setTimeout(tick, CHECK_MS);
 }
 _probeRendererStop();
+// WHAT froze it, not only that it froze.
+//
+// The probe above reports a number and nothing else, and a number cannot be
+// acted on. That gap has now cost three investigations in this repository: a
+// backend that went silent, a git lock that was never there, and this. Each
+// time the measurement said something was slow and named nothing.
+//
+// Chromium answers this directly through Long Animation Frame. Unlike the older
+// `longtask` entry -- which attributes to a FRAME and so always says "self" for
+// an app like this one -- LoAF carries a `scripts` array with the source URL,
+// the function name and the duration of each script that ran inside the frame.
+// That is script-level attribution, the same data devtools shows.
+//
+// REPORTED ONLY ALONGSIDE A REAL FREEZE. LoAF fires for anything over 50 ms,
+// which is far too chatty to be useful: the threshold here matches the probe
+// above so the two describe the same event.
+//
+// Never fatal and never required: on a runtime without LoAF the observer throws
+// on construction, and the numeric probe above keeps working exactly as before.
+function _probeSiapaYangMembekukan(): void {
+  try {
+    const obs = new (window as any).PerformanceObserver((list: any) => {
+      for (const entry of list.getEntries()) {
+        if (!entry || entry.duration < 500) continue;
+        const skrip = (entry.scripts || [])
+          .slice()
+          .sort((a: any, b: any) => (b.duration || 0) - (a.duration || 0))[0];
+        try {
+          ipcRenderer.send("WOLFSPACE:probe", {
+            t: "renderer-stop-sebab",
+            durasi: Math.round(entry.duration),
+            // blockingDuration is the part that actually held the frame back --
+            // a long frame is not necessarily a frozen one.
+            memblokir: Math.round(entry.blockingDuration || 0),
+            sumber: skrip
+              ? (skrip.sourceFunctionName || "(anonim)") +
+                " @ " +
+                String(skrip.sourceURL || "?")
+                  .split("/")
+                  .pop() +
+                ":" +
+                (skrip.sourceCharPosition ?? "?") +
+                " " +
+                Math.round(skrip.duration || 0) +
+                "ms"
+              : "(tak ada skrip: layout, paint, atau GC)",
+          });
+        } catch (_) {}
+      }
+    });
+    obs.observe({ type: "long-animation-frame", buffered: true });
+  } catch (_) {
+    // No LoAF here. The numeric probe above still reports the freeze.
+  }
+}
+_probeSiapaYangMembekukan();
 
 let seq = 0;
 

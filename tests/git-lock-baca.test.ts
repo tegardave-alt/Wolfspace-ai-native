@@ -66,6 +66,53 @@ describe("pembacaan git melepaskan index.lock", () => {
   });
 });
 
+describe("timeout dilaporkan sebagai timeout, bukan ditebak jadi lock", () => {
+  // THE MISLABEL THAT COST HOURS. A killed git used to be reported as
+  //
+  //   "git did not answer in 15s - the repository may be locked by another
+  //    program"
+  //
+  // The first half is a fact; the second is a GUESS printed as a finding, and
+  // it was wrong. A killed process means the command outran its budget --
+  // nothing about it implicates a lock. That guess sent an entire
+  // investigation after .git/index.lock, which was then MEASURED never to
+  // appear: 60 seconds of watching the live repository with the app and the
+  // editor running produced zero locks, and no stale lock file existed
+  // anywhere under the user folders.
+
+  test("pesan timeout tidak menuduh lock", () => {
+    const blok = tubuh("function _sebabGit(");
+    const mati = blok.slice(blok.indexOf("e.killed"));
+    expect(mati).not.toMatch(/may be locked/i);
+    expect(mati).toContain("was still running after");
+  });
+
+  test("pesannya menyebut perintah yang mana", () => {
+    // "git was stopped" is not actionable; "`git checkout` was stopped" is.
+    expect(tubuh("function _sebabGit(")).toContain("args[0]");
+  });
+
+  test("tulisan punya anggaran waktu SENDIRI, lebih besar dari pembacaan", () => {
+    // Measured in an isolated clone of this repo with nothing else running:
+    // checkout 2852 ms against status 758 ms. One budget for both killed
+    // branch switches that were merely slow.
+    const baca = Number(SRC.match(/BATAS_GIT_MS = ([0-9]+)/)[1]);
+    const tulis = Number(SRC.match(/BATAS_TULIS_MS = ([0-9]+)/)[1]);
+    expect(tulis).toBeGreaterThan(baca);
+    // And the read budget is NOT raised: a read runs on a 6-second poll.
+    expect(baca).toBeLessThanOrEqual(15000);
+  });
+
+  test("umur berkas lock ikut dilaporkan saat lock bertahan", () => {
+    // A lock 200 ms old is another git working; one minutes old is a crashed
+    // process that will never let go. Those need opposite responses and used
+    // to produce the identical sentence.
+    const blok = tubuh("function _potretLock(");
+    expect(blok).toContain("STALE");
+    expect(blok).toContain("mtimeMs");
+  });
+});
+
 describe("index.lock DITUNGGU, bukan dijadikan jawaban", () => {
   // ASKED BY THE USER, and the question was the right one: switching branch
   // failed with the lock message, "but shouldn't it just be able to switch?"
