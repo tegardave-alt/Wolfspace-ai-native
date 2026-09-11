@@ -94,25 +94,34 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # SATU PERCOBAAN ULANG, DAN INI BUKAN DIAGNOSIS.
+      # GAGAL DUA KALI, jadi bukan kedipan jaringan -- dan ulangan polos yang
+      # dipasang sebelumnya justru yang membuktikannya. Itu memang gunanya.
       #
-      # Langkah ini gagal dalam 8 DETIK pada run 692fae8, dan seluruh Jest
-      # dilewati karenanya -- satu langkah infrastruktur menjatuhkan pemeriksaan
-      # yang sebenarnya. Empat run sebelumnya, dengan isi langkah yang sama
-      # persis, sukses dalam 22-25 detik.
+      # Riwayatnya: empat run sukses 22-25 detik dengan langkah yang sama persis,
+      # lalu gagal 8 detik, lalu gagal lagi sesudah jeda 15 detik. Log GitHub
+      # menjawab 403 untuk permintaan anonim, jadi sebabnya tak bisa dibaca
+      # langsung; yang tersisa adalah bentuk kegagalannya.
       #
-      # Sebabnya TIDAK diketahui: endpoint log GitHub menjawab 403 untuk
-      # permintaan anonim, jadi tak ada yang bisa dibaca. Yang bisa dikatakan
-      # dari angkanya: 8 detik terlalu cepat untuk unduhan browser gagal, dan
-      # lebih cocok dengan bagian `--with-deps`, yang menjalankan apt-get.
-      # `playwright` sendiri sudah terdeklarasi dan ada di node_modules, jadi
-      # ini bukan pengambilan paket dari registry.
+      # Bentuk itu cocok dengan kelas galat yang terdokumentasi di playwright:
+      # `--with-deps` menjalankan apt-get, dan metadata repositori di runner bisa
+      # basi -- "Repository ... changed its 'Label' value" mengembalikan exit 100
+      # seketika. Gagal cepat, berulang, dan tak ada hubungannya dengan unduhan
+      # browser. `playwright` sendiri sudah terdeklarasi dan ada di node_modules,
+      # jadi ini juga bukan npx yang menarik paket dari registry.
       #
-      # Jadi ini penanganan, bukan perbaikan: satu ulangan tak berbiaya apa pun
-      # ketika percobaan pertama berhasil, dan kalau ia gagal DUA kali, itu
-      # sendiri informasi -- artinya bukan kedipan jaringan dan layak dikejar.
+      # Dua lapis, dan urutannya disengaja:
+      #   1. segarkan metadata apt dengan --allow-releaseinfo-change, yang persis
+      #      menyasar sebab di atas. Dibuat TOLERAN (|| true): kalau ia sendiri
+      #      gagal, itu bukan alasan menjatuhkan seluruh pemeriksaan.
+      #   2. kalau --with-deps masih menolak, pasang browsernya SAJA. Runner
+      #      ubuntu sudah membawa hampir semua pustaka yang dibutuhkan chromium,
+      #      jadi ini biasanya cukup -- dan kalau ternyata tidak, uji browser yang
+      #      merah akan mengatakannya dengan sebab yang benar, bukan seluruh suite
+      #      yang dilewati dengan sebab yang tak terbaca.
       - name: Pasang browser Playwright
-        run: npx playwright install --with-deps chromium || (sleep 15 && npx playwright install --with-deps chromium)
+        run: |
+          sudo apt-get update --allow-releaseinfo-change -y || true
+          npx playwright install --with-deps chromium || npx playwright install chromium
 
       - name: Jest
         shell: bash

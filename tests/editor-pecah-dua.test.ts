@@ -92,7 +92,7 @@ describe("cara memecahnya", () => {
   test("Ctrl+backslash ditambatkan ke editor, bukan ke window", () => {
     // Pintasan segenerik ini tak boleh menyala saat pemakai sedang mengetik di
     // kotak chat di halaman lain.
-    const i = APP.indexOf('el.addEventListener("keydown", tekan)');
+    const i = APP.indexOf('el.addEventListener("keydown", press)');
     expect(i).toBeGreaterThan(-1);
     const blok = APP.slice(Math.max(0, i - 900), i);
     expect(blok).toMatch(/bisaPecah && onPecah/);

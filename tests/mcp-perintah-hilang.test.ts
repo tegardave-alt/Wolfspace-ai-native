@@ -126,3 +126,69 @@ describe("penjelasan tak boleh berubah jadi penolakan", () => {
     expect(SRC.slice(i, i + 200)).toContain('if (tersolusi) return "";');
   });
 });
+
+describe("perintah yang SUDAH berekstensi harus ketemu", () => {
+  // THE BUG THIS PINS, found while checking MCP by hand before a release.
+  //
+  // On Windows `npx` is rewritten to `npx.cmd` before resolving, and _cariExe
+  // only ever tried `cmd + ext`: npx.cmd.COM, npx.cmd.EXE, npx.cmd.BAT ...
+  // never npx.cmd. MEASURED: C:/langs/node/npx.cmd was on PATH the whole time
+  // and _cariExe returned null for it on every call.
+  //
+  // It hid because the fallback is correct -- an unresolved command goes
+  // through cmd.exe, which is exactly right for a .cmd. The damage landed
+  // somewhere else entirely: the "install Node.js" hint keys off that same
+  // null, so a TYPO in a package name produced `npm error 404` AND an
+  // instruction to install a Node.js that was already installed.
+  const os = require("os");
+  let dir = "";
+
+  beforeAll(() => {
+    dir = fs.mkdtempSync(path.join(os.tmpdir(), "wolfspace-uji-exe-"));
+    fs.writeFileSync(
+      path.join(dir, "alat.cmd"),
+      "@echo off" + String.fromCharCode(10),
+    );
+  });
+  afterAll(() => {
+    try {
+      fs.rmSync(dir, { recursive: true, force: true });
+    } catch (_) {}
+  });
+
+  const ENV = () => ({ PATH: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD" });
+
+  test("nama dengan ekstensi dicari APA ADANYA", () => {
+    expect(mcp._cariExe("alat.cmd", ENV())).toBe(path.join(dir, "alat.cmd"));
+  });
+
+  test("nama telanjang tetap memakai PATHEXT", () => {
+    // The other half must not be broken by fixing the first: a bare name still
+    // gets the extension list appended.
+    const hasil = mcp._cariExe("alat", ENV());
+    if (process.platform === "win32") {
+      // Case-insensitively: PATHEXT is spelled .CMD and the file is alat.cmd,
+      // so the resolved string carries the extension in the case PATHEXT used.
+      // Windows does not care and neither should this assertion -- the first
+      // version did, and failed on a resolution that was entirely correct.
+      expect(String(hasil).toLowerCase()).toBe(
+        path.join(dir, "alat.cmd").toLowerCase(),
+      );
+    } else {
+      // Elsewhere PATHEXT does not apply, and a bare "alat" is simply absent.
+      expect(hasil).toBeNull();
+    }
+  });
+
+  test("perintah yang TERESOLUSI tak boleh dituduh Node.js hilang", async () => {
+    // The message-level consequence, run rather than described. This command
+    // exists, so whatever else goes wrong, the machine is not missing Node.js.
+    const pesan = await alasanGagal({
+      command: "alat.cmd",
+      args: [],
+      env: { PATH: dir, PATHEXT: ".COM;.EXE;.BAT;.CMD" },
+    });
+    expect(pesan).not.toContain("nodejs.org");
+    expect(pesan).not.toContain("was not found on PATH");
+  }, 60000);
+});

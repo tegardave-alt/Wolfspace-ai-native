@@ -688,7 +688,7 @@ describe("Run menjalankan berkas di terminal", () => {
   test("Run MENYIMPAN dulu, dan berhenti kalau simpan gagal", () => {
     // Menjalankan tanpa menyimpan berarti menjalankan isi berkas yang LAMA:
     // keluarannya tak cocok dengan yang terlihat di editor, tanpa petunjuk.
-    expect(bersihA).toMatch(/const ok = await simpan\(\)/);
+    expect(bersihA).toMatch(/const ok = await save\(\)/);
     expect(bersihA).toMatch(/if \(!ok\) return/);
     // simpan() harus benar-benar melaporkan hasilnya, bukan void.
     //

@@ -274,12 +274,33 @@ function _cariExe(cmd: string, env: any): string | null {
       return null;
     }
   }
+  // A COMMAND THAT ALREADY CARRIES ITS EXTENSION IS SEARCHED FOR AS WRITTEN.
+  //
+  // Without this the loop below only ever tried `cmd + ext`, so for "npx.cmd" it
+  // looked for npx.cmd.COM, npx.cmd.EXE, npx.cmd.BAT ... and never npx.cmd.
+  // MEASURED: C:/langs/node/npx.cmd exists and was on PATH the whole time, and
+  // _cariExe returned null for it every single call.
+  //
+  // It looked harmless because the fallback is correct -- an unresolved command
+  // on Windows goes through cmd.exe, which is exactly right for a .cmd. The
+  // damage showed up somewhere else: _sebabPerintahHilang keys off `tersolusi`,
+  // so EVERY npx failure on Windows was labelled "`npx` was not found on PATH
+  // ... install Node.js". A typo in a package name produced npm 404 AND an
+  // instruction to install a Node.js that was already there.
+  //
+  // This is how Windows resolves a command, and the two halves must not be
+  // mixed: a name with a known extension is looked up literally, a bare name
+  // gets the PATHEXT list appended. Appending "" for BARE names as well would
+  // be wrong -- on Windows it would match extensionless shell scripts that
+  // cannot be executed directly.
+  const daftarExt = String(env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .filter(Boolean);
+  const sudahBerekstensi =
+    process.platform === "win32" &&
+    daftarExt.some((e: string) => cmd.toLowerCase().endsWith(e.toLowerCase()));
   const exts =
-    process.platform === "win32"
-      ? String(env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
-          .split(";")
-          .filter(Boolean)
-      : [""];
+    process.platform === "win32" ? (sudahBerekstensi ? [""] : daftarExt) : [""];
   const dirs = String(env.PATH || env.Path || "")
     .split(path.delimiter)
     .filter(Boolean);

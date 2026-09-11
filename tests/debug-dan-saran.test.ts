@@ -152,12 +152,12 @@ describe("bilah debug di terminal", () => {
     // "simpan dulu" — dan menjalankan isi berkas yang lama DI BAWAH DEBUGGER
     // adalah bentuk kebingungan yang paling mahal: baris yang disorot debugger
     // tak cocok dengan baris yang terlihat di editor.
-    expect(BERSIH).toMatch(/mulai: bisaDebug \? debug : null/);
-    expect(BERSIH).toMatch(/onDaftarDebug=\{setPemicuDebug\}/);
+    expect(BERSIH).toMatch(/mulai: canDebug \? debug : null/);
+    expect(BERSIH).toMatch(/onListDebug=\{setPemicuDebug\}/);
     expect(BERSIH).toMatch(/pemicuDebug=\{pemicuDebug\}/);
     // Dilepas saat komponennya hilang, kalau tidak tombolnya tetap hidup
     // menunjuk editor yang sudah tak ada.
-    expect(BERSIH).toMatch(/return \(\) => onDaftarDebug\(null\)/);
+    expect(BERSIH).toMatch(/return \(\) => onListDebug\(null\)/);
   });
 
   test("tetap melompat ke TERMINAL saat perintah dikirim", () => {
@@ -293,7 +293,7 @@ describe("gaya tombol aksi", () => {
     // Gaya sebaris tak bisa punya :hover, :active, maupun :focus-visible —
     // dan tanpa yang terakhir, tombol jadi tak terlihat saat dijelajahi Tab.
     expect(BERSIH).toMatch(/className="aksi-btn aksi-run"/);
-    expect(BERSIH).toMatch(/className="aksi-btn aksi-simpan"/);
+    expect(BERSIH).toMatch(/className="aksi-btn aksi-save"/);
     expect(aturan(".aksi-btn:focus-visible")).toMatch(/outline:/);
     expect(aturan(".dbg-btn:focus-visible")).toMatch(/outline:/);
   });
@@ -360,7 +360,7 @@ describe("gaya tombol aksi", () => {
     const i = BERSIH.indexOf('className="aksi-btn aksi-run"');
     expect(i).toBeGreaterThan(-1);
     expect(BERSIH.slice(i, i + 400)).toMatch(/aria-label="Run"/);
-    const j = BERSIH.indexOf('className="aksi-btn aksi-simpan"');
+    const j = BERSIH.indexOf('className="aksi-btn aksi-save"');
     expect(j).toBeGreaterThan(-1);
     expect(BERSIH.slice(j, j + 400)).toMatch(/aria-label="Save"/);
     // Dan title tetap membawa kalimat lengkapnya, termasuk pintasannya.

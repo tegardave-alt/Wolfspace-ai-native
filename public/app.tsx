@@ -810,7 +810,7 @@ function LogicCodePane({
   root,
   rel,
   onRun,
-  onDaftarDebug,
+  onListDebug,
   titikHenti,
   setTitikHenti,
   barisAktif,
@@ -1162,7 +1162,7 @@ function LogicCodePane({
   // It returns true/false rather than void: Run uses it to decide whether to
   // continue. Running after a FAILED save means running the old file contents
   // while the error message goes unread.
-  const simpan = React.useCallback(async () => {
+  const save = React.useCallback(async () => {
     const ed = edRef.current;
     const target = relRef.current;
     if (!ed || !target) return false;
@@ -1235,7 +1235,7 @@ function LogicCodePane({
   // "Not known yet" is treated as ALLOWED: disabling a button because one
   // request failed is more confusing than a command that fails with
   // pesan jelas di terminal.
-  const bisaDebug =
+  const canDebug =
     !!rel &&
     !!perintahDebug(rel) &&
     (debugAda === null || debugAda[jenisDbg!] !== false);
@@ -1246,12 +1246,12 @@ function LogicCodePane({
       const target = relRef.current;
       if (!target || !onRun) return;
       if (kotorRef.current) {
-        const ok = await simpan();
+        const ok = await save();
         if (!ok) return; // could not save -> do not run something stale
       }
       onRun(abs(target), mode, String(root || ""));
     },
-    [onRun, simpan, abs],
+    [onRun, save, abs],
   );
   const jalankan = React.useCallback(() => kirimKe("jalan"), [kirimKe]);
   const debug = React.useCallback(() => kirimKe("debug"), [kirimKe]);
@@ -1262,10 +1262,10 @@ function LogicCodePane({
   // a debugger is the most expensive form of confusion there is: the line the
   // debugger highlights does not match the line visible in the editor.
   React.useEffect(() => {
-    if (!onDaftarDebug) return;
+    if (!onListDebug) return;
     if (!rel) {
-      onDaftarDebug(null);
-      return () => onDaftarDebug(null);
+      onListDebug(null);
+      return () => onListDebug(null);
     }
     // The reason is sent along, not just "cannot". A dead button with no
     // explanation is indistinguishable from a broken app — and the two causes
@@ -1278,27 +1278,27 @@ function LogicCodePane({
         "The debugger for this file (" +
         String(_PERINTAH_DEBUG[ekstensiDari(rel)!] || "").split(" ")[0] +
         ") is not installed on this machine.";
-    onDaftarDebug({
+    onListDebug({
       berkas: rel,
-      mulai: bisaDebug ? debug : null,
+      mulai: canDebug ? debug : null,
       alasan,
     });
-    return () => onDaftarDebug(null);
-  }, [onDaftarDebug, bisaDebug, debug, rel, debugAda, jenisDbg]);
+    return () => onListDebug(null);
+  }, [onListDebug, canDebug, debug, rel, debugAda, jenisDbg]);
 
   // Ctrl+S / Cmd+S inside the editor. Without this the shortcut is taken over by
   // the browser (Save Page) and the user thinks the app is not responding.
   React.useEffect(() => {
     const el = hostRef.current;
     if (!el) return;
-    const tekan = (e: any) => {
+    const press = (e: any) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
-        // simpan() reports its OWN failures through setSaveState and resolves
+        // save() reports its OWN failures through setSaveState and resolves
         // to false, so this is not the silent-save case. What it does not
         // cover is a throw before its internal try — and that one would have
         // left the editor showing "saving…" for ever.
-        simpan().catch((e2: any) =>
+        save().catch((e2: any) =>
           setSaveState("failed: " + String((e2 && e2.message) || e2)),
         );
       } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -1313,9 +1313,9 @@ function LogicCodePane({
         else if (bisaPecah && onPecah) onPecah();
       }
     };
-    el.addEventListener("keydown", tekan);
-    return () => el.removeEventListener("keydown", tekan);
-  }, [simpan, jalankan, bisaPecah, onPecah, sudahPecah, onTutupPecah]);
+    el.addEventListener("keydown", press);
+    return () => el.removeEventListener("keydown", press);
+  }, [save, jalankan, bisaPecah, onPecah, sudahPecah, onTutupPecah]);
 
   return (
     <div
@@ -1540,13 +1540,13 @@ function LogicCodePane({
         {/* The Debug button MOVED to the terminal tab group. Debug is
             a SESSION that lives in the terminal — it belongs beside the
             output it produces, not next to the Save button. All that stays
-            here is its trigger, registered upwards through onDaftarDebug so
+            here is its trigger, registered upwards through onListDebug so
             the "save first" requirement is not lost in the move. */}
         {rel && (
           <button
             type="button"
-            className="aksi-btn aksi-simpan"
-            onClick={simpan}
+            className="aksi-btn aksi-save"
+            onClick={save}
             disabled={!kotor}
             aria-label="Save"
             title="Save (Ctrl+S)"
@@ -5453,7 +5453,7 @@ function App() {
                               }
                               onKotorBerubah={tandaiKotor}
                               onRun={jalankanDiTerminal}
-                              onDaftarDebug={setPemicuDebug}
+                              onListDebug={setPemicuDebug}
                               titikHenti={titikHenti}
                               setTitikHenti={setTitikHenti}
                               barisAktif={
