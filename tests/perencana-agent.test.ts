@@ -100,6 +100,29 @@ describe("perencana: ganti provider BEDA dari retry provider", () => {
     }
   });
 
+  // DITEMUKAN LEWAT AUDIT, dan 410 lebih dulu ditemukan di kegagalan nyata:
+  // GitHub Models sedang dipensiunkan dan menjawab
+  //
+  //   github 410: {"code":"github_models_retirement_brownout"}
+  //
+  // `github` juga entri PERTAMA di CLOUD_KEYS, jadi begitu provider aktif
+  // gagal, fallback memilih github, memperlakukan 410 sebagai final, dan
+  // BERHENTI -- padahal gemini, openrouter, puter dan qwen sama-sama punya
+  // kunci, dan dua dari empat percobaan belum terpakai. Terukur di run nyata:
+  // dicoba = [opencode, github], lalu rantainya mati.
+  //
+  // 402 dan 451 mengatakan hal yang sama dengan kata berbeda: penyedia INI tak
+  // akan melayani pemanggil ini. Sekelas dengan 401 dan 403 yang sudah ada.
+  test("410, 402, 451: penyedia menolak melayani -> GANTI, jangan menyerah", () => {
+    for (const pesan of [
+      "github 410: github_models_retirement_brownout",
+      "x 402: payment required",
+      "x 451: unavailable for legal reasons",
+    ]) {
+      expect(perencana.layakGantiProvider(pesan)).toBe(true);
+    }
+  });
+
   test("penolakan biasa bukan alasan pindah", () => {
     expect(perencana.layakGantiProvider("invalid request: bad schema")).toBe(
       false,

@@ -399,10 +399,46 @@ const CONFIG_PATH = path.join(__dirname, "..", "config", "mcp.json");
 // useful for diagnosing a wrong command.
 const _RAHASIA_ARG =
   /(key|token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+// THE SEPARATED FORM LEAKED, and only the joined one was ever covered.
+//
+// MEASURED against the real function:
+//
+//   ["--figma-api-key=figd_X"]                  -> ["--figma-api-key=***"]  ok
+//   ["--token", "ghp_X"]                        -> UNREDACTED
+//   ["--header", "Authorization: Bearer sk-X"]  -> UNREDACTED
+//
+// Both shapes are ordinary: `--token <value>` is how most CLIs take one, and an
+// Authorization header is how a remote MCP server is given a credential. The
+// old rules could not see either, and for the same underlying reason -- they
+// looked for a secret-ish WORD inside the value, while in these two shapes the
+// word is in the PRECEDING FLAG or in the header NAME. A bare value was also
+// skipped outright when it contained a space, which every header does.
+//
+// THE PATTERN IS DELIBERATELY NARROW. Over-redaction is its own failure: this
+// log exists to diagnose a wrong command, and a run of *** tells nobody
+// anything. Word boundaries matter -- `--auth` is a credential flag, `--author`
+// is not, and a rule that cannot tell them apart would blind the log to make a
+// point.
+const _FLAG_RAHASIA =
+  /(^|[-_])(authorization|apikey|api|key|token|secret|password|passwd|credential|auth)([-_]|$)/i;
+
 function _argsAman(args) {
   if (!Array.isArray(args)) return args;
+  let flagRahasiaSebelumnya = false;
   return args.map((a) => {
     const s = String(a);
+    // Set from the PREVIOUS element, before this one overwrites it.
+    const ikutFlag = flagRahasiaSebelumnya;
+    flagRahasiaSebelumnya =
+      /^--?[\w-]+$/.test(s) && _FLAG_RAHASIA.test(s.replace(/^-+/, ""));
+    if (ikutFlag) return "***";
+    // A header line: the field NAME stays, so "which header" is still legible.
+    const h = s.match(/^([\w-]+)\s*:\s*(.+)$/);
+    if (
+      h &&
+      (_FLAG_RAHASIA.test(h[1]) || /^(bearer|basic|token)\s+\S/i.test(h[2]))
+    )
+      return h[1] + ": ***";
     // --flag=nilai
     const m = s.match(
       /^(--?[\w-]*(?:key|token|secret|password|auth)[\w-]*)=(.+)$/i,
