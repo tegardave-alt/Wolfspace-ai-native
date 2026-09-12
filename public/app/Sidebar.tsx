@@ -2311,21 +2311,16 @@ function Sidebar({
                             e.currentTarget.style.color = "#6b7280";
                           }}
                         >
-                          <svg
-                            width="15"
-                            height="15"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="vp-hover"
-                          >
-                            <line x1="4" y1="6" x2="20" y2="6"></line>
-                            <line x1="7" y1="12" x2="17" y2="12"></line>
-                            <line x1="10" y1="18" x2="14" y2="18"></line>
-                          </svg>
+                          {/* The branch icon, not a hamburger: what opens
+                              here is the git panel (branches, commit, remote,
+                              stashes) with "Delete folder" under it, and the
+                              icon should say so. The same glyph the branch
+                              picker inside uses, so the two read as one thing.
+                              The old svg carried `vp-hover` -- the visual
+                              picker's outline class, which the picker strips
+                              when switched off; the new one draws nothing of
+                              its own and the span's hover does the work. */}
+                          {gitBranchIcon(15)}
                         </span>
                       </div>
                     </div>

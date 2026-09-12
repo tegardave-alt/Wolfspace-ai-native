@@ -162,6 +162,33 @@ describe("the menu holds the list from the screenshot", () => {
   });
 });
 
+describe("the row's trigger wears the branch glyph, not a hamburger", () => {
+  // Asked for with a third screenshot: the span that opens this popover
+  // showed three horizontal lines, while what opens is the git panel. It now
+  // draws the same glyph the branch picker inside uses.
+  test("the Folder options span renders gitBranchIcon and no picker class", () => {
+    const a = SB.indexOf('title="Folder options"');
+    expect(a).toBeGreaterThan(-1);
+    const b = SB.indexOf("</span>", a);
+    const trigger = SB.slice(a, b);
+    expect(trigger).toMatch(/\{gitBranchIcon\(15\)\}/);
+    // Minus the JSX comment that names the old class on purpose.
+    expect(trigger.replace(/\{\/\*[\s\S]*?\*\/\}/g, "")).not.toMatch(
+      /vp-hover/,
+    );
+    expect(trigger).not.toMatch(/<line /);
+    // The glyph itself: one stem, two nodes, one arc joining them.
+    const icon = SBC.match(
+      /const gitBranchIcon = \(sz: any\) => \([\s\S]*?\n\);/,
+    );
+    expect(icon).not.toBeNull();
+    expect(icon![0]).toMatch(/<line x1="6" y1="3" x2="6" y2="15">/);
+    expect(icon![0]).toMatch(/<circle cx="18" cy="6" r="3">/);
+    expect(icon![0]).toMatch(/<circle cx="6" cy="18" r="3">/);
+    expect(icon![0]).toMatch(/<path d="M18 9a9 9 0 0 1-9 9">/);
+  });
+});
+
 describe("Pop | Drop stays a two-tooth pill on each stash row", () => {
   test("one edge, a divider between the teeth, Drop asks first", () => {
     const a = SB.indexOf("── Stash list ──");
