@@ -4532,25 +4532,29 @@ img.ar-fs-icon {
   --aksi-warna: #79c0ff;
 }
 
-/* ── Segmented buttons (git panel: Fetch | Pull | Push, Stashes, Pop | Drop) ──
+/* ── Git panel: segmented pill, three-dot menu button, its menu ──
  *
- * One pill, several teeth. Before this, the four remote buttons were four
- * separate outlined pills, each wearing `vp-hover` -- the VISUAL PICKER's
- * hover outline, borrowed for its look. Two consequences: the picker turns
- * every git button blue while it is on, and strips the class when it is
- * switched off, so the buttons lost their edge after the first use of the
- * picker. The group below draws its own edge and never touches the picker.
+ * Before this, the four remote buttons were four separate outlined pills,
+ * each wearing `vp-hover` -- the VISUAL PICKER's hover outline, borrowed for
+ * its look. Two consequences: the picker turns every git button blue while it
+ * is on, and strips the class when it is switched off, so the buttons lost
+ * their edge after the first use of the picker. Everything below draws its
+ * own edge and never touches the picker.
  *
- * Sized to the panel it sits in: 20px tall, 11px type -- the size every other
- * line of this panel is set in. The pill is only as wide as its labels. */
+ * Colours are the panel's own, not theme tokens: the folder popover this sits
+ * in is painted inline (#161b22 on #30363d) and stays dark in the light
+ * theme, so a token-coloured control would turn light inside a dark box. */
+
+/* One pill, several teeth (Pop | Drop). 20px tall, 11px type -- the size
+   every other line of the panel is set in -- and only as wide as its labels. */
 .seg-group {
   display: inline-flex;
   align-items: stretch;
   height: 20px;
   flex-shrink: 0;
-  border: 1px solid var(--line-strong);
+  border: 1px solid #30363d;
   border-radius: 6px;
-  background: var(--surface-2);
+  background: #1c2128;
   overflow: hidden;
 }
 .seg-btn {
@@ -4562,7 +4566,7 @@ img.ar-fs-icon {
   font-size: 11px;
   line-height: 1;
   white-space: nowrap;
-  color: var(--text-soft);
+  color: #c9d1d9;
   transition:
     background 0.12s ease,
     color 0.12s ease;
@@ -4570,43 +4574,31 @@ img.ar-fs-icon {
 /* The divider belongs to the tooth on its right, so the first tooth has none
    and the count of dividers is always teeth minus one. */
 .seg-btn + .seg-btn {
-  border-left: 1px solid var(--line-strong);
+  border-left: 1px solid #30363d;
 }
 .seg-btn:hover:not(:disabled) {
-  background: var(--surface-3);
-  color: var(--text);
+  background: #21262d;
+  color: #e6edf3;
 }
 .seg-btn:active:not(:disabled) {
-  background: var(--line-strong);
+  background: #30363d;
 }
 /* Keyboard focus draws INSIDE the pill: the group clips its overflow for the
    rounded corners, so an outline outside the tooth would be cut off. */
 .seg-btn:focus-visible {
-  outline: 2px solid var(--accent);
+  outline: 2px solid #2f81f7;
   outline-offset: -2px;
 }
 .seg-btn:disabled {
   cursor: not-allowed;
-  color: var(--text-muted);
-}
-/* The tooth doing the work stays readable while its neighbours dim, and its
-   cursor says "wait" rather than "no". */
-.seg-btn.seg-running,
-.seg-btn.seg-running:disabled {
-  background: var(--accent-soft);
-  color: var(--text);
-  cursor: progress;
-}
-/* A toggle that is on (the stash list is open). */
-.seg-btn.seg-active {
-  background: var(--surface-3);
-  color: var(--text);
+  color: #6b7280;
 }
 /* Danger shows its colour under the pointer only: Drop next to Pop should not
    shout red from across the panel. */
 .seg-btn.seg-danger:hover:not(:disabled) {
-  color: var(--danger);
+  color: #f85149;
 }
+/* A small count (the stash total on the menu item). */
 .seg-badge {
   min-width: 15px;
   height: 14px;
@@ -4616,8 +4608,78 @@ img.ar-fs-icon {
   line-height: 14px;
   text-align: center;
   font-variant-numeric: tabular-nums;
-  background: var(--line-strong);
-  color: var(--text-soft);
+  background: #30363d;
+  color: #c9d1d9;
+}
+
+/* The horizontal twin of the top bar's panel-menu handle (⋮ there, ⋯ here):
+   the same 1.6px dots, 6px apart, in a box turned on its side (28×18). The
+   click target is the box, not the dots -- 20×10 alone would be missed. */
+.dots-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 28px;
+  height: 18px;
+  flex-shrink: 0;
+  border-radius: 5px;
+  color: #8b949e;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.dots-btn svg {
+  display: block;
+}
+.dots-btn:hover,
+.dots-btn.dots-open {
+  background: #21262d;
+  color: #e6edf3;
+}
+.dots-btn:focus-visible {
+  outline: 2px solid #2f81f7;
+  outline-offset: 1px;
+}
+/* The menu hangs off the right edge of the row it belongs to. */
+.dots-menu {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 4px);
+  min-width: 150px;
+  padding: 4px 0;
+  background: #1c2128;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+  z-index: 2000;
+}
+.dots-item {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  width: 100%;
+  padding: 6px 12px;
+  font: inherit;
+  font-size: 12px;
+  text-align: left;
+  color: #e6edf3;
+}
+.dots-item:hover:not(:disabled) {
+  background: #21262d;
+}
+.dots-item:focus-visible {
+  outline: 2px solid #2f81f7;
+  outline-offset: -2px;
+}
+.dots-item:disabled {
+  cursor: not-allowed;
+  color: #6b7280;
+}
+.dots-sep {
+  height: 1px;
+  margin: 4px 0;
+  background: #30363d;
 }
 
 /* Bilah kendali debug: tombol berlabel, bukan ikon telanjang. Ikon panah

@@ -586,17 +586,13 @@ function commitBtnStyle(busy: any) {
 }
 
 // ── Segmented buttons ──
-// One bordered pill split into teeth (Fetch | Pull | Push). Each tooth is a
-// real <button>, so disabled, focus and title behave as usual; the group only
-// draws the outer edge and the dividers between teeth. It sizes itself to its
-// labels, so it is never wider than the words in it.
+// One bordered pill split into teeth (Pop | Drop on a stash row). Each tooth
+// is a real <button>, so disabled, focus and title behave as usual; the group
+// only draws the outer edge and the dividers between teeth. It sizes itself
+// to its labels, so it is never wider than the words in it.
 //
-// The tooth that is working keeps its own label ("Pushing…") while the others
-// go quiet: WHICH one is running is visible, not merely that something is --
-// the same lesson the branch list learned with `pindahKe`.
-//
-// An item: { label, title, onClick, running?, runningLabel?, active?, badge?,
-//            danger?, disabled? }. `busy` disables every tooth at once.
+// An item: { label, title, onClick, danger?, disabled? }. `busy` disables
+// every tooth at once.
 function SegmentedButtons({ items, busy, className }: any) {
   return (
     <div
@@ -607,25 +603,76 @@ function SegmentedButtons({ items, busy, className }: any) {
         <button
           key={it.label}
           type="button"
-          className={
-            "btn-reset seg-btn" +
-            (it.running ? " seg-running" : "") +
-            (it.active ? " seg-active" : "") +
-            (it.danger ? " seg-danger" : "")
-          }
+          className={"btn-reset seg-btn" + (it.danger ? " seg-danger" : "")}
           disabled={!!busy || !!it.disabled}
           title={it.title}
-          aria-pressed={it.active === undefined ? undefined : !!it.active}
           onClick={it.onClick}
         >
-          {it.running ? it.runningLabel || it.label : it.label}
-          {it.badge !== undefined && it.badge !== null && (
-            <span className="seg-badge">{it.badge}</span>
-          )}
+          {it.label}
         </button>
       ))}
     </div>
   );
+}
+
+// ── Horizontal three-dot menu button ──
+// The twin of the top bar's panel-menu handle, turned on its side: ⋮ there,
+// ⋯ here. Three dots in a 28×18 box. It draws its own hover and focus, so it
+// does not borrow the visual picker's outline the way the vertical one does.
+function DotsMenuButton({ open, onClick, title }: any) {
+  return (
+    <button
+      type="button"
+      className={"btn-reset dots-btn" + (open ? " dots-open" : "")}
+      title={title}
+      aria-haspopup="menu"
+      aria-expanded={!!open}
+      onClick={onClick}
+      onMouseDown={(e: any) => e.stopPropagation()}
+    >
+      <svg width="20" height="10" viewBox="0 0 20 10" fill="currentColor">
+        <circle cx="4" cy="5" r="1.6"></circle>
+        <circle cx="10" cy="5" r="1.6"></circle>
+        <circle cx="16" cy="5" r="1.6"></circle>
+      </svg>
+    </button>
+  );
+}
+
+// The three remote actions, in menu order. `title` is the git command the
+// item stands for; `done` turns the server's reply into the confirmation.
+// setUpstream is on so the FIRST push of a new branch does not fail asking
+// for "--set-upstream".
+function remoteOps(current: string) {
+  return [
+    {
+      key: "fetch",
+      label: "Fetch",
+      runningLabel: "Fetching…",
+      title: "git fetch origin",
+      url: "/ww/remote/fetch",
+      body: {},
+      done: (r: any) => "fetched " + (r.remote || "origin"),
+    },
+    {
+      key: "pull",
+      label: "Pull",
+      runningLabel: "Pulling…",
+      title: "git pull origin " + current,
+      url: "/ww/remote/pull",
+      body: { branch: current },
+      done: (r: any) => "pulled " + (r.remote || "origin") + "/" + current,
+    },
+    {
+      key: "push",
+      label: "Push",
+      runningLabel: "Pushing…",
+      title: "git push origin " + current,
+      url: "/ww/remote/push",
+      body: { branch: current, setUpstream: true },
+      done: (r: any) => "pushed " + current + " to " + (r.remote || "origin"),
+    },
+  ];
 }
 
 function WorkspaceGitPanel({ path, onClose }: any) {
@@ -648,9 +695,26 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     setStashes(r && r.ok ? r.stashes || [] : []);
   };
   const [busy, setBusy] = React.useState(false);
-  // WHICH remote operation is running ("fetch" | "pull" | "push" | ""), so the
-  // pressed tooth can say "Pushing…" while its neighbours only go quiet.
-  const [remoteOp, setRemoteOp] = React.useState("");
+  // WHICH remote operation is running (one of remoteOps, or null), so the
+  // commit line can say "Pushing…" for as long as it is true.
+  const [remoteOp, setRemoteOp] = React.useState<any>(null);
+  // The ⋯ menu. Closed by any mousedown outside it and by Escape; the menu
+  // and its button stop their own mousedown so a click inside is not also a
+  // click outside.
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    const key = (e: any) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", key);
+    };
+  }, [menuOpen]);
   // WHICH branch is being switched to, not merely THAT something is busy.
   //
   // A cold checkout of this repository was MEASURED at 44.9 seconds -- 35 MB of
@@ -706,15 +770,15 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     return false;
   };
 
-  // Fetch, pull and push all go through run(); this only remembers which tooth
-  // was pressed for as long as it works. In a finally: a push that FAILS must
+  // Fetch, pull and push all go through run(); this only remembers which item
+  // was chosen for as long as it works. In a finally: a push that FAILS must
   // clear the label too, or "Pushing…" would outlive the push.
   const runRemote = async (op: any) => {
-    setRemoteOp(op.key);
+    setRemoteOp(op);
     try {
       return await run(op.url, { path, ...op.body }, op.done);
     } finally {
-      setRemoteOp("");
+      setRemoteOp(null);
     }
   };
 
@@ -1484,72 +1548,98 @@ function WorkspaceGitPanel({ path, onClose }: any) {
           </div>
         </div>
       )}
-      {/* ── Remote ──
-          Push, pull and fetch, served by the vendored VS Code git layer
-          (vendor/vscode-git). Before this the panel could commit and the
-          commit stayed on one disk: an inventory of the backend found no
-          push, pull or fetch anywhere. The branch shown is the one being
-          pushed; setUpstream is on so the FIRST push of a new branch does not
-          fail asking for "--set-upstream". */}
-      {br && br.current && (
+      {/* ── Commit line + actions menu ──
+          The horizontal twin of the top bar's panel-menu handle (⋮ there, ⋯
+          here), at the right end of the last-commit line. Fetch, Pull, Push
+          and the stash toggle live in its menu. Asked for with a screenshot:
+          the row of four pills is gone, and the panel keeps one quiet line.
+          While an action runs the line says which ("Pushing…"), because the
+          panel goes inert and a silent 45-second push looks like a dead one. */}
+      {(g.lastCommit || (br && br.current)) && (
         <div
           style={{
             display: "flex",
-            gap: "6px",
-            flexWrap: "wrap",
             alignItems: "center",
+            gap: "6px",
+            position: "relative",
           }}
         >
-          <SegmentedButtons
-            busy={busy}
-            items={[
-              {
-                key: "fetch",
-                label: "Fetch",
-                runningLabel: "Fetching…",
-                title: "git fetch origin",
-                url: "/ww/remote/fetch",
-                body: {},
-                done: (r: any) => "fetched " + (r.remote || "origin"),
-              },
-              {
-                key: "pull",
-                label: "Pull",
-                runningLabel: "Pulling…",
-                title: "git pull origin " + br.current,
-                url: "/ww/remote/pull",
-                body: { branch: br.current },
-                done: (r: any) =>
-                  "pulled " + (r.remote || "origin") + "/" + br.current,
-              },
-              {
-                key: "push",
-                label: "Push",
-                runningLabel: "Pushing…",
-                title: "git push origin " + br.current,
-                url: "/ww/remote/push",
-                body: { branch: br.current, setUpstream: true },
-                done: (r: any) =>
-                  "pushed " + br.current + " to " + (r.remote || "origin"),
-              },
-            ].map((op: any) => ({
-              ...op,
-              running: remoteOp === op.key,
-              onClick: () => runRemote(op),
-            }))}
-          />
-          <SegmentedButtons
-            items={[
-              {
-                label: "Stashes",
-                title: stashes === null ? "List stashes" : "Hide stashes",
-                active: stashes !== null,
-                badge: stashes === null ? undefined : stashes.length,
-                onClick: () =>
-                  stashes === null ? muatStash() : setStashes(null),
-              },
-            ]}
-          />
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontSize: "11px",
+              color: remoteOp ? "#c9d1d9" : "#6b7280",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={
+              remoteOp
+                ? remoteOp.title
+                : g.lastCommit
+                  ? g.lastCommit.hash + " " + g.lastCommit.subject
+                  : undefined
+            }
+          >
+            {remoteOp
+              ? remoteOp.runningLabel
+              : g.lastCommit
+                ? g.lastCommit.hash +
+                  " · " +
+                  g.lastCommit.subject +
+                  " · " +
+                  g.lastCommit.when
+                : "no commits yet"}
+          </span>
+          {br && br.current && (
+            <DotsMenuButton
+              open={menuOpen}
+              title="Git actions"
+              onClick={() => setMenuOpen((o: boolean) => !o)}
+            />
+          )}
+          {menuOpen && br && br.current && (
+            <div
+              className="dots-menu"
+              role="menu"
+              onMouseDown={(e: any) => e.stopPropagation()}
+            >
+              {remoteOps(br.current).map((op: any) => (
+                <button
+                  key={op.key}
+                  type="button"
+                  role="menuitem"
+                  className="btn-reset dots-item"
+                  title={op.title}
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    runRemote(op);
+                  }}
+                >
+                  {op.label}
+                </button>
+              ))}
+              <div className="dots-sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="btn-reset dots-item"
+                title={stashes === null ? "List stashes" : "Hide the list"}
+                onClick={() => {
+                  setMenuOpen(false);
+                  if (stashes === null) muatStash();
+                  else setStashes(null);
+                }}
+              >
+                {stashes === null ? "Show stashes" : "Hide stashes"}
+                {stashes !== null && (
+                  <span className="seg-badge">{stashes.length}</span>
+                )}
+              </button>
+            </div>
+          )}
         </div>
       )}
       {/* ── Stash list ──
@@ -1632,20 +1722,6 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               />
             </div>
           ))}
-        </div>
-      )}
-      {g.lastCommit && (
-        <div
-          style={{
-            fontSize: "11px",
-            color: "#6b7280",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
-          }}
-          title={g.lastCommit.hash + " " + g.lastCommit.subject}
-        >
-          {g.lastCommit.hash} · {g.lastCommit.subject} · {g.lastCommit.when}
         </div>
       )}
       {msg && (
