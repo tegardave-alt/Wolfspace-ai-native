@@ -1526,13 +1526,23 @@ function registerIpc() {
             (payload && (payload as any).method) || "GET",
           ).toUpperCase();
           if (metode !== "GET" && metode !== "HEAD")
+            // THE SHAPE MATTERS AS MUCH AS THE MESSAGE. Everything on this
+            // channel is an HTTP-like { status, headers, body }, and the
+            // renderer reads it as JSON.parse(r.body) -- so an object without a
+            // `body` parses to null and the panel shows a bare "failed" with
+            // the explanation thrown away. The first version of this return did
+            // exactly that: it replaced a useless message with no message.
             return {
-              ok: false,
-              err:
-                "the backend is still working on this (" +
-                lewatHost.error +
-                "). It was NOT retried here, because running a second write " +
-                "against the same repository is what causes a lock.",
+              status: 504,
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                ok: false,
+                err:
+                  "the backend is still working on this (" +
+                  lewatHost.error +
+                  "). It was NOT retried here, because a second write against " +
+                  "the same repository is what causes a lock.",
+              }),
             };
         }
       }

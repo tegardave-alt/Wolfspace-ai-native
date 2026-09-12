@@ -888,7 +888,36 @@ function _switchFailureReason(err: any) {
 
 // Switch to another branch. Refuses anything that is not a local branch, and
 // reports what HEAD IS afterwards rather than what it was asked to be.
-async function switchBranch(dir: any, branch: any) {
+/**
+ * Switch to another branch, and OFFER A WAY THROUGH when local work blocks it.
+ *
+ * THE COMPLAINT THAT PRODUCED THIS, and it was right: "you fixed the jam, not
+ * the problem -- I am on branch A, I want branch B, it errors, and it keeps
+ * happening." Everything before this made the refusal faster, clearer and
+ * better logged. None of it made the switch POSSIBLE. Telling someone to commit
+ * first is an explanation, not a solution.
+ *
+ * WHY IT KEEPS HAPPENING HERE IN PARTICULAR. This repository's branches differ
+ * by 445 files, 144 of them under public/vendor/monaco, so almost any work in
+ * progress touches a file that also differs -- and git must refuse, or it would
+ * destroy that work. The refusal is correct every single time. What was missing
+ * is what every other client offers:
+ *
+ *   mode "bawa"    `git checkout -m` -- carry the changes onto the new branch.
+ *                  What people usually mean: the work belongs on B, they were
+ *                  simply standing on A. Merges cleanly or leaves real conflict
+ *                  markers, which is reported rather than hidden.
+ *   mode "simpan"  `git stash push -u` then switch -- park the work, arrive
+ *                  clean. The stash REF IS RETURNED, because work that moves
+ *                  without saying where it went is work the user thinks is
+ *                  gone.
+ *
+ * NEITHER IS THE DEFAULT, and that is deliberate. Both move uncommitted work,
+ * and moving someone's work without being asked is not a convenience. The plain
+ * call still refuses exactly as before; a mode is an explicit answer to the
+ * refusal.
+ */
+async function switchBranch(dir: any, branch: any, opts: any = {}) {
   if (!isRepo(dir)) return { ok: false, err: "not a git repo" };
   const wanted = String(branch == null ? "" : branch);
   if (!wanted.trim()) return { ok: false, err: "empty branch name" };
@@ -897,8 +926,44 @@ async function switchBranch(dir: any, branch: any) {
       ok: false,
       err: "no local branch named " + JSON.stringify(wanted),
     };
-  const r = await gitRunAsync(["checkout", wanted], dir);
-  if (!r.ok) return { ok: false, err: _switchFailureReason(r.err) };
+
+  const mode = String(opts.mode || "").toLowerCase();
+  let simpanan: string | null = null;
+
+  if (mode === "simpan" || mode === "bawa") {
+    // -u INCLUDES UNTRACKED FILES. Without it they stay behind and then block
+    // the very checkout this was meant to unblock -- the stash would appear to
+    // do nothing.
+    const label = "wolfspace: sebelum pindah ke " + wanted;
+    const st = await gitRunAsync(["stash", "push", "-u", "-m", label], dir);
+    if (!st.ok) return { ok: false, err: "could not stash: " + st.err };
+    // "No local changes to save" is a SUCCESS with nothing stashed, and it must
+    // not be reported as a stash the user could restore.
+    if (!/No local changes/i.test(String(st.out || "")))
+      simpanan =
+        (await gitTryAsync(["rev-parse", "stash@{0}"], dir)) || "stash@{0}";
+  }
+
+  const r = await gitRunAsync(
+    mode === "paksa" ? ["checkout", "--force", wanted] : ["checkout", wanted],
+    dir,
+  );
+  if (!r.ok) {
+    // THE STASH MUST BE NAMED EVEN WHEN THE SWITCH FAILED. Otherwise the work
+    // is off the working tree, the branch did not change, and nothing on screen
+    // says where it went.
+    const sebab = _switchFailureReason(r.err);
+    return {
+      ok: false,
+      err: simpanan
+        ? sebab +
+          " Your changes are safe in the stash (" +
+          simpanan +
+          ") - restore them with `git stash pop`."
+        : sebab,
+      simpanan,
+    };
+  }
   // EXIT 0 IS NOT "THE BRANCH CHANGED". The measurements above are exactly that
   // case: git succeeded and HEAD stayed where it was. So HEAD is read back, and
   // the answer describes the repository rather than the request.
@@ -912,7 +977,76 @@ async function switchBranch(dir: any, branch: any) {
         ", not " +
         wanted,
     };
-  return { ok: true, current: actual };
+  // MODE "bawa": THE WORK IS BROUGHT BACK AFTER THE SWITCH, not merged during
+  // it. This is lifted from the VS Code git extension, which implements its
+  // "Migrate Changes" as stash -> checkout -> stash pop rather than as
+  // `checkout -m`:
+  //
+  //   } else if (choice === stash || choice === migrate) {
+  //     if (await this._stash(repository, true)) {
+  //       await item.run(repository, opts);
+  //       if (choice === migrate) { await this.stashPopLatest(repository); }
+  //
+  // The first version here used `checkout -m`, and the difference is not
+  // cosmetic: a conflicted merge leaves markers in the working tree and NOTHING
+  // held in reserve, while `git stash pop` DOES NOT DROP THE STASH when it
+  // conflicts. So the work survives a bad outcome in one form and not the
+  // other -- and the safer one costs nothing extra.
+  if (mode === "bawa" && simpanan) {
+    const pop = await gitRunAsync(["stash", "pop"], dir);
+    if (!pop.ok)
+      return {
+        ok: true,
+        current: actual,
+        simpanan,
+        mode,
+        bentrok: [],
+        catatan:
+          "Switched to " +
+          actual +
+          ", but your changes could not be re-applied cleanly. They are STILL " +
+          "in the stash (" +
+          simpanan +
+          ") - nothing was lost. Resolve and run `git stash pop` yourself.",
+      };
+    // A clean pop drops the stash, so there is no longer one to name.
+    simpanan = null;
+  }
+
+  // A CARRIED CHANGE CAN ARRIVE CONFLICTED, and that must be said out loud.
+  // Reporting it as a clean switch would leave the user editing a file full of
+  // <<<<<<< without being told why.
+  const bentrok =
+    mode === "bawa"
+      ? String(
+          (await gitTryAsync(
+            ["diff", "--name-only", "--diff-filter=U"],
+            dir,
+          )) || "",
+        )
+          .split(String.fromCharCode(10))
+          .map((x: string) => x.trim())
+          .filter(Boolean)
+      : [];
+
+  return {
+    ok: true,
+    current: actual,
+    simpanan,
+    mode: mode || "biasa",
+    bentrok,
+    catatan: bentrok.length
+      ? "Your changes came across, but " +
+        bentrok.length +
+        " file(s) need you to resolve conflict markers: " +
+        bentrok.slice(0, 3).join(", ") +
+        (bentrok.length > 3 ? " +" + (bentrok.length - 3) + " more" : "")
+      : simpanan
+        ? "Your changes are in the stash (" +
+          simpanan +
+          ") - restore them with `git stash pop`."
+        : "",
+  };
 }
 
 // Create a new branch (optionally from another branch/ref) and switch to it.

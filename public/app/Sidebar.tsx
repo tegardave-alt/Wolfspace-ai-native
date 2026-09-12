@@ -654,15 +654,39 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   // The confirmation names the branch git REPORTS being on, not the one that was
   // clicked — the two came apart in testing, and the panel used to claim the one
   // it had asked for.
-  const doSwitch = async (b: any) => {
+  // THE REFUSAL NEEDS A WAY THROUGH, not a better explanation of itself.
+  //
+  // Branches here differ by 445 files, so almost any work in progress touches
+  // one that also differs, and git MUST refuse -- otherwise it would destroy
+  // that work. Reported as a complaint that was exactly right: you fixed the
+  // jam, not the problem; I am on A, I want B, it errors, and it keeps
+  // happening.
+  //
+  // So the panel now asks what to do with the work instead of only reporting
+  // that it is in the way. Nothing moves on its own: both options are the
+  // user answering their own question, which is the only acceptable way to
+  // relocate uncommitted work.
+  const [halangan, setHalangan] = React.useState<any>(null);
+
+  const doSwitch = async (b: any, mode?: string) => {
     setPindahKe(b);
     try {
-      return await run(
+      const ok = await run(
         "/ww/branch/switch",
-        { path, branch: b },
-        (r: any) => "switched to " + (r.current || b),
-        () => setPickerOpen(false),
+        { path, branch: b, mode },
+        (r: any) =>
+          "switched to " +
+          (r.current || b) +
+          (r.catatan ? " - " + r.catatan : ""),
+        () => {
+          setPickerOpen(false);
+          setHalangan(null);
+        },
       );
+      // Only local work blocks a switch recoverably. A missing branch or a dead
+      // repository has no carry-it-along answer, and offering one would lie.
+      if (!ok) setHalangan({ cabang: b });
+      return ok;
     } finally {
       // In a finally: a switch that FAILS must clear the label too, or the row
       // claims to still be working long after it stopped.
@@ -954,6 +978,108 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               overflow: "hidden",
             }}
           >
+            {halangan && (
+              <div
+                style={{
+                  margin: "7px",
+                  padding: "8px 9px",
+                  background: "#1c1408",
+                  border: "1px solid #5a4412",
+                  borderRadius: "5px",
+                  fontSize: "11.5px",
+                  color: "#e6edf3",
+                  lineHeight: 1.5,
+                }}
+              >
+                <div style={{ marginBottom: "6px" }}>
+                  Uncommitted work is in the way of{" "}
+                  <b style={{ fontFamily: "ui-monospace, monospace" }}>
+                    {halangan.cabang}
+                  </b>
+                  . What should happen to it?
+                </div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git checkout -m: the changes move with you. A file that differs on both sides arrives with conflict markers."
+                    onClick={() => doSwitch(halangan.cabang, "bawa")}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #30363d",
+                      background: "#21262d",
+                      color: "#e6edf3",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Bring it along
+                  </button>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git stash push -u, then switch. The panel reports the stash id so you can pop it later."
+                    onClick={() => doSwitch(halangan.cabang, "simpan")}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #30363d",
+                      background: "#21262d",
+                      color: "#e6edf3",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Stash it first
+                  </button>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git checkout --force: the uncommitted changes are DISCARDED. Nothing is stashed and nothing can be recovered."
+                    onClick={() => {
+                      // DESTRUCTIVE, so it asks. VS Code puts this behind a
+                      // modal for the same reason: the other two options move
+                      // work, this one deletes it.
+                      if (
+                        window.confirm(
+                          "Discard your uncommitted changes and switch to " +
+                            halangan.cabang +
+                            "? This cannot be undone.",
+                        )
+                      )
+                        doSwitch(halangan.cabang, "paksa");
+                    }}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #6e2a2a",
+                      background: "#2d1618",
+                      color: "#f0a5a5",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Discard &amp; switch
+                  </button>
+                  <button
+                    className="btn-reset"
+                    onClick={() => setHalangan(null)}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid transparent",
+                      background: "transparent",
+                      color: "#8b949e",
+                      cursor: "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Stay here
+                  </button>
+                </div>
+              </div>
+            )}
             <input
               autoFocus
               value={query}

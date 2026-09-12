@@ -314,11 +314,31 @@ function dlog(cat: any, level: any, msg: any, data?: any) {
   if (VERBOSE && cat !== "console") {
     const prefix = `[WOLFSPACE:${cat}]`;
     if (level === "error")
+      // THE ERROR LEVEL USED TO THROW ITS OWN EVIDENCE AWAY.
+      //
+      // It printed `data.error` and nothing else, so every field with any other
+      // name was discarded -- at the one level where the payload is the whole
+      // point. Seen in a real report: two route failures logged side by side
+      // with their successful sibling,
+      //
+      //   "/ww/branch/create -> ok  {ms:514, cabang:hy}"
+      //   "/ww/commit        -> GAGAL"
+      //   "/ww/branch/switch -> GAGAL"
+      //
+      // The successes carried their data and the failures carried none, because
+      // the reason was under `err` rather than `error`. A user asking why the
+      // switch failed could not be answered from a log that had dropped the
+      // answer.
+      //
+      // Both are printed now: the whole object the way info does it, and
+      // data.error on top when it is there -- an Error object loses its stack
+      // through JSON.stringify, and the stack is usually the useful half.
       _writeSafe(
         _origError,
         console,
         prefix,
         msg,
+        ...(data ? [JSON.stringify(data, null, 0)] : []),
         ...(data && data.error ? [data.error] : []),
       );
     else
@@ -4453,10 +4473,11 @@ const server = http.createServer(async (req: any, res: any) => {
         b = JSON.parse(body || "{}");
       } catch (_) {}
       const ww = require("./scripts/ww.ts");
+      const _mulaiWw = Date.now();
       let out;
       try {
         if (req.url === "/ww/branch/switch")
-          out = await ww.switchBranch(b.path, b.branch);
+          out = await ww.switchBranch(b.path, b.branch, { mode: b.mode });
         else if (req.url === "/ww/branch/create")
           out = await ww.createBranch(b.path, b.branch, b.from);
         else if (req.url === "/ww/branch/rename")
@@ -4480,6 +4501,25 @@ const server = http.createServer(async (req: any, res: any) => {
       try {
         ww.lupakanGit(b.path);
         if (b.newName) ww.lupakanGit(b.newName);
+      } catch (_) {}
+      // THE OUTCOME IS LOGGED, not only the arrival.
+      //
+      // The debug log recorded "POST /ww/branch/switch" and then nothing at
+      // all: no result, no error, no duration. A user reporting "it stops and
+      // fails" could not be answered from it, because the log said only that
+      // the request had been received. Every layer below this one reports what
+      // it did; this one did not.
+      try {
+        dlog(
+          "ww",
+          out && out.ok ? "info" : "error",
+          req.url + " -> " + (out && out.ok ? "ok" : "GAGAL"),
+          {
+            ms: Date.now() - _mulaiWw,
+            err: out && out.ok ? undefined : (out && out.err) || "no-op",
+            cabang: b.branch || b.newName || undefined,
+          },
+        );
       } catch (_) {}
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(out || { ok: false, err: "no-op" }));
