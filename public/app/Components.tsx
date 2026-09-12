@@ -2105,7 +2105,7 @@ function TodoPanel({ todos, busy, onToggle, onClear }: any) {
 // (the settings panel here, the project picker in Screens.tsx): the two blocks
 // were copies, and copies drift. The order is the one both copies had.
 //   connecting   the user pressed Connect and the request is in flight (amber)
-//   connected    ready, and the last call did not fail (green)
+//   connected    ready, and the last call did not fail (green, no glyph)
 //   failed       the last call failed -- a revoked token, a dead process (red)
 //   stopped      the process is not running (grey)
 //   starting     the process is up, the handshake is not done yet (grey)
@@ -2126,7 +2126,8 @@ function McpStatusBadge({ srv }: any) {
     spinning = true;
   } else if (srv.active) {
     kind = "ok";
-    text = "✓ Connected";
+    // No glyph: the ring already marks waiting, and the green is the mark.
+    text = "Connected";
   } else {
     // Distinguish the CAUSE; do not flatten it into "Disabled". A server
     // whose calls fail (a revoked token, say) is not the same as one that

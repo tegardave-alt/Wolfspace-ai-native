@@ -67,7 +67,9 @@ describe("one badge, two screens", () => {
     expect(active).toBeLessThan(failed);
     expect(failed).toBeLessThan(stopped);
     expect(stopped).toBeLessThan(starting);
-    expect(src).toMatch(/text = "✓ Connected"/);
+    // Asked for after the ring landed: no checkmark, the green is the mark.
+    expect(src).toMatch(/text = "Connected"/);
+    expect(src).not.toMatch(/✓/);
     expect(src).toMatch(/text = "✕ Failed"/);
     expect(src).toMatch(/text = "○ Stopped"/);
     expect(src).toMatch(/let text = "○ Not ready"/);
@@ -261,7 +263,7 @@ whenPossible("the badge in a browser (needs playwright)", () => {
       const { p, ctx, errors, read } = await open(b, "no-preference");
       expect(read.map((r: any) => r.text)).toEqual([
         "Connecting…",
-        "✓ Connected",
+        "Connected",
         "✕ Failed",
         "○ Stopped",
         "Connecting…",
