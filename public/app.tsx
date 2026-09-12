@@ -3072,6 +3072,22 @@ function App() {
   const MAKS_GRUP = 2;
   const [logicGrup, setLogicGrup] = useState<any[]>([{ tabs: [], aktif: "" }]);
   const [grupFokus, setGrupFokus] = useState(0);
+  // THE FOCUS THE HANDLERS READ, kept a step ahead of the render.
+  //
+  // "Open to the side" sometimes landed in the wrong pane: click the right
+  // pane, Alt+click a file, and it opened on the right again. The handler
+  // decided the OTHER pane from `grupFokus` captured in its closure -- the
+  // value of the last render -- while the click that moved focus had not been
+  // rendered yet. So it computed "the other side" from where focus USED to be.
+  //
+  // A ref is written the moment focus changes, before React gets round to
+  // re-rendering, so every handler below reads where focus IS. The state stays,
+  // because the panes still render from it; only the decisions moved.
+  const grupFokusRef = React.useRef(0);
+  const fokuskanGrup = useCallback((i: number) => {
+    grupFokusRef.current = i;
+    setGrupFokus(i);
+  }, []);
   const [logicKotor, setLogicKotor] = useState<any>({}); // rel -> unsaved?
 
   // The focused group's file. Derived rather than stored: the file tree marks
@@ -3175,10 +3191,25 @@ function App() {
     e.stopPropagation();
     const baris = e.currentTarget.parentElement;
     if (!baris) return;
-    const kotak = baris.getBoundingClientRect();
-    if (!kotak.width) return;
+    if (!baris.getBoundingClientRect().width) return;
     setPecahGeser(true);
+    // THE PANES STOP LISTENING WHILE THE DIVIDER IS HELD.
+    //
+    // Each pane holds a Monaco editor, and Monaco runs its own mouse handling.
+    // A drag that wandered over an editor had its mousemove events taken by
+    // it, so the divider stopped following the cursor -- and then leapt to
+    // wherever the cursor re-emerged, which read as "I dragged left and it
+    // went right". The class below turns pointer events off for everything in
+    // the row except the divider, for exactly as long as the button is down.
+    baris.classList.add("pecah-geser");
     const gerak = (ev: any) => {
+      // MEASURED ON EVERY MOVE, not once at mousedown. The row's box is not
+      // stable for the length of a drag: hiding the Explorer, a window resize,
+      // or the file tree being dragged at the same time all shift its left
+      // edge, and a percentage computed against a stale box lands the divider
+      // somewhere the cursor is not.
+      const kotak = baris.getBoundingClientRect();
+      if (!kotak.width) return;
       const p = ((ev.clientX - kotak.left) / kotak.width) * 100;
       // Clamped so neither pane can be dragged away to nothing — a pane at 0%
       // is unreachable, and the only way back would be to close the split.
@@ -3186,20 +3217,30 @@ function App() {
     };
     const lepas = () => {
       setPecahGeser(false);
+      baris.classList.remove("pecah-geser");
       window.removeEventListener("mousemove", gerak);
       window.removeEventListener("mouseup", lepas);
+      window.removeEventListener("blur", lepas);
     };
     window.addEventListener("mousemove", gerak);
     window.addEventListener("mouseup", lepas);
+    // Alt-tab or a click outside the window mid-drag never delivers the
+    // mouseup. Without this the listeners outlive the drag, and the NEXT mouse
+    // movement anywhere resizes the split against a box from a layout that no
+    // longer exists.
+    window.addEventListener("blur", lepas);
   }, []);
 
   // Open a file. `grup` defaults to the focused one, which is what a plain
   // click in the tree does.
   const bukaTab = useCallback(
-    (rel: any, grup: number = grupFokus) => {
+    (rel: any, grup?: number) => {
       if (!rel) return;
+      // Where focus IS, not where it was at the last render. See grupFokusRef.
+      const target = typeof grup === "number" ? grup : grupFokusRef.current;
       setLogicGrup((gs: any[]) => {
-        const i = gs[grup] ? grup : 0;
+        const i = gs[target] ? target : 0;
+        if (gs[i]) fokuskanGrup(i);
         return gs.map((g: any, k: number) =>
           k === i
             ? {
@@ -3209,9 +3250,8 @@ function App() {
             : g,
         );
       });
-      setGrupFokus((f: number) => (logicGrup[grup] ? grup : f));
     },
-    [grupFokus, logicGrup],
+    [fokuskanGrup],
   );
 
   // "Open to the side" — Alt+click in the tree, and what the Split button does
@@ -3221,11 +3261,15 @@ function App() {
       if (!rel) return;
       setLogicGrup((gs: any[]) => {
         if (gs.length < MAKS_GRUP) {
-          setGrupFokus(gs.length);
+          fokuskanGrup(gs.length);
           return gs.concat({ tabs: [rel], aktif: rel });
         }
-        const lain = grupFokus === 0 ? 1 : 0;
-        setGrupFokus(lain);
+        // THE OTHER SIDE OF WHERE FOCUS IS NOW. This read used to come from
+        // the closure and lagged one render behind the click that moved focus,
+        // which is exactly how a file asked to open on the left opened on the
+        // right instead.
+        const lain = grupFokusRef.current === 0 ? 1 : 0;
+        fokuskanGrup(lain);
         return gs.map((g: any, k: number) =>
           k === lain
             ? {
@@ -3236,7 +3280,7 @@ function App() {
         );
       });
     },
-    [grupFokus],
+    [fokuskanGrup],
   );
 
   // Split the focused group. VS Code copies the active editor into the new
@@ -3244,12 +3288,12 @@ function App() {
   const pecahGrup = useCallback(() => {
     setLogicGrup((gs: any[]) => {
       if (gs.length >= MAKS_GRUP) return gs;
-      const asal = gs[grupFokus] || gs[0];
+      const asal = gs[grupFokusRef.current] || gs[0];
       const rel = (asal && asal.aktif) || "";
-      setGrupFokus(gs.length);
+      fokuskanGrup(gs.length);
       return gs.concat({ tabs: rel ? [rel] : [], aktif: rel });
     });
-  }, [grupFokus]);
+  }, [fokuskanGrup]);
 
   // Close the split, the counterpart of pecahGrup.
   //
@@ -3265,47 +3309,56 @@ function App() {
       const tabs = tinggal.tabs.concat(
         (pergi.tabs || []).filter((t: any) => tinggal.tabs.indexOf(t) < 0),
       );
-      setGrupFokus(0);
+      fokuskanGrup(0);
       return [{ tabs, aktif: tinggal.aktif || pergi.aktif || "" }];
     });
-  }, []);
+  }, [fokuskanGrup]);
 
   // Close a tab. `grup` undefined means EVERY group — that is the deletion
   // case: a file gone from disk must not survive as a tab anywhere, in either
   // half, or it stays as a row that loads a 404.
-  const tutupTab = useCallback((rel: any, grup?: number) => {
-    setLogicGrup((gs: any[]) => {
-      const hasil = gs.map((g: any, k: number) => {
-        if (typeof grup === "number" && k !== grup) return g;
-        const i = g.tabs.indexOf(rel);
-        if (i < 0) return g;
-        const sisa = g.tabs.filter((x: any) => x !== rel);
-        return {
-          tabs: sisa,
-          // Closing the ACTIVE tab hands focus to a neighbour — the one on the
-          // right, falling back to the left, as every editor does. Leaving the
-          // pane blank instead makes closing feel like losing your place.
-          aktif: g.aktif !== rel ? g.aktif : sisa[i] || sisa[i - 1] || "",
-        };
+  const tutupTab = useCallback(
+    (rel: any, grup?: number) => {
+      setLogicGrup((gs: any[]) => {
+        const hasil = gs.map((g: any, k: number) => {
+          if (typeof grup === "number" && k !== grup) return g;
+          const i = g.tabs.indexOf(rel);
+          if (i < 0) return g;
+          const sisa = g.tabs.filter((x: any) => x !== rel);
+          return {
+            tabs: sisa,
+            // Closing the ACTIVE tab hands focus to a neighbour — the one on the
+            // right, falling back to the left, as every editor does. Leaving the
+            // pane blank instead makes closing feel like losing your place.
+            aktif: g.aktif !== rel ? g.aktif : sisa[i] || sisa[i - 1] || "",
+          };
+        });
+        // A group with no tabs left closes and the survivor takes the width,
+        // again as VS Code does. The last group always stays: dropping it would
+        // leave the editor area gone with no way to bring it back.
+        const bersih =
+          hasil.length > 1
+            ? hasil.filter((g: any) => g.tabs.length > 0)
+            : hasil;
+        const akhir = bersih.length ? bersih : [hasil[0]];
+        if (akhir.length !== gs.length) {
+          // Through the wrapper, so the ref moves with the state. Left as a bare
+          // setGrupFokus this was the one place focus could change while the ref
+          // kept pointing at a pane that no longer existed -- and the next "open
+          // to the side" would have read that stale index.
+          fokuskanGrup(Math.min(grupFokusRef.current, akhir.length - 1));
+        }
+        return akhir;
       });
-      // A group with no tabs left closes and the survivor takes the width,
-      // again as VS Code does. The last group always stays: dropping it would
-      // leave the editor area gone with no way to bring it back.
-      const bersih =
-        hasil.length > 1 ? hasil.filter((g: any) => g.tabs.length > 0) : hasil;
-      const akhir = bersih.length ? bersih : [hasil[0]];
-      if (akhir.length !== gs.length) {
-        setGrupFokus((f: number) => Math.min(f, akhir.length - 1));
-      }
-      return akhir;
-    });
-    setLogicKotor((k: any) => {
-      if (!(rel in k)) return k;
-      const n = { ...k };
-      delete n[rel];
-      return n;
-    });
-  }, []);
+      setLogicKotor((k: any) => {
+        if (!(rel in k)) return k;
+        const n = { ...k };
+        delete n[rel];
+        return n;
+      });
+    },
+    [fokuskanGrup],
+  );
 
   const geserTab = useCallback((dari: any, ke: any, grup: number = 0) => {
     setLogicGrup((gs: any[]) =>
@@ -5439,7 +5492,7 @@ function App() {
                               bisaPecah={logicGrup.length < MAKS_GRUP}
                               sudahPecah={logicGrup.length > 1}
                               onTutupPecah={tutupGrup}
-                              onFokus={() => setGrupFokus(i)}
+                              onFokus={() => fokuskanGrup(i)}
                               onPecah={pecahGrup}
                               gaya={
                                 logicGrup.length > 1 && i === 0

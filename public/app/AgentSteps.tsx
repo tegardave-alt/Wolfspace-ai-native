@@ -917,7 +917,13 @@ function AgentSteps({ run }: any) {
     if (alat) bagian.push(alat + (alat === 1 ? " tool" : " tools"));
     if (pikir) bagian.push(pikir + (pikir === 1 ? " thought" : " thoughts"));
     const inti = bagian.length ? bagian.join(", ") : "no operations";
-    return durasiDetik === null ? inti : inti + " · " + formatTime(durasiDetik);
+    // Returned as TWO parts so the duration can be styled apart from the count.
+    // As one string the time carried the same weight as the summary and drew
+    // the eye first, when it is the least important thing on the row.
+    return {
+      inti,
+      waktu: durasiDetik === null ? null : formatTime(durasiDetik),
+    };
   })();
 
   return (
@@ -929,15 +935,19 @@ function AgentSteps({ run }: any) {
         onClick={() => setExpanded((p: any) => ({ ...p, top: !isTopOpen }))}
       >
         <span className="aal-code-highlight">
-          {run.busy
-            ? "Working" +
-              (durasiDetik !== null
-                ? " · " + formatTime(durasiDetik)
+          {run.busy ? "Working" : ringkasKerja.inti}
+          {(() => {
+            // The duration, dimmed. Same value as before; only its weight moved.
+            const w = run.busy
+              ? durasiDetik !== null
+                ? formatTime(durasiDetik)
                 : elapsed > 0
-                  ? " · " + formatTime(elapsed)
-                  : "") +
-              "…"
-            : ringkasKerja}
+                  ? formatTime(elapsed)
+                  : null
+              : ringkasKerja.waktu;
+            return w ? <span className="aal-waktu"> · {w}</span> : null;
+          })()}
+          {run.busy ? "…" : ""}
         </span>
         <span
           className={"aal-chevron" + (isTopOpen ? " open" : "")}

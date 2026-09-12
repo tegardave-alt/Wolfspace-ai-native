@@ -189,6 +189,17 @@ select {
 .editor-split-resizer.resizing {
   background: rgba(96, 165, 250, 0.4);
 }
+/* While the divider is held, the panes stop receiving the mouse. Each pane is
+   a Monaco editor with its own mouse handling; a drag that crossed one had its
+   mousemove taken and the divider leapt when the cursor came back out. The
+   class is set and cleared in mulaiGeserPecah (app.tsx). */
+.editor-grup-baris.pecah-geser > :not(.editor-split-resizer) {
+  pointer-events: none;
+  user-select: none;
+}
+.editor-grup-baris.pecah-geser {
+  cursor: col-resize;
+}
 
 .logic-filetree-resizer {
   position: absolute;
@@ -3140,6 +3151,16 @@ img.ar-fs-icon {
 }
 [data-theme="light"] .aal-code-highlight {
   color: #1f2328;
+}
+/* The duration inside the summary ("1 tool · 2s"). It used to inherit the
+   summary's full weight and colour, so a two-second figure read as loudly as
+   the count beside it. Muted and regular so the count leads. */
+.aal-code-highlight .aal-waktu {
+  color: var(--text-muted);
+  font-weight: 400;
+}
+[data-theme="light"] .aal-code-highlight .aal-waktu {
+  color: #6e7781;
 }
 [data-theme="light"] .aal-mono-highlight {
   color: #1f2328;

@@ -128,7 +128,10 @@ describe("what the header says instead", () => {
   test("the duration is appended only when it exists", () => {
     const i = STEPS.indexOf("const ringkasKerja");
     const blok = STEPS.slice(i, i + 700);
-    expect(blok).toMatch(/durasiDetik === null \? inti :/);
+    // The summary is now two parts -- the count and, separately, the duration --
+    // so the time can be dimmed on its own. The property is unchanged: a
+    // duration appears only when one was really measured.
+    expect(blok).toMatch(/waktu: durasiDetik === null \? null : formatTime/);
   });
 });
 
