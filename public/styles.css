@@ -4532,6 +4532,94 @@ img.ar-fs-icon {
   --aksi-warna: #79c0ff;
 }
 
+/* ── Segmented buttons (git panel: Fetch | Pull | Push, Stashes, Pop | Drop) ──
+ *
+ * One pill, several teeth. Before this, the four remote buttons were four
+ * separate outlined pills, each wearing `vp-hover` -- the VISUAL PICKER's
+ * hover outline, borrowed for its look. Two consequences: the picker turns
+ * every git button blue while it is on, and strips the class when it is
+ * switched off, so the buttons lost their edge after the first use of the
+ * picker. The group below draws its own edge and never touches the picker.
+ *
+ * Sized to the panel it sits in: 20px tall, 11px type -- the size every other
+ * line of this panel is set in. The pill is only as wide as its labels. */
+.seg-group {
+  display: inline-flex;
+  align-items: stretch;
+  height: 20px;
+  flex-shrink: 0;
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  background: var(--surface-2);
+  overflow: hidden;
+}
+.seg-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 0 8px;
+  font: inherit;
+  font-size: 11px;
+  line-height: 1;
+  white-space: nowrap;
+  color: var(--text-soft);
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+/* The divider belongs to the tooth on its right, so the first tooth has none
+   and the count of dividers is always teeth minus one. */
+.seg-btn + .seg-btn {
+  border-left: 1px solid var(--line-strong);
+}
+.seg-btn:hover:not(:disabled) {
+  background: var(--surface-3);
+  color: var(--text);
+}
+.seg-btn:active:not(:disabled) {
+  background: var(--line-strong);
+}
+/* Keyboard focus draws INSIDE the pill: the group clips its overflow for the
+   rounded corners, so an outline outside the tooth would be cut off. */
+.seg-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.seg-btn:disabled {
+  cursor: not-allowed;
+  color: var(--text-muted);
+}
+/* The tooth doing the work stays readable while its neighbours dim, and its
+   cursor says "wait" rather than "no". */
+.seg-btn.seg-running,
+.seg-btn.seg-running:disabled {
+  background: var(--accent-soft);
+  color: var(--text);
+  cursor: progress;
+}
+/* A toggle that is on (the stash list is open). */
+.seg-btn.seg-active {
+  background: var(--surface-3);
+  color: var(--text);
+}
+/* Danger shows its colour under the pointer only: Drop next to Pop should not
+   shout red from across the panel. */
+.seg-btn.seg-danger:hover:not(:disabled) {
+  color: var(--danger);
+}
+.seg-badge {
+  min-width: 15px;
+  height: 14px;
+  padding: 0 4px;
+  border-radius: 7px;
+  font-size: 9.5px;
+  line-height: 14px;
+  text-align: center;
+  font-variant-numeric: tabular-nums;
+  background: var(--line-strong);
+  color: var(--text-soft);
+}
+
 /* Bilah kendali debug: tombol berlabel, bukan ikon telanjang. Ikon panah
  * "step over/into/out" nyaris tak terbedakan pada 13px, dan menebak-nebak
  * tombol mana yang mana di tengah sesi debug adalah kerugian nyata. */

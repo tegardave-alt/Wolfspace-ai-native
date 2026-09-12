@@ -585,6 +585,49 @@ function commitBtnStyle(busy: any) {
   };
 }
 
+// ── Segmented buttons ──
+// One bordered pill split into teeth (Fetch | Pull | Push). Each tooth is a
+// real <button>, so disabled, focus and title behave as usual; the group only
+// draws the outer edge and the dividers between teeth. It sizes itself to its
+// labels, so it is never wider than the words in it.
+//
+// The tooth that is working keeps its own label ("Pushing…") while the others
+// go quiet: WHICH one is running is visible, not merely that something is --
+// the same lesson the branch list learned with `pindahKe`.
+//
+// An item: { label, title, onClick, running?, runningLabel?, active?, badge?,
+//            danger?, disabled? }. `busy` disables every tooth at once.
+function SegmentedButtons({ items, busy, className }: any) {
+  return (
+    <div
+      className={"seg-group" + (className ? " " + className : "")}
+      role="group"
+    >
+      {items.map((it: any) => (
+        <button
+          key={it.label}
+          type="button"
+          className={
+            "btn-reset seg-btn" +
+            (it.running ? " seg-running" : "") +
+            (it.active ? " seg-active" : "") +
+            (it.danger ? " seg-danger" : "")
+          }
+          disabled={!!busy || !!it.disabled}
+          title={it.title}
+          aria-pressed={it.active === undefined ? undefined : !!it.active}
+          onClick={it.onClick}
+        >
+          {it.running ? it.runningLabel || it.label : it.label}
+          {it.badge !== undefined && it.badge !== null && (
+            <span className="seg-badge">{it.badge}</span>
+          )}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 function WorkspaceGitPanel({ path, onClose }: any) {
   const [refreshKey, setRefreshKey] = React.useState(0);
   const g = useWwGit(path, refreshKey);
@@ -605,6 +648,9 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     setStashes(r && r.ok ? r.stashes || [] : []);
   };
   const [busy, setBusy] = React.useState(false);
+  // WHICH remote operation is running ("fetch" | "pull" | "push" | ""), so the
+  // pressed tooth can say "Pushing…" while its neighbours only go quiet.
+  const [remoteOp, setRemoteOp] = React.useState("");
   // WHICH branch is being switched to, not merely THAT something is busy.
   //
   // A cold checkout of this repository was MEASURED at 44.9 seconds -- 35 MB of
@@ -660,6 +706,18 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     return false;
   };
 
+  // Fetch, pull and push all go through run(); this only remembers which tooth
+  // was pressed for as long as it works. In a finally: a push that FAILS must
+  // clear the label too, or "Pushing…" would outlive the push.
+  const runRemote = async (op: any) => {
+    setRemoteOp(op.key);
+    try {
+      return await run(op.url, { path, ...op.body }, op.done);
+    } finally {
+      setRemoteOp("");
+    }
+  };
+
   // The confirmation names the branch git REPORTS being on, not the one that was
   // clicked — the two came apart in testing, and the panel used to claim the one
   // it had asked for.
@@ -690,6 +748,9 @@ function WorkspaceGitPanel({ path, onClose }: any) {
         () => {
           setPickerOpen(false);
           setHalangan(null);
+          // "Stash it first" leaves a new stash behind: an open list must
+          // show it, or the count on the toggle tells yesterday's truth.
+          if (stashes !== null) muatStash();
         },
       );
       // Only local work blocks a switch recoverably. A missing branch or a dead
@@ -1431,50 +1492,64 @@ function WorkspaceGitPanel({ path, onClose }: any) {
           pushed; setUpstream is on so the FIRST push of a new branch does not
           fail asking for "--set-upstream". */}
       {br && br.current && (
-        <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
-          {[
-            ["Fetch", "/ww/remote/fetch", "git fetch origin", {}],
-            [
-              "Pull",
-              "/ww/remote/pull",
-              "git pull origin " + br.current,
-              { branch: br.current },
-            ],
-            [
-              "Push",
-              "/ww/remote/push",
-              "git push origin " + br.current,
-              { branch: br.current, setUpstream: true },
-            ],
-          ].map(([label, url, judul, ekstra]: any) => (
-            <button
-              key={label}
-              className="btn-reset vp-hover"
-              disabled={busy}
-              title={judul}
-              onClick={() =>
-                run(
-                  url,
-                  { path, ...ekstra },
-                  (r: any) =>
-                    label.toLowerCase() +
-                    " ok" +
-                    (r.remote ? " (" + r.remote + ")" : ""),
-                )
-              }
-              style={commitBtnStyle(busy)}
-            >
-              {label}
-            </button>
-          ))}
-          <button
-            className="btn-reset vp-hover"
-            title="List stashes"
-            onClick={() => (stashes === null ? muatStash() : setStashes(null))}
-            style={commitBtnStyle(false)}
-          >
-            {stashes === null ? "Stashes" : "Hide stashes"}
-          </button>
+        <div
+          style={{
+            display: "flex",
+            gap: "6px",
+            flexWrap: "wrap",
+            alignItems: "center",
+          }}
+        >
+          <SegmentedButtons
+            busy={busy}
+            items={[
+              {
+                key: "fetch",
+                label: "Fetch",
+                runningLabel: "Fetching…",
+                title: "git fetch origin",
+                url: "/ww/remote/fetch",
+                body: {},
+                done: (r: any) => "fetched " + (r.remote || "origin"),
+              },
+              {
+                key: "pull",
+                label: "Pull",
+                runningLabel: "Pulling…",
+                title: "git pull origin " + br.current,
+                url: "/ww/remote/pull",
+                body: { branch: br.current },
+                done: (r: any) =>
+                  "pulled " + (r.remote || "origin") + "/" + br.current,
+              },
+              {
+                key: "push",
+                label: "Push",
+                runningLabel: "Pushing…",
+                title: "git push origin " + br.current,
+                url: "/ww/remote/push",
+                body: { branch: br.current, setUpstream: true },
+                done: (r: any) =>
+                  "pushed " + br.current + " to " + (r.remote || "origin"),
+              },
+            ].map((op: any) => ({
+              ...op,
+              running: remoteOp === op.key,
+              onClick: () => runRemote(op),
+            }))}
+          />
+          <SegmentedButtons
+            items={[
+              {
+                label: "Stashes",
+                title: stashes === null ? "List stashes" : "Hide stashes",
+                active: stashes !== null,
+                badge: stashes === null ? undefined : stashes.length,
+                onClick: () =>
+                  stashes === null ? muatStash() : setStashes(null),
+              },
+            ]}
+          />
         </div>
       )}
       {/* ── Stash list ──
@@ -1513,48 +1588,48 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               >
                 {"stash@{" + st.index + "} " + st.description}
               </span>
-              <button
-                className="btn-reset vp-hover"
-                disabled={busy}
-                title="git stash pop"
-                onClick={async () => {
-                  if (
-                    await run(
-                      "/ww/stash/pop",
-                      { path, index: st.index },
-                      () => "stash applied",
-                    )
-                  )
-                    muatStash();
-                }}
-                style={commitBtnStyle(busy)}
-              >
-                Pop
-              </button>
-              <button
-                className="btn-reset vp-hover"
-                disabled={busy}
-                title="git stash drop (cannot be undone)"
-                onClick={async () => {
-                  if (
-                    !window.confirm(
-                      "Drop stash@{" + st.index + "}? This cannot be undone.",
-                    )
-                  )
-                    return;
-                  if (
-                    await run(
-                      "/ww/stash/drop",
-                      { path, index: st.index },
-                      () => "stash dropped",
-                    )
-                  )
-                    muatStash();
-                }}
-                style={{ ...commitBtnStyle(busy), color: "#f0a5a5" }}
-              >
-                Drop
-              </button>
+              <SegmentedButtons
+                busy={busy}
+                items={[
+                  {
+                    label: "Pop",
+                    title: "git stash pop",
+                    onClick: async () => {
+                      if (
+                        await run(
+                          "/ww/stash/pop",
+                          { path, index: st.index },
+                          () => "stash applied",
+                        )
+                      )
+                        muatStash();
+                    },
+                  },
+                  {
+                    label: "Drop",
+                    title: "git stash drop (cannot be undone)",
+                    danger: true,
+                    onClick: async () => {
+                      if (
+                        !window.confirm(
+                          "Drop stash@{" +
+                            st.index +
+                            "}? This cannot be undone.",
+                        )
+                      )
+                        return;
+                      if (
+                        await run(
+                          "/ww/stash/drop",
+                          { path, index: st.index },
+                          () => "stash dropped",
+                        )
+                      )
+                        muatStash();
+                    },
+                  },
+                ]}
+              />
             </div>
           ))}
         </div>
