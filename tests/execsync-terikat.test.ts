@@ -193,7 +193,12 @@ describe("rute git tidak membekukan thread utama", () => {
     const i = SRV.indexOf("ww.lupakanGit(b.path)");
     // Dipanggil di jalur yang sama dengan semua aksi pengubah, sesudah
     // hasilnya didapat — termasuk saat aksinya gagal.
-    expect(SRV.slice(Math.max(0, i - 700), i)).toMatch(/ww\.commitAll\(/);
+    // From the start of that route block, not a fixed 700 characters back:
+    // the block grew when the remote and stash routes joined it, and a fixed
+    // window went red while the property it guards had not moved.
+    const awal = SRV.lastIndexOf('req.url === "/ww/branch/switch"', i);
+    expect(awal).toBeGreaterThan(-1);
+    expect(SRV.slice(awal, i)).toMatch(/ww\.commitAll\(/);
   });
 
   test("versi sinkron TETAP ADA — berkas ini juga dipakai sebagai CLI", () => {

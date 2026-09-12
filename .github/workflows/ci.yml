@@ -279,6 +279,7 @@ jobs:
                    agent/broker/zone-worker.cjs agent/broker/zone-process.ts \
                    agent/broker/host.ts agent/broker/policy.ts \
                    agent/broker/audit-log.ts agent/broker/commandchain.ts \
+                   core/git-vscode.ts vendor/vscode-git/src/git.ts vendor/vscode-git/LICENSE.txt \
                    server/routes/terminal.ts server/routes/debug.ts server/routes/snapshots.ts \
                    server/routes/cloud.ts server/routes/dap.ts                    scripts/appcontainer/AcLaunch.exe; do
             if [ -f "$UNPACKED/$f" ]; then

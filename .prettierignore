@@ -15,3 +15,11 @@ public/vendor/
 
 # Build output.
 dist-app/
+
+# vendor/vscode-git: the four UPSTREAM files keep VS Code's own formatting
+# (tabs, single quotes) so a diff against upstream shows only the three
+# documented edits. The shim (src/vscode.ts) and the stubs are ours and are
+# formatted like the rest of the repo.
+vendor/vscode-git/src/git.ts
+vendor/vscode-git/src/util.ts
+vendor/vscode-git/src/api/

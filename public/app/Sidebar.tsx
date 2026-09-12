@@ -595,6 +595,15 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   const [editingFolder, setEditingFolder] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
   const [pesanCommit, setPesanCommit] = React.useState("");
+  // The stash list. It used to be invisible: the branch switcher created
+  // stashes and then told the user to run `git stash pop` in a terminal to
+  // get their own work back. Loaded on demand (the toggle), not on every
+  // refresh -- a repository with no stashes should cost nothing here.
+  const [stashes, setStashes] = React.useState<any[] | null>(null);
+  const muatStash = async () => {
+    const r = await wwApi("/ww/stash/list", { method: "POST", body: { path } });
+    setStashes(r && r.ok ? r.stashes || [] : []);
+  };
   const [busy, setBusy] = React.useState(false);
   // WHICH branch is being switched to, not merely THAT something is busy.
   //
@@ -1412,6 +1421,142 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               on {(br && br.current) || "…"}
             </span>
           </div>
+        </div>
+      )}
+      {/* ── Remote ──
+          Push, pull and fetch, served by the vendored VS Code git layer
+          (vendor/vscode-git). Before this the panel could commit and the
+          commit stayed on one disk: an inventory of the backend found no
+          push, pull or fetch anywhere. The branch shown is the one being
+          pushed; setUpstream is on so the FIRST push of a new branch does not
+          fail asking for "--set-upstream". */}
+      {br && br.current && (
+        <div style={{ display: "flex", gap: "5px", flexWrap: "wrap" }}>
+          {[
+            ["Fetch", "/ww/remote/fetch", "git fetch origin", {}],
+            [
+              "Pull",
+              "/ww/remote/pull",
+              "git pull origin " + br.current,
+              { branch: br.current },
+            ],
+            [
+              "Push",
+              "/ww/remote/push",
+              "git push origin " + br.current,
+              { branch: br.current, setUpstream: true },
+            ],
+          ].map(([label, url, judul, ekstra]: any) => (
+            <button
+              key={label}
+              className="btn-reset vp-hover"
+              disabled={busy}
+              title={judul}
+              onClick={() =>
+                run(
+                  url,
+                  { path, ...ekstra },
+                  (r: any) =>
+                    label.toLowerCase() +
+                    " ok" +
+                    (r.remote ? " (" + r.remote + ")" : ""),
+                )
+              }
+              style={commitBtnStyle(busy)}
+            >
+              {label}
+            </button>
+          ))}
+          <button
+            className="btn-reset vp-hover"
+            title="List stashes"
+            onClick={() => (stashes === null ? muatStash() : setStashes(null))}
+            style={commitBtnStyle(false)}
+          >
+            {stashes === null ? "Stashes" : "Hide stashes"}
+          </button>
+        </div>
+      )}
+      {/* ── Stash list ──
+          Each row is one stash with pop and drop. Pop re-applies it to the
+          current branch and removes it on success; git keeps the stash if the
+          apply conflicts, and the failure says so. Drop is a delete, so it
+          asks first. */}
+      {stashes !== null && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+          {stashes.length === 0 && (
+            <span style={{ fontSize: "11px", color: "#6b7280" }}>
+              no stashes
+            </span>
+          )}
+          {stashes.map((st: any) => (
+            <div
+              key={st.index}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "11px",
+                color: "#c9d1d9",
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontFamily: "ui-monospace, monospace",
+                }}
+                title={st.description}
+              >
+                {"stash@{" + st.index + "} " + st.description}
+              </span>
+              <button
+                className="btn-reset vp-hover"
+                disabled={busy}
+                title="git stash pop"
+                onClick={async () => {
+                  if (
+                    await run(
+                      "/ww/stash/pop",
+                      { path, index: st.index },
+                      () => "stash applied",
+                    )
+                  )
+                    muatStash();
+                }}
+                style={commitBtnStyle(busy)}
+              >
+                Pop
+              </button>
+              <button
+                className="btn-reset vp-hover"
+                disabled={busy}
+                title="git stash drop (cannot be undone)"
+                onClick={async () => {
+                  if (
+                    !window.confirm(
+                      "Drop stash@{" + st.index + "}? This cannot be undone.",
+                    )
+                  )
+                    return;
+                  if (
+                    await run(
+                      "/ww/stash/drop",
+                      { path, index: st.index },
+                      () => "stash dropped",
+                    )
+                  )
+                    muatStash();
+                }}
+                style={{ ...commitBtnStyle(busy), color: "#f0a5a5" }}
+              >
+                Drop
+              </button>
+            </div>
+          ))}
         </div>
       )}
       {g.lastCommit && (

@@ -1616,6 +1616,66 @@ function _pindaiInfo(akar: string): Promise<any> {
   return janji;
 }
 
+/**
+ * The routes served by the vendored VS Code git layer.
+ *
+ * Each maps one request onto one Repository method and returns the same
+ * { ok, ... } shape the ww.ts routes do, so the panel treats them alike.
+ * `path` is the workspace folder; the layer resolves .git from it the way VS
+ * Code does, so a subfolder of a repository works too.
+ */
+async function _gitVscode(url: any, b: any) {
+  const gv = require("./core/git-vscode.ts");
+  if (!b || !b.path) return { ok: false, err: "path is required" };
+  const r = await gv.repo(String(b.path));
+  const remote = b.remote || "origin";
+  switch (url) {
+    case "/ww/remote/push":
+      // setUpstream on the FIRST push of a branch, so the next pull knows
+      // where it came from. Harmless when the upstream already exists.
+      await r.push(remote, b.branch || undefined, !!b.setUpstream);
+      return { ok: true, remote, branch: b.branch || null };
+    case "/ww/remote/pull":
+      await r.pull(!!b.rebase, remote, b.branch || undefined);
+      return { ok: true, remote };
+    case "/ww/remote/fetch":
+      await r.fetch({ remote, prune: !!b.prune });
+      return { ok: true, remote };
+    case "/ww/stash/list": {
+      const daftar = await r.getStashes();
+      return {
+        ok: true,
+        stashes: daftar.map((s: any) => ({
+          index: s.index,
+          description: s.description,
+          branchName: s.branchName || null,
+        })),
+      };
+    }
+    case "/ww/stash/pop":
+      await r.popStash(typeof b.index === "number" ? b.index : 0);
+      return { ok: true };
+    case "/ww/stash/drop":
+      await r.dropStash(typeof b.index === "number" ? b.index : 0);
+      return { ok: true };
+    case "/ww/log": {
+      const n = Math.max(1, Math.min(200, Number(b.maxEntries) || 30));
+      const log = await r.log({ maxEntries: n });
+      return {
+        ok: true,
+        commits: log.map((c: any) => ({
+          hash: c.hash,
+          message: c.message,
+          authorName: c.authorName,
+          authorDate: c.authorDate,
+          parents: c.parents,
+        })),
+      };
+    }
+  }
+  return { ok: false, err: "unknown route " + url };
+}
+
 function _kurungDiAkar(root: any, p: any) {
   if (!root || !p) return { kode: 400, galat: "root and path are required" };
   const akar = path.resolve(String(root));
@@ -4463,7 +4523,18 @@ const server = http.createServer(async (req: any, res: any) => {
       req.url === "/ww/branch/rename" ||
       req.url === "/ww/branch/delete" ||
       req.url === "/ww/commit" ||
-      req.url === "/ww/rename")
+      req.url === "/ww/rename" ||
+      // The remote and stash operations WOLFSPACE never had, served by the
+      // VS Code git layer in vendor/vscode-git through core/git-vscode.ts.
+      // In THIS block on purpose: they change git state, so they need the
+      // same cache invalidation and the same outcome log as the rest.
+      req.url === "/ww/remote/push" ||
+      req.url === "/ww/remote/pull" ||
+      req.url === "/ww/remote/fetch" ||
+      req.url === "/ww/stash/list" ||
+      req.url === "/ww/stash/pop" ||
+      req.url === "/ww/stash/drop" ||
+      req.url === "/ww/log")
   ) {
     let body = "";
     req.on("data", (c: any) => (body += c));
@@ -4488,8 +4559,16 @@ const server = http.createServer(async (req: any, res: any) => {
           out = await ww.commitAll(b.path, b.message);
         else if (req.url === "/ww/rename")
           out = ww.renameWorkspaceFolder(b.path, b.newName);
+        else out = await _gitVscode(req.url, b);
       } catch (e) {
-        out = { ok: false, err: e.message };
+        // The VS Code layer throws GitError with git's own stderr attached and
+        // a gitErrorCode it already classified. Both are kept: the code is
+        // what a caller can branch on, the stderr is what a person can read.
+        out = {
+          ok: false,
+          err: (e && e.stderr && String(e.stderr).trim()) || e.message,
+          kode: e && e.gitErrorCode,
+        };
       }
       // The /ww/git and /ww/branches caches are INVALIDATED here. Everything above
       // CHANGES git state, and without this the user commits and their panel still
