@@ -2100,6 +2100,62 @@ function TodoPanel({ todos, busy, onToggle, onClear }: any) {
   );
 }
 
+// ── MCP status badge ──
+// One pill, rendered from the same rule in both places the MCP list appears
+// (the settings panel here, the project picker in Screens.tsx): the two blocks
+// were copies, and copies drift. The order is the one both copies had.
+//   connecting   the user pressed Connect and the request is in flight (amber)
+//   connected    ready, and the last call did not fail (green)
+//   failed       the last call failed -- a revoked token, a dead process (red)
+//   stopped      the process is not running (grey)
+//   starting     the process is up, the handshake is not done yet (grey)
+//   not ready    nothing else applies
+// The two waiting states carry a spinning ring instead of a static glyph:
+// "◌ Connecting…" sat still for the whole handshake, and a still label is
+// exactly what a hung one looks like. The ring is CSS (.mcp-spin), so it
+// costs no JavaScript per frame and calms down under prefers-reduced-motion.
+function McpStatusBadge({ srv }: any) {
+  const st = srv.status || null;
+  let kind = "off";
+  let text = "○ Not ready";
+  let title: any;
+  let spinning = false;
+  if (srv.connecting) {
+    kind = "connecting";
+    text = "Connecting…";
+    spinning = true;
+  } else if (srv.active) {
+    kind = "ok";
+    text = "✓ Connected";
+  } else {
+    // Distinguish the CAUSE; do not flatten it into "Disabled". A server
+    // whose calls fail (a revoked token, say) is not the same as one that
+    // was never started. Both used to show green.
+    title =
+      (st && st.lastError) ||
+      (st && !st.running
+        ? "MCP process is not running"
+        : st && st.starting
+          ? "Handshake in progress"
+          : "Not ready");
+    if (st && st.lastCallOk === false) {
+      kind = "failed";
+      text = "✕ Failed";
+    } else if (st && !st.running) {
+      text = "○ Stopped";
+    } else if (st && st.starting) {
+      text = "Connecting…";
+      spinning = true;
+    }
+  }
+  return (
+    <span className={"mcp-badge mcp-badge-" + kind} title={title}>
+      {spinning && <span className="mcp-spin" aria-hidden="true" />}
+      {text}
+    </span>
+  );
+}
+
 function Composer({
   onSend,
   onCancel,
@@ -3075,74 +3131,7 @@ function Composer({
                                     gap: "6px",
                                   }}
                                 >
-                                  {srv.connecting ? (
-                                    <span
-                                      style={{
-                                        fontSize: "11px",
-                                        fontWeight: 500,
-                                        padding: "2px 6px",
-                                        borderRadius: "10px",
-                                        color: "#d7ba7d",
-                                        background: "rgba(215, 186, 125, 0.12)",
-                                      }}
-                                    >
-                                      ⟳ Connecting…
-                                    </span>
-                                  ) : srv.active ? (
-                                    <span
-                                      style={{
-                                        fontSize: "11px",
-                                        fontWeight: 500,
-                                        padding: "2px 6px",
-                                        borderRadius: "10px",
-                                        color: "#4ec9b0",
-                                        background: "rgba(78, 201, 176, 0.12)",
-                                      }}
-                                    >
-                                      ✓ Connected
-                                    </span>
-                                  ) : (
-                                    // Distinguish the CAUSE; do not flatten it
-                                    // into "Disabled". A server whose calls
-                                    // fail (a revoked token, say) is not the
-                                    // same as one that was never started. Both
-                                    // used to show green.
-                                    <span
-                                      title={
-                                        (srv.status && srv.status.lastError) ||
-                                        (srv.status && !srv.status.running
-                                          ? "MCP process is not running"
-                                          : srv.status && srv.status.starting
-                                            ? "Handshake in progress"
-                                            : "Not ready")
-                                      }
-                                      style={{
-                                        fontSize: "11px",
-                                        fontWeight: 500,
-                                        padding: "2px 6px",
-                                        borderRadius: "10px",
-                                        color:
-                                          srv.status &&
-                                          srv.status.lastCallOk === false
-                                            ? "#f85149"
-                                            : "#858585",
-                                        background:
-                                          srv.status &&
-                                          srv.status.lastCallOk === false
-                                            ? "rgba(248, 81, 73, 0.12)"
-                                            : "rgba(133, 133, 133, 0.12)",
-                                      }}
-                                    >
-                                      {srv.status &&
-                                      srv.status.lastCallOk === false
-                                        ? "✕ Failed"
-                                        : srv.status && !srv.status.running
-                                          ? "○ Berhenti"
-                                          : srv.status && srv.status.starting
-                                            ? "◌ Connecting…"
-                                            : "○ Not ready"}
-                                    </span>
-                                  )}
+                                  <McpStatusBadge srv={srv} />
                                   <span
                                     title="Remove MCP server"
                                     style={{

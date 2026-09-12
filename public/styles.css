@@ -4532,6 +4532,66 @@ img.ar-fs-icon {
   --aksi-warna: #79c0ff;
 }
 
+/* ── MCP status badge (settings panel and project picker) ──
+ *
+ * The colours are the ones the two inline copies had. The ring: a 9px circle
+ * with one transparent quarter, turned by CSS -- the browser composites the
+ * rotation off the main thread, so a page with twelve servers connecting at
+ * once still runs no script per frame. Under prefers-reduced-motion the ring
+ * stops turning and breathes instead: still a signal that work is going on,
+ * without the spin. */
+.mcp-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 2px 6px;
+  border-radius: 10px;
+  font-size: 11px;
+  font-weight: 500;
+  white-space: nowrap;
+}
+.mcp-badge-connecting {
+  color: #d7ba7d;
+  background: rgba(215, 186, 125, 0.12);
+}
+.mcp-badge-ok {
+  color: #4ec9b0;
+  background: rgba(78, 201, 176, 0.12);
+}
+.mcp-badge-failed {
+  color: #f85149;
+  background: rgba(248, 81, 73, 0.12);
+}
+.mcp-badge-off {
+  color: #858585;
+  background: rgba(133, 133, 133, 0.12);
+}
+.mcp-spin {
+  width: 9px;
+  height: 9px;
+  flex-shrink: 0;
+  border: 1.5px solid currentColor;
+  border-right-color: transparent;
+  border-radius: 50%;
+  animation: mcp-spin 0.8s linear infinite;
+}
+@keyframes mcp-spin {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .mcp-spin {
+    border-right-color: currentColor;
+    animation: mcp-breathe 1.4s ease-in-out infinite;
+  }
+  @keyframes mcp-breathe {
+    50% {
+      opacity: 0.3;
+    }
+  }
+}
+
 /* ── Git panel: segmented pill, three-dot menu button, its menu ──
  *
  * Before this, the four remote buttons were four separate outlined pills,

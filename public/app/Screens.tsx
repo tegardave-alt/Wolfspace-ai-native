@@ -1105,71 +1105,7 @@ function ProjectPickerScreen({
                                   gap: "6px",
                                 }}
                               >
-                                {srv.connecting ? (
-                                  <span
-                                    style={{
-                                      fontSize: "11px",
-                                      fontWeight: 500,
-                                      padding: "2px 6px",
-                                      borderRadius: "10px",
-                                      color: "#d7ba7d",
-                                      background: "rgba(215, 186, 125, 0.12)",
-                                    }}
-                                  >
-                                    ⟳ Connecting…
-                                  </span>
-                                ) : srv.active ? (
-                                  <span
-                                    style={{
-                                      fontSize: "11px",
-                                      fontWeight: 500,
-                                      padding: "2px 6px",
-                                      borderRadius: "10px",
-                                      color: "#4ec9b0",
-                                      background: "rgba(78, 201, 176, 0.12)",
-                                    }}
-                                  >
-                                    ✓ Connected
-                                  </span>
-                                ) : (
-                                  // Distinguish the cause (see the note in
-                                  // Components.tsx): "failed" is not "not started".
-                                  <span
-                                    title={
-                                      (srv.status && srv.status.lastError) ||
-                                      (srv.status && !srv.status.running
-                                        ? "MCP process is not running"
-                                        : srv.status && srv.status.starting
-                                          ? "Handshake in progress"
-                                          : "Not ready")
-                                    }
-                                    style={{
-                                      fontSize: "11px",
-                                      fontWeight: 500,
-                                      padding: "2px 6px",
-                                      borderRadius: "10px",
-                                      color:
-                                        srv.status &&
-                                        srv.status.lastCallOk === false
-                                          ? "#f85149"
-                                          : "#858585",
-                                      background:
-                                        srv.status &&
-                                        srv.status.lastCallOk === false
-                                          ? "rgba(248, 81, 73, 0.12)"
-                                          : "rgba(133, 133, 133, 0.12)",
-                                    }}
-                                  >
-                                    {srv.status &&
-                                    srv.status.lastCallOk === false
-                                      ? "✕ Failed"
-                                      : srv.status && !srv.status.running
-                                        ? "○ Berhenti"
-                                        : srv.status && srv.status.starting
-                                          ? "◌ Connecting…"
-                                          : "○ Not ready"}
-                                  </span>
-                                )}
+                                <McpStatusBadge srv={srv} />
                                 <span
                                   title="Remove MCP server"
                                   style={{
