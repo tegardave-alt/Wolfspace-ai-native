@@ -146,11 +146,13 @@ describe("the menu holds the list from the screenshot", () => {
     );
   });
 
-  test("the picker's hover class is gone from the row and the stash list", () => {
-    const a = SB.indexOf("── Commit line + actions menu ──");
-    const b = SB.indexOf("{msg && (", a);
-    expect(b).toBeGreaterThan(a);
-    expect(SB.slice(a, b)).not.toMatch(/vp-hover/);
+  test("the picker's hover class is gone from the whole file", () => {
+    // Commit was the last control wearing it. Minus the comments that name
+    // the old class on purpose.
+    // JSX block comments first: the line filter would eat their opening
+    // line and leave the rest looking like code.
+    const code = stripComments(SB.replace(/\{\/\*[\s\S]*?\*\/\}/g, ""));
+    expect(code).not.toMatch(/vp-hover/);
   });
 
   test("an open stash list is refreshed after a branch switch", () => {

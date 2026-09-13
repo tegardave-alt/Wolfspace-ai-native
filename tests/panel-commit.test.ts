@@ -48,16 +48,18 @@ describe("form commit", () => {
 
   test("there is an explicit Commit and an explicit Cancel", () => {
     const m = bersih.match(/\{committing && \([\s\S]*?\n      \)\}/);
-    expect(m![0]).toMatch(/onClick=\{\(\) => doCommit\(pesanCommit\)\}/);
-    expect(m![0]).toMatch(/onClick=\{\(\) => setCommitting\(false\)\}/);
-    expect(m![0]).toMatch(/Cancel/);
+    // Two teeth of one SegmentedButtons pill, so the handlers are item
+    // fields rather than JSX attributes.
+    expect(m![0]).toMatch(/onClick: \(\) => doCommit\(pesanCommit\)/);
+    expect(m![0]).toMatch(/onClick: \(\) => setCommitting\(false\)/);
+    expect(m![0]).toMatch(/label: "Cancel"/);
   });
 
   test("Commit is refused without a message, and says why", () => {
     // doCommit already treats an empty message as cancel; the button should
     // not pretend to be available in the first place.
     const m = bersih.match(/\{committing && \([\s\S]*?\n      \)\}/);
-    expect(m![0]).toMatch(/disabled=\{busy \|\| !pesanCommit\.trim\(\)\}/);
+    expect(m![0]).toMatch(/disabled: busy \|\| !pesanCommit\.trim\(\)/);
     expect(m![0]).toMatch(/A message is required/);
   });
 
@@ -82,6 +84,12 @@ describe("form commit", () => {
 
   test("a disabled Commit does not light up under the pointer", () => {
     // A control that brightens while refusing to act gets clicked repeatedly.
-    expect(CSS).toMatch(/\.git-utama:not\(:disabled\):hover/);
+    // The pill's hover rule is gated on :not(:disabled), and the green of the
+    // primary tooth is too.
+    expect(CSS).toMatch(/\.seg-btn:hover:not\(:disabled\)/);
+    expect(CSS).toMatch(/\.seg-btn\.seg-ok:not\(:disabled\) \{/);
+    expect(CSS).not.toMatch(/\.seg-btn\.seg-ok:hover \{/);
+    const m = bersih.match(/\{committing && \([\s\S]*?\n      \)\}/);
+    expect(m![0]).toMatch(/ok: true,/);
   });
 });

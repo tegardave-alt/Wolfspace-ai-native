@@ -572,27 +572,15 @@ const commitInputStyle = {
   padding: "3px 7px",
   outline: "none",
 };
-function commitBtnStyle(busy: any) {
-  return {
-    marginLeft: "auto",
-    padding: "1px 8px",
-    borderRadius: "5px",
-    fontSize: "11px",
-    color: busy ? "#6b7280" : "#e6edf3",
-    background: "rgba(255,255,255,0.09)",
-    cursor: busy ? "default" : "pointer",
-    flexShrink: 0,
-  };
-}
-
 // ── Segmented buttons ──
 // One bordered pill split into teeth (Pop | Drop on a stash row). Each tooth
 // is a real <button>, so disabled, focus and title behave as usual; the group
 // only draws the outer edge and the dividers between teeth. It sizes itself
 // to its labels, so it is never wider than the words in it.
 //
-// An item: { label, title, onClick, danger?, disabled? }. `busy` disables
-// every tooth at once.
+// An item: { label, title, onClick, ok?, danger?, disabled? }. `ok` is the
+// pill's primary tooth (Commit next to Cancel): green while it can act, the
+// same grey as its neighbour while it cannot. `busy` disables every tooth.
 function SegmentedButtons({ items, busy, className }: any) {
   return (
     <div
@@ -603,7 +591,11 @@ function SegmentedButtons({ items, busy, className }: any) {
         <button
           key={it.label}
           type="button"
-          className={"btn-reset seg-btn" + (it.danger ? " seg-danger" : "")}
+          className={
+            "btn-reset seg-btn" +
+            (it.ok ? " seg-ok" : "") +
+            (it.danger ? " seg-danger" : "")
+          }
           disabled={!!busy || !!it.disabled}
           title={it.title}
           onClick={it.onClick}
@@ -1470,18 +1462,23 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               : "clean — no changes"}
         </span>
         {g.dirty && !committing && (
-          <button
-            className="btn-reset vp-hover"
-            title="Commit all changes"
-            disabled={busy}
-            onClick={() => {
-              setPesanCommit("");
-              setCommitting(true);
-            }}
-            style={commitBtnStyle(busy)}
-          >
-            Commit
-          </button>
+          // The last control in this panel that wore `vp-hover` -- the visual
+          // picker's outline class, stripped when the picker is switched off.
+          // Now the same pill as Pop | Drop, one tooth wide.
+          <SegmentedButtons
+            className="seg-end"
+            busy={busy}
+            items={[
+              {
+                label: "Commit",
+                title: "Commit all changes",
+                onClick: () => {
+                  setPesanCommit("");
+                  setCommitting(true);
+                },
+              },
+            ]}
+          />
         )}
       </div>
       {/* The message field appears ONLY after the button is pressed, following
@@ -1503,45 +1500,28 @@ function WorkspaceGitPanel({ path, onClose }: any) {
             style={commitInputStyle}
           />
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <button
-              className="btn-reset git-utama"
-              disabled={busy || !pesanCommit.trim()}
-              title={
-                pesanCommit.trim()
-                  ? "Commit " + g.dirtyCount + " change(s)"
-                  : "A message is required"
-              }
-              onClick={() => doCommit(pesanCommit)}
-              style={{
-                padding: "3px 10px",
-                borderRadius: "5px",
-                fontSize: "11px",
-                fontWeight: 600,
-                fontFamily: "inherit",
-                color: busy || !pesanCommit.trim() ? "#6b7280" : "#ffffff",
-                background:
-                  busy || !pesanCommit.trim()
-                    ? "rgba(255,255,255,0.06)"
-                    : "#238636",
-                cursor: busy || !pesanCommit.trim() ? "default" : "pointer",
-              }}
-            >
-              {busy ? "Committing…" : "Commit " + g.dirtyCount}
-            </button>
-            <button
-              className="btn-reset menu-item"
-              onClick={() => setCommitting(false)}
-              style={{
-                padding: "3px 9px",
-                borderRadius: "5px",
-                fontSize: "11px",
-                fontFamily: "inherit",
-                color: "#8b949e",
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
+            {/* One pill: the primary tooth is green only while it can act. A
+                disabled Commit must not light up under the pointer -- the
+                message is required, and a button that brightens while
+                refusing to act gets clicked repeatedly. */}
+            <SegmentedButtons
+              items={[
+                {
+                  label: busy ? "Committing…" : "Commit " + g.dirtyCount,
+                  ok: true,
+                  disabled: busy || !pesanCommit.trim(),
+                  title: pesanCommit.trim()
+                    ? "Commit " + g.dirtyCount + " change(s)"
+                    : "A message is required",
+                  onClick: () => doCommit(pesanCommit),
+                },
+                {
+                  label: "Cancel",
+                  title: "Close without committing",
+                  onClick: () => setCommitting(false),
+                },
+              ]}
+            />
             <span style={{ fontSize: "10.5px", color: "#6b7280" }}>
               on {(br && br.current) || "…"}
             </span>

@@ -4658,6 +4658,17 @@ img.ar-fs-icon {
 .seg-btn.seg-danger:hover:not(:disabled) {
   color: #f85149;
 }
+/* The primary tooth (Commit next to Cancel) is green while it can act. While
+   it cannot -- no message yet -- it wears the same grey as any disabled tooth,
+   and .seg-btn:hover:not(:disabled) already keeps it from lighting up. */
+.seg-btn.seg-ok:not(:disabled) {
+  color: #3fb950;
+  font-weight: 600;
+}
+/* A pill pushed to the right end of its row (the Commit trigger). */
+.seg-end {
+  margin-left: auto;
+}
 /* A small count (the stash total on the menu item). */
 .seg-badge {
   min-width: 15px;
@@ -5348,23 +5359,6 @@ img.ar-fs-icon {
 .tab-pecah.aktif {
   color: var(--brand, #5eead4);
   background: rgba(94, 234, 212, 0.12);
-}
-
-/* ── Commit ──
-   The primary action gets a colour of its own, and the same pointer feedback
-   as every other control in the app. A disabled Commit must NOT light up: the
-   message is required, and a button that brightens under the pointer while
-   refusing to act is the sort of thing that gets clicked repeatedly. */
-.git-utama {
-  transition:
-    background 0.12s ease,
-    filter 0.12s ease;
-}
-.git-utama:not(:disabled):hover {
-  filter: brightness(1.15);
-}
-.git-utama:not(:disabled):active {
-  filter: brightness(0.92);
 }
 
 /* ── GitHub panel ────────────────────────────────────────────────────────────
