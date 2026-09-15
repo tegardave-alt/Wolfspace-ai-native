@@ -28,12 +28,21 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
       VP_STOP();
       return;
     } // already active ? toggle off
-    const docs = [document];
+    const docs: Document[] = [document];
     try {
       const frameDoc = getFrameDoc && getFrameDoc();
       // .defaultView is null for a cross-origin document (the browser refuses
       // access before we even get here) — this check also covers a "dead" or
       // detached document.
+      //
+      // THE LINE BELOW WENT MISSING ONCE. frameDoc was computed and then never
+      // used, so every listener went onto WOLFSPACE's document alone and the
+      // picker could not select anything inside the Live Browser — the very
+      // content the user was building. A mouse event over an iframe lands in
+      // the iframe's document; if the picker is not listening there, it does
+      // not exist there.
+      if (frameDoc && frameDoc.defaultView && frameDoc.body)
+        docs.push(frameDoc);
     } catch (_) {
       // Cross-origin (the preview points at an external URL rather than a
       // same-origin local file):
@@ -99,6 +108,11 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
       let d = "";
 
       // Include the DOM structure so the agent can find it in the source.
+      // WITHOUT the picker's own hover class: every snippet used to carry
+      // `vp-hover`, and the agent then searched the source for a class that
+      // exists only while the picker is running. The selector already
+      // filtered it (realCls); the raw markup did not.
+      cleanHovers();
       let htmlSnippet = el.outerHTML || "";
       if (htmlSnippet) {
         // Truncate htmlSnippet when it is too long, while keeping its structure
@@ -106,6 +120,21 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
           htmlSnippet = htmlSnippet.slice(0, 300) + "...";
         }
         d = "Struktur DOM:\n```html\n" + htmlSnippet + "\n```";
+      }
+      if (el.ownerDocument && el.ownerDocument !== document) {
+        // Picked inside the Live Browser: name the previewed file, so the
+        // agent edits the generated content rather than searching WOLFSPACE's
+        // own UI for a class that is not there.
+        let berkas = "";
+        try {
+          const u = new URL(el.ownerDocument.location.href);
+          berkas = decodeURIComponent(u.searchParams.get("path") || u.pathname);
+        } catch (_) {}
+        d =
+          "Inside the previewed page" +
+          (berkas ? " (" + berkas + ")" : "") +
+          " — this element is in the GENERATED content, not in WOLFSPACE's own UI.\n" +
+          d;
       }
 
       try {
