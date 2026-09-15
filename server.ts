@@ -559,6 +559,10 @@ function readsStdin(lang: any, code: any) {
 // Ã¢â€ â‚¬Ã¢â€ â‚¬ Resolve real Python executable (skips Windows Store alias that errors) Ã¢â€ â‚¬Ã¢â€ â‚¬
 let _pyBinCache: any = null;
 async function findPythonAsync() {
+  // Python is opt-in: never probe PATH or common installation directories.
+  // Set WOLFSPACE_PYTHON to the exact executable for Python features.
+  const configured = String(process.env.WOLFSPACE_PYTHON || "").trim();
+  return configured || null;
   if (_pyBinCache) return _pyBinCache;
   const candidates = [
     process.env.WOLFSPACE_PYTHON || process.env.QUANTUM_PYTHON,
@@ -718,6 +722,7 @@ let jediProc: any = null,
 async function startJedi() {
   try {
     const pyBin = await findPythonAsync();
+    if (!pyBin) return;
     jediProc = spawn(pyBin, [path.join(__dirname, "jedi_worker.py")], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
@@ -1584,6 +1589,10 @@ function _pindaiInfo(akar: string): Promise<any> {
 
     try {
       const py = await findPythonAsync();
+      if (!py) {
+        catatan.push("python is not configured");
+        throw new Error("python is not configured");
+      }
       keluaran.push(
         await _jalankanPindai(
           py,
@@ -1592,7 +1601,8 @@ function _pindaiInfo(akar: string): Promise<any> {
         ),
       );
     } catch (_) {
-      catatan.push("python is not available");
+      if (!catatan.includes("python is not configured"))
+        catatan.push("python is not available");
     }
 
     const diagnostics: any[] = [];

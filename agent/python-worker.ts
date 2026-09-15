@@ -72,6 +72,15 @@ let _binCache: string | null = null;
 export function pythonBin(): string {
   if (_binCache) return _binCache;
 
+  // Python discovery is deliberately disabled. A caller must name the exact
+  // executable via WOLFSPACE_PYTHON; this worker never probes PATH or disk.
+  const configured = String(process.env.WOLFSPACE_PYTHON || "").trim();
+  if (!configured) return "";
+  _binCache = configured;
+  return _binCache;
+
+  /* Legacy discovery code intentionally disabled.
+
   const bundled =
     process.env.APPDATA &&
     path.join(
@@ -106,7 +115,7 @@ export function pythonBin(): string {
       _binCache = bin;
       return bin;
     } catch (_) {
-      /* try the next candidate */
+      // Try the next candidate.
     }
   }
 
@@ -115,6 +124,7 @@ export function pythonBin(): string {
   // missing — more useful than this module inventing "no python found".
   _binCache = candidates[0] || "python";
   return _binCache;
+  */
 }
 
 type Line = Record<string, any>;
@@ -165,6 +175,10 @@ export function ensureWorker(onStderr?: (text: string) => void): Promise<void> {
   _ready = new Promise<void>((resolve, reject) => {
     let settled = false;
     const bin = pythonBin();
+    if (!bin)
+      return reject(
+        new Error("python worker is disabled: set WOLFSPACE_PYTHON to an exact executable path"),
+      );
     let child: ChildProcessWithoutNullStreams;
     try {
       child = spawn(bin, [APP], {

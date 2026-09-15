@@ -104,10 +104,9 @@ const SYSTEM_RULES = {
   // FORBIDDEN_SPECULATIVE REMOVED — do not bring it back. See the note where
   // sanitizeOutput() used to be, below, for why.
   //
-  // The order of tools that must be tried before declaring "there is none"
-  REQUIRED_TOOL_SEQUENCE: ["grep", "glob", "web_search"],
-  // The minimum number of tools that must fail before giving up is allowed
-  MIN_FAILED_TOOLS: 3,
+  // Never force a search. Tools are used only when the user's instruction needs one.
+  REQUIRED_TOOL_SEQUENCE: [] as string[],
+  MIN_FAILED_TOOLS: 0,
   // How many times a single checklist ITEM may fail before the run STOPS and asks.
   //
   // WHY IT EXISTS. The checklist is the ground truth re-injected at every step —
@@ -145,6 +144,10 @@ const SYSTEM_RULES = {
   // checklist is unfinished.
   MAX_CONTINUE_NUDGE: 3,
 };
+
+// Keyword-based inspection is disabled: agent actions must originate from an
+// explicit model tool call that serves the user's instruction.
+const AUTO_SEARCH_ENABLED = false;
 
 // Keep the evidence from tools already accessed, for validation
 const accessedEvidence = new Set();
@@ -3398,7 +3401,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       try {
         const fileToolsMod = require("./tools/file-tools.ts");
         const userMsg = messages[messages.length - 1];
-        if (userMsg && userMsg.role === "user" && fileToolsMod.qGrep) {
+        // Do not inspect files before the model has chosen a tool. This used to
+        // search automatically from message keywords, even without a request.
+        if (AUTO_SEARCH_ENABLED && userMsg && userMsg.role === "user" && fileToolsMod.qGrep) {
           const content = (userMsg.content || "").toLowerCase();
 
           // Intent-based pre-routing: tell agent WHERE to look
