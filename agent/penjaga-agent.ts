@@ -319,7 +319,13 @@ function _todowriteMenggantiTugas(
   tc: PanggilanTool,
   ctx: KonteksLingkup,
 ): PutusanLingkup {
-  const awal = (ctx.rencanaAwal || []).map(_intiBaris).filter(Boolean);
+  // Measured against the plan as it STANDS -- the planner's lines and the
+  // items added since. A status update for a sub-step the model itself added
+  // a step ago is bookkeeping, not re-planning; only a list that matches
+  // nothing already there is.
+  const awal = [...(ctx.rencanaAwal || []), ...(ctx.checklist || [])]
+    .map(_intiBaris)
+    .filter(Boolean);
   if (awal.length === 0) return { luar: false };
   const a = argsTool(tc);
   if (a === null) return { luar: true, sebab: "arguments could not be parsed" };
