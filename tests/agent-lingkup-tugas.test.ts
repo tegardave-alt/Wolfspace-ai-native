@@ -286,6 +286,101 @@ describe("todowrite merges into the plan instead of replacing it", () => {
   });
 });
 
+describe("a request to CREATE is not answered with a folder search", () => {
+  // The report: asked to build a web page, the agent listed and searched the
+  // workspace "for an approach" instead of writing it.
+  const BUAT = "Buatkan halaman web landing page sederhana untuk kedai kopi.";
+
+  async function jalankanDengan(tujuan: string, langkah: any[]) {
+    jest.resetModules();
+    const cloud = require(path.join(AKAR, "agent", "cloud.ts"));
+    const model = modelSkrip(langkah);
+    cloud.askCloudTools = model.fn;
+    const perencana = require(path.join(AKAR, "agent", "perencana-agent.ts"));
+    perencana.rencanakan = async (c: any) => ({ cloud: c, checklist: [] });
+    const sa = require(path.join(AKAR, "agent", "self_agent.ts"));
+    const events: any[] = [];
+    await sa.selfAgentStream(
+      {
+        history: [{ role: "user", content: tujuan }],
+        cloud: { provider: "uji", model: "uji", key: "x" },
+        workspace_root: ws,
+        thread_id: "buat_" + Date.now(),
+      },
+      (e: any) => events.push(e),
+      { isCancelled: () => false, setCurReq: () => {}, depth: 0 },
+    );
+    return { events, dilihat: model.dilihat };
+  }
+
+  test("create mode is pinned into the system message", async () => {
+    const { dilihat } = await jalankanDengan(BUAT, ["Done."]);
+    expect(dilihat.length).toBeGreaterThanOrEqual(1);
+    expect(dilihat[0][0].content).toMatch(/\[MODE: CREATE/);
+  });
+
+  test("two exploring steps with nothing written earn a nudge, in the model's turn", async () => {
+    const { events, dilihat } = await jalankanDengan(BUAT, [
+      [{ name: "list", args: {} }],
+      [
+        {
+          name: "glob",
+          args: { pattern: "**/*.html", intent: "find an approach" },
+        },
+      ],
+      [{ name: "read", args: { path: "src/tombol.ts" } }],
+      "Done.",
+    ]);
+    expect(
+      events.some(
+        (e) => e.t === "thought" && /task is to CREATE/.test(e.m || ""),
+      ),
+    ).toBe(true);
+    // The nudge is a message the model actually receives on its next call.
+    const terakhir = dilihat[dilihat.length - 1];
+    expect(
+      terakhir.some(
+        (m: any) =>
+          m.role === "user" &&
+          /Stop exploring: write the files now/.test(m.content),
+      ),
+    ).toBe(true);
+  });
+
+  test("a write resets the count: no nudge when the agent builds", async () => {
+    const { events } = await jalankanDengan(BUAT, [
+      [{ name: "list", args: {} }],
+      [
+        {
+          name: "write",
+          args: { path: "index.html", content: "<h1>Kedai Kopi</h1>" },
+        },
+      ],
+      [{ name: "read", args: { path: "index.html" } }],
+      "Done.",
+    ]);
+    expect(
+      events.some(
+        (e) => e.t === "thought" && /task is to CREATE/.test(e.m || ""),
+      ),
+    ).toBe(false);
+  });
+
+  test("a request that names a file is modification: no create mode, no nudge", async () => {
+    const { events, dilihat } = await jalankanDengan(TUJUAN, [
+      [{ name: "read", args: { path: "src/tombol.ts" } }],
+      [{ name: "read", args: { path: "src/lain.ts" } }],
+      "Done.",
+    ]);
+    expect(dilihat[0][0].content).not.toMatch(/\[MODE: CREATE/);
+    expect(
+      events.some(
+        (e) => e.t === "thought" && /task is to CREATE/.test(e.m || ""),
+      ),
+    ).toBe(false);
+  });
+});
+
 describe("the goal is pinned in front of the model", () => {
   test("every model call carries the request verbatim in the system message", async () => {
     const { dilihat } = await jalankan([

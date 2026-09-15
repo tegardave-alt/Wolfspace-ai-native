@@ -147,10 +147,20 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
           navigator.clipboard.writeText(d).catch(function () {});
       } catch (_) {}
       stop();
-      // Use the tidy alert.
-      setTimeout(
-        () => alert("Element details copied to clipboard!\n\n" + selector),
-        0,
+      // STRAIGHT INTO THE COMPOSER, appended to whatever is there, and no
+      // alert(). Two reasons. The clipboard round-trip was a step the user
+      // had to do by hand every time. And window.alert() in an Electron
+      // renderer leaves the page unable to take keyboard focus once it is
+      // dismissed: the box could still be clicked, but nothing typed reached
+      // it until the window was refocused — reported as "after pasting the
+      // picker's content the chat cannot be typed into". The clipboard copy
+      // stays as a convenience; the app no longer depends on it.
+      const ta = document.querySelector(
+        ".composer textarea",
+      ) as HTMLTextAreaElement | null;
+      const ada = ta && ta.value ? ta.value.replace(/\s+$/, "") + "\n\n" : "";
+      window.dispatchEvent(
+        new CustomEvent("WOLFSPACE:set-composer", { detail: ada + d + "\n" }),
       );
     };
     const key = (e: any) => {
