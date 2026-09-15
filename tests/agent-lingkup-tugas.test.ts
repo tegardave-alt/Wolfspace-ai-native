@@ -210,6 +210,82 @@ describe("re-planning onto a different job", () => {
   });
 });
 
+describe("todowrite merges into the plan instead of replacing it", () => {
+  // The report: the checklist was complete, then a bash step ran and the
+  // panel showed ONLY that step. The model had sent todowrite with one item
+  // and the tool treated it as the whole list.
+  test("a one-item todowrite keeps every earlier item, marks the match", async () => {
+    const { events } = await jalankan([
+      [
+        {
+          name: "todowrite",
+          args: {
+            todos: [
+              { content: "read src/tombol.ts", status: "completed" },
+              { content: "fix klik() in src/tombol.ts", status: "pending" },
+              { content: "run the tests", status: "pending" },
+            ],
+          },
+        },
+      ],
+      // The overwrite: only the step about to run.
+      [
+        {
+          name: "todowrite",
+          args: {
+            todos: [{ content: "run the tests", status: "in_progress" }],
+          },
+        },
+      ],
+      "Done.",
+    ]);
+    const todos = events.filter((e) => e.t === "todos").map((e) => e.todos);
+    expect(todos.length).toBeGreaterThanOrEqual(2);
+    const terakhir = todos[todos.length - 1];
+    // Nothing lost, order kept, only the named item changed status.
+    expect(terakhir.map((t: any) => t.content)).toEqual([
+      "read src/tombol.ts",
+      "fix klik() in src/tombol.ts",
+      "run the tests",
+    ]);
+    expect(terakhir.map((t: any) => t.status)).toEqual([
+      "completed",
+      "pending",
+      "in_progress",
+    ]);
+  });
+
+  test("a new item is appended, not substituted", async () => {
+    const { events } = await jalankan([
+      [
+        {
+          name: "todowrite",
+          args: {
+            todos: [{ content: "read src/tombol.ts", status: "completed" }],
+          },
+        },
+      ],
+      [
+        {
+          name: "todowrite",
+          args: {
+            todos: [
+              { content: "fix klik() in src/tombol.ts", status: "in_progress" },
+            ],
+          },
+        },
+      ],
+      "Done.",
+    ]);
+    const todos = events.filter((e) => e.t === "todos").map((e) => e.todos);
+    const terakhir = todos[todos.length - 1];
+    expect(terakhir.map((t: any) => t.content)).toEqual([
+      "read src/tombol.ts",
+      "fix klik() in src/tombol.ts",
+    ]);
+  });
+});
+
 describe("the goal is pinned in front of the model", () => {
   test("every model call carries the request verbatim in the system message", async () => {
     const { dilihat } = await jalankan([

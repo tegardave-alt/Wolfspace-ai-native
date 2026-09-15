@@ -967,6 +967,66 @@ const _TODO_ICON = {
   pending: "[ ]",
 };
 
+/** A checklist line back to the object todowrite would have sent. */
+function _bacaBaris(line) {
+  const m = /^\[([x→\- ])\]\s*(.*)$/.exec(String(line || ""));
+  if (!m) return { content: String(line || "").trim(), status: "pending" };
+  const status =
+    m[1] === "x"
+      ? "completed"
+      : m[1] === "→"
+        ? "in_progress"
+        : m[1] === "-"
+          ? "cancelled"
+          : "pending";
+  return { content: m[2].trim(), status };
+}
+
+const _intiTodo = (t) =>
+  String(t || "")
+    .replace(/^\[[x→\-! ]\]\s*/, "")
+    .trim()
+    .toLowerCase();
+
+/**
+ * todowrite MERGES into the live checklist; it never replaces it.
+ *
+ * WHAT WENT WRONG. The tool's contract is "send the full list", and models do
+ * not honour it under pressure: about to run a command, one sends
+ * `[{content: "run the tests", status: "in_progress"}]` -- and the panel above
+ * the input box, which existed to show the whole plan WHILE working, became
+ * that one line. Every earlier item was gone from the screen and from
+ * task_checklist, so nothing could say they were still unfinished.
+ *
+ * So the incoming list is applied to the existing one: an item that matches
+ * an existing line (same text, or one containing the other) UPDATES its
+ * status; a new item is APPENDED; an existing item the model did not mention
+ * is KEPT as it was. Removing an item is still possible -- mark it cancelled.
+ * The model loses nothing it could legitimately want, and the plan cannot be
+ * lost by omission.
+ */
+function gabungTodos(checklist, todosBaru) {
+  const ada = (checklist || []).map(_bacaBaris).filter((t) => t.content);
+  const baru = (Array.isArray(todosBaru) ? todosBaru : [])
+    .map((t) => ({
+      content: String((t && t.content) || "").trim(),
+      status: (t && t.status) || "pending",
+    }))
+    .filter((t) => t.content);
+  if (ada.length === 0) return baru;
+  const hasil = ada.map((t) => ({ ...t }));
+  for (const t of baru) {
+    const k = _intiTodo(t.content);
+    const i = hasil.findIndex((h) => {
+      const hk = _intiTodo(h.content);
+      return hk === k || hk.includes(k) || k.includes(hk);
+    });
+    if (i >= 0) hasil[i].status = t.status;
+    else hasil.push(t);
+  }
+  return hasil;
+}
+
 function formatChecklist(todos) {
   if (!Array.isArray(todos)) return [];
   return todos
@@ -2224,6 +2284,16 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           if (rawArgs.trim()) {
             try {
               args = JSON.parse(rawArgs);
+              if (
+                tc.function.name === "todowrite" &&
+                Array.isArray(args.todos)
+              ) {
+                // Merge, never replace: see gabungTodos. Rewritten in place so
+                // the tool's own emit and the checklist sync below both see
+                // the merged list.
+                args.todos = gabungTodos(state.task_checklist, args.todos);
+                tc.function.arguments = JSON.stringify(args);
+              }
             } catch (e) {
               // The argument JSON failed to parse (large truncated content, for
               // instance). Do NOT run the tool with empty args — that is what made
