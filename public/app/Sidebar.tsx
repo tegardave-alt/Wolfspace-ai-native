@@ -676,6 +676,18 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   const [renamingBranch, setRenamingBranch] = React.useState<any>(null);
   const [editingFolder, setEditingFolder] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
+  const [addingRemote, setAddingRemote] = React.useState(false);
+  const [urlRemote, setUrlRemote] = React.useState("");
+  const doAddRemote = (url: any) => {
+    const u = String(url || "").trim();
+    setAddingRemote(false);
+    if (!u) return; // cancel, like an empty commit message
+    run(
+      "/ww/remote/add",
+      { path, url: u },
+      (r: any) => "remote added: " + (r.url || u),
+    );
+  };
   const [pesanCommit, setPesanCommit] = React.useState("");
   // The stash list. It used to be invisible: the branch switcher created
   // stashes and then told the user to run `git stash pop` in a terminal to
@@ -694,6 +706,13 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   // and its button stop their own mousedown so a click inside is not also a
   // click outside.
   const [menuOpen, setMenuOpen] = React.useState(false);
+  // null = not loaded yet; [] = loaded, none configured.
+  const [remotes, setRemotes] = React.useState<any[] | null>(null);
+  const [github, setGithub] = React.useState<any>(null);
+  const adaOrigin = !!(
+    remotes && remotes.some((x: any) => x.name === "origin")
+  );
+  const origin = remotes ? remotes.find((x: any) => x.name === "origin") : null;
   React.useEffect(() => {
     if (!menuOpen) return;
     const close = () => setMenuOpen(false);
@@ -731,6 +750,23 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     wwApi("/ww/branches?path=" + encodeURIComponent(path)).then((r: any) => {
       if (alive) setBr(r || { repo: false, current: null, branches: [] });
     });
+    // The remotes, so the menu can tell "no remote yet" from "push failed".
+    // A folder created in the editor has none, and git's own refusal for that
+    // case talks about access rights -- the wrong problem entirely.
+    wwApi("/ww/remotes", { method: "POST", body: { path } }).then((r: any) => {
+      if (alive) setRemotes(r && r.ok ? r.remotes || [] : []);
+    });
+    // Whether the GitHub panel has a repository linked: that is what "Connect
+    // to GitHub" would connect to, and the item is only offered when it can
+    // actually do something.
+    fetch("/github/status")
+      .then((r) => r.json())
+      .then((j) => {
+        if (alive) setGithub(j && j.tersambung ? j : null);
+      })
+      .catch(() => {
+        if (alive) setGithub(null);
+      });
     return () => {
       alive = false;
     };
@@ -1467,6 +1503,23 @@ function WorkspaceGitPanel({ path, onClose }: any) {
           Escape or empty cancels. A commit with no message is deliberately not
           offered — a git history full of identical messages cannot be read back
           when it is needed. */}
+      {/* Manual remote URL, only when no GitHub repository is linked. Same
+          shape as the commit form: Enter adds it, Escape or empty cancels. */}
+      {addingRemote && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          <input
+            autoFocus
+            value={urlRemote}
+            placeholder="https://github.com/user/repo.git (Enter to add, Esc to cancel)"
+            onChange={(e: any) => setUrlRemote(e.target.value)}
+            onKeyDown={(e: any) => {
+              if (e.key === "Enter") doAddRemote(urlRemote);
+              else if (e.key === "Escape") setAddingRemote(false);
+            }}
+            style={commitInputStyle}
+          />
+        </div>
+      )}
       {committing && (
         <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
           <input
@@ -1596,8 +1649,19 @@ function WorkspaceGitPanel({ path, onClose }: any) {
                   type="button"
                   role="menuitem"
                   className="btn-reset dots-item"
-                  title={op.title}
-                  disabled={busy}
+                  // Disabled, not hidden, when there is no remote: the menu
+                  // keeps one shape, and the tooltip says what is missing
+                  // instead of letting a press fail with git's text about
+                  // access rights.
+                  title={
+                    adaOrigin
+                      ? op.title +
+                        (origin && origin.pushUrl
+                          ? "  ->  " + origin.pushUrl
+                          : "")
+                      : "No remote yet - connect this folder to a repository first"
+                  }
+                  disabled={busy || !adaOrigin}
                   onClick={() => {
                     setMenuOpen(false);
                     runRemote(op);
@@ -1606,6 +1670,46 @@ function WorkspaceGitPanel({ path, onClose }: any) {
                   {op.label}
                 </button>
               ))}
+              {remotes !== null && !adaOrigin && (
+                // The fix for the state above, in the same menu. With a
+                // repository linked in the GitHub panel this is one click:
+                // the server builds the URL from the link. Without one it
+                // asks for a URL inline, like the commit message does.
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="btn-reset dots-item"
+                  title={
+                    github && github.taut
+                      ? "git remote add origin https://github.com/" +
+                        github.taut.owner +
+                        "/" +
+                        github.taut.repo +
+                        ".git"
+                      : github
+                        ? "No repository linked in the GitHub panel yet - enter a URL"
+                        : "Enter the remote URL (connect GitHub in the composer for one click)"
+                  }
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (github && github.taut) {
+                      run(
+                        "/ww/remote/add",
+                        { path, github: true },
+                        (r: any) => "connected to " + (r.url || "GitHub"),
+                      );
+                    } else {
+                      setUrlRemote("");
+                      setAddingRemote(true);
+                    }
+                  }}
+                >
+                  {github && github.taut
+                    ? "Connect to " + github.taut.owner + "/" + github.taut.repo
+                    : "Add remote…"}
+                </button>
+              )}
               <div className="dots-sep" />
               <button
                 type="button"
