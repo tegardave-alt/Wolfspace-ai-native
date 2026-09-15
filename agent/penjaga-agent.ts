@@ -247,6 +247,15 @@ export interface KonteksLingkup {
   rencanaAwal?: readonly string[];
   /** Paths the agent has read this run, normalised. */
   dibaca?: Iterable<string>;
+  /**
+   * The request is to BUILD something new. Then a write to a file the task
+   * does not name is the task itself, not drift: the goal "make a landing
+   * page" names no file, and index.html has to come from somewhere. Only
+   * edits to files that already exist and were not read are still measured.
+   */
+  membuat?: boolean;
+  /** Paths that exist in the workspace, for the create-mode distinction. */
+  ada?: (path: string) => boolean;
 }
 
 export interface PutusanLingkup {
@@ -275,6 +284,11 @@ export function diLuarLingkup(
   }
   const target = _normPath(a.path);
   if (!target) return { luar: true, sebab: "write without a path" };
+  // Create mode: a NEW file is the deliverable. Measured before this
+  // existed: "Buatkan halaman web" -> write index.html -> held as outside the
+  // task, because nothing was named. An existing file still has to be read
+  // or named, so create mode cannot become a licence to rewrite the project.
+  if (ctx.membuat && !(ctx.ada && ctx.ada(target))) return { luar: false };
 
   const disebut = new Set(
     jalurDisebut(

@@ -2653,10 +2653,6 @@ function Composer({
     });
   };
 
-  // Debug val changes
-  useEffect(() => {
-    console.log("[Composer] val changed to:", val);
-  }, [val]);
   useEffect(() => {
     const h = (e: any) => {
       const next = String(e.detail || "");

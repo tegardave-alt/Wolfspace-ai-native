@@ -1151,6 +1151,23 @@ function tujuanDari(messages: any[]): string {
   return "";
 }
 
+/**
+ * Is this a request to BUILD something new? Named files or "fix/change"
+ * verbs mean modification; "make/build/create" a web/page/site/app/script
+ * with no file named means creation.
+ */
+function permintaanMembuat(tujuan: string): boolean {
+  const t = String(tujuan || "").toLowerCase();
+  if (!t) return false;
+  // A named existing file points at modification.
+  if (/\b[\w./-]+\.(tsx?|jsx?|css|html|py|json|md)\b/.test(t)) return false;
+  const buat =
+    /\b(buat(kan)?|bikin(kan)?|bangun|rancang|create|build|make|generate|scaffold|write)\b/;
+  const benda =
+    /\b(web(site|page|site)?|halaman|situs|landing|app|apps|aplikasi|application|game|script|skrip|komponen|component|dashboard|form|portfolio|portofolio|blog|toko|store)\b/;
+  return buat.test(t) && benda.test(t);
+}
+
 let _bentukState: any = null;
 function bentukState() {
   if (_bentukState) return _bentukState;
@@ -1197,6 +1214,12 @@ function bentukState() {
     // later -- not todowrite, not compaction, not a resume -- may replace it.
     // This is the anchor the scope guard measures every write against.
     tujuan: Annotation({ reducer: (x, y) => x || y, default: () => "" }),
+    // Set once from the goal: a request to BUILD something new. In that mode
+    // exploring the workspace is drift, not diligence -- see langkahBaca.
+    modeBuat: Annotation({ reducer: (x, y) => y, default: () => false }),
+    // Consecutive tool steps with no write while in create mode. Reset by
+    // the first write. Two of them earn a nudge.
+    langkahBaca: Annotation({ reducer: (x, y) => y, default: () => 0 }),
     // The planner's lines as written, before todowrite touched them. Same
     // rule: set once. task_checklist is the LIVE list; this is the contract.
     rencanaAwal: Annotation({
@@ -1879,7 +1902,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           const sysTujuan = { ...activeMessages[0] };
           sysTujuan.content +=
             "\n\n[TASK - the user's request, verbatim. Every action must serve it; anything outside it needs the user's approval]:\n" +
-            String(state.tujuan).trim();
+            String(state.tujuan).trim() +
+            (state.modeBuat
+              ? "\n[MODE: CREATE - nothing to find; write the files, then check the result. Do not survey the workspace.]"
+              : "");
           activeMessages[0] = sysTujuan;
         }
         if (state.task_checklist && state.task_checklist.length > 0) {
@@ -2710,6 +2736,21 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           checklist: state.task_checklist || [],
           rencanaAwal: state.rencanaAwal || [],
           dibaca: state.berkasDibaca || new Set(),
+          membuat: !!state.modeBuat,
+          // Existence is checked against the workspace root the tools use,
+          // so a relative path means the same thing here as in `write`.
+          ada: (p: string) => {
+            try {
+              const akar = _wsRoot || process.cwd();
+              return require("fs").existsSync(
+                require("path").isAbsolute(p)
+                  ? p
+                  : require("path").join(akar, p),
+              );
+            } catch (_) {
+              return false;
+            }
+          },
         };
         const _luarLingkup = new Map();
         for (const tc of calls) {
@@ -2825,6 +2866,32 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         const toolMessages: any[] = [];
         let stopReason = "";
         let waitForAnswer = false;
+        // CREATE MODE DRIFT. The report: asked to build a web page, the agent
+        // listed and searched the folder "for an approach" instead of writing
+        // it. Read-only steps are counted while nothing has been written; the
+        // second one earns a nudge in the model's own turn. A write resets it.
+        const adaTulis = calls.some((tc) =>
+          _penjagaAgent.WRITE_TOOLS.includes(tc.function.name),
+        );
+        let langkahBaca = state.langkahBaca || 0;
+        let pesanDorong: any = null;
+        if (state.modeBuat && !adaTulis && (state.edits || 0) === 0) {
+          langkahBaca += 1;
+          if (langkahBaca === 2) {
+            emit({
+              t: "thought",
+              m: "Two steps of exploring with nothing written - the task is to CREATE. Nudging the model to write.",
+              ok: false,
+            });
+            pesanDorong = {
+              role: "user",
+              content:
+                "[SYSTEM] You were asked to CREATE something new. Two steps have gone to listing and searching the workspace; nothing has been written. Stop exploring: write the files now (write/edit), then check the result.",
+            };
+          }
+        } else if (adaTulis) {
+          langkahBaca = 0;
+        }
         let localSummary = "";
         // The per-item failure map after this step. Computed once every tool has
         // finished (see the MAX_ITEM_ATTEMPTS gate below).
@@ -3029,13 +3096,14 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         sess.editFailCount = editFailCount;
 
         return {
-          messages: toolMessages,
+          messages: pesanDorong ? [...toolMessages, pesanDorong] : toolMessages,
           step: state.step + 1,
           edits: localEdits,
           editLog: localEditLog,
           accessedEvidence: Array.from(localAccessed),
           berkasDibaca: Array.from(localDibaca),
           failedTools: Array.from(localFailed),
+          langkahBaca,
           ...(sebabGagalLangkahIni.length ? { checklistFails: failsBaru } : {}),
           stopReason,
           waitForAnswer,
@@ -3732,7 +3800,11 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         dlog("self", "warn", "pre_search_failed", { error: e.message });
       }
       finalState = await app.invoke(
-        { messages, tujuan: tujuanDari(messages) },
+        {
+          messages,
+          tujuan: tujuanDari(messages),
+          modeBuat: permintaanMembuat(tujuanDari(messages)),
+        },
         config,
       );
     }

@@ -80,7 +80,11 @@ export function promptRencana(permintaan: string): string {
   return (
     "Anda adalah AI Planner. Berdasarkan permintaan user, buat checklist SANGAT " +
     'SINGKAT (maksimal 3 langkah). Tiap langkah di baris baru diawali "- ". ' +
-    "JANGAN detail — langsung ke inti tugas. Jangan tambahkan teks lain.\n\n" +
+    "JANGAN detail — langsung ke inti tugas. Jangan tambahkan teks lain. " +
+    "Jika permintaannya MEMBUAT sesuatu yang baru (halaman web, situs, " +
+    "aplikasi, skrip) dan tidak menyebut berkas yang sudah ada, langkah " +
+    "pertama HARUS menulis berkasnya — bukan menjelajah atau mencari " +
+    "pendekatan.\n\n" +
     "Permintaan: " +
     permintaan
   );
