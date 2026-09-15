@@ -91,9 +91,13 @@ describe("no invented duration", () => {
 
 describe("the run records when it happened", () => {
   test("a start stamp is written once, where the run begins", () => {
-    const i = APP.indexOf("const mulaiMs = Date.now();");
+    // A resumed run (after an approval) keeps the stamp its bubble already
+    // has; only a fresh run takes the clock. Still one stamp, still here.
+    const i = APP.indexOf(
+      "const mulaiMs = (agenLama && agenLama.mulaiMs) || Date.now();",
+    );
     expect(i).toBeGreaterThan(-1);
-    expect(APP.slice(i, i + 120)).toMatch(/upd\(\{ mulaiMs \}\)/);
+    expect(APP.slice(i, i + 160)).toMatch(/upd\(\{ mulaiMs \}\)/);
     // Beside evlist, which is the run's own beginning.
     expect(APP.slice(Math.max(0, i - 300), i)).toMatch(/const evlist/);
   });
