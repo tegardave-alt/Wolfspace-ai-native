@@ -6373,21 +6373,87 @@ button.aal-row:focus-visible {
      content it scrolls. */
   overflow: hidden;
 }
+/* ── Explorer header ──
+ *
+ * A collapsible trigger, not a tab. The row is 36px on the token grid, the
+ * label is a ghost button that fills it, and the actions sit at the end as
+ * icon buttons of one size. Everything reads from :root -- the row used to
+ * carry #212a36, #6f7d92, #4c8bf5 and #e6edf3 inline, none of them tokens,
+ * which is why it never matched the sidebar beside it. */
+.lf-kepala {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  height: 36px;
+  padding: 0 6px 0 6px;
+  border-bottom: 1px solid var(--line);
+}
 .lf-judul {
-  background: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
   border: 0;
+  border-radius: 6px;
+  background: none;
   font: inherit;
-  color: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: 0.01em;
+  color: var(--text-soft);
+  cursor: pointer;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
 }
 .lf-judul:hover {
-  color: #fff;
+  background: var(--surface-3);
+  color: var(--text);
+}
+.lf-judul:active {
+  background: var(--surface-2);
 }
 /* Keyboard focus must NOT disappear with the border that was removed when the
-   panel collapsed. */
+   panel collapsed. Ring, not outline-offset: the same focus shape as the
+   other ghost buttons here. */
 .lf-judul:focus-visible {
-  outline: 2px solid #4c8bf5;
-  outline-offset: -2px;
-  border-radius: 3px;
+  outline: none;
+  box-shadow:
+    0 0 0 2px var(--bg),
+    0 0 0 4px var(--accent);
+}
+.lf-chevron {
+  flex-shrink: 0;
+  color: var(--text-muted);
+  transition: transform 0.15s ease;
+}
+.lf-judul[aria-expanded="false"] .lf-chevron {
+  transform: rotate(-90deg);
+}
+.lf-alat {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  position: relative;
+  color: var(--text-muted);
+}
+/* One icon-button size for every action in the row (shadcn `size="icon"`,
+   at this density). */
+.lf-alat .alat-btn {
+  width: 26px;
+  height: 26px;
+  border-radius: 6px;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  color: inherit;
+}
+.lf-alat .alat-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
 }
 
 /* The way back to a hidden explorer, in the editor's tab bar. Sized and

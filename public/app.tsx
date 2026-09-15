@@ -2293,53 +2293,40 @@ function LogicFileTree({
         onMouseDown={handleLfResizerMouseDown}
         title="Drag to resize"
       />
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          height: "38px",
-          padding: "0 8px 0 12px",
-          borderBottom: "1px solid #212a36",
-          gap: "4px",
-        }}
-      >
+      <div className="lf-kepala">
         {/* THE LABEL IS THE CONTROL, and it is a real <button>. A <span> with
             onClick cannot be reached by Tab and announces nothing to a screen
             reader — the agent timeline in this repo was fixed for exactly that
-            reason. */}
+            reason.
+
+            Styled as a collapsible trigger, the shadcn way: a ghost button the
+            whole row wide, a chevron that says "this folds", a muted label,
+            and hover that tints the surface instead of recolouring the text.
+            The 2px blue underline it used to wear is a TAB affordance — it
+            promised siblings to switch to, and there were none. */}
         <button
           className="btn-reset lf-judul"
           onClick={onSembunyi}
           title="Hide the explorer"
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "6px",
-            flex: 1,
-            fontSize: "13px",
-            padding: "9px 0",
-            color: "#e6edf3",
-            cursor: "pointer",
-            borderBottom: "2px solid #4c8bf5",
-          }}
+          aria-expanded="true"
         >
-          <span
+          <svg
+            className="lf-chevron"
             aria-hidden="true"
-            style={{ fontSize: "10px", color: "#6f7d92" }}
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
           >
-            ▾
-          </span>
+            <path d="m6 9 6 6 6-6" />
+          </svg>
           <span>Explorer</span>
         </button>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "2px",
-            color: "#6f7d92",
-            position: "relative",
-          }}
-        >
+        <div className="lf-alat">
           {/* Two buttons that used to be here — "Search" and "Collapse all" —
               had no onClick at all: they were decoration from the start. Only
               one is left, and this one genuinely works. */}
@@ -2355,17 +2342,6 @@ function LogicFileTree({
             onClick={() =>
               setMenuAlat((v: any) => (v === "folder" ? null : "folder"))
             }
-            style={{
-              color: "inherit",
-              width: "24px",
-              height: "24px",
-              borderRadius: "5px",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: akarAda ? "pointer" : "not-allowed",
-              opacity: akarAda ? 1 : 0.4,
-            }}
           >
             {/* A folder with a + in the corner, drawn with the same strokes as
                 the file icon beside it (viewBox 24, strokeWidth 2). */}
@@ -2394,17 +2370,6 @@ function LogicFileTree({
             onClick={() =>
               setMenuAlat((v: any) => (v === "berkas" ? null : "berkas"))
             }
-            style={{
-              color: "inherit",
-              width: "24px",
-              height: "24px",
-              borderRadius: "5px",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: akarAda ? "pointer" : "not-allowed",
-              opacity: akarAda ? 1 : 0.4,
-            }}
           >
             {/* A document sheet with a + in the corner — the "new file" icon
                 the same shape as VS Code's, drawn with the same stroke
