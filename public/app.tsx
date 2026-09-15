@@ -1368,12 +1368,30 @@ function LogicCodePane({
             compete with them for a bar that already scrolls. */}
         {onTampilkanExplorer && (
           <button
-            className="btn-reset editor-explorer-btn"
+            className="btn-reset lf-judul editor-explorer-btn"
             onClick={onTampilkanExplorer}
             title="Show the explorer"
             aria-label="Show the explorer"
+            aria-expanded="false"
           >
-            <span aria-hidden="true">&#9656;</span>
+            {/* The SAME control as the header inside the explorer, in its
+                closed state: same class, same chevron, turned -90deg by
+                aria-expanded. One trigger, two states -- not two buttons
+                that happen to share a word. */}
+            <svg
+              className="lf-chevron"
+              aria-hidden="true"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
             <span>Explorer</span>
           </button>
         )}
