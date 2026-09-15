@@ -4743,6 +4743,96 @@ img.ar-fs-icon {
   cursor: not-allowed;
   color: #6b7280;
 }
+/* ── A2UI: the agent's proposed panel ──
+ *
+ * Drawn from a closed catalog (agent/a2ui.ts), anchored under the element
+ * Visual Draw pointed at. It floats above everything: the user is mid-
+ * decision, and the preview it controls is on the page beneath it. */
+.a2ui-panel {
+  position: fixed;
+  z-index: 260;
+  width: 320px;
+  max-height: 60vh;
+  overflow: auto;
+  padding: 10px;
+  border-radius: var(--r-md);
+  background: var(--surface-2);
+  border: 1px solid var(--line-strong);
+  box-shadow: var(--shadow-panel);
+  color: var(--text);
+  font-size: 12.5px;
+}
+.a2ui-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.a2ui-judul {
+  font-size: 13px;
+  font-weight: 700;
+}
+.a2ui-ket,
+.a2ui-teks.redup {
+  color: var(--text-muted);
+  font-size: 12px;
+  line-height: 1.45;
+}
+.a2ui-baris {
+  display: grid;
+  grid-template-columns: 84px 1fr auto;
+  align-items: center;
+  gap: 8px;
+}
+.a2ui-label {
+  color: var(--text-soft);
+}
+.a2ui-nilai {
+  min-width: 40px;
+  text-align: right;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text-muted);
+}
+.a2ui-baris input[type="range"] {
+  width: 100%;
+  accent-color: var(--accent);
+}
+.a2ui-baris select {
+  background: var(--surface-3);
+  color: var(--text);
+  border: 1px solid var(--line-strong);
+  border-radius: 6px;
+  padding: 3px 6px;
+  font: inherit;
+}
+.a2ui-aksi {
+  display: flex;
+  justify-content: flex-end;
+  gap: 6px;
+  margin-top: 4px;
+}
+.a2ui-btn {
+  padding: 5px 11px;
+  border-radius: 6px;
+  font: inherit;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-soft);
+  background: var(--surface-3);
+}
+.a2ui-btn:hover {
+  color: var(--text);
+}
+.a2ui-btn.utama {
+  color: #fff;
+  background: var(--accent);
+}
+.a2ui-btn.utama:hover {
+  background: var(--accent-hover);
+}
+.a2ui-btn.bahaya {
+  color: var(--danger);
+}
 .dots-sep {
   height: 1px;
   margin: 4px 0;

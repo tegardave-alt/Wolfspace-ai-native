@@ -50,6 +50,7 @@ const BERKAS_MIGRASI = [
   "agent/pseudo-tag-filter.ts",
   "agent/tools.ts",
   "agent/trace.ts",
+  "agent/a2ui.ts",
   "agent/penjaga-agent.ts",
   "agent/perencana-agent.ts",
   "agent/python-agent.ts",
@@ -105,6 +106,7 @@ const BERKAS_MIGRASI = [
   "public/app/VisualTools.tsx",
   "public/app/globals.d.ts",
   "public/app/usePreviewPanel.tsx",
+  "public/app/A2UI.tsx",
   "scripts/ww.ts",
   "server.ts",
 ];

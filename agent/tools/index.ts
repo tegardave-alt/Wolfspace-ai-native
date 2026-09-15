@@ -2207,6 +2207,35 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
         fields,
       };
     }
+    if (name === "ui_propose") {
+      const a2ui = require("../a2ui.ts");
+      const v = a2ui.validasi(args);
+      if (!v.ok) {
+        // Rejected like a bad edit: the reason goes back to the model so it
+        // can resend, and nothing reaches the screen.
+        return {
+          ok: false,
+          output: "ui_propose rejected: " + v.error,
+        };
+      }
+      const n = v.proposal.components.length;
+      return {
+        ok: true,
+        output:
+          "Panel shown to the user (" +
+          n +
+          " components, anchored to " +
+          v.proposal.anchor +
+          "). Wait: the next user message will be '[a2ui:apply] {...}', " +
+          "'[a2ui:choose] {...}' or '[a2ui:cancel] {}'. Do not edit anything " +
+          "until it arrives.",
+        needsAnswer: true,
+        a2ui: v.proposal,
+        question: "Adjust the panel and press Apply or Cancel.",
+        choices: [],
+        fields: [],
+      };
+    }
     if (name === "terminal_open") {
       if (!term)
         return {
