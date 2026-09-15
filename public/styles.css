@@ -4743,6 +4743,14 @@ img.ar-fs-icon {
   cursor: not-allowed;
   color: #6b7280;
 }
+/* While a splitter is being dragged, no iframe may take the pointer: a
+   mousemove over an iframe lands in ITS document, and the drag listener on
+   this one never hears it. Set by geserPembagi() for the drag's duration. */
+body.menyeret-pembagi iframe,
+body.menyeret-pembagi webview {
+  pointer-events: none;
+}
+
 /* ── A2UI: the agent's proposed panel ──
  *
  * Drawn from a closed catalog (agent/a2ui.ts), anchored under the element

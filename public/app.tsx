@@ -3849,19 +3849,89 @@ function App() {
   // their setter, and both hardcoded clientX — so once a panel could move to the
   // bottom, dragging the horizontal splitter would resize using a coordinate
   // from the wrong axis. The axis now follows the panel's POSITION.
-  const geserPembagi = (sumbu: any, set: any) => (e: any) => {
+  const geserPembagi = (sumbu: any, set: any, nama?: any) => (e: any) => {
     e.preventDefault();
+    // The panel this splitter belongs to, measured ONCE at mousedown: its far
+    // edge (right, or bottom, or -- on the left side -- left) is what the
+    // width is taken from. For the panel at the window's edge this equals
+    // the old window-based maths; for a panel next to another panel it is
+    // the only maths that works.
+    let tepi: number | null = null;
+    let kiri = false;
+    // A divider BETWEEN two panels moves width from one to the other: the
+    // pair's total stays put. Without this the side's budget (chat keeps
+    // 20%) absorbed the change and scaled BOTH panels: a 150px drag moved
+    // the divider 16px. With it, the neighbour toward chat gives up exactly
+    // what this panel gains, and the divider follows the pointer.
+    let tetangga: { nama: string; set: any; pct: number } | null = null;
+    let pctAwal = 0;
+    // The percentage is of the CONTAINER (.chat-split: the window minus the
+    // sidebar), because that is what `calc(pct% - 6px)` is resolved against.
+    // Measuring the pointer against the window instead made a 150px drag
+    // move the divider 38px. Falls back to the window when unnamed.
+    let ukuran: number | null = null;
+    if (nama) {
+      const el = document.querySelector('[data-panel="' + nama + '"]');
+      const p = _panelTerbuka.find((x: any) => x.nama === nama);
+      kiri = !!(p && p.sisi === "kiri");
+      if (el) {
+        const r = el.getBoundingClientRect();
+        tepi = sumbu === "x" ? (kiri ? r.left : r.right) : r.bottom;
+        const w = el.parentElement && el.parentElement.getBoundingClientRect();
+        if (w) ukuran = sumbu === "x" ? w.width : w.height;
+      }
+      if (p) {
+        pctAwal = p.pct;
+        const seSisi = _panelTerbuka.filter((x: any) => x.sisi === p.sisi);
+        const i = seSisi.findIndex((x: any) => x.nama === nama);
+        // Toward chat: the previous panel on a right/bottom side, the next
+        // one on the left.
+        const t = kiri ? seSisi[i + 1] : seSisi[i - 1];
+        if (t) {
+          const setter: any = {
+            terminal: setTerminalPct,
+            preview: setPanelPct,
+            logic: setLogicPct,
+          };
+          tetangga = { nama: t.nama, set: setter[t.nama], pct: t.pct };
+        }
+      }
+    }
     const move = (ev: any) => {
-      const total = sumbu === "x" ? window.innerWidth : window.innerHeight;
+      const total =
+        ukuran || (sumbu === "x" ? window.innerWidth : window.innerHeight);
       const dari = sumbu === "x" ? ev.clientX : ev.clientY;
-      set(Math.min(75, Math.max(12, ((total - dari) / total) * 100)));
+      const jarak =
+        tepi === null
+          ? (sumbu === "x" ? window.innerWidth : window.innerHeight) - dari
+          : kiri
+            ? dari - tepi
+            : tepi - dari;
+      let baru = Math.min(75, Math.max(12, (jarak / total) * 100));
+      if (tetangga) {
+        // The neighbour may not shrink below its own floor; that caps the
+        // gain rather than letting the pair grow.
+        const sisa = tetangga.pct - (baru - pctAwal);
+        if (sisa < 12) baru = pctAwal + (tetangga.pct - 12);
+        tetangga.set(tetangga.pct - (baru - pctAwal));
+      }
+      set(baru);
     };
     const up = () => {
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
       document.body.style.userSelect = "";
+      document.body.classList.remove("menyeret-pembagi");
     };
     document.body.style.userSelect = "none";
+    // IFRAMES SWALLOW THE DRAG. A mousemove over an <iframe> is delivered to
+    // the iframe's document, not to this one, so the moment the pointer
+    // crossed into the Live Browser the splitter stopped following it --
+    // measured: mousedown reached the divider, the panel never changed. The
+    // body class turns pointer-events off on every iframe for the duration
+    // of the drag (see .menyeret-pembagi in styles.css), the same trick VS
+    // Code uses for its sashes.
+    document.body.classList.add("menyeret-pembagi");
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   };
@@ -4423,10 +4493,31 @@ function App() {
   // width); once Code became the third panel, that pattern meant editing all
   // four and hoping none was missed.
   const _panelTerbuka = [
-    terminalOpen && { sisi: posisi.terminal, pct: terminalPct },
-    panelOpen && { sisi: posisi.preview, pct: panelPct },
-    logicOpen && { sisi: posisi.logic, pct: logicPct },
+    terminalOpen && {
+      nama: "terminal",
+      sisi: posisi.terminal,
+      pct: terminalPct,
+    },
+    panelOpen && { nama: "preview", sisi: posisi.preview, pct: panelPct },
+    logicOpen && { nama: "logic", sisi: posisi.logic, pct: logicPct },
   ].filter(Boolean);
+  // A panel's place among the OPEN panels on its own side, in DOM order.
+  // Two panels on one side used to share one order number, so both of their
+  // splitters sorted before both panels: [chat][div][div][preview][logic],
+  // and nothing sat between preview and logic. Reported as "there is no
+  // resize between Web Dev and the code editor".
+  const _indeksSisi = (nama: any) => {
+    const p = _panelTerbuka.find((x: any) => x.nama === nama);
+    if (!p) return 0;
+    return _panelTerbuka
+      .filter((x: any) => _grup(x.sisi) === _grup(p.sisi) && x.sisi === p.sisi)
+      .findIndex((x: any) => x.nama === nama);
+  };
+  const _jumlahSisi = (nama: any) => {
+    const p = _panelTerbuka.find((x: any) => x.nama === nama);
+    if (!p) return 1;
+    return _panelTerbuka.filter((x: any) => x.sisi === p.sisi).length;
+  };
   const _adaPanel = _panelTerbuka.length > 0;
   // The last safety net: if the final panel is closed while chat is hidden, the
   // screen goes completely empty with no visible way back. The menu already
@@ -4539,20 +4630,32 @@ function App() {
   // gap lets first-row values be inserted without colliding.
   const _chatKanan = posisi.chat === "kanan";
   const _ORDER_CHAT = _chatKanan ? 10 : 0;
-  const _orderPanel = (sisi: any) =>
-    sisi === "bawah" ? 20 : sisi === "kiri" ? -2 : _chatKanan ? 12 : 2;
+  //
+  // With several panels on ONE side the numbers run in sequence, panel by
+  // panel: right side [chat][d0][p0][d1][p1], left side [p0][d0][p1][d1][chat].
+  // The single-panel case is unchanged: kanan 2/1, kiri -2/-1.
+  const _orderPanel = (sisi: any, nama?: any) => {
+    if (sisi === "bawah") return 20;
+    const i = nama ? _indeksSisi(nama) : 0;
+    if (sisi === "kiri") return -2 * ((nama ? _jumlahSisi(nama) : 1) - i);
+    return (_chatKanan ? 12 : 2) + 2 * i;
+  };
   // The splitter always sits on the panel side FACING chat, which is why it is
   // one step before the panel it belongs to rather than a constant.
-  const _orderPembagi = (sisi: any) =>
-    sisi === "bawah" ? 20 : sisi === "kiri" ? -1 : _chatKanan ? 11 : 1;
+  const _orderPembagi = (sisi: any, nama?: any) =>
+    sisi === "bawah"
+      ? 20
+      : sisi === "kiri"
+        ? _orderPanel(sisi, nama) + 1
+        : _orderPanel(sisi, nama) - 1;
 
-  const gayaPanel = (sisi: any, pct: any) =>
+  const gayaPanel = (sisi: any, pct: any, nama?: any) =>
     sisi === "bawah"
       ? {
           flex: "0 0 auto",
           width: "100%",
           height: "calc(" + pct * _skalaSisi("bawah") + "% - 6px)",
-          order: _orderPanel(sisi),
+          order: _orderPanel(sisi, nama),
         }
       : {
           // With no chat, the right-hand panels EXPAND to fill the row. Their
@@ -4565,17 +4668,17 @@ function App() {
             ? pct + " 1 0%"
             : "0 0 calc(" + pct * _skalaSisi("kanan") + "% - 6px)",
           height: tinggiAtas + "%",
-          order: _orderPanel(sisi),
+          order: _orderPanel(sisi, nama),
         };
-  const gayaPembagi = (sisi: any) =>
+  const gayaPembagi = (sisi: any, nama?: any) =>
     sisi === "bawah"
       ? {
           flex: "0 0 auto",
           width: "100%",
           height: "6px",
-          order: _orderPembagi(sisi),
+          order: _orderPembagi(sisi, nama),
         }
-      : { order: _orderPembagi(sisi), height: tinggiAtas + "%" };
+      : { order: _orderPembagi(sisi, nama), height: tinggiAtas + "%" };
 
   return (
     <>
@@ -4767,16 +4870,18 @@ function App() {
                       "split-divider" +
                       (posisi.terminal === "bawah" ? " split-divider-h" : "")
                     }
-                    style={gayaPembagi(posisi.terminal)}
+                    style={gayaPembagi(posisi.terminal, "terminal")}
                     onMouseDown={geserPembagi(
                       posisi.terminal === "bawah" ? "y" : "x",
                       setTerminalPct,
+                      "terminal",
                     )}
                   />
                   <div
                     className="terminal-col"
+                    data-panel="terminal"
                     style={{
-                      ...gayaPanel(posisi.terminal, terminalPct),
+                      ...gayaPanel(posisi.terminal, terminalPct, "terminal"),
                       display: "flex",
                       flexDirection: "column",
                       minWidth: 0,
@@ -4807,16 +4912,18 @@ function App() {
                       "split-divider" +
                       (posisi.preview === "bawah" ? " split-divider-h" : "")
                     }
-                    style={gayaPembagi(posisi.preview)}
+                    style={gayaPembagi(posisi.preview, "preview")}
                     onMouseDown={geserPembagi(
                       posisi.preview === "bawah" ? "y" : "x",
                       setPanelPct,
+                      "preview",
                     )}
                   />
                   <div
                     className="canvas-col"
+                    data-panel="preview"
                     style={{
-                      ...gayaPanel(posisi.preview, panelPct),
+                      ...gayaPanel(posisi.preview, panelPct, "preview"),
                       background: "var(--surface-1)",
                       display: "flex",
                       flexDirection: "column",
@@ -5426,15 +5533,17 @@ function App() {
                       "split-divider" +
                       (posisi.logic === "bawah" ? " split-divider-h" : "")
                     }
-                    style={gayaPembagi(posisi.logic)}
+                    style={gayaPembagi(posisi.logic, "logic")}
                     onMouseDown={geserPembagi(
                       posisi.logic === "bawah" ? "y" : "x",
                       setLogicPct,
+                      "logic",
                     )}
                   />
                   <div
+                    data-panel="logic"
                     style={{
-                      ...gayaPanel(posisi.logic, logicPct),
+                      ...gayaPanel(posisi.logic, logicPct, "logic"),
                       background: "var(--surface-1, #0f1318)",
                       display: "flex",
                       flexDirection: "column",

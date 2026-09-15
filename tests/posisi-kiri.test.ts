@@ -49,21 +49,34 @@ describe("sisi dikelompokkan per SUMBU", () => {
 
 describe("urutan visual", () => {
   test("ditentukan SATU tabel, bukan angka yang tersebar", () => {
-    expect(B).toMatch(/const _orderPanel = \(sisi(?:: \w+)?\)/);
-    expect(B).toMatch(/const _orderPembagi = \(sisi(?:: \w+)?\)/);
-    expect(B).toMatch(/order: _orderPanel\(sisi\)/);
-    expect(B).toMatch(/order: _orderPembagi\(sisi\)/);
+    expect(B).toMatch(
+      /const _orderPanel = \(sisi(?:: \w+)?(?:, nama\?: \w+)?\)/,
+    );
+    expect(B).toMatch(
+      /const _orderPembagi = \(sisi(?:: \w+)?(?:, nama\?: \w+)?\)/,
+    );
+    expect(B).toMatch(/order: _orderPanel\(sisi(?:, nama)?\)/);
+    expect(B).toMatch(/order: _orderPembagi\(sisi(?:, nama)?\)/);
   });
 
   test("panel kiri mendahului chat, panel kanan mengikutinya", () => {
     // "kanan" is no longer a flat 1. See the block below for why that number
     // made two different settings render the same layout.
-    expect(B).toMatch(/sisi === "kiri" \? -2 : _chatKanan \? 12 : 2/);
+    // Sequential per side now (see _indeksSisi): the first right panel is
+    // 2 (12 with chat on the right), the first left panel -2, and every
+    // further panel on the same side steps by 2.
+    expect(B).toMatch(/return \(_chatKanan \? 12 : 2\) \+ 2 \* i;/);
+    expect(B).toMatch(/if \(sisi === "kiri"\) return -2 \* \(/);
   });
 
   test("pembagi selalu di sisi yang MENGHADAP chat", () => {
     // Ini yang tak bisa dipatok: posisi pembagi bergantung pada posisi chat.
-    expect(B).toMatch(/sisi === "kiri" \? -1 : _chatKanan \? 11 : 1/);
+    // One step toward chat from its own panel: after it on the left, before
+    // it on the right -- so with several panels each divider sits between
+    // its panel and the previous one.
+    expect(B).toMatch(
+      /\? _orderPanel\(sisi, nama\) \+ 1\s*: _orderPanel\(sisi, nama\) - 1/,
+    );
   });
 
   test("chat memakai order yang dihitung, bukan 0 tetap", () => {
@@ -74,7 +87,7 @@ describe("urutan visual", () => {
   test("bawah tetap paling akhir, dengan jarak angka", () => {
     // Nilainya sengaja jauh (20) supaya nilai baris pertama bisa disisipkan
     // tanpa bertabrakan — dan 2 sudah dipakai pembagi kanan saat chat di kanan.
-    expect(B).toMatch(/sisi === "bawah" \? 20/);
+    expect(B).toMatch(/if \(sisi === "bawah"\) return 20;/);
   });
 });
 
@@ -144,7 +157,7 @@ describe("tiap setelan menghasilkan tata letak BERBEDA", () => {
     );
     const fn = new Function(
       "posisi",
-      potong.replace(/: any/g, "").replace(/\/\/.*$/gm, "") +
+      potong.replace(/\??: any/g, "").replace(/\/\/.*$/gm, "") +
         "\nreturn { panel: _orderPanel, pembagi: _orderPembagi, chat: _ORDER_CHAT };",
     );
     const o = fn({ chat: chatSisi });
