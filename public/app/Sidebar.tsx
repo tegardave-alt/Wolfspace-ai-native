@@ -1461,25 +1461,6 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               ? g.dirtyCount + " uncommitted changes"
               : "clean — no changes"}
         </span>
-        {g.dirty && !committing && (
-          // The last control in this panel that wore `vp-hover` -- the visual
-          // picker's outline class, stripped when the picker is switched off.
-          // Now the same pill as Pop | Drop, one tooth wide.
-          <SegmentedButtons
-            className="seg-end"
-            busy={busy}
-            items={[
-              {
-                label: "Commit",
-                title: "Commit all changes",
-                onClick: () => {
-                  setPesanCommit("");
-                  setCommitting(true);
-                },
-              },
-            ]}
-          />
-        )}
       </div>
       {/* The message field appears ONLY after the button is pressed, following
           the branch-rename pattern in the same panel: Enter submits,
@@ -1585,6 +1566,30 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               role="menu"
               onMouseDown={(e: any) => e.stopPropagation()}
             >
+              {/* Commit lives with the other git actions, not on the status
+                  line: one place for everything git does to this folder.
+                  Disabled rather than hidden when there is nothing to commit,
+                  so the menu keeps the same shape and the count says why. */}
+              <button
+                type="button"
+                role="menuitem"
+                className="btn-reset dots-item"
+                title={
+                  g.dirty
+                    ? "Commit all changes"
+                    : "Nothing to commit — the working tree is clean"
+                }
+                disabled={busy || !g.dirty || committing}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setPesanCommit("");
+                  setCommitting(true);
+                }}
+              >
+                Commit
+                {g.dirty && <span className="seg-badge">{g.dirtyCount}</span>}
+              </button>
+              <div className="dots-sep" />
               {remoteOps(br.current).map((op: any) => (
                 <button
                   key={op.key}

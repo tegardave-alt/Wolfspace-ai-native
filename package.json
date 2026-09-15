@@ -175,6 +175,7 @@
       "<rootDir>/.wolfspace/",
       "<rootDir>/vendor/"
     ],
+    "globalSetup": "<rootDir>/tests/global-setup.cjs",
     "setupFiles": [
       "<rootDir>/tests/setup-jest.cjs"
     ],

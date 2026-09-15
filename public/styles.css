@@ -4665,10 +4665,6 @@ img.ar-fs-icon {
   color: #3fb950;
   font-weight: 600;
 }
-/* A pill pushed to the right end of its row (the Commit trigger). */
-.seg-end {
-  margin-left: auto;
-}
 /* A small count (the stash total on the menu item). */
 .seg-badge {
   min-width: 15px;

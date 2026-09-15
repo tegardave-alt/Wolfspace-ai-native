@@ -106,10 +106,28 @@ describe("the menu holds the list from the screenshot", () => {
     expect(row).toMatch(/role="menu"/);
     expect(row).toMatch(/remoteOps\(br\.current\)\.map/);
     expect(row).toMatch(/role="menuitem"/);
-    const sep = row.indexOf('className="dots-sep"');
+    // Commit is the FIRST item: everything git does to this folder lives in
+    // one menu, not split between a pill on the status line and a menu.
+    const commit = row.indexOf('"Commit all changes"');
+    const remote = row.indexOf("remoteOps(br.current)");
+    const sep2 = row.lastIndexOf('className="dots-sep"');
     const stash = row.indexOf('"Show stashes" : "Hide stashes"');
-    expect(sep).toBeGreaterThan(row.indexOf("remoteOps(br.current)"));
-    expect(stash).toBeGreaterThan(sep);
+    expect(commit).toBeGreaterThan(-1);
+    expect(commit).toBeLessThan(remote);
+    // Its own separator sits between it and the remote actions.
+    expect(row.indexOf('className="dots-sep"', commit)).toBeLessThan(remote);
+    expect(sep2).toBeGreaterThan(remote);
+    expect(stash).toBeGreaterThan(sep2);
+    // Disabled when clean, never hidden — the menu keeps its shape and the
+    // count says how much is going in.
+    expect(row).toMatch(/disabled=\{busy \|\| !g\.dirty \|\| committing\}/);
+    expect(row).toMatch(
+      /g\.dirty && <span className="seg-badge">\{g\.dirtyCount\}<\/span>/,
+    );
+    // Opening the form from the menu clears the previous message.
+    expect(row).toMatch(
+      /setMenuOpen\(false\);\s*setPesanCommit\(""\);\s*setCommitting\(true\);/,
+    );
     // The count rides on the item once the list is loaded.
     expect(row).toMatch(
       /stashes !== null && \(\s*<span className="seg-badge">\{stashes\.length\}<\/span>/,
@@ -360,10 +378,18 @@ whenPossible("the ⋯ menu, rendered and used (needs playwright)", () => {
       expect(btn.x).toBeGreaterThan(ln.x + ln.width - 1);
       expect(await line()).toMatch(/^[0-9a-f]{7} · feat: second · /);
 
-      // Open: the four items, in order.
+      // Open: the five items, in order. The tree is clean, so Commit is
+      // there but disabled, with no count.
       await p.click(".dots-btn");
       await p.waitForSelector(".dots-menu", { timeout: 5000 });
-      expect(await items()).toEqual(["Fetch", "Pull", "Push", "Show stashes"]);
+      expect(await items()).toEqual([
+        "Commit",
+        "Fetch",
+        "Pull",
+        "Push",
+        "Show stashes",
+      ]);
+      expect(await p.$eval(".dots-item", (e: any) => e.disabled)).toBe(true);
       // A mousedown elsewhere in the panel closes it.
       await p.click(
         '[title="Git actions"] >> xpath=preceding-sibling::span[1]',
@@ -417,7 +443,13 @@ whenPossible("the ⋯ menu, rendered and used (needs playwright)", () => {
       ).toEqual(["Pop", "Drop"]);
       await p.click(".dots-btn");
       await p.waitForSelector(".dots-menu");
-      expect(await items()).toEqual(["Fetch", "Pull", "Push", "Hide stashes1"]);
+      expect(await items()).toEqual([
+        "Commit",
+        "Fetch",
+        "Pull",
+        "Push",
+        "Hide stashes1",
+      ]);
       await p.keyboard.press("Escape");
 
       // Pop: the work comes back and the list empties.
@@ -426,6 +458,19 @@ whenPossible("the ⋯ menu, rendered and used (needs playwright)", () => {
       await p.waitForSelector("text=stash applied", { timeout: 60000 });
       await p.waitForSelector("text=no stashes", { timeout: 15000 });
       expect(fs.existsSync(path.join(REPO, "wip.txt"))).toBe(true);
+
+      // The popped file is an uncommitted change, so Commit wakes up and
+      // carries the count; choosing it opens the message form.
+      await p.waitForSelector("text=1 uncommitted change", { timeout: 15000 });
+      await p.click(".dots-btn");
+      await p.waitForSelector(".dots-menu");
+      expect((await items())[0]).toBe("Commit1");
+      expect(await p.$eval(".dots-item", (e: any) => e.disabled)).toBe(false);
+      await p.click(".dots-item:has-text('Commit')");
+      await p.waitForSelector('input[placeholder^="Message"]', {
+        timeout: 5000,
+      });
+      expect(await menuOpen()).toBe(false);
 
       expect(errors).toEqual([]);
     } finally {
