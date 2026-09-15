@@ -289,6 +289,17 @@ describe("the panel and the agent know", () => {
     expect(SB).toMatch(/if \(!u\) return; \/\/ cancel/);
   });
 
+  test("the shell wrapper is LF, and git is told to keep it that way", () => {
+    // sh treats a trailing CR as part of the command: the wrapper would fail
+    // with ": command not found" and every push would lose its fallback. The
+    // working copy on this Windows machine came out CRLF once; the rule in
+    // .gitattributes is what stops that on every future checkout.
+    const sh = fs.readFileSync(path.join(AKAR, "scripts", "git-askpass.sh"), "utf8");
+    expect(sh).not.toMatch(/\r/);
+    const attrs = fs.readFileSync(path.join(AKAR, ".gitattributes"), "utf8");
+    expect(attrs).toMatch(/^\*\.sh\s+text\s+eol=lf/m);
+  });
+
   test("the installer ships both askpass files OUTSIDE the asar", () => {
     // git is an external process: it cannot open a file inside app.asar. The
     // scripts must be in build.files (the allowlist -- electron-builder does
