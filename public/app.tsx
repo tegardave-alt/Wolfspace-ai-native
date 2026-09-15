@@ -4060,13 +4060,28 @@ function App() {
           c[c.length - 1] = last;
           return c;
         });
-      const evlist: any[] = [];
+      // A RESUMED run continues the timeline it paused; a new run starts one.
+      //
+      // WHAT WENT WRONG. This list started empty on every call, and every
+      // upd({ events }) below REPLACES the bubble's events with it. So the
+      // first event after an approval -- the bash the user had just allowed --
+      // wiped every step before it. The timeline read "bash" and nothing
+      // else, and at the end of the run the steps shown were only those after
+      // the pause. Same bubble, same run, half the history.
+      //
+      // `messages` is the render's value: doSend is called from the approval
+      // click, after the pause was rendered, so the last bubble here is the
+      // one being resumed.
+      const lanjutan = hitlData ? messages[messages.length - 1] : null;
+      const agenLama = (lanjutan && lanjutan.agent) || null;
+      const evlist: any[] = agenLama ? [...(agenLama.events || [])] : [];
       // WHEN THE RUN ACTUALLY STARTED. The timeline used to count elapsed
       // seconds in component-local state that only ticked while the component
       // was mounted AND busy — so a run reopened from history had zero, and the
       // header printed a hardcoded "1m" instead. A real timestamp survives a
-      // remount, a reload, and a restore.
-      const mulaiMs = Date.now();
+      // remount, a reload, and a restore. A resumed run keeps its original
+      // start: the clock did not restart when the user pressed Allow.
+      const mulaiMs = (agenLama && agenLama.mulaiMs) || Date.now();
       upd({ mulaiMs });
       let think = "";
       let adoneSent = false;
