@@ -1072,6 +1072,22 @@ function describePauseActivity(finalState, sess) {
 // to be loaded, and running it at module scope would undo all the deferral above.
 // The result is memoised — the shape never changes within a process, and rebuilding
 // it per run only wastes time.
+/** The request that started the run: the LAST user message when it began. */
+function tujuanDari(messages: any[]): string {
+  for (let i = (messages || []).length - 1; i >= 0; i--) {
+    const m = messages[i];
+    if (
+      m &&
+      m.role === "user" &&
+      typeof m.content === "string" &&
+      m.content.trim()
+    ) {
+      return m.content.trim();
+    }
+  }
+  return "";
+}
+
 let _bentukState: any = null;
 function bentukState() {
   if (_bentukState) return _bentukState;
@@ -1114,6 +1130,26 @@ function bentukState() {
     pendingToolCall: Annotation({ reducer: (x, y) => y, default: () => null }),
     pendingToolCalls: Annotation({ reducer: (x, y) => y, default: () => [] }),
     task_checklist: Annotation({ reducer: (x, y) => y, default: () => [] }),
+    // The user's request that started the run. FIRST value wins: nothing
+    // later -- not todowrite, not compaction, not a resume -- may replace it.
+    // This is the anchor the scope guard measures every write against.
+    tujuan: Annotation({ reducer: (x, y) => x || y, default: () => "" }),
+    // The planner's lines as written, before todowrite touched them. Same
+    // rule: set once. task_checklist is the LIVE list; this is the contract.
+    rencanaAwal: Annotation({
+      reducer: (x, y) => (x && x.length ? x : y),
+      default: () => [],
+    }),
+    // Paths the agent has read this run. A write to a file it has looked at
+    // is investigation concluding; a write to one it has not is a new job.
+    berkasDibaca: Annotation({
+      reducer: (x, y) => {
+        const set = new Set(x);
+        y.forEach((item) => set.add(item));
+        return set;
+      },
+      default: () => new Set(),
+    }),
     // PER-ITEM checklist failures: { "<item text>": { n, sebab: [...] } }.
     // Separate from failedTools (which records TOOL NAMES, not which piece of work
     // is stuck). This is what carries failures into the ground-truth anchor.
@@ -1733,7 +1769,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           ok: true,
           output: lines.join("\n"),
         });
-        return { task_checklist: lines };
+        return { task_checklist: lines, rencanaAwal: lines };
       })
       .addNode("executor", async (state) => {
         if (isCancelled()) return { stopReason: "cancelled" };
@@ -1772,6 +1808,17 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         emit({ t: "step", n: state.step });
 
         let activeMessages = [...state.messages];
+        if (state.tujuan) {
+          // The request itself, verbatim, re-attached each step. Without this
+          // the goal was one message among dozens of tool results and the
+          // first thing compaction folded away; a model cannot lose sight of
+          // something pinned in front of it every turn.
+          const sysTujuan = { ...activeMessages[0] };
+          sysTujuan.content +=
+            "\n\n[TASK - the user's request, verbatim. Every action must serve it; anything outside it needs the user's approval]:\n" +
+            String(state.tujuan).trim();
+          activeMessages[0] = sysTujuan;
+        }
         if (state.task_checklist && state.task_checklist.length > 0) {
           const sysMsg = { ...activeMessages[0] };
           // Lines from todowrite already carry status ("[x] ...", "[→] ..."); lines
@@ -2163,6 +2210,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
 
         let localEdits = 0;
         const localAccessed = new Set();
+        const localDibaca = new Set();
         const localFailed = new Set();
         const localEditLog: any[] = [];
         // Failures are tied to the checklist ITEM being worked on, not to the tool
@@ -2326,6 +2374,14 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           const _outStr = (r.output || "").trim();
           const _nonSubstantive = _penjagaAgent.takSubstantif(_outStr);
           if (r.ok && !_nonSubstantive) localAccessed.add(r.output);
+          if (
+            r.ok &&
+            _penjagaAgent.READ_TOOLS.includes(tc.function.name) &&
+            args &&
+            args.path
+          ) {
+            localDibaca.add(String(args.path));
+          }
           if (
             !r.ok &&
             SYSTEM_RULES.REQUIRED_TOOL_SEQUENCE.includes(tc.function.name)
@@ -2560,7 +2616,31 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // the SAME request behaves differently depending on which one handled
         // it. The reasoning for gating git per OPERATION rather than by name
         // moved with the code.
-        const _perluPersetujuan = (tc) => _penjagaAgent.perluPersetujuan(tc);
+        // Scope is a second reason to ask. A write the task never named and
+        // the agent never read is not refused -- it is put to the user, the
+        // way bash already is, with the reason attached. The guard is pure
+        // and lives in penjaga-agent.ts so the Python loop applies it too.
+        const _lingkup = {
+          tujuan: state.tujuan || "",
+          checklist: state.task_checklist || [],
+          rencanaAwal: state.rencanaAwal || [],
+          dibaca: state.berkasDibaca || new Set(),
+        };
+        const _luarLingkup = new Map();
+        for (const tc of calls) {
+          const p = _penjagaAgent.diLuarLingkup(tc, _lingkup);
+          if (p.luar) _luarLingkup.set(tc.id || tc, p);
+        }
+        const _perluPersetujuan = (tc) =>
+          _penjagaAgent.perluPersetujuan(tc) || _luarLingkup.has(tc.id || tc);
+        for (const [, p] of _luarLingkup) {
+          emit({
+            t: "thought",
+            m: "Held for approval - outside the task: " + p.sebab,
+            ok: false,
+          });
+          dlog("self", "warn", "write outside task scope", p);
+        }
         const executionCalls = calls.filter(_perluPersetujuan);
         const nonExecutionCalls = calls.filter((tc) => !_perluPersetujuan(tc));
 
@@ -2607,6 +2687,13 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             thread_id,
             request: {
               title:
+                (_luarLingkup.size
+                  ? "Outside the task (" +
+                    _luarLingkup.size +
+                    ") - " +
+                    [..._luarLingkup.values()].map((p) => p.sebab).join("; ") +
+                    ". "
+                  : "") +
                 "Command execution (" +
                 executionCalls.length +
                 "): " +
@@ -2628,6 +2715,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             edits: localEdits,
             editLog: localEditLog,
             accessedEvidence: Array.from(localAccessed),
+            berkasDibaca: Array.from(localDibaca),
             failedTools: Array.from(localFailed),
             stopReason: "hitl",
             // "HITL" is internal jargon and means nothing to the user; the waiting
@@ -2861,6 +2949,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           edits: localEdits,
           editLog: localEditLog,
           accessedEvidence: Array.from(localAccessed),
+          berkasDibaca: Array.from(localDibaca),
           failedTools: Array.from(localFailed),
           ...(sebabGagalLangkahIni.length ? { checklistFails: failsBaru } : {}),
           stopReason,
@@ -3354,6 +3443,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             pendingToolCall: null,
             pendingToolCalls: [],
             task_checklist: savedState.task_checklist || [],
+            tujuan: savedState.tujuan || tujuanDari(savedState.messages || []),
+            rencanaAwal: savedState.rencanaAwal || [],
+            berkasDibaca: Array.from(savedState.berkasDibaca || []),
           },
           {
             configurable: { thread_id: thread_id + "_resume_" + Date.now() },
@@ -3385,6 +3477,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           step: savedState.step || 0,
           edits: savedState.edits || 0,
           task_checklist: savedState.task_checklist || [],
+          tujuan: savedState.tujuan || tujuanDari(savedState.messages || []),
+          rencanaAwal: savedState.rencanaAwal || [],
+          berkasDibaca: Array.from(savedState.berkasDibaca || []),
           stepCeiling: prevCeiling + MAX_STEPS,
           stopReason: "",
         },
@@ -3549,7 +3644,10 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       } catch (e) {
         dlog("self", "warn", "pre_search_failed", { error: e.message });
       }
-      finalState = await app.invoke({ messages }, config);
+      finalState = await app.invoke(
+        { messages, tujuan: tujuanDari(messages) },
+        config,
+      );
     }
 
     if (
