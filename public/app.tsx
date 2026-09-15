@@ -695,6 +695,13 @@ function tsjFileType(name: any, dir: any) {
 // relative and short. The result is [{ name, depth, type }] — intermediate
 // folders are included so the structure is visible, but only along branches
 // leading to a developed file.
+/** <root>/<rel>, unless rel is already absolute (an entry outside the root). */
+function absDari(root: any, rel: any) {
+  const r = String(rel || "");
+  if (/^[a-zA-Z]:\//.test(r) || r.startsWith("/")) return r;
+  return String(root || "").replace(/[\/]+$/, "") + "/" + r;
+}
+
 function buildDevTree(paths: any, root: any, folders: any) {
   const rootN = String(root || "")
     .replace(/\\/g, "/")
@@ -705,7 +712,12 @@ function buildDevTree(paths: any, root: any, folders: any) {
     let s = String(raw || "").replace(/\\/g, "/");
     const sl = s.toLowerCase();
     if (rootN && sl.startsWith(rootN + "/")) s = s.slice(rootN.length + 1);
-    s = s.replace(/^\/+/, "").replace(/^[a-zA-Z]:\//, ""); // drop the drive if not stripped
+    // Outside the root, the path stays absolute -- drive and all. It used to
+    // lose its drive here so that it would LOOK relative, and every such
+    // entry then opened to a 404: <root>/Users/dave/... is nowhere. A path
+    // the tree cannot place under its root is still a real file, and the
+    // editor opens it by its real name.
+    s = s.replace(/^\/+/, "");
     const parts = s.split("/").filter(Boolean);
     if (!parts.length) continue;
     let cur = rootNode;
@@ -1107,10 +1119,12 @@ function LogicCodePane({
     }
 
     setMuat(true);
-    const abs = String(root || "").replace(/[\/]+$/, "") + "/" + rel;
+    const abs = absDari(root, rel);
     fetch("/preview-file?raw=1&path=" + encodeURIComponent(abs))
       .then((r: any) =>
-        r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)),
+        r.ok
+          ? r.text()
+          : Promise.reject(new Error("HTTP " + r.status + " — " + abs)),
       )
       .then((teks: any) => {
         if (dibatalkan) return;
@@ -2002,7 +2016,7 @@ function LogicFileTree({
     if (!rel || !akarAda || hapusSibuk) return;
     setHapusSibuk(true);
     setHapusGalat("");
-    const abs = String(root).replace(/[\/]+$/, "") + "/" + rel;
+    const abs = absDari(root, rel);
     try {
       const hasil = await (
         await fetch("/ww/hapus-berkas", {
@@ -2038,7 +2052,7 @@ function LogicFileTree({
   const [jumlahIsi, setJumlahIsi] = React.useState<any>(null);
   const hitungIsi = async (rel: any) => {
     setJumlahIsi(null);
-    const abs = String(root).replace(/[\/]+$/, "") + "/" + rel;
+    const abs = absDari(root, rel);
     try {
       const r = await (
         await fetch("/ww/hapus-berkas", {
@@ -3087,7 +3101,19 @@ function App() {
   // therefore tied to the workspace CHANGING, not to typing -- a mark that
   // refreshes on every keystroke is how a problems view becomes the reason the
   // app stutters.
-  const akarDiag = webProjectRoot(preview.url, selectedProject);
+  // THE EDITOR'S ROOT IS THE AGENT'S ROOT. It used to be the directory of
+  // whatever file the Live Browser was previewing, with the bare project NAME
+  // as the fallback -- while the agent wrote into resolveWorkspaceRoot(). The
+  // explorer is fed by the agent's write events, so with the two roots apart
+  // every path it received fell outside its root, buildDevTree "dropped the
+  // drive" to make it fit, and a click on the file asked the server for
+  // <root>/Users/dave/... -- HTTP 404, and an empty editor for a file the
+  // agent had just written. One root, resolved to a real directory, for all
+  // three consumers.
+  const akarEditor =
+    resolveWorkspaceRoot(selectedProject) ||
+    webProjectRoot(preview.url, selectedProject);
+  const akarDiag = akarEditor;
   const pindaiDiagnostik = useCallback(async () => {
     if (!akarDiag) return;
     setDiagSibuk(true);
@@ -5401,7 +5427,7 @@ function App() {
                               ),
                             )
                           }
-                          root={webProjectRoot(preview.url, selectedProject)}
+                          root={akarEditor}
                           active={!!preview.url}
                           terpilih={logicBerkas}
                           onPilih={(rel: any, keSamping: any) =>
@@ -5470,10 +5496,7 @@ function App() {
                               />
                             )}
                             <LogicCodePane
-                              root={webProjectRoot(
-                                preview.url,
-                                selectedProject,
-                              )}
+                              root={akarEditor}
                               rel={g.aktif}
                               tabs={g.tabs}
                               tabsSemua={logicTabsSemua}
