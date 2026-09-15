@@ -2603,6 +2603,18 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               " was already called " +
               callCountsByName[tc.function.name] +
               "x. Ganti pendekatan atau berikan jawaban kepada user sekarang.]";
+          if (r.needsAnswer && r.a2ui) {
+            // A proposed panel, not a question: the renderer draws it from
+            // the catalog and the user's action comes back as the next
+            // message. Same pause as a question underneath.
+            emit({ t: "a2ui", proposal: r.a2ui });
+            return {
+              out: r.out || r.output,
+              stop: true,
+              waitForAnswer: true,
+              question: r.question,
+            };
+          }
           if (r.needsAnswer) {
             emit({
               t: "ask",

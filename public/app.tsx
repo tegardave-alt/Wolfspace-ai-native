@@ -2851,6 +2851,9 @@ function App() {
     return WOLFSPACE_ROOT_WIN;
   });
   const [hitlRequest, setHitlRequest] = React.useState<any>(null);
+  // The agent's proposed panel (ui_propose). One at a time: a second
+  // proposal replaces the first, the way a second question would.
+  const [a2ui, setA2ui] = React.useState<any>(null);
 
   React.useEffect(() => {
     const checkSelectedProject = () => {
@@ -4252,6 +4255,16 @@ function App() {
                   },
                 ],
               });
+            } else if (j.t === "a2ui") {
+              // A proposal pauses the run the way a question does; the
+              // difference is only what is drawn and what comes back.
+              adoneSent = true;
+              waitingForInput = true;
+              setA2ui(j.proposal || null);
+              upd({
+                thinking: "Adjust the panel, then Apply or Cancel.",
+                busy: true,
+              });
             } else if (j.t === "ask") {
               adoneSent = true;
               waitingForInput = true;
@@ -4692,6 +4705,30 @@ function App() {
                     request={hitlRequest}
                     onResolve={handleHitlResolve}
                   />
+                  {a2ui && (
+                    <A2UIPanel
+                      proposal={a2ui}
+                      getFrameDoc={getPreviewDoc}
+                      onSelesai={(aksi: string, data: any) => {
+                        setA2ui(null);
+                        setBusy(false);
+                        // Same shape as answering a question: a user message
+                        // the agent reads on its next turn. The tool told it
+                        // to expect exactly this line.
+                        setTimeout(
+                          () =>
+                            doSend(
+                              "[a2ui:" +
+                                aksi +
+                                "] " +
+                                JSON.stringify(data || {}),
+                              null,
+                            ),
+                          50,
+                        );
+                      }}
+                    />
+                  )}
                   <LightboxModal
                     item={globalPreviewItem}
                     onClose={() => setGlobalPreviewItem(null)}

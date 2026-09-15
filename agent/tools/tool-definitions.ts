@@ -586,6 +586,68 @@ const SELF_TOOLS = [
       },
     },
   },
+  {
+    type: "function",
+    function: {
+      name: "ui_propose",
+      description:
+        "Propose a SMALL native panel for the user to adjust something visually, " +
+        "instead of guessing values in text. Use it when the request is about " +
+        "spacing, size, colour, or choosing between variants of ONE element or " +
+        "region — especially when the message carries a Visual Draw snippet " +
+        '(<div data-target="...">): anchor the panel to that data-target. The ' +
+        "user sees the effect live (preview) and presses Apply or Cancel; the " +
+        "result comes back as the next user message, e.g. " +
+        "'[a2ui:apply] {\"padX\":8}'. Only then edit the source. The panel is " +
+        "declarative: components from a fixed catalog (Card, Text, Slider, Select, " +
+        "Toggle, Actions, Button), no markup, no code. Always include a Button " +
+        'with action "cancel".',
+      parameters: {
+        type: "object",
+        properties: {
+          anchor: {
+            type: "string",
+            description:
+              "CSS selector the panel attaches to (the Visual Draw data-target)",
+          },
+          components: {
+            type: "array",
+            description:
+              "Flat list; a container names its children by id. Types: Card{title,description}, Text{text,muted}, Slider{label,min,max,step,unit}+bind, Select{label,options}+bind, Toggle{label}+bind, Actions{children}, Button{label,primary,danger}+action(apply|cancel|choose).",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                type: { type: "string" },
+                props: { type: "object" },
+                children: { type: "array", items: { type: "string" } },
+                bind: {
+                  type: "string",
+                  description: "dataModel key this input controls",
+                },
+                action: { type: "string", enum: ["apply", "cancel", "choose"] },
+              },
+              required: ["id", "type"],
+            },
+          },
+          dataModel: {
+            type: "object",
+            description: "initial values for every bind key",
+          },
+          preview: {
+            type: "object",
+            description:
+              "Live preview while adjusting: {selector, css:{prop: value with {key} placeholders}}. Applied inline in the preview only; removed on cancel.",
+            properties: {
+              selector: { type: "string" },
+              css: { type: "object" },
+            },
+          },
+        },
+        required: ["anchor", "components", "dataModel"],
+      },
+    },
+  },
   // git has its own tool because it CAN NO LONGER be run through bash.
   //
   // Once bash became AppContainer-contained, every git command died before doing
