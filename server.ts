@@ -1629,7 +1629,69 @@ async function _gitVscode(url: any, b: any) {
   if (!b || !b.path) return { ok: false, err: "path is required" };
   const r = await gv.repo(String(b.path));
   const remote = b.remote || "origin";
+
+  // A network operation against a remote that is not configured must not
+  // reach git. Git's own refusal reads "'origin' does not appear to be a git
+  // repository ... make sure you have the correct access rights", which sends
+  // a person off to check credentials when the folder simply has no remote
+  // yet -- the normal state of a project created in the editor. Reported as
+  // its own code so the panel can offer the fix instead of the text.
+  const butuhRemote =
+    url === "/ww/remote/push" ||
+    url === "/ww/remote/pull" ||
+    url === "/ww/remote/fetch";
+  if (butuhRemote) {
+    const ada = (await r.getRemotes()).some((x: any) => x.name === remote);
+    if (!ada) {
+      return {
+        ok: false,
+        kode: "NoRemote",
+        remote,
+        err: 'This folder has no remote "' + remote + '" yet.',
+      };
+    }
+  }
+
   switch (url) {
+    case "/ww/remotes": {
+      const daftar = await r.getRemotes();
+      return {
+        ok: true,
+        remotes: daftar.map((x: any) => ({
+          name: x.name,
+          fetchUrl: x.fetchUrl || null,
+          pushUrl: x.pushUrl || null,
+        })),
+      };
+    }
+    case "/ww/remote/add": {
+      // Either an explicit URL, or the repository the GitHub panel has linked
+      // (github: true). The second is what makes a folder created in the
+      // editor pushable in one step once an account is connected.
+      let target = String(b.url || "").trim();
+      if (!target && b.github) {
+        const gh = require("./agent/github.ts");
+        const t = gh.taut();
+        if (!t) {
+          return {
+            ok: false,
+            kode: "NoGithubLink",
+            err: "No GitHub repository is linked yet - link one in the GitHub panel first.",
+          };
+        }
+        target = "https://github.com/" + t.owner + "/" + t.repo + ".git";
+      }
+      if (!target) return { ok: false, err: "url is required" };
+      if (!/^(https?:\/\/|git@|ssh:\/\/)/.test(target)) {
+        return { ok: false, err: "not a remote URL: " + target };
+      }
+      const sudah = (await r.getRemotes()).some((x: any) => x.name === remote);
+      if (sudah) {
+        return { ok: false, kode: "RemoteExists", err: 'remote "' + remote + '" already exists' };
+      }
+      await r.addRemote(remote, target);
+      return { ok: true, remote, url: target };
+    }
     case "/ww/remote/push":
       // setUpstream on the FIRST push of a branch, so the next pull knows
       // where it came from. Harmless when the upstream already exists.
@@ -4528,6 +4590,8 @@ const server = http.createServer(async (req: any, res: any) => {
       // VS Code git layer in vendor/vscode-git through core/git-vscode.ts.
       // In THIS block on purpose: they change git state, so they need the
       // same cache invalidation and the same outcome log as the rest.
+      req.url === "/ww/remotes" ||
+      req.url === "/ww/remote/add" ||
       req.url === "/ww/remote/push" ||
       req.url === "/ww/remote/pull" ||
       req.url === "/ww/remote/fetch" ||
