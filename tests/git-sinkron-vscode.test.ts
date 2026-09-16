@@ -47,6 +47,12 @@ function muatHandler(): (url: string, b: any) => Promise<any> {
           ")",
       )
       .replace(
+        'require("./core/git-remote.ts")',
+        "require(" +
+          JSON.stringify(path.join(AKAR, "core", "git-remote.ts")) +
+          ")",
+      )
+      .replace(
         'require("./agent/github.ts")',
         "require(" +
           JSON.stringify(path.join(AKAR, "agent", "github.ts")) +
@@ -93,6 +99,112 @@ function orangLainCommit() {
   git(lain, ["commit", "-qm", "dari orang lain"]);
   git(lain, ["push", "-q", "origin", "main"]);
 }
+
+describe("/ww/clone, through the real server", () => {
+  // The route clones AND registers the folder as a workspace in one request,
+  // the way Add Workspace registers an existing folder. Against the bare
+  // remote the other tests use; no network.
+  const { spawn } = require("child_process");
+  const http = require("http");
+  const PORT = 8179;
+  let server: any;
+
+  beforeAll(async () => {
+    server = spawn(process.execPath, [path.join(AKAR, "server.cjs")], {
+      cwd: AKAR,
+      env: { ...process.env, PORT: String(PORT) },
+      stdio: "ignore",
+    });
+    for (let i = 0; i < 60; i++) {
+      const ok = await new Promise((res) => {
+        const r = http.get(
+          { host: "127.0.0.1", port: PORT, path: "/healthz", timeout: 1000 },
+          (x: any) => res(x.statusCode === 200),
+        );
+        r.on("error", () => res(false));
+        r.on("timeout", () => {
+          r.destroy();
+          res(false);
+        });
+      });
+      if (ok) break;
+      await new Promise((r) => setTimeout(r, 500));
+    }
+  }, 60000);
+  afterAll(() => {
+    try {
+      server.kill();
+    } catch (_) {}
+  });
+
+  const kirim = (body: any) =>
+    new Promise<any>((resolve, reject) => {
+      const data = JSON.stringify(body);
+      const req = http.request(
+        {
+          host: "127.0.0.1",
+          port: PORT,
+          path: "/ww/clone",
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            "Content-Length": Buffer.byteLength(data),
+          },
+        },
+        (res: any) => {
+          let t = "";
+          res.on("data", (c: any) => (t += c));
+          res.on("end", () => {
+            try {
+              resolve(JSON.parse(t));
+            } catch (e) {
+              reject(new Error("not JSON: " + t.slice(0, 120)));
+            }
+          });
+        },
+      );
+      req.on("error", reject);
+      req.end(data);
+    });
+
+  test("clones into the chosen parent and registers a workspace", async () => {
+    // The bare remote is empty until something is pushed to it.
+    git(repo, ["push", "-q", "-u", "origin", "main"]);
+    const parent = path.join(tmp, "tujuan");
+    fs.mkdirSync(parent);
+    const r = await kirim({
+      url: "file:///" + remote.replace(/\\/g, "/"),
+      parentPath: parent,
+      name: "hasil-klon",
+    });
+    expect(r.ok).toBe(true);
+    expect(r.path.replace(/\\/g, "/")).toBe(
+      path.join(parent, "hasil-klon").replace(/\\/g, "/"),
+    );
+    expect(r.name).toBe("hasil-klon");
+    expect(fs.existsSync(path.join(parent, "hasil-klon", "a.txt"))).toBe(true);
+    // Registered: the workspace marker initWorkspace leaves behind.
+    expect(typeof r.branch).toBe("string");
+  });
+
+  test("refuses to clone over an existing folder", async () => {
+    const parent = path.join(tmp, "tujuan2");
+    fs.mkdirSync(path.join(parent, "sudah"), { recursive: true });
+    const r = await kirim({
+      url: "file:///" + remote.replace(/\\/g, "/"),
+      parentPath: parent,
+      name: "sudah",
+    });
+    expect(r.ok).toBe(false);
+    expect(r.kode).toBe("Exists");
+  });
+
+  test("a bare path is not a repository URL", async () => {
+    const r = await kirim({ url: "C:/somewhere/repo", parentPath: tmp });
+    expect(r.ok).toBe(false);
+    expect(r.err).toMatch(/not a repository URL/);
+  });
+});
 
 describe("status, after VS Code's numbers", () => {
   test("no upstream yet: publish is the offer", async () => {
@@ -164,5 +276,24 @@ describe("status, after VS Code's numbers", () => {
     expect(r.ok).toBe(true);
     expect(r.ditarik).toBe(1);
     expect(r.didorong).toBe(0);
+  });
+});
+
+describe("the panel offers Clone", () => {
+  const C = fs.readFileSync(
+    path.join(AKAR, "public", "app", "Components.tsx"),
+    "utf8",
+  );
+  test("right-click a repository: Clone…, through the folder dialog and /ww/clone", () => {
+    expect(C).toMatch(/const klonRepo = async \(x: any\) => \{/);
+    expect(C).toMatch(/IPC\.invoke\("selectFolder"\)/);
+    expect(C).toMatch(/wwApi\("\/ww\/clone", \{/);
+    expect(C).toMatch(
+      /url: "https:\/\/github\.com\/" \+ x\.owner \+ "\/" \+ x\.repo \+ "\.git"/,
+    );
+    // Registered the way Add Workspace registers, and announced the same way.
+    expect(C).toMatch(/"wolfspace_projects_list"/);
+    expect(C).toMatch(/new Event\("wolfspace_workspaces_changed"\)/);
+    expect(C).toMatch(/>\s*Clone…\s*</);
   });
 });

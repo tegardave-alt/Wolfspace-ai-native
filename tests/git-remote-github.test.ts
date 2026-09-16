@@ -50,6 +50,12 @@ function muatHandler(): (url: string, b: any) => Promise<any> {
           ")",
       )
       .replace(
+        'require("./core/git-remote.ts")',
+        "require(" +
+          JSON.stringify(path.join(AKAR, "core", "git-remote.ts")) +
+          ")",
+      )
+      .replace(
         'require("./agent/github.ts")',
         "require(" +
           JSON.stringify(path.join(AKAR, "agent", "github.ts")) +
@@ -294,7 +300,10 @@ describe("the panel and the agent know", () => {
     // with ": command not found" and every push would lose its fallback. The
     // working copy on this Windows machine came out CRLF once; the rule in
     // .gitattributes is what stops that on every future checkout.
-    const sh = fs.readFileSync(path.join(AKAR, "scripts", "git-askpass.sh"), "utf8");
+    const sh = fs.readFileSync(
+      path.join(AKAR, "scripts", "git-askpass.sh"),
+      "utf8",
+    );
     expect(sh).not.toMatch(/\r/);
     const attrs = fs.readFileSync(path.join(AKAR, ".gitattributes"), "utf8");
     expect(attrs).toMatch(/^\*\.sh\s+text\s+eol=lf/m);
@@ -315,7 +324,11 @@ describe("the panel and the agent know", () => {
     const t = require(path.join(AKAR, "config", "prompts.json")).prompts
       .self_agent.text;
     expect(t).toMatch(/Version control: .* `git` tool/);
-    expect(t).toMatch(/Push, pull and fetch are NOT yours/);
+    // The network side is the agent's now -- only when asked, and never
+    // without the user's approval (tests/agent-git-jaringan.test.ts proves
+    // the hold). The prompt must say both halves.
+    expect(t).toMatch(/network side when the user ASKS for it/);
+    expect(t).toMatch(/pauses for the user's approval before it runs/);
     expect(t).toMatch(/Never run git through bash/);
   });
 });

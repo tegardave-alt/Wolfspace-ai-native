@@ -664,11 +664,15 @@ const SELF_TOOLS = [
         "parameters, every path must lie inside the workspace, and another repo " +
         "cannot be targeted. Use this for anything git: running git through bash " +
         "ALWAYS fails, because bash is confined by AppContainer and git cannot " +
-        "open /dev/null in there. There are NO network operations " +
-        "(push/pull/fetch/clone) — those are outside this tool. Read operations: " +
-        "status, diff, log, show, berkas, cabang, kepala, blame. Write operations " +
-        "(tambah, commit, pulihkan, cabang_baru, pindah) run the repo's own hooks, " +
-        "so they ask the user for approval and are recorded in the ledger.",
+        "open /dev/null in there. Read operations: status, diff, log, show, " +
+        "berkas, cabang, kepala, blame. Write operations (tambah, commit, " +
+        "pulihkan, cabang_baru, pindah) run the repo's own hooks, so they ask " +
+        "the user for approval and are recorded in the ledger. NETWORK " +
+        "operations — fetch, pull, push, sync (pull then push), publish (first " +
+        "push of a branch), clone (url + tujuan folder name, under the " +
+        "workspace) — use the GitHub account connected in the app and ALWAYS " +
+        "ask the user for approval before they run. Use them only when the " +
+        "user asks to fetch, pull, push, sync, publish or clone.",
       parameters: {
         type: "object",
         properties: {
@@ -688,7 +692,28 @@ const SELF_TOOLS = [
               "pulihkan",
               "cabang_baru",
               "pindah",
+              "fetch",
+              "pull",
+              "push",
+              "sync",
+              "publish",
+              "clone",
             ],
+          },
+          url: {
+            type: "string",
+            description:
+              "for clone: the repository URL (https://github.com/owner/repo.git)",
+          },
+          tujuan: {
+            type: "string",
+            description:
+              "for clone: the folder name to create under the workspace (default: the repo name)",
+          },
+          remote: {
+            type: "string",
+            description:
+              "for fetch/pull/push/publish: the remote name (default origin)",
           },
           berkas: {
             type: "array",
