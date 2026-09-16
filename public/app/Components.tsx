@@ -2769,7 +2769,17 @@ function Composer({
   useEffect(() => {
     if (!kirimSetelahSetRef.current) return;
     kirimSetelahSetRef.current = false;
-    if (val.trim()) submit();
+    if (!val.trim()) return;
+    // submit() refuses while a run is active, silently. The text is in the
+    // box either way; what is missing is the reason, so it is said here.
+    if (busy) {
+      setSoon(
+        "The agent is busy — your comment is in the box; send it when the run finishes.",
+      );
+      setTimeout(() => setSoon(""), 6000);
+      return;
+    }
+    submit();
   }, [val]);
   useEffect(() => {
     if (!menu) return;

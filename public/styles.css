@@ -6784,3 +6784,8 @@ button.aal-row:focus-visible {
   margin-left: auto;
   color: #f85149;
 }
+.komentar-nota {
+  margin-top: 6px;
+  color: #f85149;
+  font-size: 11px;
+}

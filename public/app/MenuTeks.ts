@@ -103,13 +103,51 @@ function aksiMenuTeks(el: any) {
   ];
 }
 
-function bukaMenuTeks(el: any, x: number, y: number) {
+/**
+ * Selected text that is NOT in a field -- a chat reply, a label, a tool's
+ * output. A browser offers Copy for that; Electron offers nothing. One
+ * action, because there is nothing else to do with read-only text. Monaco's
+ * selections are left to Monaco.
+ */
+function seleksiBiasa(target: any): string {
+  try {
+    if (target && target.closest && target.closest(".monaco-editor")) return "";
+    const sel = window.getSelection();
+    if (!sel || sel.isCollapsed) return "";
+    const teks = sel.toString();
+    if (!teks) return "";
+    const n = sel.anchorNode as any;
+    const el = n && (n.nodeType === 1 ? n : n.parentElement);
+    if (el && el.closest && el.closest(".monaco-editor")) return "";
+    return teks;
+  } catch (_) {
+    return "";
+  }
+}
+
+function aksiMenuSeleksi(teks: string) {
+  return [
+    {
+      label: "Copy",
+      jalankan: () => {
+        try {
+          if (document.execCommand("copy")) return;
+        } catch (_) {}
+        try {
+          navigator.clipboard.writeText(teks);
+        } catch (_) {}
+      },
+    },
+  ];
+}
+
+function bukaMenuTeks(el: any, x: number, y: number, aksi?: any[]) {
   tutupMenuTeks();
   const menu = document.createElement("div");
   menu.id = MENU_TEKS_ID;
   menu.className = "pohon-menu menu-teks";
   menu.setAttribute("role", "menu");
-  for (const a of aksiMenuTeks(el)) {
+  for (const a of aksi || aksiMenuTeks(el)) {
     if ((a as any).pemisah) {
       const s = document.createElement("div");
       s.className = "menu-teks-pemisah";
@@ -151,10 +189,17 @@ function installMenuTeks() {
     "contextmenu",
     (e: any) => {
       const el = bidangTeks(e.target);
-      if (!el) return;
+      if (el) {
+        e.preventDefault();
+        e.stopPropagation();
+        bukaMenuTeks(el, e.clientX, e.clientY);
+        return;
+      }
+      const teks = seleksiBiasa(e.target);
+      if (!teks) return;
       e.preventDefault();
       e.stopPropagation();
-      bukaMenuTeks(el, e.clientX, e.clientY);
+      bukaMenuTeks(null, e.clientX, e.clientY, aksiMenuSeleksi(teks));
     },
     true,
   );
@@ -178,5 +223,6 @@ if (typeof window !== "undefined") {
     installMenuTeks,
     tempelKe,
     bidangTeks,
+    seleksiBiasa,
   };
 }

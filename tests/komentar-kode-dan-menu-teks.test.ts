@@ -45,13 +45,27 @@ describe("wiring", () => {
     // The send happens from the effect on `val`, never inside the handler:
     // submit() reads the render's own state.
     expect(c).toMatch(
-      /kirimSetelahSetRef\.current = false;\s*if \(val\.trim\(\)\) submit\(\);/,
+      /kirimSetelahSetRef\.current = false;\s*if \(!val\.trim\(\)\) return;[\s\S]{0,600}?submit\(\);\s*\}, \[val\]\);/,
     );
   });
 
   test("Monaco's own text area is left to Monaco's own menu", () => {
     const m = baca("public/app/MenuTeks.ts");
     expect(m).toMatch(/classList\.contains\("inputarea"\)\) return null;/);
+  });
+
+  test("the note takes the focus back from the editor for a moment after opening", () => {
+    // Monaco refocuses its own text area when its menu closes and when the
+    // mouse comes up -- after the first frame. Without this the typing went
+    // into the code and the note stayed empty.
+    const k = baca("public/app/KomentarKode.ts");
+    expect(k).toMatch(/ed\.onDidFocusEditorText\(\(\) => fokus\(\)\)/);
+    expect(k).toMatch(/setTimeout\(fokus, 80\)/);
+  });
+
+  test("a send while the agent is busy says so instead of nothing", () => {
+    const c = baca("public/app/Components.tsx");
+    expect(c).toMatch(/if \(busy\) \{\s*setSoon\(\s*"The agent is busy/);
   });
 });
 
@@ -300,19 +314,26 @@ whenPossible("in the editor and the composer (needs playwright)", () => {
 
       // The editor's own menu carries the new actions beside Cut/Copy/Paste.
       await p.keyboard.press("Escape");
-      await p.mouse.click(l3.x + 30, l3.y + 8, { button: "right" });
+      const l4 = await lines[3].boundingBox();
+      await p.mouse.click(l4.x + 30, l4.y + 8);
+      await p.mouse.click(l4.x + 30, l4.y + 8, { button: "right" });
       await p.waitForTimeout(400);
-      const labels: string[] = await p.evaluate(() => {
-        const out: string[] = [];
-        const walk = (root: any) =>
-          root.querySelectorAll("*").forEach((el: any) => {
-            if (el.shadowRoot) walk(el.shadowRoot);
-            if (el.classList && el.classList.contains("action-label"))
-              out.push(el.textContent);
-          });
-        walk(document);
-        return out;
-      });
+      const cari = () =>
+        p.evaluateHandle(() => {
+          const out: any = { labels: [], add: null };
+          const walk = (root: any) =>
+            root.querySelectorAll("*").forEach((el: any) => {
+              if (el.shadowRoot) walk(el.shadowRoot);
+              if (el.classList && el.classList.contains("action-label")) {
+                out.labels.push(el.textContent);
+                if (el.textContent === "Add Comment…") out.add = el;
+              }
+            });
+          walk(document);
+          return out;
+        });
+      const menuH = await cari();
+      const labels: string[] = await menuH.evaluate((o: any) => o.labels);
       expect(labels).toEqual(
         expect.arrayContaining([
           "Cut",
@@ -322,6 +343,61 @@ whenPossible("in the editor and the composer (needs playwright)", () => {
           "Ask Agent to Explain",
         ]),
       );
+      // Open from that menu and type AT ONCE: the keystrokes land in the
+      // note, not in the code -- Monaco refocuses itself when its menu
+      // closes, and the note has to win.
+      const addH = await menuH.evaluate((o: any) => {
+        const r = o.add.getBoundingClientRect();
+        return { x: r.x + 10, y: r.y + r.height / 2 };
+      });
+      await p.mouse.click(addH.x, addH.y);
+      await p.waitForTimeout(400);
+      const kode = await p.evaluate(() =>
+        (window as any).monaco.editor.getModels()[0].getValue(),
+      );
+      await p.keyboard.type("typed at once");
+      expect(
+        await p.$eval(".komentar-zona textarea", (e: any) => e.value),
+      ).toBe("typed at once");
+      expect(
+        await p.evaluate(() =>
+          (window as any).monaco.editor.getModels()[0].getValue(),
+        ),
+      ).toBe(kode);
+      // An empty note is refused with a visible reason, not silence.
+      await p.$eval(".komentar-zona textarea", (e: any) => {
+        e.value = "";
+      });
+      await p.click(".komentar-zona .komentar-kirim");
+      expect(
+        await p.$eval(".komentar-zona .komentar-nota", (e: any) => !e.hidden),
+      ).toBe(true);
+      expect(await p.$(".komentar-zona")).not.toBeNull();
+      await p.keyboard.press("Escape");
+
+      // Selected text in the chat gets a Copy on right-click.
+      const bubble = await p.$(".chat-col :text('Code comment on')");
+      expect(bubble).toBeTruthy();
+      await bubble.scrollIntoViewIfNeeded();
+      await p.waitForTimeout(300);
+      await bubble.evaluate((e: any) => {
+        const s = window.getSelection()!;
+        s.removeAllRanges();
+        s.selectAllChildren(e);
+      });
+      const rr = await p.evaluate(() => {
+        const r = window.getSelection()!.getRangeAt(0).getClientRects()[0];
+        return { x: r.x, y: r.y, w: r.width, h: r.height };
+      });
+      await p.mouse.click(rr.x + Math.min(20, rr.w / 2), rr.y + rr.h / 2, {
+        button: "right",
+      });
+      await p.waitForSelector("#menu-teks");
+      expect(
+        await p.$$eval("#menu-teks button", (bs: any[]) =>
+          bs.map((x) => x.textContent),
+        ),
+      ).toEqual(["Copy"]);
     } finally {
       await b.close();
     }

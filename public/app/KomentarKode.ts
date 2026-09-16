@@ -208,6 +208,7 @@ function installKomentarKode(
       '<button type="button" class="komentar-tutup" title="Close">×</button></div>' +
       '<div class="komentar-isi"></div>' +
       '<textarea class="komentar-teks" rows="2" placeholder="Leave a comment — what should change, or what to explain…"></textarea>' +
+      '<div class="komentar-nota" hidden>Write the comment first.</div>' +
       '<div class="komentar-aksi">' +
       '<button type="button" class="komentar-btn komentar-kirim">Send to agent</button>' +
       '<button type="button" class="komentar-btn komentar-simpan">Save</button>' +
@@ -222,6 +223,12 @@ function installKomentarKode(
     ) as HTMLButtonElement;
     const btnHapus = dom.querySelector(".komentar-hapus") as HTMLButtonElement;
     const btnTutup = dom.querySelector(".komentar-tutup") as HTMLButtonElement;
+    const nota = dom.querySelector(".komentar-nota") as HTMLElement;
+    const kosong = () => {
+      nota.hidden = false;
+      fokus();
+      ukur();
+    };
 
     if (opsi.tersimpan) {
       const k = opsi.tersimpan;
@@ -280,17 +287,40 @@ function installKomentarKode(
       letak();
       ukur();
     });
+    // ── Focus, and KEEPING it ──
+    //
+    // One focus() on the next frame was not enough: the widget is opened
+    // from Monaco's context menu or from a click in its gutter, and Monaco
+    // gives the focus back to its own text area when the menu closes and
+    // when the mouse comes up -- AFTER that frame. The typing then went
+    // into the code instead of the note, the note stayed empty and "Send
+    // to agent" had nothing to send. So the editor's own focus event is
+    // watched for a moment after opening, and the note takes the focus
+    // back each time.
+    const fokus = () => {
+      try {
+        teks.focus({ preventScroll: true });
+      } catch (_) {}
+    };
+    const rebutFokus = ed.onDidFocusEditorText(() => fokus());
+    const lepasRebut = setTimeout(() => rebutFokus.dispose(), 800);
     terbuka.set(opsi.id, {
       zona: zonaId,
       overlay,
       dom,
-      buang: () => langgananLayout.dispose(),
+      buang: () => {
+        langgananLayout.dispose();
+        clearTimeout(lepasRebut);
+        rebutFokus.dispose();
+      },
     });
     requestAnimationFrame(() => {
       ukur();
-      teks.focus();
+      fokus();
     });
+    setTimeout(fokus, 80);
     teks.addEventListener("input", () => {
+      nota.hidden = true;
       teks.style.height = "auto";
       teks.style.height = Math.min(teks.scrollHeight, 220) + "px";
       ukur();
@@ -317,7 +347,7 @@ function installKomentarKode(
     btnTutup.addEventListener("click", selesai);
     btnSimpan.addEventListener("click", () => {
       if (simpan()) selesai();
-      else teks.focus();
+      else kosong();
     });
     btnHapus.addEventListener("click", () => {
       if (abs)
@@ -331,7 +361,7 @@ function installKomentarKode(
     btnKirim.addEventListener("click", () => {
       const k = simpan();
       if (!k) {
-        teks.focus();
+        kosong();
         return;
       }
       const { bahasa, kode } = kodeRentang(mulai, akhir);
