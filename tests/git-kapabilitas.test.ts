@@ -39,11 +39,26 @@ describe("bentuk: kapabilitas bernama, bukan perintah", () => {
     expect(src).not.toMatch(/\bexec\(\s*`/);
   });
 
-  test("tak ada operasi jaringan", () => {
-    // push/pull/fetch/clone butuh kredensial dan menyentuh dunia luar; keduanya
-    // di luar cakupan tool ini, dan diamnya tidak cukup — harus tak ada.
-    for (const k of Object.keys(G.OPERASI))
-      expect(["push", "pull", "fetch", "clone", "remote"]).not.toContain(k);
+  test("every network operation is a WRITE, routed through the shared module", () => {
+    // These used to be absent: the tool ran git with no credential, so a push
+    // could only hang or fail. Now the panel's credential helper hands git
+    // the connected account's token at the moment it asks -- the model never
+    // holds it -- and the operations run through core/git-remote.ts, the
+    // same code the panel runs. What is guarded here is the rule that makes
+    // that safe: each one is `tulis` (approval gate, ledger) and `jaringan`
+    // (no argv of its own; it cannot be bent into an arbitrary git command).
+    for (const k of ["fetch", "pull", "push", "sync", "publish", "clone"]) {
+      expect(G.OPERASI[k]).toBeTruthy();
+      expect(G.OPERASI[k].tulis).toBe(true);
+      expect(G.OPERASI[k].jaringan).toBe(true);
+      expect(G.OPERASI[k].argv).toBeUndefined();
+    }
+    // Still no way to name an arbitrary remote operation.
+    expect(G.OPERASI.remote).toBeUndefined();
+    expect(src).toMatch(/require\("\.\.\/\.\.\/core\/git-remote\.ts"\)/);
+    // And the local runner keeps running git WITHOUT a credential: the token
+    // reaches only the vendored layer's spawns, never this one.
+    expect(src).toMatch(/GIT_ASKPASS: ""/);
   });
 
   test("repo dipaksa ke workspace lewat -C", () => {
@@ -163,10 +178,8 @@ describe("perilaku nyata di repo ini", () => {
     const r = await jalan({ operasi: "rm -rf" });
     expect(r.ok).toBe(false);
     expect(r.output).toMatch(/status/);
-    // Pesannya diterjemahkan ke Inggris bersama sisa teks yang dibaca agent;
-    // yang dijaga tetap sama — daftar operasi HARUS menyebut bahwa tool ini
-    // tak punya jalur jaringan sama sekali.
-    expect(r.output).toMatch(/NO network operations/);
+    // The list must say what the network operations cost: approval first.
+    expect(r.output).toMatch(/ask the user for approval first/);
   });
 
   test("commit tanpa pesan ditolak sebelum apa pun dijalankan", async () => {

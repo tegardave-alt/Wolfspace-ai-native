@@ -154,6 +154,54 @@ const OPERASI = {
     jelas: "switch to an existing branch; the checkout hooks DO RUN",
     argv: (a) => ["checkout", String(a.ref)],
   },
+  // ── Network operations ──
+  //
+  // These used to be absent on purpose: the tool ran git with NO credentials,
+  // so a push could only hang or fail, and the only way to give the model a
+  // credential would have been to hand it the token. That changed when the
+  // panel got its own credential helper (core/git-vscode.ts): git is given
+  // the connected GitHub account's token at the moment it asks, and neither
+  // the model nor this process ever holds it. The operations run through
+  // core/git-remote.ts, the same code the panel runs, and every one of them
+  // is `tulis` -- it goes through the approval gate like bash, because it
+  // moves the user's code across the network.
+  //
+  // `jaringan` marks them so jalankan() routes them to the module instead of
+  // building an argv, and so the approval card can say what is about to
+  // leave the machine.
+  fetch: {
+    tulis: true,
+    jaringan: true,
+    jelas:
+      "download what the remote has that this repo does not; changes no files",
+  },
+  pull: {
+    tulis: true,
+    jaringan: true,
+    jelas: "fetch, then merge the upstream into the current branch",
+  },
+  push: {
+    tulis: true,
+    jaringan: true,
+    jelas:
+      "send the current branch's commits to the remote (sets upstream on first push)",
+  },
+  sync: {
+    tulis: true,
+    jaringan: true,
+    jelas: "pull, then push if there is anything to push (VS Code's sync)",
+  },
+  publish: {
+    tulis: true,
+    jaringan: true,
+    jelas: "first push of a new branch, with the upstream set",
+  },
+  clone: {
+    tulis: true,
+    jaringan: true,
+    jelas:
+      "clone a repository (url) into a new folder under the workspace (tujuan = folder name); never overwrites",
+  },
 };
 
 /**
@@ -271,7 +319,7 @@ async function jalankan(args, workspace) {
         Object.entries(OPERASI)
           .map(([k, v]) => "  " + k.padEnd(13) + v.jelas)
           .join("\n") +
-        "\nNO network operations (push/pull/fetch/clone) in this tool.",
+        "\nNetwork operations (fetch/pull/push/sync/publish/clone) ask the user for approval first.",
     };
   }
 
@@ -306,7 +354,7 @@ async function jalankan(args, workspace) {
       ..._penegakan.label("penasihat", "kapabilitas-git"),
       output: "commit butuh 'pesan'",
     };
-  if (!_akarRepo(ws))
+  if (nama !== "clone" && !_akarRepo(ws))
     return {
       ok: false,
       ..._penegakan.label("penasihat", "kapabilitas-git"),
@@ -322,6 +370,7 @@ async function jalankan(args, workspace) {
     const gerbang = _admission(nama);
     if (gerbang) return gerbang;
   }
+  if (op.jaringan) return _jaringan(nama, b, ws);
 
   const argv = ["-C", ws, "--no-pager", ...op.argv(b, ws)];
   return new Promise((res) => {
@@ -367,6 +416,73 @@ async function jalankan(args, workspace) {
  * than opens — the same principle as sandbox_run.
  * @param {string} nama
  */
+/**
+ * A network operation, through core/git-remote.ts. Results come back in the
+ * tool's own shape; the module's `err` becomes the output so the model reads
+ * git's reason, not a generic failure.
+ */
+async function _jaringan(nama, a, ws) {
+  const label = _penegakan.label("penasihat", "kapabilitas-git");
+  const gr = require("../../core/git-remote.ts");
+  let r: any;
+  try {
+    switch (nama) {
+      case "fetch":
+        r = await gr.fetch(ws, a.remote || "origin");
+        break;
+      case "pull":
+        r = await gr.pull(ws, a.remote || "origin", a.ref || undefined);
+        break;
+      case "push":
+        r = await gr.push(ws, a.remote || "origin", a.ref || undefined, true);
+        break;
+      case "sync":
+        r = await gr.sync(ws);
+        break;
+      case "publish":
+        r = await gr.publish(ws, a.remote || "origin");
+        break;
+      case "clone": {
+        // Into the workspace, never outside it: the folder name is checked
+        // by the module, and the parent is the workspace itself.
+        if (!a.url) return { ok: false, ...label, output: "clone needs 'url'" };
+        r = await gr.clone(
+          String(a.url),
+          ws,
+          a.tujuan ? String(a.tujuan) : undefined,
+        );
+        break;
+      }
+      default:
+        return {
+          ok: false,
+          ...label,
+          output: "unknown network operation " + nama,
+        };
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      ...label,
+      output: "git failed: " + String((e && e.message) || e).slice(0, 300),
+    };
+  }
+  if (!r || !r.ok) {
+    return {
+      ok: false,
+      ...label,
+      output: (r && r.err) || "git failed",
+    };
+  }
+  const ringkas = { ...r };
+  delete ringkas.ok;
+  return {
+    ok: true,
+    ...label,
+    output: nama + " ok: " + JSON.stringify(ringkas),
+  };
+}
+
 function _admission(nama) {
   try {
     const cc = require("../broker/commandchain.ts");

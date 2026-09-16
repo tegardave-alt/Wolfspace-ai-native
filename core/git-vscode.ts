@@ -28,7 +28,7 @@ let _git: Promise<Git> | null = null;
 const _repo = new Map<string, Promise<Repository>>();
 
 /** The git binary VS Code's finder locates, wrapped once. */
-function git(): Promise<Git> {
+export function git(): Promise<Git> {
   if (_git) return _git;
   _git = (async () => {
     // Hints first: WOLFSPACE's own ww.ts already trusts `git` on PATH, so

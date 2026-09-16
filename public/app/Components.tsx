@@ -1203,6 +1203,77 @@ function GithubPanel({ onClose }: any) {
     }
   };
 
+  // ── Clone ──
+  //
+  // WOLFSPACE could connect a folder it already had to a repository, but not
+  // bring a repository it did not have: "fetch" updates what is here, and
+  // the way to get what is not was missing. This asks for a parent folder
+  // (the native dialog, the same one Add Workspace uses), clones through
+  // core/git-remote.ts -- so a private repository of the connected account
+  // authenticates the same way push does -- and registers the folder as a
+  // workspace with the exact bookkeeping attachFolder does.
+  const [klon, setKlon] = useState<any>(null); // { x, status }
+  const klonRepo = async (x: any) => {
+    setMenu(null);
+    setGalat("");
+    let parent = "";
+    try {
+      if (IPC && IPC.invoke) {
+        const r = await IPC.invoke("selectFolder");
+        if (!r || r.canceled || !r.path) return;
+        parent = r.path;
+      } else {
+        parent =
+          window.prompt("Clone into which folder? (absolute path)") || "";
+        if (!parent) return;
+      }
+    } catch (e: any) {
+      setGalat(e.message);
+      return;
+    }
+    setKlon({ x, status: "Cloning " + x.penuh + "…" });
+    setSibuk(true);
+    try {
+      const r = await wwApi("/ww/clone", {
+        method: "POST",
+        body: {
+          url: "https://github.com/" + x.owner + "/" + x.repo + ".git",
+          parentPath: parent,
+          name: x.repo,
+        },
+      });
+      if (!r) {
+        setGalat(
+          "no answer from the server for /ww/clone - if the app was updated, restart it",
+        );
+        return;
+      }
+      if (!r.ok) {
+        setGalat(r.err || "clone failed");
+        return;
+      }
+      // Into the projects list, first, exactly as Add Workspace does.
+      try {
+        const daftar = JSON.parse(
+          localStorage.getItem("wolfspace_projects_list") || "[]",
+        ).filter((p: any) => (p.path || "") !== r.path);
+        localStorage.setItem(
+          "wolfspace_projects_list",
+          JSON.stringify([
+            { name: r.name, path: r.path, branch: r.branch },
+            ...daftar,
+          ]),
+        );
+      } catch (_) {}
+      window.dispatchEvent(new Event("wolfspace_workspaces_changed"));
+      setKlon({ x, status: "Cloned into " + r.path });
+    } catch (e: any) {
+      setGalat(e.message);
+    } finally {
+      setSibuk(false);
+    }
+  };
+
   const bukaRepo = async (x: any) => {
     setPilih(x);
     setCabang([]);
@@ -1599,6 +1670,11 @@ function GithubPanel({ onClose }: any) {
               </button>
             )}
 
+            {klon && (
+              <div className="gh-nota" title={klon.status}>
+                {klon.status}
+              </div>
+            )}
             {repo.length === 0 ? (
               <div className="gh-kosong">No repositories found.</div>
             ) : (
@@ -1682,6 +1758,14 @@ function GithubPanel({ onClose }: any) {
                   style={{ top: menu.atas + "px", left: menu.kiri + "px" }}
                 >
                   <div className="gh-menu-judul">{menu.x.penuh}</div>
+                  <button
+                    type="button"
+                    className="gh-menu-item"
+                    disabled={sibuk}
+                    onClick={() => klonRepo(menu.x)}
+                  >
+                    Clone…
+                  </button>
                   <button
                     type="button"
                     className="gh-menu-item"
