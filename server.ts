@@ -5035,9 +5035,26 @@ const server = http.createServer(async (req: any, res: any) => {
       // never reached.
       if (ext === ".html" || ext === ".htm") {
         const dir = resolved.replace(/\\/g, "/").replace(/\/[^\/]*$/, "/");
-        const baseTag =
-          '<base href="/preview-file-assets/' + encodeURI(dir) + '">';
+        const prefix = "/preview-file-assets/" + encodeURI(dir); // ends with "/"
+        const baseTag = '<base href="' + prefix + '">';
         let html = fs.readFileSync(resolved, "utf8");
+        // ── Root-absolute asset URLs ──
+        //
+        // <base> only rewrites RELATIVE URLs. A root-absolute one -- src="/x",
+        // href="/x" -- ignores <base> and resolves against the ORIGIN, which in
+        // the preview is the WOLFSPACE server, not the previewed app. So a built
+        // SPA, whose bundle is emitted as <script src="/assets/index-*.js"> by
+        // Vite / CRA / webpack, loaded NOTHING and the page sat blank -- while a
+        // real browser served from the dist root loaded it fine. That is the
+        // "Web Dev is blank but the real browser works" mismatch. Rewrite those
+        // to the same assets endpoint (index.html's own folder is the app root
+        // for a build). Protocol-relative //host and the assets prefix itself
+        // are left alone. Runtime fetch("/api/…") is not rewritten -- that needs
+        // a real backend, and a real browser would not resolve it either.
+        html = html.replace(
+          /\b(src|href)\s*=\s*(["'])\/(?!\/|preview-file-assets\/)/gi,
+          (m: any, attr: string, q: string) => attr + "=" + q + prefix,
+        );
         html = /<head[^>]*>/i.test(html)
           ? html.replace(/<head[^>]*>/i, (m: any) => m + baseTag)
           : baseTag + html;
