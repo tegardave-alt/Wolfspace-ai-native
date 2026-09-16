@@ -85,7 +85,13 @@ describe("no invented duration", () => {
     // reopening an old run would show a duration that grows as you look at it.
     const i = STEPS.indexOf("const durasiDetik");
     const blok = STEPS.slice(i, i + 500);
-    expect(blok).toMatch(/selesai > 0 \? selesai : Date\.now\(\)/);
+    // ...and ONLY when the run is over. A run paused for approval ends one
+    // stream, and that stream's end stamp used to freeze the clock at the
+    // second bash asked -- reported as "the timer stops during bash". Busy
+    // means the clock is still running, whatever stamp the bubble carries.
+    expect(blok).toMatch(
+      /!run\.busy && Number\.isFinite\(selesai\) && selesai > 0\s*\? selesai\s*: Date\.now\(\)/,
+    );
   });
 });
 
@@ -97,7 +103,11 @@ describe("the run records when it happened", () => {
       "const mulaiMs = (agenLama && agenLama.mulaiMs) || Date.now();",
     );
     expect(i).toBeGreaterThan(-1);
-    expect(APP.slice(i, i + 160)).toMatch(/upd\(\{ mulaiMs \}\)/);
+    // The stale end stamp of the paused stream goes with it: a resumed run
+    // is not over.
+    expect(APP.slice(i, i + 400)).toMatch(
+      /upd\(\{ mulaiMs, selesaiMs: null \}\)/,
+    );
     // Beside evlist, which is the run's own beginning.
     expect(APP.slice(Math.max(0, i - 300), i)).toMatch(/const evlist/);
   });

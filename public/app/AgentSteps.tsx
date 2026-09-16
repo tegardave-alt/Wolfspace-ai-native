@@ -897,8 +897,13 @@ function AgentSteps({ run }: any) {
     const mulai = Number(run.mulaiMs);
     if (!Number.isFinite(mulai) || mulai <= 0) return null;
     const selesai = Number(run.selesaiMs);
+    // Busy means the clock is still running, whatever stamp the bubble
+    // carries: a run paused for approval ended one STREAM, not the run,
+    // and its end stamp used to freeze the timer at that second.
     const akhir =
-      Number.isFinite(selesai) && selesai > 0 ? selesai : Date.now();
+      !run.busy && Number.isFinite(selesai) && selesai > 0
+        ? selesai
+        : Date.now();
     return Math.max(0, Math.round((akhir - mulai) / 1000));
   })();
 
@@ -1394,4 +1399,11 @@ function HitlModal({ request, onResolve }: any) {
       </div>
     </div>
   );
+}
+
+// The bundle is one IIFE; this handle exists for the headless render check
+// (a busy run with a stale end stamp must keep its clock running). The app
+// renders the component by name.
+if (typeof window !== "undefined") {
+  (window as any).__wolfspaceAgentSteps = AgentSteps;
 }
