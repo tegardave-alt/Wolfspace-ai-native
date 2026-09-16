@@ -1088,6 +1088,9 @@ function AgentSteps({ run }: any) {
             <div className="av2-isi">
               <Blocks text={summary} />
             </div>
+            {/* The copy control sits with the badge, in the bubble's own
+                corner: the answer is the thing people copy most. */}
+            <TombolSalin teks={summary} judul="Copy the answer" />
             <LencanaToken pakai={run.pakai} tampilRef={tampilTokenRef} />
           </div>
         </div>
