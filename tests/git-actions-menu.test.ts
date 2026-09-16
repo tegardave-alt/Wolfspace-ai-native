@@ -147,7 +147,11 @@ describe("the menu holds the list from the screenshot", () => {
     expect(m).not.toBeNull();
     expect(m![0]).toMatch(/setRemoteOp\(op\);/);
     // In a finally: a push that FAILS must clear the label too.
-    expect(m![0]).toMatch(/finally \{\s*setRemoteOp\(null\);\s*\}/);
+    // In a finally, and the sync numbers are refreshed right after: a push
+    // that just happened must show as 0↑ without waiting for the timer.
+    expect(m![0]).toMatch(
+      /finally \{\s*setRemoteOp\(null\);\s*muatStatusSync\(\);\s*\}/,
+    );
   });
 
   test("a mousedown outside or Escape closes it; inside does not", () => {
@@ -359,11 +363,14 @@ whenPossible("the ⋯ menu, rendered and used (needs playwright)", () => {
       await p.waitForSelector(".dots-btn", { timeout: 15000 });
       await p.waitForTimeout(500);
 
+      // The commit line is the titled span on the row; the sync control now
+      // sits between it and the ⋯ button, so "previous sibling" is not it.
       const line = () =>
         p.evaluate(
           () =>
-            document.querySelector(".dots-btn")!.previousElementSibling!
-              .textContent,
+            document
+              .querySelector(".dots-btn")!
+              .parentElement!.querySelector("span[title]")!.textContent,
         );
       const items = () =>
         p.$$eval(".dots-item", (els: any[]) => els.map((e) => e.textContent));
@@ -409,8 +416,10 @@ whenPossible("the ⋯ menu, rendered and used (needs playwright)", () => {
       await p.click(".dots-item:has-text('Fetch')");
       await p.waitForFunction(
         () =>
-          document.querySelector(".dots-btn")!.previousElementSibling!
-            .textContent === "Fetching…",
+          document
+            .querySelector(".dots-btn")!
+            .parentElement!.querySelector("span[title]")!.textContent ===
+          "Fetching…",
         null,
         { timeout: 5000 },
       );
@@ -418,17 +427,44 @@ whenPossible("the ⋯ menu, rendered and used (needs playwright)", () => {
       await p.waitForSelector("text=fetched origin", { timeout: 15000 });
       expect(await line()).toMatch(/^[0-9a-f]{7} · feat: second · /);
 
-      // Push: the remote really receives the commit.
+      // ── The sync control, after VS Code's status-bar item ──
+      // The fixture pushed "chore: initialize workspace" with -u and then
+      // made "feat: second" locally, so HEAD is 1 ahead of origin/main. The
+      // control must SAY so, offer the push in its tooltip, do it on click,
+      // and then say nothing -- the state Fetch alone never showed.
+      await p.waitForSelector(".sync-btn", { timeout: 15000 });
+      await p.waitForFunction(
+        () =>
+          (document.querySelector(".sync-label")?.textContent || "") ===
+          "0↓ 1↑",
+        null,
+        { timeout: 30000 },
+      );
+      expect(await p.getAttribute(".sync-btn", "title")).toBe(
+        "Push 1 commits to origin/main",
+      );
       const before = git(["rev-parse", "main"], REMOTE);
-      await p.click(".dots-btn");
-      await p.waitForSelector(".dots-menu");
-      await p.click(".dots-item:has-text('Push')");
-      await p.waitForSelector("text=pushed main to origin", {
+      await p.click(".sync-btn");
+      await p.waitForFunction(
+        () => !!document.querySelector(".sync-btn.sibuk"),
+        null,
+        { timeout: 5000 },
+      );
+      await p.waitForSelector("text=synced: pulled 0, pushed 1", {
         timeout: 60000,
       });
       const after = git(["rev-parse", "main"], REMOTE);
       expect(after).not.toBe(before);
       expect(after).toBe(git(["rev-parse", "main"]));
+      // In sync: the label is gone, the tooltip is the generic one.
+      await p.waitForFunction(
+        () => !document.querySelector(".sync-label"),
+        null,
+        { timeout: 15000 },
+      );
+      expect(await p.getAttribute(".sync-btn", "title")).toBe(
+        "Synchronize Changes",
+      );
 
       // Stashes: the list appears under the line, the item flips and
       // carries the count.

@@ -1639,7 +1639,9 @@ async function _gitVscode(url: any, b: any) {
   const butuhRemote =
     url === "/ww/remote/push" ||
     url === "/ww/remote/pull" ||
-    url === "/ww/remote/fetch";
+    url === "/ww/remote/fetch" ||
+    url === "/ww/remote/sync" ||
+    url === "/ww/remote/publish";
   if (butuhRemote) {
     const ada = (await r.getRemotes()).some((x: any) => x.name === remote);
     if (!ada) {
@@ -1653,6 +1655,79 @@ async function _gitVscode(url: any, b: any) {
   }
 
   switch (url) {
+    // ── The sync control, after VS Code's SyncStatusBar ──
+    //
+    // VS Code shows no Fetch button anywhere visible. It shows ONE control
+    // that carries the state -- "3↓ 1↑" -- and offers the next sensible
+    // action: publish when the branch has no upstream, sync (pull, then push
+    // if ahead) otherwise; fetch runs in the background to keep the numbers
+    // fresh. extensions/git/src/statusbar.ts + repository.ts, on main. The
+    // three routes below are that model's server half.
+    case "/ww/remote/status": {
+      // ahead/behind come from the vendored layer's getBranch(), the same
+      // rev-list --left-right --count VS Code's status bar reads.
+      let head: any = null;
+      try {
+        const h = await r.getHEAD();
+        if (h && h.name) {
+          const cabang = await r.getBranch(h.name);
+          head = {
+            name: h.name,
+            // getHEAD() answers a SYMBOLIC ref with no commit; the branch
+            // record carries it. Without this the control fell back to
+            // "Publish Branch" on a branch that already had an upstream.
+            commit: cabang.commit || h.commit || null,
+            upstream: cabang.upstream
+              ? { remote: cabang.upstream.remote, name: cabang.upstream.name }
+              : null,
+            ahead: cabang.ahead || 0,
+            behind: cabang.behind || 0,
+          };
+        }
+      } catch (_) {
+        head = null;
+      }
+      const daftarRemote = (await r.getRemotes()).map((x: any) => ({
+        name: x.name,
+        fetchUrl: x.fetchUrl || null,
+        pushUrl: x.pushUrl || null,
+      }));
+      return { ok: true, head, remotes: daftarRemote };
+    }
+    case "/ww/remote/sync": {
+      // VS Code's _sync(): pull, then push ONLY when there is something to
+      // push. Pulling first is what keeps the push from being rejected.
+      const h = await r.getHEAD();
+      const cabang = h && h.name ? await r.getBranch(h.name) : null;
+      if (!cabang || !cabang.upstream) {
+        return {
+          ok: false,
+          kode: "NoUpstream",
+          err: "This branch has no upstream yet - publish it first.",
+        };
+      }
+      await r.pull(!!b.rebase, cabang.upstream.remote, cabang.upstream.name);
+      let didorong = 0;
+      const sesudah = await r.getBranch(cabang.name!);
+      if ((sesudah.ahead || 0) > 0) {
+        await r.push(cabang.upstream.remote, cabang.name || undefined, false);
+        didorong = sesudah.ahead || 0;
+      }
+      return {
+        ok: true,
+        remote: cabang.upstream.remote,
+        ditarik: cabang.behind || 0,
+        didorong,
+      };
+    }
+    case "/ww/remote/publish": {
+      // git.publish: the first push of a branch, with the upstream set so
+      // that sync knows where to go from then on.
+      const h = await r.getHEAD();
+      if (!h || !h.name) return { ok: false, err: "not on a branch" };
+      await r.push(remote, h.name, true);
+      return { ok: true, remote, branch: h.name };
+    }
     case "/ww/remotes": {
       const daftar = await r.getRemotes();
       return {
@@ -1687,7 +1762,11 @@ async function _gitVscode(url: any, b: any) {
       }
       const sudah = (await r.getRemotes()).some((x: any) => x.name === remote);
       if (sudah) {
-        return { ok: false, kode: "RemoteExists", err: 'remote "' + remote + '" already exists' };
+        return {
+          ok: false,
+          kode: "RemoteExists",
+          err: 'remote "' + remote + '" already exists',
+        };
       }
       await r.addRemote(remote, target);
       return { ok: true, remote, url: target };
@@ -4592,6 +4671,9 @@ const server = http.createServer(async (req: any, res: any) => {
       // same cache invalidation and the same outcome log as the rest.
       req.url === "/ww/remotes" ||
       req.url === "/ww/remote/add" ||
+      req.url === "/ww/remote/status" ||
+      req.url === "/ww/remote/sync" ||
+      req.url === "/ww/remote/publish" ||
       req.url === "/ww/remote/push" ||
       req.url === "/ww/remote/pull" ||
       req.url === "/ww/remote/fetch" ||

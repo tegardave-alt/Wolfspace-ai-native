@@ -631,6 +631,112 @@ function DotsMenuButton({ open, onClick, title }: any) {
   );
 }
 
+// ── The sync control ──
+// A port of VS Code's SyncStatusBar. VS Code shows no Fetch button anywhere
+// visible; it shows ONE control that carries the state and offers the next
+// action, and fetches in the background so the numbers stay true:
+//
+//   no upstream            $(cloud-upload)  "Publish Branch"      -> push -u
+//   upstream, 0↓ 0↑        $(sync)          "Synchronize Changes" -> sync
+//   upstream, n↓ m↑        $(sync) "n↓ m↑"  tooltip per syncTooltip -> sync
+//   running                $(sync~spin)     "Synchronizing Changes..." (off)
+//
+// syncLabel and syncTooltip below are the upstream getters verbatim
+// (repository.ts on main); only the icons are drawn here rather than named.
+function syncLabel(head: any): string {
+  if (!head || !head.name || !head.commit || !head.upstream) return "";
+  if (!(head.ahead || head.behind)) return "";
+  return head.behind + "↓ " + head.ahead + "↑";
+}
+function syncTooltip(head: any): string {
+  if (!head || !head.name || !head.commit || !head.upstream) {
+    return "Synchronize Changes";
+  }
+  if (!(head.ahead || head.behind)) return "Synchronize Changes";
+  const u = head.upstream.remote + "/" + head.upstream.name;
+  if (!head.ahead) return "Pull " + head.behind + " commits from " + u;
+  if (!head.behind) return "Push " + head.ahead + " commits to " + u;
+  return (
+    "Pull " + head.behind + " and push " + head.ahead + " commits between " + u
+  );
+}
+function SyncButton({ head, adaRemote, berjalan, onSync, onPublish }: any) {
+  // No remote at all: nothing to offer here -- the ⋯ menu carries
+  // "Connect to GitHub". VS Code's equivalent is the publisher list.
+  if (!adaRemote) return null;
+  const punyaUpstream = !!(head && head.name && head.commit && head.upstream);
+  const label = punyaUpstream ? syncLabel(head) : "";
+  const title = berjalan
+    ? "Synchronizing Changes..."
+    : punyaUpstream
+      ? syncTooltip(head)
+      : "Publish Branch";
+  const ikon = berjalan ? (
+    <svg
+      className="sync-ikon berputar"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  ) : punyaUpstream ? (
+    <svg
+      className="sync-ikon"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  ) : (
+    <svg
+      className="sync-ikon"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 16V8" />
+      <path d="m8 12 4-4 4 4" />
+      <path d="M7 20a5 5 0 0 1-1-9.9A7 7 0 0 1 19 9a4.5 4.5 0 0 1-1 8.9" />
+    </svg>
+  );
+  return (
+    <button
+      type="button"
+      className={"btn-reset sync-btn" + (berjalan ? " sibuk" : "")}
+      title={title}
+      aria-label={title}
+      disabled={berjalan}
+      onMouseDown={(e: any) => e.stopPropagation()}
+      onClick={punyaUpstream ? onSync : onPublish}
+    >
+      {ikon}
+      {label && <span className="sync-label">{label}</span>}
+    </button>
+  );
+}
+
 // The three remote actions, in menu order. `title` is the git command the
 // item stands for; `done` turns the server's reply into the confirmation.
 // setUpstream is on so the FIRST push of a new branch does not fail asking
@@ -708,6 +814,15 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   const [menuOpen, setMenuOpen] = React.useState(false);
   // null = not loaded yet; [] = loaded, none configured.
   const [remotes, setRemotes] = React.useState<any[] | null>(null);
+  // HEAD's upstream and ahead/behind, for the sync control.
+  const [headSync, setHeadSync] = React.useState<any>(null);
+  const muatStatusSync = React.useCallback(async () => {
+    const r = await wwApi("/ww/remote/status", {
+      method: "POST",
+      body: { path },
+    });
+    if (r && r.ok) setHeadSync(r.head || null);
+  }, [path]);
   const [github, setGithub] = React.useState<any>(null);
   const adaOrigin = !!(
     remotes && remotes.some((x: any) => x.name === "origin")
@@ -756,6 +871,7 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     wwApi("/ww/remotes", { method: "POST", body: { path } }).then((r: any) => {
       if (alive) setRemotes(r && r.ok ? r.remotes || [] : []);
     });
+    muatStatusSync();
     // Whether the GitHub panel has a repository linked: that is what "Connect
     // to GitHub" would connect to, and the item is only offered when it can
     // actually do something.
@@ -771,6 +887,28 @@ function WorkspaceGitPanel({ path, onClose }: any) {
       alive = false;
     };
   }, [path, refreshKey]);
+
+  // Background fetch, after VS Code's git.autofetch (period 180 s): once
+  // when the panel opens, then on a timer while it stays open. This is why
+  // there is no Fetch button to understand -- the numbers on the sync
+  // control are simply kept true. Silent: a failed fetch (offline, no
+  // remote) changes nothing on screen.
+  React.useEffect(() => {
+    if (!remotes || !remotes.some((x: any) => x.name === "origin")) return;
+    let alive = true;
+    const ambil = async () => {
+      try {
+        await wwApi("/ww/remote/fetch", { method: "POST", body: { path } });
+      } catch (_) {}
+      if (alive) muatStatusSync();
+    };
+    ambil();
+    const iv = setInterval(ambil, 180000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [remotes, path, muatStatusSync]);
 
   // AN ERROR NEEDS LONGER THAN A CONFIRMATION. Both used to get 2.8 seconds,
   // and git's refusals are whole sentences ("uncommitted changes here would be
@@ -801,12 +939,35 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   // Fetch, pull and push all go through run(); this only remembers which item
   // was chosen for as long as it works. In a finally: a push that FAILS must
   // clear the label too, or "Pushing…" would outlive the push.
+  // git.sync and git.publish, through the same runner as the menu items so
+  // the line shows what is running and the checklist refreshes after.
+  const opSync = () => ({
+    key: "sync",
+    label: "Sync",
+    runningLabel: "Synchronizing…",
+    title: syncTooltip(headSync),
+    url: "/ww/remote/sync",
+    body: {},
+    done: (r: any) =>
+      "synced: pulled " + (r.ditarik || 0) + ", pushed " + (r.didorong || 0),
+  });
+  const opPublish = () => ({
+    key: "publish",
+    label: "Publish Branch",
+    runningLabel: "Publishing…",
+    title: "git push -u origin " + ((br && br.current) || ""),
+    url: "/ww/remote/publish",
+    body: {},
+    done: (r: any) =>
+      "published " + (r.branch || "") + " to " + (r.remote || "origin"),
+  });
   const runRemote = async (op: any) => {
     setRemoteOp(op);
     try {
       return await run(op.url, { path, ...op.body }, op.done);
     } finally {
       setRemoteOp(null);
+      muatStatusSync();
     }
   };
 
@@ -1606,6 +1767,15 @@ function WorkspaceGitPanel({ path, onClose }: any) {
                   g.lastCommit.when
                 : "no commits yet"}
           </span>
+          {br && br.current && (
+            <SyncButton
+              head={headSync}
+              adaRemote={adaOrigin}
+              berjalan={!!remoteOp}
+              onSync={() => runRemote(opSync())}
+              onPublish={() => runRemote(opPublish())}
+            />
+          )}
           {br && br.current && (
             <DotsMenuButton
               open={menuOpen}
