@@ -6622,3 +6622,165 @@ button.aal-row:focus-visible {
   padding: 0 8px 0 6px;
   margin-right: 2px;
 }
+
+/* ── Right-click menu of plain text fields (MenuTeks.ts) ──
+ * Same surface as the explorer's context menu: one look for every menu that
+ * opens under the pointer. Separators are VS Code's: a hairline with the
+ * menu's own padding on either side. */
+.menu-teks {
+  min-width: 160px;
+}
+.menu-teks-opsi {
+  padding: 5px 10px;
+}
+.menu-teks-pemisah {
+  height: 1px;
+  margin: 4px 6px;
+  background: var(--line, #24313f);
+}
+
+/* ── Code comments in the editor (KomentarKode.ts) ──
+ * The "+" is VS Code's comment-range-glyph: shown only on the hovered line,
+ * in the decorations lane between the line numbers and the text. A stored
+ * comment keeps a speech-bubble mark there and tints its lines, as a review
+ * comment does on GitHub. */
+.logic-code-host .komentar-plus,
+.logic-code-host .komentar-ikon {
+  cursor: pointer;
+  width: 16px !important;
+  height: 16px !important;
+  margin-left: 2px;
+  margin-top: 2px;
+  border-radius: 4px;
+  font:
+    600 13px/16px ui-sans-serif,
+    system-ui,
+    sans-serif;
+  text-align: center;
+}
+.logic-code-host .komentar-plus::before {
+  content: "+";
+  display: block;
+  color: #0b1220;
+  background: var(--brand, #5eead4);
+  border-radius: 4px;
+  opacity: 0.85;
+}
+.logic-code-host .komentar-plus:hover::before {
+  opacity: 1;
+}
+.logic-code-host .komentar-ikon::before {
+  content: "";
+  display: block;
+  width: 12px;
+  height: 12px;
+  margin: 2px;
+  background: #e3b341;
+  clip-path: polygon(0 0, 100% 0, 100% 72%, 45% 72%, 20% 100%, 22% 72%, 0 72%);
+}
+/* The glyph of a stored comment beats the hover "+" on the same line. */
+.logic-code-host .komentar-ikon.komentar-plus::before {
+  content: "";
+}
+.logic-code-host .komentar-rentang {
+  background: rgba(227, 179, 65, 0.1);
+}
+
+/* The thread widget: an overlay pinned to the top of a view zone, so it sits
+ * BETWEEN the lines rather than over them. */
+.komentar-zona {
+  position: absolute;
+  z-index: 5;
+  box-sizing: border-box;
+  padding: 8px 10px;
+  background: var(--surface-2, #182230);
+  border: 1px solid var(--line, #24313f);
+  border-left: 3px solid #e3b341;
+  border-radius: 6px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.35);
+  font:
+    12px/1.45 ui-sans-serif,
+    system-ui,
+    sans-serif;
+  color: var(--text, #e6edf3);
+}
+.komentar-kepala {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 6px;
+  color: var(--text-faint, #8b98a9);
+}
+.komentar-tutup {
+  border: none;
+  background: transparent;
+  color: var(--text-faint, #8b98a9);
+  font-size: 16px;
+  line-height: 1;
+  cursor: pointer;
+  padding: 0 4px;
+}
+.komentar-tutup:hover {
+  color: var(--text, #e6edf3);
+}
+.komentar-item {
+  margin-bottom: 8px;
+}
+.komentar-penulis {
+  font-weight: 600;
+}
+.komentar-waktu {
+  color: var(--text-faint, #8b98a9);
+  font-size: 11px;
+}
+.komentar-badan {
+  white-space: pre-wrap;
+  margin-top: 2px;
+}
+.komentar-teks {
+  display: block;
+  width: 100%;
+  box-sizing: border-box;
+  resize: none;
+  padding: 6px 8px;
+  background: var(--surface-1, #0f1620);
+  color: var(--text, #e6edf3);
+  border: 1px solid var(--line, #24313f);
+  border-radius: 5px;
+  font: inherit;
+}
+.komentar-teks:focus {
+  outline: none;
+  border-color: var(--brand, #5eead4);
+}
+.komentar-aksi {
+  display: flex;
+  gap: 6px;
+  margin-top: 6px;
+}
+.komentar-btn {
+  padding: 4px 10px;
+  border-radius: 5px;
+  border: 1px solid var(--line, #24313f);
+  background: transparent;
+  color: var(--text, #e6edf3);
+  font: inherit;
+  cursor: pointer;
+}
+.komentar-btn:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.komentar-kirim {
+  background: var(--brand, #5eead4);
+  border-color: var(--brand, #5eead4);
+  color: #0b1220;
+  font-weight: 600;
+}
+.komentar-kirim:hover {
+  filter: brightness(1.08);
+  background: var(--brand, #5eead4);
+}
+.komentar-hapus {
+  margin-left: auto;
+  color: #f85149;
+}

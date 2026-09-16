@@ -871,6 +871,10 @@ function LogicCodePane({
   // prop has already changed to the new file before its contents arrive, so
   // saving by `rel` would write the OLD file's contents under the NEW file's name.
   const relRef = React.useRef(rel);
+  // The root, for the same reason: the comment module asks for the file's
+  // absolute path at the moment of a click, long after the editor was made.
+  const rootRef = React.useRef(root);
+  rootRef.current = root;
 
   // ── Titik henti ──
   //
@@ -978,7 +982,16 @@ function LogicCodePane({
         // the click works, the point does not appear, and that is
         // indistinguishable from a breakpoint that failed to set.
         glyphMargin: true,
+        // The lane between the line numbers and the text, where the comment
+        // "+" and the comment glyph live (KomentarKode.ts). Monaco's default
+        // 10px is too narrow for a legible mark.
+        lineDecorationsWidth: 20,
       });
+      // Review comments on a range of lines, and "Send to agent" from them.
+      installKomentarKode(monaco, edRef.current, () => ({
+        rel: String(relRef.current || ""),
+        abs: relRef.current ? absDari(rootRef.current, relRef.current) : "",
+      }));
       // A gutter click sets or clears a breakpoint, as in VS Code. What is
       // checked is the target's TYPE, not its coordinates: the line number and
       // the glyph lane sit side by side, and guessing from x makes a click on
@@ -2829,6 +2842,9 @@ function App() {
   // Report to index.html that App rendered without a Runtime Error.
   useEffect(() => {
     if (window.reportAppSuccess) window.reportAppSuccess();
+    // Right-click in any plain text field: Undo/Redo/Cut/Copy/Paste/Select
+    // All. Electron gives those fields no menu of their own (MenuTeks.ts).
+    installMenuTeks();
   }, []);
   const [pickerDone, setPickerDone] = useState(false);
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
