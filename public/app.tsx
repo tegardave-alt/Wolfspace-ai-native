@@ -4181,7 +4181,9 @@ function App() {
       // remount, a reload, and a restore. A resumed run keeps its original
       // start: the clock did not restart when the user pressed Allow.
       const mulaiMs = (agenLama && agenLama.mulaiMs) || Date.now();
-      upd({ mulaiMs });
+      // A resumed run is NOT over: the end stamp the paused stream left
+      // behind would freeze the clock at the second bash asked for approval.
+      upd({ mulaiMs, selesaiMs: null });
       let think = "";
       let adoneSent = false;
       let waitingForInput = false;
