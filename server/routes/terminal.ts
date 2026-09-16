@@ -31,6 +31,8 @@ export interface OpenTerminalResult {
   id: string;
   shell: string;
   cwd: string;
+  /** Windows build number (0 off Windows), for xterm's windowsPty option. */
+  windowsBuild?: number;
 }
 
 export interface TerminalRouteDeps {

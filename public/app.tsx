@@ -4911,6 +4911,7 @@ function App() {
                       selectedProject={selectedProject}
                       onClose={() => setTerminalOpen(false)}
                       terminalOutput={terminalOutput}
+                      onClearTerminalOutput={() => setTerminalOutput("")}
                       messages={messages}
                       perintah={perintahTerminal}
                       debugAktif={debugAktif}

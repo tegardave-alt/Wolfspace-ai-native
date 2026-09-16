@@ -27,6 +27,19 @@ const { spawn } = require("child_process");
 const AKAR = path.resolve(__dirname, "..");
 const PORT = 8184;
 const tidur = (ms: number) => new Promise((r) => setTimeout(r, ms));
+/** Polls until fn() is truthy (returning it), or ms have passed. Fixed
+ * sleeps fit an idle machine and fail a loaded one (four suites, shells
+ * and browsers at once). */
+async function sampai<T>(fn: () => Promise<T>, ms = 45000): Promise<T> {
+  const mulai = Date.now();
+  let terakhir: any;
+  while (Date.now() - mulai < ms) {
+    terakhir = await fn();
+    if (terakhir) return terakhir;
+    await tidur(250);
+  }
+  return terakhir;
+}
 
 function post(p: string, body: any): Promise<{ status: number; body: any }> {
   return new Promise((res, rej) => {
@@ -103,28 +116,51 @@ kalauPty("the server's session (HTTP)", () => {
     const o = await post("/api/terminal/open", { shell: "cmd.exe" });
     expect(o.status).toBe(200);
     const id = o.body.id;
-    await tidur(1500);
+    // The prompt first: cmd.exe is up when it has printed one.
+    await sampai(async () => {
+      const r = await post("/api/terminal/read", { id, clear: false });
+      return />\s*$/.test(String(r.body.output || ""));
+    });
     await post("/api/terminal/read", { id, clear: true });
     await post("/api/terminal/write", {
       id,
       data: "node -e \"process.stdout.write('x'.repeat(20000)+'END')\"\r",
     });
-    await tidur(2500);
-    const r = await post("/api/terminal/read", { id, clear: true });
-    const out = String(r.body.output || "");
+    // Accumulate across polls until the x's and END have arrived; a single
+    // poll would race the process. The 4 KB cap of old would have lost the
+    // rest between polls either way -- that is what the count proves.
+    let out = "";
+    // 20,000 x's fill exactly 200 rows of 100 columns, so END starts a row
+    // of its own; the rows are joined before the check.
+    const rata = () =>
+      out
+        .replace(/\x1b\[[0-9;?]*[A-Za-z]/g, "")
+        .replace(/\x1b\][^\x07]*\x07/g, "")
+        .replace(/[\r\n]/g, "");
+    await sampai(async () => {
+      const r = await post("/api/terminal/read", { id, clear: true });
+      out += String(r.body.output || "");
+      return (out.match(/x/g) || []).length >= 20000 && /END/.test(rata());
+    });
+    // The whole 20,000 arrived -- the old 4 KB cap would have left ~1,800.
     expect((out.match(/x/g) || []).length).toBeGreaterThanOrEqual(20000);
-    expect(out).toContain("END");
+    expect(rata()).toContain("END");
     await post("/api/terminal/close", { id });
-  }, 30000);
+  }, 90000);
 
   test("after `exit` the poller is told, once, and a write is refused with a reason", async () => {
     const o = await post("/api/terminal/open", { shell: "cmd.exe" });
     const id = o.body.id;
-    await tidur(1500);
+    await sampai(async () => {
+      const r = await post("/api/terminal/read", { id, clear: false });
+      return />\s*$/.test(String(r.body.output || ""));
+    });
     await post("/api/terminal/write", { id, data: "exit\r" });
-    await tidur(1500);
     // Without clear: the entry is still there, marked.
-    const lihat = await post("/api/terminal/read", { id, clear: false });
+    const lihat = await sampai(async () => {
+      const r = await post("/api/terminal/read", { id, clear: false });
+      return r.body && r.body.exited ? r : null;
+    });
     expect(lihat.status).toBe(200);
     expect(lihat.body.exited).toBe(true);
     expect(lihat.body.output).toMatch(/\[WOLFSPACE\] Process exited/);
@@ -136,7 +172,7 @@ kalauPty("the server's session (HTTP)", () => {
     expect(ambil.body.exited).toBe(true);
     const lagi = await post("/api/terminal/read", { id, clear: true });
     expect(lagi.status).toBe(404);
-  }, 30000);
+  }, 90000);
 
   test("a shell that does not exist answers 400 with git's own reason, and leaves no session", async () => {
     const o = await post("/api/terminal/open", {
@@ -180,17 +216,26 @@ kalauPty("the agent's terminal_read", () => {
     );
     expect(open.ok).toBe(true);
     const id = String(open.output).match(/terminal opened:\s*(\S+)/)![1];
-    await tidur(1200);
+    await sampai(async () => {
+      const r = await runSelfTool("terminal_read", { id, clear: false }, noop);
+      return />\s*$/.test(String(r.output || ""));
+    });
     await runSelfTool("terminal_read", { id, clear: true }, noop);
     await runSelfTool("terminal_write", { id, data: "exit\r" }, noop);
-    await tidur(1500);
-    const r = await runSelfTool("terminal_read", { id, clear: true }, noop);
+    // terminal_read itself waits up to 2 s; under load the exit takes
+    // longer, so it is asked again until the exit line is in the answer.
+    let keluaran = "";
+    const r = await sampai(async () => {
+      const x = await runSelfTool("terminal_read", { id, clear: true }, noop);
+      keluaran += String(x.output || "");
+      return /Process exited/.test(keluaran) ? x : null;
+    });
     expect(r.ok).toBe(true);
-    expect(r.output).toMatch(/Process exited/);
-    expect(r.output).toMatch(/\[session ended/);
+    expect(keluaran).toMatch(/Process exited/);
+    expect(keluaran).toMatch(/\[session ended/);
     const lagi = await runSelfTool("terminal_read", { id }, noop);
     expect(lagi.ok).toBe(false);
-  }, 30000);
+  }, 90000);
 });
 
 describe("wiring", () => {
@@ -269,11 +314,16 @@ whenPossible("the panel (needs playwright)", () => {
       // Waits on the buffer rather than on a fixed delay: a shell under a
       // loaded machine (seven suites, PTYs and browsers at once) takes its
       // time, and a delay that fits an idle one fails there.
-      const tungguBuffer = async (pola: RegExp, ms = 15000) => {
+      const tungguBuffer = async (
+        pola: RegExp | ((b: string) => boolean),
+        ms = 45000,
+      ) => {
+        const cocok =
+          typeof pola === "function" ? pola : (b: string) => pola.test(b);
         const mulai = Date.now();
         while (Date.now() - mulai < ms) {
           const b = await isiBuffer();
-          if (pola.test(b)) return b;
+          if (cocok(b)) return b;
           await p.waitForTimeout(250);
         }
         return await isiBuffer();
@@ -284,7 +334,12 @@ whenPossible("the panel (needs playwright)", () => {
         "node -e \"process.stdout.write('x'.repeat(20000)+'END')\"",
       );
       await p.keyboard.press("Enter");
-      const t1 = await tungguBuffer(/END/);
+      // The whole 20,000 arrived (the old 4 KB cap left ~1,800). END marks
+      // the tail; row-wrapping makes strict adjacency unreliable, so the x
+      // count is the proof.
+      const t1 = await tungguBuffer(
+        (b) => (b.match(/x/g) || []).length >= 20000 && /END/.test(b),
+      );
       expect((t1.match(/x/g) || []).length).toBeGreaterThanOrEqual(20000);
 
       // 2. Exit: announced, row marked, no 404 storm; Enter brings a shell back.
@@ -352,5 +407,5 @@ whenPossible("the panel (needs playwright)", () => {
     } finally {
       await b.close();
     }
-  }, 120000);
+  }, 240000);
 });
