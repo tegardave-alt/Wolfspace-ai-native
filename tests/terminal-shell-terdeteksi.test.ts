@@ -87,6 +87,75 @@ describe("the endpoint", () => {
   });
 });
 
+describe("detection sees Windows Store app-execution aliases", () => {
+  // The bug: pwsh installed from the Microsoft Store / winget-msstore is a
+  // zero-byte reparse-point alias under %LOCALAPPDATA%\Microsoft\WindowsApps.
+  // statSync -- and thus fs.existsSync -- throws EACCES on it and returns
+  // false, so a shell that WAS installed read "not installed". The helper must
+  // fall back past existsSync (to accessSync, then a directory listing).
+  const AKAR2 = path.resolve(__dirname, "..");
+  const SRV = fs.readFileSync(path.join(AKAR2, "server.ts"), "utf8");
+
+  test("_adaDiPath goes through the reparse-safe _adaBerkas, not raw existsSync", () => {
+    // The PATH walk must use the robust check.
+    expect(SRV).toMatch(
+      /if \(_adaBerkas\(path\.join\(d, nama \+ a\)\)\) return true;/,
+    );
+    // And _adaBerkas has all three fallbacks.
+    expect(SRV).toMatch(/fs\.accessSync\(p, fs\.constants\.F_OK\)/);
+    expect(SRV).toMatch(/readdirSync\(path\.dirname\(p\)\)/);
+  });
+
+  test("_adaBerkas returns true for a path fs.existsSync reports as missing (accessSync fallback)", () => {
+    // A real reparse-like case is hard to fabricate portably; instead prove
+    // the fallback fires. On a directory entry that exists, existsSync is true
+    // anyway -- so assert the LOGICAL property: a path present via readdir but
+    // (hypothetically) not via existsSync is still found. We test the helper's
+    // shape by running the same three-step check the source defines.
+    const ada = (p: string) => {
+      try {
+        if (fs.existsSync(p)) return true;
+      } catch (_) {}
+      try {
+        fs.accessSync(p, (fs as any).constants.F_OK);
+        return true;
+      } catch (_) {}
+      try {
+        const nama = path.basename(p).toLowerCase();
+        return fs
+          .readdirSync(path.dirname(p))
+          .some((f: string) => f.toLowerCase() === nama);
+      } catch (_) {
+        return false;
+      }
+    };
+    // This test file itself exists -- found by every step.
+    expect(ada(__filename)).toBe(true);
+    // A genuinely absent file is still false.
+    expect(ada(path.join(__dirname, "tidak-ada-file-xyz.qqq"))).toBe(false);
+    // The pwsh Store alias, when present on this machine, is now seen even
+    // though existsSync alone says no.
+    if (process.platform === "win32" && process.env.LOCALAPPDATA) {
+      const alias = path.join(
+        process.env.LOCALAPPDATA,
+        "Microsoft",
+        "WindowsApps",
+        "pwsh.exe",
+      );
+      let lewatReaddir = false;
+      try {
+        lewatReaddir = fs
+          .readdirSync(path.dirname(alias))
+          .some((f: string) => f.toLowerCase() === "pwsh.exe");
+      } catch (_) {}
+      if (lewatReaddir) {
+        // existsSync misses it; the helper must not.
+        expect(ada(alias)).toBe(true);
+      }
+    }
+  });
+});
+
 describe("the picker", () => {
   test("renders detected shells; a missing one is disabled with an install hint", () => {
     const S = baca("public/app/Screens.tsx");

@@ -2950,6 +2950,36 @@ function _pilihKompresi(req: any, berkasAsli: any) {
 //
 // What `where` actually does is walk PATH. fs.existsSync can do that: no process is
 // spawned, and it measures under 1 ms.
+// Does a file exist at this path? More than fs.existsSync, on purpose.
+//
+// A Windows Store app-execution alias -- the stub at
+// %LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe that `winget install
+// Microsoft.PowerShell` from the Store leaves -- is a zero-byte REPARSE POINT
+// that statSync cannot read (EACCES). existsSync does a statSync and returns
+// false on ANY error, so it reports these aliases as MISSING even though they
+// are on PATH and spawn perfectly. That is exactly why pwsh read "not
+// installed" after the user had installed it. accessSync(F_OK) only checks the
+// directory entry, not the target's metadata, so it sees the alias; it is
+// tried when existsSync says no.
+function _adaBerkas(p: string) {
+  try {
+    if (fs.existsSync(p)) return true;
+  } catch (_) {}
+  try {
+    fs.accessSync(p, fs.constants.F_OK);
+    return true;
+  } catch (_) {}
+  // Last resort: the directory entry, read case-insensitively. Even where the
+  // alias stub refuses both stat and access, it still appears in its folder's
+  // listing.
+  try {
+    const nama = path.basename(p).toLowerCase();
+    return fs
+      .readdirSync(path.dirname(p))
+      .some((f: string) => f.toLowerCase() === nama);
+  } catch (_) {}
+  return false;
+}
 function _adaDiPath(nama: any) {
   const dirs = String(process.env.PATH || "").split(path.delimiter);
   // The bare name is tried FIRST, then each PATHEXT suffix. Without that, checking
@@ -2964,9 +2994,7 @@ function _adaDiPath(nama: any) {
   for (const d of dirs) {
     if (!d) continue;
     for (const a of akhiran) {
-      try {
-        if (fs.existsSync(path.join(d, nama + a))) return true;
-      } catch (_) {}
+      if (_adaBerkas(path.join(d, nama + a))) return true;
     }
   }
   return false;
@@ -3001,11 +3029,8 @@ function detectShell() {
 // binary; the bare name otherwise. Cached: installs do not change mid-session.
 let _shellsTersedia: any = null;
 function _cariBerkas(kandidat: string[]): string | null {
-  for (const c of kandidat) {
-    try {
-      if (fs.existsSync(c)) return c;
-    } catch (_) {}
-  }
+  // _adaBerkas, not existsSync: the Store-installed pwsh alias lives here too.
+  for (const c of kandidat) if (_adaBerkas(c)) return c;
   return null;
 }
 function shellsTersedia() {
@@ -3022,11 +3047,15 @@ function shellsTersedia() {
         ada: _adaDiPath("powershell.exe"),
       },
       (() => {
+        const la = process.env["LOCALAPPDATA"] || "";
         const jalur =
           (_adaDiPath("pwsh.exe") && "pwsh.exe") ||
           _cariBerkas([
             pf + "\\PowerShell\\7\\pwsh.exe",
             pf + "\\PowerShell\\7-preview\\pwsh.exe",
+            // The Microsoft Store / winget-msstore install: an app-execution
+            // alias, spawnable by its bare name once found.
+            ...(la ? [la + "\\Microsoft\\WindowsApps\\pwsh.exe"] : []),
           ]);
         return {
           nama: "PowerShell 7 (pwsh)",
