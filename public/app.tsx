@@ -4397,12 +4397,22 @@ function App() {
                 // The agent paused on the step ceiling (a checkpoint) — not
                 // finished, not failed. Close the timeline tidily and then offer
                 // "Continue".
+                //
+                // The ANSWER BUBBLE gets a short, neutral pause note, NOT the
+                // full report. j.summary is an activity accounting ("12 tool
+                // calls (bash×10, grep×2), 3 files edited…"): a diagnostic, not
+                // an answer. It used to be written into the bubble too, so tool
+                // accounting sat where the answer belongs -- the "2× grep, 10×
+                // bash in the answer" the report was about. The detail stays in
+                // full in the Continue panel below, which is where a checkpoint
+                // report belongs.
                 adoneSent = true;
                 waitingForInput = true;
                 upd({
                   busy: false,
                   done: true,
-                  summary: j.summary,
+                  summary:
+                    "Dijeda di batas langkah — rincian ada di panel di bawah. Tekan Lanjutkan untuk menyambung, atau Selesai untuk berhenti.",
                   editCount: j.edits,
                   backup: j.backup,
                 });
