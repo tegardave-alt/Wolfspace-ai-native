@@ -6789,3 +6789,64 @@ button.aal-row:focus-visible {
   color: #f85149;
   font-size: 11px;
 }
+
+/* ── Copy a whole message ──
+ * The control lives in the message's header row, beside the role label, and
+ * shows on hover or focus so the transcript stays quiet -- the same rule
+ * ChatGPT, Claude and Copilot Chat follow. On a touch screen there is no
+ * hover, so it stays visible there. */
+.msg-kepala {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 18px;
+}
+.msg.user .msg-kepala {
+  flex-direction: row-reverse;
+}
+.msg-salin {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 1px 6px;
+  border-radius: 5px;
+  border: 1px solid transparent;
+  background: transparent;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  cursor: pointer;
+  opacity: 0;
+  transition:
+    opacity 0.12s,
+    background 0.12s,
+    color 0.12s;
+}
+.msg-salin svg {
+  width: 12px;
+  height: 12px;
+}
+.msg:hover .msg-salin,
+.msg-salin:focus-visible,
+.msg-salin.copied,
+.av2-result-bubble:hover .msg-salin {
+  opacity: 1;
+}
+@media (hover: none) {
+  .msg-salin {
+    opacity: 1;
+  }
+}
+.msg-salin:hover {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.msg-salin.copied {
+  color: var(--ok, #34d399);
+}
+/* In the agent's answer bubble it sits at the end, beside the token badge. */
+.av2-result-bubble .msg-salin {
+  align-self: flex-start;
+  margin-left: 6px;
+  flex: none;
+}
