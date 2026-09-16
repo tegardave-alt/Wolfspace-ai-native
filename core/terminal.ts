@@ -36,6 +36,8 @@ interface SesiTerminal {
   /** Ring-trimmed at OUTPUT_MAX so a late reader still sees recent output. */
   outputBuffer: string[];
   created: number;
+  /** The process has exited; the entry lingers for one last read. */
+  exited?: boolean;
 }
 
 const sessions = new Map<string, SesiTerminal>();
@@ -107,7 +109,13 @@ function create(
         fn(msg);
       } catch (_) {}
     }
-    sessions.delete(id);
+    // The entry stays, marked, so the message above can still be READ: it
+    // used to be deleted in the same breath, and the agent's terminal_read
+    // then answered "(no output yet)" forever for a shell that was gone.
+    // The pipes are closed here, though: the process is gone and node-pty
+    // never closes them itself (see _tutupPipa) -- a handle per dead shell.
+    session.exited = true;
+    _lepasHandle(ptyProcess);
   });
 
   sessions.set(id, session);
@@ -116,7 +124,7 @@ function create(
 
 function write(id, input) {
   const session = sessions.get(id);
-  if (!session) return false;
+  if (!session || session.exited) return false;
   session.ptyProcess.write(input);
   return true;
 }
@@ -133,7 +141,7 @@ function onData(id, listener) {
 
 function resize(id, cols, rows) {
   const session = sessions.get(id);
-  if (!session) return false;
+  if (!session || session.exited) return false;
   session.ptyProcess.resize(cols, rows);
   return true;
 }
@@ -219,6 +227,22 @@ function _tutupPipa(ptyProcess) {
   } catch (_) {}
 }
 
+/**
+ * Releases what node-pty keeps open for a process that has ALREADY exited:
+ * the conout worker thread and the two pipes. killPty minus the tree kill --
+ * there is no tree left to kill, and taskkill on a dead pid is a wasted
+ * process. Without this, every shell that exited on its own left a WORKER
+ * handle behind (jest names it; the app just kept it).
+ */
+function _lepasHandle(ptyProcess) {
+  if (!ptyProcess) return;
+  _bungkamPendaftarKonsol(ptyProcess);
+  try {
+    ptyProcess.kill();
+  } catch (_) {}
+  _tutupPipa(ptyProcess);
+}
+
 function killPty(ptyProcess) {
   if (!ptyProcess) return;
   // The order matters: the tree is killed WHILE its pid is still valid, then
@@ -254,7 +278,7 @@ async function killPtyAsync(ptyProcess: any): Promise<void> {
 function destroy(id) {
   const session = sessions.get(id);
   if (!session) return false;
-  killPty(session.ptyProcess);
+  if (!session.exited) killPty(session.ptyProcess);
   sessions.delete(id);
   return true;
 }
@@ -264,16 +288,28 @@ function list() {
     id: s.id,
     pid: s.ptyProcess.pid,
     created: s.created,
+    exited: !!s.exited,
   }));
 }
 
-/** Read accumulated output buffer (and optionally clear it) */
+/** Read accumulated output buffer (and optionally clear it). An exited
+ * session is dropped once its buffer has been drained. */
 function readBuffer(id, clear) {
   const session = sessions.get(id);
   if (!session) return null;
   const text = session.outputBuffer.join("");
-  if (clear) session.outputBuffer.length = 0;
+  if (clear) {
+    session.outputBuffer.length = 0;
+    if (session.exited) sessions.delete(id);
+  }
   return text;
+}
+
+/** Has the session's process exited? null when there is no such session. */
+function sudahKeluar(id): boolean | null {
+  const session = sessions.get(id);
+  if (!session) return null;
+  return !!session.exited;
 }
 
 module.exports = {
@@ -284,6 +320,9 @@ module.exports = {
   destroy,
   list,
   readBuffer,
+  sudahKeluar,
+  tutupPipa: _tutupPipa,
+  lepasHandle: _lepasHandle,
   killPty,
   killPtyAsync,
 };

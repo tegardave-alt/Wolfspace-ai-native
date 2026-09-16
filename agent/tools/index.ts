@@ -2276,13 +2276,32 @@ async function _runSelfToolInner(name, args, emit, context: any = {}) {
       if (!term) return { ok: false, output: "terminal unavailable" };
       if (!args.id) return { ok: false, output: "parameter id is required" };
       // Wait briefly for output (up to 2s) so agent doesn't read empty buffer immediately after write
+      // A missing session is an ERROR, not "(no output yet)": readBuffer
+      // returns null for it, and the old code turned that null into a
+      // patient wait and then a cheerful empty answer, so the model kept
+      // reading a shell that no longer existed.
+      if (term.readBuffer(args.id, false) == null)
+        return { ok: false, output: "session not found: " + args.id };
       return new Promise((resolve) => {
         let waited = 0;
         const poll = () => {
           const buf = term.readBuffer(args.id, false);
-          if (buf && buf.trim()) {
+          if (buf == null)
+            return resolve({
+              ok: false,
+              output: "session not found: " + args.id,
+            });
+          const keluar = term.sudahKeluar ? term.sudahKeluar(args.id) : false;
+          if ((buf && buf.trim()) || keluar) {
             const out = term.readBuffer(args.id, args.clear) || buf;
-            return resolve({ ok: true, output: out || "(no output yet)" });
+            return resolve({
+              ok: true,
+              output:
+                (out || "(no output yet)") +
+                (keluar
+                  ? "\n[session ended - the shell has exited; open a new one]"
+                  : ""),
+            });
           }
           waited += 100;
           if (waited >= 2000)

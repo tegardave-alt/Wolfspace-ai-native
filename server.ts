@@ -2855,7 +2855,16 @@ const { selfAgentStream } = require("./agent/self_agent.ts");
 // Each session is a background pseudo-terminal that keeps state (cd, env).
 // Designed for AI agents to run interactive commands without losing context.
 const terminalSessions = new Map(); // id â†’ { pty, shell, cwd, createdAt, listeners, outputBuffer }
-const TERM_OUTPUT_MAX = 4096; // max chars kept per session for late joiners
+// 1 MB, not 4 KB. The UI drains this buffer every 75 ms, so between two polls
+// it only has to hold what the shell produced in 75 ms -- and a `dir /s`, an
+// `npm install` or a 20 KB file through `type` produces far more than 4 KB
+// in that time. Measured: of 20,000 characters written in one go, 1,784
+// reached the screen; the rest were cut by the old cap, mid escape sequence.
+// The cap now only matters while the panel is closed and nobody reads.
+const TERM_OUTPUT_MAX = 1_000_000;
+// How long a session that has EXITED stays readable, so the poller can pick
+// up the exit message before the entry goes.
+const TERM_EXIT_LINGER_MS = 60_000;
 // The session manager here differs from core/terminal.ts (which the agent tools
 // use), but the way a PTY is KILLED is taken from there — one implementation only.
 // The reasoning is long and lives in closeTerminalSession() below.
@@ -3002,13 +3011,14 @@ function openTerminalSession(customCwd: any, customShell: any) {
 
   const listeners = new Set<any>();
   let outputBuffer = "";
-  const session = {
+  const session: any = {
     pty: ptyProcess,
     shell,
     cwd,
     createdAt: Date.now(),
     listeners,
     outputBuffer,
+    exited: null as null | { code: any; at: number },
   };
   terminalSessions.set(id, session);
 
@@ -3024,10 +3034,25 @@ function openTerminalSession(customCwd: any, customShell: any) {
     }
   });
 
-  // Auto-cleanup on exit
-  ptyProcess.on("exit", () => {
-    terminalSessions.delete(id);
+  // On exit the session is NOT dropped at once. It used to be, and the UI's
+  // poll then met 404 forever: no message, a pane that looked alive and
+  // swallowed typing, thirteen 404s a second per dead terminal. Now the exit
+  // line goes into the buffer, the entry is marked, and it lingers long
+  // enough to be read; a write to it is refused with a reason.
+  ptyProcess.on("exit", (e: any) => {
+    const code = e && typeof e === "object" ? e.exitCode : e;
+    session.exited = { code: code == null ? null : code, at: Date.now() };
+    session.outputBuffer +=
+      "\r\n\x1b[90m[WOLFSPACE] Process exited" +
+      (code == null ? "" : " (code=" + code + ")") +
+      "\x1b[0m\r\n";
     dlog("terminal", "info", `session ${id} closed (process exited)`);
+    // The process is gone; its pipes are not closed by node-pty itself.
+    coreTerminal.lepasHandle(ptyProcess);
+    const jam = setTimeout(() => {
+      if (terminalSessions.get(id) === session) terminalSessions.delete(id);
+    }, TERM_EXIT_LINGER_MS);
+    if (jam && typeof (jam as any).unref === "function") (jam as any).unref();
   });
 
   dlog("terminal", "info", `session ${id} opened`, { shell, cwd });
@@ -3038,6 +3063,7 @@ function openTerminalSession(customCwd: any, customShell: any) {
 function writeToTerminal(id: any, data: any) {
   const session = terminalSessions.get(id);
   if (!session) throw new Error("terminal session not found: " + id);
+  if (session.exited) throw new Error("terminal session has exited: " + id);
   session.pty.write(data);
 }
 
@@ -3045,6 +3071,7 @@ function writeToTerminal(id: any, data: any) {
 function resizeTerminal(id: any, cols: any, rows: any) {
   const session = terminalSessions.get(id);
   if (!session) throw new Error("terminal session not found: " + id);
+  if (session.exited) return;
   session.pty.resize(cols || 100, rows || 30);
 }
 
@@ -3077,6 +3104,7 @@ function closeTerminalSession(id: any) {
   const session = terminalSessions.get(id);
   if (!session) return;
   terminalSessions.delete(id);
+  if (session.exited) return; // already dead, pipes already closed
   coreTerminal.killPtyAsync(session.pty).catch((e: any) =>
     dlog("terminal", "warn", "failed to close PTY " + id, {
       galat: String((e && e.message) || e),
