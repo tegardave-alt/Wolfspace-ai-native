@@ -1593,6 +1593,10 @@ function ProjectPickerScreen({
 // without losing its screen, but its element can simply be appended somewhere
 // else and the instance never notices.
 const _terminalInstans = new Map<string, any>();
+// Test handle: the headless checks read the xterm buffers through it, the
+// DOM only holds the rows in view.
+if (typeof window !== "undefined")
+  (window as any).__wolfspaceTerminalInstans = _terminalInstans;
 let _terminalUrut = 0;
 let _terminalAktif = "";
 let _terminalPecah = "";
@@ -2153,7 +2157,15 @@ function VSCodeTerminal({
     // someone types into the visible terminal to whichever session happens to
     // be active by the time the callback runs.
     term.onData((data: any) => {
-      if (!inst.sessionId) return;
+      if (!inst.sessionId) {
+        // No shell behind this pane (it exited, or never started). Enter
+        // starts a new one in the same pane; anything else has nowhere to go.
+        if (inst.exited && /\r/.test(String(data))) {
+          inst.exited = false;
+          bukaSesi(inst, inst.shell || undefined);
+        }
+        return;
+      }
       fetch("/api/terminal/write", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2169,21 +2181,51 @@ function VSCodeTerminal({
       }).catch(() => {});
     });
 
+    // The row is added BEFORE the session is opened. It used to be added
+    // only on success, so a shell that failed to spawn (pwsh not installed,
+    // say) left an xterm in the host with no row: visible, unlistable,
+    // unclosable. The row now exists either way, and carries the failure.
+    inst.shell = shellPilihan || "";
+    inst.nama = namaShell(inst.shell || "shell");
+    setTerminals((prev: any[]) =>
+      prev.concat([{ key, shell: inst.shell, nama: inst.nama }]),
+    );
+    await bukaSesi(inst, shellPilihan);
+    return key;
+  };
+
+  /**
+   * Opens (or re-opens) the PTY behind one terminal instance. Separate from
+   * buatTerminal so a terminal whose shell has EXITED can get a new shell in
+   * the same pane on Enter, keeping its scrollback -- rather than a dead pane
+   * that swallowed typing.
+   */
+  const bukaSesi = async (inst: any, shellPilihan?: any) => {
+    const term = inst.term;
+    const key = inst.key;
     const targetCwd = akarProyek(selectedProject);
+    const labelBaris = (nama: string, shell: string) =>
+      setTerminals((prev: any[]) =>
+        prev.map((t) => (t.key === key ? { ...t, nama, shell } : t)),
+      );
     try {
       const res = await fetch("/api/terminal/open", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: targetCwd, shell: shellPilihan }),
       });
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) {
+        // The server's own reason ("File not found: pwsh.exe"), not a
+        // guess about the server being down.
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err && err.error) || "HTTP " + res.status);
+      }
       const data = await res.json();
       inst.sessionId = data.id;
+      inst.exited = false;
       inst.shell = data.shell || shellPilihan || "shell";
       inst.nama = namaShell(inst.shell);
-      setTerminals((prev: any[]) =>
-        prev.concat([{ key, shell: inst.shell, nama: namaShell(inst.shell) }]),
-      );
+      labelBaris(inst.nama, inst.shell);
       setStatusText(
         "Shell: " +
           namaShell(inst.shell) +
@@ -2191,6 +2233,10 @@ function VSCodeTerminal({
           (targetCwd || "default") +
           ")",
       );
+      // The PTY was spawned at a default size; tell it the pane's real one.
+      try {
+        if (inst.fit && inst.el.style.display !== "none") inst.fit.fit();
+      } catch (_) {}
       // A command queued while the PTY was still opening is released now
       // rather than discarded -- the button looked like it worked otherwise.
       if (tertundaRef.current) {
@@ -2203,13 +2249,18 @@ function VSCodeTerminal({
         }).catch(() => {});
       }
     } catch (e: any) {
+      inst.sessionId = null;
+      inst.exited = true;
+      labelBaris(inst.nama + " (failed)", inst.shell);
       term.write(
-        "\r\n\x1b[31m[Error] Cannot connect to /api/terminal/open (" +
+        "\r\n\x1b[31m[Error] Could not open " +
+          (shellPilihan || "the shell") +
+          ": " +
           (e && e.message ? e.message : String(e)) +
-          "). Ensure server is running.\x1b[0m\r\n",
+          "\x1b[0m\r\n" +
+          "\x1b[90mPress Enter to try again, or close this terminal.\x1b[0m\r\n",
       );
     }
-    return key;
   };
 
   const pilihTerminal = (key: string) => {
@@ -2282,6 +2333,17 @@ function VSCodeTerminal({
   useEffect(() => {
     const onKey = (e: any) => {
       if (activeTab !== "TERMINAL") return;
+      // Only when the keystroke is INSIDE this panel. The listener is on the
+      // window, so without this check Ctrl+F in the code editor -- or in the
+      // chat box -- opened Monaco's find AND this search box, which then took
+      // the focus away from it. Measured: active element after Ctrl+F in the
+      // editor was the terminal's Find field.
+      const host = hostRef.current;
+      const t = e.target;
+      const diPanel =
+        (host && t && host.contains(t)) ||
+        (cariInputRef.current && t === cariInputRef.current);
+      if (!diPanel) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         setCariBuka(true);
@@ -2357,6 +2419,25 @@ function VSCodeTerminal({
     // correct response to it being slow.
     let berhentiPoll = false;
     let jamPoll: any = null;
+    // The pane stays, with its scrollback; the row says "(exited)"; Enter
+    // opens a new shell in it (see term.onData). `pesan` null = the server
+    // gave no exit line of its own, so one is written here.
+    const tandaiKeluar = (inst: any, pesan: string | null) => {
+      if (!inst.sessionId) return;
+      inst.sessionId = null;
+      inst.exited = true;
+      if (pesan === null)
+        inst.term.write("\r\n\x1b[90m[WOLFSPACE] Session ended.\x1b[0m\r\n");
+      inst.term.write(
+        "\x1b[90mPress Enter to start a new shell here.\x1b[0m\r\n",
+      );
+      setTerminals((prev: any[]) =>
+        prev.map((t) =>
+          t.key === inst.key ? { ...t, nama: inst.nama + " (exited)" } : t,
+        ),
+      );
+      if (inst.term === termRef.current) sessionIdRef.current = null;
+    };
     const putaranBaca = async () => {
       for (const inst of Array.from(_terminalInstans.values())) {
         if (!inst.sessionId) continue;
@@ -2366,6 +2447,14 @@ function VSCodeTerminal({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id: inst.sessionId, clear: true }),
           });
+          if (res.status === 404) {
+            // The server no longer knows this session (it exited while the
+            // panel was closed and the linger ran out, or the backend
+            // restarted). Say so once and stop asking -- this used to be
+            // thirteen 404s a second per dead terminal, and silence on screen.
+            tandaiKeluar(inst, null);
+            continue;
+          }
           if (!res.ok) continue;
           const data = await res.json();
           if (data.output) {
@@ -2374,6 +2463,7 @@ function VSCodeTerminal({
             // looked at; a background session must not trip it.
             if (inst.term === termRef.current) periksaAkhirDebug(data.output);
           }
+          if (data.exited) tandaiKeluar(inst, data.output ? "" : null);
         } catch (_) {}
       }
       if (!berhentiPoll) jamPoll = setTimeout(putaranBaca, 75);

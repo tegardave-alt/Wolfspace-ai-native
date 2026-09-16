@@ -1565,7 +1565,9 @@ function registerIpc() {
           if (!session) return { ok: false, error: "session not found" };
           const out = session.outputBuffer || "";
           if (payload.clear) session.outputBuffer = "";
-          return { ok: true, output: out };
+          const exited = !!session.exited;
+          if (exited && payload.clear) c.terminalSessions.delete(payload.id);
+          return { ok: true, output: out, exited };
         }
         if (action === "resize") {
           c.resizeTerminal(payload.id, payload.cols, payload.rows);

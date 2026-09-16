@@ -23,6 +23,8 @@ export interface TerminalSession {
   /** Ring-trimmed at TERM_OUTPUT_MAX by the PTY data handler in server.cjs. */
   outputBuffer: string;
   listeners: unknown;
+  /** Set once the process has exited; the entry lingers so the exit line can be read. */
+  exited?: { code: unknown; at: number } | null;
 }
 
 export interface OpenTerminalResult {
@@ -112,8 +114,12 @@ export function handle(
       }
       const output = session.outputBuffer || "";
       if (clear) session.outputBuffer = "";
+      // `exited` tells the poller to stop: the session is over, and once its
+      // last output has been drained the entry itself goes.
+      const exited = !!session.exited;
+      if (exited && clear) terminalSessions.delete(id);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ output }));
+      res.end(JSON.stringify({ output, exited }));
     }, true);
   }
 
@@ -131,6 +137,7 @@ export function handle(
       shell: s.shell,
       cwd: s.cwd,
       createdAt: s.createdAt,
+      exited: !!s.exited,
     }));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(out));
