@@ -1701,6 +1701,7 @@ function VSCodeTerminal({
   selectedProject,
   onClose,
   terminalOutput,
+  onClearTerminalOutput,
   messages = [],
   perintah,
   debugAktif,
@@ -1864,19 +1865,49 @@ function VSCodeTerminal({
   }, [activeTab]);
   const [statusText, setStatusText] = useState("Connecting PTY...");
 
+  // ── OUTPUT: channels, as VS Code's Output view ──
+  //
+  // VS Code's Output panel is a set of CHANNELS behind one picker (Git,
+  // Tasks, each extension's log), with Clear beside it. Here there are two
+  // sources and they used to share one pane by precedence: once a
+  // `/terminal run` result existed it replaced the agent log for good, with
+  // no way to clear it. Now each is a channel, the picker chooses, Clear
+  // clears the one in view, and a fresh command result brings its channel
+  // forward the way VS Code reveals the channel that just wrote.
+  const [saluranOutput, setSaluranOutput] = useState<"agent" | "command">(
+    "agent",
+  );
+  // The agent log is derived from the chat, so "clear" is a watermark: only
+  // messages after it are shown.
+  const [agentSejak, setAgentSejak] = useState(0);
+  const terminalOutputSebelum = useRef(terminalOutput);
+  useEffect(() => {
+    if (terminalOutput && terminalOutput !== terminalOutputSebelum.current)
+      setSaluranOutput("command");
+    terminalOutputSebelum.current = terminalOutput;
+  }, [terminalOutput]);
+  const outputRef = useRef<any>(null);
+  const bersihkanOutput = () => {
+    if (saluranOutput === "command") {
+      if (onClearTerminalOutput) onClearTerminalOutput();
+    } else setAgentSejak(messages.length);
+  };
+
   // Build a clean, formatted AI output log from the main UI messages + any agent/terminal output
   const mainUiAiLog = useMemo(() => {
-    if (terminalOutput) return terminalOutput;
+    if (saluranOutput === "command") return terminalOutput || "";
 
     // Filter for model / agent / assistant messages from main chat UI
-    const aiMsgs = messages.filter(
-      (m: any) =>
-        m &&
-        (m.role === "model" ||
-          m.role === "agent" ||
-          m.role === "assistant" ||
-          m.role === "ai"),
-    );
+    const aiMsgs = messages
+      .slice(agentSejak)
+      .filter(
+        (m: any) =>
+          m &&
+          (m.role === "model" ||
+            m.role === "agent" ||
+            m.role === "assistant" ||
+            m.role === "ai"),
+      );
 
     if (aiMsgs.length === 0) return null;
 
@@ -1905,7 +1936,12 @@ function VSCodeTerminal({
       .join(
         "\n\n------------------------------------------------------------\n\n",
       );
-  }, [terminalOutput, messages]);
+  }, [terminalOutput, messages, saluranOutput, agentSejak]);
+  // Follows the newest line, as the Output view does with scroll lock off.
+  useEffect(() => {
+    const el = outputRef.current;
+    if (el && activeTab === "OUTPUT") el.scrollTop = el.scrollHeight;
+  }, [mainUiAiLog, activeTab]);
 
   // Each debugger's prompt, plus the shell prompt. Matched at the END of the
   // output — the same word can appear mid-text (a line of code containing
@@ -2041,12 +2077,28 @@ function VSCodeTerminal({
 
   // Options are shared by every terminal, so a second one cannot drift from
   // the first by being constructed somewhere else.
+  //
+  // The values are VS Code's defaults (terminalConfiguration.ts) where the
+  // two differ mattered:
+  //   minimumContrastRatio 4.5 -- dark blue on this background (a `dir`
+  //     listing, npm's dim lines) was painted as-is and unreadable; xterm
+  //     lifts such colours to the ratio, as VS Code does.
+  //   rescaleOverlappingGlyphs -- wide glyphs from a fallback font no longer
+  //     bleed into the next cell.
+  //   wordSeparator -- double-click selects a path or a word the way VS Code
+  //     cuts it (the box-drawing and quote characters included).
+  //   fontSize 14 -- VS Code's default on Windows and Linux, and what the
+  //     code editor here already uses.
   const opsiTerminal = () => ({
     cols: 100,
     rows: 25,
     scrollback: 5000,
     fontFamily: '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
-    fontSize: 13,
+    fontSize: 14,
+    minimumContrastRatio: 4.5,
+    rescaleOverlappingGlyphs: true,
+    drawBoldTextInBrightColors: true,
+    wordSeparator: " ()[]{}',\"`\u2500\u2018\u2019\u201c\u201d|",
     cursorStyle: "block" as any,
     cursorBlink: true,
     // The full VS Code palette. Before this the terminal handed xterm five
@@ -2152,6 +2204,58 @@ function VSCodeTerminal({
     const inst: any = { key, term, fit, cari, el, sessionId: null, shell: "" };
     _terminalInstans.set(key, inst);
 
+    // ── Copy and paste, as VS Code on Windows ──
+    //
+    // xterm alone sends Ctrl+C to the shell even when text is selected: the
+    // habit of copying with Ctrl+C then INTERRUPTS whatever is running, and
+    // nothing lands on the clipboard (xterm prevents the browser's copy).
+    // VS Code binds copySelection to Ctrl+C while text is selected
+    // (terminalTextSelected), Ctrl+Shift+C always, Ctrl+Shift+V to paste;
+    // Ctrl+V is left to the browser's paste event, which xterm handles.
+    // Right-click follows rightClickBehavior "copyPaste", the Windows
+    // default: copy the selection if there is one, else paste.
+    const salinSeleksi = () => {
+      const t = term.getSelection();
+      if (!t) return false;
+      try {
+        navigator.clipboard.writeText(t);
+      } catch (_) {}
+      return true;
+    };
+    const tempelDariPapan = async () => {
+      let t = "";
+      try {
+        t = await navigator.clipboard.readText();
+      } catch (_) {}
+      if (t) term.paste(t);
+    };
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type !== "keydown") return true;
+      const ctrl = e.ctrlKey && !e.altKey && !e.metaKey;
+      if (!ctrl) return true;
+      const k = e.key.toLowerCase();
+      if (k === "c" && (e.shiftKey || term.hasSelection())) {
+        if (salinSeleksi()) {
+          e.preventDefault();
+          return false;
+        }
+      }
+      if (k === "v" && e.shiftKey) {
+        e.preventDefault();
+        tempelDariPapan();
+        return false;
+      }
+      return true;
+    });
+    el.addEventListener("contextmenu", (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (term.hasSelection()) {
+        salinSeleksi();
+        term.clearSelection();
+      } else tempelDariPapan();
+    });
+
     // Input and resize are bound to THIS instance's session, read off `inst`
     // rather than the active pointer. Reading the pointer would send what
     // someone types into the visible terminal to whichever session happens to
@@ -2223,6 +2327,16 @@ function VSCodeTerminal({
       const data = await res.json();
       inst.sessionId = data.id;
       inst.exited = false;
+      // xterm's ConPTY workarounds switch on with this, keyed on the build --
+      // set after the process exists, as terminalInstance.ts does.
+      if (data.windowsBuild) {
+        try {
+          term.options.windowsPty = {
+            backend: "conpty",
+            buildNumber: data.windowsBuild,
+          };
+        } catch (_) {}
+      }
       inst.shell = data.shell || shellPilihan || "shell";
       inst.nama = namaShell(inst.shell);
       labelBaris(inst.nama, inst.shell);
@@ -3394,38 +3508,82 @@ function VSCodeTerminal({
         </div>
         <div
           style={{
-            display: activeTab === "OUTPUT" ? "block" : "none",
-            padding: "12px",
-            color: "#c9d1d9",
-            fontSize: "12px",
-            fontFamily:
-              '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
-            overflowY: "auto",
+            display: activeTab === "OUTPUT" ? "flex" : "none",
+            flexDirection: "column",
             height: "100%",
-            whiteSpace: "pre-wrap",
-            lineHeight: "1.5",
+            minHeight: 0,
           }}
         >
-          {mainUiAiLog ? (
-            <div>{mainUiAiLog}</div>
-          ) : (
-            <div style={{ color: "#8b949e" }}>
-              <div
-                style={{
-                  color: "#5eead4",
-                  fontWeight: 600,
-                  marginBottom: "6px",
-                }}
+          <div className="output-kepala">
+            <select
+              className="output-saluran"
+              aria-label="Output channel"
+              value={saluranOutput}
+              onChange={(e: any) => setSaluranOutput(e.target.value)}
+            >
+              <option value="agent">Agent</option>
+              <option value="command">Command (/terminal run)</option>
+            </select>
+            <button
+              type="button"
+              className="btn-reset term-btn output-bersihkan"
+              title="Clear Output"
+              aria-label="Clear Output"
+              onClick={bersihkanOutput}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                [WOLFSPACE AI & System Output Stream]
+                <path d="M3 6h18"></path>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+              </svg>
+            </button>
+          </div>
+          <div
+            ref={outputRef}
+            className="output-isi"
+            style={{
+              flex: 1,
+              minHeight: 0,
+              padding: "12px",
+              color: "#c9d1d9",
+              fontSize: "12px",
+              fontFamily:
+                '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
+              overflowY: "auto",
+              whiteSpace: "pre-wrap",
+              lineHeight: "1.5",
+            }}
+          >
+            {mainUiAiLog ? (
+              <div>{mainUiAiLog}</div>
+            ) : (
+              <div style={{ color: "#8b949e" }}>
+                <div
+                  style={{
+                    color: "#5eead4",
+                    fontWeight: 600,
+                    marginBottom: "6px",
+                  }}
+                >
+                  [WOLFSPACE AI & System Output Stream]
+                </div>
+                No activity log or AI output from the main UI yet.
+                <br />
+                {saluranOutput === "command"
+                  ? "Results of /terminal run <command> appear here."
+                  : "The agent's replies and its steps appear here as you chat."}
               </div>
-              No activity log or AI output from the main UI yet.
-              <br />
-              When you chat with the AI in the main UI or run a command, all
-              process logs and AI response results will automatically flow into
-              this panel.
-            </div>
-          )}
+            )}
+          </div>
         </div>
         {/* INFO -- problems across the whole workspace.
             

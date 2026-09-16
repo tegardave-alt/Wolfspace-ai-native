@@ -3066,7 +3066,15 @@ function openTerminalSession(customCwd: any, customShell: any) {
   });
 
   dlog("terminal", "info", `session ${id} opened`, { shell, cwd });
-  return { id, shell, cwd };
+  // The Windows build number rides along: xterm.js keys its ConPTY
+  // workarounds (cursor placement after wraps, among others) on it, the
+  // way VS Code hands it over in terminalInstance.ts. Zero elsewhere.
+  let windowsBuild = 0;
+  if (process.platform === "win32") {
+    const m = /^\d+\.\d+\.(\d+)/.exec(os.release());
+    if (m) windowsBuild = Number(m[1]) || 0;
+  }
+  return { id, shell, cwd, windowsBuild };
 }
 
 // Write data to an open PTY session (stdin).
