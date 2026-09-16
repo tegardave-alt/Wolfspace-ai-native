@@ -22,9 +22,9 @@ const PY = fs.readFileSync(path.join(AKAR, "agent", "python-agent.ts"), "utf8");
 describe("perencana: satu implementasi, dua pemanggil", () => {
   test("prompt planner hanya ada di SATU berkas", () => {
     // The thing that made the two paths able to differ at all.
-    expect((SELF.match(/AI Planner/g) || []).length).toBe(0);
-    expect((PY.match(/AI Planner/g) || []).length).toBe(0);
-    expect(perencana.promptRencana("x")).toContain("AI Planner");
+    expect((SELF.match(/You are a planner/g) || []).length).toBe(0);
+    expect((PY.match(/You are a planner/g) || []).length).toBe(0);
+    expect(perencana.promptRencana("x")).toContain("You are a planner");
   });
 
   test("kedua orkestrator memanggil rencanakan yang sama", () => {
@@ -156,10 +156,46 @@ describe("perencana: TIDAK PERNAH menggagalkan run", () => {
         "buat sesuatu",
       );
       expect(dipanggil).toBeGreaterThan(0);
-      expect(hasil.checklist).toEqual([perencana.RENCANA_FALLBACK]);
+      // "buat sesuatu" is Indonesian, so the fallback line is too.
+      expect(hasil.checklist).toEqual([perencana.RENCANA_FALLBACK_ID]);
     } finally {
       cloudMod.askCloudTools = asliAsk;
       cloudMod.CLOUD_KEYS = asliKeys;
     }
+  });
+});
+
+describe("the checklist follows the language of the request", () => {
+  // The screenshot: "cek folder proyek / buat file HTML kosong" for every
+  // user, because the planner's own prompt was Indonesian and the model took
+  // that as the language to answer in.
+  test("the prompt is English and names the answer language explicitly", () => {
+    const id = perencana.promptRencana("buatkan halaman web untuk kedai kopi");
+    const en = perencana.promptRencana("make a landing page for a coffee shop");
+    expect(id).toMatch(/^You are a planner\./);
+    expect(id).toMatch(/Write every step in Indonesian/);
+    expect(en).toMatch(/Write every step in the SAME language as the request/);
+    expect(en).not.toMatch(/Indonesian, the language of the request/);
+    // No Indonesian instruction text is left to bias the answer.
+    expect(id).not.toMatch(/Anda adalah|Permintaan:/);
+  });
+
+  test("the language guess reads the request, not the app", () => {
+    expect(perencana.permintaanIndonesia("perbaiki bug di tombol login")).toBe(
+      true,
+    );
+    expect(perencana.permintaanIndonesia("fix the login button bug")).toBe(
+      false,
+    );
+    expect(
+      perencana.permintaanIndonesia(
+        "cek folder proyek lalu buat file HTML kosong",
+      ),
+    ).toBe(true);
+    expect(
+      perencana.permintaanIndonesia(
+        "check the project folder and create an empty HTML file",
+      ),
+    ).toBe(false);
   });
 });

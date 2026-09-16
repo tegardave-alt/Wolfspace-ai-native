@@ -1875,7 +1875,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
             kind: "hitl_approved",
             arg: pendingInGraph.map((tc) => tc.function.name).join(", "),
             ok: true,
-            output: "Diizinkan oleh user ✔",
+            output: "Approved by the user ✔",
           });
           const approvedMsg = {
             role: "assistant",
@@ -3150,7 +3150,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         ) {
           emit({
             t: "force_retry",
-            m: "[ANTI-TUTORIAL] Jawaban mensimulasikan eksekusi — memaksa pemanggilan tool nyata...",
+            m: "[ANTI-TUTORIAL] The answer simulates execution - forcing a real tool call...",
           });
           return {
             messages: [
@@ -3525,7 +3525,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
           kind: "hitl_approved",
           arg: pendingTools.map((tc) => tc.function.name).join(", "),
           ok: true,
-          output: "Diizinkan oleh user ✔",
+          output: "Approved by the user ✔",
         });
 
         const toolResults: any[] = [];

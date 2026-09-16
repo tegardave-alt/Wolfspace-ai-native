@@ -20,7 +20,89 @@ const penjaga = require("./penjaga-agent.ts");
 export const MAKS_LANGKAH = 3;
 
 /** Used when the model returns nothing usable. The run continues regardless. */
-export const RENCANA_FALLBACK = "Jalankan tugas user.";
+// Neutral on purpose: it is the line shown when NO planner answered, so
+// there is no request-language signal to follow yet. Matched to the request
+// by fallbackUntuk() below.
+export const RENCANA_FALLBACK = "Do the user's task.";
+export const RENCANA_FALLBACK_ID = "Kerjakan tugas pengguna.";
+
+/**
+ * Is the request written in Indonesian? A short word list is enough: the
+ * decision only picks a language for the checklist, and a wrong guess costs
+ * one line in the other language, not a wrong action.
+ */
+export function permintaanIndonesia(teks: string): boolean {
+  const t = " " + String(teks || "").toLowerCase() + " ";
+  const id = [
+    "buat",
+    "buatkan",
+    "bikin",
+    "tolong",
+    "saya",
+    "aku",
+    "dan",
+    "yang",
+    "untuk",
+    "dengan",
+    "tidak",
+    "jangan",
+    "perbaiki",
+    "ubah",
+    "tambah",
+    "tambahkan",
+    "hapus",
+    "cek",
+    "periksa",
+    "jalankan",
+    "kenapa",
+    "bagaimana",
+    "sebuah",
+    "halaman",
+    "berkas",
+    "folder",
+    "di",
+    "ke",
+    "dari",
+    "ini",
+    "itu",
+  ];
+  const en = [
+    "the",
+    "and",
+    "make",
+    "create",
+    "build",
+    "fix",
+    "change",
+    "add",
+    "remove",
+    "please",
+    "check",
+    "run",
+    "why",
+    "how",
+    "with",
+    "without",
+    "file",
+    "page",
+    "this",
+    "that",
+    "into",
+    "from",
+    "a ",
+    "an ",
+  ];
+  const skor = (kata: string[]) =>
+    kata.reduce((n, k) => n + (t.includes(" " + k + " ") ? 1 : 0), 0);
+  return skor(id) > skor(en);
+}
+
+/** The fallback line in the request's language. */
+export function fallbackUntuk(permintaan: string): string {
+  return permintaanIndonesia(permintaan)
+    ? RENCANA_FALLBACK_ID
+    : RENCANA_FALLBACK;
+}
 
 /** How many providers to try before giving up on planning entirely. */
 export const MAKS_PERCOBAAN_PROVIDER = 4;
@@ -77,15 +159,23 @@ export function layakGantiProvider(e: unknown): boolean {
  * checklist is shown to the user verbatim.
  */
 export function promptRencana(permintaan: string): string {
+  // The instruction is English; the ANSWER follows the request. The old
+  // prompt was written in Indonesian, and the model took that as the
+  // language to answer in -- an English request got an Indonesian
+  // checklist. Saying it outright is what makes the steps match the user.
+  const bahasa = permintaanIndonesia(permintaan)
+    ? "Write every step in Indonesian, the language of the request."
+    : "Write every step in the SAME language as the request (English for an English request).";
   return (
-    "Anda adalah AI Planner. Berdasarkan permintaan user, buat checklist SANGAT " +
-    'SINGKAT (maksimal 3 langkah). Tiap langkah di baris baru diawali "- ". ' +
-    "JANGAN detail — langsung ke inti tugas. Jangan tambahkan teks lain. " +
-    "Jika permintaannya MEMBUAT sesuatu yang baru (halaman web, situs, " +
-    "aplikasi, skrip) dan tidak menyebut berkas yang sudah ada, langkah " +
-    "pertama HARUS menulis berkasnya — bukan menjelajah atau mencari " +
-    "pendekatan.\n\n" +
-    "Permintaan: " +
+    "You are a planner. From the user's request, write a VERY SHORT checklist " +
+    '(at most 3 steps). One step per line, each starting with "- ". No detail - ' +
+    "straight to the heart of the task. Add no other text. If the request is to " +
+    "CREATE something new (a web page, a site, an app, a script) and names no " +
+    "existing file, the first step MUST write the file - not explore or look " +
+    "for an approach. " +
+    bahasa +
+    "\n\n" +
+    "Request: " +
     permintaan
   );
 }
@@ -173,7 +263,7 @@ export async function rencanakan(
   }
 
   const checklist = reply ? parseChecklist(reply.content) : [];
-  if (checklist.length === 0) checklist.push(RENCANA_FALLBACK);
+  if (checklist.length === 0) checklist.push(fallbackUntuk(permintaan));
 
   return { checklist, cloud: aktif, dicoba };
 }
@@ -181,6 +271,9 @@ export async function rencanakan(
 module.exports = {
   MAKS_LANGKAH,
   RENCANA_FALLBACK,
+  RENCANA_FALLBACK_ID,
+  permintaanIndonesia,
+  fallbackUntuk,
   MAKS_PERCOBAAN_PROVIDER,
   layakGantiProvider,
   promptRencana,
