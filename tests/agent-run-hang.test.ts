@@ -81,9 +81,17 @@ describe("planner tahan-gagal, tak lagi satu titik kegagalan untuk seluruh run",
       /const checklist = reply \? parseChecklist\(reply\.content\) : \[\]/,
     );
     expect(PLANNER).toMatch(
-      /if \(checklist\.length === 0\) checklist\.push\(RENCANA_FALLBACK\)/,
+      /if \(checklist\.length === 0\) checklist\.push\(fallbackUntuk\(permintaan\)\)/,
     );
-    expect(perencana.RENCANA_FALLBACK).toBe("Jalankan tugas user.");
+    // In the request's language: the checklist follows the user, and so
+    // does the line shown when no planner answered.
+    expect(perencana.RENCANA_FALLBACK).toBe("Do the user's task.");
+    expect(perencana.fallbackUntuk("buatkan halaman web")).toBe(
+      "Kerjakan tugas pengguna.",
+    );
+    expect(perencana.fallbackUntuk("make a web page")).toBe(
+      "Do the user's task.",
+    );
   });
 });
 describe("MCP getTools() tak lagi diam tanpa tanda selama sampai 60 detik", () => {
