@@ -4841,6 +4841,51 @@ body.menyeret-pembagi webview {
 .a2ui-btn.bahaya {
   color: var(--danger);
 }
+/* ── The sync control (after VS Code's status-bar item) ──
+   Icon plus, when there is something to say, "n↓ m↑". Sits beside the ⋯
+   button on the commit line, the same 18px tall. */
+.sync-btn {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  height: 18px;
+  padding: 0 5px;
+  border-radius: 4px;
+  color: var(--text-muted);
+  font: inherit;
+  font-size: 11px;
+  font-variant-numeric: tabular-nums;
+  transition:
+    background 0.12s ease,
+    color 0.12s ease;
+}
+.sync-btn:hover:not(:disabled) {
+  background: rgba(255, 255, 255, 0.08);
+  color: var(--text);
+}
+.sync-btn:disabled {
+  cursor: default;
+}
+.sync-btn:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: -2px;
+}
+.sync-label {
+  color: var(--text-soft);
+}
+.sync-ikon.berputar {
+  animation: sync-putar 1s linear infinite;
+}
+@keyframes sync-putar {
+  to {
+    transform: rotate(360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sync-ikon.berputar {
+    animation: none;
+  }
+}
 .dots-sep {
   height: 1px;
   margin: 4px 0;
