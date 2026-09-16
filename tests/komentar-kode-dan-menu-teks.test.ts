@@ -114,7 +114,7 @@ const whenPossible = describeKalau(punyaBrowser());
 whenPossible("in the editor and the composer (needs playwright)", () => {
   const { spawn } = require("child_process");
   const http = require("http");
-  const PORT = 8180;
+  const PORT = 8181;
   let server: any;
   let dir = "";
   let html = "";

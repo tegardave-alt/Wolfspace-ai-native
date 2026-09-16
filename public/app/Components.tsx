@@ -335,11 +335,62 @@ function Blocks({ text }: any) {
 // `msg` prop (it touches neither context nor a changing closure), so
 // React.memo's default reference comparison is already correct — no custom
 // comparator needed.
+/**
+ * One click copies a whole message.
+ *
+ * WHY. Copying a reply meant dragging a selection across the bubble first --
+ * and a long reply scrolls, so the drag became a scroll-and-drag. Every chat
+ * surface people already use (ChatGPT, Claude, Copilot Chat in VS Code) puts
+ * a copy control on the message itself for exactly this reason. The same
+ * 1.5 s "Copied" acknowledgement as CodeBlock, so there is one copy idiom in
+ * the app. What is copied is the message SOURCE (markdown, code fences
+ * included), which is what one wants to paste elsewhere.
+ */
+function TombolSalin({ teks, judul }: any) {
+  const [disalin, setDisalin] = useState(false);
+  const salin = async () => {
+    const t = String(teks || "");
+    if (!t) return;
+    try {
+      await navigator.clipboard.writeText(t);
+    } catch (_) {
+      // No clipboard API (an insecure origin): the old route.
+      const ta = document.createElement("textarea");
+      ta.value = t;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand("copy");
+      } catch (_) {}
+      ta.remove();
+    }
+    setDisalin(true);
+    setTimeout(() => setDisalin(false), 1500);
+  };
+  return (
+    <button
+      type="button"
+      className={"msg-salin" + (disalin ? " copied" : "")}
+      title={judul || "Copy message"}
+      aria-label={judul || "Copy message"}
+      onClick={salin}
+    >
+      {disalin ? <Icon.check /> : <Icon.copy />}
+      <span>{disalin ? "Copied" : "Copy"}</span>
+    </button>
+  );
+}
+
 function MessageDasar({ msg }: any) {
   if (msg.role === "user")
     return (
       <div className="msg user">
-        <span className="msg-role">You</span>
+        <div className="msg-kepala">
+          <span className="msg-role">You</span>
+          {msg.text ? <TombolSalin teks={msg.text} /> : null}
+        </div>
         {/* Attachments render as CARDS, not as text lines inside the bubble.
             The att_… handle is still sent to the model through onSend's first
             argument — it needs that to read the attachment — but there is no
@@ -371,7 +422,10 @@ function MessageDasar({ msg }: any) {
     );
   return (
     <div className="msg model">
-      <span className="msg-role">WOLFSPACE</span>
+      <div className="msg-kepala">
+        <span className="msg-role">WOLFSPACE</span>
+        {msg.text ? <TombolSalin teks={msg.text} /> : null}
+      </div>
       <div className="bubble-model">
         {msg.text ? (
           <Blocks text={msg.text} />
