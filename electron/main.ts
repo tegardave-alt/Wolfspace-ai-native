@@ -594,6 +594,22 @@ function _brBuat() {
     },
   });
   const wc = tampil.webContents;
+  // ── Present as plain Chrome, not Electron ──
+  //
+  // WHY. The default user agent carries "Electron/<ver>" and the app name
+  // ("WOLFSPACE/<ver>"). Many web apps -- Google's especially (Stitch, and any
+  // page behind a Google sign-in) -- serve a blank or "unsupported browser"
+  // page to an Electron UA, and Google's OAuth explicitly rejects embedded /
+  // Electron user agents. The engine underneath IS Chrome (same Chromium), so
+  // stripping those two tokens is not a lie: it makes the view render what a
+  // real browser renders, which is the whole point of a browser inside the app.
+  // Set on the WebContents so it applies to the page and its subresources.
+  try {
+    const uaBersih = wc
+      .getUserAgent()
+      .replace(/ (?:WOLFSPACE|Electron)\/[^ ]+/g, "");
+    wc.setUserAgent(uaBersih);
+  } catch (_: any) {}
   // Every state change is sent back to the renderer, so the address bar and the
   // error message in the panel really do reflect what happened.
   const kirim = (t: any, d: any) => {
