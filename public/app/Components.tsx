@@ -2749,6 +2749,28 @@ function Composer({
     window.addEventListener("WOLFSPACE:set-composer", h);
     return () => window.removeEventListener("WOLFSPACE:set-composer", h);
   }, []);
+  // WOLFSPACE:send-composer: the text is set AND sent, as one action. Used
+  // by the editor's code comments ("Send to agent"): the message is already
+  // complete -- file, lines, code, the note -- and a second click to send it
+  // would only be a place to lose it. The flag is read by the effect on
+  // `val` below, because submit() reads the state of the render it belongs
+  // to; sending from inside this handler would send the OLD text.
+  const kirimSetelahSetRef = useRef(false);
+  useEffect(() => {
+    const h = (e: any) => {
+      const next = String(e.detail || "");
+      if (!next.trim()) return;
+      kirimSetelahSetRef.current = true;
+      setVal(next);
+    };
+    window.addEventListener("WOLFSPACE:send-composer", h);
+    return () => window.removeEventListener("WOLFSPACE:send-composer", h);
+  }, []);
+  useEffect(() => {
+    if (!kirimSetelahSetRef.current) return;
+    kirimSetelahSetRef.current = false;
+    if (val.trim()) submit();
+  }, [val]);
   useEffect(() => {
     if (!menu) return;
     const h = (e: any) => {
