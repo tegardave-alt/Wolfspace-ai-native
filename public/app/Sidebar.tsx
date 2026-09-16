@@ -932,7 +932,19 @@ function WorkspaceGitPanel({ path, onClose }: any) {
       refresh();
       return true;
     }
-    flash(false, (r && r.err) || "failed");
+    // NO ANSWER is not the same as a refusal. wwApi returns null when the
+    // reply was not JSON -- which, twice now, meant a backend that predates
+    // the route: the renderer had been reloaded, the host had not. A bare
+    // "failed" sent the user hunting in git and GitHub for a cause that was
+    // "restart the app".
+    flash(
+      false,
+      r === null
+        ? "no answer from the server for " +
+            url +
+            " - if the app was updated, restart it (a reload only refreshes this window)"
+        : (r && r.err) || "failed",
+    );
     return false;
   };
 
