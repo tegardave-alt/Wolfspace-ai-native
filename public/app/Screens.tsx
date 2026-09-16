@@ -1792,6 +1792,24 @@ function VSCodeTerminal({
     window.addEventListener("mouseup", lepas);
   };
   const [menuShell, setMenuShell] = useState(false);
+  // What the machine actually has, from /api/terminal/shells (VS Code detects
+  // its profiles the same way). Fetched when the picker opens; a shell that is
+  // not installed is shown disabled with how to get it, instead of failing
+  // with "File not found" only after it is chosen.
+  const [daftarShell, setDaftarShell] = useState<any[]>([]);
+  useEffect(() => {
+    if (!menuShell || daftarShell.length) return;
+    let batal = false;
+    fetch("/api/terminal/shells")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => {
+        if (!batal && Array.isArray(d)) setDaftarShell(d);
+      })
+      .catch(() => {});
+    return () => {
+      batal = true;
+    };
+  }, [menuShell]);
   // ── Commands that arrive before the PTY is ready ──
   //
   // Pressing Run while the terminal is closed opens the terminal AND sends the
@@ -2855,33 +2873,55 @@ function VSCodeTerminal({
                     boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
                   }}
                 >
-                  {/* The shell is passed straight to /api/terminal/open, which
-                      already accepts one. Anything not installed fails there
-                      and the error lands in the new terminal, where it is
-                      readable -- rather than being pre-filtered by a list this
-                      component would have to keep in step with the machine. */}
-                  {SHELL_PILIHAN.map((s) => (
-                    <button
-                      key={s.nilai}
-                      className="btn-reset menu-item"
-                      onClick={async () => {
-                        setMenuShell(false);
-                        const k = await buatTerminal(s.nilai);
-                        if (k) pilihTerminal(k);
-                      }}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "6px 12px",
-                        fontSize: "12px",
-                        color: "#c9d1d9",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      {s.nama}
-                    </button>
-                  ))}
+                  {/* Detected shells (see daftarShell). Installed ones open;
+                      missing ones are disabled and say how to get them, so a
+                      choice never fails with "File not found" after the fact.
+                      Falls back to the static list until the fetch returns. */}
+                  {(daftarShell.length ? daftarShell : SHELL_PILIHAN).map(
+                    (s: any) => {
+                      const ada = s.ada !== false;
+                      return (
+                        <button
+                          key={s.nilai + s.nama}
+                          className="btn-reset menu-item"
+                          disabled={!ada}
+                          title={
+                            ada
+                              ? s.nilai
+                              : s.pasang
+                                ? "Not installed — " + s.pasang
+                                : "Not installed"
+                          }
+                          onClick={async () => {
+                            if (!ada) return;
+                            setMenuShell(false);
+                            const k = await buatTerminal(s.nilai);
+                            if (k) pilihTerminal(k);
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "10px",
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "6px 12px",
+                            fontSize: "12px",
+                            color: ada ? "#c9d1d9" : "#6b7280",
+                            fontFamily: "inherit",
+                            cursor: ada ? "pointer" : "default",
+                          }}
+                        >
+                          <span>{s.nama}</span>
+                          {!ada && (
+                            <span style={{ fontSize: "10px", opacity: 0.8 }}>
+                              not installed
+                            </span>
+                          )}
+                        </button>
+                      );
+                    },
+                  )}
                 </div>
               )}
             </div>
