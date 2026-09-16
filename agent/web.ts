@@ -45,6 +45,153 @@ function trunc(s, n) {
   return s.length <= n ? s : s.slice(0, n) + "…";
 }
 
+// ── HTML → Markdown ──
+//
+// web_fetch used to return the body's innerText: the visible text with the
+// STRUCTURE thrown away. For an agent that was the wrong trade -- innerText
+// drops the very things it most needs from a page: the LINKS (so it cannot
+// follow anything further), the CODE BLOCKS (so documentation arrives as
+// unformatted prose), and TABLES. Modern agents (and Claude's own web fetch)
+// hand the model Markdown for exactly this reason: it keeps headings, links,
+// fenced code and tables while staying far lighter than raw HTML. This is that
+// conversion, with no dependency -- turndown/cheerio are not vendored here.
+//
+// ONE path, deliberately: both the Playwright engine and the HTTP fallback end
+// in a string of HTML and call this, so there is no second "innerText branch"
+// to keep in step.
+function _stripTags(s) {
+  return String(s).replace(/<[^>]+>/g, "");
+}
+function _decodeEntitas(s) {
+  return String(s)
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#0?39;/g, "'")
+    .replace(/&apos;/g, "'")
+    .replace(/&mdash;/g, "\u2014")
+    .replace(/&ndash;/g, "\u2013")
+    .replace(/&hellip;/g, "\u2026")
+    .replace(/&#(\d+);/g, (_, n) => String.fromCharCode(+n))
+    .replace(/&#x([0-9a-f]+);/gi, (_, n) =>
+      String.fromCharCode(parseInt(n, 16)),
+    );
+}
+function _atribut(tag, nama) {
+  const m = tag.match(
+    new RegExp(nama + "\\s*=\\s*(\"([^\"]*)\"|'([^']*)')", "i"),
+  );
+  return m ? (m[2] !== undefined ? m[2] : m[3]) : "";
+}
+function _tabelKeMd(t) {
+  const rows: string[][] = [];
+  const trRe = /<tr\b[^>]*>([\s\S]*?)<\/tr>/gi;
+  let r: any;
+  while ((r = trRe.exec(t))) {
+    const cells: string[] = [];
+    const cRe = /<(th|td)\b[^>]*>([\s\S]*?)<\/\1>/gi;
+    let c: any;
+    while ((c = cRe.exec(r[1])))
+      cells.push(
+        _decodeEntitas(_stripTags(c[2]))
+          .replace(/\s+/g, " ")
+          .replace(/\|/g, "\\|")
+          .trim(),
+      );
+    if (cells.length) rows.push(cells);
+  }
+  if (!rows.length) return "";
+  const n = rows[0].length;
+  const md = [
+    "\n| " + rows[0].join(" | ") + " |",
+    "| " + Array(n).fill("---").join(" | ") + " |",
+  ];
+  for (let i = 1; i < rows.length; i++)
+    md.push("| " + rows[i].join(" | ") + " |");
+  return md.join("\n") + "\n\n";
+}
+function htmlToMarkdown(html) {
+  let s = String(html || "");
+  s = s
+    .replace(/<!--[\s\S]*?-->/g, "")
+    .replace(
+      /<(script|style|noscript|svg|head|iframe|template|nav|footer|form)\b[^>]*>[\s\S]*?<\/\1>/gi,
+      "",
+    );
+  // Code blocks first, protected behind placeholders so nothing below reaches
+  // inside them (a `<` in code must not be read as a tag).
+  const blok: string[] = [];
+  s = s.replace(/<pre\b[^>]*>([\s\S]*?)<\/pre>/gi, (m, inner) => {
+    let lang = "";
+    const cm =
+      inner.match(/<code[^>]*class="[^"]*(?:language|lang)-([\w+#-]+)/i) ||
+      m.match(/class="[^"]*(?:language|lang)-([\w+#-]+)/i);
+    if (cm) lang = cm[1];
+    const code = _decodeEntitas(_stripTags(inner)).replace(/\n+$/, "");
+    blok.push("\n```" + lang + "\n" + code + "\n```\n");
+    return "\u0000B" + (blok.length - 1) + "\u0000";
+  });
+  s = s.replace(
+    /<code\b[^>]*>([\s\S]*?)<\/code>/gi,
+    (m, c) => "`" + _decodeEntitas(_stripTags(c)).replace(/`/g, "") + "`",
+  );
+  s = s.replace(/<img\b[^>]*>/gi, (m) => {
+    const alt = _atribut(m, "alt");
+    const src = _atribut(m, "src");
+    return src ? "![" + alt + "](" + src + ")" : "";
+  });
+  s = s.replace(/<a\b[^>]*>([\s\S]*?)<\/a>/gi, (m, txt) => {
+    const href = _atribut(m, "href");
+    const t = _decodeEntitas(_stripTags(txt)).replace(/\s+/g, " ").trim();
+    if (!href || /^javascript:/i.test(href) || href.startsWith("#")) return t;
+    return t ? "[" + t + "](" + href + ")" : "";
+  });
+  s = s.replace(
+    /<h([1-6])\b[^>]*>([\s\S]*?)<\/h\1>/gi,
+    (m, lvl, txt) =>
+      "\n\n" +
+      "#".repeat(+lvl) +
+      " " +
+      _decodeEntitas(_stripTags(txt)).replace(/\s+/g, " ").trim() +
+      "\n\n",
+  );
+  s = s.replace(
+    /<(strong|b)\b[^>]*>([\s\S]*?)<\/\1>/gi,
+    (m, _t, c) => "**" + _stripTags(c).trim() + "**",
+  );
+  s = s.replace(
+    /<(em|i)\b[^>]*>([\s\S]*?)<\/\1>/gi,
+    (m, _t, c) => "*" + _stripTags(c).trim() + "*",
+  );
+  s = s.replace(
+    /<li\b[^>]*>([\s\S]*?)<\/li>/gi,
+    (m, c) => "\n- " + _stripTags(c).replace(/\s+/g, " ").trim(),
+  );
+  s = s.replace(/<\/(ul|ol)>/gi, "\n");
+  s = s.replace(
+    /<blockquote\b[^>]*>([\s\S]*?)<\/blockquote>/gi,
+    (m, c) =>
+      "\n> " +
+      _stripTags(c).replace(/\s+/g, " ").trim().replace(/\n/g, "\n> ") +
+      "\n",
+  );
+  s = s.replace(/<hr\b[^>]*>/gi, "\n\n---\n\n");
+  s = s.replace(/<table\b[^>]*>([\s\S]*?)<\/table>/gi, (m, t) => _tabelKeMd(t));
+  s = s
+    .replace(/<br\s*\/?>/gi, "\n")
+    .replace(/<\/p>/gi, "\n\n")
+    .replace(/<\/(div|section|article|tr|h[1-6])>/gi, "\n");
+  s = _stripTags(s);
+  s = s.replace(/\u0000B(\d+)\u0000/g, (m, i) => blok[+i] || "");
+  s = _decodeEntitas(s)
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .replace(/^\s+|\s+$/g, "");
+  return s;
+}
+
 // ── The destination guard: the outward web yes, the inward network NO ──
 //
 // WHY IT EXISTS. Without it, web_fetch is an SSRF hole that bypasses every
@@ -544,9 +691,10 @@ async function webSearch(query) {
 }
 
 // ── Web Fetch ──
-// Playwright headless as the primary engine (waits for render, takes clean
-// innerText). Falls back to raw HTTPS when Playwright/Chromium is unavailable or
-// fails.
+// Playwright headless as the primary engine (waits for render, then converts
+// the page's HTML to Markdown). Falls back to raw HTTPS when Playwright/Chromium
+// is unavailable or fails. Both paths end in htmlToMarkdown -- one path, so the
+// model always gets the same shape (links, code fences, tables kept).
 let activeFetches = 0;
 let lastFetchTime = 0;
 async function webFetch(urlStr) {
@@ -578,17 +726,13 @@ async function _fetchWithPlaywright(urlStr) {
   return _withPage(async (page) => {
     await page.goto(urlStr, { waitUntil: "domcontentloaded", timeout: 25000 });
     await page.waitForTimeout(400); // beri sedikit waktu konten dinamis
-    let text = await page.evaluate(() => {
-      document
-        .querySelectorAll("script,style,noscript,svg,head")
-        .forEach((e) => e.remove());
-      return document.body ? document.body.innerText : "";
-    });
-    text = String(text || "")
-      .replace(/\n{3,}/g, "\n\n")
-      .replace(/[ \t]+\n/g, "\n")
-      .trim();
-    return trunc(text, 8000) || "(empty content)";
+    // The RENDERED HTML of the body, not innerText: the structure is what
+    // htmlToMarkdown turns into links, code fences and tables. Playwright gives
+    // the post-JavaScript DOM, so a single-page app's content is included.
+    const html = await page.evaluate(() =>
+      document.body ? document.body.innerHTML : "",
+    );
+    return trunc(htmlToMarkdown(html), 8000) || "(empty content)";
   });
 }
 
@@ -634,25 +778,11 @@ function _fetchWithHttp(urlStr) {
         let body = "";
         res.on("data", (c) => (body += c));
         res.on("end", () => {
-          body = body
-            .replace(/<script[^>]*>[\s\S]*?<\/script>/gi, "")
-            .replace(/<style[^>]*>[\s\S]*?<\/style>/gi, "")
-            .replace(/<head[^>]*>[\s\S]*?<\/head>/gi, "")
-            .replace(/<br\s*\/?>/gi, "\n")
-            .replace(/<\/p>/gi, "\n\n")
-            .replace(/<\/h[1-6]>/gi, "\n\n")
-            .replace(/<\/li>/gi, "\n")
-            .replace(/<[^>]+>/g, "")
-            .replace(/&amp;/g, "&")
-            .replace(/&lt;/g, "<")
-            .replace(/&gt;/g, ">")
-            .replace(/&quot;/g, '"')
-            .replace(/&#39;/g, "'")
-            .replace(/&nbsp;/g, " ")
-            .replace(/\n{3,}/g, "\n\n")
-            .replace(/[ \t]+\n/g, "\n")
-            .trim();
-          resolve(trunc(body, 8000) || "(empty content)");
+          // The SAME converter the Playwright path uses -- one shape of output,
+          // no second branch. This path has raw HTML with no JS run, so a
+          // heavily client-rendered page yields less, which is why Playwright
+          // is tried first.
+          resolve(trunc(htmlToMarkdown(body), 8000) || "(empty content)");
         });
       },
     );
@@ -1026,6 +1156,7 @@ module.exports = {
   webSearch,
   webFetch,
   webExtract,
+  htmlToMarkdown,
   urlAman,
   MODE_EKSTRAK,
   tutupBrowser,
