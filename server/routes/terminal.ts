@@ -42,6 +42,13 @@ export interface TerminalRouteDeps {
   writeToTerminal(id: string, data: string): void;
   resizeTerminal(id: string, cols: number, rows: number): void;
   closeTerminalSession(id: string): void;
+  /** The shells installed on this machine, for the picker. */
+  shellsTersedia?(): Array<{
+    nama: string;
+    nilai: string;
+    ada: boolean;
+    pasang?: string;
+  }>;
 }
 
 export function handle(
@@ -57,6 +64,7 @@ export function handle(
     writeToTerminal,
     resizeTerminal,
     closeTerminalSession,
+    shellsTersedia,
   } = deps;
 
   // Collects the request body, then runs fn with 400 + {error} on any throw.
@@ -131,6 +139,12 @@ export function handle(
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify({ ok: true }));
     });
+  }
+
+  if (req.method === "GET" && urlPath === "/api/terminal/shells") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(shellsTersedia ? shellsTersedia() : []));
+    return true;
   }
 
   if (req.method === "GET" && urlPath === "/api/terminal/list") {

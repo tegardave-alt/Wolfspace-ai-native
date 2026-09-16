@@ -2981,6 +2981,99 @@ function detectShell() {
   return (_shellTerpilih = process.env.SHELL || "/bin/bash");
 }
 
+// ── Which shells this machine actually has (like VS Code's profile detection) ──
+//
+// The picker used to offer a fixed list, so choosing pwsh on a machine with
+// only Windows PowerShell failed with "File not found". This answers what is
+// really here: PATH first (through _adaDiPath), then the standard install
+// homes for the two that commonly live off PATH -- PowerShell 7 and Git Bash.
+// `nilai` is the full path when found off PATH, so the PTY spawns the exact
+// binary; the bare name otherwise. Cached: installs do not change mid-session.
+let _shellsTersedia: any = null;
+function _cariBerkas(kandidat: string[]): string | null {
+  for (const c of kandidat) {
+    try {
+      if (fs.existsSync(c)) return c;
+    } catch (_) {}
+  }
+  return null;
+}
+function shellsTersedia() {
+  if (_shellsTersedia) return _shellsTersedia;
+  const pf = process.env["ProgramFiles"] || "C:\\Program Files";
+  const pf86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  let daftar: any[];
+  if (process.platform === "win32") {
+    daftar = [
+      {
+        nama: "PowerShell",
+        biner: "powershell.exe",
+        nilai: "powershell.exe",
+        ada: _adaDiPath("powershell.exe"),
+      },
+      (() => {
+        const jalur =
+          (_adaDiPath("pwsh.exe") && "pwsh.exe") ||
+          _cariBerkas([
+            pf + "\\PowerShell\\7\\pwsh.exe",
+            pf + "\\PowerShell\\7-preview\\pwsh.exe",
+          ]);
+        return {
+          nama: "PowerShell 7 (pwsh)",
+          biner: "pwsh.exe",
+          nilai: jalur || "pwsh.exe",
+          ada: !!jalur,
+          // What to do about it when it is missing.
+          pasang: jalur ? undefined : "winget install Microsoft.PowerShell",
+        };
+      })(),
+      {
+        nama: "Command Prompt",
+        biner: "cmd.exe",
+        nilai: "cmd.exe",
+        ada: _adaDiPath("cmd.exe"),
+      },
+      (() => {
+        const jalur =
+          (_adaDiPath("bash.exe") && "bash.exe") ||
+          _cariBerkas([
+            pf + "\\Git\\bin\\bash.exe",
+            pf86 + "\\Git\\bin\\bash.exe",
+          ]);
+        return {
+          nama: "Git Bash",
+          biner: "bash.exe",
+          nilai: jalur || "bash.exe",
+          ada: !!jalur,
+          pasang: jalur ? undefined : "https://git-scm.com/download/win",
+        };
+      })(),
+      {
+        nama: "WSL",
+        biner: "wsl.exe",
+        nilai: "wsl.exe",
+        ada: _adaDiPath("wsl.exe"),
+        pasang: _adaDiPath("wsl.exe") ? undefined : "wsl --install",
+      },
+    ];
+  } else {
+    const kand = [
+      { nama: "bash", biner: "bash" },
+      { nama: "zsh", biner: "zsh" },
+      { nama: "fish", biner: "fish" },
+      { nama: "sh", biner: "sh" },
+    ];
+    daftar = kand.map((k) => ({
+      nama: k.nama,
+      biner: k.biner,
+      nilai: k.biner,
+      ada: _adaDiPath(k.biner),
+    }));
+  }
+  _shellsTersedia = daftar;
+  return daftar;
+}
+
 // Open a new PTY session rooted at the workspace directory.
 function openTerminalSession(customCwd: any, customShell: any) {
   const id = generateTerminalId();
@@ -3185,6 +3278,7 @@ const server = http.createServer(async (req: any, res: any) => {
       writeToTerminal,
       resizeTerminal,
       closeTerminalSession,
+      shellsTersedia,
     })
   )
     return;
@@ -5276,6 +5370,7 @@ module.exports = {
   writeToTerminal,
   resizeTerminal,
   closeTerminalSession,
+  shellsTersedia,
 };
 
 // Marks this file as a MODULE rather than a global script. Left as `export {}`
