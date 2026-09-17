@@ -129,6 +129,27 @@ function _cocok(cmds: any[], q: string): any[] {
   return dinilai;
 }
 
+// Does a keydown event match a command's declared shortcut (e.g. "Ctrl+L",
+// "Ctrl+Shift+N")? Strict: Ctrl+Shift+L must NOT fire a Ctrl+L binding.
+function _cocokKombo(e: any, kunci: string): boolean {
+  if (!kunci) return false;
+  const p = kunci
+    .toLowerCase()
+    .split("+")
+    .map((s) => s.trim());
+  const key = p[p.length - 1];
+  const perluMod = p.includes("ctrl") || p.includes("cmd");
+  const perluShift = p.includes("shift");
+  const perluAlt = p.includes("alt");
+  const mod = !!(e.ctrlKey || e.metaKey);
+  return (
+    mod === perluMod &&
+    !!e.shiftKey === perluShift &&
+    !!e.altKey === perluAlt &&
+    String(e.key || "").toLowerCase() === key
+  );
+}
+
 // ── The palette component ─────────────────────────────────────────────────────
 function CommandPalette() {
   const [buka, setBuka] = (React as any).useState(false);
@@ -163,6 +184,29 @@ function CommandPalette() {
       window.removeEventListener("keydown", kunci);
       window.removeEventListener("wolfspace_palette", lewatEvent);
     };
+  }, []);
+
+  // Global keybindings: any command that declares a `kunci` (shown on the right,
+  // VS Code-style) is bound here so the shortcut actually runs it — not only as a
+  // hint. Skipped while the palette itself is open, so its own keys win.
+  (React as any).useEffect(() => {
+    const h = (e: any) => {
+      if (e.defaultPrevented) return;
+      if (document.querySelector(".kpal-overlay")) return;
+      for (const c of semuaPerintah()) {
+        if (c.kunci && _cocokKombo(e, c.kunci)) {
+          e.preventDefault();
+          try {
+            c.jalankan();
+          } catch (err) {
+            console.error("[palette] shortcut failed:", c.id, err);
+          }
+          return;
+        }
+      }
+    };
+    window.addEventListener("keydown", h);
+    return () => window.removeEventListener("keydown", h);
   }, []);
 
   // Reset query + focus the input each time it opens.
@@ -227,17 +271,35 @@ function CommandPalette() {
         role="dialog"
         aria-label="Command Palette"
       >
-        <input
-          ref={inputRef}
-          className="kpal-input"
-          placeholder="Type a command…  (View, Terminal, MCP, Git…)"
-          value={q}
-          onChange={(e: any) => {
-            setQ(e.target.value);
-            setSorot(0);
-          }}
-          onKeyDown={onKey}
-        />
+        <div className="kpal-input-row">
+          <svg
+            className="kpal-cari-ikon"
+            xmlns="http://www.w3.org/2000/svg"
+            width="16"
+            height="16"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+            aria-hidden="true"
+          >
+            <circle cx="11" cy="11" r="7" />
+            <line x1="21" x2="16.65" y1="21" y2="16.65" />
+          </svg>
+          <input
+            ref={inputRef}
+            className="kpal-input"
+            placeholder="Type a command…  (View, Terminal, MCP, Git…)"
+            value={q}
+            onChange={(e: any) => {
+              setQ(e.target.value);
+              setSorot(0);
+            }}
+            onKeyDown={onKey}
+          />
+        </div>
         <div className="kpal-list" ref={daftarRef}>
           {hasil.length === 0 ? (
             <div className="kpal-kosong">No matching commands</div>
