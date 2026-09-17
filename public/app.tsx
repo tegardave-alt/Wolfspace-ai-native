@@ -4717,24 +4717,28 @@ function App() {
         id: "view.terminal",
         kategori: "View",
         judul: (terminalOpen ? "Hide" : "Show") + " Terminal",
+        kunci: "Ctrl+J",
         jalankan: () => setTerminalOpen(!terminalOpen),
       },
       {
         id: "view.webdev",
         kategori: "View",
         judul: (panelOpen ? "Hide" : "Show") + " Web Dev",
+        kunci: "Ctrl+Shift+W",
         jalankan: () => setPanelOpen(!panelOpen),
       },
       {
         id: "view.code",
         kategori: "View",
         judul: (logicOpen ? "Hide" : "Show") + " Code Editor",
+        kunci: "Ctrl+L",
         jalankan: () => setLogicOpen(!logicOpen),
       },
       {
         id: "view.explorer",
         kategori: "View",
         judul: (explorerSembunyi ? "Show" : "Hide") + " Explorer",
+        kunci: "Ctrl+B",
         jalankan: () => putarExplorer(!explorerSembunyi),
       },
       {
@@ -4744,15 +4748,10 @@ function App() {
         jalankan: () => setChatVisible(!chatVisible),
       },
       {
-        id: "view.theme",
-        kategori: "View",
-        judul: "Toggle Theme (to " + (theme === "dark" ? "Light" : "Dark") + ")",
-        jalankan: () => setTheme(theme === "dark" ? "light" : "dark"),
-      },
-      {
         id: "chat.new",
         kategori: "Chat",
         judul: "New Chat",
+        kunci: "Ctrl+Shift+N",
         jalankan: () => {
           saveChat();
           reset();
@@ -4761,7 +4760,7 @@ function App() {
         },
       },
     ],
-    [terminalOpen, panelOpen, logicOpen, explorerSembunyi, chatVisible, theme],
+    [terminalOpen, panelOpen, logicOpen, explorerSembunyi, chatVisible],
   );
 
   return (

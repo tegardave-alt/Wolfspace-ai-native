@@ -282,8 +282,8 @@ function TopBar({
           strokeLinecap="round"
           strokeLinejoin="round"
         >
-          <polyline points="4 7 9 12 4 17" />
-          <line x1="12" x2="20" y1="17" y2="17" />
+          <circle cx="11" cy="11" r="7" />
+          <line x1="21" x2="16.65" y1="21" y2="16.65" />
         </svg>
       </button>
       <button

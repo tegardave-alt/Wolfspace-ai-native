@@ -6854,15 +6854,27 @@ button.aal-row:focus-visible {
   box-shadow: 0 18px 50px rgba(0, 0, 0, 0.55);
   overflow: hidden;
 }
+.kpal-input-row {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 0 14px;
+  border-bottom: 1px solid var(--line, #1f2733);
+}
+.kpal-cari-ikon {
+  color: var(--text-muted, #8b949e);
+  opacity: 0.7;
+  flex: 0 0 auto;
+}
 .kpal-input {
+  flex: 1 1 auto;
   border: none;
   outline: none;
   background: transparent;
   color: var(--text, #e6edf3);
   font-family: inherit;
   font-size: 15px;
-  padding: 14px 16px;
-  border-bottom: 1px solid var(--line, #1f2733);
+  padding: 13px 0;
 }
 .kpal-input::placeholder {
   color: var(--text-muted, #8b949e);
@@ -6908,10 +6920,9 @@ button.aal-row:focus-visible {
   flex: 0 0 auto;
 }
 .kpal-kunci {
+  margin-left: auto;
   color: var(--text-muted, #8b949e);
   font-size: 11px;
-  border: 1px solid var(--line, #1f2733);
-  border-radius: 4px;
-  padding: 1px 6px;
+  letter-spacing: 0.1em;
   flex: 0 0 auto;
 }

@@ -71,35 +71,48 @@ whenPossible("command palette (needs playwright)", () => {
         content: ".project-picker-screen{display:none !important}",
       });
 
+      const bacaExplorer = () =>
+        p.evaluate(() => {
+          try {
+            return localStorage.getItem("wolfspace_explorer_sembunyi");
+          } catch (_) {
+            return null;
+          }
+        });
+
       // 1. The shortcut opens it.
       await p.keyboard.press("Control+Shift+P");
       await p.waitForSelector(".kpal-modal", { timeout: 10000 });
 
-      // 2. Fuzzy filter: "theme" surfaces the Toggle Theme command near the top.
-      await p.keyboard.type("theme");
+      // 2. shadcn look: the search magnifier sits in the input row.
+      expect(await p.$(".kpal-modal .kpal-cari-ikon")).not.toBeNull();
+
+      // 3. Fuzzy filter: "explorer" surfaces the Explorer view command on top...
+      await p.keyboard.type("explorer");
       await p.waitForTimeout(200);
-      const teksAtas = await p.$eval(
-        ".kpal-item",
+      const atas = await p.$eval(".kpal-item", (e: any) => e.textContent || "");
+      expect(atas.toLowerCase()).toContain("explorer");
+      // ...with its keybinding shown on the right (VS Code-style).
+      const kunci = await p.$eval(
+        ".kpal-item .kpal-kunci",
         (e: any) => e.textContent || "",
       );
-      expect(teksAtas.toLowerCase()).toContain("theme");
+      expect(kunci.replace(/\s/g, "").toLowerCase()).toContain("ctrl+b");
 
-      // 3. Enter runs it. The View command flips the theme dark -> light.
+      // 4. Enter runs it; the real handler flips explorer visibility (persisted).
       await p.keyboard.press("Enter");
       await p.waitForTimeout(300);
-      // The palette closed...
       expect(await p.$(".kpal-modal")).toBeNull();
-      // ...and the theme actually changed (persisted by the real handler).
-      const tema = await p.evaluate(() => {
-        try {
-          return localStorage.getItem("wolfspace_theme");
-        } catch (_) {
-          return null;
-        }
-      });
-      expect(tema).toBe("light");
+      const sesudahJalankan = await bacaExplorer();
+      expect(sesudahJalankan === "0" || sesudahJalankan === "1").toBe(true);
 
-      // 4. Esc closes without running anything.
+      // 5. The keybinding ALSO works (not just a hint): Ctrl+B toggles it back.
+      await p.keyboard.press("Control+b");
+      await p.waitForTimeout(300);
+      const sesudahKombo = await bacaExplorer();
+      expect(sesudahKombo).not.toBe(sesudahJalankan);
+
+      // 6. Esc closes without running anything.
       await p.keyboard.press("Control+Shift+P");
       await p.waitForSelector(".kpal-modal", { timeout: 10000 });
       await p.keyboard.press("Escape");
