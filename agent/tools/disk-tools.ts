@@ -1,10 +1,19 @@
-// Disk exploration (read-only, outside QROOT)
+// disk-tools.ts — reading the machine OUTSIDE the project root, and only ever
+// reading.
+//
+// ROLE IN THE SYSTEM. file-tools.ts governs the project itself; this covers
+// everywhere else, so the agent can look at a file the user names without the
+// project root being widened to include it. There is no write path here at all,
+// and the system directories in DISK_BLOCKED are refused outright.
+//
+// CONNECTS TO
+//   imports  fs, path, os, ./file-tools (glob matching and the validator)
+//   used by  agent/tools/exec-tools.ts
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";
 const { globToRe, getSemanticValidator } = require("./file-tools.ts");
 
-// ── Local disk exploration (read-only, outside QROOT) ──
 const DISK_HOME = os.homedir();
 const DISK_BLOCKED =
   /^[A-Za-z]:[\\\/](Windows|Program Files|Program Files \(x86\)|ProgramData|System Volume Information|\$Recycle\.Bin)/i;

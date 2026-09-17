@@ -1,7 +1,14 @@
-// Types for the electron/preload.js -> window.WOLFSPACE bridge and the
-// electron/main.js ipcMain handlers behind it ("WOLFSPACE:invoke" /
-// "WOLFSPACE:stream" / "WOLFSPACE:chunk"). Mirrors the existing runtime
-// contract as-is; migrating preload.js/main.js onto these types is Phase 3.
+// ipc.ts — the type of the bridge between the renderer and the Electron main
+// process: window.WOLFSPACE on one side, the ipcMain handlers on the other.
+//
+// ROLE IN THE SYSTEM. Three channels carry everything —
+// "WOLFSPACE:invoke", "WOLFSPACE:stream", "WOLFSPACE:chunk" — and this file
+// mirrors that runtime contract as it already is, rather than proposing a new
+// one.
+//
+// CONNECTS TO
+//   imports  ./agent-events (the streamed event shapes)
+//   used by  electron/preload.ts
 
 import type { ChatStreamEvent, SelfAgentStreamEvent } from "./agent-events";
 

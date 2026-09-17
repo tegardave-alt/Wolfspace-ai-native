@@ -1,26 +1,28 @@
-// The single source of truth for "should this execution be contained?".
+// sandbox-policy.ts — the single source of truth for one question: should this
+// execution be contained?
 //
-// HISTORICAL NOTE: containment used to always mean Docker, and the background
-// below was written assuming that. Docker has since been removed from the
-// production path entirely — bash containment uses Linux namespaces
-// (agent/tools/bash-jail.ts) and capability zones use --permission + unshare -n
-// (agent/broker/). This module stays alive because what it guards is the
-// DECISION, not the mechanism; that is why its second parameter is named
-// `pengurunganTersedia` ("containment available") rather than `hasDocker`.
-// The background is kept because it explains WHY the tri-state exists.
+// ROLE IN THE SYSTEM. It decides ONLY the intent, never the mechanism. That
+// separation is the whole point: containment used to mean Docker, and Docker is
+// now gone from the production path entirely (bash uses Linux namespaces in
+// agent/tools/bash-jail.ts, capability zones use --permission + unshare -n in
+// agent/broker/) — yet nothing here had to change, because the decision
+// outlived its implementation. It is why the second parameter is called
+// `pengurunganTersedia` ("containment available") and not `hasDocker`.
 //
-// BACKGROUND: there used to be TWO gates that disagreed with each other --
-//   - server.cjs/runners.cjs : CONFIG.sandbox === true && hasDocker()
-//       -> "sandbox" was never set in config.json nor in config.docker.json
-//          (that file has since been deleted along with every Docker file), so
-//          this path was dead; setting it to false made no difference either.
-//   - agent/tools/index.ts  : _hasDocker() alone
-//       -> turned itself on whenever Docker was running, and IGNORED
-//          sandbox:false.
-// The upshot was that "sandbox: false" did not actually disable the sandbox, and
-// "sandbox: true" did not actually guarantee it. This module unifies the rule.
+// CONNECTS TO
+//   imports  fs, path only — no dependency on any containment backend
+//   read by  agent/tools/index.ts, the tool registry, which asks before every
+//            contained execution
+//   inputs   env WOLFSPACE_SANDBOX, then config.json "sandbox", then the
+//            caller's default
 //
-// TRI-STATE (not a boolean), so the user's intent can be stated explicitly:
+// WHY A TRI-STATE AND NOT A BOOLEAN. There used to be two gates that disagreed:
+// server/runners required `CONFIG.sandbox === true && hasDocker()` (and
+// "sandbox" was never set anywhere, so that path was dead), while
+// agent/tools/index.ts checked Docker alone and switched itself on whenever
+// Docker happened to be running — ignoring `sandbox: false`. So "false" did not
+// disable it and "true" did not guarantee it. Three states let the intent be
+// stated instead of inferred:
 //   "on"   -> sandbox REQUIRED. The caller fails closed when containment is
 //             unavailable — better to refuse than to silently run native.
 //   "off"  -> do NOT sandbox, even when containment is available.

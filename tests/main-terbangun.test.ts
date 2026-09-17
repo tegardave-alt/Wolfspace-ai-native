@@ -60,9 +60,19 @@ describe("the electron main build produces a usable main process", () => {
       require.resolve("../.github/workflows/ci.yml"),
       "utf8",
     );
-    expect(ci).toContain("npm run build:main");
-    expect(ci.indexOf("npm run build:main")).toBeLessThan(
-      ci.indexOf("electron-builder --win --dir"),
+    // KOMENTAR DIBUANG DULU, dan sebabnya konkret: a comment that MENTIONS the
+    // packaging command is not the packaging command. When the workflow gained
+    // a note explaining why its timeout was raised — a note that quotes
+    // "electron-builder --win --dir" — indexOf found the prose first, the
+    // ordering read backwards, and this test failed while the workflow was
+    // correct.
+    const perintah = ci
+      .split("\n")
+      .filter((b) => !b.trim().startsWith("#"))
+      .join("\n");
+    expect(perintah).toContain("npm run build:main");
+    expect(perintah.indexOf("npm run build:main")).toBeLessThan(
+      perintah.indexOf("electron-builder --win --dir"),
     );
   });
 });

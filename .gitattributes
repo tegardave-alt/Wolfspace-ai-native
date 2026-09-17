@@ -44,3 +44,7 @@ public/app/IkonBahasa.jsx linguist-generated
 # -- Compressed assets: output of scripts/kompres-aset.cjs --
 *.br                   binary linguist-generated
 *.gz                   binary linguist-generated
+
+# Shell scripts are run by sh; a CR at the end of a line becomes part of the
+# command and the script fails with ": command not found". Always LF.
+*.sh text eol=lf

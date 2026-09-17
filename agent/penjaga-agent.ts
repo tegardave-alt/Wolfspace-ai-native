@@ -1,24 +1,23 @@
-// ── Agent guards, shared by BOTH orchestrators ──
+// penjaga-agent.ts — the agent's guards: which tools need a human to approve
+// them, and what must be refused outright.
 //
-// WHY THIS FILE EXISTS. These checks used to live inside a closure in
-// agent/self_agent.ts, which was fine while there was one agent loop. There are
-// now two — the JS loop and the Python graph in services/agent-python driven by
-// agent/python-agent.ts — and a guard that exists on only one of them is worse
-// than no guard: it makes the SAME request behave differently depending on which
-// orchestrator happened to handle it.
+// ROLE IN THE SYSTEM. WOLFSPACE has TWO orchestrators — the JS loop in
+// agent/self_agent.ts and the Python graph driven by agent/python-agent.ts. A
+// guard living on only one is worse than no guard, because the same request
+// then behaves differently depending on which one handled it. This repo has
+// been bitten by that "two surfaces" pattern repeatedly (the MCP list rendered
+// twice with separate state, attachments handled in two places, findings
+// recorded in one of two `read` branches), and every time the copy is what
+// drifted. So the guards are copied into neither loop: extracted here, called
+// from both.
 //
-// That is not hypothetical. This repo has been bitten by the "two surfaces"
-// pattern repeatedly — the MCP list rendered by two components with separate
-// state, attachment handling duplicated across Composer and the picker screen,
-// findings recorded in only one of two `read` branches. Each time, the fix that
-// held was one implementation with two callers, and each time the version that
-// drifted was the one that had been copied.
+// Everything here is a PURE function of its arguments — no filesystem, no
+// model, no process — which is what makes it both shareable and testable
+// without running an agent.
 //
-// So: copied into neither. Extracted here, called from both.
-//
-// Everything in this file is a PURE function of its arguments. No filesystem, no
-// model, no process. That is what makes it shareable and what makes it testable
-// without an agent run.
+// CONNECTS TO
+//   imports  agent/tools/git-tool.ts
+//   used by  agent/self_agent.ts, agent/python-agent.ts, agent/perencana-agent.ts
 
 /**
  * Tools that run unprotected and therefore need a human to approve them.
@@ -182,6 +181,199 @@ export function melewatiBatasUlang(hitungan: number): boolean {
   return hitungan > BATAS_PANGGILAN_IDENTIK;
 }
 
+// ── Scope: is this call still the user's task? ──────────────────────────────
+//
+// WHAT WENT WRONG. The agent has done work nobody asked for: sent to fix one
+// thing, it edited files the task never mentioned. Nothing in the loop could
+// object, because nothing in the loop KNEW the task: the user's request was
+// one message among dozens of tool results, and history compaction folds old
+// messages into a counted digest -- the goal included. todowrite could also
+// replace the checklist wholesale, so the agent could re-plan itself onto a
+// different job and every later step would look on-task against the new list.
+//
+// WHAT THIS IS. A deterministic test of a WRITE against the task, with no
+// model in the loop: a write is in scope when its target is named by the goal
+// or the plan, sits under a directory they name, or was READ during this run
+// (the agent looked before it changed). Anything else is not refused -- it is
+// handed to the human, the same way `bash` already is. The person who gave
+// the task decides whether the task grew.
+//
+// It is strict on purpose about being a pure function: no filesystem, so it
+// cannot be fooled by what exists on disk, only by what the task said.
+
+/** Tools that change the workspace. A read never leaves the task's scope. */
+export const WRITE_TOOLS: readonly string[] = [
+  "edit",
+  "write",
+  "replace_file_content",
+];
+
+/** The tools whose `path` argument means "the agent has now seen this file". */
+export const READ_TOOLS: readonly string[] = ["read"];
+
+function _normPath(p: any): string {
+  return String(p || "")
+    .replace(/\\/g, "/")
+    .replace(/^\.\//, "")
+    .toLowerCase();
+}
+
+function _basename(p: string): string {
+  const i = p.lastIndexOf("/");
+  return i < 0 ? p : p.slice(i + 1);
+}
+
+/**
+ * Every path-like token the goal or the plan mentions, normalised.
+ * "src/app.ts", `public/styles.css`, "the Sidebar.tsx file" all count.
+ */
+export function jalurDisebut(teks: string): string[] {
+  const out = new Set<string>();
+  const re =
+    /[A-Za-z0-9_./\\-]+\.[A-Za-z0-9]{1,8}|[A-Za-z0-9_.-]+(?:[\/\\][A-Za-z0-9_.-]+)+/g;
+  for (const m of String(teks || "").matchAll(re)) {
+    const t = _normPath(m[0]).replace(/^[./]+/, "");
+    if (t && !/^\d+(\.\d+)*$/.test(t)) out.add(t);
+  }
+  return [...out];
+}
+
+export interface KonteksLingkup {
+  /** The user's request that started the run. Immutable for the run. */
+  tujuan: string;
+  /** The checklist as it stands (planner lines, possibly with status). */
+  checklist?: readonly string[];
+  /** The planner's ORIGINAL lines, before any todowrite. */
+  rencanaAwal?: readonly string[];
+  /** Paths the agent has read this run, normalised. */
+  dibaca?: Iterable<string>;
+  /**
+   * The request is to BUILD something new. Then a write to a file the task
+   * does not name is the task itself, not drift: the goal "make a landing
+   * page" names no file, and index.html has to come from somewhere. Only
+   * edits to files that already exist and were not read are still measured.
+   */
+  membuat?: boolean;
+  /** Paths that exist in the workspace, for the create-mode distinction. */
+  ada?: (path: string) => boolean;
+}
+
+export interface PutusanLingkup {
+  luar: boolean;
+  /** Why, in one sentence a person can act on. */
+  sebab?: string;
+  berkas?: string;
+}
+
+/**
+ * Is this write outside the task? Pure; never throws.
+ *
+ * Reads always pass. Unparseable arguments on a write tool are OUT of scope:
+ * fail toward asking, the same rule perluPersetujuan uses.
+ */
+export function diLuarLingkup(
+  tc: PanggilanTool,
+  ctx: KonteksLingkup,
+): PutusanLingkup {
+  const nama = namaTool(tc);
+  if (nama === "todowrite") return _todowriteMenggantiTugas(tc, ctx);
+  if (!WRITE_TOOLS.includes(nama)) return { luar: false };
+  const a = argsTool(tc);
+  if (a === null) {
+    return { luar: true, sebab: "arguments could not be parsed" };
+  }
+  const target = _normPath(a.path);
+  if (!target) return { luar: true, sebab: "write without a path" };
+  // Create mode: a NEW file is the deliverable. Measured before this
+  // existed: "Buatkan halaman web" -> write index.html -> held as outside the
+  // task, because nothing was named. An existing file still has to be read
+  // or named, so create mode cannot become a licence to rewrite the project.
+  if (ctx.membuat && !(ctx.ada && ctx.ada(target))) return { luar: false };
+
+  const disebut = new Set(
+    jalurDisebut(
+      [ctx.tujuan, ...(ctx.checklist || []), ...(ctx.rencanaAwal || [])].join(
+        "\n",
+      ),
+    ),
+  );
+  const base = _basename(target);
+  // Named outright, by full path or by file name.
+  for (const d of disebut) {
+    if (target === d || target.endsWith("/" + d) || base === _basename(d)) {
+      return { luar: false };
+    }
+    // Under a directory the task names ("everything in server/").
+    if (!/\.[a-z0-9]{1,8}$/i.test(d) && target.startsWith(d + "/")) {
+      return { luar: false };
+    }
+  }
+  // Read first, then written: the agent looked before it changed. The read
+  // was itself on the agent's initiative, but a write to something it has
+  // inspected is investigation reaching its conclusion, not a new job.
+  for (const r of ctx.dibaca || []) {
+    if (_normPath(r) === target) return { luar: false };
+  }
+  return {
+    luar: true,
+    berkas: target,
+    sebab:
+      '"' +
+      target +
+      '" is not named by the task or its plan, and was not read during this run',
+  };
+}
+
+/**
+ * A todowrite that keeps none of the planner's original items is the agent
+ * re-planning itself onto a different job. Marking items done, adding sub-steps
+ * or reordering all keep at least one original line, so they pass.
+ */
+function _todowriteMenggantiTugas(
+  tc: PanggilanTool,
+  ctx: KonteksLingkup,
+): PutusanLingkup {
+  // Measured against the plan as it STANDS -- the planner's lines and the
+  // items added since. A status update for a sub-step the model itself added
+  // a step ago is bookkeeping, not re-planning; only a list that matches
+  // nothing already there is.
+  const awal = [...(ctx.rencanaAwal || []), ...(ctx.checklist || [])]
+    .map(_intiBaris)
+    .filter(Boolean);
+  if (awal.length === 0) return { luar: false };
+  const a = argsTool(tc);
+  if (a === null) return { luar: true, sebab: "arguments could not be parsed" };
+  const baru = Array.isArray(a.todos) ? a.todos : [];
+  const isiBaru = baru
+    .map((t: any) =>
+      _intiBaris(
+        typeof t === "string"
+          ? t
+          : String(t?.content ?? t?.text ?? t?.todo ?? ""),
+      ),
+    )
+    .filter(Boolean);
+  if (isiBaru.length === 0) return { luar: false }; // clearing is not re-planning
+  const bertahan = awal.some((x) =>
+    isiBaru.some((y) => y === x || y.includes(x) || x.includes(y)),
+  );
+  return bertahan
+    ? { luar: false }
+    : {
+        luar: true,
+        sebab:
+          "the new checklist keeps none of the original plan's items - this replaces the task rather than tracking it",
+      };
+}
+
+/** A checklist line without its status marker, bullet, or case. */
+function _intiBaris(s: string): string {
+  return String(s || "")
+    .replace(/^\s*(?:\[[x→\-! ]\]|[-*•])\s*/i, "")
+    .trim()
+    .toLowerCase();
+}
+
 module.exports = {
   EXECUTION_TOOLS,
   namaTool,
@@ -193,4 +385,8 @@ module.exports = {
   kunciPanggilan,
   BATAS_PANGGILAN_IDENTIK,
   melewatiBatasUlang,
+  WRITE_TOOLS,
+  READ_TOOLS,
+  jalurDisebut,
+  diLuarLingkup,
 };

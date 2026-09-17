@@ -1,5 +1,18 @@
-// CodeBlocks — extracted from Components.tsx (the app.tsx split). Prepended
-// via APP_MODULES.
+// CodeBlocks.tsx — everything a reply can contain that is not prose: code
+// blocks, the Monaco editor, and diagrams.
+//
+// ROLE IN THE SYSTEM. Blocks() in Components.tsx routes here. Three renderers
+// live in this file and they are chosen, not interchangeable:
+//
+//   CodeBlock      highlighted source, with copy and run
+//   DiagramBlock   a mermaid diagram — the wrapper that owns the full-window
+//                  view; the chat must render THIS, not MermaidBlock, or every
+//                  interactive part of a diagram becomes unreachable
+//   CytoscapeBlock a mermaid flowchart converted to a live graph
+//
+// The syntax highlighter below is hand-written for the same reason everything
+// here is: the renderer has no module graph, so highlight.js and its kin cannot
+// be imported (see public/app.tsx).
 
 /* ----------------------------- Syntax highlight ----------------------------- */
 const KW: Record<string, string[]> = {
@@ -92,7 +105,7 @@ function mLang(l?: string) {
   return MLANG[(l || "").toLowerCase()] || "plaintext";
 }
 
-// Per-language monogram badge (color + short symbol) � clean, no heavy logo assets.
+// Per-language monogram badge (color + short symbol) — clean, no heavy logo assets.
 const LANG_META: Record<string, any> = {
   python: { l: "Python", s: "Py", c: "#3776AB" },
   javascript: { l: "JavaScript", s: "JS", c: "#F7DF1E", d: 1 },
@@ -193,27 +206,19 @@ function CodeBlock({ lang, code }: any) {
         document.head.appendChild(s);
       }
       const ed = monaco.editor.create(hostRef.current, {
+        // Shared look and behaviour: opsiEditor() in Config.tsx.
+        ...opsiEditor(),
         value: teks, // the user's text when there is one, otherwise the original
         language: mLang(language),
-        theme: "wolfspace-gelap",
-        automaticLayout: true,
-        minimap: { enabled: false },
-        scrollBeyondLastLine: false,
-        fontSize: 13,
         lineNumbers: "on",
-        renderLineHighlight: "none",
-        // Same as AgentSteps.tsx and LogicCodePane (app.tsx): the 14px canvas
-        // Monaco paints along the editor's right edge stays active even with
-        // the minimap off, and its border is untouchable by CSS `outline`
-        // because it is drawn to pixels rather than set through style.
-        overviewRulerLanes: 0,
         tabSize: 4,
-        scrollbar: { alwaysConsumeMouseWheel: false },
-        padding: { top: 8, bottom: 8 },
         wordWrap: "off",
         domReadOnly: false,
         readOnly: false,
         autoDetectHighContrast: false,
+        // A code block grows to fit its content, so a bar pinned to its top
+        // would cover the first line of a five-line snippet.
+        stickyScroll: { enabled: false },
       });
       edRef.current = ed;
       setEdReady(true);
@@ -337,9 +342,11 @@ function CodeBlock({ lang, code }: any) {
                   <Icon.check /> ran (exit 0)
                 </>
               ) : (
-                <>? error</>
+                <>
+                  <Icon.close /> error
+                </>
               )}{" "}
-              � {language}
+              · {language}
             </span>
           </div>
           <div className="output-body">
@@ -844,6 +851,403 @@ function CytoscapeBlock({ code, onStatic }: any) {
 // When the diagram is a flowchart that can be converted to a graph, an
 // "interactive" button appears and switches to Cytoscape. So mermaid's
 // richness is never sacrificed — interactivity is opt-in.
+// ── SEEING THE WHOLE DIAGRAM ─────────────────────────────────────────────
+//
+// A rendered diagram sat in a box with `overflow-x: auto`, so anything wider
+// than the chat column could only be read by scrolling it sideways a piece at
+// a time — and a flowchart is exactly the kind of thing that is useless in
+// pieces. The way out existed but was a small button in the header labelled
+// "⇱ interaktif", which nobody looks for while trying to read a picture.
+//
+// Now the picture itself is the control: click it and it opens filling the
+// window, scaled to fit, and drags with the pointer.
+
+/** Scale that fits `isi` inside `wadah`, never enlarging past 1:1. */
+function skalaMuat(isi: any, wadah: any, sisa = 48) {
+  const iw = Number(isi && isi.w);
+  const ih = Number(isi && isi.h);
+  const ww = Number(wadah && wadah.w) - sisa;
+  const wh = Number(wadah && wadah.h) - sisa;
+  if (!(iw > 0 && ih > 0 && ww > 0 && wh > 0)) return 1;
+  // Never blown up: a small diagram enlarged to fill the window is blurry in
+  // the raster case and merely odd in the vector one.
+  return Math.min(ww / iw, wh / ih, 1);
+}
+
+/** Zoom is bounded. Unbounded wheel zoom loses the diagram off-screen. */
+function jepitSkala(s: any) {
+  // `typeof`, not just isFinite. Number(null) is 0 — finite, and therefore
+  // clamped to the 0.1 floor, which shrinks the diagram to nothing instead of
+  // falling back to 1:1. A missing scale is a broken value, not a scale of
+  // zero. Found by the test rather than by reading.
+  if (typeof s !== "number" || !Number.isFinite(s)) return 1;
+  return Math.min(Math.max(s, 0.1), 8);
+}
+
+/**
+ * The full-window view.
+ *
+ * PORTALLED, for the reason the GitHub panel is: a `position: fixed` overlay
+ * rendered from inside the chat column is measured and clipped against any
+ * ancestor carrying a transform, filter or backdrop-filter — which in a split
+ * view means half the picture disappears. document.body has no such ancestor.
+ *
+ * The SVG is CLONED rather than re-rendered. mermaid has already drawn it into
+ * the page; drawing it a second time would cost the same work again and could
+ * differ. Injecting it here is not a new exposure — it is the very markup
+ * already living in the document a few nodes away.
+ */
+// ── SATU KANVAS, DUA SASARAN SERET ─────────────────────────────────────────
+//
+// Dragging the background moves the whole picture; dragging a box moves that
+// box. The picture stays the one mermaid drew — its routing and its spacing
+// are the tidy part and are not thrown away to make the boxes movable.
+//
+// These four functions are the whole mechanism, and every one of them was
+// written against a REAL mermaid render (headless Chromium, the vendored
+// mermaid.min.js) rather than against a belief about its markup:
+//
+//   node   <g class="node default" id="<svg>-flowchart-<id>-<n>"
+//             transform="translate(x, y)">
+//   edge   <path class="... flowchart-link" id="<svg>-L_<src>_<dst>_<n>"
+//             d="M… L… C…">        ← M, L and C only; no H, V, A or Q
+//   label  <g class="edgeLabels"> one <g> per edge, in the same order
+//
+// Ids are NOT parsed by splitting on "_": a node may legally be called
+// my_node, and "L_my_node_other_node_0" cannot be split by counting
+// underscores. The split is resolved against the ids the diagram actually
+// contains instead.
+
+/** {x,y} from a transform="translate(x, y)", or {x:0,y:0}. */
+function uraiTranslate(t: any) {
+  const m = String(t || "").match(
+    /translate\(\s*(-?[\d.]+)\s*[, ]\s*(-?[\d.]+)/,
+  );
+  return m ? { x: parseFloat(m[1]!), y: parseFloat(m[2]!) } : { x: 0, y: 0 };
+}
+
+/**
+ * "u0-flowchart-my_node-0" -> "my_node".
+ *
+ * Requiring "-flowchart-" is what CONFINES box dragging to flowcharts, and
+ * that is deliberate. Measured: a class diagram names its boxes
+ * "z1-classId-Animal-0" and a state diagram "z2-state-Diam-1", so both answer
+ * null here and fall through to the pan. They have to: a class diagram's
+ * connectors are "id_Animal_Dog_1" and a state diagram's are plain "edge0",
+ * which carries no endpoints at all — a box could be moved but its arrows
+ * could not be found to follow it, leaving arrows hanging in mid-air.
+ */
+function idSimpulDari(gid: any) {
+  const m = String(gid || "").match(/-flowchart-(.+)-\d+$/);
+  return m ? m[1] : null;
+}
+
+/**
+ * Which END of an edge a node sits on: "awal", "akhir", or null.
+ *
+ * The 'ids' list is every node id in the diagram, and it is what makes this
+ * unambiguous — the core of "L_a_b_0" is split at the one position where BOTH
+ * halves are real nodes. Two valid splits (possible only when the diagram
+ * itself is ambiguous) answer null rather than guessing wrong.
+ */
+function ujungTepi(eid: any, nodeId: any, ids: any) {
+  const m = String(eid || "").match(/-L_(.+)_\d+$/);
+  if (!m || !nodeId) return null;
+  const inti = m[1]!;
+  const punya = new Set(ids || []);
+  let ketemu: any = null;
+  for (let i = 1; i < inti.length; i++) {
+    if (inti[i] !== "_") continue;
+    const a = inti.slice(0, i);
+    const b = inti.slice(i + 1);
+    if (!punya.has(a) || !punya.has(b)) continue;
+    if (ketemu) return null;
+    ketemu = { a, b };
+  }
+  if (!ketemu) return null;
+  if (ketemu.a === nodeId) return "awal";
+  if (ketemu.b === nodeId) return "akhir";
+  return null;
+}
+
+/**
+ * The same path, bent so one end follows a node that moved by (dx,dy).
+ *
+ * Every point is shifted by a weight that runs from 1 at the moved end to 0 at
+ * the other, so the far end stays pinned to the node it still touches and the
+ * curve mermaid chose is kept rather than replaced by a straight line.
+ *
+ * BAILS OUT on any command other than M, L or C. Those three take whole
+ * coordinate pairs, which is what lets every number be treated as an x or a y;
+ * H, V and A do not, and shifting their arguments would corrupt the path. A
+ * measured mermaid render only ever emitted M, L and C — this guard is for the
+ * day that stops being true.
+ */
+function geserJalur(d: any, dx: any, dy: any, dariAwal: any) {
+  const s = String(d || "");
+  if (!s) return s;
+  if (/[^MLC\d\s,.eE+-]/.test(s)) return s;
+  const angka = s.match(/-?\d*\.?\d+(?:[eE][-+]?\d+)?/g);
+  if (!angka || angka.length < 2 || angka.length % 2) return s;
+  const n = angka.length / 2;
+  let i = 0;
+  return s.replace(/-?\d*\.?\d+(?:[eE][-+]?\d+)?/g, (m: any) => {
+    const pasangan = Math.floor(i / 2);
+    const sumbuY = i % 2 === 1;
+    i++;
+    const w =
+      n < 2 ? 1 : dariAwal ? 1 - pasangan / (n - 1) : pasangan / (n - 1);
+    const v = parseFloat(m) + (sumbuY ? dy : dx) * w;
+    return String(Math.round(v * 1000) / 1000);
+  });
+}
+
+/**
+ * The drawing's TRUE size, read from its viewBox.
+ *
+ * WHY THIS IS NEEDED. mermaid emits width="100%" with no height, and the
+ * stage centres its content, so the browser is asked how wide a percentage
+ * of an unknown width is. It answers with the SVG default, 300px. Measured:
+ * a drawing whose viewBox says 1002 x 293 was being laid out at 300 x 87.7
+ * inside a 1280 x 704 stage — and since the fit never enlarges past 1:1, it
+ * stayed at 300 wide with the window three-quarters empty.
+ */
+function ukuranViewBox(vb: any) {
+  const n = String(vb || "")
+    .trim()
+    .split(/[\s,]+/)
+    .map(Number);
+  if (n.length !== 4) return null;
+  const w = n[2]!;
+  const h = n[3]!;
+  if (!Number.isFinite(w) || !Number.isFinite(h) || w <= 0 || h <= 0)
+    return null;
+  return { w, h };
+}
+
+/** The same, falling back to the ink when there is no usable viewBox. */
+function ukuranGambar(svg: any) {
+  const vb = ukuranViewBox(
+    svg && svg.getAttribute && svg.getAttribute("viewBox"),
+  );
+  if (vb) return vb;
+  try {
+    const b = svg.getBBox();
+    if (b && b.width > 0 && b.height > 0) return { w: b.width, h: b.height };
+  } catch (_) {}
+  return null;
+}
+
+function DiagramLightbox({ svgHtml, children, hint, onClose }: any) {
+  const wadahRef = useRef<any>(null);
+  const isiRef = useRef<any>(null);
+  const [skala, setSkala] = useState(1);
+  const [geser, setGeser] = useState({ x: 0, y: 0 });
+  const seret = useRef<any>(null);
+  // A node drag and a background pan are mutually exclusive, and each
+  // ignores the other's move events. Both live in refs rather than state:
+  // a drag fires on every animation frame, and re-rendering the diagram
+  // markup that often would fight the pointer.
+  const seretSimpul = useRef<any>(null);
+
+  // Fit once the SVG is in the DOM and has a measurable size.
+  const muat = useCallback(() => {
+    const w = wadahRef.current;
+    const i = isiRef.current && isiRef.current.querySelector("svg");
+    if (!w || !i) return;
+    // PIN THE SIZE. Left alone the browser guesses 300px (see
+    // ukuranViewBox), and everything downstream — the fit, the drag, the
+    // area a box may move in — is then measured against a number that has
+    // nothing to do with the drawing.
+    const u = ukuranGambar(i);
+    if (u) {
+      i.setAttribute("width", String(u.w));
+      i.setAttribute("height", String(u.h));
+    }
+    // The viewBox is in the drawing's own units, so it is already free of
+    // the zoom. The old code divided a measured width by `skala` to undo
+    // it, and read `skala` out of a closure with an empty dependency list —
+    // so pressing 0 after zooming always divided by the initial 1 and refit
+    // to the wrong size.
+    setSkala(
+      skalaMuat(u || { w: 0, h: 0 }, { w: w.clientWidth, h: w.clientHeight }),
+    );
+    setGeser({ x: 0, y: 0 });
+  }, []);
+
+  useEffect(() => {
+    const t = setTimeout(muat, 0);
+    return () => clearTimeout(t);
+  }, [svgHtml, muat]);
+
+  // Escape closes. Without it the only way out is finding the backdrop, and
+  // a diagram that fills the window leaves little of it to click.
+  useEffect(() => {
+    const onKey = (e: any) => {
+      if (e.key === "Escape") onClose && onClose();
+      if (e.key === "0") muat();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose, muat]);
+
+  /** The <g class="node"> under the pointer, or null for the background. */
+  const simpulDi = (t: any) => (t && t.closest ? t.closest("g.node") : null);
+
+  const mulaiSeret = (e: any) => {
+    const g = simpulDi(e.target);
+    if (g && mulaiSeretSimpul(e, g)) return;
+    seret.current = { x: e.clientX - geser.x, y: e.clientY - geser.y };
+  };
+
+  /**
+   * Begin moving one box. Everything that will move is collected NOW —
+   * the box's own translate, each connected edge's original 'd', each of
+   * their labels' original position — so every frame is computed from the
+   * starting state rather than from the previous frame. Accumulating
+   * frame-to-frame deltas drifts, and a path re-bent from an already-bent
+   * path drifts fast.
+   */
+  const mulaiSeretSimpul = (e: any, g: any) => {
+    const svg = isiRef.current && isiRef.current.querySelector("svg");
+    if (!svg) return false;
+    const nid = idSimpulDari(g.getAttribute("id"));
+    if (!nid) return false;
+    const ids = [...svg.querySelectorAll("g.node")]
+      .map((n: any) => idSimpulDari(n.getAttribute("id")))
+      .filter(Boolean);
+    const label = [...svg.querySelectorAll("g.edgeLabels > g")];
+    const ikut: any[] = [];
+    [...svg.querySelectorAll("path.flowchart-link")].forEach(
+      (p: any, i: number) => {
+        const u = ujungTepi(p.getAttribute("id"), nid, ids);
+        if (!u) return;
+        const l = label[i] || null;
+        ikut.push({
+          p,
+          d: p.getAttribute("d"),
+          dariAwal: u === "awal",
+          l,
+          lt: l ? uraiTranslate(l.getAttribute("transform")) : null,
+        });
+      },
+    );
+    // getScreenCTM carries the lightbox's own scale AND the viewBox's, so
+    // one conversion covers both. Without it a drag at 3x zoom moves the
+    // box three times as far as the pointer.
+    const ctm = svg.getScreenCTM && svg.getScreenCTM();
+    seretSimpul.current = {
+      g,
+      t: uraiTranslate(g.getAttribute("transform")),
+      ikut,
+      x: e.clientX,
+      y: e.clientY,
+      sx: ctm && ctm.a ? ctm.a : 1,
+      sy: ctm && ctm.d ? ctm.d : 1,
+    };
+    return true;
+  };
+  const jalanSeret = (e: any) => {
+    const s = seretSimpul.current;
+    if (s) {
+      const dx = (e.clientX - s.x) / (s.sx || 1);
+      const dy = (e.clientY - s.y) / (s.sy || 1);
+      s.g.setAttribute(
+        "transform",
+        "translate(" + (s.t.x + dx) + ", " + (s.t.y + dy) + ")",
+      );
+      for (const it of s.ikut) {
+        it.p.setAttribute("d", geserJalur(it.d, dx, dy, it.dariAwal));
+        // The label sits at the middle of its edge, where the weight is a
+        // half — so it follows by half the distance and stays on the line.
+        if (it.l && it.lt)
+          it.l.setAttribute(
+            "transform",
+            "translate(" + (it.lt.x + dx / 2) + ", " + (it.lt.y + dy / 2) + ")",
+          );
+      }
+      return;
+    }
+    if (!seret.current) return;
+    setGeser({
+      x: e.clientX - seret.current.x,
+      y: e.clientY - seret.current.y,
+    });
+  };
+  const selesaiSeret = () => {
+    seret.current = null;
+    seretSimpul.current = null;
+  };
+
+  const isi = (
+    <div
+      className="diag-lightbox"
+      onMouseDown={(e: any) => {
+        // Only the backdrop closes. A drag that happens to end on the backdrop
+        // must not be read as a click meaning 'close'.
+        if (e.target === e.currentTarget) onClose && onClose();
+      }}
+    >
+      <div className="diag-bar">
+        <span className="diag-hint">
+          {hint ||
+            "drag a box to move it · drag the background to pan · scroll to zoom · 0 to fit · Esc to close"}
+        </span>
+        <button
+          className="diag-tutup"
+          onClick={onClose}
+          aria-label="Close diagram"
+        >
+          ✕
+        </button>
+      </div>
+      {/* TWO THINGS CAN FILL THIS WINDOW, and they are handled differently.
+          A rendered SVG is a picture: it pans and zooms as one, because there
+          is nothing inside it to address. A converted graph is a MODEL —
+          cytoscape drags its nodes, runs layouts and does its own zooming — so
+          when children are given, this stops steering and stays out of the way.
+          Applying the pan transform to both would fight cytoscape for the
+          pointer and move the whole canvas when the user meant one node. */}
+      {children ? (
+        <div className="diag-panggung diag-hidup">{children}</div>
+      ) : (
+        <div
+          className="diag-panggung"
+          ref={wadahRef}
+          onMouseDown={mulaiSeret}
+          onMouseMove={jalanSeret}
+          onMouseUp={selesaiSeret}
+          onMouseLeave={selesaiSeret}
+          onDoubleClick={muat}
+          onWheel={(e: any) => {
+            const arah = e.deltaY < 0 ? 1.12 : 1 / 1.12;
+            setSkala((s: any) => jepitSkala(s * arah));
+          }}
+        >
+          <div
+            ref={isiRef}
+            className="diag-isi"
+            style={{
+              transform:
+                "translate(" +
+                geser.x +
+                "px," +
+                geser.y +
+                "px) scale(" +
+                skala +
+                ")",
+            }}
+            dangerouslySetInnerHTML={{ __html: svgHtml }}
+          />
+        </div>
+      )}
+    </div>
+  );
+  return typeof document !== "undefined" && document.body
+    ? ReactDOM.createPortal(isi, document.body)
+    : isi;
+}
+
 function DiagramBlock({ code }: any) {
   const [interactive, setInteractive] = useState(false);
   const canInteractive = useMemo(() => {
@@ -858,15 +1262,45 @@ function DiagramBlock({ code }: any) {
       return false;
     }
   }, [code]);
+  // The full-window view, and WHAT it shows. Held here rather than in
+  // MermaidBlock because only this component knows whether the diagram converts
+  // into a graph whose nodes can be dragged.
+  const [penuh, setPenuh] = useState<any>(null);
+
   if (interactive && canInteractive)
     return (
       <CytoscapeBlock code={code} onStatic={() => setInteractive(false)} />
     );
   return (
-    <MermaidBlock
-      code={code}
-      onInteractive={canInteractive ? () => setInteractive(true) : null}
-    />
+    <React.Fragment>
+      <MermaidBlock
+        code={code}
+        onInteractive={canInteractive ? () => setInteractive(true) : null}
+        onOpen={(html: any) => setPenuh(html)}
+      />
+      {penuh ? (
+        // ── THE LAYOUT IS THE USER'S TO REARRANGE ──
+        //
+        // When the diagram converts, the full view is the LIVE GRAPH: nodes are
+        // dragged where they belong, layouts can be swapped, and the arrangement
+        // dagre chose is a starting point rather than a verdict. That was
+        // already possible, but only behind a small "⇱ interaktif" link in the
+        // header — which is not where anyone looks while reading a picture.
+        //
+        // Diagrams that do NOT convert (sequence, pie, class) are still just
+        // pictures, and get the pan-and-zoom view instead. Offering drag on
+        // something with no nodes to drag would be a control that does nothing.
+        <DiagramLightbox
+          onClose={() => setPenuh(null)}
+          {...(canInteractive
+            ? {
+                hint: "drag the nodes to rearrange · scroll to zoom · Esc to close",
+                children: <CytoscapeBlock code={code} />,
+              }
+            : { svgHtml: penuh })}
+        />
+      ) : null}
+    </React.Fragment>
   );
 }
 
@@ -875,9 +1309,17 @@ function DiagramBlock({ code }: any) {
 // layout. If mermaid fails or has not loaded yet, this falls back to
 // MermaidBlockFallback (a custom SVG parser) so a diagram is never lost.
 // menampilkan kode mentah.
-function MermaidBlock({ code, onInteractive }: any) {
+function MermaidBlock({ code, onInteractive, onOpen }: any) {
   const ref = useRef<any>(null);
   const [failed, setFailed] = useState(false);
+  // The SVG being shown full-window, or null. Held as markup rather than as a
+  // node so the overlay owns its own copy and cannot be emptied by a re-render
+  // of the block underneath it.
+  const [penuh, setPenuh] = useState<any>(null);
+  const [disalin, setDisalin] = useState(false);
+  // The PARENT decides what the full view shows — a draggable graph when the
+  // diagram converts into one, this picture otherwise. It knows; this does not.
+  const buka = (html: any) => (onOpen ? onOpen(html) : setPenuh(html));
   useEffect(() => {
     let cancelled = false;
 
@@ -927,7 +1369,23 @@ function MermaidBlock({ code, onInteractive }: any) {
         const id = "mmd-" + Math.random().toString(36).slice(2, 9);
         Promise.resolve(m.render(id, code))
           .then(({ svg }: any) => {
-            if (!cancelled && ref.current) ref.current.innerHTML = svg;
+            if (cancelled || !ref.current) return;
+            ref.current.innerHTML = svg;
+            // ── FIT THE FIRST VIEW, DO NOT MAKE IT SCROLL ──
+            //
+            // mermaid stamps a fixed `height` on the <svg>, so a tall flowchart
+            // renders at whatever height dagre decided — nine hundred pixels is
+            // ordinary — and the reader meets a diagram they must scroll before
+            // they can see what it is.
+            //
+            // Dropping the attribute lets `height: auto` and the max-height in
+            // the stylesheet do their work: the viewBox mermaid also emits means
+            // the drawing scales down to MEET inside the box, whole. Removing it
+            // here rather than overriding in CSS because an attribute and a
+            // stylesheet rule are not the same fight — the attribute wins on
+            // some SVG properties.
+            const el = ref.current.querySelector("svg");
+            if (el) el.removeAttribute("height");
           })
           .catch(() => {
             if (!cancelled) setFailed(true);
@@ -973,12 +1431,30 @@ function MermaidBlock({ code, onInteractive }: any) {
         </span>
         <span className="code-lang">mermaid</span>
         <span className="lang-spacer" />
+        {/* THE SOURCE, not the picture. An SVG on the clipboard pastes into
+            almost nothing useful, while the mermaid text goes into a document,
+            an issue, or back into this chat to be edited. Same button and the
+            same 1.5s acknowledgement as CodeBlock — a second copy idiom would
+            be one more thing to keep in step. */}
+        <button
+          className={"ctb-btn" + (disalin ? " copied" : "")}
+          style={{ marginLeft: "auto" }}
+          title="Copy the diagram source"
+          onClick={(e: any) => {
+            e.stopPropagation();
+            navigator.clipboard?.writeText(code);
+            setDisalin(true);
+            setTimeout(() => setDisalin(false), 1500);
+          }}
+        >
+          {disalin ? <Icon.check /> : <Icon.copy />}{" "}
+          {disalin ? "Copied" : "Copy"}
+        </button>
         {onInteractive ? (
           <button
             onClick={onInteractive}
             title="Open as interactive graph (drag / zoom / layout)"
             style={{
-              marginLeft: "auto",
               fontFamily: "ui-monospace,monospace",
               fontSize: 11,
               color: "#8fb3ff",
@@ -993,16 +1469,41 @@ function MermaidBlock({ code, onInteractive }: any) {
           </button>
         ) : null}
       </div>
+      {/* THE PICTURE IS THE BUTTON. Reading a wide flowchart through a
+          sideways scrollbar means never seeing it whole, and the way out used
+          to be a small "⇱ interaktif" link in the header that nobody looks for
+          while trying to read a diagram. */}
       <div
         className="mermaid-canvas"
         ref={ref}
+        role="button"
+        tabIndex={0}
+        title="Click to open full size — drag to move, scroll to zoom"
+        onClick={() => {
+          const svg = ref.current && ref.current.querySelector("svg");
+          if (svg) buka(svg.outerHTML);
+        }}
+        onKeyDown={(e: any) => {
+          // Reachable without a mouse: it announces itself as a button, so it
+          // has to behave like one.
+          if (e.key !== "Enter" && e.key !== " ") return;
+          e.preventDefault();
+          const svg = ref.current && ref.current.querySelector("svg");
+          if (svg) buka(svg.outerHTML);
+        }}
         style={{
-          overflowX: "auto",
+          // No scrollbar. Nothing overflows any more — the whole diagram is
+          // scaled into the box, and the full-size view is one click away.
+          overflow: "hidden",
           padding: "12px 14px 16px",
           display: "flex",
           justifyContent: "center",
+          cursor: "zoom-in",
         }}
       />
+      {penuh ? (
+        <DiagramLightbox svgHtml={penuh} onClose={() => setPenuh(null)} />
+      ) : null}
     </div>
   );
 }

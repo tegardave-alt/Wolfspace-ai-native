@@ -1,19 +1,22 @@
-// Mengambil ikon bahasa dari material-icon-theme lalu menuliskannya sebagai
-// SATU modul JS yang ikut di-vendor.
+// build.cjs — takes the per-language file icons out of material-icon-theme and
+// writes them as ONE vendored JS module.
 //
-// KENAPA DI-VENDOR, BUKAN DIPAKAI LANGSUNG. Aplikasi ini memuat asetnya sendiri
-// tanpa CDN dan tanpa bundler saat jalan; paket aslinya berisi 1250 SVG (1,6 MB)
-// sementara yang benar-benar muncul di pohon berkas cuma puluhan. Menjadikannya
-// dependensi runtime berarti menanggung seluruhnya demi sebagian kecil.
+// ROLE IN THE SYSTEM. It generates public/app/IkonBahasa.ts, which the file tree
+// reads. Run it by hand:
 //
-// KENAPA SATU MODUL, BUKAN 30 BERKAS SVG. Tiap berkas terpisah berarti satu
-// permintaan HTTP per ikon saat pohon dirender pertama kali. Di-inline, ia ikut
-// bundel modul yang memang sudah dimuat.
+//     npm install --no-save material-icon-theme && node scripts/ikon-bahasa/build.cjs
 //
-// Sumber: material-icon-theme (MIT) — tema ikon yang sama dengan yang dipakai
-// VS Code, jadi ikonnya memang yang dikenali orang, bukan tiruan.
+// WHY VENDORED AND NOT A DEPENDENCY. The app loads its own assets with no CDN
+// and no bundler at run time, and the original package carries 1250 SVGs
+// (1.6 MB) while only dozens ever appear in a file tree. A runtime dependency
+// would mean carrying all of it for a fraction.
 //
-// Jalankan: npm install --no-save material-icon-theme && node scripts/ikon-bahasa/build.cjs
+// WHY ONE MODULE AND NOT 30 SVG FILES. Separate files mean one HTTP request per
+// icon the first time the tree renders. Inlined, they arrive inside a module
+// that is loaded anyway.
+//
+// Source: material-icon-theme (MIT) — the same icon theme VS Code uses, so the
+// icons are the ones people already recognise rather than imitations.
 "use strict";
 
 const fs = require("fs");
@@ -25,8 +28,9 @@ const SUMBER = path.join(AKAR, "node_modules", "material-icon-theme", "icons");
 // the migration on the next regeneration.
 const TUJUAN = path.join(AKAR, "public", "app", "IkonBahasa.ts");
 
-// Ekstensi -> nama berkas ikon. Beberapa ekstensi berbagi satu ikon (mjs/cjs
-// sama-sama javascript), dan itu memang benar: yang dibedakan bahasanya, bukan
+// Extension -> icon file name. Several extensions share one icon (mjs and cjs
+// are both javascript), and that is correct: what is being distinguished is the
+// language, not
 // akhiran berkasnya.
 const PETA = {
   js: "javascript",
@@ -77,8 +81,8 @@ function ambil(nama) {
   const f = path.join(SUMBER, nama + ".svg");
   if (!fs.existsSync(f)) return null;
   let svg = fs.readFileSync(f, "utf8").trim();
-  // Ukuran dibuang dari sumbernya supaya pemakai yang menentukan; viewBox
-  // dipertahankan karena itu yang menjaga proporsinya.
+  // The size is stripped so the caller decides it; the viewBox is kept because
+  // that is what preserves the proportions.
   svg = svg
     .replace(/\s(width|height)="[^"]*"/g, "")
     .replace(/<\?xml[^>]*\?>/g, "")

@@ -188,3 +188,44 @@ describe("kedua permukaan memakai resolver bersama", () => {
     expect(src).not.toMatch(/BRAVE_API_KEY:/);
   });
 });
+
+// ── SKETCHFAB ────────────────────────────────────────────────────────────────
+//
+// Reported by the user: typing "sketchfab" answered "There is no known
+// credential name for 'sketchfab'". That was the registry behaving correctly --
+// it refuses to invent a variable name -- but the fix is to make the entry real
+// rather than to soften the refusal.
+//
+// Every value below was read out of the PUBLISHED package (1.0.10), not its
+// README. The README says to clone and build; npm ships a `bin`, so npx works.
+describe("sketchfab", () => {
+  test("it resolves to the package that actually exists on npm", () => {
+    // NOT @modelcontextprotocol/server-sketchfab, which is what the old
+    // invent-a-scope fallback would have produced.
+    expect(mcpResolvePerintah("sketchfab")).toEqual({
+      command: "npx",
+      args: ["-y", "sketchfab-mcp-server"],
+    });
+  });
+
+  test("a bare key goes to SKETCHFAB_API_KEY", () => {
+    // build/index.js reads exactly one variable, and this is it. Anything else
+    // would start the server with no key and no complaint.
+    const r = mcpResolveKredensial("sketchfab", "abc123", []);
+    expect(r.env).toEqual({ SKETCHFAB_API_KEY: "abc123" });
+    expect(r.perluNama).toBeFalsy();
+    // The key must not reach argv: a process listing records it there.
+    expect(r.args).toEqual([]);
+  });
+
+  test("the name is no longer rejected", () => {
+    expect(mcpResolveKredensial("sketchfab", "abc", []).perluNama).toBeFalsy();
+  });
+
+  test("NAME=value still overrides the registry", () => {
+    // The escape hatch has to keep working for a server whose entry is wrong.
+    expect(mcpResolveKredensial("sketchfab", "OTHER=x", []).env).toEqual({
+      OTHER: "x",
+    });
+  });
+});

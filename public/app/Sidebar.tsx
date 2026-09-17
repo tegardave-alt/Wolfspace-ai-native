@@ -1,7 +1,10 @@
-// Sidebar — extracted from app.tsx (see public/app.tsx for the App
-// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.tsx (prepended), then Babel once -> a single global scope. Function
-// bodies (hooks/React/SB) run at render time.
+// Sidebar.tsx — the sidebar and every panel that lives in it.
+//
+// ROLE IN THE SYSTEM. It is the app's navigation and its control surface at
+// once: projects, history, MCP servers, settings. The agent's own activity feed
+// was split out into AgentSteps.tsx when this file outgrew being readable.
+//
+// See public/app.tsx for how the renderer is assembled.
 
 /* ----------------------------- Sidebar (Claude-style) ----------------------------- */
 const SB = {
@@ -569,17 +572,205 @@ const commitInputStyle = {
   padding: "3px 7px",
   outline: "none",
 };
-function commitBtnStyle(busy: any) {
-  return {
-    marginLeft: "auto",
-    padding: "1px 8px",
-    borderRadius: "5px",
-    fontSize: "11px",
-    color: busy ? "#6b7280" : "#e6edf3",
-    background: "rgba(255,255,255,0.09)",
-    cursor: busy ? "default" : "pointer",
-    flexShrink: 0,
-  };
+// ── Segmented buttons ──
+// One bordered pill split into teeth (Pop | Drop on a stash row). Each tooth
+// is a real <button>, so disabled, focus and title behave as usual; the group
+// only draws the outer edge and the dividers between teeth. It sizes itself
+// to its labels, so it is never wider than the words in it.
+//
+// An item: { label, title, onClick, ok?, danger?, disabled? }. `ok` is the
+// pill's primary tooth (Commit next to Cancel): green while it can act, the
+// same grey as its neighbour while it cannot. `busy` disables every tooth.
+function SegmentedButtons({ items, busy, className }: any) {
+  return (
+    <div
+      className={"seg-group" + (className ? " " + className : "")}
+      role="group"
+    >
+      {items.map((it: any) => (
+        <button
+          key={it.label}
+          type="button"
+          className={
+            "btn-reset seg-btn" +
+            (it.ok ? " seg-ok" : "") +
+            (it.danger ? " seg-danger" : "")
+          }
+          disabled={!!busy || !!it.disabled}
+          title={it.title}
+          onClick={it.onClick}
+        >
+          {it.label}
+        </button>
+      ))}
+    </div>
+  );
+}
+
+// ── Horizontal three-dot menu button ──
+// The twin of the top bar's panel-menu handle, turned on its side: ⋮ there,
+// ⋯ here. Three dots in a 28×18 box. It draws its own hover and focus, so it
+// does not borrow the visual picker's outline the way the vertical one does.
+function DotsMenuButton({ open, onClick, title }: any) {
+  return (
+    <button
+      type="button"
+      className={"btn-reset dots-btn" + (open ? " dots-open" : "")}
+      title={title}
+      aria-haspopup="menu"
+      aria-expanded={!!open}
+      onClick={onClick}
+      onMouseDown={(e: any) => e.stopPropagation()}
+    >
+      <svg width="20" height="10" viewBox="0 0 20 10" fill="currentColor">
+        <circle cx="4" cy="5" r="1.6"></circle>
+        <circle cx="10" cy="5" r="1.6"></circle>
+        <circle cx="16" cy="5" r="1.6"></circle>
+      </svg>
+    </button>
+  );
+}
+
+// ── The sync control ──
+// A port of VS Code's SyncStatusBar. VS Code shows no Fetch button anywhere
+// visible; it shows ONE control that carries the state and offers the next
+// action, and fetches in the background so the numbers stay true:
+//
+//   no upstream            $(cloud-upload)  "Publish Branch"      -> push -u
+//   upstream, 0↓ 0↑        $(sync)          "Synchronize Changes" -> sync
+//   upstream, n↓ m↑        $(sync) "n↓ m↑"  tooltip per syncTooltip -> sync
+//   running                $(sync~spin)     "Synchronizing Changes..." (off)
+//
+// syncLabel and syncTooltip below are the upstream getters verbatim
+// (repository.ts on main); only the icons are drawn here rather than named.
+function syncLabel(head: any): string {
+  if (!head || !head.name || !head.commit || !head.upstream) return "";
+  if (!(head.ahead || head.behind)) return "";
+  return head.behind + "↓ " + head.ahead + "↑";
+}
+function syncTooltip(head: any): string {
+  if (!head || !head.name || !head.commit || !head.upstream) {
+    return "Synchronize Changes";
+  }
+  if (!(head.ahead || head.behind)) return "Synchronize Changes";
+  const u = head.upstream.remote + "/" + head.upstream.name;
+  if (!head.ahead) return "Pull " + head.behind + " commits from " + u;
+  if (!head.behind) return "Push " + head.ahead + " commits to " + u;
+  return (
+    "Pull " + head.behind + " and push " + head.ahead + " commits between " + u
+  );
+}
+function SyncButton({ head, adaRemote, berjalan, onSync, onPublish }: any) {
+  // No remote at all: nothing to offer here -- the ⋯ menu carries
+  // "Connect to GitHub". VS Code's equivalent is the publisher list.
+  if (!adaRemote) return null;
+  const punyaUpstream = !!(head && head.name && head.commit && head.upstream);
+  const label = punyaUpstream ? syncLabel(head) : "";
+  const title = berjalan
+    ? "Synchronizing Changes..."
+    : punyaUpstream
+      ? syncTooltip(head)
+      : "Publish Branch";
+  const ikon = berjalan ? (
+    <svg
+      className="sync-ikon berputar"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  ) : punyaUpstream ? (
+    <svg
+      className="sync-ikon"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M21 12a9 9 0 1 1-3-6.7" />
+      <path d="M21 3v6h-6" />
+    </svg>
+  ) : (
+    <svg
+      className="sync-ikon"
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+      aria-hidden="true"
+    >
+      <path d="M12 16V8" />
+      <path d="m8 12 4-4 4 4" />
+      <path d="M7 20a5 5 0 0 1-1-9.9A7 7 0 0 1 19 9a4.5 4.5 0 0 1-1 8.9" />
+    </svg>
+  );
+  return (
+    <button
+      type="button"
+      className={"btn-reset sync-btn" + (berjalan ? " sibuk" : "")}
+      title={title}
+      aria-label={title}
+      disabled={berjalan}
+      onMouseDown={(e: any) => e.stopPropagation()}
+      onClick={punyaUpstream ? onSync : onPublish}
+    >
+      {ikon}
+      {label && <span className="sync-label">{label}</span>}
+    </button>
+  );
+}
+
+// The three remote actions, in menu order. `title` is the git command the
+// item stands for; `done` turns the server's reply into the confirmation.
+// setUpstream is on so the FIRST push of a new branch does not fail asking
+// for "--set-upstream".
+function remoteOps(current: string) {
+  return [
+    {
+      key: "fetch",
+      label: "Fetch",
+      runningLabel: "Fetching…",
+      title: "git fetch origin",
+      url: "/ww/remote/fetch",
+      body: {},
+      done: (r: any) => "fetched " + (r.remote || "origin"),
+    },
+    {
+      key: "pull",
+      label: "Pull",
+      runningLabel: "Pulling…",
+      title: "git pull origin " + current,
+      url: "/ww/remote/pull",
+      body: { branch: current },
+      done: (r: any) => "pulled " + (r.remote || "origin") + "/" + current,
+    },
+    {
+      key: "push",
+      label: "Push",
+      runningLabel: "Pushing…",
+      title: "git push origin " + current,
+      url: "/ww/remote/push",
+      body: { branch: current, setUpstream: true },
+      done: (r: any) => "pushed " + current + " to " + (r.remote || "origin"),
+    },
+  ];
 }
 
 function WorkspaceGitPanel({ path, onClose }: any) {
@@ -591,8 +782,77 @@ function WorkspaceGitPanel({ path, onClose }: any) {
   const [renamingBranch, setRenamingBranch] = React.useState<any>(null);
   const [editingFolder, setEditingFolder] = React.useState(false);
   const [committing, setCommitting] = React.useState(false);
+  const [addingRemote, setAddingRemote] = React.useState(false);
+  const [urlRemote, setUrlRemote] = React.useState("");
+  const doAddRemote = (url: any) => {
+    const u = String(url || "").trim();
+    setAddingRemote(false);
+    if (!u) return; // cancel, like an empty commit message
+    run(
+      "/ww/remote/add",
+      { path, url: u },
+      (r: any) => "remote added: " + (r.url || u),
+    );
+  };
   const [pesanCommit, setPesanCommit] = React.useState("");
+  // The stash list. It used to be invisible: the branch switcher created
+  // stashes and then told the user to run `git stash pop` in a terminal to
+  // get their own work back. Loaded on demand (the toggle), not on every
+  // refresh -- a repository with no stashes should cost nothing here.
+  const [stashes, setStashes] = React.useState<any[] | null>(null);
+  const muatStash = async () => {
+    const r = await wwApi("/ww/stash/list", { method: "POST", body: { path } });
+    setStashes(r && r.ok ? r.stashes || [] : []);
+  };
   const [busy, setBusy] = React.useState(false);
+  // WHICH remote operation is running (one of remoteOps, or null), so the
+  // commit line can say "Pushing…" for as long as it is true.
+  const [remoteOp, setRemoteOp] = React.useState<any>(null);
+  // The ⋯ menu. Closed by any mousedown outside it and by Escape; the menu
+  // and its button stop their own mousedown so a click inside is not also a
+  // click outside.
+  const [menuOpen, setMenuOpen] = React.useState(false);
+  // null = not loaded yet; [] = loaded, none configured.
+  const [remotes, setRemotes] = React.useState<any[] | null>(null);
+  // HEAD's upstream and ahead/behind, for the sync control.
+  const [headSync, setHeadSync] = React.useState<any>(null);
+  const muatStatusSync = React.useCallback(async () => {
+    const r = await wwApi("/ww/remote/status", {
+      method: "POST",
+      body: { path },
+    });
+    if (r && r.ok) setHeadSync(r.head || null);
+  }, [path]);
+  const [github, setGithub] = React.useState<any>(null);
+  const adaOrigin = !!(
+    remotes && remotes.some((x: any) => x.name === "origin")
+  );
+  const origin = remotes ? remotes.find((x: any) => x.name === "origin") : null;
+  React.useEffect(() => {
+    if (!menuOpen) return;
+    const close = () => setMenuOpen(false);
+    const key = (e: any) => {
+      if (e.key === "Escape") setMenuOpen(false);
+    };
+    document.addEventListener("mousedown", close);
+    document.addEventListener("keydown", key);
+    return () => {
+      document.removeEventListener("mousedown", close);
+      document.removeEventListener("keydown", key);
+    };
+  }, [menuOpen]);
+  // WHICH branch is being switched to, not merely THAT something is busy.
+  //
+  // A cold checkout of this repository was MEASURED at 44.9 seconds -- 35 MB of
+  // vendored files have to come out of the pack with an empty OS cache. Warm it
+  // is 4-5 seconds. During the slow case the panel only dimmed, so a switch that
+  // was working looked exactly like a switch that had died.
+  //
+  // This is the part VS Code has and this panel did not: it does not make git
+  // faster -- nothing does, it is the same command -- it says the work is
+  // happening. Naming the branch matters too, because the row the user clicked
+  // is the one that should react.
+  const [pindahKe, setPindahKe] = React.useState("");
   const [msg, setMsg] = React.useState<any>(null); // { ok, text }
 
   React.useEffect(() => {
@@ -605,16 +865,60 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     wwApi("/ww/branches?path=" + encodeURIComponent(path)).then((r: any) => {
       if (alive) setBr(r || { repo: false, current: null, branches: [] });
     });
+    // The remotes, so the menu can tell "no remote yet" from "push failed".
+    // A folder created in the editor has none, and git's own refusal for that
+    // case talks about access rights -- the wrong problem entirely.
+    wwApi("/ww/remotes", { method: "POST", body: { path } }).then((r: any) => {
+      if (alive) setRemotes(r && r.ok ? r.remotes || [] : []);
+    });
+    muatStatusSync();
+    // Whether the GitHub panel has a repository linked: that is what "Connect
+    // to GitHub" would connect to, and the item is only offered when it can
+    // actually do something.
+    fetch("/github/status")
+      .then((r) => r.json())
+      .then((j) => {
+        if (alive) setGithub(j && j.tersambung ? j : null);
+      })
+      .catch(() => {
+        if (alive) setGithub(null);
+      });
     return () => {
       alive = false;
     };
   }, [path, refreshKey]);
 
+  // Background fetch, after VS Code's git.autofetch (period 180 s): once
+  // when the panel opens, then on a timer while it stays open. This is why
+  // there is no Fetch button to understand -- the numbers on the sync
+  // control are simply kept true. Silent: a failed fetch (offline, no
+  // remote) changes nothing on screen.
+  React.useEffect(() => {
+    if (!remotes || !remotes.some((x: any) => x.name === "origin")) return;
+    let alive = true;
+    const ambil = async () => {
+      try {
+        await wwApi("/ww/remote/fetch", { method: "POST", body: { path } });
+      } catch (_) {}
+      if (alive) muatStatusSync();
+    };
+    ambil();
+    const iv = setInterval(ambil, 180000);
+    return () => {
+      alive = false;
+      clearInterval(iv);
+    };
+  }, [remotes, path, muatStatusSync]);
+
+  // AN ERROR NEEDS LONGER THAN A CONFIRMATION. Both used to get 2.8 seconds,
+  // and git's refusals are whole sentences ("uncommitted changes here would be
+  // lost… commit them first"): they were gone before they could be read, so a
+  // switch that git had explained perfectly well looked like a dead button.
   const flash = (ok: any, text: any) => {
     setMsg({ ok, text });
     setTimeout(
       () => setMsg((m: any) => (m && m.text === text ? null : m)),
-      2800,
+      ok ? 2800 : 9000,
     );
   };
   const refresh = () => setRefreshKey((k: any) => k + 1);
@@ -628,14 +932,102 @@ function WorkspaceGitPanel({ path, onClose }: any) {
       refresh();
       return true;
     }
-    flash(false, (r && r.err) || "failed");
+    // NO ANSWER is not the same as a refusal. wwApi returns null when the
+    // reply was not JSON -- which, twice now, meant a backend that predates
+    // the route: the renderer had been reloaded, the host had not. A bare
+    // "failed" sent the user hunting in git and GitHub for a cause that was
+    // "restart the app".
+    flash(
+      false,
+      r === null
+        ? "no answer from the server for " +
+            url +
+            " - if the app was updated, restart it (a reload only refreshes this window)"
+        : (r && r.err) || "failed",
+    );
     return false;
   };
 
-  const doSwitch = (b: any) =>
-    run("/ww/branch/switch", { path, branch: b }, "switched to " + b, () =>
-      setPickerOpen(false),
-    );
+  // Fetch, pull and push all go through run(); this only remembers which item
+  // was chosen for as long as it works. In a finally: a push that FAILS must
+  // clear the label too, or "Pushing…" would outlive the push.
+  // git.sync and git.publish, through the same runner as the menu items so
+  // the line shows what is running and the checklist refreshes after.
+  const opSync = () => ({
+    key: "sync",
+    label: "Sync",
+    runningLabel: "Synchronizing…",
+    title: syncTooltip(headSync),
+    url: "/ww/remote/sync",
+    body: {},
+    done: (r: any) =>
+      "synced: pulled " + (r.ditarik || 0) + ", pushed " + (r.didorong || 0),
+  });
+  const opPublish = () => ({
+    key: "publish",
+    label: "Publish Branch",
+    runningLabel: "Publishing…",
+    title: "git push -u origin " + ((br && br.current) || ""),
+    url: "/ww/remote/publish",
+    body: {},
+    done: (r: any) =>
+      "published " + (r.branch || "") + " to " + (r.remote || "origin"),
+  });
+  const runRemote = async (op: any) => {
+    setRemoteOp(op);
+    try {
+      return await run(op.url, { path, ...op.body }, op.done);
+    } finally {
+      setRemoteOp(null);
+      muatStatusSync();
+    }
+  };
+
+  // The confirmation names the branch git REPORTS being on, not the one that was
+  // clicked — the two came apart in testing, and the panel used to claim the one
+  // it had asked for.
+  // THE REFUSAL NEEDS A WAY THROUGH, not a better explanation of itself.
+  //
+  // Branches here differ by 445 files, so almost any work in progress touches
+  // one that also differs, and git MUST refuse -- otherwise it would destroy
+  // that work. Reported as a complaint that was exactly right: you fixed the
+  // jam, not the problem; I am on A, I want B, it errors, and it keeps
+  // happening.
+  //
+  // So the panel now asks what to do with the work instead of only reporting
+  // that it is in the way. Nothing moves on its own: both options are the
+  // user answering their own question, which is the only acceptable way to
+  // relocate uncommitted work.
+  const [halangan, setHalangan] = React.useState<any>(null);
+
+  const doSwitch = async (b: any, mode?: string) => {
+    setPindahKe(b);
+    try {
+      const ok = await run(
+        "/ww/branch/switch",
+        { path, branch: b, mode },
+        (r: any) =>
+          "switched to " +
+          (r.current || b) +
+          (r.catatan ? " - " + r.catatan : ""),
+        () => {
+          setPickerOpen(false);
+          setHalangan(null);
+          // "Stash it first" leaves a new stash behind: an open list must
+          // show it, or the count on the toggle tells yesterday's truth.
+          if (stashes !== null) muatStash();
+        },
+      );
+      // Only local work blocks a switch recoverably. A missing branch or a dead
+      // repository has no carry-it-along answer, and offering one would lie.
+      if (!ok) setHalangan({ cabang: b });
+      return ok;
+    } finally {
+      // In a finally: a switch that FAILS must clear the label too, or the row
+      // claims to still be working long after it stopped.
+      setPindahKe("");
+    }
+  };
   const doCreate = (name: any) => {
     const nm = toBranchName(name);
     run(
@@ -708,7 +1100,13 @@ function WorkspaceGitPanel({ path, onClose }: any) {
     );
   }
   const dot = g.dirty ? "#d29922" : "#3fb950";
-  const cur = (br && br.current) || g.branch;
+  // A detached HEAD has NO current branch. Both git reads answer "HEAD" there,
+  // and the button printed that as if a branch were called HEAD — while no row
+  // in the list matched, so the repo looked like it had lost its branch.
+  const detached = br && br.detached;
+  const cur = detached
+    ? "detached @ " + br.detached
+    : (br && br.current) || g.branch;
   const branches = (br && br.branches) || [];
   const q = query.trim();
   const norm = q ? toBranchName(q) : "";
@@ -915,6 +1313,108 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               overflow: "hidden",
             }}
           >
+            {halangan && (
+              <div
+                style={{
+                  margin: "7px",
+                  padding: "8px 9px",
+                  background: "#1c1408",
+                  border: "1px solid #5a4412",
+                  borderRadius: "5px",
+                  fontSize: "11.5px",
+                  color: "#e6edf3",
+                  lineHeight: 1.5,
+                }}
+              >
+                <div style={{ marginBottom: "6px" }}>
+                  Uncommitted work is in the way of{" "}
+                  <b style={{ fontFamily: "ui-monospace, monospace" }}>
+                    {halangan.cabang}
+                  </b>
+                  . What should happen to it?
+                </div>
+                <div style={{ display: "flex", gap: "6px", flexWrap: "wrap" }}>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git checkout -m: the changes move with you. A file that differs on both sides arrives with conflict markers."
+                    onClick={() => doSwitch(halangan.cabang, "bawa")}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #30363d",
+                      background: "#21262d",
+                      color: "#e6edf3",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Bring it along
+                  </button>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git stash push -u, then switch. The panel reports the stash id so you can pop it later."
+                    onClick={() => doSwitch(halangan.cabang, "simpan")}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #30363d",
+                      background: "#21262d",
+                      color: "#e6edf3",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Stash it first
+                  </button>
+                  <button
+                    className="btn-reset"
+                    disabled={busy}
+                    title="git checkout --force: the uncommitted changes are DISCARDED. Nothing is stashed and nothing can be recovered."
+                    onClick={() => {
+                      // DESTRUCTIVE, so it asks. VS Code puts this behind a
+                      // modal for the same reason: the other two options move
+                      // work, this one deletes it.
+                      if (
+                        window.confirm(
+                          "Discard your uncommitted changes and switch to " +
+                            halangan.cabang +
+                            "? This cannot be undone.",
+                        )
+                      )
+                        doSwitch(halangan.cabang, "paksa");
+                    }}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid #6e2a2a",
+                      background: "#2d1618",
+                      color: "#f0a5a5",
+                      cursor: busy ? "default" : "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Discard &amp; switch
+                  </button>
+                  <button
+                    className="btn-reset"
+                    onClick={() => setHalangan(null)}
+                    style={{
+                      padding: "3px 9px",
+                      borderRadius: "4px",
+                      border: "1px solid transparent",
+                      background: "transparent",
+                      color: "#8b949e",
+                      cursor: "pointer",
+                      fontSize: "11.5px",
+                    }}
+                  >
+                    Stay here
+                  </button>
+                </div>
+              </div>
+            )}
             <input
               autoFocus
               value={query}
@@ -1098,6 +1598,17 @@ function WorkspaceGitPanel({ path, onClose }: any) {
                       }}
                     >
                       {b}
+                      {pindahKe === b && (
+                        <span
+                          style={{
+                            marginLeft: "8px",
+                            color: "#8b949e",
+                            fontFamily: "inherit",
+                          }}
+                        >
+                          switching...
+                        </span>
+                      )}
                     </span>
                     <span
                       style={{ display: "flex", gap: "1px", flexShrink: 0 }}
@@ -1159,26 +1670,29 @@ function WorkspaceGitPanel({ path, onClose }: any) {
               ? g.dirtyCount + " uncommitted changes"
               : "clean — no changes"}
         </span>
-        {g.dirty && !committing && (
-          <button
-            className="btn-reset vp-hover"
-            title="Commit all changes"
-            disabled={busy}
-            onClick={() => {
-              setPesanCommit("");
-              setCommitting(true);
-            }}
-            style={commitBtnStyle(busy)}
-          >
-            Commit
-          </button>
-        )}
       </div>
       {/* The message field appears ONLY after the button is pressed, following
           the branch-rename pattern in the same panel: Enter submits,
           Escape or empty cancels. A commit with no message is deliberately not
           offered — a git history full of identical messages cannot be read back
           when it is needed. */}
+      {/* Manual remote URL, only when no GitHub repository is linked. Same
+          shape as the commit form: Enter adds it, Escape or empty cancels. */}
+      {addingRemote && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
+          <input
+            autoFocus
+            value={urlRemote}
+            placeholder="https://github.com/user/repo.git (Enter to add, Esc to cancel)"
+            onChange={(e: any) => setUrlRemote(e.target.value)}
+            onKeyDown={(e: any) => {
+              if (e.key === "Enter") doAddRemote(urlRemote);
+              else if (e.key === "Escape") setAddingRemote(false);
+            }}
+            style={commitInputStyle}
+          />
+        </div>
+      )}
       {committing && (
         <div style={{ display: "flex", flexDirection: "column", gap: "5px" }}>
           <input
@@ -1193,72 +1707,306 @@ function WorkspaceGitPanel({ path, onClose }: any) {
             style={commitInputStyle}
           />
           <div style={{ display: "flex", alignItems: "center", gap: "6px" }}>
-            <button
-              className="btn-reset git-utama"
-              disabled={busy || !pesanCommit.trim()}
-              title={
-                pesanCommit.trim()
-                  ? "Commit " + g.dirtyCount + " change(s)"
-                  : "A message is required"
-              }
-              onClick={() => doCommit(pesanCommit)}
-              style={{
-                padding: "3px 10px",
-                borderRadius: "5px",
-                fontSize: "11px",
-                fontWeight: 600,
-                fontFamily: "inherit",
-                color: busy || !pesanCommit.trim() ? "#6b7280" : "#ffffff",
-                background:
-                  busy || !pesanCommit.trim()
-                    ? "rgba(255,255,255,0.06)"
-                    : "#238636",
-                cursor: busy || !pesanCommit.trim() ? "default" : "pointer",
-              }}
-            >
-              {busy ? "Committing…" : "Commit " + g.dirtyCount}
-            </button>
-            <button
-              className="btn-reset menu-item"
-              onClick={() => setCommitting(false)}
-              style={{
-                padding: "3px 9px",
-                borderRadius: "5px",
-                fontSize: "11px",
-                fontFamily: "inherit",
-                color: "#8b949e",
-                cursor: "pointer",
-              }}
-            >
-              Cancel
-            </button>
+            {/* One pill: the primary tooth is green only while it can act. A
+                disabled Commit must not light up under the pointer -- the
+                message is required, and a button that brightens while
+                refusing to act gets clicked repeatedly. */}
+            <SegmentedButtons
+              items={[
+                {
+                  label: busy ? "Committing…" : "Commit " + g.dirtyCount,
+                  ok: true,
+                  disabled: busy || !pesanCommit.trim(),
+                  title: pesanCommit.trim()
+                    ? "Commit " + g.dirtyCount + " change(s)"
+                    : "A message is required",
+                  onClick: () => doCommit(pesanCommit),
+                },
+                {
+                  label: "Cancel",
+                  title: "Close without committing",
+                  onClick: () => setCommitting(false),
+                },
+              ]}
+            />
             <span style={{ fontSize: "10.5px", color: "#6b7280" }}>
               on {(br && br.current) || "…"}
             </span>
           </div>
         </div>
       )}
-      {g.lastCommit && (
+      {/* ── Commit line + actions menu ──
+          The horizontal twin of the top bar's panel-menu handle (⋮ there, ⋯
+          here), at the right end of the last-commit line. Fetch, Pull, Push
+          and the stash toggle live in its menu. Asked for with a screenshot:
+          the row of four pills is gone, and the panel keeps one quiet line.
+          While an action runs the line says which ("Pushing…"), because the
+          panel goes inert and a silent 45-second push looks like a dead one. */}
+      {(g.lastCommit || (br && br.current)) && (
         <div
           style={{
-            fontSize: "11px",
-            color: "#6b7280",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
-            whiteSpace: "nowrap",
+            display: "flex",
+            alignItems: "center",
+            gap: "6px",
+            position: "relative",
           }}
-          title={g.lastCommit.hash + " " + g.lastCommit.subject}
         >
-          {g.lastCommit.hash} · {g.lastCommit.subject} · {g.lastCommit.when}
+          <span
+            style={{
+              flex: 1,
+              minWidth: 0,
+              fontSize: "11px",
+              color: remoteOp ? "#c9d1d9" : "#6b7280",
+              overflow: "hidden",
+              textOverflow: "ellipsis",
+              whiteSpace: "nowrap",
+            }}
+            title={
+              remoteOp
+                ? remoteOp.title
+                : g.lastCommit
+                  ? g.lastCommit.hash + " " + g.lastCommit.subject
+                  : undefined
+            }
+          >
+            {remoteOp
+              ? remoteOp.runningLabel
+              : g.lastCommit
+                ? g.lastCommit.hash +
+                  " · " +
+                  g.lastCommit.subject +
+                  " · " +
+                  g.lastCommit.when
+                : "no commits yet"}
+          </span>
+          {br && br.current && (
+            <SyncButton
+              head={headSync}
+              adaRemote={adaOrigin}
+              berjalan={!!remoteOp}
+              onSync={() => runRemote(opSync())}
+              onPublish={() => runRemote(opPublish())}
+            />
+          )}
+          {br && br.current && (
+            <DotsMenuButton
+              open={menuOpen}
+              title="Git actions"
+              onClick={() => setMenuOpen((o: boolean) => !o)}
+            />
+          )}
+          {menuOpen && br && br.current && (
+            <div
+              className="dots-menu"
+              role="menu"
+              onMouseDown={(e: any) => e.stopPropagation()}
+            >
+              {/* Commit lives with the other git actions, not on the status
+                  line: one place for everything git does to this folder.
+                  Disabled rather than hidden when there is nothing to commit,
+                  so the menu keeps the same shape and the count says why. */}
+              <button
+                type="button"
+                role="menuitem"
+                className="btn-reset dots-item"
+                title={
+                  g.dirty
+                    ? "Commit all changes"
+                    : "Nothing to commit — the working tree is clean"
+                }
+                disabled={busy || !g.dirty || committing}
+                onClick={() => {
+                  setMenuOpen(false);
+                  setPesanCommit("");
+                  setCommitting(true);
+                }}
+              >
+                Commit
+                {g.dirty && <span className="seg-badge">{g.dirtyCount}</span>}
+              </button>
+              <div className="dots-sep" />
+              {remoteOps(br.current).map((op: any) => (
+                <button
+                  key={op.key}
+                  type="button"
+                  role="menuitem"
+                  className="btn-reset dots-item"
+                  // Disabled, not hidden, when there is no remote: the menu
+                  // keeps one shape, and the tooltip says what is missing
+                  // instead of letting a press fail with git's text about
+                  // access rights.
+                  title={
+                    adaOrigin
+                      ? op.title +
+                        (origin && origin.pushUrl
+                          ? "  ->  " + origin.pushUrl
+                          : "")
+                      : "No remote yet - connect this folder to a repository first"
+                  }
+                  disabled={busy || !adaOrigin}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    runRemote(op);
+                  }}
+                >
+                  {op.label}
+                </button>
+              ))}
+              {remotes !== null && !adaOrigin && (
+                // The fix for the state above, in the same menu. With a
+                // repository linked in the GitHub panel this is one click:
+                // the server builds the URL from the link. Without one it
+                // asks for a URL inline, like the commit message does.
+                <button
+                  type="button"
+                  role="menuitem"
+                  className="btn-reset dots-item"
+                  title={
+                    github && github.taut
+                      ? "git remote add origin https://github.com/" +
+                        github.taut.owner +
+                        "/" +
+                        github.taut.repo +
+                        ".git"
+                      : github
+                        ? "No repository linked in the GitHub panel yet - enter a URL"
+                        : "Enter the remote URL (connect GitHub in the composer for one click)"
+                  }
+                  disabled={busy}
+                  onClick={() => {
+                    setMenuOpen(false);
+                    if (github && github.taut) {
+                      run(
+                        "/ww/remote/add",
+                        { path, github: true },
+                        (r: any) => "connected to " + (r.url || "GitHub"),
+                      );
+                    } else {
+                      setUrlRemote("");
+                      setAddingRemote(true);
+                    }
+                  }}
+                >
+                  {github && github.taut
+                    ? "Connect to " + github.taut.owner + "/" + github.taut.repo
+                    : "Add remote…"}
+                </button>
+              )}
+              <div className="dots-sep" />
+              <button
+                type="button"
+                role="menuitem"
+                className="btn-reset dots-item"
+                title={stashes === null ? "List stashes" : "Hide the list"}
+                onClick={() => {
+                  setMenuOpen(false);
+                  if (stashes === null) muatStash();
+                  else setStashes(null);
+                }}
+              >
+                {stashes === null ? "Show stashes" : "Hide stashes"}
+                {stashes !== null && (
+                  <span className="seg-badge">{stashes.length}</span>
+                )}
+              </button>
+            </div>
+          )}
+        </div>
+      )}
+      {/* ── Stash list ──
+          Each row is one stash with pop and drop. Pop re-applies it to the
+          current branch and removes it on success; git keeps the stash if the
+          apply conflicts, and the failure says so. Drop is a delete, so it
+          asks first. */}
+      {stashes !== null && (
+        <div style={{ display: "flex", flexDirection: "column", gap: "3px" }}>
+          {stashes.length === 0 && (
+            <span style={{ fontSize: "11px", color: "#6b7280" }}>
+              no stashes
+            </span>
+          )}
+          {stashes.map((st: any) => (
+            <div
+              key={st.index}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "6px",
+                fontSize: "11px",
+                color: "#c9d1d9",
+              }}
+            >
+              <span
+                style={{
+                  flex: 1,
+                  minWidth: 0,
+                  overflow: "hidden",
+                  textOverflow: "ellipsis",
+                  whiteSpace: "nowrap",
+                  fontFamily: "ui-monospace, monospace",
+                }}
+                title={st.description}
+              >
+                {"stash@{" + st.index + "} " + st.description}
+              </span>
+              <SegmentedButtons
+                busy={busy}
+                items={[
+                  {
+                    label: "Pop",
+                    title: "git stash pop",
+                    onClick: async () => {
+                      if (
+                        await run(
+                          "/ww/stash/pop",
+                          { path, index: st.index },
+                          () => "stash applied",
+                        )
+                      )
+                        muatStash();
+                    },
+                  },
+                  {
+                    label: "Drop",
+                    title: "git stash drop (cannot be undone)",
+                    danger: true,
+                    onClick: async () => {
+                      if (
+                        !window.confirm(
+                          "Drop stash@{" +
+                            st.index +
+                            "}? This cannot be undone.",
+                        )
+                      )
+                        return;
+                      if (
+                        await run(
+                          "/ww/stash/drop",
+                          { path, index: st.index },
+                          () => "stash dropped",
+                        )
+                      )
+                        muatStash();
+                    },
+                  },
+                ]}
+              />
+            </div>
+          ))}
         </div>
       )}
       {msg && (
+        // IT WRAPS. It used to be one clipped line with an ellipsis, and the only
+        // messages long enough to be clipped were the ones that mattered — git's
+        // reason for refusing. The user saw "error: Your local changes to the
+        // following fi…" and no way to read the rest.
         <div
           style={{
             fontSize: "11px",
+            lineHeight: 1.45,
             color: msg.ok ? "#3fb950" : "#f85149",
-            overflow: "hidden",
-            textOverflow: "ellipsis",
+            whiteSpace: "pre-wrap",
+            overflowWrap: "anywhere",
           }}
         >
           {msg.text}
@@ -1834,21 +2582,16 @@ function Sidebar({
                             e.currentTarget.style.color = "#6b7280";
                           }}
                         >
-                          <svg
-                            width="15"
-                            height="15"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                            className="vp-hover"
-                          >
-                            <line x1="4" y1="6" x2="20" y2="6"></line>
-                            <line x1="7" y1="12" x2="17" y2="12"></line>
-                            <line x1="10" y1="18" x2="14" y2="18"></line>
-                          </svg>
+                          {/* The branch icon, not a hamburger: what opens
+                              here is the git panel (branches, commit, remote,
+                              stashes) with "Delete folder" under it, and the
+                              icon should say so. The same glyph the branch
+                              picker inside uses, so the two read as one thing.
+                              The old svg carried `vp-hover` -- the visual
+                              picker's outline class, which the picker strips
+                              when switched off; the new one draws nothing of
+                              its own and the span's hover does the work. */}
+                          {gitBranchIcon(15)}
                         </span>
                       </div>
                     </div>
@@ -2288,7 +3031,7 @@ function Sidebar({
   );
 }
 
-// Live agent process � animated bubbles showing each file/folder being worked on.
+// Live agent process — animated bubbles showing each file/folder being worked on.
 // ─── Agent Step UI v2 ── SVG icons per tool ────────────────────────────────
 const AG_SVG = {
   list: (p: any) => (

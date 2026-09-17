@@ -1,9 +1,13 @@
-// Cloud key (BYOK) API: save, detect provider, list, delete.
-// Ported from the former server/routes/cloud.ts; behavior is unchanged.
+// cloud.ts — the BYOK key API: save a key, detect its provider, list, delete.
 //
-// Keys are written to the gitignored store resolved by agent/keys-path.ts and
-// are never sent to the browser — the list endpoint returns provider names and
-// model ids only, never the key itself.
+// ROLE IN THE SYSTEM. Keys go to the gitignored store resolved by
+// agent/keys-path.ts and NEVER travel back out: the list endpoint answers with
+// provider names and model ids only. A response that carried the key would have
+// put it in every log and devtools panel that ever showed it.
+//
+// CONNECTS TO
+//   imports  node:http types, node:fs, agent/keys-path
+//   mounted  by server.ts
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 import * as fs from "node:fs";

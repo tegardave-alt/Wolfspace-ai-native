@@ -1,11 +1,13 @@
 #!/usr/bin/env node
-// Launcher Electron — membersihkan ELECTRON_RUN_AS_NODE sebelum meluncurkan app.
+// app.cjs — the Electron launcher behind `npm run app`.
 //
-// Kalau env var itu ter-set (mis. '1'), Electron jalan sebagai Node biasa, jadi
-// require('electron') tak memberi API → crash "Cannot read properties of undefined
-// (reading 'registerSchemesAsPrivileged')". Var itu memang untuk spawn subprocess
-// tertentu, bukan untuk menjalankan Electron. Menghapusnya di sini membuat
-// `npm run app` jalan di PowerShell / cmd / bash tanpa perlu unset manual.
+// ROLE IN THE SYSTEM. It clears ELECTRON_RUN_AS_NODE before starting Electron.
+// With that variable set, Electron runs as plain Node, require("electron")
+// returns no API, and the app dies with "Cannot read properties of undefined
+// (reading 'registerSchemesAsPrivileged')". The variable exists for spawning
+// certain subprocesses, not for running Electron itself — deleting it here is
+// what lets `npm run app` work from PowerShell, cmd and bash without anyone
+// having to unset it by hand.
 "use strict";
 const { spawn } = require("child_process");
 const path = require("path");
@@ -18,27 +20,29 @@ const mainJs = path.join(__dirname, "..", "electron", "main.js");
 
 // Flag optimisasi memori:
 // --js-flags="--max-old-space-size=512 --expose-gc" : batasi V8 heap Node.js di
-//   main process ke 512 MB dan aktifkan global.gc() agar GC bisa dipaksa periodik.
+//   cap the main process's V8 heap at 512 MB and expose global.gc() so GC can
+//   be forced periodically.
 // --disable-http-cache : matikan disk cache HTTP Chromium (hemat 100-300 MB disk I/O)
 const ELECTRON_FLAGS = [
   "--js-flags=--max-old-space-size=512 --expose-gc",
   "--disable-http-cache",
 ];
 
-// Port debug DIBUKA HANYA bila diminta: WOLFSPACE_PROFILE=1 npm run app
+// The debug port is opened ONLY on request: WOLFSPACE_PROFILE=1 npm run app
 //
-// KENAPA env, bukan selalu. Port inspector adalah pintu eksekusi kode penuh ke
-// proses main — dibiarkan terbuka permanen, ia melewati seluruh pengurungan yang
-// dibangun repo ini. Jadi ia mati secara bawaan dan hanya hidup saat Anda sedang
+// WHY BEHIND AN ENV VAR RATHER THAN ALWAYS ON. An inspector port is a
+// full code-execution door into the main process; left permanently open it
+// walks past every containment this repo builds. So it is off by default and
+// on only while you are
 // memburu sesuatu.
 //
-// DUA port, karena keduanya proses berbeda dan keduanya bisa jadi penyebab:
-//   9333 proses MAIN     — backend hidup di sini (main.js -> core.js -> server.cjs)
-//                          dan proses ini juga yang memiliki jendela
+// TWO ports, because these are different processes and either can be the cause:
+//   9333 the MAIN process — the backend lives here (main.js -> core.js ->
+//                          server.cjs) and this process also owns the window
 //   9444 proses RENDERER — parse 9 MB skrip vendor + kompilasi Babel di browser
 //
-// JANGAN pakai --inspect-brk di sini: app akan menggantung menunggu debugger,
-// dan itu bukan yang Anda inginkan saat sekadar memakai aplikasinya.
+// Do NOT use --inspect-brk here: the app would hang waiting for a debugger,
+// which is not what you want while simply using it.
 if (process.env.WOLFSPACE_PROFILE === "1") {
   ELECTRON_FLAGS.push(
     `--inspect=${process.env.WOLFSPACE_PROFILE_PORT_MAIN || 9333}`,

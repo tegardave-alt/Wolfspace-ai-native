@@ -65,7 +65,16 @@ describe("tetap di luar jalur build", () => {
     // rather than in a 3 MB heavier installer nobody inspected.
     const files: string[] = (pkg.build && pkg.build.files) || [];
     expect(files.length).toBeGreaterThan(0);
-    for (const f of files) expect(f).not.toMatch(/(^|\/)vendor/);
+    // NARROWED when vendor/vscode-git joined the build. That tree is the
+    // documented exception -- it imports one line from 'vscode', shimmed, and
+    // is on the build path on purpose (see vendor/vscode-git/README.md). What
+    // this test guards is that THE TERMINAL stays out, and that nobody adds a
+    // blanket vendor/** that would drag it in.
+    for (const f of files) {
+      expect(f).not.toMatch(/(^|\/)vendor\/vscode-terminal/);
+      expect(f).not.toMatch(/(^|\/)vendor\/js-debug/);
+      expect(f).not.toMatch(/^vendor\/\*\*$/);
+    }
   });
 
   test("jest does not run VS Code's own test files", () => {

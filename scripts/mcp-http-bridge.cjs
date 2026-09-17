@@ -2,28 +2,29 @@
 // this file can itself be an entry point — tests require it directly, and
 // `node -e` subprocesses load it without ever going through server.cjs.
 require("./ts-register.cjs");
-// Jembatan server MCP REMOTE -> stdio.
+// mcp-http-bridge.cjs — bridges a REMOTE MCP server onto stdio.
 //
-// KENAPA ADA JEMBATAN SAMA SEKALI. Klien MCP WOLFSPACE (agent/mcp-client.ts)
-// hanya bicara stdio: spawn proses anak, tulis JSON-RPC ke stdin, baca dari
-// stdout. Tak ada satu pun fetch di sana. Berkas ini dijalankan SEBAGAI proses
-// anak itu, lalu menerjemahkan stdio <-> jaringan.
+// ROLE IN THE SYSTEM. WOLFSPACE's MCP client (agent/mcp-client.ts) speaks stdio
+// and only stdio: it spawns a child process, writes JSON-RPC to its stdin and
+// reads from its stdout — there is not one fetch in it. This file IS that child
+// process, and translates stdio to the network and back.
 //
-// KENAPA MENGGANTIKAN sse-bridge.cjs. Pendahulunya hanya bicara transport SSE
-// LAMA: GET dengan Accept: text/event-stream, menunggu event `endpoint`, lalu
-// POST ke sana. Spesifikasi MCP sekarang memakai Streamable HTTP — SATU endpoint
-// yang menerima POST dan membalas application/json ATAU text/event-stream,
-// dengan sesi dibawa lewat header Mcp-Session-Id.
+// WHY IT REPLACED sse-bridge.cjs. The predecessor spoke only the OLD SSE
+// transport: GET with Accept: text/event-stream, wait for an `endpoint` event,
+// then POST there. The MCP specification now uses Streamable HTTP — ONE endpoint
+// that accepts POST and answers with application/json OR text/event-stream, with
+// the session carried in an Mcp-Session-Id header.
 //
 // Bahwa keduanya memang hidup berdampingan terbukti di log run nyata:
 //   [INFO] StreamableHTTP endpoint available at http://127.0.0.1:3333/mcp
 //   [INFO] StreamableHTTP endpoint available at http://127.0.0.1:3333/sse (backward compat)
-// Server yang HANYA menyediakan /mcp tak akan pernah tersambung lewat jembatan
-// lama — dan gagalnya senyap, cuma "Gagal inisialisasi MCP server ...".
+// A server offering ONLY /mcp would never connect through the old bridge, and
+// the failure is silent — just "failed to initialise MCP server ...".
 //
-// Urutan yang dipakai: coba Streamable HTTP dulu; kalau server menolaknya
-// (405/404, atau balasan yang bukan JSON/SSE), jatuh ke SSE lama. Jadi server
-// baru DAN lama sama-sama jalan tanpa user perlu tahu bedanya.
+// The order used here: try Streamable HTTP first; if the server refuses it
+// (405/404, or an answer that is neither JSON nor SSE), fall back to the legacy
+// SSE transport. New AND old servers therefore both work without the user
+// needing to know which is which.
 
 const readline = require("readline");
 
@@ -33,8 +34,8 @@ if (!URL_AWAL) {
   process.exit(1);
 }
 
-// Header tambahan lewat env, supaya token TIDAK perlu ditaruh di argv (argv
-// terlihat di daftar proses dan ikut tercatat di log).
+// Extra headers come from the environment, so a token never has to sit in argv
+// — argv is visible in the process list and ends up in logs.
 let HEADER_EKSTRA = {};
 try {
   if (process.env.MCP_HEADERS)
@@ -46,17 +47,18 @@ const catat = (s) => console.error("[mcp-bridge] " + s);
 
 // ── Transport 1: Streamable HTTP ──────────────────────────────────────────
 //
-// Satu URL. Tiap pesan klien dikirim POST. Balasannya bisa:
-//   - application/json      -> satu respons, langsung diteruskan
-//   - text/event-stream     -> aliran; tiap `data:` diteruskan sampai ditutup
-//   - 202 tanpa badan       -> notifikasi diterima, tak ada balasan
-// Sesi (kalau server memberikannya) dibawa di header Mcp-Session-Id.
+// One URL. Every client message is POSTed. The answer can be:
+//   - application/json      -> a single response, forwarded as is
+//   - text/event-stream     -> a stream; each `data:` forwarded until it closes
+//   - 202 with no body      -> notification accepted, no reply
+// The session, when the server issues one, travels in the Mcp-Session-Id
+// header.
 let sesiId = null;
 
 function headerPost() {
   const h = {
     "Content-Type": "application/json",
-    // WAJIB memuat keduanya: server memilih format balasan berdasarkan ini.
+    // BOTH are required: the server chooses its response format from this.
     Accept: "application/json, text/event-stream",
     ...HEADER_EKSTRA,
   };
@@ -84,8 +86,8 @@ async function teruskanSSE(res) {
         const d = l.slice(5);
         data += (data ? "\n" : "") + (d.startsWith(" ") ? d.slice(1) : d);
       }
-      // baris `event:` dan `id:` diabaikan: pada Streamable HTTP muatan
-      // JSON-RPC selalu ada di `data:`.
+      // `event:` and `id:` lines are ignored: on Streamable HTTP the JSON-RPC
+      // payload is always in `data:`.
     }
   }
 }
@@ -116,20 +118,20 @@ async function kirimStreamable(pesan) {
 
   const ct = (res.headers.get("content-type") || "").toLowerCase();
   if (ct.includes("text/event-stream")) {
-    // JANGAN di-await.
+    // Do NOT await this.
     //
-    // Streamable HTTP MEMBOLEHKAN server menahan aliran tetap terbuka setelah
-    // membalas, untuk pesan susulan yang ia mulai sendiri. Menunggu `done`
-    // berarti menunggu server menutupnya — dan server yang tak pernah menutup
-    // membuat antrean di bawah macet selamanya.
+    // Streamable HTTP PERMITS a server to hold the stream open after replying,
+    // for follow-up messages it starts itself. Waiting for `done` means waiting
+    // for the server to close it — and a server that never closes would wedge
+    // the queue below for good.
     //
-    // Terukur pada @penpot/mcp: `initialize` dibalas dan lolos, lalu
-    // `tools/list` menggantung sampai timeout 60 detik. Bukan Penpot yang
-    // salah — permintaan yang sama lewat curl dijawab seketika.
+    // Measured against @penpot/mcp: `initialize` was answered and passed, then
+    // `tools/list` hung until the 60-second timeout. Penpot was not at fault —
+    // the same request over curl answered immediately.
     //
-    // Kekhawatiran lama "balasannya saling menyalip di stdout" tidak berlaku:
-    // JSON-RPC membawa `id`, klien mencocokkan balasan lewat id, dan keluar()
-    // menulis satu baris utuh sekali jalan.
+    // The old worry that replies would overtake each other on stdout does not
+    // apply: JSON-RPC carries an `id`, the client matches replies by it, and
+    // keluar() writes one whole line at a time.
     teruskanSSE(res).catch((e) => catat("aliran SSE putus: " + e.message));
     return true;
   }
@@ -142,10 +144,10 @@ async function kirimStreamable(pesan) {
   return false;
 }
 
-// ── Transport 2: SSE lama (cadangan) ──────────────────────────────────────
+// ── Transport 2: the legacy SSE path (fallback) ──────────────────────────────
 //
-// GET membuka aliran; server mengirim event `endpoint` berisi URL POST, lalu
-// event `message` berisi balasan JSON-RPC.
+// GET opens the stream; the server sends an `endpoint` event carrying the POST
+// URL, then `message` events carrying the JSON-RPC replies.
 let endpointPost = null;
 
 async function mulaiSSELama() {
@@ -210,9 +212,9 @@ let mode = null; // "streamable" | "sse"
 const antre = [];
 let sibuk = false;
 
-// Pesan diproses BERURUTAN. Streamable HTTP boleh membalas dengan aliran SSE
-// yang dibaca sampai habis; mengirim pesan berikutnya sebelum itu selesai
-// membuat balasannya saling menyalip di stdout.
+// Messages are processed IN ORDER. Streamable HTTP may answer with an SSE
+// stream that is read to the end, and sending the next message before that
+// finishes would let the replies overtake each other on stdout.
 async function proses() {
   if (sibuk) return;
   sibuk = true;
@@ -222,7 +224,7 @@ async function proses() {
       if (mode === "streamable") {
         const ok = await kirimStreamable(pesan);
         if (!ok && !endpointPost) {
-          // Streamable ditolak pada pesan PERTAMA -> coba transport lama.
+          // Streamable was refused on the FIRST message -> try the old transport.
           catat("Streamable HTTP refused, falling back to legacy SSE");
           mode = "sse";
           mulaiSSELama().catch((e) => {

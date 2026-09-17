@@ -28,6 +28,9 @@ const AKAR = path.resolve(__dirname, "..");
 const CSS = fs
   .readFileSync(path.join(AKAR, "public", "styles.css"), "utf8")
   .replace(/\r\n/g, "\n");
+const KOMP = fs
+  .readFileSync(path.join(AKAR, "public", "app", "Components.tsx"), "utf8")
+  .replace(/\r\n/g, "\n");
 const aturan = (sel) => {
   const i = CSS.indexOf(sel + " {");
   return i < 0 ? "" : CSS.slice(i, CSS.indexOf("\n}", i) + 3);
@@ -83,12 +86,77 @@ describe("kerapatan baris", () => {
 });
 
 describe("tak ada teks badan yang kembali membesar", () => {
-  test("15px hanya untuk judul, bukan teks badan", () => {
-    // Dua pemakai yang tersisa adalah nama merek dan judul dialog — keduanya
-    // heading, dan memang boleh lebih besar.
+  test("15px hanya untuk judul dan satu angka tampilan, bukan teks badan", () => {
+    // Pemakainya adalah nama merek dan JUDUL DIALOG — keduanya heading, dan
+    // memang boleh lebih besar. .gh-judul menyusul kemudian: ia judul dialog
+    // GitHub, kategori yang sama persis dengan .hitl-title.
+    //
+    // .info-rail-jml is the fourth, and it is NOT prose: it is the COUNT in the
+    // INFO severity rail, whose whole design is that the number is the largest
+    // thing in its row while the label beside it stays at body size. A figure
+    // read at a glance is the one case where 15px is doing typographic work
+    // rather than quietly enlarging body text.
+    //
+    // Daftarnya sengaja tetap eksplisit, bukan diganti pola seperti /-title$/:
+    // yang dijaga bukan penamaannya, melainkan bahwa setiap 15px yang baru
+    // ditimbang sekali oleh manusia sebelum masuk.
     const semua = [
       ...CSS.matchAll(/([.#][\w-]+)[^{}]*\{[^}]*font-size: 15px/g),
     ].map((m) => m[1]);
-    expect(semua.sort()).toEqual([".brand-name", ".hitl-title"]);
+    expect(semua.sort()).toEqual([
+      ".brand-name",
+      ".gh-judul",
+      ".hitl-title",
+      ".info-rail-jml",
+    ]);
+  });
+});
+
+// ── TANDA GITHUB SEJAJAR DENGAN HURUF JUDULNYA ──────────────────────────────
+//
+// APA YANG TERJADI: .gh-head memakai align-items: flex-start, jadi tepi atas
+// tanda bertemu tepi atas BLOK judul. Hurufnya tidak mulai di situ — line-height
+// 23,25px pada font 15px menyisakan 6,25px leading, separuhnya di atas. Terukur
+// di Chromium dengan stylesheet ini:
+//
+//     tanda  atas 270,69   pusat 280,69
+//     baris judul  atas 273,69   pusat 282,19
+//     selisih pusat  -1,50px      selisih atas  -3,00px
+//
+// Sesudah tanda diberi tinggi kotak baris, preserveAspectRatio memusatkannya:
+// selisih pusat tanda yang benar-benar digambar tinggal -0,12px.
+
+describe("tanda GitHub sejajar dengan judulnya", () => {
+  const kepala = aturan(".gh-head");
+  const judul = aturan(".gh-judul");
+
+  test("judul menyatakan sendiri ukuran dan kerapatan barisnya", () => {
+    // Kotak baris dihitung dari kedua angka ini. Kalau salah satunya kembali
+    // menjadi warisan, ia bisa berubah tanpa siapa pun tahu dan kesejajaran
+    // putus tanpa suara.
+    expect(judul).toMatch(/font-size: 15px/);
+    expect(judul).toMatch(/line-height: 1\.55/);
+  });
+
+  test("kotak baris judul dinamai sekali, bukan disalin", () => {
+    expect(kepala).toMatch(/--gh-judul-baris: calc\(15px \* 1\.55\)/);
+  });
+
+  test("tanda mengambil tinggi kotak baris itu, bukan tinggi dirinya", () => {
+    // Inilah yang memindahkan tanda dari tepi kotak ke barisnya. Tanpa ini
+    // tanda 20px menggantung 3px terlalu tinggi.
+    const svg = aturan(".gh-head > svg");
+    expect(svg).toMatch(/height: var\(--gh-judul-baris\)/);
+    // flex: none — tanpa ini flexbox boleh mengecilkannya saat ruang sempit,
+    // dan tandanya menjadi lonjong.
+    expect(svg).toMatch(/flex: none/);
+  });
+
+  test("lebarnya tetap datang dari atribut, jadi tanda tidak melar", () => {
+    // Hanya height yang diatur CSS. Dengan viewBox dan preserveAspectRatio
+    // bawaan, tanda 16x16 diskalakan ke 20x20 lalu dipusatkan di kotak
+    // 20x23,25 — terukur: lebar tergambar tetap 20px.
+    expect(aturan(".gh-head > svg")).not.toMatch(/width:/);
+    expect(KOMP).toMatch(/<Icon\.githubMark width=\{20\} height=\{20\} \/>/);
   });
 });

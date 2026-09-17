@@ -1,5 +1,8 @@
-// Views — extracted from Components.tsx (the app.tsx split). Prepended via
-// APP_MODULES.
+// Views.tsx — the list and history views: saved conversations and what is shown
+// about them.
+//
+// Split out of Components.tsx, which had grown past the point where anything
+// could be found in it. See public/app.tsx for how the renderer is assembled.
 
 /** One saved conversation as kept in the chat history. */
 interface ObrolanTersimpan {
@@ -266,6 +269,9 @@ function SettingsView({
   // look pre-configured: a provider and a model on screen, no key beside them,
   // and no way to tell it apart from something typed in by hand.
   const stored = tersimpan && tersimpan.otomatis ? null : tersimpan;
+  // An automatic entry no longer exists: app.tsx stopped writing one, and
+  // clears any left over from the old behaviour. The `otomatis` handling below
+  // stays because a stored entry can still be read here before that clear runs.
   const [key, setKey] = useState("");
   const [provider, setProvider] = useState(
     stored ? (stored.baseUrl ? "custom" : stored.provider) : "auto",
@@ -278,9 +284,9 @@ function SettingsView({
     stored
       ? "Provider " +
           stored.provider +
-          " � " +
+          " · " +
           (stored.key ? stored.key.slice(-4) : "server") +
-          " � active"
+          " · active"
       : tersimpan && tersimpan.otomatis
         ? "Using " +
           (tersimpan.name || tersimpan.provider) +
@@ -364,15 +370,15 @@ function SettingsView({
         setHint(
           "Saved in the browser and on the server: " +
             prov +
-            " � " +
+            " · " +
             k.slice(-4) +
-            " ? " +
+            " → " +
             mdl,
         ),
       )
       .catch(() =>
         setHint(
-          "Saved in the browser: " + prov + " � " + k.slice(-4) + " ? " + mdl,
+          "Saved in the browser: " + prov + " · " + k.slice(-4) + " → " + mdl,
         ),
       );
     onSaved();

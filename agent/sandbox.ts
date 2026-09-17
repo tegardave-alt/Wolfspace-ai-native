@@ -1,13 +1,20 @@
-// ── WOLFSPACE Sandbox Execution ──
-// Inspired by @openclaw/openshell-sandbox & @openclaw/fs-safe
-// Provides capability-based filesystem access, resource limits,
-// workspace mirroring, and execution audit for safe agent code execution.
-
-// import, not require, so this file is a MODULE. A .ts file with neither
-// import nor export is treated by TypeScript as a global script, which makes
-// `fs`, `path` and friends collide with the same names in other .ts files.
-// The hook in scripts/ts-register.cjs converts the module form at load time —
-// see the note there about which entry points must install it.
+// sandbox.ts — where agent-written code actually runs: capability-based file
+// access, resource limits, a mirrored workspace, and an execution audit.
+//
+// ROLE IN THE SYSTEM. It does not decide WHETHER to contain something — that is
+// agent/sandbox-policy.ts — and it does not decide how the OS enforces it,
+// which is the platform adapter's job. It assembles those into one place a
+// caller can hand code to. Shape borrowed from @openclaw/openshell-sandbox and
+// @openclaw/fs-safe.
+//
+// CONNECTS TO
+//   imports  ./platform/index (per-OS execution), ./tools/appcontainer-jail
+//            (Windows containment), ./debug
+//   used by  agent/tools/index.ts, agent/tools/sandbox-tools.ts
+//
+// `import`, not `require`, so this file is a MODULE: a .ts file with neither
+// would be a global script, and `fs`/`path` would collide with the same names
+// in every other .ts file. scripts/ts-register.cjs converts it at load time.
 import * as fs from "fs";
 import * as path from "path";
 import * as os from "os";

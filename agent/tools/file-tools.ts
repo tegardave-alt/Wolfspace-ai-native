@@ -1,4 +1,16 @@
-// File operations for WOLFSPACE source code
+// file-tools.ts — reading and writing files INSIDE the project root, and the
+// guardrails on both.
+//
+// ROLE IN THE SYSTEM. It owns QROOT (the project root every other tool measures
+// against) and the write allowlist. Anything outside the root is disk-tools.ts,
+// which is read-only. Every write goes through the snapshot engine first, so
+// an edit can always be undone.
+//
+// CONNECTS TO
+//   imports  ../snapshot (restore point before each write),
+//            ./sandbox-validator (checks the content being written)
+//   used by  agent/tools/index.ts, agent/tools/exec-tools.ts,
+//            agent/tools/disk-tools.ts, agent/self_agent.ts
 import * as fs from "fs";
 import * as path from "path";
 import * as util from "util";

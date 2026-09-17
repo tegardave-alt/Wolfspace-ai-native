@@ -1,7 +1,11 @@
-// Screens — extracted from app.tsx (see public/app.tsx for the App
-// orchestrator). Loaded via APP_MODULES in index.html: CONCATENATED BEFORE
-// app.tsx (prepended), then Babel once -> a single global scope. Function
-// bodies (hooks/React/SB) run at render time.
+// Screens.tsx — the full-window screens, chiefly ProjectPickerScreen: the first
+// thing WOLFSPACE shows.
+//
+// ROLE IN THE SYSTEM. A screen here covers everything else (the picker is
+// position:fixed at a very high layer), so anything that must appear over one —
+// a modal, a panel — has to be above it too, not merely later in the DOM.
+//
+// See public/app.tsx for how the renderer is assembled.
 
 function PickerFolderIcon({ size = 15 }: any) {
   return React.createElement(
@@ -228,8 +232,15 @@ function ProjectPickerScreen({
   }, []);
   const [dropOpen, setDropOpen] = useState(false);
   const [menu, setMenu] = useState(false);
+  const [showGithub, setShowGithub] = useState(false);
   const [text, setText] = useState("");
   const [attachments, setAttachments] = useState<any[]>([]);
+  // Files dragged in from an editor tab. SEPARATE from `attachments` on
+  // purpose — see the note above fileRefDari in Components.tsx: an upload needs
+  // an att_… handle, a file already in the workspace needs a path, and mixing
+  // them would send the agent to read a copy of the file it is looking at.
+  const [fileRefs, setFileRefs] = useState<any[]>([]);
+  const [seretMasuk, setSeretMasuk] = useState(false);
   const [showModelMenu, setShowModelMenu] = useState(false);
   const [showMcpMenu, setShowMcpMenu] = useState(false);
   const [pickerEffort, setPickerEffort] = useState(() => {
@@ -253,17 +264,37 @@ function ProjectPickerScreen({
         window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }),
         window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp/status" }),
       ]);
+      // null = the read FAILED (no body, or unparseable). {} = a genuinely empty
+      // config. The two must not be confused: see the guard below.
       const parse = (r: any) => {
-        if (!r || !r.body) return {};
+        if (!r || !r.body) return null;
         try {
           return typeof r.body === "string" ? JSON.parse(r.body) : r.body;
         } catch (_) {
-          return {};
+          return null;
         }
       };
       const data = parse(resCfg);
-      const st = parse(resSt);
-      const arr = Object.entries<any>(data || {}).map(([name, conf]) => {
+      // A FAILED config read must not wipe the list. Right after Connect the
+      // backend host is briefly busy finishing the handshake, so this GET /mcp
+      // can come back empty or error out. Treating that as "no servers" cleared
+      // the whole list — and with nothing left in a `starting` state, the poll
+      // stopped, so the rows never came back. Keep what we have and let the next
+      // refresh reconcile. A genuinely empty config still parses to {} and clears.
+      if (!data) return;
+      const st = parse(resSt) || {};
+      // OPT-IN DIAGNOSTIC (localStorage.wolfspace_mcp_debug = "1"): mirrors the
+      // composer loader so a vanishing row can be traced from either surface.
+      try {
+        if (localStorage.getItem("wolfspace_mcp_debug"))
+          console.log(
+            "[mcp-dbg] picker load — config ids:",
+            Object.keys(data),
+            "status ids:",
+            Object.keys(st),
+          );
+      } catch (_) {}
+      const arr = Object.entries<any>(data).map(([name, conf]) => {
         const s = st[name] || {};
         return {
           id: name,
@@ -290,6 +321,10 @@ function ProjectPickerScreen({
     return () =>
       window.removeEventListener("wolfspace_mcp_changed", loadPickerMcp);
   }, [loadPickerMcp]);
+
+  // The same gap as the composer's list, closed the same way and by the same
+  // helper — two copies of this would be the drift this repo keeps paying for.
+  useMcpMenunggu(pickerMcp, loadPickerMcp);
 
   const [showPickerMcpInput, setShowPickerMcpInput] = useState(false);
   const [pickerMcpInputUrl, setPickerMcpInputUrl] = useState("");
@@ -591,7 +626,7 @@ function ProjectPickerScreen({
     setAttachments((prev: any) => prev.filter((a: any) => a.id !== id));
   const submit = () => {
     const v = text.trim();
-    if (!v && attachments.length === 0) return;
+    if (!v && attachments.length === 0 && fileRefs.length === 0) return;
     let fullText = v;
     if (attachments.length > 0) {
       // A HANDLE, not a path — the full reasoning is in Components.tsx. The
@@ -622,8 +657,12 @@ function ProjectPickerScreen({
     // The THIRD argument separates what the user sees from what is sent to the
     // model — the same as Composer. Without it, the attachment lines and their
     // att_… handles land raw in the first chat bubble.
+    // The referenced files are appended LAST, after any attachment lines, so
+    // the two blocks stay legible as two separate things.
+    fullText = gabungDenganRef(fullText, fileRefs);
     onStart(fullText, chosenPath, {
       text: v,
+      fileRefs: fileRefs.map((r: any) => ({ name: r.name, path: r.path })),
       attachments: attachments.map((a: any) => ({
         name: a.name,
         size: a.size,
@@ -1086,71 +1125,7 @@ function ProjectPickerScreen({
                                   gap: "6px",
                                 }}
                               >
-                                {srv.connecting ? (
-                                  <span
-                                    style={{
-                                      fontSize: "11px",
-                                      fontWeight: 500,
-                                      padding: "2px 6px",
-                                      borderRadius: "10px",
-                                      color: "#d7ba7d",
-                                      background: "rgba(215, 186, 125, 0.12)",
-                                    }}
-                                  >
-                                    ⟳ Connecting…
-                                  </span>
-                                ) : srv.active ? (
-                                  <span
-                                    style={{
-                                      fontSize: "11px",
-                                      fontWeight: 500,
-                                      padding: "2px 6px",
-                                      borderRadius: "10px",
-                                      color: "#4ec9b0",
-                                      background: "rgba(78, 201, 176, 0.12)",
-                                    }}
-                                  >
-                                    ✓ Connected
-                                  </span>
-                                ) : (
-                                  // Distinguish the cause (see the note in
-                                  // Components.tsx): "failed" is not "not started".
-                                  <span
-                                    title={
-                                      (srv.status && srv.status.lastError) ||
-                                      (srv.status && !srv.status.running
-                                        ? "MCP process is not running"
-                                        : srv.status && srv.status.starting
-                                          ? "Handshake in progress"
-                                          : "Not ready")
-                                    }
-                                    style={{
-                                      fontSize: "11px",
-                                      fontWeight: 500,
-                                      padding: "2px 6px",
-                                      borderRadius: "10px",
-                                      color:
-                                        srv.status &&
-                                        srv.status.lastCallOk === false
-                                          ? "#f85149"
-                                          : "#858585",
-                                      background:
-                                        srv.status &&
-                                        srv.status.lastCallOk === false
-                                          ? "rgba(248, 81, 73, 0.12)"
-                                          : "rgba(133, 133, 133, 0.12)",
-                                    }}
-                                  >
-                                    {srv.status &&
-                                    srv.status.lastCallOk === false
-                                      ? "✕ Failed"
-                                      : srv.status && !srv.status.running
-                                        ? "○ Berhenti"
-                                        : srv.status && srv.status.starting
-                                          ? "◌ Connecting…"
-                                          : "○ Not ready"}
-                                  </span>
-                                )}
+                                <McpStatusBadge srv={srv} />
                                 <span
                                   title="Remove MCP server"
                                   style={{
@@ -1475,45 +1450,53 @@ function ProjectPickerScreen({
               </div>
             </div>
           )}
-          <div className="picker-input-area">
-            {attachments.length > 0 && (
-              <div
-                className="composer-attachments"
-                style={{ paddingBottom: "10px" }}
-              >
+          <div
+            className={
+              "picker-input-area" + (seretMasuk ? " komposer-terima" : "")
+            }
+            onDragOver={(e: any) => {
+              // Without preventDefault the browser refuses the drop and the
+              // whole gesture silently does nothing — the same trap the tab
+              // strip documents.
+              if (!e.dataTransfer.types.includes(DRAG_JENIS_BERKAS)) return;
+              e.preventDefault();
+              e.dataTransfer.dropEffect = "copy";
+              setSeretMasuk(true);
+            }}
+            onDragLeave={(e: any) => {
+              // Only when the pointer leaves the whole area, not when it
+              // crosses onto a child: dragleave fires for those too, and the
+              // outline would flicker on every internal boundary.
+              if (!e.currentTarget.contains(e.relatedTarget))
+                setSeretMasuk(false);
+            }}
+            onDrop={(e: any) => {
+              const ref = fileRefDariDrop(e.dataTransfer);
+              setSeretMasuk(false);
+              if (!ref) return;
+              e.preventDefault();
+              setFileRefs((prev: any) => tambahFileRef(prev, ref));
+            }}
+          >
+            {(attachments.length > 0 || fileRefs.length > 0) && (
+              <div className="composer-attachments">
+                {fileRefs.map((r: any) => (
+                  <AttachmentChip
+                    key={r.id}
+                    att={r}
+                    onRemove={(x: any) =>
+                      setFileRefs((prev: any) =>
+                        prev.filter((y: any) => y.id !== x.id),
+                      )
+                    }
+                  />
+                ))}
                 {attachments.map((a: any) => (
-                  <div key={a.id} className="composer-attachment-item">
-                    {a.previewUrl ? (
-                      <img
-                        src={a.previewUrl}
-                        className="composer-attachment-icon"
-                        alt=""
-                      />
-                    ) : (
-                      <div className="composer-attachment-icon">
-                        {a.name.slice(0, 2).toUpperCase()}
-                      </div>
-                    )}
-                    <div
-                      className="composer-attachment-name"
-                      style={{
-                        fontSize: "9px",
-                        width: "100%",
-                        textAlign: "center",
-                        overflow: "hidden",
-                        textOverflow: "ellipsis",
-                        whiteSpace: "nowrap",
-                      }}
-                    >
-                      {a.name}
-                    </div>
-                    <button
-                      className="composer-attachment-remove"
-                      onClick={() => onRemoveAttachment(a.id)}
-                    >
-                      ×
-                    </button>
-                  </div>
+                  <AttachmentChip
+                    key={a.id}
+                    att={a}
+                    onRemove={(x: any) => onRemoveAttachment(x.id)}
+                  />
                 ))}
               </div>
             )}
@@ -1535,16 +1518,35 @@ function ProjectPickerScreen({
               }}
             />
             <div className="picker-toolbar">
-              <button
-                className={"picker-plus-btn" + (menu ? " open" : "")}
-                onClick={() => setMenu((m: any) => !m)}
-              >
-                <PickerPlusIcon />
-              </button>
+              {/* GROUPED, because this toolbar is space-between with two direct
+                  children. A third one would have been spread to the middle
+                  rather than placed beside the first. */}
+              <div className="picker-kiri">
+                <button
+                  className={"picker-plus-btn" + (menu ? " open" : "")}
+                  onClick={() => setMenu((m: any) => !m)}
+                >
+                  <PickerPlusIcon />
+                </button>
+                <button
+                  className="picker-plus-btn picker-github"
+                  title="GitHub"
+                  onClick={() => setShowGithub((v: any) => !v)}
+                >
+                  <Icon.githubMark width={18} height={18} />
+                </button>
+              </div>
+              {showGithub ? (
+                <GithubPanel onClose={() => setShowGithub(false)} />
+              ) : null}
               <button
                 className="picker-send-btn"
                 onClick={submit}
-                disabled={!text.trim() && attachments.length === 0}
+                disabled={
+                  !text.trim() &&
+                  attachments.length === 0 &&
+                  fileRefs.length === 0
+                }
               >
                 <PickerSendIcon />
               </button>
@@ -1611,6 +1613,10 @@ function ProjectPickerScreen({
 // without losing its screen, but its element can simply be appended somewhere
 // else and the instance never notices.
 const _terminalInstans = new Map<string, any>();
+// Test handle: the headless checks read the xterm buffers through it, the
+// DOM only holds the rows in view.
+if (typeof window !== "undefined")
+  (window as any).__wolfspaceTerminalInstans = _terminalInstans;
 let _terminalUrut = 0;
 let _terminalAktif = "";
 let _terminalPecah = "";
@@ -1637,10 +1643,65 @@ const SHELL_PILIHAN = [
 // style hints. `kunci` matches the severity word tsc prints, so the rows filter
 // without a translation table in between.
 const TINGKAT_INFO = [
-  { kunci: "error", ikon: "⊗", judul: "Errors", warna: "#f85149" },
-  { kunci: "warning", ikon: "⚠", judul: "Warnings", warna: "#e3b341" },
-  { kunci: "info", ikon: "ⓘ", judul: "Info", warna: "#58a6ff" },
+  // No `ikon` field: the shapes are DRAWN by IkonTingkat. A glyph is whatever
+  // the font decides, and the three arrived at different optical sizes.
+  { kunci: "error", judul: "Errors", warna: "#f85149" },
+  { kunci: "warning", judul: "Warnings", warna: "#e3b341" },
+  { kunci: "info", judul: "Info", warna: "#58a6ff" },
 ];
+
+/**
+ * The severity icons, drawn rather than typed.
+ *
+ * They used to be the characters ⊗ ⚠ ⓘ. A glyph is whatever the font decides:
+ * the three arrived at different optical sizes and weights, so a row of them
+ * read as ragged even before anyone tried to compare the numbers beside them.
+ * These are the same three shapes VS Code uses, at one stroke width, on one
+ * baseline.
+ */
+function IkonTingkat({ jenis, kecil }: any) {
+  const n = kecil ? 12 : 15;
+  const bersama = {
+    width: n,
+    height: n,
+    viewBox: "0 0 16 16",
+    fill: "none",
+    stroke: "currentColor",
+    strokeWidth: 1.5,
+    strokeLinecap: "round" as const,
+    strokeLinejoin: "round" as const,
+    "aria-hidden": true,
+  };
+  if (jenis === "error")
+    return (
+      <svg {...bersama}>
+        <circle cx="8" cy="8" r="6.25" />
+        <path d="M5.8 5.8l4.4 4.4M10.2 5.8l-4.4 4.4" />
+      </svg>
+    );
+  if (jenis === "warning")
+    return (
+      <svg {...bersama}>
+        <path d="M8 2.4L14.4 13.2H1.6z" />
+        <path d="M8 6.4v3.1" />
+        <path d="M8 11.4h.01" />
+      </svg>
+    );
+  if (jenis === "info")
+    return (
+      <svg {...bersama}>
+        <circle cx="8" cy="8" r="6.25" />
+        <path d="M8 7.3v3.4" />
+        <path d="M8 5.1h.01" />
+      </svg>
+    );
+  // "All": a stack, because that is what the row stands for.
+  return (
+    <svg {...bersama}>
+      <path d="M2.6 4.6h10.8M2.6 8h10.8M2.6 11.4h10.8" />
+    </svg>
+  );
+}
 
 /**
  * The workspace root, from whichever shape the caller holds it in.
@@ -1660,6 +1721,7 @@ function VSCodeTerminal({
   selectedProject,
   onClose,
   terminalOutput,
+  onClearTerminalOutput,
   messages = [],
   perintah,
   debugAktif,
@@ -1750,6 +1812,24 @@ function VSCodeTerminal({
     window.addEventListener("mouseup", lepas);
   };
   const [menuShell, setMenuShell] = useState(false);
+  // What the machine actually has, from /api/terminal/shells (VS Code detects
+  // its profiles the same way). Fetched when the picker opens; a shell that is
+  // not installed is shown disabled with how to get it, instead of failing
+  // with "File not found" only after it is chosen.
+  const [daftarShell, setDaftarShell] = useState<any[]>([]);
+  useEffect(() => {
+    if (!menuShell || daftarShell.length) return;
+    let batal = false;
+    fetch("/api/terminal/shells")
+      .then((r) => (r.ok ? r.json() : []))
+      .then((d) => {
+        if (!batal && Array.isArray(d)) setDaftarShell(d);
+      })
+      .catch(() => {});
+    return () => {
+      batal = true;
+    };
+  }, [menuShell]);
   // ── Commands that arrive before the PTY is ready ──
   //
   // Pressing Run while the terminal is closed opens the terminal AND sends the
@@ -1823,19 +1903,49 @@ function VSCodeTerminal({
   }, [activeTab]);
   const [statusText, setStatusText] = useState("Connecting PTY...");
 
+  // ── OUTPUT: channels, as VS Code's Output view ──
+  //
+  // VS Code's Output panel is a set of CHANNELS behind one picker (Git,
+  // Tasks, each extension's log), with Clear beside it. Here there are two
+  // sources and they used to share one pane by precedence: once a
+  // `/terminal run` result existed it replaced the agent log for good, with
+  // no way to clear it. Now each is a channel, the picker chooses, Clear
+  // clears the one in view, and a fresh command result brings its channel
+  // forward the way VS Code reveals the channel that just wrote.
+  const [saluranOutput, setSaluranOutput] = useState<"agent" | "command">(
+    "agent",
+  );
+  // The agent log is derived from the chat, so "clear" is a watermark: only
+  // messages after it are shown.
+  const [agentSejak, setAgentSejak] = useState(0);
+  const terminalOutputSebelum = useRef(terminalOutput);
+  useEffect(() => {
+    if (terminalOutput && terminalOutput !== terminalOutputSebelum.current)
+      setSaluranOutput("command");
+    terminalOutputSebelum.current = terminalOutput;
+  }, [terminalOutput]);
+  const outputRef = useRef<any>(null);
+  const bersihkanOutput = () => {
+    if (saluranOutput === "command") {
+      if (onClearTerminalOutput) onClearTerminalOutput();
+    } else setAgentSejak(messages.length);
+  };
+
   // Build a clean, formatted AI output log from the main UI messages + any agent/terminal output
   const mainUiAiLog = useMemo(() => {
-    if (terminalOutput) return terminalOutput;
+    if (saluranOutput === "command") return terminalOutput || "";
 
     // Filter for model / agent / assistant messages from main chat UI
-    const aiMsgs = messages.filter(
-      (m: any) =>
-        m &&
-        (m.role === "model" ||
-          m.role === "agent" ||
-          m.role === "assistant" ||
-          m.role === "ai"),
-    );
+    const aiMsgs = messages
+      .slice(agentSejak)
+      .filter(
+        (m: any) =>
+          m &&
+          (m.role === "model" ||
+            m.role === "agent" ||
+            m.role === "assistant" ||
+            m.role === "ai"),
+      );
 
     if (aiMsgs.length === 0) return null;
 
@@ -1864,7 +1974,12 @@ function VSCodeTerminal({
       .join(
         "\n\n------------------------------------------------------------\n\n",
       );
-  }, [terminalOutput, messages]);
+  }, [terminalOutput, messages, saluranOutput, agentSejak]);
+  // Follows the newest line, as the Output view does with scroll lock off.
+  useEffect(() => {
+    const el = outputRef.current;
+    if (el && activeTab === "OUTPUT") el.scrollTop = el.scrollHeight;
+  }, [mainUiAiLog, activeTab]);
 
   // Each debugger's prompt, plus the shell prompt. Matched at the END of the
   // output — the same word can appear mid-text (a line of code containing
@@ -2000,12 +2115,28 @@ function VSCodeTerminal({
 
   // Options are shared by every terminal, so a second one cannot drift from
   // the first by being constructed somewhere else.
+  //
+  // The values are VS Code's defaults (terminalConfiguration.ts) where the
+  // two differ mattered:
+  //   minimumContrastRatio 4.5 -- dark blue on this background (a `dir`
+  //     listing, npm's dim lines) was painted as-is and unreadable; xterm
+  //     lifts such colours to the ratio, as VS Code does.
+  //   rescaleOverlappingGlyphs -- wide glyphs from a fallback font no longer
+  //     bleed into the next cell.
+  //   wordSeparator -- double-click selects a path or a word the way VS Code
+  //     cuts it (the box-drawing and quote characters included).
+  //   fontSize 14 -- VS Code's default on Windows and Linux, and what the
+  //     code editor here already uses.
   const opsiTerminal = () => ({
     cols: 100,
     rows: 25,
     scrollback: 5000,
     fontFamily: '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
-    fontSize: 13,
+    fontSize: 14,
+    minimumContrastRatio: 4.5,
+    rescaleOverlappingGlyphs: true,
+    drawBoldTextInBrightColors: true,
+    wordSeparator: " ()[]{}',\"`\u2500\u2018\u2019\u201c\u201d|",
     cursorStyle: "block" as any,
     cursorBlink: true,
     // The full VS Code palette. Before this the terminal handed xterm five
@@ -2111,12 +2242,72 @@ function VSCodeTerminal({
     const inst: any = { key, term, fit, cari, el, sessionId: null, shell: "" };
     _terminalInstans.set(key, inst);
 
+    // ── Copy and paste, as VS Code on Windows ──
+    //
+    // xterm alone sends Ctrl+C to the shell even when text is selected: the
+    // habit of copying with Ctrl+C then INTERRUPTS whatever is running, and
+    // nothing lands on the clipboard (xterm prevents the browser's copy).
+    // VS Code binds copySelection to Ctrl+C while text is selected
+    // (terminalTextSelected), Ctrl+Shift+C always, Ctrl+Shift+V to paste;
+    // Ctrl+V is left to the browser's paste event, which xterm handles.
+    // Right-click follows rightClickBehavior "copyPaste", the Windows
+    // default: copy the selection if there is one, else paste.
+    const salinSeleksi = () => {
+      const t = term.getSelection();
+      if (!t) return false;
+      try {
+        navigator.clipboard.writeText(t);
+      } catch (_) {}
+      return true;
+    };
+    const tempelDariPapan = async () => {
+      let t = "";
+      try {
+        t = await navigator.clipboard.readText();
+      } catch (_) {}
+      if (t) term.paste(t);
+    };
+    term.attachCustomKeyEventHandler((e: KeyboardEvent) => {
+      if (e.type !== "keydown") return true;
+      const ctrl = e.ctrlKey && !e.altKey && !e.metaKey;
+      if (!ctrl) return true;
+      const k = e.key.toLowerCase();
+      if (k === "c" && (e.shiftKey || term.hasSelection())) {
+        if (salinSeleksi()) {
+          e.preventDefault();
+          return false;
+        }
+      }
+      if (k === "v" && e.shiftKey) {
+        e.preventDefault();
+        tempelDariPapan();
+        return false;
+      }
+      return true;
+    });
+    el.addEventListener("contextmenu", (e: MouseEvent) => {
+      e.preventDefault();
+      e.stopPropagation();
+      if (term.hasSelection()) {
+        salinSeleksi();
+        term.clearSelection();
+      } else tempelDariPapan();
+    });
+
     // Input and resize are bound to THIS instance's session, read off `inst`
     // rather than the active pointer. Reading the pointer would send what
     // someone types into the visible terminal to whichever session happens to
     // be active by the time the callback runs.
     term.onData((data: any) => {
-      if (!inst.sessionId) return;
+      if (!inst.sessionId) {
+        // No shell behind this pane (it exited, or never started). Enter
+        // starts a new one in the same pane; anything else has nowhere to go.
+        if (inst.exited && /\r/.test(String(data))) {
+          inst.exited = false;
+          bukaSesi(inst, inst.shell || undefined);
+        }
+        return;
+      }
       fetch("/api/terminal/write", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -2132,21 +2323,61 @@ function VSCodeTerminal({
       }).catch(() => {});
     });
 
+    // The row is added BEFORE the session is opened. It used to be added
+    // only on success, so a shell that failed to spawn (pwsh not installed,
+    // say) left an xterm in the host with no row: visible, unlistable,
+    // unclosable. The row now exists either way, and carries the failure.
+    inst.shell = shellPilihan || "";
+    inst.nama = namaShell(inst.shell || "shell");
+    setTerminals((prev: any[]) =>
+      prev.concat([{ key, shell: inst.shell, nama: inst.nama }]),
+    );
+    await bukaSesi(inst, shellPilihan);
+    return key;
+  };
+
+  /**
+   * Opens (or re-opens) the PTY behind one terminal instance. Separate from
+   * buatTerminal so a terminal whose shell has EXITED can get a new shell in
+   * the same pane on Enter, keeping its scrollback -- rather than a dead pane
+   * that swallowed typing.
+   */
+  const bukaSesi = async (inst: any, shellPilihan?: any) => {
+    const term = inst.term;
+    const key = inst.key;
     const targetCwd = akarProyek(selectedProject);
+    const labelBaris = (nama: string, shell: string) =>
+      setTerminals((prev: any[]) =>
+        prev.map((t) => (t.key === key ? { ...t, nama, shell } : t)),
+      );
     try {
       const res = await fetch("/api/terminal/open", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ cwd: targetCwd, shell: shellPilihan }),
       });
-      if (!res.ok) throw new Error("HTTP " + res.status);
+      if (!res.ok) {
+        // The server's own reason ("File not found: pwsh.exe"), not a
+        // guess about the server being down.
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err && err.error) || "HTTP " + res.status);
+      }
       const data = await res.json();
       inst.sessionId = data.id;
+      inst.exited = false;
+      // xterm's ConPTY workarounds switch on with this, keyed on the build --
+      // set after the process exists, as terminalInstance.ts does.
+      if (data.windowsBuild) {
+        try {
+          term.options.windowsPty = {
+            backend: "conpty",
+            buildNumber: data.windowsBuild,
+          };
+        } catch (_) {}
+      }
       inst.shell = data.shell || shellPilihan || "shell";
       inst.nama = namaShell(inst.shell);
-      setTerminals((prev: any[]) =>
-        prev.concat([{ key, shell: inst.shell, nama: namaShell(inst.shell) }]),
-      );
+      labelBaris(inst.nama, inst.shell);
       setStatusText(
         "Shell: " +
           namaShell(inst.shell) +
@@ -2154,6 +2385,10 @@ function VSCodeTerminal({
           (targetCwd || "default") +
           ")",
       );
+      // The PTY was spawned at a default size; tell it the pane's real one.
+      try {
+        if (inst.fit && inst.el.style.display !== "none") inst.fit.fit();
+      } catch (_) {}
       // A command queued while the PTY was still opening is released now
       // rather than discarded -- the button looked like it worked otherwise.
       if (tertundaRef.current) {
@@ -2166,13 +2401,18 @@ function VSCodeTerminal({
         }).catch(() => {});
       }
     } catch (e: any) {
+      inst.sessionId = null;
+      inst.exited = true;
+      labelBaris(inst.nama + " (failed)", inst.shell);
       term.write(
-        "\r\n\x1b[31m[Error] Cannot connect to /api/terminal/open (" +
+        "\r\n\x1b[31m[Error] Could not open " +
+          (shellPilihan || "the shell") +
+          ": " +
           (e && e.message ? e.message : String(e)) +
-          "). Ensure server is running.\x1b[0m\r\n",
+          "\x1b[0m\r\n" +
+          "\x1b[90mPress Enter to try again, or close this terminal.\x1b[0m\r\n",
       );
     }
-    return key;
   };
 
   const pilihTerminal = (key: string) => {
@@ -2245,6 +2485,17 @@ function VSCodeTerminal({
   useEffect(() => {
     const onKey = (e: any) => {
       if (activeTab !== "TERMINAL") return;
+      // Only when the keystroke is INSIDE this panel. The listener is on the
+      // window, so without this check Ctrl+F in the code editor -- or in the
+      // chat box -- opened Monaco's find AND this search box, which then took
+      // the focus away from it. Measured: active element after Ctrl+F in the
+      // editor was the terminal's Find field.
+      const host = hostRef.current;
+      const t = e.target;
+      const diPanel =
+        (host && t && host.contains(t)) ||
+        (cariInputRef.current && t === cariInputRef.current);
+      if (!diPanel) return;
       if ((e.ctrlKey || e.metaKey) && (e.key === "f" || e.key === "F")) {
         e.preventDefault();
         setCariBuka(true);
@@ -2320,6 +2571,25 @@ function VSCodeTerminal({
     // correct response to it being slow.
     let berhentiPoll = false;
     let jamPoll: any = null;
+    // The pane stays, with its scrollback; the row says "(exited)"; Enter
+    // opens a new shell in it (see term.onData). `pesan` null = the server
+    // gave no exit line of its own, so one is written here.
+    const tandaiKeluar = (inst: any, pesan: string | null) => {
+      if (!inst.sessionId) return;
+      inst.sessionId = null;
+      inst.exited = true;
+      if (pesan === null)
+        inst.term.write("\r\n\x1b[90m[WOLFSPACE] Session ended.\x1b[0m\r\n");
+      inst.term.write(
+        "\x1b[90mPress Enter to start a new shell here.\x1b[0m\r\n",
+      );
+      setTerminals((prev: any[]) =>
+        prev.map((t) =>
+          t.key === inst.key ? { ...t, nama: inst.nama + " (exited)" } : t,
+        ),
+      );
+      if (inst.term === termRef.current) sessionIdRef.current = null;
+    };
     const putaranBaca = async () => {
       for (const inst of Array.from(_terminalInstans.values())) {
         if (!inst.sessionId) continue;
@@ -2329,6 +2599,14 @@ function VSCodeTerminal({
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({ id: inst.sessionId, clear: true }),
           });
+          if (res.status === 404) {
+            // The server no longer knows this session (it exited while the
+            // panel was closed and the linger ran out, or the backend
+            // restarted). Say so once and stop asking -- this used to be
+            // thirteen 404s a second per dead terminal, and silence on screen.
+            tandaiKeluar(inst, null);
+            continue;
+          }
           if (!res.ok) continue;
           const data = await res.json();
           if (data.output) {
@@ -2337,6 +2615,7 @@ function VSCodeTerminal({
             // looked at; a background session must not trip it.
             if (inst.term === termRef.current) periksaAkhirDebug(data.output);
           }
+          if (data.exited) tandaiKeluar(inst, data.output ? "" : null);
         } catch (_) {}
       }
       if (!berhentiPoll) jamPoll = setTimeout(putaranBaca, 75);
@@ -2519,9 +2798,18 @@ function VSCodeTerminal({
               ).map((t) => (
                 <span
                   key={t.kunci}
-                  style={{ fontSize: "10px", color: t.warna }}
+                  style={{
+                    display: "inline-flex",
+                    alignItems: "center",
+                    gap: "3px",
+                    fontSize: "10.5px",
+                    fontVariantNumeric: "tabular-nums",
+                    color: t.warna,
+                  }}
                 >
-                  {t.ikon}{" "}
+                  {/* The SAME icon the rail draws. Two sources for one symbol
+                      is how the tab and the panel would come to disagree. */}
+                  <IkonTingkat jenis={t.kunci} kecil />
                   {infoDiag.filter((d: any) => d.severity === t.kunci).length}
                 </span>
               ))}
@@ -2605,33 +2893,55 @@ function VSCodeTerminal({
                     boxShadow: "0 10px 30px rgba(0,0,0,0.6)",
                   }}
                 >
-                  {/* The shell is passed straight to /api/terminal/open, which
-                      already accepts one. Anything not installed fails there
-                      and the error lands in the new terminal, where it is
-                      readable -- rather than being pre-filtered by a list this
-                      component would have to keep in step with the machine. */}
-                  {SHELL_PILIHAN.map((s) => (
-                    <button
-                      key={s.nilai}
-                      className="btn-reset menu-item"
-                      onClick={async () => {
-                        setMenuShell(false);
-                        const k = await buatTerminal(s.nilai);
-                        if (k) pilihTerminal(k);
-                      }}
-                      style={{
-                        display: "block",
-                        width: "100%",
-                        textAlign: "left",
-                        padding: "6px 12px",
-                        fontSize: "12px",
-                        color: "#c9d1d9",
-                        fontFamily: "inherit",
-                      }}
-                    >
-                      {s.nama}
-                    </button>
-                  ))}
+                  {/* Detected shells (see daftarShell). Installed ones open;
+                      missing ones are disabled and say how to get them, so a
+                      choice never fails with "File not found" after the fact.
+                      Falls back to the static list until the fetch returns. */}
+                  {(daftarShell.length ? daftarShell : SHELL_PILIHAN).map(
+                    (s: any) => {
+                      const ada = s.ada !== false;
+                      return (
+                        <button
+                          key={s.nilai + s.nama}
+                          className="btn-reset menu-item"
+                          disabled={!ada}
+                          title={
+                            ada
+                              ? s.nilai
+                              : s.pasang
+                                ? "Not installed — " + s.pasang
+                                : "Not installed"
+                          }
+                          onClick={async () => {
+                            if (!ada) return;
+                            setMenuShell(false);
+                            const k = await buatTerminal(s.nilai);
+                            if (k) pilihTerminal(k);
+                          }}
+                          style={{
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "10px",
+                            width: "100%",
+                            textAlign: "left",
+                            padding: "6px 12px",
+                            fontSize: "12px",
+                            color: ada ? "#c9d1d9" : "#6b7280",
+                            fontFamily: "inherit",
+                            cursor: ada ? "pointer" : "default",
+                          }}
+                        >
+                          <span>{s.nama}</span>
+                          {!ada && (
+                            <span style={{ fontSize: "10px", opacity: 0.8 }}>
+                              not installed
+                            </span>
+                          )}
+                        </button>
+                      );
+                    },
+                  )}
                 </div>
               )}
             </div>
@@ -3258,38 +3568,82 @@ function VSCodeTerminal({
         </div>
         <div
           style={{
-            display: activeTab === "OUTPUT" ? "block" : "none",
-            padding: "12px",
-            color: "#c9d1d9",
-            fontSize: "12px",
-            fontFamily:
-              '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
-            overflowY: "auto",
+            display: activeTab === "OUTPUT" ? "flex" : "none",
+            flexDirection: "column",
             height: "100%",
-            whiteSpace: "pre-wrap",
-            lineHeight: "1.5",
+            minHeight: 0,
           }}
         >
-          {mainUiAiLog ? (
-            <div>{mainUiAiLog}</div>
-          ) : (
-            <div style={{ color: "#8b949e" }}>
-              <div
-                style={{
-                  color: "#5eead4",
-                  fontWeight: 600,
-                  marginBottom: "6px",
-                }}
+          <div className="output-kepala">
+            <select
+              className="output-saluran"
+              aria-label="Output channel"
+              value={saluranOutput}
+              onChange={(e: any) => setSaluranOutput(e.target.value)}
+            >
+              <option value="agent">Agent</option>
+              <option value="command">Command (/terminal run)</option>
+            </select>
+            <button
+              type="button"
+              className="btn-reset term-btn output-bersihkan"
+              title="Clear Output"
+              aria-label="Clear Output"
+              onClick={bersihkanOutput}
+            >
+              <svg
+                width="13"
+                height="13"
+                viewBox="0 0 24 24"
+                fill="none"
+                stroke="currentColor"
+                strokeWidth="2"
+                strokeLinecap="round"
+                strokeLinejoin="round"
               >
-                [WOLFSPACE AI & System Output Stream]
+                <path d="M3 6h18"></path>
+                <path d="M19 6v14c0 1-1 2-2 2H7c-1 0-2-1-2-2V6"></path>
+                <path d="M8 6V4c0-1 1-2 2-2h4c1 0 2 1 2 2v2"></path>
+              </svg>
+            </button>
+          </div>
+          <div
+            ref={outputRef}
+            className="output-isi"
+            style={{
+              flex: 1,
+              minHeight: 0,
+              padding: "12px",
+              color: "#c9d1d9",
+              fontSize: "12px",
+              fontFamily:
+                '"JetBrains Mono", Consolas, "Cascadia Code", monospace',
+              overflowY: "auto",
+              whiteSpace: "pre-wrap",
+              lineHeight: "1.5",
+            }}
+          >
+            {mainUiAiLog ? (
+              <div>{mainUiAiLog}</div>
+            ) : (
+              <div style={{ color: "#8b949e" }}>
+                <div
+                  style={{
+                    color: "#5eead4",
+                    fontWeight: 600,
+                    marginBottom: "6px",
+                  }}
+                >
+                  [WOLFSPACE AI & System Output Stream]
+                </div>
+                No activity log or AI output from the main UI yet.
+                <br />
+                {saluranOutput === "command"
+                  ? "Results of /terminal run <command> appear here."
+                  : "The agent's replies and its steps appear here as you chat."}
               </div>
-              No activity log or AI output from the main UI yet.
-              <br />
-              When you chat with the AI in the main UI or run a command, all
-              process logs and AI response results will automatically flow into
-              this panel.
-            </div>
-          )}
+            )}
+          </div>
         </div>
         {/* INFO -- problems across the whole workspace.
             
@@ -3305,57 +3659,55 @@ function VSCodeTerminal({
             minHeight: 0,
           }}
         >
-          <div
-            style={{
-              width: "56px",
-              flexShrink: 0,
-              borderRight: "1px solid var(--line, #1f2733)",
-              display: "flex",
-              flexDirection: "column",
-              padding: "6px 0",
-              gap: "2px",
-              background: "var(--surface-1, #0f1318)",
-            }}
-          >
-            {TINGKAT_INFO.map((t) => {
-              const jml = infoDiag.filter(
-                (d: any) => d.severity === t.kunci,
-              ).length;
-              const aktif = infoSaring === t.kunci;
-              return (
-                <button
-                  key={t.kunci}
-                  className="btn-reset"
-                  title={t.judul + " (" + jml + ")"}
-                  onClick={() => setInfoSaring(aktif ? "all" : t.kunci)}
-                  style={{
-                    display: "flex",
-                    flexDirection: "column",
-                    alignItems: "center",
-                    gap: "1px",
-                    padding: "6px 0",
-                    borderLeft: aktif
-                      ? "2px solid " + t.warna
-                      : "2px solid transparent",
-                    background: aktif ? "rgba(255,255,255,0.05)" : "none",
-                    fontFamily: "inherit",
-                  }}
-                >
-                  <span style={{ fontSize: "14px", color: t.warna }}>
-                    {t.ikon}
-                  </span>
-                  <span
-                    style={{
-                      fontSize: "11px",
-                      fontWeight: 600,
-                      color: jml ? "#c9d1d9" : "#6e7681",
-                    }}
+          {/* ── THE SEVERITY RAIL ──
+              It used to be a 56px column of a text glyph over a bare number,
+              with the name only in a tooltip: three near-identical stacks, and
+              nothing on screen saying which was which. Now each row names
+              itself, the count is the largest thing in it, and a row with
+              nothing in it says so by fading rather than by looking the same
+              as the others. */}
+          <div className="info-rail">
+            {(() => {
+              const hitung = (k: string) =>
+                k === "all"
+                  ? infoDiag.length
+                  : infoDiag.filter((d: any) => d.severity === k).length;
+              const baris = [
+                { kunci: "all", judul: "All", warna: "var(--text-muted)" },
+                ...TINGKAT_INFO,
+              ];
+              return baris.map((t: any) => {
+                const jml = hitung(t.kunci);
+                const aktif = infoSaring === t.kunci;
+                return (
+                  <button
+                    key={t.kunci}
+                    type="button"
+                    className={
+                      "info-rail-baris" +
+                      (aktif ? " aktif" : "") +
+                      (jml ? "" : " nol")
+                    }
+                    style={{ ["--warna-tingkat" as any]: t.warna }}
+                    aria-pressed={aktif}
+                    title={
+                      jml + " " + t.judul.toLowerCase() + " — click to filter"
+                    }
+                    onClick={() =>
+                      setInfoSaring(
+                        aktif && t.kunci !== "all" ? "all" : t.kunci,
+                      )
+                    }
                   >
-                    {jml}
-                  </span>
-                </button>
-              );
-            })}
+                    <span className="info-rail-ikon">
+                      <IkonTingkat jenis={t.kunci} />
+                    </span>
+                    <span className="info-rail-jml">{jml}</span>
+                    <span className="info-rail-nama">{t.judul}</span>
+                  </button>
+                );
+              });
+            })()}
           </div>
           <div
             style={{
@@ -3403,7 +3755,7 @@ function VSCodeTerminal({
                 .map((d: any, i: any) => {
                   const t = TINGKAT_INFO.find((x) => x.kunci === d.severity);
                   const warna = t ? t.warna : "#58a6ff";
-                  const ikon = t ? t.ikon : "ⓘ";
+                  const jenis = t ? t.kunci : "info";
                   return (
                     <div
                       key={i}
@@ -3417,8 +3769,16 @@ function VSCodeTerminal({
                         borderBottom: "1px solid rgba(255,255,255,0.03)",
                       }}
                     >
-                      <span style={{ color: warna, flexShrink: 0 }}>
-                        {ikon}
+                      <span
+                        style={{
+                          color: warna,
+                          flexShrink: 0,
+                          display: "inline-flex",
+                          alignItems: "center",
+                          height: "18px",
+                        }}
+                      >
+                        <IkonTingkat jenis={jenis} kecil />
                       </span>
                       <span style={{ minWidth: 0 }}>
                         <span style={{ color: "#58a6ff" }}>
@@ -3444,9 +3804,184 @@ function VSCodeTerminal({
                 </div>
               )}
             </div>
+            <LanguageServerBar akar={akarProyek(selectedProject)} />
           </div>
         </div>
       </div>
+    </div>
+  );
+}
+
+/**
+ * ── Which language servers this machine actually has ──
+ *
+ * WHY IT EXISTS. The LSP client shipped with a registry covering nine
+ * languages and no way whatsoever to see it, and the first question it produced
+ * was "why is the LSP only for TypeScript?" — asked about a machine that had no
+ * server installed at all, TypeScript included. The feature was working exactly
+ * as designed and looked like it supported one language.
+ *
+ * A panel that reports "not installed" and stops is a dead end, so every row
+ * that is missing carries the command that installs it, ready to copy. Nothing
+ * here installs anything: see the note at the top of core/lsp-session.ts.
+ */
+function LanguageServerBar({ akar }: any) {
+  const [rows, setRows] = useState<any[]>([]);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [copied, setCopied] = useState("");
+
+  const muat = async () => {
+    setBusy(true);
+    try {
+      const r = await wwApi(
+        "/lsp/status?root=" + encodeURIComponent(akar || ""),
+      );
+      setRows(r && r.ok ? r.servers || [] : []);
+    } catch (_) {
+      setRows([]);
+    } finally {
+      setBusy(false);
+    }
+  };
+  // Re-read on every open, not once: the whole point is that installing a
+  // server while the app is running should show up here without a restart.
+  useEffect(() => {
+    muat();
+  }, [akar]);
+
+  if (!rows.length) return null;
+  const ada = rows.filter((r: any) => r.available);
+  const salin = (teks: string) => {
+    try {
+      navigator.clipboard.writeText(teks);
+      setCopied(teks);
+      setTimeout(() => setCopied((c) => (c === teks ? "" : c)), 1800);
+    } catch (_) {}
+  };
+
+  return (
+    <div style={{ borderTop: "1px solid #21262d", flexShrink: 0 }}>
+      <button
+        className="btn-reset"
+        onClick={() => {
+          setOpen((o) => !o);
+          if (!open) muat();
+        }}
+        style={{
+          display: "flex",
+          alignItems: "center",
+          gap: "8px",
+          width: "100%",
+          padding: "6px 10px",
+          fontSize: "11.5px",
+          color: "#8b949e",
+          cursor: "pointer",
+          fontFamily: "inherit",
+        }}
+      >
+        <span
+          style={{
+            width: "6px",
+            height: "6px",
+            borderRadius: "50%",
+            background: ada.length ? "#3fb950" : "#6b7280",
+            flexShrink: 0,
+          }}
+        />
+        <span>Language servers</span>
+        <span style={{ color: "#6b7280" }}>
+          {busy
+            ? "checking…"
+            : ada.length + " of " + rows.length + " installed"}
+        </span>
+        <span style={{ flex: 1 }} />
+        <svg
+          width="11"
+          height="11"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="#6b7280"
+          strokeWidth="2.5"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+          style={{
+            transform: open ? "rotate(180deg)" : "none",
+            transition: "transform .15s",
+          }}
+        >
+          <polyline points="6 9 12 15 18 9"></polyline>
+        </svg>
+      </button>
+      {open && (
+        <div
+          style={{ maxHeight: "168px", overflowY: "auto", padding: "0 0 6px" }}
+        >
+          {rows.map((r: any) => (
+            <div
+              key={r.id}
+              style={{
+                display: "flex",
+                alignItems: "center",
+                gap: "8px",
+                padding: "4px 10px 4px 24px",
+                fontSize: "11.5px",
+              }}
+            >
+              <span
+                style={{
+                  color: r.available ? "#3fb950" : "#4b5563",
+                  flexShrink: 0,
+                  width: "10px",
+                }}
+              >
+                {r.available ? "●" : "○"}
+              </span>
+              <span style={{ color: "#c9d1d9", minWidth: "112px" }}>
+                {r.label}
+              </span>
+              {r.available ? (
+                <span
+                  style={{
+                    color: "#6b7280",
+                    fontFamily: "ui-monospace, monospace",
+                  }}
+                >
+                  {r.command}
+                  {/* RUNNING BUT SILENT IS ITS OWN STATE. A server can be up,
+                      answering hover and definition, and still publishing no
+                      diagnostics because it has not finished reading the
+                      project — measured at four minutes on a large folder.
+                      Without this the editor looks broken while every part of
+                      it works. */}
+                  {r.running
+                    ? r.published
+                      ? " · running"
+                      : " · indexing… (" +
+                        r.upSeconds +
+                        "s, no diagnostics yet)"
+                    : ""}
+                </span>
+              ) : (
+                <button
+                  className="btn-reset"
+                  title="Copy the install command"
+                  onClick={() => salin(r.install)}
+                  style={{
+                    color: copied === r.install ? "#3fb950" : "#6b7280",
+                    fontFamily: "ui-monospace, monospace",
+                    fontSize: "11px",
+                    cursor: "pointer",
+                    textAlign: "left",
+                  }}
+                >
+                  {copied === r.install ? "copied" : r.install}
+                </button>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

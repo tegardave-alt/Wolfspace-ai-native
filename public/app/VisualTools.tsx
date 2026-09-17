@@ -1,8 +1,17 @@
-// VisualTools — extracted from app.tsx: useVisualPicker and useVisualDraw, plus
-// their module-level guards (VP_STOP/VD_STOP). Loaded via APP_MODULES,
-// concatenated after app.tsx into one scope. Function declarations hoist; the
-// `let` guards are only touched during interaction (a click), so they are always
-// initialised by then. Used by App via startPicker / startVisualDraw.
+// VisualTools.tsx — pointing at the screen: useVisualPicker (pick an element)
+// and useVisualDraw (draw a region on it).
+//
+// ROLE IN THE SYSTEM. Both let the user show the agent WHERE they mean instead
+// of describing it. App() reaches them through startPicker / startVisualDraw.
+//
+// The module-level VP_STOP / VD_STOP guards matter: only ONE picker may be
+// active, so re-clicking its sidebar item toggles it off rather than stacking
+// capture-listeners that go on swallowing clicks — the "chat becomes
+// unclickable" bug.
+//
+// See public/app.tsx for how the renderer is assembled. This module is
+// concatenated AFTER app.tsx; function declarations hoist, and the `let` guards
+// are only touched during a click, so they are always initialised by then.
 
 /* ----------------------------- Visual Picker ----------------------------- */
 // Module-level guard: only ONE picker can ever be active, so re-clicking the
@@ -19,12 +28,21 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
       VP_STOP();
       return;
     } // already active ? toggle off
-    const docs = [document];
+    const docs: Document[] = [document];
     try {
       const frameDoc = getFrameDoc && getFrameDoc();
       // .defaultView is null for a cross-origin document (the browser refuses
       // access before we even get here) — this check also covers a "dead" or
       // detached document.
+      //
+      // THE LINE BELOW WENT MISSING ONCE. frameDoc was computed and then never
+      // used, so every listener went onto WOLFSPACE's document alone and the
+      // picker could not select anything inside the Live Browser — the very
+      // content the user was building. A mouse event over an iframe lands in
+      // the iframe's document; if the picker is not listening there, it does
+      // not exist there.
+      if (frameDoc && frameDoc.defaultView && frameDoc.body)
+        docs.push(frameDoc);
     } catch (_) {
       // Cross-origin (the preview points at an external URL rather than a
       // same-origin local file):
@@ -90,6 +108,11 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
       let d = "";
 
       // Include the DOM structure so the agent can find it in the source.
+      // WITHOUT the picker's own hover class: every snippet used to carry
+      // `vp-hover`, and the agent then searched the source for a class that
+      // exists only while the picker is running. The selector already
+      // filtered it (realCls); the raw markup did not.
+      cleanHovers();
       let htmlSnippet = el.outerHTML || "";
       if (htmlSnippet) {
         // Truncate htmlSnippet when it is too long, while keeping its structure
@@ -97,6 +120,21 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
           htmlSnippet = htmlSnippet.slice(0, 300) + "...";
         }
         d = "Struktur DOM:\n```html\n" + htmlSnippet + "\n```";
+      }
+      if (el.ownerDocument && el.ownerDocument !== document) {
+        // Picked inside the Live Browser: name the previewed file, so the
+        // agent edits the generated content rather than searching WOLFSPACE's
+        // own UI for a class that is not there.
+        let berkas = "";
+        try {
+          const u = new URL(el.ownerDocument.location.href);
+          berkas = decodeURIComponent(u.searchParams.get("path") || u.pathname);
+        } catch (_) {}
+        d =
+          "Inside the previewed page" +
+          (berkas ? " (" + berkas + ")" : "") +
+          " — this element is in the GENERATED content, not in WOLFSPACE's own UI.\n" +
+          d;
       }
 
       try {
@@ -109,10 +147,20 @@ function useVisualPicker(getFrameDoc?: () => Document | null) {
           navigator.clipboard.writeText(d).catch(function () {});
       } catch (_) {}
       stop();
-      // Use the tidy alert.
-      setTimeout(
-        () => alert("Element details copied to clipboard!\n\n" + selector),
-        0,
+      // STRAIGHT INTO THE COMPOSER, appended to whatever is there, and no
+      // alert(). Two reasons. The clipboard round-trip was a step the user
+      // had to do by hand every time. And window.alert() in an Electron
+      // renderer leaves the page unable to take keyboard focus once it is
+      // dismissed: the box could still be clicked, but nothing typed reached
+      // it until the window was refocused — reported as "after pasting the
+      // picker's content the chat cannot be typed into". The clipboard copy
+      // stays as a convenience; the app no longer depends on it.
+      const ta = document.querySelector(
+        ".composer textarea",
+      ) as HTMLTextAreaElement | null;
+      const ada = ta && ta.value ? ta.value.replace(/\s+$/, "") + "\n\n" : "";
+      window.dispatchEvent(
+        new CustomEvent("WOLFSPACE:set-composer", { detail: ada + d + "\n" }),
       );
     };
     const key = (e: any) => {
@@ -242,7 +290,7 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
       const showSuccess = () => {
         const oldHTML = btnElement.innerHTML;
         const oldBg = btnElement.style.background;
-        btnElement.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style="margin-right:4px; vertical-align:text-bottom"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied!`;
+        btnElement.innerHTML = `<svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polyline points="20 6 9 17 4 12"></polyline></svg> Copied`;
         btnElement.style.background = "var(--text-success, #2b8a3e)";
         setTimeout(() => {
           btnElement.innerHTML = oldHTML;
@@ -390,8 +438,21 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
         // was released: it represents the drawn area and does not miss when the
         // mouse is let go slightly outside the box. For the IFRAME document,
         // frame-local coordinates are used (the rendered page's elements).
+        //
+        // Then the probe walks UP until the element's box holds the whole
+        // drawn rectangle. MEASURED before this: a 120x90 box drawn over a
+        // chat bubble picked the <p> under its centre and reported
+        // "top: -41px" -- the area was not inside that element at all. The
+        // target is the element the area lies inside, so left/top are never
+        // negative and "put it there" means what it says.
         const cx = finalX + r.left + finalW / 2;
         const cy = finalY + r.top + finalH / 2;
+        const drawn = {
+          left: finalX + r.left,
+          top: finalY + r.top,
+          right: finalX + r.left + finalW,
+          bottom: finalY + r.top + finalH,
+        };
         let targetEl = null,
           targetDoc = document,
           frRect = null;
@@ -419,6 +480,27 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
           cWrap.style.pointerEvents = "auto"; // (or back to whatever it was)
           selBox.style.pointerEvents = "auto";
         }
+
+        // Up to the first ancestor whose box holds the drawn rectangle. Half a
+        // pixel of slack: rects are fractional, the box is snapped to whole px.
+        const holds = (el: any) => {
+          const q = el.getBoundingClientRect();
+          const ox = frRect ? frRect.left : 0;
+          const oy = frRect ? frRect.top : 0;
+          return (
+            q.left + ox <= drawn.left + 0.5 &&
+            q.top + oy <= drawn.top + 0.5 &&
+            q.right + ox >= drawn.right - 0.5 &&
+            q.bottom + oy >= drawn.bottom - 0.5
+          );
+        };
+        while (
+          targetEl &&
+          targetEl !== targetDoc.body &&
+          targetEl.parentElement &&
+          !holds(targetEl)
+        )
+          targetEl = targetEl.parentElement;
 
         // Generate selector (same logic as Picker)
         const realCls = (el: any) =>
@@ -460,8 +542,10 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
         const tr = targetEl.getBoundingClientRect();
         // An element rect inside the iframe is in FRAME viewport coordinates — shift to
         // parent coordinates, to stay consistent with finalX/finalY (the overlay's).
-        let trLeft = tr.left,
-          trTop = tr.top;
+        // Then past the target's border: `position: absolute; left/top` counts
+        // from the padding box, and getBoundingClientRect from the border box.
+        let trLeft = tr.left + targetEl.clientLeft,
+          trTop = tr.top + targetEl.clientTop;
         if (frRect) {
           trLeft += frRect.left;
           trTop += frRect.top;
@@ -470,20 +554,32 @@ function useVisualDraw(getFrameDoc?: () => Document | null) {
         const relX = Math.round(finalX + r.left - trLeft);
         const relY = Math.round(finalY + r.top - trTop);
 
-        const domString = `<div data-target="${targetSelector}" style="position: absolute; left: ${relX}px; top: ${relY}px; width: ${finalW}px; height: ${finalH}px;"></div>`;
-        const escapedDom = domString
-          .replace(/</g, "&lt;")
-          .replace(/>/g, "&gt;");
+        // The snippet is read by the agent, not by a browser. left/top are
+        // relative to the target -- true only if the target is a containing
+        // block. MEASURED: inserted into a static target the box landed at
+        // (376, 5) instead of (400, 150). So a static target is named as such,
+        // and the reader knows to give it position: relative first.
+        let staticNote = "";
+        try {
+          const win = targetDoc.defaultView || window;
+          if (win.getComputedStyle(targetEl).position === "static")
+            staticNote =
+              ' data-note="target is position: static; give it position: relative"';
+        } catch (_) {}
 
+        const domString = `<div data-target="${targetSelector}"${staticNote} style="position: absolute; left: ${relX}px; top: ${relY}px; width: ${finalW}px; height: ${finalH}px;"></div>`;
+
+        // One bar, no panel: the label and a copy button share the accent
+        // strip at the box's top-left corner. The snippet itself is no longer
+        // shown -- it was a white bordered card of code under every box, and
+        // the only thing anyone did with it was press Copy. `ui-panel` lets
+        // the click through blockClick and cvsMD.
         selBox.innerHTML = `
-          <div style="position: absolute; top: 0; left: 0; background: var(--fill-accent, #339af0); color: white; font-size: 11px; font-weight: 600; padding: 4px 8px; border-bottom-right-radius: 4px; border-top-left-radius: 1px; display: inline-block; letter-spacing: 0.05em; pointer-events: none; white-space: nowrap; z-index: 2;">
-            AREA KOSONG [X: ${finalX}, Y: ${finalY}]
-          </div>
-          <div class="ui-panel" style="position: absolute; top: calc(100% + 2px); left: -2px; width: max-content; max-width: 300px; padding: 12px; background: rgba(255, 255, 255, 0.98); border: 2px solid var(--fill-accent, #339af0); border-radius: 6px; box-shadow: 0 8px 24px rgba(0,0,0,0.15); display: flex; flex-direction: column; gap: 8px; z-index: 3;">
-            <code style="display:block; padding:8px; background:var(--surface-2, #f1f3f5); border:1px solid var(--border, #e9ecef); border-radius:4px; font-size:11px; color:var(--text-secondary, #495057); word-break:break-all; font-family:monospace; white-space: normal;">${escapedDom}</code>
-            <button class="vd-copy-btn" style="background: var(--text-primary, #212529); color: white; border: none; height: 34px; border-radius: 4px; font-weight: 500; font-size: 13px; cursor: pointer; transition: background 0.2s;" onmouseover="this.style.background='#000'" onmouseout="this.style.background='var(--text-primary, #212529)'">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" style="margin-right:4px; vertical-align:text-bottom"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
-              Copy DOM Structure
+          <div class="ui-panel" style="position: absolute; top: 0; left: 0; display: inline-flex; align-items: stretch; background: var(--fill-accent, #339af0); color: white; font-size: 11px; font-weight: 600; letter-spacing: 0.05em; border-bottom-right-radius: 4px; border-top-left-radius: 1px; white-space: nowrap; z-index: 2; pointer-events: auto;">
+            <span style="padding: 4px 8px;">EMPTY AREA [X: ${finalX}, Y: ${finalY}]</span>
+            <button class="vd-copy-btn" title="Copy the DOM snippet for this area" style="display: inline-flex; align-items: center; gap: 4px; padding: 0 8px; border: none; border-left: 1px solid rgba(255,255,255,0.35); background: transparent; color: white; font: inherit; font-weight: 600; letter-spacing: 0.05em; cursor: pointer; transition: background 0.15s;" onmouseover="this.style.background='rgba(255,255,255,0.18)'" onmouseout="this.style.background='transparent'">
+              <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="9" y="9" width="13" height="13" rx="2" ry="2"></rect><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"></path></svg>
+              Copy
             </button>
           </div>
         `;

@@ -36,3 +36,10 @@ require("../scripts/ts-register.cjs");
 // measured directly. The working approach is the one in scripts/ts-register.cjs:
 // every entry point that can reach a .ts module requires the hook itself, so
 // `node -e` probes reach it through the module they load first.
+
+// The GIT_DIR guard is NOT here, on purpose. This file runs inside jest's
+// sandbox, where `process.env` is a per-file COPY -- deleting from it changes
+// nothing for `execFileSync`, which reads the worker's real environment. It
+// lives in tests/global-setup.cjs, which runs in the parent process before any
+// worker exists, so the workers are born without the variables. Verified: with
+// the guard here, `git add` in a test still tried to lock this repo's index.

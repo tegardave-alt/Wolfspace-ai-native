@@ -1,3 +1,15 @@
+// probe.js — startup timing for the desktop app: what took how long, printed
+// as it happens.
+//
+// ROLE IN THE SYSTEM. The launch path is a chain of things that each look
+// instant and together were not — this repo cut startup from 1071 ms to 314 ms
+// by reading this output. Anything slower than WOLFSPACE_PROBE_SLOW (default
+// 50 ms) is called out; set WOLFSPACE_PROBE=0 to silence it entirely.
+//
+// CONNECTS TO
+//   imports  perf_hooks
+//   used by  electron/main.ts, which also puts it on global.__probe so code
+//            loaded later can time itself without threading it through
 const { performance } = require("perf_hooks");
 
 const TIMING_ON = process.env.WOLFSPACE_PROBE !== "0";

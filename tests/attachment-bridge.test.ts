@@ -391,11 +391,18 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
   test("KEDUA permukaan mengirim tampilan terpisah dari teks model", () => {
     // Dua permukaan lagi. Yang pertama Composer, yang kedua layar pemilih
     // proyek — dan pesan PERTAMA sebuah sesi justru lewat yang kedua.
-    expect(baca("../public/app/Components.tsx")).toContain(
-      "onSend(fullText, { text: v, attachments:",
+    // ASSERTED AS A SHAPE, not as one exact line. The literal form broke the
+    // moment a third field (fileRefs, for files dragged in from an editor tab)
+    // was added between `text` and `attachments` — while the property being
+    // guarded, that the display payload travels SEPARATELY from the model text,
+    // was untouched. A test that pins the character sequence rather than the
+    // rule goes red for edits that do not break it, and prettier reflowing the
+    // call would have done the same.
+    expect(baca("../public/app/Components.tsx")).toMatch(
+      /onSend\(fullText, \{[\s\S]{0,200}?text: v,[\s\S]{0,200}?attachments:/,
     );
-    expect(baca("../public/app/Screens.tsx")).toContain(
-      "onStart(fullText, chosenPath, { text: v, attachments:",
+    expect(baca("../public/app/Screens.tsx")).toMatch(
+      /onStart\(fullText, chosenPath, \{[\s\S]{0,200}?text: v,[\s\S]{0,200}?attachments:/,
     );
   });
 
@@ -410,10 +417,19 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
     );
   });
 
+  // THE .msg-att* CARDS ARE GONE, DELIBERATELY. A SENT attachment now renders
+  // the very same <AttachmentChip> as the composer (the .lam* classes), minus
+  // the remove button — before, one file looked like two different things
+  // either side of pressing send. What these two tests guard has not changed: a
+  // FAILED handoff must look failed, and the card must really have styles.
   test("lampiran yang GAGAL diserahkan terlihat gagal, bukan diam-diam hilang", () => {
     const c = baca("../public/app/Components.tsx");
     expect(c).toContain("ok: !!a.attId");
-    expect(c).toContain('"msg-att" + (a.ok ? "" : " err")');
+    // The same chip, forced into its error state when the handle never
+    // arrived — not an ordinary chip that looks perfectly fine.
+    expect(c).toContain(
+      'a.ok ? a : { ...a, status: "error", error: "Handoff failed" }',
+    );
     // Dan teks yang dikirim ke model pun menyebutnya, supaya model tak
     // menunggu lampiran yang tak pernah sampai.
     expect(c).toContain("handoff FAILED");
@@ -424,7 +440,9 @@ describe("lampiran tampil sebagai KARTU, bukan baris teks di gelembung", () => {
       require.resolve("../public/styles.css"),
       "utf8",
     );
-    for (const kelas of [".msg-attachments", ".msg-att", ".msg-att-name"])
+    // The container, the chip, and its error state — the three things
+    // MessageDasar + AttachmentChip actually render on this path.
+    for (const kelas of [".msg-attachments", ".lam", ".lam-nama", ".lam-error"])
       expect(css).toContain(kelas);
   });
 });

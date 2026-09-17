@@ -50,6 +50,7 @@ const BERKAS_MIGRASI = [
   "agent/pseudo-tag-filter.ts",
   "agent/tools.ts",
   "agent/trace.ts",
+  "agent/a2ui.ts",
   "agent/penjaga-agent.ts",
   "agent/perencana-agent.ts",
   "agent/python-agent.ts",
@@ -87,9 +88,17 @@ const BERKAS_MIGRASI = [
   "public/app/AgentSteps.tsx",
   "public/app/CodeBlocks.tsx",
   "public/app/Components.tsx",
+  // app.tsx joined the list once the last seven half-finished translations
+  // were completed — sentences that began in English and ended in Indonesian,
+  // left behind when the migration stopped mid-file.
+  "public/app.tsx",
   "public/app/Config.tsx",
   "public/app/Icons.tsx",
   "public/app/IkonBahasa.ts",
+  "public/app/AgentDiff.ts",
+  "public/app/KomentarKode.ts",
+  "public/app/Lsp.ts",
+  "public/app/MenuTeks.ts",
   "public/app/Model3DViewer.tsx",
   "public/app/Screens.tsx",
   "public/app/Sidebar.tsx",
@@ -99,6 +108,7 @@ const BERKAS_MIGRASI = [
   "public/app/VisualTools.tsx",
   "public/app/globals.d.ts",
   "public/app/usePreviewPanel.tsx",
+  "public/app/A2UI.tsx",
   "scripts/ww.ts",
   "server.ts",
 ];

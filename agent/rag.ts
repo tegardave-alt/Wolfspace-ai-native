@@ -1,15 +1,23 @@
-// ── WOLFSPACE RAG (P1) ──
-// Retrieval for KNOWLEDGE, not code: project memory (run summaries, decisions)
-// plus docs. Code is still searched agentically (grep/glob/read). See the design
-// brief.
+// rag.ts — retrieval over project KNOWLEDGE: run summaries, decisions, docs.
 //
-// P1 = offline, zero-dependency, file-based. A LOCAL hashing embedder (word plus
-// character n-grams -> a normalised vector) behind an embed() interface that can
-// be swapped for a transformer or a cloud one later without touching the store,
-// the tool, or ingest.
+// ROLE IN THE SYSTEM. It deliberately does NOT index code — code is searched
+// agentically with grep/glob/read, which is exact where a vector search is
+// merely close. What this holds is what the agent learned and cannot re-derive
+// by reading a file.
 //
-// Store: ~/.wolfspace/rag/<projectKey>/index.json (one per project, so ww stays
-// isolated).
+// OFFLINE AND ZERO-DEPENDENCY. A local hashing embedder (word plus character
+// n-grams to a normalised vector) sits behind an embed() interface, so a
+// transformer or cloud embedder can replace it later without touching the
+// store, the tool, or ingest. MAX_RECORDS bounds the store at 2000, which is
+// also why it has no entry in agent/anggaran.ts: at that size a query measures
+// about 6 ms.
+//
+// STORE: ~/.wolfspace/rag/<projectKey>/index.json — one per project, so
+// workspaces never see each other's memory.
+//
+// CONNECTS TO
+//   imports  fs, path, os only
+//   used by  agent/tools/index.ts (the rag tool), server.ts (ingest)
 "use strict";
 import * as fs from "fs";
 import * as path from "path";

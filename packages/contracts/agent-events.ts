@@ -1,11 +1,16 @@
-// Wire shapes emitted by the two streaming channels, as they actually exist in
-// the running code — not as they were once designed. Field names (t, c, m, ...)
-// match the wire format verbatim; this describes what ships, it does not redesign
-// it. Redesign happens when callers migrate to TypeScript, not here.
+// agent-events.ts — the shapes that actually cross the two streaming channels
+// between backend and renderer.
 //
-// tests/kontrak-agent-events.test.js keeps this file honest: it extracts the
-// emitted event names from the backend and compares them against the unions
-// below, so a new backend event cannot land without appearing here.
+// ROLE IN THE SYSTEM. It DESCRIBES the live wire format, it does not redesign
+// it: the terse field names (t, c, m, ...) are verbatim, because renaming one
+// would break the renderer. Redesign happens when callers migrate, not here.
+//
+// tests/kontrak-agent-events.test.js keeps it honest by extracting the event
+// names the backend really emits and comparing them with the unions below, so a
+// new backend event cannot land without appearing here.
+//
+// CONNECTS TO
+//   used by  packages/contracts/ipc.ts, and through it electron/preload.ts
 
 export interface TodoItem {
   content: string;
@@ -38,6 +43,42 @@ export type SelfAgentStreamEvent =
   | { t: "todos"; todos: TodoItem[]; thread_id?: string }
   | { t: "step"; n: number | string; thread_id?: string }
   | { t: "tok"; c: string; thread_id?: string }
+  /**
+   * Token accounting for the run so far, emitted after every model call.
+   *
+   * NOT the same thing as `tok`, despite the name: that one carries a chunk of
+   * streamed TEXT, this one carries the provider's own usage report. The counts
+   * are already summed across the run's steps.
+   *
+   * Absent entirely when the provider reports no usage — an OpenAI-compatible
+   * endpoint that ignores stream_options, for instance. A zero would read as a
+   * free turn, so nothing is emitted rather than a number nobody can trust.
+   *
+   * `anggaran` is the effort mode's Context Token Budget, which the agent
+   * already states in the system prompt. It is deliberately not a model context
+   * window: this repo has no honest table of those.
+   */
+  | {
+      t: "usage";
+      masuk: number;
+      keluar: number;
+      cacheBaca?: number;
+      cacheTulis?: number;
+      panggilan: number;
+      model?: string;
+      provider?: string;
+      anggaran?: number;
+      /**
+       * The figures are ESTIMATED, not the provider's own.
+       *
+       * True while a call is still streaming: exact usage does not exist until
+       * a request finishes, so the live count is derived from bytes sent and
+       * characters received. A settled report replaces it, and the UI marks
+       * the difference so an estimate is never read as a measurement.
+       */
+      taksiran?: boolean;
+      thread_id?: string;
+    }
   | {
       t: "thought";
       tool?: string;
@@ -54,8 +95,36 @@ export type SelfAgentStreamEvent =
       path?: string;
       thread_id?: string;
     }
+  | {
+      // A restorable snapshot, taken before each edit by agent/tools/index.ts.
+      // NOT the same as t:"backup", which carries a _agent_backups directory
+      // that POST /api/rollback cannot restore — see _emitCheckpoint there.
+      t: "checkpoint";
+      id: string;
+      label?: string;
+      files?: number;
+      thread_id?: string;
+    }
   | { t: "hitl"; request: HitlRequestPayload; thread_id: string }
-  | { t: "ask"; question?: string; choices?: string[]; thread_id?: string }
+  | {
+      t: "ask";
+      question?: string;
+      choices?: string[];
+      /**
+       * A structured form, when the agent needs several answers at once.
+       * Normalised in agent/tools/index.ts BEFORE it is emitted — the model
+       * chooses what to ask, never how it is drawn.
+       */
+      fields?: {
+        name: string;
+        label: string;
+        type: "text" | "number" | "select" | "boolean";
+        options?: string[];
+        required?: boolean;
+        placeholder?: string;
+      }[];
+      thread_id?: string;
+    }
   | {
       t: "adone";
       hitlPending?: boolean;

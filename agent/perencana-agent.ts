@@ -1,21 +1,18 @@
-// ── The planner, as ONE implementation with two callers ──
+// perencana-agent.ts — builds the short checklist the agent works from, as ONE
+// implementation both orchestrators call.
 //
-// The JS loop (agent/self_agent.ts) and the Python graph (services/agent-python)
-// both need a short checklist before work starts, and both were getting it from
-// different places: self_agent built one inline, while the Python path answered
-// its `__plan__` pseudo-tool with a three-line stub that always returned an EMPTY
-// checklist.
+// ROLE IN THE SYSTEM. The checklist is ground truth re-injected at every step:
+// it stops the agent redoing finished work, and because failures are recorded
+// against its items it also carries "already tried, already failed" without the
+// model having to remember. Both loops need it, and both used to get it
+// elsewhere — self_agent built one inline while the Python path answered its
+// `__plan__` pseudo-tool with a stub that always returned an EMPTY checklist,
+// losing the anchor exactly where long runs need it most. Same reasoning as
+// agent/penjaga-agent.ts: one implementation, two callers.
 //
-// An empty checklist is not a small difference. The checklist is the ground truth
-// re-injected at every step — it is what stops the agent redoing finished work,
-// and since failures are recorded against items, it is also what carries "already
-// tried, already failed" without the model having to remember it. Running the
-// Python orchestrator without one meant losing the anchor exactly where it
-// matters most.
-//
-// Same reasoning as agent/penjaga-agent.ts: two copies of a decision is the drift
-// this repo has been bitten by before, and the copy is always the one that
-// drifts.
+// CONNECTS TO
+//   imports  ./cloud (the planning model call), ./penjaga-agent
+//   used by  agent/self_agent.ts, agent/python-agent.ts
 
 const penjaga = require("./penjaga-agent.ts");
 
@@ -23,7 +20,89 @@ const penjaga = require("./penjaga-agent.ts");
 export const MAKS_LANGKAH = 3;
 
 /** Used when the model returns nothing usable. The run continues regardless. */
-export const RENCANA_FALLBACK = "Jalankan tugas user.";
+// Neutral on purpose: it is the line shown when NO planner answered, so
+// there is no request-language signal to follow yet. Matched to the request
+// by fallbackUntuk() below.
+export const RENCANA_FALLBACK = "Do the user's task.";
+export const RENCANA_FALLBACK_ID = "Kerjakan tugas pengguna.";
+
+/**
+ * Is the request written in Indonesian? A short word list is enough: the
+ * decision only picks a language for the checklist, and a wrong guess costs
+ * one line in the other language, not a wrong action.
+ */
+export function permintaanIndonesia(teks: string): boolean {
+  const t = " " + String(teks || "").toLowerCase() + " ";
+  const id = [
+    "buat",
+    "buatkan",
+    "bikin",
+    "tolong",
+    "saya",
+    "aku",
+    "dan",
+    "yang",
+    "untuk",
+    "dengan",
+    "tidak",
+    "jangan",
+    "perbaiki",
+    "ubah",
+    "tambah",
+    "tambahkan",
+    "hapus",
+    "cek",
+    "periksa",
+    "jalankan",
+    "kenapa",
+    "bagaimana",
+    "sebuah",
+    "halaman",
+    "berkas",
+    "folder",
+    "di",
+    "ke",
+    "dari",
+    "ini",
+    "itu",
+  ];
+  const en = [
+    "the",
+    "and",
+    "make",
+    "create",
+    "build",
+    "fix",
+    "change",
+    "add",
+    "remove",
+    "please",
+    "check",
+    "run",
+    "why",
+    "how",
+    "with",
+    "without",
+    "file",
+    "page",
+    "this",
+    "that",
+    "into",
+    "from",
+    "a ",
+    "an ",
+  ];
+  const skor = (kata: string[]) =>
+    kata.reduce((n, k) => n + (t.includes(" " + k + " ") ? 1 : 0), 0);
+  return skor(id) > skor(en);
+}
+
+/** The fallback line in the request's language. */
+export function fallbackUntuk(permintaan: string): string {
+  return permintaanIndonesia(permintaan)
+    ? RENCANA_FALLBACK_ID
+    : RENCANA_FALLBACK;
+}
 
 /** How many providers to try before giving up on planning entirely. */
 export const MAKS_PERCOBAAN_PROVIDER = 4;
@@ -41,8 +120,27 @@ export const MAKS_PERCOBAAN_PROVIDER = 4;
  * next key. Collapsing the two would silently disable fallback for dead keys —
  * and on a real run here, 8 of the 10 keys in CLOUD_KEYS were dead when measured.
  */
+/*
+ * 410, 402 and 451 were MISSING, and each of them is the clearest possible
+ * reason to reach for the next key rather than to give up.
+ *
+ * FOUND BY AUDIT, and 410 was found first in a real failure: GitHub Models is
+ * being retired and answers
+ *
+ *   github 410: {"code":"github_models_retirement_brownout"}
+ *
+ * `github` is also the FIRST entry in CLOUD_KEYS, so on a run where the active
+ * provider failed for any reason, the fallback picked github, took the 410 as
+ * final, and stopped -- with gemini, openrouter, puter and qwen all holding
+ * keys and two of the four attempts unused. Measured: dicoba = [opencode,
+ * github], then the chain ended.
+ *
+ * 402 (payment required) and 451 (unavailable for legal reasons) say the same
+ * thing in different words: THIS provider will not serve this caller. They are
+ * the same class as the 401 and 403 already on the list.
+ */
 const _POLA_GANTI_PROVIDER =
-  /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|403|401|RegionError|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
+  /ECONNRESET|ETIMEDOUT|EPIPE|socket hang up|timeout|EAI_AGAIN|network|ECONNREFUSED|ENOTFOUND|503|404|429|403|401|410|402|451|RegionError|too busy|Service Unavailable|service_unavailable|Rate limit|FreeUsageLimit|insufficient_quota/i;
 
 export function layakGantiProvider(e: unknown): boolean {
   const m = (e as any)?.message ?? e ?? "";
@@ -61,11 +159,23 @@ export function layakGantiProvider(e: unknown): boolean {
  * checklist is shown to the user verbatim.
  */
 export function promptRencana(permintaan: string): string {
+  // The instruction is English; the ANSWER follows the request. The old
+  // prompt was written in Indonesian, and the model took that as the
+  // language to answer in -- an English request got an Indonesian
+  // checklist. Saying it outright is what makes the steps match the user.
+  const bahasa = permintaanIndonesia(permintaan)
+    ? "Write every step in Indonesian, the language of the request."
+    : "Write every step in the SAME language as the request (English for an English request).";
   return (
-    "Anda adalah AI Planner. Berdasarkan permintaan user, buat checklist SANGAT " +
-    'SINGKAT (maksimal 3 langkah). Tiap langkah di baris baru diawali "- ". ' +
-    "JANGAN detail — langsung ke inti tugas. Jangan tambahkan teks lain.\n\n" +
-    "Permintaan: " +
+    "You are a planner. From the user's request, write a VERY SHORT checklist " +
+    '(at most 3 steps). One step per line, each starting with "- ". No detail - ' +
+    "straight to the heart of the task. Add no other text. If the request is to " +
+    "CREATE something new (a web page, a site, an app, a script) and names no " +
+    "existing file, the first step MUST write the file - not explore or look " +
+    "for an approach. " +
+    bahasa +
+    "\n\n" +
+    "Request: " +
     permintaan
   );
 }
@@ -153,7 +263,7 @@ export async function rencanakan(
   }
 
   const checklist = reply ? parseChecklist(reply.content) : [];
-  if (checklist.length === 0) checklist.push(RENCANA_FALLBACK);
+  if (checklist.length === 0) checklist.push(fallbackUntuk(permintaan));
 
   return { checklist, cloud: aktif, dicoba };
 }
@@ -161,6 +271,9 @@ export async function rencanakan(
 module.exports = {
   MAKS_LANGKAH,
   RENCANA_FALLBACK,
+  RENCANA_FALLBACK_ID,
+  permintaanIndonesia,
+  fallbackUntuk,
   MAKS_PERCOBAAN_PROVIDER,
   layakGantiProvider,
   promptRencana,

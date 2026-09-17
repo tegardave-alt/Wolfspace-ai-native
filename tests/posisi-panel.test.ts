@@ -101,7 +101,7 @@ describe("dua invarian yang mencegah panel terdorong turun", () => {
     expect(t).toMatch(/width: "100%"/); // bottom -> fills the row, forcing a wrap
     // The order now comes from _orderPanel/_orderPembagi rather than an inline
     // number — see tests/posisi-kiri.test.js for the table.
-    expect(t).toMatch(/order: _orderPanel\(sisi\)/);
+    expect(t).toMatch(/order: _orderPanel\(sisi(?:, nama)?\)/);
   });
 });
 
@@ -126,13 +126,17 @@ describe("ukuran dihitung per sumbu, tidak saling potong", () => {
     // The old shape named each panel in four separate formulas. A third panel
     // (Code) meant editing all four and hoping none was missed — and a miss
     // here does not fail to compile, it just produces the wrong number.
+    // Each entry now carries its NAME too, so a side can order its panels
+    // and a splitter can find its own panel (tests/pembagi-dua-panel.test.ts).
     expect(T).toMatch(
-      /terminalOpen && \{ sisi: posisi\.terminal, pct: terminalPct \}/,
+      /terminalOpen && \{\s*nama: "terminal",\s*sisi: posisi\.terminal,\s*pct: terminalPct,?\s*\}/,
     );
     expect(T).toMatch(
-      /panelOpen && \{ sisi: posisi\.preview, pct: panelPct \}/,
+      /panelOpen && \{\s*nama: "preview",\s*sisi: posisi\.preview,\s*pct: panelPct,?\s*\}/,
     );
-    expect(T).toMatch(/logicOpen && \{ sisi: posisi\.logic, pct: logicPct \}/);
+    expect(T).toMatch(
+      /logicOpen && \{\s*nama: "logic",\s*sisi: posisi\.logic,\s*pct: logicPct,?\s*\}/,
+    );
     expect(APP).not.toMatch(/const _terminalKanan =/);
     expect(APP).not.toMatch(/const _previewBawah =/);
   });
@@ -153,7 +157,7 @@ describe("satu penggeser untuk dua sumbu", () => {
     // could move to the bottom, dragging the horizontal divider resized using a
     // coordinate from the wrong axis.
     expect(APP).toMatch(
-      /const geserPembagi = \(sumbu(?:: \w+)?, set(?:: \w+)?\)/,
+      /const geserPembagi = \(sumbu(?:: \w+)?, set(?:: \w+)?(?:, nama\?: \w+)?\)/,
     );
     expect(APP).toMatch(/sumbu === "x" \? ev\.clientX : ev\.clientY/);
     expect(APP).not.toMatch(/const onPanelDividerDown/);
@@ -592,8 +596,8 @@ describe("Code bisa dibagi tempat dengan panel lain", () => {
   test("dipakaikan gaya panel dan pembagi yang SAMA dengan yang lain", () => {
     const i = bersih2.indexOf("{logicOpen && (");
     const blok = bersih2.slice(i, i + 1200);
-    expect(blok).toMatch(/gayaPanel\(posisi\.logic, logicPct\)/);
-    expect(blok).toMatch(/gayaPembagi\(posisi\.logic\)/);
+    expect(blok).toMatch(/gayaPanel\(posisi\.logic, logicPct, "logic"\)/);
+    expect(blok).toMatch(/gayaPembagi\(posisi\.logic, "logic"\)/);
     expect(blok).toMatch(/setLogicPct/);
     // Pembagi mendatar kalau ia di bawah — sama seperti terminal dan preview.
     expect(blok).toMatch(
@@ -688,7 +692,7 @@ describe("Run menjalankan berkas di terminal", () => {
   test("Run MENYIMPAN dulu, dan berhenti kalau simpan gagal", () => {
     // Menjalankan tanpa menyimpan berarti menjalankan isi berkas yang LAMA:
     // keluarannya tak cocok dengan yang terlihat di editor, tanpa petunjuk.
-    expect(bersihA).toMatch(/const ok = await simpan\(\)/);
+    expect(bersihA).toMatch(/const ok = await save\(\)/);
     expect(bersihA).toMatch(/if \(!ok\) return/);
     // simpan() harus benar-benar melaporkan hasilnya, bukan void.
     //

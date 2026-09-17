@@ -1,2 +1,8 @@
 npx lint-staged
+# Git exports GIT_DIR / GIT_INDEX_FILE to hooks. With them set, every `git`
+# a test runs in a temp directory is redirected to THIS repository — one run
+# turned the shared config bare and committed a tree that deleted 811 files.
+# tests/setup-jest.cjs strips them inside jest too; this keeps the hook honest
+# for anything that runs outside jest.
+unset GIT_DIR GIT_INDEX_FILE GIT_PREFIX GIT_WORK_TREE
 npm test

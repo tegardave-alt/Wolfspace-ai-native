@@ -1,29 +1,32 @@
 /**
- * Watches how long the event loop is held in one unbroken stretch.
+ * pemantau-blokir.ts — the instrument for agent/anggaran.ts: it watches how
+ * long the event loop is actually held in one unbroken stretch.
  *
- * WHY THIS IS THE PIECE THAT WAS MISSING. Everything else in agent/anggaran.ts
- * is a ceiling chosen from a measurement taken once, by hand, on one machine.
- * That is enough to pick a number and not enough to know whether the number is
- * right, because nothing observed the app while it was actually being used. The
- * hang threshold was established at 5000 ms and then had no instrument at all —
- * a budget nobody could see being spent.
+ * CONNECTS TO
+ *   imports  perf_hooks, ./anggaran (the bands it reports against)
+ *   used by  agent/safe-edit.ts, agent/snapshot.ts, agent/web.ts,
+ *            agent/ukur-blok.ts — the paths that can block longest
  *
- * WHAT IT MEASURES, AND WHY THAT AND NOT CPU OR MEMORY. In desktop mode the
- * backend runs in-process in Electron's main process, so the thread that draws
- * the window is the same thread that runs agent/. Windows marks a window "Not
- * Responding" after 5000 ms without the message queue being drained. Neither CPU
- * load nor heap size decides that; the length of one uninterrupted block does.
+ * WHY IT WAS THE MISSING PIECE. Every ceiling in anggaran.ts came from one
+ * hand-run measurement on one machine. That is enough to choose a number and
+ * not enough to know it is right, because nothing watched the app in use: the
+ * 5000 ms budget had no instrument at all.
  *
- * CONSECUTIVE, NOT CUMULATIVE. This is why `max` is the number that matters and
- * an average would mislead: thirty 150 ms edits total 4.5 s and freeze nothing,
- * because the queue drains between them. One 5 s stretch freezes the window.
- * A mean over that same window reports 150 ms either way.
+ * WHY LOOP DELAY AND NOT CPU OR MEMORY. In desktop mode the backend runs in
+ * Electron's main process, so the thread drawing the window is the thread
+ * running agent/. Windows declares "Not Responding" after 5000 ms without the
+ * message queue draining — decided by the length of one uninterrupted block,
+ * not by CPU load or heap size.
  *
- * The measurement itself is perf_hooks' own loop-delay histogram — a timer
- * scheduled every `resolusi` ms, recording how late it actually fired. When the
- * loop is blocked the timer cannot run, so the lateness IS the block. It is
- * sampled in C++ and costs nothing measurable, which matters: an instrument that
- * sat in the queue it is trying to measure would be measuring itself.
+ * CONSECUTIVE, NOT CUMULATIVE, which is why `max` is the number that matters:
+ * thirty 150 ms edits total 4.5 s and freeze nothing because the queue drains
+ * between them, while one 5 s stretch freezes the window. A mean reports 150 ms
+ * either way.
+ *
+ * The measurement is perf_hooks' loop-delay histogram — a timer scheduled every
+ * `resolusi` ms recording how late it fired; when the loop is blocked the timer
+ * cannot run, so the lateness IS the block. Sampled in C++, so the instrument
+ * does not sit in the queue it is measuring.
  */
 
 import { monitorEventLoopDelay } from "perf_hooks";

@@ -166,7 +166,11 @@ describe("kendali di UI", () => {
   test("there is a new-terminal button and a shell picker", () => {
     expect(LAYAR).toMatch(/title="New Terminal"/);
     expect(LAYAR).toMatch(/title="Choose shell"/);
-    expect(LAYAR).toMatch(/SHELL_PILIHAN\.map/);
+    // The picker now renders detected shells, falling back to SHELL_PILIHAN
+    // when the /api/terminal/shells fetch has not returned yet.
+    expect(LAYAR).toMatch(
+      /daftarShell\.length \? daftarShell : SHELL_PILIHAN\)\.map/,
+    );
   });
 
   test("there is a split control", () => {

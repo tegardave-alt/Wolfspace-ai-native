@@ -406,11 +406,21 @@ describe("kurungan view browser dilonggarkan seperlunya saja", () => {
     S.indexOf("function browserAksi("),
   );
 
-  test("sandbox dimatikan HANYA untuk view ini, bukan seluruh aplikasi", () => {
+  test("sandbox: view pakai flag-nya, dan --no-sandbox app-wide untuk OOPIF iframe lintas-origin", () => {
+    // Perubahan yang DIBUKTIKAN belakangan: sandbox:false pada view saja cukup
+    // untuk halaman ATAS, tapi TIDAK untuk iframe lintas-origin (out-of-process
+    // -- Google Stitch dkk). OOPIF butuh proses renderer sendiri yang Chromium
+    // coba jalankan ber-sandbox; mesin ini tak bisa, jadi frame-nya diam kosong.
+    // --no-sandbox (di-gerbang WOLFSPACE_BROWSER_SANDBOX) membuat proses anak itu
+    // jalan. Lihat electron/main.ts + tests/browser-user-agent.test.ts.
     expect(t).toMatch(
       /sandbox: process\.env\.WOLFSPACE_BROWSER_SANDBOX === "1"/,
     );
-    expect(M).not.toMatch(/appendSwitch\("no-sandbox"\)/);
+    expect(M).toMatch(/appendSwitch\("no-sandbox"\)/);
+    // Tetap di-gerbang: mesin yang sandbox-nya sehat bisa memakainya kembali.
+    expect(S).toMatch(
+      /WOLFSPACE_BROWSER_SANDBOX !== "1"[\s\S]{0,120}no-sandbox/,
+    );
   });
 
   test("yang menahan risikonya TIDAK ikut dilonggarkan", () => {

@@ -1,26 +1,28 @@
 #!/usr/bin/env node
-// Peluncur WOLFSPACE dengan backend di dalam WSL.
+// wsl-app.cjs — launches WOLFSPACE with its backend running inside WSL.
 //
-// KENAPA ADA. Pengurungan jaringan zona kapabilitas (`unshare -n`) hanya berlaku
-// di Linux — model permission Node tak punya dimensi jaringan, dan aturan
-// firewall Windows bersifat per-executable sehingga tak bisa membedakan proses
-// zona dari host (keduanya node.exe yang sama). Jadi satu-satunya cara memakainya
-// di Windows adalah menjalankan backend di WSL dan mengarahkan UI ke sana.
+// ROLE IN THE SYSTEM. Network containment for capability zones (`unshare -n`)
+// exists only on Linux: Node's permission model has no network dimension, and
+// Windows firewall rules are per-executable so they cannot tell a zone process
+// from its host (both are the same node.exe). Running the backend in WSL and
+// pointing the UI at it is therefore the only way to have that containment on
+// Windows.
 //
-// Dua hal yang membuat itu merepotkan bila dikerjakan manual, dan keduanya
-// ditangani di sini:
+// Two things make doing this by hand awkward, and both are handled here:
 //
-//   1. WSL MEMATIKAN DISTRO saat sesi terakhir tertutup. Server yang di-nohup
-//      pun ikut mati. Karena itu proses wsl.exe di bawah TIDAK dilepas — ia
-//      ditahan selama app hidup, dan itulah yang menjaga distro tetap menyala.
-//   2. IP DISTRO BERUBAH tiap restart, dan localhost forwarding WSL2 terbukti
-//      tidak andal (terukur: sempat bekerja lalu putus di tengah sesi padahal
-//      server tetap melayani dari dalam distro). Jadi IP dideteksi tiap kali
-//      dijalankan, bukan dihardcode atau diasumsikan 127.0.0.1.
+//   1. WSL SHUTS THE DISTRO DOWN when the last session closes, taking even a
+//      nohup'd server with it. So the wsl.exe process below is NOT detached —
+//      it is held for as long as the app lives, and that is what keeps the
+//      distro up.
+//   2. THE DISTRO'S IP CHANGES on every restart, and WSL2's localhost
+//      forwarding proved unreliable (measured: it worked, then dropped
+//      mid-session while the server kept serving from inside the distro). So
+//      the IP is detected on every run rather than hardcoded or assumed to be
+//      127.0.0.1.
 //
-// ELECTRON_RUN_AS_NODE dibuang dengan alasan sama seperti scripts/app.cjs: bila
+// ELECTRON_RUN_AS_NODE is cleared for the same reason as in scripts/app.cjs: if
 // ter-set, Electron menjalankan main.js sebagai Node biasa sehingga
-// require('electron') tak memberi API dan app-nya undefined.
+// it is set, require("electron") returns no API and `app` is undefined.
 "use strict";
 const { spawn, execFileSync } = require("child_process");
 const http = require("http");
@@ -70,29 +72,30 @@ try {
 
 // ── 1b. Sinkronkan kode ke WSL SEBELUM menyalakan ──
 //
-// Tanpa ini, salinan di WSL adalah snapshot yang membeku di saat terakhir
-// di-deploy — dan pertanyaan "yang saya jalankan ini versi yang mana?" jadi tak
-// bisa dijawab tanpa membandingkan checksum. Terbukti terjadi: setelah beberapa
-// commit, berkas di WSL berbeda md5 dengan yang di Windows.
+// Without this the copy inside WSL is a snapshot frozen at the last deploy, and
+// "which version am I actually running?" cannot be answered without comparing
+// checksums. It really happened: after a few commits the files in WSL had a
+// different md5 from the ones on Windows.
 //
-// Yang disalin adalah berkas TERLACAK di working tree, bukan HEAD: saat
-// mengembangkan, yang ingin dijalankan adalah kode yang sedang dikerjakan,
-// termasuk perubahan yang belum di-commit. node_modules TIDAK ikut — biner
-// native berbeda per platform, dan menimpanya akan merusak pemasangan di WSL.
+// What is copied is the TRACKED files in the working tree, not HEAD: while
+// developing, the code you want to run is the code you are working on,
+// uncommitted changes included. node_modules is NOT copied — native binaries
+// differ per platform, and overwriting them would break the WSL install.
 function winKeWsl(p) {
   const m = /^([A-Za-z]):[\\/](.*)$/.exec(p);
   if (!m) return null;
   return "/mnt/" + m[1].toLowerCase() + "/" + m[2].replace(/\\/g, "/");
 }
 
-// Identitas isi working tree: sha1 dari (path, ukuran, mtime) tiap berkas
+// An identity for the working tree's contents: sha1 over (path, size, mtime) of
+// every file
 // terlacak.
 //
-// SENGAJA bukan commit hash. Yang disinkronkan adalah working tree — termasuk
-// perubahan yang belum di-commit — jadi commit hash akan melaporkan "sama"
-// padahal isinya berbeda, tepat pada kasus yang paling sering terjadi saat
-// mengembangkan. Membaca isi tiap berkas lebih akurat lagi, tapi mtime+ukuran
-// sudah cukup membedakan suntingan nyata dan jauh lebih murah untuk ~600 berkas.
+// DELIBERATELY not a commit hash. What is synchronised is the working tree,
+// uncommitted changes included, so a commit hash would report "identical" while
+// the contents differ — exactly the case that occurs most often while
+// developing. Hashing file contents would be more accurate still, but size and
+// mtime separate real edits well enough and cost far less over ~600 files.
 function versiKode(repo, berkas) {
   const h = require("crypto").createHash("sha1");
   for (const f of berkas) {
@@ -106,8 +109,8 @@ function versiKode(repo, berkas) {
   return h.digest("hex").slice(0, 12);
 }
 
-// Berkas terlacak + versinya — dihitung SEBELUM apa pun dinyalakan, karena
-// keputusan "pakai ulang atau nyalakan ulang" bergantung padanya.
+// The tracked files and their version, computed BEFORE anything is started,
+// because the "reuse or restart" decision depends on it.
 const REPO_WIN = path.resolve(path.join(__dirname, ".."));
 function rencanaSinkron() {
   if (process.env.WOLFSPACE_WSL_NO_SYNC === "1") {
@@ -140,15 +143,16 @@ function sinkronkan(rencana) {
   const listWin = path.join(os.tmpdir(), "wolfspace-sync-list.txt");
   fs.writeFileSync(listWin, berkas.join("\n") + "\n", "utf8");
   const listWsl = winKeWsl(listWin);
-  // Skrip DITULIS KE BERKAS, tidak dioper sebagai `sh -c "<perintah panjang>"`.
+  // The script is WRITTEN TO A FILE rather than passed as `sh -c "<long
+  // command>"`.
   //
-  // Versi inline-nya melapor SUKSES tapi tak menghapus apa pun: perintahnya
-  // melewati penggabungan baris-perintah Windows lalu wsl.exe sebelum sampai ke
-  // sh, dan tanda kutip di dalam loop tak selamat. Dijalankan dari berkas, skrip
-  // yang sama persis bekerja — diverifikasi manual, 3 berkas terhapus.
+  // The inline version reported SUCCESS and deleted nothing: the command passed
+  // through Windows command-line joining and then wsl.exe before reaching sh,
+  // and the quotes inside the loop did not survive. Run from a file, the exact
+  // same script works — verified by hand, 3 files removed.
   //
-  // Ini pelajaran yang berulang sepanjang pengerjaan ini: begitu sebuah perintah
-  // punya kutip bersarang, oper lewat berkas.
+  // A lesson that recurred throughout this work: as soon as a command has
+  // nested quotes, pass it through a file.
   const skripWin = path.join(os.tmpdir(), "wolfspace-sync.sh");
   const skrip = [
     "#!/bin/sh",
@@ -158,11 +162,11 @@ function sinkronkan(rencana) {
     `cd ${WSL_DIR}`,
     `sort ${listWsl} > /tmp/ws-keep.txt`,
     // Pengecualian penghapusan — semuanya WAJIB, dan masing-masing punya alasan:
-    //   node_modules  biner native, berbeda per platform, tak pernah terlacak
-    //   .git          bukan berkas terlacak tapi wajib ada
+    //   node_modules  native binaries, platform-specific, never tracked
+    //   .git          not a tracked file, but it has to be there
     //   .wolfspace    quarantine + snapshots = state rollback agent; menghapusnya
-    //                 tiap sinkron akan membuang riwayat pemulihannya
-    //   stempel versi & kunci cloud & pid MCP = runtime, bukan kode
+    //                 every sync would throw its recovery history away
+    //   version stamp, cloud keys, MCP pids = runtime state, not code
     "find . -type f \\",
     "  -not -path './node_modules/*' -not -path './.git/*' \\",
     "  -not -path './.wolfspace/*' -not -path './config/.mcp-pids/*' \\",
@@ -170,10 +174,11 @@ function sinkronkan(rencana) {
     "  | sed 's|^\\./||' | sort > /tmp/ws-ada.txt",
     "comm -13 /tmp/ws-keep.txt /tmp/ws-ada.txt > /tmp/ws-buang.txt",
     'while IFS= read -r f; do [ -n "$f" ] && rm -f "$f"; :; done < /tmp/ws-buang.txt',
-    // Direktori kosong ikut dipangkas. Menghapus berkas saja menyisakan cangkang
+    // Empty directories are pruned too. Removing only files leaves a shell
     // folder — terukur 98 setelah pembersihan pertama — dan folder kosong bernama
-    // `vscode-extension-fork` tetap memberi kesan sesuatu masih ada di sana.
-    // Pengecualiannya sama; `|| true` karena find kehabisan direktori bukan galat.
+    // like `vscode-extension-fork` still suggesting something is in there. The
+    // exclusions are the same; `|| true` because find running out of
+    // directories is not an error.
     "find . -type d -empty \\",
     "  -not -path './node_modules/*' -not -path './.git/*' \\",
     "  -not -path './.wolfspace/*' -not -path './config/*' \\",
@@ -183,14 +188,14 @@ function sinkronkan(rencana) {
   const skripWsl = winKeWsl(skripWin);
 
   try {
-    // tar dijalankan DI DALAM WSL: menulis langsung ke filesystem Linux jauh
-    // lebih cepat daripada menyalin lewat lapisan /mnt per berkas.
+    // tar runs INSIDE WSL: writing straight to the Linux filesystem is far
+    // faster than copying file by file across the /mnt layer.
     execFileSync("wsl.exe", ["-d", DISTRO, "--", "sh", skripWsl, "--abaikan"], {
       stdio: "ignore",
       timeout: 180000,
     });
-    // Stempel DITULIS SESUDAH tar berhasil, tidak sebelumnya: kalau sinkronisasi
-    // gagal di tengah, stempel yang sudah terlanjur ada akan berbohong bahwa
+    // The stamp is written AFTER tar succeeds, never before: if the sync fails
+    // half way, a stamp already in place would lie and claim
     // backend memakai kode terbaru.
     const stempel = JSON.stringify({
       version: versi,
@@ -217,9 +222,9 @@ function sinkronkan(rencana) {
     );
   }
 }
-// ── 2. Menyalakan server — TAPI hanya kalau memang perlu (lihat alur utama) ──
-// exec agar node menggantikan sh: sinyal dari sini langsung mengenai server,
-// bukan cangkang perantara yang menyisakan node yatim.
+// ── 2. Start the server — but ONLY when it is needed (see the main flow) ────
+// exec so that node replaces sh: a signal from here then reaches the server
+// directly, rather than an intermediate shell that would leave node orphaned.
 let server = null;
 let berhenti = false;
 function nyalakanServer() {
@@ -243,9 +248,9 @@ function nyalakanServer() {
   });
 }
 
-// Hanya menghentikan backend yang KITA nyalakan. Kalau kita memakai ulang milik
-// sesi lain, menutup app ini tak boleh menjatuhkannya — itu justru akan
-// mengubah "jangan bertumpuk" jadi "saling membunuh".
+// Only the backend WE started is stopped. If we reused another session's,
+// closing this app must not take it down — that would turn "do not stack up"
+// into "kill each other".
 const bunuhServer = () => {
   berhenti = true;
   if (!server) return;
@@ -257,8 +262,8 @@ process.on("exit", bunuhServer);
 process.on("SIGINT", () => process.exit(0));
 process.on("SIGTERM", () => process.exit(0));
 
-// Hentikan backend milik orang lain saat versinya berbeda — lewat PID yang
-// DILAPORKAN /healthz, bukan tebakan dari daftar proses.
+// Stop somebody else's backend when its version differs — using the PID
+// /healthz REPORTS, not one guessed from the process list.
 function hentikanBackendLama(pid) {
   if (!Number.isInteger(pid) || pid <= 1) return false;
   try {
@@ -272,7 +277,7 @@ function hentikanBackendLama(pid) {
   }
 }
 
-// ── 3. IP distro (bukan 127.0.0.1) ──
+// ── 3. The distro's IP (not 127.0.0.1) ──
 function ipDistro() {
   try {
     const out = wslSync("ip -4 addr show eth0");
@@ -283,7 +288,7 @@ function ipDistro() {
   }
 }
 
-// ── 4. /healthz — mengembalikan { version, pid } atau null bila tak menjawab ──
+// ── 4. /healthz — returns { version, pid }, or null when it does not answer ──
 function cekSehat(ip) {
   return new Promise((resolve) => {
     const req = http.get(
@@ -296,8 +301,8 @@ function cekSehat(ip) {
           try {
             resolve(JSON.parse(b));
           } catch (_) {
-            // Backend versi lama menjawab "ok" polos, bukan JSON. Itu bukan
-            // kegagalan — hanya berarti versinya tak bisa dipastikan.
+            // Older backends answer a plain "ok" rather than JSON. That is not
+            // a failure — it only means the version cannot be determined.
             resolve({ ok: true, version: "unknown", pid: null });
           }
         });
@@ -319,9 +324,10 @@ const tunggu = (ms) => new Promise((r) => setTimeout(r, ms));
   const versiTarget = rencana ? rencana.versi : null;
 
   // ── Jaminan SATU server ──
-  // Tanpa ini, tiap peluncuran menambah proses baru dan port bentrok jadi
-  // mekanisme utama — persis yang membuat "matikan proses lama" berubah jadi
-  // bug destruktif kemarin. Keputusannya dibuat SEBELUM apa pun dinyalakan.
+  // Without this, every launch adds another process and a port clash becomes
+  // the governing mechanism — which is exactly what turned "kill the old
+  // process" into a destructive bug. The decision is made BEFORE anything is
+  // started.
   const sehat = ip0 ? await cekSehat(ip0) : null;
   let pakaiUlang = false;
   if (sehat) {

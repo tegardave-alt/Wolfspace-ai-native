@@ -1,17 +1,14 @@
-// ── Resolve where cloud-keys.json lives ──
+// keys-path.ts — decides where cloud-keys.json lives, and nothing else.
 //
-// Keys are PER PROJECT ROOT (the folder containing agent/), not one global file
-// in ~/.wolfspace. Without that, a GitHub clone in another folder would use the
-// API keys of an older installation on the same PC — which feels like data
-// "came with the checkout", when what actually happened is one shared drawer for
-// every copy of the code.
+// ROLE IN THE SYSTEM. Keys are PER PROJECT ROOT (the folder containing agent/),
+// never one global file in ~/.wolfspace. A shared drawer would mean a fresh
+// clone silently using an older installation's API keys — which reads as data
+// arriving with the checkout.
 //
-// The canonical location: <project>/.wolfspace/cloud-keys.json (already in
-// .gitignore)
-//
-// Still OUTSIDE the source tree the agent scans day to day, and still outside
-// git. The sandbox/AppContainer must still refuse to read .wolfspace; this is
-// defence in depth, not an OS boundary.
+// Canonical location: <project>/.wolfspace/cloud-keys.json, already gitignored.
+// That keeps it outside both git and the tree the agent scans day to day. The
+// sandbox must still refuse to read .wolfspace; this is defence in depth, not
+// an OS boundary.
 //
 // Overrides:
 //   WOLFSPACE_KEYS_PATH  = a full file path

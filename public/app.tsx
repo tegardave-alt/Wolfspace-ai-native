@@ -1,4 +1,46 @@
-const { useState, useRef, useEffect, useCallback, useMemo } = React;
+// app.tsx — the App orchestrator: the renderer's top-level component and the
+// state every screen reads from.
+//
+// ── HOW THE RENDERER IS BUILT, AND WHY IT CONSTRAINS EVERY MODULE ──────────
+//
+// There is NO BUNDLER. scripts/build-app.cjs runs esbuild's transform() over
+// each file separately and CONCATENATES the results into public/app.build.js —
+// one file, ONE GLOBAL SCOPE. Three consequences follow, and they are the
+// reason for most of what looks unusual under public/app/:
+//
+//   no import/export   modules see each other as globals, so a top-level name
+//                      declared twice is a real collision
+//   no npm UI packages  anything needing a module graph cannot be used here —
+//                      monaco-languageclient, lucide-react, motion/react and
+//                      @openuidev/react-ui were all ruled out for this reason
+//   ORDER MATTERS       public/index.html lists APP_MODULES, and each is
+//                      prepended before this file in that order
+//
+// React and the other vendored libraries are plain <script> tags in
+// public/index.html, reached as globals (React, ReactDOM, monaco, mermaid,
+// cytoscape, Babel).
+//
+// ── WHERE THINGS LIVE ──────────────────────────────────────────────────────
+//
+//   Config.tsx         the workspace root; loaded FIRST, everything reads it
+//   Icons.tsx          every inline SVG
+//   Views.tsx          list and history views
+//   Components.tsx     chat, composer, top bar, GitHub panel
+//   Screens.tsx        the project picker and other full screens
+//   Sidebar.tsx        the sidebar and its panels
+//   AgentSteps.tsx     the agent activity feed
+//   CodeBlocks.tsx     code blocks, diagrams, the Monaco editor
+//   Lsp.ts             Monaco providers fed by /lsp/* in Node
+//   AgentDiff.ts       the green/red marks where the agent edited code
+//   usePreviewPanel.tsx, Viewport.tsx, VisualTools.tsx, Model3DViewer.tsx
+//
+// The backend is reached two ways: window.WOLFSPACE (Electron IPC, from
+// electron/preload.ts) in the desktop app, and plain HTTP otherwise.
+
+// useLayoutEffect runs BEFORE the browser paints, which is what lets a popup
+// be measured and corrected without the correction being visible.
+const { useState, useRef, useEffect, useLayoutEffect, useCallback, useMemo } =
+  React;
 
 // ── The agent's thread_id survives a page reload ──
 //
@@ -516,7 +558,7 @@ async function streamChat(reqBody: any, onText: any, signal: any) {
     }
   };
   if (IPC) {
-    // Electron IPC � no HTTP
+    // Electron IPC — no HTTP
     await new Promise((resolve: any) => {
       const cancel = IPC.stream("chat", reqBody, handle, resolve);
       if (signal)
@@ -536,7 +578,7 @@ async function streamChat(reqBody: any, onText: any, signal: any) {
   await pumpSSE(r, signal, handle);
   return { text: acc };
 }
-// Self-edit agent: stream the READ/GREP/EDIT/� loop (IPC, or /self-agent over HTTP).
+// Self-edit agent: stream the READ/GREP/EDIT/… loop (IPC, or /self-agent over HTTP).
 async function streamSelfAgent(reqBody: any, onEvent: any, signal: any) {
   if (IPC) {
     await new Promise((resolve: any) => {
@@ -653,6 +695,13 @@ function tsjFileType(name: any, dir: any) {
 // relative and short. The result is [{ name, depth, type }] — intermediate
 // folders are included so the structure is visible, but only along branches
 // leading to a developed file.
+/** <root>/<rel>, unless rel is already absolute (an entry outside the root). */
+function absDari(root: any, rel: any) {
+  const r = String(rel || "");
+  if (/^[a-zA-Z]:\//.test(r) || r.startsWith("/")) return r;
+  return String(root || "").replace(/[\/]+$/, "") + "/" + r;
+}
+
 function buildDevTree(paths: any, root: any, folders: any) {
   const rootN = String(root || "")
     .replace(/\\/g, "/")
@@ -663,7 +712,12 @@ function buildDevTree(paths: any, root: any, folders: any) {
     let s = String(raw || "").replace(/\\/g, "/");
     const sl = s.toLowerCase();
     if (rootN && sl.startsWith(rootN + "/")) s = s.slice(rootN.length + 1);
-    s = s.replace(/^\/+/, "").replace(/^[a-zA-Z]:\//, ""); // drop the drive if not stripped
+    // Outside the root, the path stays absolute -- drive and all. It used to
+    // lose its drive here so that it would LOOK relative, and every such
+    // entry then opened to a 404: <root>/Users/dave/... is nowhere. A path
+    // the tree cannot place under its root is still a real file, and the
+    // editor opens it by its real name.
+    s = s.replace(/^\/+/, "");
     const parts = s.split("/").filter(Boolean);
     if (!parts.length) continue;
     let cur = rootNode;
@@ -730,8 +784,9 @@ function buildDevTree(paths: any, root: any, folders: any) {
   walk(rootNode, 0, "");
   return out;
 }
-/* ── Panel kode di sisi kanan view Logic ──
-   Tata letaknya mengikuti VS Code: pohon berkas di kiri, isi berkas di kanan.
+/* ── The code panel on the right of the Logic view ──
+   Laid out like VS Code: the file tree on the left, the file's contents on the
+   right.
 
    Contents come through /preview-file?raw=1 — not the ordinary preview path,
    which injects a <base> into HTML files so their relative links resolve. That
@@ -767,7 +822,7 @@ function LogicCodePane({
   root,
   rel,
   onRun,
-  onDaftarDebug,
+  onListDebug,
   titikHenti,
   setTitikHenti,
   barisAktif,
@@ -784,6 +839,8 @@ function LogicCodePane({
   fokus,
   onFokus,
   onPecah,
+  // Given ONLY when the explorer is hidden — see the button in the tab bar.
+  onTampilkanExplorer,
   bisaPecah,
   sudahPecah,
   onTutupPecah,
@@ -803,8 +860,8 @@ function LogicCodePane({
   const [kotor, setKotor] = React.useState(false);
   // A ref copy of `kotor`. Run is wrapped in useCallback, and a callback that
   // reads state directly holds the value from the render that created it —
-  // meaning a Run pressed after typing would still see "clean" and
-  // melewatkan simpan tanpa satu pun tanda.
+  // meaning a Run pressed after typing would still see "clean" and skip the
+  // save with nothing at all to show for it.
   const kotorRef = React.useRef(false);
   // Dirty state per file now lives in _kotorBerkas at module scope, beside the
   // shared models: a file is dirty or not, and which pane you are looking
@@ -814,6 +871,10 @@ function LogicCodePane({
   // prop has already changed to the new file before its contents arrive, so
   // saving by `rel` would write the OLD file's contents under the NEW file's name.
   const relRef = React.useRef(rel);
+  // The root, for the same reason: the comment module asks for the file's
+  // absolute path at the moment of a click, long after the editor was made.
+  const rootRef = React.useRef(root);
+  rootRef.current = root;
 
   // ── Titik henti ──
   //
@@ -841,7 +902,8 @@ function LogicCodePane({
     };
   }, [setTitikHenti]);
 
-  // Dekorasi digambar ulang tiap titik henti / baris aktif berubah. Koleksinya
+  // Decorations are redrawn whenever a breakpoint or the active line changes.
+  // The collection is
   // held in a ref so the old set is genuinely replaced rather than stacked —
   // stacking leaves removed breakpoints still visible.
   const hiasRef = React.useRef<any>(null);
@@ -888,55 +950,48 @@ function LogicCodePane({
     window.monacoReady.then((monaco: any) => {
       if (dibuang || !hostRef.current || edRef.current) return;
       pasangSaranPustaka(monaco);
+      // Language servers, when the machine has any. installLsp() asks the
+      // backend which languages the registry covers and registers providers for
+      // all of them — a language with no server installed simply answers null,
+      // which is what Monaco already did for it.
+      installLsp(monaco);
+      // What the agent changes, shown where the code is. Also reloads a file
+      // the agent wrote — the buffer was going stale otherwise, and a manual
+      // save afterwards would have written the old text back over it.
+      installAgentDiff(monaco);
       edRef.current = monaco.editor.create(hostRef.current, {
+        // Everything shared lives in opsiEditor (Config.tsx): the theme, the
+        // bracket colours, the guides, the ghost-text surface. Only what is
+        // genuinely particular to THIS editor is written out below.
+        ...opsiEditor(),
         value: "",
         language: "plaintext",
-        theme: "wolfspace-gelap",
-        automaticLayout: true,
         // Editable. It used to be readOnly, and that is what made this panel
         // read-only — loosening it here is half the fix; the other half is the
         // POST /ww/tulis-berkas route.
         readOnly: false,
         domReadOnly: false,
-        // false, the same as this app's two other Monaco editors (AgentSteps,
-        // CodeBlocks). Differing from them here produced a real bug: the minimap
-        // has a SLIDER (the viewport indicator), and on a short file in a narrow
-        // panel that slider fills almost the whole minimap height — looking
-        // exactly like one solid blue line spanning the full height, and not
-        // like a minimap at all.
-        minimap: { enabled: false },
-        fontSize: 12,
-        scrollBeyondLastLine: false,
         wordWrap: "off",
-        // The line STILL visible after the minimap was turned off was no
-        // minimap remnant at all — it is the top/bottom border of the "active
-        // line" highlight box, Monaco's default when renderLineHighlight is
-        // unset (default "all"). On the first line its TOP border coincides
-        // with the editor edge, so all you see is one full-width line right
-        // under the panel header — a completely different cause from the
-        // minimap, but looking the same: one solid line the width of the panel.
+        // minimap: false, renderLineHighlight: "none" and overviewRulerLanes: 0
+        // all moved into opsiEditor(), and the reasons moved with them — three
+        // separate false "lines" were traced to those three options, and the
+        // notes belong beside the values rather than in one of three copies.
         //
-        // The two other Monaco editors (AgentSteps, CodeBlocks) are already
-        // "none", and this panel followed once it became editable: turning it
-        // back on reproduces that false line exactly, and Monaco's own cursor
-        // marker already shows which line is being typed on.
-        renderLineHighlight: "none",
-        // THE THIRD CAUSE, found through a Playwright screenshot of an ISOLATED
-        // editor (outside the app) so it could not be fooled by caching or a
-        // deferred reload. The two fixes above cleared the top and bottom lines;
-        // the line on the RIGHT EDGE survived both — traced to the
-        // `.decorationsOverviewRuler` element, the 14px canvas Monaco paints
-        // itself on the editor's right side (to show error marks and search
-        // hits, even with the minimap off). Its border is DRAWN to the canvas
-        // rather than set through CSS — so `outline: none` does not touch it;
-        // it has to be disabled through this option.
-        overviewRulerLanes: 0,
         // The gutter lane breakpoints are drawn in. Without it, a
         // glyphMarginClassName decoration has nowhere to go and is never seen —
         // the click works, the point does not appear, and that is
         // indistinguishable from a breakpoint that failed to set.
         glyphMargin: true,
+        // The lane between the line numbers and the text, where the comment
+        // "+" and the comment glyph live (KomentarKode.ts). Monaco's default
+        // 10px is too narrow for a legible mark.
+        lineDecorationsWidth: 20,
       });
+      // Review comments on a range of lines, and "Send to agent" from them.
+      installKomentarKode(monaco, edRef.current, () => ({
+        rel: String(relRef.current || ""),
+        abs: relRef.current ? absDari(rootRef.current, relRef.current) : "",
+      }));
       // A gutter click sets or clears a breakpoint, as in VS Code. What is
       // checked is the target's TYPE, not its coordinates: the line number and
       // the glyph lane sit side by side, and guessing from x makes a click on
@@ -977,6 +1032,11 @@ function LogicCodePane({
   // libraries.
   React.useEffect(() => {
     _akarPustaka = String(root || "");
+    // The same root confines every LSP request. Set here for the same reason
+    // the library root is: the project can change without the editor being
+    // rebuilt, and a language server pointed at the old one answers about the
+    // wrong project.
+    _lspRoot = String(root || "");
   }, [root]);
 
   // ── One model per file, kept alive ──
@@ -1072,10 +1132,12 @@ function LogicCodePane({
     }
 
     setMuat(true);
-    const abs = String(root || "").replace(/[\/]+$/, "") + "/" + rel;
+    const abs = absDari(root, rel);
     fetch("/preview-file?raw=1&path=" + encodeURIComponent(abs))
       .then((r: any) =>
-        r.ok ? r.text() : Promise.reject(new Error("HTTP " + r.status)),
+        r.ok
+          ? r.text()
+          : Promise.reject(new Error("HTTP " + r.status + " — " + abs)),
       )
       .then((teks: any) => {
         if (dibatalkan) return;
@@ -1127,7 +1189,7 @@ function LogicCodePane({
   // It returns true/false rather than void: Run uses it to decide whether to
   // continue. Running after a FAILED save means running the old file contents
   // while the error message goes unread.
-  const simpan = React.useCallback(async () => {
+  const save = React.useCallback(async () => {
     const ed = edRef.current;
     const target = relRef.current;
     if (!ed || !target) return false;
@@ -1200,7 +1262,7 @@ function LogicCodePane({
   // "Not known yet" is treated as ALLOWED: disabling a button because one
   // request failed is more confusing than a command that fails with
   // pesan jelas di terminal.
-  const bisaDebug =
+  const canDebug =
     !!rel &&
     !!perintahDebug(rel) &&
     (debugAda === null || debugAda[jenisDbg!] !== false);
@@ -1211,12 +1273,12 @@ function LogicCodePane({
       const target = relRef.current;
       if (!target || !onRun) return;
       if (kotorRef.current) {
-        const ok = await simpan();
+        const ok = await save();
         if (!ok) return; // could not save -> do not run something stale
       }
       onRun(abs(target), mode, String(root || ""));
     },
-    [onRun, simpan, abs],
+    [onRun, save, abs],
   );
   const jalankan = React.useCallback(() => kirimKe("jalan"), [kirimKe]);
   const debug = React.useCallback(() => kirimKe("debug"), [kirimKe]);
@@ -1227,10 +1289,10 @@ function LogicCodePane({
   // a debugger is the most expensive form of confusion there is: the line the
   // debugger highlights does not match the line visible in the editor.
   React.useEffect(() => {
-    if (!onDaftarDebug) return;
+    if (!onListDebug) return;
     if (!rel) {
-      onDaftarDebug(null);
-      return () => onDaftarDebug(null);
+      onListDebug(null);
+      return () => onListDebug(null);
     }
     // The reason is sent along, not just "cannot". A dead button with no
     // explanation is indistinguishable from a broken app — and the two causes
@@ -1243,27 +1305,27 @@ function LogicCodePane({
         "The debugger for this file (" +
         String(_PERINTAH_DEBUG[ekstensiDari(rel)!] || "").split(" ")[0] +
         ") is not installed on this machine.";
-    onDaftarDebug({
+    onListDebug({
       berkas: rel,
-      mulai: bisaDebug ? debug : null,
+      mulai: canDebug ? debug : null,
       alasan,
     });
-    return () => onDaftarDebug(null);
-  }, [onDaftarDebug, bisaDebug, debug, rel, debugAda, jenisDbg]);
+    return () => onListDebug(null);
+  }, [onListDebug, canDebug, debug, rel, debugAda, jenisDbg]);
 
   // Ctrl+S / Cmd+S inside the editor. Without this the shortcut is taken over by
   // the browser (Save Page) and the user thinks the app is not responding.
   React.useEffect(() => {
     const el = hostRef.current;
     if (!el) return;
-    const tekan = (e: any) => {
+    const press = (e: any) => {
       if ((e.ctrlKey || e.metaKey) && (e.key === "s" || e.key === "S")) {
         e.preventDefault();
-        // simpan() reports its OWN failures through setSaveState and resolves
+        // save() reports its OWN failures through setSaveState and resolves
         // to false, so this is not the silent-save case. What it does not
         // cover is a throw before its internal try — and that one would have
         // left the editor showing "saving…" for ever.
-        simpan().catch((e2: any) =>
+        save().catch((e2: any) =>
           setSaveState("failed: " + String((e2 && e2.message) || e2)),
         );
       } else if ((e.ctrlKey || e.metaKey) && e.key === "Enter") {
@@ -1278,9 +1340,9 @@ function LogicCodePane({
         else if (bisaPecah && onPecah) onPecah();
       }
     };
-    el.addEventListener("keydown", tekan);
-    return () => el.removeEventListener("keydown", tekan);
-  }, [simpan, jalankan, bisaPecah, onPecah, sudahPecah, onTutupPecah]);
+    el.addEventListener("keydown", press);
+    return () => el.removeEventListener("keydown", press);
+  }, [save, jalankan, bisaPecah, onPecah, sudahPecah, onTutupPecah]);
 
   return (
     <div
@@ -1321,6 +1383,45 @@ function LogicCodePane({
           overflow: "hidden",
         }}
       >
+        {/* THE ONLY WAY BACK, so it lives OUTSIDE the panel it reopens.
+            Hiding the explorer removes it from the DOM, and a button inside it
+            would go with it — the first version collapsed to a 34px rail
+            precisely so the control survived, and the result was a panel
+            squeezed to the point of collision rather than one that was gone.
+            The tab bar is always here whenever the Logic panel is open, which
+            is exactly when an explorer could be wanted.
+
+            Shown ONLY while hidden: a permanent toggle beside the tabs would
+            compete with them for a bar that already scrolls. */}
+        {onTampilkanExplorer && (
+          <button
+            className="btn-reset lf-judul editor-explorer-btn"
+            onClick={onTampilkanExplorer}
+            title="Show the explorer"
+            aria-label="Show the explorer"
+            aria-expanded="false"
+          >
+            {/* The SAME control as the header inside the explorer, in its
+                closed state: same class, same chevron, turned -90deg by
+                aria-expanded. One trigger, two states -- not two buttons
+                that happen to share a word. */}
+            <svg
+              className="lf-chevron"
+              aria-hidden="true"
+              width="14"
+              height="14"
+              viewBox="0 0 24 24"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="2"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+            >
+              <path d="m6 9 6 6 6-6" />
+            </svg>
+            <span>Explorer</span>
+          </button>
+        )}
         {/* ── Tab strip ──
             The open files, the way any editor shows them. It replaces the
             single filename that used to sit here: with several files open, one
@@ -1337,7 +1438,16 @@ function LogicCodePane({
               draggable
               onDragStart={(e: any) => {
                 e.dataTransfer.setData("text/plain", t);
-                e.dataTransfer.effectAllowed = "move";
+                // A SECOND TYPE, and the reordering above is why it has to be
+                // separate. `text/plain` is what the tab strip reads to move a
+                // tab; the chat composer accepts only this one, so dragging a
+                // tab sideways still reorders and dragging it INTO the chat
+                // attaches the file it names. One gesture, two meanings, told
+                // apart by the payload rather than by guessing at coordinates.
+                e.dataTransfer.setData(DRAG_JENIS_BERKAS, t);
+                // "move" alone forbids a copy, and a drop into the chat IS a
+                // copy — the tab stays where it is.
+                e.dataTransfer.effectAllowed = "copyMove";
               }}
               onDragOver={(e: any) => {
                 // Without preventDefault the browser refuses the drop and the
@@ -1456,47 +1566,37 @@ function LogicCodePane({
             className="aksi-btn aksi-run"
             onClick={jalankan}
             disabled={!bisaJalan}
+            aria-label="Run"
             title={
               bisaJalan
                 ? "Run in terminal (Ctrl+Enter) — saves first"
                 : "This file is not run through the terminal"
             }
           >
-            {/* A filled triangle — the same "run" symbol as in any editor. */}
-            <svg width="9" height="9" viewBox="0 0 10 10" fill="currentColor">
-              <path d="M1 0.5v9l8-4.5z" />
-            </svg>
-            Run
+            {/* ICON ONLY. The label went with the chrome: Run and Save are two
+                of the few symbols that need no word beside them, and the title
+                attribute above still carries the full sentence — including the
+                shortcut and the fact that Run saves first — for hover and for a
+                screen reader. `aria-label` says it out loud, because a button
+                whose whole content is an svg has no accessible name at all. */}
+            <Icon.play width="13" height="13" />
           </button>
         )}
         {/* The Debug button MOVED to the terminal tab group. Debug is
             a SESSION that lives in the terminal — it belongs beside the
             output it produces, not next to the Save button. All that stays
-            here is its trigger, registered upwards through onDaftarDebug so
+            here is its trigger, registered upwards through onListDebug so
             the "save first" requirement is not lost in the move. */}
         {rel && (
           <button
             type="button"
-            className="aksi-btn aksi-simpan"
-            onClick={simpan}
+            className="aksi-btn aksi-save"
+            onClick={save}
             disabled={!kotor}
+            aria-label="Save"
             title="Save (Ctrl+S)"
           >
-            {/* A floppy disk. The same icon every editor uses for "save",
-                so it reads without its label having to be read first. */}
-            <svg
-              width="10"
-              height="10"
-              viewBox="0 0 24 24"
-              fill="none"
-              stroke="currentColor"
-              strokeWidth="2"
-              strokeLinejoin="round"
-            >
-              <path d="M4 4h11l5 5v11a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1z" />
-              <path d="M8 4v5h7M8 21v-6h8v6" />
-            </svg>
-            Save
+            <Icon.save width="13" height="13" />
           </button>
         )}
       </div>
@@ -1801,6 +1901,7 @@ function LogicFileTree({
   onBuatFolder,
   onHapus,
   onHapusFolder,
+  onSembunyi,
 }: any) {
   // The "Changes" tab was REMOVED. It always read "No changes." — it was never
   // wired to real data in the first place — so it was not a disabled feature
@@ -1840,7 +1941,7 @@ function LogicFileTree({
   // separate localStorage, upper and lower bounds, a "resizing" class while
   // dragging. Matched deliberately — two panels resized in different ways would
   // feel like two different applications.
-  // ── Batas lebar pohon berkas ──
+  // ── Bounds on the file tree's width ──
   //
   // ONE place. The numbers were once written three times — on load, while
   // dragging, and on release — and three copies of a bound that have to agree
@@ -1866,6 +1967,7 @@ function LogicFileTree({
     }
   });
   const [lfResizing, setLfResizing] = React.useState(false);
+
   const handleLfResizerMouseDown = (e: any) => {
     e.preventDefault();
     e.stopPropagation();
@@ -1927,7 +2029,7 @@ function LogicFileTree({
     if (!rel || !akarAda || hapusSibuk) return;
     setHapusSibuk(true);
     setHapusGalat("");
-    const abs = String(root).replace(/[\/]+$/, "") + "/" + rel;
+    const abs = absDari(root, rel);
     try {
       const hasil = await (
         await fetch("/ww/hapus-berkas", {
@@ -1963,7 +2065,7 @@ function LogicFileTree({
   const [jumlahIsi, setJumlahIsi] = React.useState<any>(null);
   const hitungIsi = async (rel: any) => {
     setJumlahIsi(null);
-    const abs = String(root).replace(/[\/]+$/, "") + "/" + rel;
+    const abs = absDari(root, rel);
     try {
       const r = await (
         await fetch("/ww/hapus-berkas", {
@@ -2236,37 +2338,40 @@ function LogicFileTree({
         onMouseDown={handleLfResizerMouseDown}
         title="Drag to resize"
       />
-      <div
-        style={{
-          display: "flex",
-          alignItems: "center",
-          height: "38px",
-          padding: "0 8px 0 12px",
-          borderBottom: "1px solid #212a36",
-          gap: "4px",
-        }}
-      >
-        <div style={{ display: "flex", gap: "16px", flex: 1 }}>
-          <span
-            style={{
-              fontSize: "13px",
-              padding: "9px 0",
-              color: "#e6edf3",
-              borderBottom: "2px solid #4c8bf5",
-            }}
-          >
-            Files
-          </span>
-        </div>
-        <div
-          style={{
-            display: "flex",
-            alignItems: "center",
-            gap: "2px",
-            color: "#6f7d92",
-            position: "relative",
-          }}
+      <div className="lf-kepala">
+        {/* THE LABEL IS THE CONTROL, and it is a real <button>. A <span> with
+            onClick cannot be reached by Tab and announces nothing to a screen
+            reader — the agent timeline in this repo was fixed for exactly that
+            reason.
+
+            Styled as a collapsible trigger, the shadcn way: a ghost button the
+            whole row wide, a chevron that says "this folds", a muted label,
+            and hover that tints the surface instead of recolouring the text.
+            The 2px blue underline it used to wear is a TAB affordance — it
+            promised siblings to switch to, and there were none. */}
+        <button
+          className="btn-reset lf-judul"
+          onClick={onSembunyi}
+          title="Hide the explorer"
+          aria-expanded="true"
         >
+          <svg
+            className="lf-chevron"
+            aria-hidden="true"
+            width="14"
+            height="14"
+            viewBox="0 0 24 24"
+            fill="none"
+            stroke="currentColor"
+            strokeWidth="2"
+            strokeLinecap="round"
+            strokeLinejoin="round"
+          >
+            <path d="m6 9 6 6 6-6" />
+          </svg>
+          <span>Explorer</span>
+        </button>
+        <div className="lf-alat">
           {/* Two buttons that used to be here — "Search" and "Collapse all" —
               had no onClick at all: they were decoration from the start. Only
               one is left, and this one genuinely works. */}
@@ -2282,17 +2387,6 @@ function LogicFileTree({
             onClick={() =>
               setMenuAlat((v: any) => (v === "folder" ? null : "folder"))
             }
-            style={{
-              color: "inherit",
-              width: "24px",
-              height: "24px",
-              borderRadius: "5px",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: akarAda ? "pointer" : "not-allowed",
-              opacity: akarAda ? 1 : 0.4,
-            }}
           >
             {/* A folder with a + in the corner, drawn with the same strokes as
                 the file icon beside it (viewBox 24, strokeWidth 2). */}
@@ -2321,17 +2415,6 @@ function LogicFileTree({
             onClick={() =>
               setMenuAlat((v: any) => (v === "berkas" ? null : "berkas"))
             }
-            style={{
-              color: "inherit",
-              width: "24px",
-              height: "24px",
-              borderRadius: "5px",
-              display: "inline-flex",
-              alignItems: "center",
-              justifyContent: "center",
-              cursor: akarAda ? "pointer" : "not-allowed",
-              opacity: akarAda ? 1 : 0.4,
-            }}
           >
             {/* A document sheet with a + in the corner — the "new file" icon
                 the same shape as VS Code's, drawn with the same stroke
@@ -2661,6 +2744,13 @@ function LogicFileTree({
                   color: n.type === "folder" ? "#cdd9e5" : "#adbac7",
                   fontSize: "13px",
                   whiteSpace: "nowrap",
+                  // A ROW NEVER WIDENS THE PANEL. The tree is a width the user
+                  // chose, so a long name has to be cut rather than pushing the
+                  // row past the panel holding it. minWidth:0 is what allows
+                  // that: a flex item's default minimum is its CONTENT, so
+                  // without it the row simply refuses to shrink.
+                  minWidth: 0,
+                  overflow: "hidden",
                   // The open file is marked PERSISTENTLY, not only on hover —
                   // without that, once the mouse moves nothing tells you which
                   // file the editor on the right belongs to.
@@ -2703,7 +2793,15 @@ function LogicFileTree({
                   {icon(n.type)}
                 </span>
                 <span
+                  // The title is what makes truncation acceptable: the full
+                  // name is one hover away rather than lost.
+                  title={n.name}
                   style={{
+                    // Both halves are needed. text-overflow only draws the
+                    // ellipsis once the element is ALLOWED to be narrower than
+                    // its text, and in a flex row that takes minWidth:0 here as
+                    // well as on the row above.
+                    minWidth: 0,
                     overflow: "hidden",
                     textOverflow: "ellipsis",
                     color: tk ? tk.warna : undefined,
@@ -2744,6 +2842,9 @@ function App() {
   // Report to index.html that App rendered without a Runtime Error.
   useEffect(() => {
     if (window.reportAppSuccess) window.reportAppSuccess();
+    // Right-click in any plain text field: Undo/Redo/Cut/Copy/Paste/Select
+    // All. Electron gives those fields no menu of their own (MenuTeks.ts).
+    installMenuTeks();
   }, []);
   const [pickerDone, setPickerDone] = useState(false);
   const [panelMenuOpen, setPanelMenuOpen] = useState(false);
@@ -2766,6 +2867,9 @@ function App() {
     return WOLFSPACE_ROOT_WIN;
   });
   const [hitlRequest, setHitlRequest] = React.useState<any>(null);
+  // The agent's proposed panel (ui_propose). One at a time: a second
+  // proposal replaces the first, the way a second question would.
+  const [a2ui, setA2ui] = React.useState<any>(null);
 
   React.useEffect(() => {
     const checkSelectedProject = () => {
@@ -2877,6 +2981,32 @@ function App() {
   // only files the agent genuinely touched this session. Reset on workspace
   // change.
   const [devFiles, setDevFiles] = useState<any[]>([]);
+
+  // ── HIDING THE EXPLORER ───────────────────────────────────────────────────
+  //
+  // Hidden means NOT RENDERED, not narrow. The first attempt collapsed the
+  // panel to a 34px rail so its own button could survive to reopen it, and what
+  // that produced was a panel squeezed until its contents collided — the empty
+  // state's sentence wrapped one character per line. A rail is not a hidden
+  // panel, it is a broken one.
+  //
+  // So the panel goes entirely and the way back moves to the editor's tab bar,
+  // which is present whenever this panel is. The remembered WIDTH is untouched
+  // by any of this: it lives in its own key, so reopening restores the panel
+  // the user had rather than a default.
+  const [explorerSembunyi, setExplorerSembunyi] = useState(() => {
+    try {
+      return localStorage.getItem("wolfspace_explorer_sembunyi") === "1";
+    } catch (_) {
+      return false;
+    }
+  });
+  const putarExplorer = React.useCallback((sembunyi: boolean) => {
+    setExplorerSembunyi(sembunyi);
+    try {
+      localStorage.setItem("wolfspace_explorer_sembunyi", sembunyi ? "1" : "0");
+    } catch (_) {}
+  }, []);
   // Folders created by hand. Kept apart from devFiles because that list is
   // FILES: a folder with nothing in it would leave no trace there and would
   // vanish from the tree the moment it was created.
@@ -2958,6 +3088,22 @@ function App() {
   const MAKS_GRUP = 2;
   const [logicGrup, setLogicGrup] = useState<any[]>([{ tabs: [], aktif: "" }]);
   const [grupFokus, setGrupFokus] = useState(0);
+  // THE FOCUS THE HANDLERS READ, kept a step ahead of the render.
+  //
+  // "Open to the side" sometimes landed in the wrong pane: click the right
+  // pane, Alt+click a file, and it opened on the right again. The handler
+  // decided the OTHER pane from `grupFokus` captured in its closure -- the
+  // value of the last render -- while the click that moved focus had not been
+  // rendered yet. So it computed "the other side" from where focus USED to be.
+  //
+  // A ref is written the moment focus changes, before React gets round to
+  // re-rendering, so every handler below reads where focus IS. The state stays,
+  // because the panes still render from it; only the decisions moved.
+  const grupFokusRef = React.useRef(0);
+  const fokuskanGrup = useCallback((i: number) => {
+    grupFokusRef.current = i;
+    setGrupFokus(i);
+  }, []);
   const [logicKotor, setLogicKotor] = useState<any>({}); // rel -> unsaved?
 
   // The focused group's file. Derived rather than stored: the file tree marks
@@ -2974,7 +3120,19 @@ function App() {
   // therefore tied to the workspace CHANGING, not to typing -- a mark that
   // refreshes on every keystroke is how a problems view becomes the reason the
   // app stutters.
-  const akarDiag = webProjectRoot(preview.url, selectedProject);
+  // THE EDITOR'S ROOT IS THE AGENT'S ROOT. It used to be the directory of
+  // whatever file the Live Browser was previewing, with the bare project NAME
+  // as the fallback -- while the agent wrote into resolveWorkspaceRoot(). The
+  // explorer is fed by the agent's write events, so with the two roots apart
+  // every path it received fell outside its root, buildDevTree "dropped the
+  // drive" to make it fit, and a click on the file asked the server for
+  // <root>/Users/dave/... -- HTTP 404, and an empty editor for a file the
+  // agent had just written. One root, resolved to a real directory, for all
+  // three consumers.
+  const akarEditor =
+    resolveWorkspaceRoot(selectedProject) ||
+    webProjectRoot(preview.url, selectedProject);
+  const akarDiag = akarEditor;
   const pindaiDiagnostik = useCallback(async () => {
     if (!akarDiag) return;
     setDiagSibuk(true);
@@ -3061,10 +3219,25 @@ function App() {
     e.stopPropagation();
     const baris = e.currentTarget.parentElement;
     if (!baris) return;
-    const kotak = baris.getBoundingClientRect();
-    if (!kotak.width) return;
+    if (!baris.getBoundingClientRect().width) return;
     setPecahGeser(true);
+    // THE PANES STOP LISTENING WHILE THE DIVIDER IS HELD.
+    //
+    // Each pane holds a Monaco editor, and Monaco runs its own mouse handling.
+    // A drag that wandered over an editor had its mousemove events taken by
+    // it, so the divider stopped following the cursor -- and then leapt to
+    // wherever the cursor re-emerged, which read as "I dragged left and it
+    // went right". The class below turns pointer events off for everything in
+    // the row except the divider, for exactly as long as the button is down.
+    baris.classList.add("pecah-geser");
     const gerak = (ev: any) => {
+      // MEASURED ON EVERY MOVE, not once at mousedown. The row's box is not
+      // stable for the length of a drag: hiding the Explorer, a window resize,
+      // or the file tree being dragged at the same time all shift its left
+      // edge, and a percentage computed against a stale box lands the divider
+      // somewhere the cursor is not.
+      const kotak = baris.getBoundingClientRect();
+      if (!kotak.width) return;
       const p = ((ev.clientX - kotak.left) / kotak.width) * 100;
       // Clamped so neither pane can be dragged away to nothing — a pane at 0%
       // is unreachable, and the only way back would be to close the split.
@@ -3072,20 +3245,30 @@ function App() {
     };
     const lepas = () => {
       setPecahGeser(false);
+      baris.classList.remove("pecah-geser");
       window.removeEventListener("mousemove", gerak);
       window.removeEventListener("mouseup", lepas);
+      window.removeEventListener("blur", lepas);
     };
     window.addEventListener("mousemove", gerak);
     window.addEventListener("mouseup", lepas);
+    // Alt-tab or a click outside the window mid-drag never delivers the
+    // mouseup. Without this the listeners outlive the drag, and the NEXT mouse
+    // movement anywhere resizes the split against a box from a layout that no
+    // longer exists.
+    window.addEventListener("blur", lepas);
   }, []);
 
   // Open a file. `grup` defaults to the focused one, which is what a plain
   // click in the tree does.
   const bukaTab = useCallback(
-    (rel: any, grup: number = grupFokus) => {
+    (rel: any, grup?: number) => {
       if (!rel) return;
+      // Where focus IS, not where it was at the last render. See grupFokusRef.
+      const target = typeof grup === "number" ? grup : grupFokusRef.current;
       setLogicGrup((gs: any[]) => {
-        const i = gs[grup] ? grup : 0;
+        const i = gs[target] ? target : 0;
+        if (gs[i]) fokuskanGrup(i);
         return gs.map((g: any, k: number) =>
           k === i
             ? {
@@ -3095,9 +3278,8 @@ function App() {
             : g,
         );
       });
-      setGrupFokus((f: number) => (logicGrup[grup] ? grup : f));
     },
-    [grupFokus, logicGrup],
+    [fokuskanGrup],
   );
 
   // "Open to the side" — Alt+click in the tree, and what the Split button does
@@ -3107,11 +3289,15 @@ function App() {
       if (!rel) return;
       setLogicGrup((gs: any[]) => {
         if (gs.length < MAKS_GRUP) {
-          setGrupFokus(gs.length);
+          fokuskanGrup(gs.length);
           return gs.concat({ tabs: [rel], aktif: rel });
         }
-        const lain = grupFokus === 0 ? 1 : 0;
-        setGrupFokus(lain);
+        // THE OTHER SIDE OF WHERE FOCUS IS NOW. This read used to come from
+        // the closure and lagged one render behind the click that moved focus,
+        // which is exactly how a file asked to open on the left opened on the
+        // right instead.
+        const lain = grupFokusRef.current === 0 ? 1 : 0;
+        fokuskanGrup(lain);
         return gs.map((g: any, k: number) =>
           k === lain
             ? {
@@ -3122,7 +3308,7 @@ function App() {
         );
       });
     },
-    [grupFokus],
+    [fokuskanGrup],
   );
 
   // Split the focused group. VS Code copies the active editor into the new
@@ -3130,12 +3316,12 @@ function App() {
   const pecahGrup = useCallback(() => {
     setLogicGrup((gs: any[]) => {
       if (gs.length >= MAKS_GRUP) return gs;
-      const asal = gs[grupFokus] || gs[0];
+      const asal = gs[grupFokusRef.current] || gs[0];
       const rel = (asal && asal.aktif) || "";
-      setGrupFokus(gs.length);
+      fokuskanGrup(gs.length);
       return gs.concat({ tabs: rel ? [rel] : [], aktif: rel });
     });
-  }, [grupFokus]);
+  }, [fokuskanGrup]);
 
   // Close the split, the counterpart of pecahGrup.
   //
@@ -3151,47 +3337,56 @@ function App() {
       const tabs = tinggal.tabs.concat(
         (pergi.tabs || []).filter((t: any) => tinggal.tabs.indexOf(t) < 0),
       );
-      setGrupFokus(0);
+      fokuskanGrup(0);
       return [{ tabs, aktif: tinggal.aktif || pergi.aktif || "" }];
     });
-  }, []);
+  }, [fokuskanGrup]);
 
   // Close a tab. `grup` undefined means EVERY group — that is the deletion
   // case: a file gone from disk must not survive as a tab anywhere, in either
   // half, or it stays as a row that loads a 404.
-  const tutupTab = useCallback((rel: any, grup?: number) => {
-    setLogicGrup((gs: any[]) => {
-      const hasil = gs.map((g: any, k: number) => {
-        if (typeof grup === "number" && k !== grup) return g;
-        const i = g.tabs.indexOf(rel);
-        if (i < 0) return g;
-        const sisa = g.tabs.filter((x: any) => x !== rel);
-        return {
-          tabs: sisa,
-          // Closing the ACTIVE tab hands focus to a neighbour — the one on the
-          // right, falling back to the left, as every editor does. Leaving the
-          // pane blank instead makes closing feel like losing your place.
-          aktif: g.aktif !== rel ? g.aktif : sisa[i] || sisa[i - 1] || "",
-        };
+  const tutupTab = useCallback(
+    (rel: any, grup?: number) => {
+      setLogicGrup((gs: any[]) => {
+        const hasil = gs.map((g: any, k: number) => {
+          if (typeof grup === "number" && k !== grup) return g;
+          const i = g.tabs.indexOf(rel);
+          if (i < 0) return g;
+          const sisa = g.tabs.filter((x: any) => x !== rel);
+          return {
+            tabs: sisa,
+            // Closing the ACTIVE tab hands focus to a neighbour — the one on the
+            // right, falling back to the left, as every editor does. Leaving the
+            // pane blank instead makes closing feel like losing your place.
+            aktif: g.aktif !== rel ? g.aktif : sisa[i] || sisa[i - 1] || "",
+          };
+        });
+        // A group with no tabs left closes and the survivor takes the width,
+        // again as VS Code does. The last group always stays: dropping it would
+        // leave the editor area gone with no way to bring it back.
+        const bersih =
+          hasil.length > 1
+            ? hasil.filter((g: any) => g.tabs.length > 0)
+            : hasil;
+        const akhir = bersih.length ? bersih : [hasil[0]];
+        if (akhir.length !== gs.length) {
+          // Through the wrapper, so the ref moves with the state. Left as a bare
+          // setGrupFokus this was the one place focus could change while the ref
+          // kept pointing at a pane that no longer existed -- and the next "open
+          // to the side" would have read that stale index.
+          fokuskanGrup(Math.min(grupFokusRef.current, akhir.length - 1));
+        }
+        return akhir;
       });
-      // A group with no tabs left closes and the survivor takes the width,
-      // again as VS Code does. The last group always stays: dropping it would
-      // leave the editor area gone with no way to bring it back.
-      const bersih =
-        hasil.length > 1 ? hasil.filter((g: any) => g.tabs.length > 0) : hasil;
-      const akhir = bersih.length ? bersih : [hasil[0]];
-      if (akhir.length !== gs.length) {
-        setGrupFokus((f: number) => Math.min(f, akhir.length - 1));
-      }
-      return akhir;
-    });
-    setLogicKotor((k: any) => {
-      if (!(rel in k)) return k;
-      const n = { ...k };
-      delete n[rel];
-      return n;
-    });
-  }, []);
+      setLogicKotor((k: any) => {
+        if (!(rel in k)) return k;
+        const n = { ...k };
+        delete n[rel];
+        return n;
+      });
+    },
+    [fokuskanGrup],
+  );
 
   const geserTab = useCallback((dari: any, ke: any, grup: number = 0) => {
     setLogicGrup((gs: any[]) =>
@@ -3326,8 +3521,8 @@ function App() {
       clearTimeout(jam);
     };
   }, [dapId]);
-  // The session closes when the Code panel closes — otherwise its Python process
-  // hidup terus tanpa satu pun cara menyentuhnya lagi.
+  // The session closes when the Code panel closes — otherwise its Python
+  // process lives on with no way left to reach it.
   useEffect(() => {
     if (logicOpen || !dapId) return;
     fetch("/dap/tutup", {
@@ -3670,19 +3865,89 @@ function App() {
   // their setter, and both hardcoded clientX — so once a panel could move to the
   // bottom, dragging the horizontal splitter would resize using a coordinate
   // from the wrong axis. The axis now follows the panel's POSITION.
-  const geserPembagi = (sumbu: any, set: any) => (e: any) => {
+  const geserPembagi = (sumbu: any, set: any, nama?: any) => (e: any) => {
     e.preventDefault();
+    // The panel this splitter belongs to, measured ONCE at mousedown: its far
+    // edge (right, or bottom, or -- on the left side -- left) is what the
+    // width is taken from. For the panel at the window's edge this equals
+    // the old window-based maths; for a panel next to another panel it is
+    // the only maths that works.
+    let tepi: number | null = null;
+    let kiri = false;
+    // A divider BETWEEN two panels moves width from one to the other: the
+    // pair's total stays put. Without this the side's budget (chat keeps
+    // 20%) absorbed the change and scaled BOTH panels: a 150px drag moved
+    // the divider 16px. With it, the neighbour toward chat gives up exactly
+    // what this panel gains, and the divider follows the pointer.
+    let tetangga: { nama: string; set: any; pct: number } | null = null;
+    let pctAwal = 0;
+    // The percentage is of the CONTAINER (.chat-split: the window minus the
+    // sidebar), because that is what `calc(pct% - 6px)` is resolved against.
+    // Measuring the pointer against the window instead made a 150px drag
+    // move the divider 38px. Falls back to the window when unnamed.
+    let ukuran: number | null = null;
+    if (nama) {
+      const el = document.querySelector('[data-panel="' + nama + '"]');
+      const p = _panelTerbuka.find((x: any) => x.nama === nama);
+      kiri = !!(p && p.sisi === "kiri");
+      if (el) {
+        const r = el.getBoundingClientRect();
+        tepi = sumbu === "x" ? (kiri ? r.left : r.right) : r.bottom;
+        const w = el.parentElement && el.parentElement.getBoundingClientRect();
+        if (w) ukuran = sumbu === "x" ? w.width : w.height;
+      }
+      if (p) {
+        pctAwal = p.pct;
+        const seSisi = _panelTerbuka.filter((x: any) => x.sisi === p.sisi);
+        const i = seSisi.findIndex((x: any) => x.nama === nama);
+        // Toward chat: the previous panel on a right/bottom side, the next
+        // one on the left.
+        const t = kiri ? seSisi[i + 1] : seSisi[i - 1];
+        if (t) {
+          const setter: any = {
+            terminal: setTerminalPct,
+            preview: setPanelPct,
+            logic: setLogicPct,
+          };
+          tetangga = { nama: t.nama, set: setter[t.nama], pct: t.pct };
+        }
+      }
+    }
     const move = (ev: any) => {
-      const total = sumbu === "x" ? window.innerWidth : window.innerHeight;
+      const total =
+        ukuran || (sumbu === "x" ? window.innerWidth : window.innerHeight);
       const dari = sumbu === "x" ? ev.clientX : ev.clientY;
-      set(Math.min(75, Math.max(12, ((total - dari) / total) * 100)));
+      const jarak =
+        tepi === null
+          ? (sumbu === "x" ? window.innerWidth : window.innerHeight) - dari
+          : kiri
+            ? dari - tepi
+            : tepi - dari;
+      let baru = Math.min(75, Math.max(12, (jarak / total) * 100));
+      if (tetangga) {
+        // The neighbour may not shrink below its own floor; that caps the
+        // gain rather than letting the pair grow.
+        const sisa = tetangga.pct - (baru - pctAwal);
+        if (sisa < 12) baru = pctAwal + (tetangga.pct - 12);
+        tetangga.set(tetangga.pct - (baru - pctAwal));
+      }
+      set(baru);
     };
     const up = () => {
       document.removeEventListener("mousemove", move);
       document.removeEventListener("mouseup", up);
       document.body.style.userSelect = "";
+      document.body.classList.remove("menyeret-pembagi");
     };
     document.body.style.userSelect = "none";
+    // IFRAMES SWALLOW THE DRAG. A mousemove over an <iframe> is delivered to
+    // the iframe's document, not to this one, so the moment the pointer
+    // crossed into the Live Browser the splitter stopped following it --
+    // measured: mousedown reached the divider, the panel never changed. The
+    // body class turns pointer-events off on every iframe for the duration
+    // of the drag (see .menyeret-pembagi in styles.css), the same trick VS
+    // Code uses for its sashes.
+    document.body.classList.add("menyeret-pembagi");
     document.addEventListener("mousemove", move);
     document.addEventListener("mouseup", up);
   };
@@ -3702,79 +3967,41 @@ function App() {
     // Model Hub, so the picker is built purely from configured cloud providers.
     const opts: any[] = [];
     let cloud = getCloud();
-    // Hydrate from server-configured providers (key stays server-side) when there is
-    // no stored cloud OR the stored provider is no longer configured (e.g. stale key).
-    try {
-      const provs = await (await fetch("/cloud-providers")).json();
-      if (Array.isArray(provs) && provs.length) {
-        const pick =
-          provs.find((p: any) => p.provider === "opencode") ||
-          provs.find((p: any) => p.provider === "nvidia") ||
-          provs.find((p: any) => p.provider === "gemini") ||
-          provs.find((p: any) => p.provider === "puter") ||
-          provs[0];
-        // Only override if the user hasn't explicitly set a local key or custom baseUrl.
-        // If they have, we respect their choice.
-        const hasUserConfig = cloud && (cloud.key || cloud.baseUrl);
-        if (!hasUserConfig) {
-          if (
-            !cloud ||
-            cloud.provider !== pick.provider ||
-            cloud.model !== pick.model
-          ) {
-            // MARKED AS AUTOMATIC, and that mark is the whole point.
-            //
-            // Written without it, this entry is byte-for-byte what an explicit
-            // choice looks like: a provider and a model, no key. A fresh
-            // install then reads back as already configured, and there is no
-            // way — for the user or for the code — to tell the difference.
-            //
-            // Not writing at all was the first idea and it is wrong: the server
-            // cannot resolve a provider on its own. agent/cloud.ts derives it
-            // from cloud.provider or from a key, and with neither it gives up
-            // (`cloud.provider || (cloud.key ? detectProvider(cloud.key) : null)`).
-            // So this value is load-bearing for anyone whose keys live
-            // server-side; dropping it would break their chat entirely.
-            //
-            // An explicit save overwrites this object WITHOUT `otomatis`, so
-            // choosing a provider by hand clears the mark by construction.
-            cloud = {
-              provider: pick.provider,
-              name: pick.name,
-              model: pick.model,
-              otomatis: true,
-            };
-            setCloudLS(cloud);
-          }
-        }
-      }
-    } catch (e) {}
-    const hasCloud = cloud && (cloud.key || cloud.provider);
+    // NO PROVIDER IS INVENTED HERE ANY MORE.
+    //
+    // This used to ask the server which providers it held keys for, pick one,
+    // and write it into the stored cloud object marked `otomatis`. The picker
+    // then listed a model for a key the user had never entered, while the
+    // settings screen -- which reads the same state -- showed nothing
+    // configured. One state, reported as 1 in one place and 0 in the other.
+    //
+    // Choosing a provider from the keys on disk is a question for the code that
+    // HOLDS those keys, and it is answered there now: see _providerBawaan() in
+    // agent/cloud.ts, which fills it in when a request names none. So chat
+    // still works with server-side keys; the picker simply stops claiming a
+    // configuration that does not exist.
+    //
+    // An entry written by the OLD behaviour is cleared, or it would keep
+    // showing a model forever after this change.
+    if (cloud && cloud.otomatis) {
+      cloud = null;
+      try {
+        setCloudLS(null);
+      } catch (_) {}
+    }
+    // A configuration is the user's own: a key they pasted, or a base URL they
+    // pointed at. A bare provider name is what the old auto-entry looked like.
+    const hasCloud = cloud && (cloud.key || cloud.baseUrl);
     if (hasCloud)
       opts.push({
         value: "cloud",
-        // The `otomatis` mark is honoured HERE too, and that was missing.
-        //
-        // The settings screen already treats an auto-hydrated entry as "not
-        // chosen" — but this picker did not look at the mark at all, so the
-        // same entry read as an unconfigured provider on one screen and as a
-        // model the user had picked on the other. What a fresh install showed
-        // was a model name sitting there with no key behind it, which is
-        // exactly what "everything is already set up" looks like.
-        //
-        // The entry is NOT dropped: the key really does exist, server-side,
-        // and agent/cloud.ts needs cloud.provider to reach it. What changes is
-        // that the label stops claiming to be the user's own choice.
+        // Only a configuration the user actually made reaches this point, so
+        // the label no longer has to explain whose key is behind it.
         label:
           (cloud.model || cloud.name || cloud.provider || "").replace(
             /-/g,
             " ",
-          ) +
-          (cloud.key
-            ? " •" + cloud.key.slice(-4)
-            : cloud.otomatis
-              ? " (server key)"
-              : ""),
+          ) + (cloud.key ? " •" + cloud.key.slice(-4) : ""),
       });
     if (!opts.length)
       opts.push({ value: "", label: "No models yet", disabled: true });
@@ -3948,7 +4175,31 @@ function App() {
           c[c.length - 1] = last;
           return c;
         });
-      const evlist: any[] = [];
+      // A RESUMED run continues the timeline it paused; a new run starts one.
+      //
+      // WHAT WENT WRONG. This list started empty on every call, and every
+      // upd({ events }) below REPLACES the bubble's events with it. So the
+      // first event after an approval -- the bash the user had just allowed --
+      // wiped every step before it. The timeline read "bash" and nothing
+      // else, and at the end of the run the steps shown were only those after
+      // the pause. Same bubble, same run, half the history.
+      //
+      // `messages` is the render's value: doSend is called from the approval
+      // click, after the pause was rendered, so the last bubble here is the
+      // one being resumed.
+      const lanjutan = hitlData ? messages[messages.length - 1] : null;
+      const agenLama = (lanjutan && lanjutan.agent) || null;
+      const evlist: any[] = agenLama ? [...(agenLama.events || [])] : [];
+      // WHEN THE RUN ACTUALLY STARTED. The timeline used to count elapsed
+      // seconds in component-local state that only ticked while the component
+      // was mounted AND busy — so a run reopened from history had zero, and the
+      // header printed a hardcoded "1m" instead. A real timestamp survives a
+      // remount, a reload, and a restore. A resumed run keeps its original
+      // start: the clock did not restart when the user pressed Allow.
+      const mulaiMs = (agenLama && agenLama.mulaiMs) || Date.now();
+      // A resumed run is NOT over: the end stamp the paused stream left
+      // behind would freeze the clock at the second bash asked for approval.
+      upd({ mulaiMs, selesaiMs: null });
       let think = "";
       let adoneSent = false;
       let waitingForInput = false;
@@ -3968,7 +4219,23 @@ function App() {
           },
           (j: any) => {
             if (j.thread_id) simpanThreadTerputus(j.thread_id);
+            // t:"backup" carries a _agent_backups DIRECTORY from qBackup() in
+            // server.ts — a different mechanism from agent/snapshot.ts, with no
+            // metadata and nothing in .wolfspace/snapshots. Measured: passing
+            // its name to POST /api/rollback answers "not found". So it stays
+            // what it always was, a stored path; the restorable checkpoint
+            // arrives as its own event below.
             if (j.t === "backup") upd({ backup: j.dir });
+            else if (j.t === "checkpoint") {
+              evlist.push({
+                type: "checkpoint",
+                id: j.id,
+                label: j.label || "",
+                files: j.files,
+                ts: Date.now(),
+              });
+              upd({ events: [...evlist] });
+            }
             // model_wait: satu-satunya tanda hidup selama menunggu.
             // The backend used to emit this with NO handler here and no
             // catch-all branch — so it vanished silently. Every wait then
@@ -4007,6 +4274,23 @@ function App() {
             } else if (j.t === "tok") {
               think += j.c;
               upd({ thinking: think });
+            } else if (j.t === "usage") {
+              // Token accounting for this run, already SUMMED across steps by
+              // self_agent. Stored whole rather than merged field by field so a
+              // late event cannot leave a half-updated number on screen.
+              upd({
+                pakai: {
+                  masuk: j.masuk,
+                  keluar: j.keluar,
+                  cacheBaca: j.cacheBaca,
+                  cacheTulis: j.cacheTulis,
+                  panggilan: j.panggilan,
+                  model: j.model,
+                  provider: j.provider,
+                  anggaran: j.anggaran,
+                  taksiran: j.taksiran,
+                },
+              });
             } else if (j.t === "thought") {
               think = "";
               evlist.push({
@@ -4059,6 +4343,16 @@ function App() {
                   },
                 ],
               });
+            } else if (j.t === "a2ui") {
+              // A proposal pauses the run the way a question does; the
+              // difference is only what is drawn and what comes back.
+              adoneSent = true;
+              waitingForInput = true;
+              setA2ui(j.proposal || null);
+              upd({
+                thinking: "Adjust the panel, then Apply or Cancel.",
+                busy: true,
+              });
             } else if (j.t === "ask") {
               adoneSent = true;
               waitingForInput = true;
@@ -4071,6 +4365,10 @@ function App() {
                   value: c,
                   text: c,
                 })),
+                // A form, when the agent asked for several things at once. The
+                // modal draws it from this schema; nothing about its appearance
+                // comes from the model.
+                fields: Array.isArray(j.fields) ? j.fields : [],
               });
               upd({ thinking: "Waiting for your reply...", busy: true });
             } else if (j.t === "adone") {
@@ -4099,12 +4397,22 @@ function App() {
                 // The agent paused on the step ceiling (a checkpoint) — not
                 // finished, not failed. Close the timeline tidily and then offer
                 // "Continue".
+                //
+                // The ANSWER BUBBLE gets a short, neutral pause note, NOT the
+                // full report. j.summary is an activity accounting ("12 tool
+                // calls (bash×10, grep×2), 3 files edited…"): a diagnostic, not
+                // an answer. It used to be written into the bubble too, so tool
+                // accounting sat where the answer belongs -- the "2× grep, 10×
+                // bash in the answer" the report was about. The detail stays in
+                // full in the Continue panel below, which is where a checkpoint
+                // report belongs.
                 adoneSent = true;
                 waitingForInput = true;
                 upd({
                   busy: false,
                   done: true,
-                  summary: j.summary,
+                  summary:
+                    "Paused at the step limit — details are in the panel below. Continue to carry on, or Done to stop.",
                   editCount: j.edits,
                   backup: j.backup,
                 });
@@ -4154,6 +4462,10 @@ function App() {
           });
       }
       console.log("[doSend] Setting busy=false (agent stream complete)");
+      // The END, stamped once. Every other completion path above is a branch of
+      // this one, and stamping it here means the duration cannot keep growing
+      // after the run is over.
+      upd({ selesaiMs: Date.now() });
       // The run finished (not merely waiting for an answer), so the thread must
       // not linger — otherwise the next, unrelated message would attach to it.
       if (!waitingForInput) simpanThreadTerputus(null);
@@ -4162,7 +4474,7 @@ function App() {
         if (!hadError) {
           const summary =
             evlist.length > 0
-              ? `Selesai. ${evlist.length} operasi dieksekusi.`
+              ? `Done. ${evlist.length} operation${evlist.length === 1 ? "" : "s"} performed.`
               : "Done. No operations were performed.";
           upd({ busy: false, done: true, summary });
           setHistory((h: any) => [
@@ -4209,10 +4521,31 @@ function App() {
   // width); once Code became the third panel, that pattern meant editing all
   // four and hoping none was missed.
   const _panelTerbuka = [
-    terminalOpen && { sisi: posisi.terminal, pct: terminalPct },
-    panelOpen && { sisi: posisi.preview, pct: panelPct },
-    logicOpen && { sisi: posisi.logic, pct: logicPct },
+    terminalOpen && {
+      nama: "terminal",
+      sisi: posisi.terminal,
+      pct: terminalPct,
+    },
+    panelOpen && { nama: "preview", sisi: posisi.preview, pct: panelPct },
+    logicOpen && { nama: "logic", sisi: posisi.logic, pct: logicPct },
   ].filter(Boolean);
+  // A panel's place among the OPEN panels on its own side, in DOM order.
+  // Two panels on one side used to share one order number, so both of their
+  // splitters sorted before both panels: [chat][div][div][preview][logic],
+  // and nothing sat between preview and logic. Reported as "there is no
+  // resize between Web Dev and the code editor".
+  const _indeksSisi = (nama: any) => {
+    const p = _panelTerbuka.find((x: any) => x.nama === nama);
+    if (!p) return 0;
+    return _panelTerbuka
+      .filter((x: any) => _grup(x.sisi) === _grup(p.sisi) && x.sisi === p.sisi)
+      .findIndex((x: any) => x.nama === nama);
+  };
+  const _jumlahSisi = (nama: any) => {
+    const p = _panelTerbuka.find((x: any) => x.nama === nama);
+    if (!p) return 1;
+    return _panelTerbuka.filter((x: any) => x.sisi === p.sisi).length;
+  };
   const _adaPanel = _panelTerbuka.length > 0;
   // The last safety net: if the final panel is closed while chat is hidden, the
   // screen goes completely empty with no visible way back. The menu already
@@ -4281,7 +4614,8 @@ function App() {
       ? Math.max(20, 100 - _jumlahBawah)
       : 0
     : Math.max(20, 100 - _jumlahBawah);
-  // Gaya sebuah panel + pembaginya, mengikuti sisi tempat ia duduk. Satu tempat
+  // The style of a panel and its splitter, following the side it sits on. One
+  // place,
   // so terminal and preview never drift apart in how they are treated.
   //
   // EACH PANEL CARRIES ITS OWN 6px SPLITTER. Without that the total exceeds
@@ -4297,29 +4631,63 @@ function App() {
   // dividing line ends up on the outer edge and the panel butts against chat
   // pemisah sama sekali.
   //
-  //   chat "kiri"  :  [chat] [div] [kanan…]        kiri…] [div] [chat]
-  //   chat "kanan" :  [kiri…] [div] [kanan…] [div] [chat]
+  //   chat "kiri"  :  [chat] [div] [kanan…]
+  //   chat "kanan" :  [kiri…] [div] [chat] [div] [kanan…]
+  //
+  // ── THE BUG THIS ORDERING USED TO HAVE ──
+  //
+  // A "kanan" panel was a flat `1`, and chat on the right is `10`. So with chat
+  // on the RIGHT, a right panel (1) and a left panel (-2) both sorted BEFORE
+  // chat — two different settings, one identical layout. Switching Preview from
+  // Right to Left moved nothing at all, which is exactly how it was reported.
+  //
+  // MEASURED, in a real browser, at 1200px with the app's own .chat-split CSS:
+  //   preview kanan, chat kiri  -> chat x0   div x780  preview x786
+  //   preview KIRI,  chat kiri  -> preview x0   div x414  chat x420
+  //   preview kanan, chat KANAN -> preview x0   div x414  chat x420   ← same
+  //   preview KIRI,  chat KANAN -> preview x0   div x414  chat x420   ← same
+  //
+  // The two identical rows are even written down in the header of
+  // tests/posisi-kiri.test.ts, both at x232, and were read as a pass.
+  //
+  // The fix keeps the sides meaning what they say: "kanan" is the side AWAY
+  // from chat and "kiri" the side toward it, so a right panel must sort AFTER
+  // chat when chat itself is on the right.
   //
   // The bottom number is deliberately far away (20): it is always last, and the
   // gap lets first-row values be inserted without colliding.
   const _chatKanan = posisi.chat === "kanan";
   const _ORDER_CHAT = _chatKanan ? 10 : 0;
-  const _orderPanel = (sisi: any) =>
-    sisi === "bawah" ? 20 : sisi === "kiri" ? -2 : 1;
-  // The splitter always sits on the panel side FACING chat.
-  const _orderPembagi = (sisi: any) =>
-    sisi === "bawah" ? 20 : sisi === "kiri" ? -1 : _chatKanan ? 2 : 0;
+  //
+  // With several panels on ONE side the numbers run in sequence, panel by
+  // panel: right side [chat][d0][p0][d1][p1], left side [p0][d0][p1][d1][chat].
+  // The single-panel case is unchanged: kanan 2/1, kiri -2/-1.
+  const _orderPanel = (sisi: any, nama?: any) => {
+    if (sisi === "bawah") return 20;
+    const i = nama ? _indeksSisi(nama) : 0;
+    if (sisi === "kiri") return -2 * ((nama ? _jumlahSisi(nama) : 1) - i);
+    return (_chatKanan ? 12 : 2) + 2 * i;
+  };
+  // The splitter always sits on the panel side FACING chat, which is why it is
+  // one step before the panel it belongs to rather than a constant.
+  const _orderPembagi = (sisi: any, nama?: any) =>
+    sisi === "bawah"
+      ? 20
+      : sisi === "kiri"
+        ? _orderPanel(sisi, nama) + 1
+        : _orderPanel(sisi, nama) - 1;
 
-  const gayaPanel = (sisi: any, pct: any) =>
+  const gayaPanel = (sisi: any, pct: any, nama?: any) =>
     sisi === "bawah"
       ? {
           flex: "0 0 auto",
           width: "100%",
           height: "calc(" + pct * _skalaSisi("bawah") + "% - 6px)",
-          order: _orderPanel(sisi),
+          order: _orderPanel(sisi, nama),
         }
       : {
-          // Tanpa chat, panel kanan MELEBAR mengisi baris. Grow-nya sebanding
+          // With no chat, the right-hand panels EXPAND to fill the row. Their
+          // grow is proportional
           // with pct, not a flat "1 1 0%": with one panel the two are the same,
           // but with two or three right-hand panels a flat grow makes them all
           // exactly equal width — the result of dragging a splitter disappears
@@ -4328,17 +4696,17 @@ function App() {
             ? pct + " 1 0%"
             : "0 0 calc(" + pct * _skalaSisi("kanan") + "% - 6px)",
           height: tinggiAtas + "%",
-          order: _orderPanel(sisi),
+          order: _orderPanel(sisi, nama),
         };
-  const gayaPembagi = (sisi: any) =>
+  const gayaPembagi = (sisi: any, nama?: any) =>
     sisi === "bawah"
       ? {
           flex: "0 0 auto",
           width: "100%",
           height: "6px",
-          order: _orderPembagi(sisi),
+          order: _orderPembagi(sisi, nama),
         }
-      : { order: _orderPembagi(sisi), height: tinggiAtas + "%" };
+      : { order: _orderPembagi(sisi, nama), height: tinggiAtas + "%" };
 
   return (
     <>
@@ -4468,6 +4836,30 @@ function App() {
                     request={hitlRequest}
                     onResolve={handleHitlResolve}
                   />
+                  {a2ui && (
+                    <A2UIPanel
+                      proposal={a2ui}
+                      getFrameDoc={getPreviewDoc}
+                      onSelesai={(aksi: string, data: any) => {
+                        setA2ui(null);
+                        setBusy(false);
+                        // Same shape as answering a question: a user message
+                        // the agent reads on its next turn. The tool told it
+                        // to expect exactly this line.
+                        setTimeout(
+                          () =>
+                            doSend(
+                              "[a2ui:" +
+                                aksi +
+                                "] " +
+                                JSON.stringify(data || {}),
+                              null,
+                            ),
+                          50,
+                        );
+                      }}
+                    />
+                  )}
                   <LightboxModal
                     item={globalPreviewItem}
                     onClose={() => setGlobalPreviewItem(null)}
@@ -4506,16 +4898,18 @@ function App() {
                       "split-divider" +
                       (posisi.terminal === "bawah" ? " split-divider-h" : "")
                     }
-                    style={gayaPembagi(posisi.terminal)}
+                    style={gayaPembagi(posisi.terminal, "terminal")}
                     onMouseDown={geserPembagi(
                       posisi.terminal === "bawah" ? "y" : "x",
                       setTerminalPct,
+                      "terminal",
                     )}
                   />
                   <div
                     className="terminal-col"
+                    data-panel="terminal"
                     style={{
-                      ...gayaPanel(posisi.terminal, terminalPct),
+                      ...gayaPanel(posisi.terminal, terminalPct, "terminal"),
                       display: "flex",
                       flexDirection: "column",
                       minWidth: 0,
@@ -4527,6 +4921,7 @@ function App() {
                       selectedProject={selectedProject}
                       onClose={() => setTerminalOpen(false)}
                       terminalOutput={terminalOutput}
+                      onClearTerminalOutput={() => setTerminalOutput("")}
                       messages={messages}
                       perintah={perintahTerminal}
                       debugAktif={debugAktif}
@@ -4546,16 +4941,18 @@ function App() {
                       "split-divider" +
                       (posisi.preview === "bawah" ? " split-divider-h" : "")
                     }
-                    style={gayaPembagi(posisi.preview)}
+                    style={gayaPembagi(posisi.preview, "preview")}
                     onMouseDown={geserPembagi(
                       posisi.preview === "bawah" ? "y" : "x",
                       setPanelPct,
+                      "preview",
                     )}
                   />
                   <div
                     className="canvas-col"
+                    data-panel="preview"
                     style={{
-                      ...gayaPanel(posisi.preview, panelPct),
+                      ...gayaPanel(posisi.preview, panelPct, "preview"),
                       background: "var(--surface-1)",
                       display: "flex",
                       flexDirection: "column",
@@ -5165,15 +5562,17 @@ function App() {
                       "split-divider" +
                       (posisi.logic === "bawah" ? " split-divider-h" : "")
                     }
-                    style={gayaPembagi(posisi.logic)}
+                    style={gayaPembagi(posisi.logic, "logic")}
                     onMouseDown={geserPembagi(
                       posisi.logic === "bawah" ? "y" : "x",
                       setLogicPct,
+                      "logic",
                     )}
                   />
                   <div
+                    data-panel="logic"
                     style={{
-                      ...gayaPanel(posisi.logic, logicPct),
+                      ...gayaPanel(posisi.logic, logicPct, "logic"),
                       background: "var(--surface-1, #0f1318)",
                       display: "flex",
                       flexDirection: "column",
@@ -5191,62 +5590,65 @@ function App() {
                       tab group beside TERMINAL and DEBUG
                       — the same layout as VS Code. */}
                     <div style={{ flex: 1, display: "flex", minHeight: 0 }}>
-                      <LogicFileTree
-                        files={devFiles}
-                        folders={devFolders}
-                        tanda={tandaBerkas}
-                        onImpor={(rels: any[]) =>
-                          setDevFiles((prev: any) =>
-                            prev.concat(
-                              rels.filter((r: any) => prev.indexOf(r) < 0),
-                            ),
-                          )
-                        }
-                        root={webProjectRoot(preview.url, selectedProject)}
-                        active={!!preview.url}
-                        terpilih={logicBerkas}
-                        onPilih={(rel: any, keSamping: any) =>
-                          keSamping ? bukaDiSamping(rel) : bukaTab(rel)
-                        }
-                        onHapus={(rel: any) => {
-                          // The file is gone from disk, so both the list and its
-                          // tab have to go with it. Leaving either behind means a
-                          // row that opens nothing and a tab that loads a 404.
-                          setDevFiles((prev: any) =>
-                            prev.filter((x: any) => x !== rel),
-                          );
-                          tutupTab(rel);
-                        }}
-                        onHapusFolder={(rel: any) => {
-                          // Everything under the folder is gone from disk, so it
-                          // has to go from both lists and from any open tab.
-                          // Leaving a child behind means a row that opens
-                          // nothing and a tab that loads a 404.
-                          const di = (x: any) =>
-                            x === rel || x.startsWith(rel + "/");
-                          setDevFiles((prev: any) => {
-                            prev.filter(di).forEach((x: any) => tutupTab(x));
-                            return prev.filter((x: any) => !di(x));
-                          });
-                          setDevFolders((prev: any) =>
-                            prev.filter((x: any) => !di(x)),
-                          );
-                        }}
-                        onBuatFolder={(rel: any) =>
-                          setDevFolders((prev: any) =>
-                            prev.includes(rel) ? prev : prev.concat(rel),
-                          )
-                        }
-                        onBuat={(rel: any) => {
-                          // devFiles is the list of files being worked on. A file
-                          // the user just created belongs in it, exactly like one
-                          // the agent wrote.
-                          setDevFiles((prev: any) =>
-                            prev.indexOf(rel) >= 0 ? prev : prev.concat(rel),
-                          );
-                          bukaTab(rel);
-                        }}
-                      />
+                      {!explorerSembunyi && (
+                        <LogicFileTree
+                          files={devFiles}
+                          folders={devFolders}
+                          tanda={tandaBerkas}
+                          onImpor={(rels: any[]) =>
+                            setDevFiles((prev: any) =>
+                              prev.concat(
+                                rels.filter((r: any) => prev.indexOf(r) < 0),
+                              ),
+                            )
+                          }
+                          root={akarEditor}
+                          active={!!preview.url}
+                          terpilih={logicBerkas}
+                          onPilih={(rel: any, keSamping: any) =>
+                            keSamping ? bukaDiSamping(rel) : bukaTab(rel)
+                          }
+                          onHapus={(rel: any) => {
+                            // The file is gone from disk, so both the list and its
+                            // tab have to go with it. Leaving either behind means a
+                            // row that opens nothing and a tab that loads a 404.
+                            setDevFiles((prev: any) =>
+                              prev.filter((x: any) => x !== rel),
+                            );
+                            tutupTab(rel);
+                          }}
+                          onSembunyi={() => putarExplorer(true)}
+                          onHapusFolder={(rel: any) => {
+                            // Everything under the folder is gone from disk, so it
+                            // has to go from both lists and from any open tab.
+                            // Leaving a child behind means a row that opens
+                            // nothing and a tab that loads a 404.
+                            const di = (x: any) =>
+                              x === rel || x.startsWith(rel + "/");
+                            setDevFiles((prev: any) => {
+                              prev.filter(di).forEach((x: any) => tutupTab(x));
+                              return prev.filter((x: any) => !di(x));
+                            });
+                            setDevFolders((prev: any) =>
+                              prev.filter((x: any) => !di(x)),
+                            );
+                          }}
+                          onBuatFolder={(rel: any) =>
+                            setDevFolders((prev: any) =>
+                              prev.includes(rel) ? prev : prev.concat(rel),
+                            )
+                          }
+                          onBuat={(rel: any) => {
+                            // devFiles is the list of files being worked on. A file
+                            // the user just created belongs in it, exactly like one
+                            // the agent wrote.
+                            setDevFiles((prev: any) =>
+                              prev.indexOf(rel) >= 0 ? prev : prev.concat(rel),
+                            );
+                            bukaTab(rel);
+                          }}
+                        />
+                      )}
                       {/* ── The editor groups ──
                           One row holding every group and the dividers between
                           them. Measured separately from the file tree so the
@@ -5269,19 +5671,24 @@ function App() {
                               />
                             )}
                             <LogicCodePane
-                              root={webProjectRoot(
-                                preview.url,
-                                selectedProject,
-                              )}
+                              root={akarEditor}
                               rel={g.aktif}
                               tabs={g.tabs}
                               tabsSemua={logicTabsSemua}
                               fokus={i === grupFokus}
                               banyakGrup={logicGrup.length > 1}
+                              onTampilkanExplorer={
+                                // Only the FIRST group offers it. With the area
+                                // split, three panes each showing the same
+                                // button would be three ways to do one thing.
+                                explorerSembunyi && i === 0
+                                  ? () => putarExplorer(false)
+                                  : null
+                              }
                               bisaPecah={logicGrup.length < MAKS_GRUP}
                               sudahPecah={logicGrup.length > 1}
                               onTutupPecah={tutupGrup}
-                              onFokus={() => setGrupFokus(i)}
+                              onFokus={() => fokuskanGrup(i)}
                               onPecah={pecahGrup}
                               gaya={
                                 logicGrup.length > 1 && i === 0
@@ -5295,7 +5702,7 @@ function App() {
                               }
                               onKotorBerubah={tandaiKotor}
                               onRun={jalankanDiTerminal}
-                              onDaftarDebug={setPemicuDebug}
+                              onListDebug={setPemicuDebug}
                               titikHenti={titikHenti}
                               setTitikHenti={setTitikHenti}
                               barisAktif={

@@ -1,8 +1,13 @@
-// Config — the workspace root constant, taken DYNAMICALLY from the preload
-// (window.WOLFSPACE.root). Loaded FIRST via APP_MODULES so it is available to
-// every module and to app.tsx. It produces the same value the old hardcoded one
-// did back when the folder was still "quantum", but follows a rename (to
-// wolfspace, say) automatically — with no code change.
+// Config.tsx — the workspace root, read from the preload (window.WOLFSPACE.root)
+// rather than hardcoded.
+//
+// ROLE IN THE SYSTEM. Loaded FIRST in APP_MODULES, so every other renderer
+// module and app.tsx can read it. Taking it from the preload means renaming the
+// project folder needs no code change; the literal below is only the fallback
+// for a browser with no Electron bridge.
+//
+// See public/app.tsx for how the renderer is assembled and why load order
+// matters.
 const _wsRaw =
   (typeof window !== "undefined" &&
     window.WOLFSPACE &&
@@ -115,6 +120,24 @@ const MCP_DIKENAL: Record<string, EntriMcp> = {
     command: "npx",
     args: ["-y", "figma-developer-mcp", "--stdio"],
     kredensial: { arg: "--figma-api-key=" },
+  },
+  // VERIFIED BY READING THE PUBLISHED PACKAGE, not its README. The README says
+  // to clone and build, which would have meant this could not be added here at
+  // all -- but sketchfab-mcp-server@1.0.10 on npm declares `bin`, so npx runs
+  // it with no clone and no build step. Its build/index.js reads exactly ONE
+  // environment variable, process.env.SKETCHFAB_API_KEY, and sends the key as
+  // `Authorization: Token <key>` -- Sketchfab's own scheme, not Bearer.
+  //
+  // The token comes from sketchfab.com/settings/password.
+  //
+  // WORTH KNOWING BEFORE USING IT: its sketchfab-download tool calls mkdirSync
+  // and writeFileSync against a path the model chooses. That writes outside
+  // anything this app confines, which is a property of the server, not of this
+  // entry -- recorded here because the entry is what makes it one command away.
+  sketchfab: {
+    command: "npx",
+    args: ["-y", "sketchfab-mcp-server"],
+    kredensial: { env: "SKETCHFAB_API_KEY" },
   },
   github: {
     command: "npx",
@@ -268,4 +291,157 @@ function mcpResolveKredensial(
   // NOTHING is invented here. The old code wrote { TOKEN: value }, which looks
   // like it worked and never did.
   return { env: {}, args, perluNama: true };
+}
+
+// ── ONE SET OF EDITOR OPTIONS, FOR ALL THREE EDITORS ─────────────────────────
+//
+// This app creates Monaco three times — the code panel (app.tsx), code blocks
+// in chat (CodeBlocks.tsx) and tool output (AgentSteps.tsx) — and they are
+// meant to look identical. They already drifted once: `overviewRulerLanes: 0`
+// was found in one, then copied to the other two by hand, and each carries its
+// own paragraph explaining the same 14px canvas. Three copies of a rule is how
+// this repo has produced bugs before.
+//
+// ── WHAT THIS TURNS ON, AND WHY IT WAS OFF ───────────────────────────────────
+//
+// None of it is new to Monaco; it was simply never asked for. VS Code has all
+// of it on by default, which is most of the answer to "why does VS Code look
+// better" — the other part being the theme, which was `rules: []` until
+// tema-editor.js.
+//
+//   bracketPairColorization  matching brackets in distinct colours
+//   guides.*                 indent guides, the active one highlighted, and
+//                            the vertical line joining a bracket pair
+//   occurrencesHighlight     every other use of the symbol under the cursor
+//   selectionHighlight       every other occurrence of the selected text
+//   matchBrackets            the partner of the bracket beside the cursor
+//   inlayHints               parameter names and inferred types, inline
+//   stickyScroll             the enclosing function pinned to the top
+//   linkedEditing            rename an HTML tag and its closing tag follows
+//   folding + indentation    fold by structure, from the indentation Monaco
+//                            can see, so it works for every language and not
+//                            only the four with a real language service
+//   smoothScrolling / cursorSmoothCaretAnimation / cursorBlinking
+//                            the motion VS Code has; cosmetic, and cheap
+//
+// renderLineHighlight is NOT set here. It is "none" in all three editors on
+// purpose: with the minimap off and the ruler disabled, its top border lands
+// exactly on the editor edge and reads as a stray full-width line under the
+// panel header. That was traced once already; turning it on would bring it
+// back.
+// ── REFRESH WHILE A HANDSHAKE IS STILL RUNNING ──────────────────────────────
+//
+// WHAT WENT WRONG. connectServer() deliberately returns as soon as the child
+// process EXISTS, without waiting for the handshake — because awaiting it held
+// the backend host for up to 60 seconds and made the whole window look hung.
+// The comment on _mulaiServer in agent/mcp-client.ts explains that trade and
+// then says readiness is "reported by status(), which the UI already polls".
+//
+// The UI did not poll. Both MCP lists refresh on mount and on the
+// wolfspace_mcp_changed event, and nothing else. So the sequence was:
+//
+//   t=0      connect returns { status: "starting" }; the list refreshes and
+//            correctly shows "◌ Connecting…" (status.starting === true)
+//   t≈4.3s   the handshake completes, status.starting -> false, ready -> true,
+//            and the log prints "MCP server <name> ready."
+//   after    nothing refreshes, so the badge stays "Connecting…" for ever
+//
+// The badge was never wrong about what it had been told; it was never told
+// again. This closes that gap, and makes the sentence in mcp-client.ts true.
+//
+// It runs ONLY while something is actually starting, so an idle app makes no
+// requests at all.
+const MCP_POLL_MS = 1200;
+// A stop, because a request loop with no exit is worse than a stale badge.
+// The handshake has its own 60s ceiling and `starting` is cleared on both the
+// success and the failure path, so this should never be reached — it exists so
+// that a bug there costs one wrong badge rather than an endless poll.
+const MCP_POLL_MAKS_MS = 120000;
+
+/** True when any server in the list is still shaking hands. */
+function adaMcpMulai(daftar: any): boolean {
+  return (
+    Array.isArray(daftar) &&
+    daftar.some((s: any) => s && s.status && s.status.starting)
+  );
+}
+
+/** Re-run `muat` every MCP_POLL_MS for as long as one is starting. */
+function useMcpMenunggu(daftar: any, muat: any) {
+  const menunggu = adaMcpMulai(daftar);
+  React.useEffect(() => {
+    if (!menunggu || typeof muat !== "function") return;
+    const mulai = Date.now();
+    const jam = setInterval(() => {
+      if (Date.now() - mulai > MCP_POLL_MAKS_MS) {
+        clearInterval(jam);
+        return;
+      }
+      muat();
+    }, MCP_POLL_MS);
+    return () => clearInterval(jam);
+  }, [menunggu, muat]);
+}
+
+function opsiEditor(tambahan?: any) {
+  return {
+    theme: "wolfspace-gelap",
+    automaticLayout: true,
+    minimap: { enabled: false },
+    scrollBeyondLastLine: false,
+    renderLineHighlight: "none",
+    // The 14px canvas Monaco paints along the right edge (error marks, search
+    // hits) stays active even with the minimap off, and its border is drawn to
+    // pixels — CSS `outline` cannot touch it, only this option can.
+    overviewRulerLanes: 0,
+    fontFamily:
+      "'Cascadia Code', 'JetBrains Mono', Consolas, 'Courier New', monospace",
+    fontLigatures: true,
+    // 14, WHICH IS VS CODE'S OWN DEFAULT ON THIS PLATFORM. Read from its
+    // source rather than remembered: EDITOR_FONT_DEFAULTS in
+    // src/vs/editor/common/config/fontInfo.ts is 14 on Windows and Linux, 12 on
+    // macOS. This editor sat at 13 — a pixel below every editor it is meant to
+    // feel like, for no reason anyone wrote down.
+    //
+    // lineHeight follows it up: 20/13 was 1.54, and keeping 20 at 14px would
+    // tighten the lines instead of leaving them where they were.
+    fontSize: 14,
+    lineHeight: 21,
+    letterSpacing: 0.2,
+    bracketPairColorization: {
+      enabled: true,
+      independentColorPoolPerBracketType: true,
+    },
+    guides: {
+      indentation: true,
+      highlightActiveIndentation: true,
+      bracketPairs: true,
+      bracketPairsHorizontal: "active",
+    },
+    matchBrackets: "always",
+    occurrencesHighlight: "singleFile",
+    selectionHighlight: true,
+    renderWhitespace: "selection",
+    smoothScrolling: true,
+    cursorBlinking: "smooth",
+    cursorSmoothCaretAnimation: "on",
+    roundedSelection: false,
+    folding: true,
+    foldingStrategy: "indentation",
+    foldingHighlight: true,
+    showFoldingControls: "mouseover",
+    linkedEditing: true,
+    inlayHints: { enabled: "on" },
+    suggest: {
+      showStatusBar: true,
+      preview: true,
+      showInlineDetails: true,
+    },
+    quickSuggestions: { other: true, comments: false, strings: false },
+    parameterHints: { enabled: true },
+    stickyScroll: { enabled: true, maxLineCount: 3 },
+    scrollbar: { alwaysConsumeMouseWheel: false },
+    padding: { top: 8, bottom: 8 },
+    ...(tambahan || {}),
+  };
 }

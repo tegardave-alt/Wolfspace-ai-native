@@ -1,9 +1,9 @@
-// ── git as a NAMED CAPABILITY, not as a shell command ──
+// git-tool.ts — git as a NAMED CAPABILITY with a fixed vocabulary, never as a
+// shell command.
 //
-// WHY THIS EXISTS. git CANNOT run inside an AppContainer, and that is not
-// something that can be patched around. git calls sanitize_stdfds() at startup,
-// which opens /dev/null with O_RDWR UNCONDITIONALLY — not only when a standard
-// fd is missing. Inside a container the NUL device can be WRITTEN but not READ
+// ROLE IN THE SYSTEM. git CANNOT run inside an AppContainer, and that cannot be
+// patched around: git calls sanitize_stdfds() at startup, which opens /dev/null
+// with O_RDWR UNCONDITIONALLY, not only when a standard fd is missing. Inside a container the NUL device can be WRITTEN but not READ
 // (measured: `cmd /c echo x > NUL` succeeds, `[IO.File]::OpenRead('NUL')` is
 // refused). So any git command at all dies before running anything.
 //
@@ -15,6 +15,10 @@
 // OPERATION from a fixed list and BUILDS its own argv. There is no command text
 // to scan, so there is nothing to assemble that could slip past — the boundary
 // is a property of the data's shape, not a guess about a string.
+//
+// CONNECTS TO
+//   imports  ../broker/commandchain (the admission decision)
+//   used by  agent/tools/index.ts, agent/penjaga-agent.ts
 //
 // HONEST ABOUT ITS LIMITS. The git process runs OUTSIDE the AppContainer, so
 // this path is NOT kernel containment and is not labelled as such. What limits
@@ -43,6 +47,21 @@ const _penegakan = require("../penegakan.ts");
 
 const BATAS_MS = 60000;
 const MAKS_KELUARAN = 12000;
+
+/** How many commits `log` returns: 1..200, defaulting only when none was given. */
+function _batasJumlah(n) {
+  // ABSENT is not the same as ZERO, and Number() blurs the two: Number(null),
+  // Number("") and Number([]) are all 0, which would clamp to 1 and return a
+  // single commit to a caller who simply did not pass the field. Only a real
+  // number or a string that parses as one counts as a value given.
+  if (typeof n !== "number" && typeof n !== "string") return 20;
+  if (typeof n === "string" && !n.trim()) return 20;
+  const v = Number(n);
+  if (!Number.isFinite(v)) return 20;
+  // A caller who genuinely asks for 0 or a negative gets the smallest legal
+  // request rather than the default — that is a value, not an omission.
+  return Math.min(Math.max(Math.trunc(v), 1), 200);
+}
 
 /** A ref/branch name: no whitespace, no leading `-` (so it cannot become an option). */
 const REF_SAH = /^[A-Za-z0-9._\/][A-Za-z0-9._\/-]{0,200}$/;
@@ -73,7 +92,10 @@ const OPERASI = {
       "--oneline",
       "--no-color",
       "-n",
-      String(Math.min(Math.max(Number(a.jumlah) || 20, 1), 200)),
+      // `Number(a.jumlah) || 20` turned 0 into 20, because 0 is falsy — a
+      // caller asking for none silently got the default. Only an absent or
+      // unreadable value takes the default now; a number given is clamped.
+      String(_batasJumlah(a.jumlah)),
       ...(a.berkas && a.berkas.length ? ["--", ...a.berkas] : []),
     ],
   },
@@ -92,7 +114,19 @@ const OPERASI = {
   },
   blame: {
     jelas: "who changed each line of one file",
-    argv: (a) => ["blame", "--no-color", "--", a.berkas[0]],
+    // NO --no-color HERE, and that is the whole fix: this operation had never
+    // worked once. git blame has no --no-color, only --color-lines and
+    // --color-by-age, so git answered
+    //
+    //   error: ambiguous option: no-color (could be --no-color-lines or
+    //          --no-color-by-age)
+    //
+    // and printed its usage. Every other operation takes --no-color happily,
+    // which is exactly why it was copied here without being tried.
+    //
+    // Nothing replaces it: git only colours when stdout is a terminal, and
+    // here it is a pipe.
+    argv: (a) => ["blame", "--", a.berkas[0]],
   },
 
   tambah: {
@@ -119,6 +153,54 @@ const OPERASI = {
     tulis: true,
     jelas: "switch to an existing branch; the checkout hooks DO RUN",
     argv: (a) => ["checkout", String(a.ref)],
+  },
+  // ── Network operations ──
+  //
+  // These used to be absent on purpose: the tool ran git with NO credentials,
+  // so a push could only hang or fail, and the only way to give the model a
+  // credential would have been to hand it the token. That changed when the
+  // panel got its own credential helper (core/git-vscode.ts): git is given
+  // the connected GitHub account's token at the moment it asks, and neither
+  // the model nor this process ever holds it. The operations run through
+  // core/git-remote.ts, the same code the panel runs, and every one of them
+  // is `tulis` -- it goes through the approval gate like bash, because it
+  // moves the user's code across the network.
+  //
+  // `jaringan` marks them so jalankan() routes them to the module instead of
+  // building an argv, and so the approval card can say what is about to
+  // leave the machine.
+  fetch: {
+    tulis: true,
+    jaringan: true,
+    jelas:
+      "download what the remote has that this repo does not; changes no files",
+  },
+  pull: {
+    tulis: true,
+    jaringan: true,
+    jelas: "fetch, then merge the upstream into the current branch",
+  },
+  push: {
+    tulis: true,
+    jaringan: true,
+    jelas:
+      "send the current branch's commits to the remote (sets upstream on first push)",
+  },
+  sync: {
+    tulis: true,
+    jaringan: true,
+    jelas: "pull, then push if there is anything to push (VS Code's sync)",
+  },
+  publish: {
+    tulis: true,
+    jaringan: true,
+    jelas: "first push of a new branch, with the upstream set",
+  },
+  clone: {
+    tulis: true,
+    jaringan: true,
+    jelas:
+      "clone a repository (url) into a new folder under the workspace (tujuan = folder name); never overwrites",
   },
 };
 
@@ -161,11 +243,60 @@ function _validasiBerkas(daftar, ws) {
       return { ok: false, alasan: "a path must not start with '-': " + p };
     const abs = path.resolve(ws, p);
     const rel = path.relative(ws, abs);
-    if (rel === "" || rel.startsWith("..") || path.isAbsolute(rel))
+    if (rel.startsWith("..") || path.isAbsolute(rel))
       return { ok: false, alasan: "path di luar workspace: " + p };
-    keluar.push(rel.split(path.sep).join("/"));
+    // THE WORKSPACE ITSELF IS INSIDE THE WORKSPACE.
+    //
+    // rel === "" means the path resolved to the workspace root — which is what
+    // "." is, and "." is how anyone stages everything. It used to be refused
+    // with "path di luar workspace: .", which is not merely unhelpful but
+    // untrue, and it left no way to `git add .` at all: the agent had to
+    // enumerate every changed file, and could not stage a DELETION that way.
+    keluar.push(rel === "" ? "." : rel.split(path.sep).join("/"));
   }
   return { ok: true, berkas: keluar };
+}
+
+/**
+ * The repository this folder belongs to, or null.
+ *
+ * ── WHY IT WALKS UP ──────────────────────────────────────────────────────────
+ *
+ * The check used to be `fs.existsSync(ws + "/.git")`, which is only true at the
+ * TOP of a repository. Open a package inside a monorepo — or any subfolder at
+ * all — and every git operation was refused with "is not a git repo", while
+ * git itself worked there perfectly. MEASURED on a real repo:
+ *
+ *     git -C <repo>/sub status --porcelain=v1 --branch   ->   ## master
+ *     the tool                                           ->   "not a git repo"
+ *
+ * git searches upward for .git and so does this. A repository is not defined by
+ * where you happen to be standing in it.
+ *
+ * ── WHAT THAT MEANS, SAID PLAINLY ────────────────────────────────────────────
+ *
+ * The repository may be rooted ABOVE the workspace, and then status, log and
+ * commit concern that repository — which is what git does everywhere else and
+ * what someone opening a subfolder expects. The confinement that matters is
+ * unchanged: every path argument is still validated to be inside the workspace,
+ * so no file outside it can be staged, restored or blamed.
+ *
+ * `.git` may be a FILE rather than a directory (worktrees, submodules), so the
+ * existence check must not require a directory.
+ *
+ * @param {string} ws
+ * @returns {string|null}
+ */
+function _akarRepo(ws) {
+  let d = path.resolve(ws);
+  // Bounded by the filesystem root: path.dirname("C:\\") === "C:\\", so the
+  // loop ends when it stops moving.
+  for (;;) {
+    if (fs.existsSync(path.join(d, ".git"))) return d;
+    const naik = path.dirname(d);
+    if (naik === d) return null;
+    d = naik;
+  }
 }
 
 /**
@@ -188,7 +319,7 @@ async function jalankan(args, workspace) {
         Object.entries(OPERASI)
           .map(([k, v]) => "  " + k.padEnd(13) + v.jelas)
           .join("\n") +
-        "\nNO network operations (push/pull/fetch/clone) in this tool.",
+        "\nNetwork operations (fetch/pull/push/sync/publish/clone) ask the user for approval first.",
     };
   }
 
@@ -223,11 +354,13 @@ async function jalankan(args, workspace) {
       ..._penegakan.label("penasihat", "kapabilitas-git"),
       output: "commit butuh 'pesan'",
     };
-  if (!fs.existsSync(path.join(ws, ".git")))
+  if (nama !== "clone" && !_akarRepo(ws))
     return {
       ok: false,
       ..._penegakan.label("penasihat", "kapabilitas-git"),
-      output: ws + " is not a git repo (no .git)",
+      output:
+        ws +
+        " is not inside a git repo (no .git here or in any folder above it)",
     };
 
   // WRITE operations can run the repo's hooks, and a hook is a file the agent
@@ -237,6 +370,7 @@ async function jalankan(args, workspace) {
     const gerbang = _admission(nama);
     if (gerbang) return gerbang;
   }
+  if (op.jaringan) return _jaringan(nama, b, ws);
 
   const argv = ["-C", ws, "--no-pager", ...op.argv(b, ws)];
   return new Promise((res) => {
@@ -282,6 +416,73 @@ async function jalankan(args, workspace) {
  * than opens — the same principle as sandbox_run.
  * @param {string} nama
  */
+/**
+ * A network operation, through core/git-remote.ts. Results come back in the
+ * tool's own shape; the module's `err` becomes the output so the model reads
+ * git's reason, not a generic failure.
+ */
+async function _jaringan(nama, a, ws) {
+  const label = _penegakan.label("penasihat", "kapabilitas-git");
+  const gr = require("../../core/git-remote.ts");
+  let r: any;
+  try {
+    switch (nama) {
+      case "fetch":
+        r = await gr.fetch(ws, a.remote || "origin");
+        break;
+      case "pull":
+        r = await gr.pull(ws, a.remote || "origin", a.ref || undefined);
+        break;
+      case "push":
+        r = await gr.push(ws, a.remote || "origin", a.ref || undefined, true);
+        break;
+      case "sync":
+        r = await gr.sync(ws);
+        break;
+      case "publish":
+        r = await gr.publish(ws, a.remote || "origin");
+        break;
+      case "clone": {
+        // Into the workspace, never outside it: the folder name is checked
+        // by the module, and the parent is the workspace itself.
+        if (!a.url) return { ok: false, ...label, output: "clone needs 'url'" };
+        r = await gr.clone(
+          String(a.url),
+          ws,
+          a.tujuan ? String(a.tujuan) : undefined,
+        );
+        break;
+      }
+      default:
+        return {
+          ok: false,
+          ...label,
+          output: "unknown network operation " + nama,
+        };
+    }
+  } catch (e) {
+    return {
+      ok: false,
+      ...label,
+      output: "git failed: " + String((e && e.message) || e).slice(0, 300),
+    };
+  }
+  if (!r || !r.ok) {
+    return {
+      ok: false,
+      ...label,
+      output: (r && r.err) || "git failed",
+    };
+  }
+  const ringkas = { ...r };
+  delete ringkas.ok;
+  return {
+    ok: true,
+    ...label,
+    output: nama + " ok: " + JSON.stringify(ringkas),
+  };
+}
+
 function _admission(nama) {
   try {
     const cc = require("../broker/commandchain.ts");
@@ -318,4 +519,10 @@ function _admission(nama) {
   }
 }
 
-module.exports = { jalankan, OPERASI };
+module.exports = {
+  jalankan,
+  OPERASI,
+  _akarRepo,
+  _batasJumlah,
+  _validasiBerkas,
+};

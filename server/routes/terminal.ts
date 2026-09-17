@@ -1,11 +1,17 @@
-// Terminal API: HTTP routes for PTY sessions.
-// Ported from the former server/routes/terminal.cjs; behavior is unchanged.
-// All state (terminalSessions) and the PTY helpers stay in server.cjs and are
-// injected via deps — this module holds routing logic only.
+// terminal.ts — HTTP routes for PTY sessions.
 //
-// Electron does not use these routes: the desktop path reaches the same helpers
-// through the "terminal" IPC channel (see packages/contracts/ipc.ts). This is
-// the HTTP surface for `npm start` and the WSL backend.
+// ROLE IN THE SYSTEM. Routing only: the sessions and the PTY helpers live in
+// core/terminal.ts and are injected through deps.
+//
+// THE DESKTOP APP DOES NOT USE THESE ROUTES. Electron reaches the same helpers
+// over the "terminal" IPC channel (packages/contracts/ipc.ts). This is the HTTP
+// surface for `npm start` and the WSL backend, so a change here is invisible in
+// the desktop build unless the IPC side changes too.
+//
+// CONNECTS TO
+//   imports  node:http types
+//   deps     core/terminal
+//   mounted  by server.ts
 
 import type { IncomingMessage, ServerResponse } from "node:http";
 
@@ -17,12 +23,16 @@ export interface TerminalSession {
   /** Ring-trimmed at TERM_OUTPUT_MAX by the PTY data handler in server.cjs. */
   outputBuffer: string;
   listeners: unknown;
+  /** Set once the process has exited; the entry lingers so the exit line can be read. */
+  exited?: { code: unknown; at: number } | null;
 }
 
 export interface OpenTerminalResult {
   id: string;
   shell: string;
   cwd: string;
+  /** Windows build number (0 off Windows), for xterm's windowsPty option. */
+  windowsBuild?: number;
 }
 
 export interface TerminalRouteDeps {
@@ -32,6 +42,13 @@ export interface TerminalRouteDeps {
   writeToTerminal(id: string, data: string): void;
   resizeTerminal(id: string, cols: number, rows: number): void;
   closeTerminalSession(id: string): void;
+  /** The shells installed on this machine, for the picker. */
+  shellsTersedia?(): Array<{
+    nama: string;
+    nilai: string;
+    ada: boolean;
+    pasang?: string;
+  }>;
 }
 
 export function handle(
@@ -47,6 +64,7 @@ export function handle(
     writeToTerminal,
     resizeTerminal,
     closeTerminalSession,
+    shellsTersedia,
   } = deps;
 
   // Collects the request body, then runs fn with 400 + {error} on any throw.
@@ -106,8 +124,12 @@ export function handle(
       }
       const output = session.outputBuffer || "";
       if (clear) session.outputBuffer = "";
+      // `exited` tells the poller to stop: the session is over, and once its
+      // last output has been drained the entry itself goes.
+      const exited = !!session.exited;
+      if (exited && clear) terminalSessions.delete(id);
       res.writeHead(200, { "Content-Type": "application/json" });
-      res.end(JSON.stringify({ output }));
+      res.end(JSON.stringify({ output, exited }));
     }, true);
   }
 
@@ -119,12 +141,19 @@ export function handle(
     });
   }
 
+  if (req.method === "GET" && urlPath === "/api/terminal/shells") {
+    res.writeHead(200, { "Content-Type": "application/json" });
+    res.end(JSON.stringify(shellsTersedia ? shellsTersedia() : []));
+    return true;
+  }
+
   if (req.method === "GET" && urlPath === "/api/terminal/list") {
     const out = Array.from(terminalSessions.entries()).map(([id, s]) => ({
       id,
       shell: s.shell,
       cwd: s.cwd,
       createdAt: s.createdAt,
+      exited: !!s.exited,
     }));
     res.writeHead(200, { "Content-Type": "application/json" });
     res.end(JSON.stringify(out));

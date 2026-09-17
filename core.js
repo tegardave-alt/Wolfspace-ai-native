@@ -1,9 +1,15 @@
-﻿// core.js — WOLFSPACE's pure business logic, callable by BOTH the HTTP server and
-// the Electron IPC layer (no req/res, no port).
+﻿// core.js — WOLFSPACE's logic surface with no transport attached: no req, no
+// res, no port.
 //
-// Requiring server.cjs does NOT open a port: server.cjs only calls server.listen()
-// when run as the main module (require.main === module). Here we require it as a
-// module, so we get the logic surface without starting HTTP.
+// ROLE IN THE SYSTEM. Two very different callers need the same operations — the
+// HTTP server for the browser, and the Electron IPC layer for the desktop app.
+// Anything exported here can be called by either without one having to fake the
+// other's request objects.
+//
+// CONNECTS TO
+//   imports  ./server.cjs — as a MODULE, which does not open a port:
+//            server.cjs only calls listen() when it is the main module
+//   used by  electron/backend-host.cjs
 
 const backend = require("./server.cjs");
 

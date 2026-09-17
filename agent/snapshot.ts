@@ -1,7 +1,15 @@
-// ── WOLFSPACE Snapshot Engine ──
-// Works like an automatic "git commit" taken before the agent edits a file.
-// Stores file snapshots under .wolfspace/snapshots/<timestamp>/
-// and provides a rollback to any of them.
+// snapshot.ts — an automatic restore point taken before the agent edits a file.
+//
+// ROLE IN THE SYSTEM. Like a "git commit" nobody has to remember to make.
+// Snapshots live in .wolfspace/snapshots/<id>/ and any of them can be rolled
+// back to. This is the RESTORABLE store — do not confuse it with the plain
+// backup copies under _agent_backups/, which are kept for inspection and have
+// no rollback path.
+//
+// CONNECTS TO
+//   imports  fs, path, crypto, ./pemantau-blokir (this path can block)
+//   used by  agent/safe-edit.ts, agent/self_agent.ts, agent/tools/file-tools.ts,
+//            agent/tools/index.ts, server.ts (the rollback route)
 
 "use strict";
 
@@ -46,6 +54,39 @@ function _ensureDir(dir: string): void {
 }
 
 /**
+ * ── WHERE A BACKUP COPY IS ALLOWED TO LIVE ──
+ *
+ * MEASURED, and the failure is the kind a checkpoint exists to prevent.
+ *
+ * Files are recorded relative to QROOT, which is WOLFSPACE's OWN root — while
+ * the project being edited is almost always somewhere else entirely. So `rel`
+ * usually begins with `..`, and `path.join(<snapshot dir>, rel)` then ESCAPES
+ * the snapshot it belongs to. Every snapshot of the same file landed on one
+ * shared location, and the newest overwrote the rest:
+ *
+ *     write VERSI-1 -> checkpoint 1
+ *     write VERSI-2 -> checkpoint 2
+ *     write VERSI-3
+ *     rollback(checkpoint 1)  ->  ok: true, "restored 1 files"
+ *     the file now reads      ->  VERSI-2
+ *
+ * Confidently wrong, which is worse than failing: the older a checkpoint was,
+ * the less it meant, and nothing said so. The stray copies also landed outside
+ * every per-snapshot folder, where the pruner never reaches them.
+ *
+ * This turns any relative path into a key that CANNOT climb out: `..` segments
+ * become a literal name, and a drive letter's colon goes with them.
+ */
+function _kunciSimpan(rel: string): string {
+  return String(rel)
+    .replace(/\\/g, "/")
+    .split("/")
+    .filter((s) => s !== "" && s !== ".")
+    .map((s) => (s === ".." ? "__naik__" : s.replace(/:/g, "_")))
+    .join("/");
+}
+
+/**
  * Snapshot a list of files before they are edited.
  * @param filePaths absolute paths of the files about to be edited
  * @param label optional label for this snapshot
@@ -77,9 +118,11 @@ function _createSnapshot(filePaths: string[], label = ""): HasilSnapshot {
     const abs = path.resolve(fp);
     if (!fs.existsSync(abs)) continue; // brand-new file, nothing to snapshot
 
-    // Stored with a directory structure relative to QROOT
+    // `rel` stays the ADDRESS — it is what rollback joins onto QROOT to find
+    // the file again, and it is what old snapshots on disk already contain.
+    // Only the STORAGE key is sanitised, so nothing can escape `dir`.
     const rel = path.relative(QROOT, abs);
-    const dest = path.join(dir, rel);
+    const dest = path.join(dir, _kunciSimpan(rel));
     _ensureDir(path.dirname(dest));
     fs.copyFileSync(abs, dest);
     savedFiles.push(rel);
@@ -144,9 +187,17 @@ function rollback(snapshotId: string): HasilRollback {
   const restored: string[] = [];
 
   for (const rel of meta.files) {
-    const src = path.join(dir, rel);
+    // The sanitised key first, then the OLD location. Snapshots taken before
+    // the escape was fixed are still on disk, and refusing to restore them
+    // would turn one bug into two.
+    const aman = path.join(dir, _kunciSimpan(rel));
+    const lama = path.join(dir, rel);
+    const src = fs.existsSync(aman) ? aman : lama;
     const dest = path.join(QROOT, rel);
     if (!fs.existsSync(src)) continue;
+    // A legacy copy that resolved ONTO the file itself restores nothing, and
+    // reporting it as restored is the lie this whole fix is about.
+    if (path.resolve(src) === path.resolve(dest)) continue;
     _ensureDir(path.dirname(dest));
     fs.copyFileSync(src, dest);
     restored.push(rel);
@@ -307,6 +358,7 @@ async function createSnapshotAsync(
 
 module.exports = {
   createSnapshot,
+  _kunciSimpan,
   createSnapshotAsync,
   rollback,
   listSnapshots,

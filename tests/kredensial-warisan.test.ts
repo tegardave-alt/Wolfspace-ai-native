@@ -29,20 +29,31 @@ describe("kredensial warisan tidak diwariskan", () => {
   const HTML = baca("public/index.html");
   const MAIN = baca("electron/main.ts");
 
+  // ── JANGKARNYA KODE, BUKAN PROSA ──
+  //
+  // Kedua uji ini semula mencari kalimat komentar ("KREDENSIAL WARISAN
+  // DIBUANG", "Rebrand: rename kunci localStorage"). Sebuah penyisiran komentar
+  // menerjemahkan kalimat itu, indexOf mengembalikan -1, potongannya jadi
+  // kosong, dan keduanya gagal karena PROSA-nya — bukan karena kode yang
+  // dijaganya berubah sedikit pun. Sekarang keduanya berjangkar pada baris kode
+  // yang memang jadi pokok persoalannya, dan komentar boleh ditulis ulang dalam
+  // bahasa apa pun tanpa memutus apa-apa.
+
+  /** Awal blok rebrand: satu-satunya tempat penanda itu DIBACA. */
+  const iRebrand = HTML.indexOf(
+    'localStorage.getItem("wolfspace_key_migrated")',
+  );
+
   test("entri *_cloud dibuang TANPA SYARAT, bukan di dalam blok berpenanda", () => {
     // Kalau pembersihnya duduk di dalam blok yang dijaga wolfspace_key_migrated,
     // ia tak pernah jalan pada profil hasil migrasi -- yaitu satu-satunya kasus
     // yang membuatnya perlu ada.
-    const iBersih = HTML.indexOf("KREDENSIAL WARISAN DIBUANG");
-    const iRebrand = HTML.indexOf("Rebrand: rename kunci localStorage");
+    expect(iRebrand).toBeGreaterThan(-1);
+    // Pembersih tanpa syarat itu: menghapus quantum_*_cloud, dan TIDAK menyebut
+    // penanda sama sekali.
+    const iBersih = HTML.indexOf('k.indexOf("quantum_") === 0 && /_cloud$/');
     expect(iBersih).toBeGreaterThan(-1);
     expect(iBersih).toBeLessThan(iRebrand);
-    // Komentar dibuang dulu. Penjelasan di dalam blok ini MENYEBUT penanda itu
-    // justru untuk menerangkan kenapa ia tak boleh dipakai di sini — dan asersi
-    // yang membaca prosa akan gagal karena kalimatnya, bukan karena kodenya.
-    // Komentar dibuang dulu. Penjelasan di dalam blok ini MENYEBUT penanda itu
-    // justru untuk menerangkan kenapa ia tak boleh dipakai di sini, dan asersi
-    // yang membaca prosa akan gagal karena kalimatnya, bukan karena kodenya.
     const blok = HTML.slice(iBersih, iRebrand)
       .split(String.fromCharCode(10))
       .filter((b) => !b.trim().startsWith("//"))
@@ -53,8 +64,18 @@ describe("kredensial warisan tidak diwariskan", () => {
   });
 
   test("rebrand pun menolak membawa *_cloud", () => {
-    const i = HTML.indexOf("Rebrand: rename kunci localStorage");
-    const blok = HTML.slice(i, i + 1800);
+    // Blok rebrand membentang dari penjaga penanda (yang MEMBACA-nya, di atas)
+    // sampai baris yang MENULIS-nya (di bawah). Pembuangan *_cloud harus ada di
+    // antara keduanya.
+    const akhir = HTML.indexOf(
+      'localStorage.setItem("wolfspace_key_migrated"',
+      iRebrand,
+    );
+    expect(akhir).toBeGreaterThan(iRebrand);
+    const blok = HTML.slice(iRebrand, akhir)
+      .split(String.fromCharCode(10))
+      .filter((b) => !b.trim().startsWith("//"))
+      .join(" ");
     expect(blok).toMatch(/quantum_cloud/);
     expect(blok).toMatch(/removeItem/);
   });

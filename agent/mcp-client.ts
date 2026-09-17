@@ -1,29 +1,36 @@
+// mcp-client.ts — WOLFSPACE's Model Context Protocol client: it starts MCP
+// servers, speaks the protocol to them, and presents their tools to the agent
+// alongside the built-in ones.
+//
+// ROLE IN THE SYSTEM. Everything an MCP server offers reaches the agent through
+// here. It owns the whole lifetime of those child processes — spawn, handshake,
+// tool listing, calls, and cleaning up what an earlier session left behind.
+//
+// CONNECTS TO
+//   imports  fs, path, child_process, ./debug
+//   used by  agent/self_agent.ts and agent/tools/index.ts (tool calls),
+//            server.ts (the MCP management routes)
+//   registry the command and credential list lives in the MCP registry, not here
 import * as fs from "fs";
 import * as path from "path";
 import { spawn, execFile } from "child_process";
 const { dlog } = require("./debug.ts");
 
-// Tracks the PIDs of MCP processes so leftovers from an earlier session can be
-// cleaned up.
+// ── Tracking server PIDs, so an earlier session's leftovers can be cleaned up ──
 //
-// ONE FILE PER OWNER: config/.mcp-pids/<owner-pid>.json, holding the list of
-// server PIDs that process spawned. The owner is in the file NAME, not in its
-// contents.
+// ONE FILE PER OWNER: config/.mcp-pids/<owner-pid>.json, listing the servers
+// that process spawned. The owner is the file NAME, not its contents.
 //
-// Why this way and not one shared file. A shared file forces read-modify-write
-// from many processes at once, and that is a race: two processes reading at the
-// same time overwrite each other, one record is lost, and the unrecorded server
-// is later killed as an "orphan" despite having an owner. Locking would work,
-// but file locks on Windows bring their own problems (a stale lock when the
-// holder dies, then a mechanism to seize it). With one file per owner, NO
-// process ever writes another process's file — the race is gone by
-// construction, without locks.
+// A single shared file would force read-modify-write from several processes at
+// once: two read together, one overwrites the other, and the lost record is
+// later killed as an "orphan" despite having a live owner. Locking would work
+// but file locks on Windows bring stale-lock recovery with them. One file per
+// owner means no process ever writes another's — the race is gone by
+// construction.
 //
-// Orphan = a file whose OWNER is dead. Before this, the file was shared and held
-// only [pid, pid] with no trace of ownership, so every new process killed its
-// neighbour's live servers. Measured across 3 concurrent processes: one waited
-// 127 seconds and then ran with 26 of 50 tools — with no error at all.
-// Afterwards: 22 seconds and 50 tools for all three.
+// Measured before, across 3 concurrent processes: one waited 127 seconds and
+// then ran with 26 of 50 tools, reporting no error at all. After: 22 seconds
+// and 50 tools for all three.
 const PID_DIR = path.join(__dirname, "..", "config", ".mcp-pids");
 // The old file format. Read once, only to clean it up during the upgrade.
 const LEGACY_PID_FILE = path.join(__dirname, "..", "config", ".mcp-pids.json");
@@ -215,6 +222,49 @@ function _kutipCmd(token: any): string {
   return '"' + isi + '"';
 }
 
+/**
+ * Why a server could not start, when the cause is the MACHINE rather than the
+ * server.
+ *
+ * WHAT THE USER USED TO GET. On a machine with no Node.js installed, an entry
+ * like `npx -y @modelcontextprotocol/server-github` fails, and the only thing
+ * reported was whatever cmd.exe said:
+ *
+ *   'npx' is not recognized as an internal or external command
+ *
+ * True, and useless to anyone who does not already know that npx ships with
+ * Node.js. WOLFSPACE bundles Electron's Node RUNTIME, but that is not the same
+ * thing as the npx COMMAND -- there is no npx inside the installed app, and
+ * _cariExe searches PATH and nothing else.
+ *
+ * SAID ONLY WHEN IT IS TRUE. The text below is appended on a real failure, and
+ * only when the command could not be resolved on PATH at all. An unresolvable
+ * command is deliberately still ATTEMPTED (see _startServer) because the
+ * resolver can be wrong where cmd.exe is right; so this explains a failure that
+ * already happened rather than predicting one.
+ */
+function _sebabPerintahHilang(cmd: string, tersolusi: string | null): string {
+  if (tersolusi) return "";
+  const dasar = String(cmd || "")
+    .toLowerCase()
+    .replace(/\.(cmd|bat|exe)$/, "");
+  if (dasar === "npx" || dasar === "npm" || dasar === "node")
+    return (
+      " — `" +
+      dasar +
+      "` was not found on PATH. It comes with Node.js, which is a separate " +
+      "install: the Node runtime bundled inside WOLFSPACE is not available as " +
+      "a command. Install Node.js from nodejs.org, restart WOLFSPACE so it " +
+      "picks up the new PATH, then press Connect again."
+    );
+  return (
+    " — `" +
+    cmd +
+    "` was not found on PATH, so it could only be attempted through the shell. " +
+    "Check the command in config/mcp.json, or give it an absolute path."
+  );
+}
+
 function _cariExe(cmd: string, env: any): string | null {
   if (!cmd) return null;
   if (cmd.includes("/") || cmd.includes("\\")) {
@@ -224,12 +274,33 @@ function _cariExe(cmd: string, env: any): string | null {
       return null;
     }
   }
+  // A COMMAND THAT ALREADY CARRIES ITS EXTENSION IS SEARCHED FOR AS WRITTEN.
+  //
+  // Without this the loop below only ever tried `cmd + ext`, so for "npx.cmd" it
+  // looked for npx.cmd.COM, npx.cmd.EXE, npx.cmd.BAT ... and never npx.cmd.
+  // MEASURED: C:/langs/node/npx.cmd exists and was on PATH the whole time, and
+  // _cariExe returned null for it every single call.
+  //
+  // It looked harmless because the fallback is correct -- an unresolved command
+  // on Windows goes through cmd.exe, which is exactly right for a .cmd. The
+  // damage showed up somewhere else: _sebabPerintahHilang keys off `tersolusi`,
+  // so EVERY npx failure on Windows was labelled "`npx` was not found on PATH
+  // ... install Node.js". A typo in a package name produced npm 404 AND an
+  // instruction to install a Node.js that was already there.
+  //
+  // This is how Windows resolves a command, and the two halves must not be
+  // mixed: a name with a known extension is looked up literally, a bare name
+  // gets the PATHEXT list appended. Appending "" for BARE names as well would
+  // be wrong -- on Windows it would match extensionless shell scripts that
+  // cannot be executed directly.
+  const daftarExt = String(env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
+    .split(";")
+    .filter(Boolean);
+  const sudahBerekstensi =
+    process.platform === "win32" &&
+    daftarExt.some((e: string) => cmd.toLowerCase().endsWith(e.toLowerCase()));
   const exts =
-    process.platform === "win32"
-      ? String(env.PATHEXT || ".COM;.EXE;.BAT;.CMD")
-          .split(";")
-          .filter(Boolean)
-      : [""];
+    process.platform === "win32" ? (sudahBerekstensi ? [""] : daftarExt) : [""];
   const dirs = String(env.PATH || env.Path || "")
     .split(path.delimiter)
     .filter(Boolean);
@@ -328,10 +399,46 @@ const CONFIG_PATH = path.join(__dirname, "..", "config", "mcp.json");
 // useful for diagnosing a wrong command.
 const _RAHASIA_ARG =
   /(key|token|secret|password|passwd|auth|credential|api[-_]?key)/i;
+// THE SEPARATED FORM LEAKED, and only the joined one was ever covered.
+//
+// MEASURED against the real function:
+//
+//   ["--figma-api-key=figd_X"]                  -> ["--figma-api-key=***"]  ok
+//   ["--token", "ghp_X"]                        -> UNREDACTED
+//   ["--header", "Authorization: Bearer sk-X"]  -> UNREDACTED
+//
+// Both shapes are ordinary: `--token <value>` is how most CLIs take one, and an
+// Authorization header is how a remote MCP server is given a credential. The
+// old rules could not see either, and for the same underlying reason -- they
+// looked for a secret-ish WORD inside the value, while in these two shapes the
+// word is in the PRECEDING FLAG or in the header NAME. A bare value was also
+// skipped outright when it contained a space, which every header does.
+//
+// THE PATTERN IS DELIBERATELY NARROW. Over-redaction is its own failure: this
+// log exists to diagnose a wrong command, and a run of *** tells nobody
+// anything. Word boundaries matter -- `--auth` is a credential flag, `--author`
+// is not, and a rule that cannot tell them apart would blind the log to make a
+// point.
+const _FLAG_RAHASIA =
+  /(^|[-_])(authorization|apikey|api|key|token|secret|password|passwd|credential|auth)([-_]|$)/i;
+
 function _argsAman(args) {
   if (!Array.isArray(args)) return args;
+  let flagRahasiaSebelumnya = false;
   return args.map((a) => {
     const s = String(a);
+    // Set from the PREVIOUS element, before this one overwrites it.
+    const ikutFlag = flagRahasiaSebelumnya;
+    flagRahasiaSebelumnya =
+      /^--?[\w-]+$/.test(s) && _FLAG_RAHASIA.test(s.replace(/^-+/, ""));
+    if (ikutFlag) return "***";
+    // A header line: the field NAME stays, so "which header" is still legible.
+    const h = s.match(/^([\w-]+)\s*:\s*(.+)$/);
+    if (
+      h &&
+      (_FLAG_RAHASIA.test(h[1]) || /^(bearer|basic|token)\s+\S/i.test(h[2]))
+    )
+      return h[1] + ": ***";
     // --flag=nilai
     const m = s.match(
       /^(--?[\w-]*(?:key|token|secret|password|auth)[\w-]*)=(.+)$/i,
@@ -371,14 +478,42 @@ const HANDSHAKE_TIMEOUT_MS = 60000;
 // buffer the output of a server that fails by shouting.
 const STDERR_DISIMPAN = 40;
 
-/** A configured MCP server, as written in config/mcp.json. */
+/** A configured MCP server, as written in config/mcp.json.
+ *
+ * Two transports, chosen the way OpenCode's config does it (opencode.ai/docs):
+ * an explicit `type` -- "local" (stdio: run a command) or "remote" (HTTP: a
+ * url). For backward compatibility the type is inferred when absent: a `url`
+ * means remote, a `command` means local. `command` accepts OpenCode's array
+ * form (["npx","-y","x"]) as well as the string+args form. Credentials are NOT
+ * what picks the transport -- they ride in `env`/`environment` (local) or
+ * `headers` (remote). */
 interface KonfigServer {
-  command: string;
+  type?: "local" | "remote";
+  // local (stdio)
+  command?: string | string[];
+  args?: string[];
+  env?: Record<string, string>;
+  environment?: Record<string, string>; // OpenCode's name for env
+  cwd?: string;
+  // remote (HTTP)
+  url?: string;
+  headers?: Record<string, string>;
+  // both
+  disabled?: boolean;
+  enabled?: boolean; // OpenCode's name; enabled:false == disabled:true
+  [k: string]: unknown;
+}
+
+/** The normalized shape the rest of this file works with. */
+interface KonfigNormal {
+  transport: "local" | "remote";
+  disabled: boolean;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
   cwd?: string;
-  disabled?: boolean;
-  [k: string]: unknown;
+  url?: string;
+  headers?: Record<string, string>;
 }
 
 // A running server: its child process, whether the handshake completed, and the
@@ -389,7 +524,15 @@ interface KonfigServer {
 // revoked while the UI still reads "Connected". They are assigned by _catat()
 // after the handshake, so they are optional here rather than set in _startServer.
 interface ServerHidup {
-  proc: import("child_process").ChildProcessWithoutNullStreams;
+  // Absent for a remote (HTTP) server -- it has no child process.
+  proc?: import("child_process").ChildProcessWithoutNullStreams;
+  // Present only for a remote (HTTP) server: its endpoint, auth headers and the
+  // Mcp-Session-Id the server handed back on initialize.
+  http?: {
+    url: string;
+    headers: Record<string, string>;
+    sessionId: string | null;
+  };
   ready: boolean;
   lastCallAt?: number;
   lastCallOk?: boolean;
@@ -494,6 +637,41 @@ class MCPClient {
     return { ...dasar, mcpServers: { ...(dasar.mcpServers || {}) } };
   }
 
+  /**
+   * One place that decides transport and normalizes the field names, so every
+   * caller reads the same shape regardless of which spelling the config used
+   * (OpenCode's `type`/`environment`/`enabled`/`command:[...]`, or the older
+   * `command`+`args`+`env`+`disabled`). See the KonfigServer note above.
+   */
+  _normalKonfig(conf: KonfigServer): KonfigNormal {
+    const c = conf || ({} as KonfigServer);
+    const remote = c.type === "remote" || (!c.command && !!c.url);
+    const disabled = c.disabled === true || c.enabled === false;
+    if (remote) {
+      return {
+        transport: "remote",
+        disabled,
+        url: String(c.url || ""),
+        headers: c.headers || {},
+      };
+    }
+    // local (stdio). command may be a string, or OpenCode's array form.
+    let command: any = c.command;
+    let args = Array.isArray(c.args) ? c.args : [];
+    if (Array.isArray(command)) {
+      args = command.slice(1);
+      command = command[0];
+    }
+    return {
+      transport: "local",
+      disabled,
+      command: command ? String(command) : "",
+      args,
+      env: c.environment || c.env || {},
+      cwd: c.cwd,
+    };
+  }
+
   // Starting MCP servers NO LONGER happens automatically.
   //
   // WHY THIS CHANGED. init() used to spawn EVERY server that was not disabled,
@@ -540,11 +718,33 @@ class MCPClient {
     const cfg = this._loadConfig().mcpServers || {};
     const conf = cfg[name];
     if (!conf) return { ok: false, error: "MCP server is not in the config" };
-    if (conf.disabled) return { ok: false, error: "MCP server dinonaktifkan" };
+    if (this._normalKonfig(conf).disabled)
+      return { ok: false, error: "MCP server dinonaktifkan" };
     const ada = this.servers[name];
-    if (ada && ada.ready) return { ok: true, already: true };
+    // A READY SERVER WHOSE LAST CALL FAILED IS NOT "ALREADY CONNECTED".
+    //
+    // The UI and this method disagreed about the word, and the disagreement
+    // made Connect a dead button. The list computes
+    //
+    //   active = !disabled && ready && lastCallOk !== false
+    //
+    // so a server whose last tool call failed shows "✕ Failed" and counts as
+    // NOT active. Clicking it therefore sends /mcp/connect -- correctly, that
+    // is the user asking for it to be fixed -- and this method looked only at
+    // `ready`, said "already", and did nothing at all. The badge went to
+    // "Connecting…" for one refresh and straight back to "✕ Failed", for ever:
+    // there was no way, anywhere in the UI, to revive that server.
+    //
+    // Restarting is the honest answer to the request. It cannot repair a cause
+    // that lives outside the process -- a revoked token stays revoked -- but it
+    // does clear a stale verdict: a fresh process starts with lastCallOk null,
+    // so the badge stops asserting a failure that may no longer be true, and
+    // the next call decides it again.
+    const gagalPanggilanTerakhir = !!(ada && ada.lastCallOk === false);
+    if (ada && ada.ready && !gagalPanggilanTerakhir)
+      return { ok: true, already: true };
     if (this._mulai[name]) return { ok: true, status: "starting" };
-    if (ada && ada.proc) this.stopServer(name); // setengah jalan -> mulai bersih
+    if (ada) this.stopServer(name); // half-started (stdio or remote) -> start clean
     return this._mulaiServer(name, conf, opsi.tunggu === true);
   }
 
@@ -562,12 +762,22 @@ class MCPClient {
    * Nothing was broken; a connection that was merely slow made the whole app
    * look hung, and the user's only evidence was a window that stopped painting.
    *
-   * So connecting now returns once the process EXISTS. Readiness is reported by
-   * status(), which the UI already polls — the information was always there, it
-   * was the waiting that was wrong.
+   * So connecting now returns once the process EXISTS, and readiness is
+   * reported by status() instead.
+   *
+   * THE UI HAS TO POLL THAT, and for a while it did not — this comment used to
+   * assert that it "already polls", which was untrue. Both MCP lists refreshed
+   * once, right after connect returned, saw starting:true, and were never told
+   * again: the badge then read "Connecting..." for ever while the log said the
+   * server was ready. The polling lives in useMcpMenunggu
+   * (public/app/Config.tsx) and runs only while something is starting.
    */
   _mulaiServer(name, conf, tunggu) {
-    const p = this._startServer(name, conf);
+    const nk = this._normalKonfig(conf);
+    const p =
+      nk.transport === "remote"
+        ? this._startServerRemote(name, nk)
+        : this._startServer(name, nk);
     this._mulai[name] = p;
     delete this._galatMulai[name];
     const selesai = p.then(
@@ -597,7 +807,9 @@ class MCPClient {
     const hasil = {};
     await Promise.all(
       Object.entries(srvs)
-        .filter(([, conf]) => !(conf as KonfigServer).disabled)
+        .filter(
+          ([, conf]) => !this._normalKonfig(conf as KonfigServer).disabled,
+        )
         .map(async ([name]) => {
           hasil[name] = await this.connectServer(name);
         }),
@@ -605,7 +817,7 @@ class MCPClient {
     return hasil;
   }
 
-  _startServer(name: string, conf: KonfigServer) {
+  _startServer(name: string, conf: KonfigNormal) {
     // Promise<void>: resolve() is called with no value, and without the type
     // this, TypeScript infers Promise<unknown> and then demands an argument.
     return new Promise<void>((resolve, reject) => {
@@ -623,7 +835,7 @@ class MCPClient {
       const cmd =
         process.platform === "win32" && conf.command === "npx"
           ? "npx.cmd"
-          : conf.command;
+          : conf.command || "";
       // cwd IS FORWARDED. It used to be silently ignored: the config was allowed
       // to state it, and spawn never used it.
       //
@@ -728,7 +940,20 @@ class MCPClient {
         });
       });
 
+      // THE SPAWN ERROR IS KEPT, for the same reason stderr is kept above: it
+      // used to be logged and then dropped, so the single most informative line
+      // never reached the person who needed it.
+      //
+      // MEASURED ON LINUX, because Windows hid the gap. There a missing command
+      // goes through cmd.exe, which writes "is not recognized" to stderr, and
+      // the stderr tail carried the reason. On Linux there is no shell in the
+      // path: spawn fails outright, stderr is EMPTY, and close reports code -2.
+      // So the whole report was "the server exited with code -2 before it was
+      // ready" -- a number, with the words `spawn npx ENOENT` sitting in the
+      // debug log where nobody would look.
+      let galatSpawn = "";
       proc.on("error", (err) => {
+        galatSpawn = String((err && err.message) || err || "");
         dlog("mcp", "error", `[MCP ${name} process error]`, {
           err: err.message,
         });
@@ -755,13 +980,16 @@ class MCPClient {
           sudahSelesai = true;
           const sebab = kata.length
             ? " — " + kata.slice(-4).join(" | ").slice(0, 500)
-            : "";
+            : galatSpawn
+              ? " — " + galatSpawn.slice(0, 300)
+              : "";
           reject(
             new Error(
               "the server exited with code " +
                 code +
                 " before it was ready" +
-                sebab,
+                sebab +
+                _sebabPerintahHilang(cmd, tersolusi),
             ),
           );
         }
@@ -845,7 +1073,14 @@ class MCPClient {
     try {
       const dir = path.dirname(CONFIG_PATH);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(configData, null, 2));
+      // ATOMIC: write to a temp file, then rename over the real one. A plain
+      // writeFileSync truncates then fills, so a GET /mcp that reads mid-write
+      // (the UI polls this file) could parse a half-written, invalid JSON and
+      // show an empty server list. rename() is atomic on the same volume, so a
+      // reader sees either the old file or the new one, never a torn one.
+      const tmp = CONFIG_PATH + ".tmp" + process.pid;
+      fs.writeFileSync(tmp, JSON.stringify(configData, null, 2));
+      fs.renameSync(tmp, CONFIG_PATH);
     } catch (e) {
       dlog("mcp", "error", "Failed to save mcp.json", { error: e.message });
     }
@@ -853,7 +1088,8 @@ class MCPClient {
 
   stopServer(name) {
     const srv = this.servers[name];
-    if (srv && srv.proc) {
+    if (!srv) return;
+    if (srv.proc) {
       dlog("mcp", "info", `Menghentikan MCP server: ${name}`);
       try {
         srv.proc.kill();
@@ -861,6 +1097,23 @@ class MCPClient {
       // The record is dropped here rather than waiting for orphan cleanup: a PID
       // already dead but still recorded is a candidate victim of number reuse.
       if (srv.proc.pid) _forgetPid(srv.proc.pid);
+      delete this.servers[name];
+      delete this.toolsCache[name];
+    } else if (srv.http) {
+      // Remote: no process to kill. Best-effort tell the server to end the
+      // session, then drop it.
+      dlog("mcp", "info", `Stopping MCP server (remote): ${name}`);
+      if (srv.http.sessionId) {
+        try {
+          fetch(srv.http.url, {
+            method: "DELETE",
+            headers: {
+              "Mcp-Session-Id": srv.http.sessionId,
+              ...(srv.http.headers || {}),
+            },
+          }).catch(() => {});
+        } catch (_) {}
+      }
       delete this.servers[name];
       delete this.toolsCache[name];
     }
@@ -922,10 +1175,143 @@ class MCPClient {
     return this._loadConfig().mcpServers || {};
   }
 
+  /**
+   * A remote (HTTP) MCP server. No child process: the same JSON-RPC handshake
+   * runs, but the transport is Streamable HTTP -- _send POSTs to the url and the
+   * response (JSON or an SSE stream) is fed back through _handleMessage, so the
+   * request/response correlation, timeouts and tools/list|call code are shared
+   * with stdio unchanged. Mirrors OpenCode's "remote" server type.
+   */
+  _startServerRemote(name: string, nk: KonfigNormal) {
+    return new Promise<void>((resolve, reject) => {
+      if (!nk.url) {
+        reject(new Error("remote MCP server has no url"));
+        return;
+      }
+      dlog("mcp", "info", `Starting MCP server (remote): ${name}`, {
+        url: nk.url,
+      });
+      this.servers[name] = {
+        http: { url: nk.url, headers: nk.headers || {}, sessionId: null },
+        ready: false,
+        stderrAkhir: [],
+      } as any;
+      this._request(
+        name,
+        "initialize",
+        {
+          protocolVersion: "2024-11-05",
+          capabilities: { roots: { listChanged: true }, sampling: {} },
+          clientInfo: { name: "WOLFSPACE", version: "1.0.0" },
+        },
+        HANDSHAKE_TIMEOUT_MS,
+      )
+        .then(() => {
+          this._notify(name, "notifications/initialized", {});
+          if (this.servers[name]) this.servers[name].ready = true;
+          dlog("mcp", "info", `MCP server ${name} ready (remote).`);
+          resolve();
+        })
+        .catch((err) => {
+          const srv = this.servers[name];
+          const kata = (srv && srv.stderrAkhir) || [];
+          if (kata.length)
+            err = new Error(
+              err.message + " — " + kata.slice(-4).join(" | ").slice(0, 500),
+            );
+          if (srv) srv.lastError = err.message;
+          reject(err);
+        });
+    });
+  }
+
+  /**
+   * POST one JSON-RPC message to a remote server and feed its reply back through
+   * _handleMessage. The reply is either a single JSON object or an SSE stream
+   * (text/event-stream) carrying one or more `data:` JSON-RPC messages; a
+   * notification is answered with 202 and no body. The Mcp-Session-Id the server
+   * hands back on initialize is echoed on every later request. Fire-and-forget
+   * by design: the caller (_request) already awaits its pending promise, which
+   * _handleMessage resolves.
+   */
+  async _kirimHttp(name: string, srv: any, msg: any) {
+    try {
+      const h: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        ...(srv.http.headers || {}),
+      };
+      if (srv.http.sessionId) h["Mcp-Session-Id"] = srv.http.sessionId;
+      const res = await fetch(srv.http.url, {
+        method: "POST",
+        headers: h,
+        body: JSON.stringify(msg),
+      });
+      const sid = res.headers.get && res.headers.get("mcp-session-id");
+      if (sid) srv.http.sessionId = sid;
+      if (res.status === 202) return; // a notification: accepted, no body
+      if (res.status >= 400) {
+        const teks = ("HTTP " + res.status + " " + (await res.text())).slice(
+          0,
+          300,
+        );
+        srv.stderrAkhir = (srv.stderrAkhir || [])
+          .concat(teks)
+          .slice(-STDERR_DISIMPAN);
+        dlog("mcp", "error", `[MCP ${name}] ${teks}`);
+        // Fail the waiting request NOW rather than let it time out. Over stdio a
+        // dead server closes the pipe and the pending call is rejected at once;
+        // over HTTP the error IS this response, so a silent return would leave
+        // initialize (or any call) hanging for the full 60/120 s.
+        this._gagalkanReq(msg && msg.id, name, teks);
+        return;
+      }
+      const ct = (res.headers.get && res.headers.get("content-type")) || "";
+      const text = await res.text();
+      if (ct.includes("text/event-stream")) {
+        // SSE: events separated by a blank line; the JSON is on `data:` lines.
+        for (const blok of text.split(/\r?\n\r?\n/)) {
+          const data = blok
+            .split(/\r?\n/)
+            .filter((l) => l.startsWith("data:"))
+            .map((l) => l.slice(5).trim())
+            .join("");
+          if (data) this._handleMessage(name, data);
+        }
+      } else if (text.trim()) {
+        this._handleMessage(name, text.trim());
+      }
+    } catch (e: any) {
+      const teks = String((e && e.message) || e).slice(0, 200);
+      srv.stderrAkhir = (srv.stderrAkhir || [])
+        .concat(teks)
+        .slice(-STDERR_DISIMPAN);
+      dlog("mcp", "error", `[MCP ${name}] http send failed`, { error: teks });
+      this._gagalkanReq(msg && msg.id, name, teks);
+    }
+  }
+
+  /** Reject a pending request immediately (HTTP/network error on its POST). A
+   *  notification has no id and nothing to reject. */
+  _gagalkanReq(id: any, name: string, reason: string) {
+    if (id == null) return;
+    const p = this.pendingReqs[id];
+    if (p) {
+      delete this.pendingReqs[id];
+      p.reject(new Error(`MCP ${name}: ${reason}`));
+    }
+  }
+
   _send(name, msg) {
     const srv = this.servers[name];
-    if (!srv || !srv.proc || !srv.proc.stdin || srv.proc.stdin.destroyed)
-      return false;
+    if (!srv) return false;
+    // Remote server: POST it (see _kirimHttp). Fire-and-forget — the reply is
+    // fed to _handleMessage when it arrives.
+    if (srv.http) {
+      this._kirimHttp(name, srv, msg);
+      return true;
+    }
+    if (!srv.proc || !srv.proc.stdin || srv.proc.stdin.destroyed) return false;
     const str = JSON.stringify(msg) + "\r\n";
     try {
       srv.proc.stdin.write(str);

@@ -1,31 +1,34 @@
-// ── The agent run, orchestrated by the Python LangGraph worker ──
+// python-agent.ts — the agent run driven by the Python LangGraph worker: the
+// SECOND of WOLFSPACE's two orchestrators.
 //
-// This is the piece that makes Phase 10 real: services/agent-python owns the
-// state machine, and everything it needs done is done here. It presents the same
-// surface as selfAgentStream in agent/self_agent.ts — (payload, emit, ctl) —
-// so a caller can be pointed at either without knowing which one it got.
+// ROLE IN THE SYSTEM. services/agent-python owns the state machine; everything
+// it asks for is done here. It presents the same surface as selfAgentStream in
+// agent/self_agent.ts — (payload, emit, ctl) — so a caller can be pointed at
+// either without knowing which it got.
 //
-// WHAT MOVES AND WHAT DOES NOT
-//
-//   Python                    here
-//   ------                    ----
+//   Python decides            this file does
+//   --------------            --------------
 //   which node runs next      what a node's work actually is
 //   step ceiling, routing     the model call, the tool call
 //   checkpoint for resume     the sandbox, broker, MCP, audit ledger
 //
-// The graph asks for four things. Three are pseudo-tools that only the host can
-// answer because they need a model: `__plan__`, `__model__`, `__validate__`.
-// Everything else is a real tool name and goes to runSelfTool — the SAME
-// function the JS agent calls, so a tool runs inside the same AppContainer, the
-// same broker, and lands in the same audit ledger no matter which orchestrator
-// asked for it. That is the property worth protecting; an agent whose security
-// boundary depends on which code path invoked it would be no boundary at all.
+// Three of the four things the graph asks for are pseudo-tools only the host
+// can answer because they need a model: `__plan__`, `__model__`,
+// `__validate__`. Everything else is a real tool name and goes to runSelfTool —
+// the SAME function the JS loop calls, so a tool runs in the same AppContainer,
+// through the same broker, into the same audit ledger whichever orchestrator
+// asked. A security boundary that depended on the calling path would be no
+// boundary at all.
 //
-// WHERE PARITY WITH THE JS LOOP STANDS
+// CONNECTS TO
+//   imports  ./cloud, ./tools, ./penjaga-agent, ./perencana-agent,
+//            ./pemadatan, ./temuan, ./python-worker, ./debug
+//   used by  server.ts, per request, when pythonAgentEnabled() says yes
 //
-// The guards are not reimplemented here. They live in agent/penjaga-agent.ts and
-// BOTH orchestrators call them, because a guard on only one of two agent paths
-// makes the same request behave differently depending on who handled it.
+// PARITY WITH THE JS LOOP. The guards are NOT reimplemented here; they live in
+// agent/penjaga-agent.ts and both orchestrators call them, because a guard on
+// one of two paths makes the same request behave differently depending on who
+// handled it.
 //
 //   carried here now          how
 //   ----------------          ---
