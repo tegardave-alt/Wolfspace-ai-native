@@ -478,14 +478,42 @@ const HANDSHAKE_TIMEOUT_MS = 60000;
 // buffer the output of a server that fails by shouting.
 const STDERR_DISIMPAN = 40;
 
-/** A configured MCP server, as written in config/mcp.json. */
+/** A configured MCP server, as written in config/mcp.json.
+ *
+ * Two transports, chosen the way OpenCode's config does it (opencode.ai/docs):
+ * an explicit `type` -- "local" (stdio: run a command) or "remote" (HTTP: a
+ * url). For backward compatibility the type is inferred when absent: a `url`
+ * means remote, a `command` means local. `command` accepts OpenCode's array
+ * form (["npx","-y","x"]) as well as the string+args form. Credentials are NOT
+ * what picks the transport -- they ride in `env`/`environment` (local) or
+ * `headers` (remote). */
 interface KonfigServer {
-  command: string;
+  type?: "local" | "remote";
+  // local (stdio)
+  command?: string | string[];
+  args?: string[];
+  env?: Record<string, string>;
+  environment?: Record<string, string>; // OpenCode's name for env
+  cwd?: string;
+  // remote (HTTP)
+  url?: string;
+  headers?: Record<string, string>;
+  // both
+  disabled?: boolean;
+  enabled?: boolean; // OpenCode's name; enabled:false == disabled:true
+  [k: string]: unknown;
+}
+
+/** The normalized shape the rest of this file works with. */
+interface KonfigNormal {
+  transport: "local" | "remote";
+  disabled: boolean;
+  command?: string;
   args?: string[];
   env?: Record<string, string>;
   cwd?: string;
-  disabled?: boolean;
-  [k: string]: unknown;
+  url?: string;
+  headers?: Record<string, string>;
 }
 
 // A running server: its child process, whether the handshake completed, and the
@@ -601,6 +629,41 @@ class MCPClient {
     return { ...dasar, mcpServers: { ...(dasar.mcpServers || {}) } };
   }
 
+  /**
+   * One place that decides transport and normalizes the field names, so every
+   * caller reads the same shape regardless of which spelling the config used
+   * (OpenCode's `type`/`environment`/`enabled`/`command:[...]`, or the older
+   * `command`+`args`+`env`+`disabled`). See the KonfigServer note above.
+   */
+  _normalKonfig(conf: KonfigServer): KonfigNormal {
+    const c = conf || ({} as KonfigServer);
+    const remote = c.type === "remote" || (!c.command && !!c.url);
+    const disabled = c.disabled === true || c.enabled === false;
+    if (remote) {
+      return {
+        transport: "remote",
+        disabled,
+        url: String(c.url || ""),
+        headers: c.headers || {},
+      };
+    }
+    // local (stdio). command may be a string, or OpenCode's array form.
+    let command: any = c.command;
+    let args = Array.isArray(c.args) ? c.args : [];
+    if (Array.isArray(command)) {
+      args = command.slice(1);
+      command = command[0];
+    }
+    return {
+      transport: "local",
+      disabled,
+      command: command ? String(command) : "",
+      args,
+      env: c.environment || c.env || {},
+      cwd: c.cwd,
+    };
+  }
+
   // Starting MCP servers NO LONGER happens automatically.
   //
   // WHY THIS CHANGED. init() used to spawn EVERY server that was not disabled,
@@ -647,7 +710,8 @@ class MCPClient {
     const cfg = this._loadConfig().mcpServers || {};
     const conf = cfg[name];
     if (!conf) return { ok: false, error: "MCP server is not in the config" };
-    if (conf.disabled) return { ok: false, error: "MCP server dinonaktifkan" };
+    if (this._normalKonfig(conf).disabled)
+      return { ok: false, error: "MCP server dinonaktifkan" };
     const ada = this.servers[name];
     // A READY SERVER WHOSE LAST CALL FAILED IS NOT "ALREADY CONNECTED".
     //
@@ -672,7 +736,7 @@ class MCPClient {
     if (ada && ada.ready && !gagalPanggilanTerakhir)
       return { ok: true, already: true };
     if (this._mulai[name]) return { ok: true, status: "starting" };
-    if (ada && ada.proc) this.stopServer(name); // setengah jalan -> mulai bersih
+    if (ada) this.stopServer(name); // setengah jalan (stdio atau remote) -> mulai bersih
     return this._mulaiServer(name, conf, opsi.tunggu === true);
   }
 
@@ -701,7 +765,11 @@ class MCPClient {
    * (public/app/Config.tsx) and runs only while something is starting.
    */
   _mulaiServer(name, conf, tunggu) {
-    const p = this._startServer(name, conf);
+    const nk = this._normalKonfig(conf);
+    const p =
+      nk.transport === "remote"
+        ? this._startServerRemote(name, nk)
+        : this._startServer(name, nk);
     this._mulai[name] = p;
     delete this._galatMulai[name];
     const selesai = p.then(
@@ -731,7 +799,9 @@ class MCPClient {
     const hasil = {};
     await Promise.all(
       Object.entries(srvs)
-        .filter(([, conf]) => !(conf as KonfigServer).disabled)
+        .filter(
+          ([, conf]) => !this._normalKonfig(conf as KonfigServer).disabled,
+        )
         .map(async ([name]) => {
           hasil[name] = await this.connectServer(name);
         }),
@@ -1003,7 +1073,8 @@ class MCPClient {
 
   stopServer(name) {
     const srv = this.servers[name];
-    if (srv && srv.proc) {
+    if (!srv) return;
+    if (srv.proc) {
       dlog("mcp", "info", `Menghentikan MCP server: ${name}`);
       try {
         srv.proc.kill();
@@ -1011,6 +1082,23 @@ class MCPClient {
       // The record is dropped here rather than waiting for orphan cleanup: a PID
       // already dead but still recorded is a candidate victim of number reuse.
       if (srv.proc.pid) _forgetPid(srv.proc.pid);
+      delete this.servers[name];
+      delete this.toolsCache[name];
+    } else if (srv.http) {
+      // Remote: no process to kill. Best-effort tell the server to end the
+      // session, then drop it.
+      dlog("mcp", "info", `Menghentikan MCP server (remote): ${name}`);
+      if (srv.http.sessionId) {
+        try {
+          fetch(srv.http.url, {
+            method: "DELETE",
+            headers: {
+              "Mcp-Session-Id": srv.http.sessionId,
+              ...(srv.http.headers || {}),
+            },
+          }).catch(() => {});
+        } catch (_) {}
+      }
       delete this.servers[name];
       delete this.toolsCache[name];
     }
@@ -1072,10 +1160,143 @@ class MCPClient {
     return this._loadConfig().mcpServers || {};
   }
 
+  /**
+   * A remote (HTTP) MCP server. No child process: the same JSON-RPC handshake
+   * runs, but the transport is Streamable HTTP -- _send POSTs to the url and the
+   * response (JSON or an SSE stream) is fed back through _handleMessage, so the
+   * request/response correlation, timeouts and tools/list|call code are shared
+   * with stdio unchanged. Mirrors OpenCode's "remote" server type.
+   */
+  _startServerRemote(name: string, nk: KonfigNormal) {
+    return new Promise<void>((resolve, reject) => {
+      if (!nk.url) {
+        reject(new Error("remote MCP server has no url"));
+        return;
+      }
+      dlog("mcp", "info", `Memulai server MCP (remote): ${name}`, {
+        url: nk.url,
+      });
+      this.servers[name] = {
+        http: { url: nk.url, headers: nk.headers || {}, sessionId: null },
+        ready: false,
+        stderrAkhir: [],
+      } as any;
+      this._request(
+        name,
+        "initialize",
+        {
+          protocolVersion: "2024-11-05",
+          capabilities: { roots: { listChanged: true }, sampling: {} },
+          clientInfo: { name: "WOLFSPACE", version: "1.0.0" },
+        },
+        HANDSHAKE_TIMEOUT_MS,
+      )
+        .then(() => {
+          this._notify(name, "notifications/initialized", {});
+          if (this.servers[name]) this.servers[name].ready = true;
+          dlog("mcp", "info", `MCP server ${name} ready (remote).`);
+          resolve();
+        })
+        .catch((err) => {
+          const srv = this.servers[name];
+          const kata = (srv && srv.stderrAkhir) || [];
+          if (kata.length)
+            err = new Error(
+              err.message + " — " + kata.slice(-4).join(" | ").slice(0, 500),
+            );
+          if (srv) srv.lastError = err.message;
+          reject(err);
+        });
+    });
+  }
+
+  /**
+   * POST one JSON-RPC message to a remote server and feed its reply back through
+   * _handleMessage. The reply is either a single JSON object or an SSE stream
+   * (text/event-stream) carrying one or more `data:` JSON-RPC messages; a
+   * notification is answered with 202 and no body. The Mcp-Session-Id the server
+   * hands back on initialize is echoed on every later request. Fire-and-forget
+   * by design: the caller (_request) already awaits its pending promise, which
+   * _handleMessage resolves.
+   */
+  async _kirimHttp(name: string, srv: any, msg: any) {
+    try {
+      const h: Record<string, string> = {
+        "Content-Type": "application/json",
+        Accept: "application/json, text/event-stream",
+        ...(srv.http.headers || {}),
+      };
+      if (srv.http.sessionId) h["Mcp-Session-Id"] = srv.http.sessionId;
+      const res = await fetch(srv.http.url, {
+        method: "POST",
+        headers: h,
+        body: JSON.stringify(msg),
+      });
+      const sid = res.headers.get && res.headers.get("mcp-session-id");
+      if (sid) srv.http.sessionId = sid;
+      if (res.status === 202) return; // a notification: accepted, no body
+      if (res.status >= 400) {
+        const teks = ("HTTP " + res.status + " " + (await res.text())).slice(
+          0,
+          300,
+        );
+        srv.stderrAkhir = (srv.stderrAkhir || [])
+          .concat(teks)
+          .slice(-STDERR_DISIMPAN);
+        dlog("mcp", "error", `[MCP ${name}] ${teks}`);
+        // Fail the waiting request NOW rather than let it time out. Over stdio a
+        // dead server closes the pipe and the pending call is rejected at once;
+        // over HTTP the error IS this response, so a silent return would leave
+        // initialize (or any call) hanging for the full 60/120 s.
+        this._gagalkanReq(msg && msg.id, name, teks);
+        return;
+      }
+      const ct = (res.headers.get && res.headers.get("content-type")) || "";
+      const text = await res.text();
+      if (ct.includes("text/event-stream")) {
+        // SSE: events separated by a blank line; the JSON is on `data:` lines.
+        for (const blok of text.split(/\r?\n\r?\n/)) {
+          const data = blok
+            .split(/\r?\n/)
+            .filter((l) => l.startsWith("data:"))
+            .map((l) => l.slice(5).trim())
+            .join("");
+          if (data) this._handleMessage(name, data);
+        }
+      } else if (text.trim()) {
+        this._handleMessage(name, text.trim());
+      }
+    } catch (e: any) {
+      const teks = String((e && e.message) || e).slice(0, 200);
+      srv.stderrAkhir = (srv.stderrAkhir || [])
+        .concat(teks)
+        .slice(-STDERR_DISIMPAN);
+      dlog("mcp", "error", `[MCP ${name}] http send failed`, { error: teks });
+      this._gagalkanReq(msg && msg.id, name, teks);
+    }
+  }
+
+  /** Reject a pending request immediately (HTTP/network error on its POST). A
+   *  notification has no id and nothing to reject. */
+  _gagalkanReq(id: any, name: string, reason: string) {
+    if (id == null) return;
+    const p = this.pendingReqs[id];
+    if (p) {
+      delete this.pendingReqs[id];
+      p.reject(new Error(`MCP ${name}: ${reason}`));
+    }
+  }
+
   _send(name, msg) {
     const srv = this.servers[name];
-    if (!srv || !srv.proc || !srv.proc.stdin || srv.proc.stdin.destroyed)
-      return false;
+    if (!srv) return false;
+    // Remote server: POST it (see _kirimHttp). Fire-and-forget — the reply is
+    // fed to _handleMessage when it arrives.
+    if (srv.http) {
+      this._kirimHttp(name, srv, msg);
+      return true;
+    }
+    if (!srv.proc || !srv.proc.stdin || srv.proc.stdin.destroyed) return false;
     const str = JSON.stringify(msg) + "\r\n";
     try {
       srv.proc.stdin.write(str);
