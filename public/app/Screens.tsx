@@ -264,17 +264,26 @@ function ProjectPickerScreen({
         window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp" }),
         window.WOLFSPACE.invoke("api", { method: "GET", path: "/mcp/status" }),
       ]);
+      // null = the read FAILED (no body, or unparseable). {} = a genuinely empty
+      // config. The two must not be confused: see the guard below.
       const parse = (r: any) => {
-        if (!r || !r.body) return {};
+        if (!r || !r.body) return null;
         try {
           return typeof r.body === "string" ? JSON.parse(r.body) : r.body;
         } catch (_) {
-          return {};
+          return null;
         }
       };
       const data = parse(resCfg);
-      const st = parse(resSt);
-      const arr = Object.entries<any>(data || {}).map(([name, conf]) => {
+      // A FAILED config read must not wipe the list. Right after Connect the
+      // backend host is briefly busy finishing the handshake, so this GET /mcp
+      // can come back empty or error out. Treating that as "no servers" cleared
+      // the whole list — and with nothing left in a `starting` state, the poll
+      // stopped, so the rows never came back. Keep what we have and let the next
+      // refresh reconcile. A genuinely empty config still parses to {} and clears.
+      if (!data) return;
+      const st = parse(resSt) || {};
+      const arr = Object.entries<any>(data).map(([name, conf]) => {
         const s = st[name] || {};
         return {
           id: name,

@@ -1073,7 +1073,14 @@ class MCPClient {
     try {
       const dir = path.dirname(CONFIG_PATH);
       if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
-      fs.writeFileSync(CONFIG_PATH, JSON.stringify(configData, null, 2));
+      // ATOMIC: write to a temp file, then rename over the real one. A plain
+      // writeFileSync truncates then fills, so a GET /mcp that reads mid-write
+      // (the UI polls this file) could parse a half-written, invalid JSON and
+      // show an empty server list. rename() is atomic on the same volume, so a
+      // reader sees either the old file or the new one, never a torn one.
+      const tmp = CONFIG_PATH + ".tmp" + process.pid;
+      fs.writeFileSync(tmp, JSON.stringify(configData, null, 2));
+      fs.renameSync(tmp, CONFIG_PATH);
     } catch (e) {
       dlog("mcp", "error", "Failed to save mcp.json", { error: e.message });
     }
