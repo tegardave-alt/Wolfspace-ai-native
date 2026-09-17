@@ -32,6 +32,7 @@ const {
   loadCloudKeys,
   askCloudTools,
   askCloudStream,
+  PENANDA_CACHE,
 } = require("./cloud.ts");
 const {
   runSelfTool,
@@ -1503,6 +1504,15 @@ async function selfAgentStream(payload, emit, ctl: any = {}) {
 
 [MODE EFFORT AKTIF: ${effortModeName} (Context Token Budget: ~${effortTokenBudget} tokens | History Limit: ${effortMaxTurns} msgs)]
 ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab langsung ke inti." : effortLevel === 2 ? "Fokus pada analisis mendalam, RCA secara kritis, dan verifikasi silang semua bukti." : "Lakukan investigasi standar secara terukur."}`;
+  // ── PROMPT-CACHE BOUNDARY ──────────────────────────────────────────────────
+  // Everything ABOVE this marker (base prompt + principles + effort mode) is
+  // byte-identical on every step of a run, so it is the part worth caching. The
+  // cloud layer (agent/cloud.ts PENANDA_CACHE) splits the system prompt here,
+  // tags the head with `cache_control` for providers that honour it, and strips
+  // the marker before the request is sent — the model never sees it. Everything
+  // appended BELOW (digest, attachments, findings, retained file content) changes
+  // step to step and deliberately stays outside the cache.
+  messages[0].content += PENANDA_CACHE;
   // Appended AFTER the effort block so the digest sits closest to the messages
   // it describes. Empty string when nothing was trimmed, which is the common
   // case and costs nothing.
