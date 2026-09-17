@@ -125,7 +125,12 @@ jobs:
 
       - name: Jest
         shell: bash
-        run: npm test 2>&1 | tee /tmp/jest.log
+        # --maxWorkers=2: the "needs playwright" and git-network suites drive real
+        # browsers and PTYs, and over-parallelising them on the runner makes them
+        # flake — a DIFFERENT set times out each run (git-actions-menu,
+        # git-sinkron-vscode, terminal-bug…), all passing in isolation. Capping
+        # concurrency trades a little wall-clock for a stable run.
+        run: npm test -- --maxWorkers=2 2>&1 | tee /tmp/jest.log
 
       # Kegagalan hanya-CI harus bisa didiagnosis tanpa mengunduh log mentah:
       # log butuh autentikasi, anotasi tidak. Yang diangkat cuma nama suite yang
