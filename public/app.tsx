@@ -3439,13 +3439,8 @@ function App() {
       (m: any) => _URUT_SB[(_URUT_SB.indexOf(m) + 1) % _URUT_SB.length]!,
     );
   }, []);
-  const [theme, setTheme] = useState(() => {
-    try {
-      return localStorage.getItem("wolfspace_theme") || "dark";
-    } catch (e) {
-      return "dark";
-    }
-  });
+  // Theme toggle removed: WOLFSPACE is dark-only. :root is the dark palette, so
+  // dark needs nothing beyond the one-time attribute set in the effect below.
 
   const [terminalPct, setTerminalPct] = useState(30);
   const [panelPct, setPanelPct] = useState(35);
@@ -3956,11 +3951,13 @@ function App() {
   const startVisualDraw = useVisualDraw(getPreviewDoc);
   const doSendRef = useRef(void 0);
   useEffect(() => {
-    document.documentElement.dataset.theme = theme;
+    // Dark-only. Pin the attribute (overriding any value a previous build's
+    // toggle left behind) and drop the stale key.
+    document.documentElement.dataset.theme = "dark";
     try {
-      localStorage.setItem("wolfspace_theme", theme);
+      localStorage.removeItem("wolfspace_theme");
     } catch (e) {}
-  }, [theme]);
+  }, []);
 
   const loadModels = useCallback(async () => {
     // Cloud-only: the local llama.cpp/GGUF path was removed together with the
@@ -4790,8 +4787,6 @@ function App() {
             setView("chat");
             loadSavedChats();
           }}
-          theme={theme}
-          setTheme={setTheme}
           terminalOpen={terminalOpen}
           setTerminalOpen={setTerminalOpen}
           terminal={terminal}
@@ -4828,8 +4823,6 @@ function App() {
               setPanelOpen={setPanelOpen}
               onReset={reset}
               status={status}
-              theme={theme}
-              setTheme={setTheme}
               terminalOpen={terminalOpen}
               setTerminalOpen={setTerminalOpen}
             />

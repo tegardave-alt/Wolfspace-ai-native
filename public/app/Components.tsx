@@ -242,8 +242,6 @@ function TopBar({
   setPanelOpen,
   onReset,
   status,
-  theme,
-  setTheme,
   terminalOpen,
   setTerminalOpen,
   posisi,

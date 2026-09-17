@@ -2022,8 +2022,6 @@ function Sidebar({
   view,
   setView,
   onNewChat,
-  theme,
-  setTheme,
   terminalOpen,
   setTerminalOpen,
   terminal,

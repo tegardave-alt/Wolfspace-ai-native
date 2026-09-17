@@ -1787,104 +1787,6 @@ select {
   outline-offset: -2px;
 }
 
-/* ============================================================ Light theme ============================================================ */
-[data-theme="light"] {
-  --bg: #f5f7fa;
-  --surface-1: #ffffff;
-  --surface-2: #f0f2f5;
-  --surface-3: #e5e8ee;
-  --code-bg: #fafbfc;
-  --line: rgba(0, 0, 0, 0.07);
-  --line-strong: rgba(0, 0, 0, 0.12);
-  --text: #1a1d24;
-  --text-soft: #4a5260;
-  --text-muted: #6e7686;
-  --text-faint: #9aa2b0;
-  --brand-soft: rgba(139, 109, 255, 0.1);
-  --accent-soft: rgba(59, 130, 246, 0.1);
-  --shadow-panel: 0 18px 50px -12px rgba(0, 0, 0, 0.15), 0 0 0 1px var(--line);
-  --shadow-soft: 0 4px 16px -6px rgba(0, 0, 0, 0.1);
-}
-[data-theme="light"] .brand-mark {
-  box-shadow: none;
-  color: var(--text, #0f172a);
-}
-[data-theme="light"] .topbar,
-[data-theme="light"] .hub-header {
-  background: rgba(245, 247, 250, 0.8);
-}
-[data-theme="light"] .app,
-[data-theme="light"] .hub {
-  background:
-    radial-gradient(
-      1200px 600px at 80% -10%,
-      rgba(139, 109, 255, 0.05),
-      transparent 60%
-    ),
-    radial-gradient(
-      1000px 500px at 10% 110%,
-      rgba(59, 130, 246, 0.04),
-      transparent 55%
-    ),
-    var(--bg);
-}
-[data-theme="light"] .bubble-model strong {
-  color: #111419;
-}
-[data-theme="light"] .bubble-model .inline-code {
-  background: #eef1f6;
-  color: #5b4fc4;
-  border-color: rgba(0, 0, 0, 0.08);
-}
-[data-theme="light"] .model-select select {
-  background: var(--surface-2);
-  color: var(--text);
-}
-[data-theme="light"] .mi-trigger {
-  background: var(--surface-2);
-  color: var(--text);
-}
-[data-theme="light"] .t-kw {
-  color: #8b46bd;
-}
-[data-theme="light"] .t-fn {
-  color: #2563eb;
-}
-[data-theme="light"] .t-str {
-  color: #16803c;
-}
-[data-theme="light"] .t-num {
-  color: #d05e2e;
-}
-[data-theme="light"] .t-com {
-  color: #8894a6;
-}
-[data-theme="light"] .t-op {
-  color: #1575ad;
-}
-[data-theme="light"] ::-webkit-scrollbar-thumb {
-  background: rgba(0, 0, 0, 0.12);
-}
-[data-theme="light"] .m-tag.gen {
-  color: #7c3aed;
-}
-[data-theme="light"] .m-tag.code {
-  color: #2563eb;
-}
-[data-theme="light"] .m-tag.chat {
-  color: #059669;
-}
-[data-theme="light"] .m-tag.img {
-  color: #dc2626;
-}
-[data-theme="light"] .m-tag.emb {
-  color: #d97706;
-}
-.theme-toggle svg {
-  width: 17px;
-  height: 17px;
-}
-
 /* Page transition (Chat <-> Model Hub) */
 .page-container {
   position: relative;
@@ -3097,10 +2999,6 @@ img.ar-fs-icon {
   background: transparent;
 }
 
-[data-theme="light"] .aal-container {
-  color: #656d76;
-}
-
 .aal-row {
   display: flex;
   /* CENTER, and the icon no longer nudges itself down to compensate.
@@ -3119,10 +3017,6 @@ img.ar-fs-icon {
 
 .aal-row:hover {
   background: var(--surface-2);
-}
-
-[data-theme="light"] .aal-row:hover {
-  background: rgba(148, 163, 184, 0.08);
 }
 
 .aal-row.no-hover {
@@ -3149,22 +3043,12 @@ img.ar-fs-icon {
   color: var(--text);
   font-weight: 500;
 }
-[data-theme="light"] .aal-code-highlight {
-  color: #1f2328;
-}
 /* The duration inside the summary ("1 tool · 2s"). It used to inherit the
    summary's full weight and colour, so a two-second figure read as loudly as
    the count beside it. Muted and regular so the count leads. */
 .aal-code-highlight .aal-waktu {
   color: var(--text-muted);
   font-weight: 400;
-}
-[data-theme="light"] .aal-code-highlight .aal-waktu {
-  color: #6e7781;
-}
-[data-theme="light"] .aal-mono-highlight {
-  color: #1f2328;
-  background: rgba(148, 163, 184, 0.1);
 }
 
 .aal-diff-add {
@@ -3176,13 +3060,6 @@ img.ar-fs-icon {
   color: var(--danger);
   font-family: var(--mono);
   font-size: 12px;
-}
-
-[data-theme="light"] .aal-diff-add {
-  color: #1a7f37;
-}
-[data-theme="light"] .aal-diff-sub {
-  color: #d1242f;
 }
 
 .aal-indent {
@@ -3199,10 +3076,6 @@ img.ar-fs-icon {
   margin: 4px 0 4px 16px;
   border-left: 2px solid var(--line-strong);
   white-space: pre-wrap;
-}
-
-[data-theme="light"] .aal-thought-content {
-  border-left: 2px solid rgba(175, 184, 193, 0.3);
 }
 
 /* ── Loader kotak 3x3 untuk baris "sedang berjalan" ──
@@ -3314,9 +3187,6 @@ img.ar-fs-icon {
 }
 .aal-thought-header:hover {
   color: var(--text);
-}
-[data-theme="light"] .aal-thought-header:hover {
-  color: #1f2328;
 }
 
 .aal-thought-section {
