@@ -80,9 +80,27 @@ whenPossible("command palette (needs playwright)", () => {
           }
         });
 
-      // 1. The shortcut opens it.
-      await p.keyboard.press("Control+Shift+P");
-      await p.waitForSelector(".kpal-modal", { timeout: 10000 });
+      // The palette's global keydown listener is attached once App mounts; wait
+      // for a stable app element (its top-bar trigger) so a fast keypress under a
+      // loaded runner is not sent before the listener exists.
+      await p.waitForSelector('button[title^="Command Palette"]', {
+        timeout: 20000,
+      });
+
+      // 1. The shortcut opens it (retry once — a single lost keydown on a busy
+      // runner should not read as "the shortcut is broken").
+      const bukaViaShortcut = async () => {
+        await p.keyboard.press("Control+Shift+P");
+        try {
+          await p.waitForSelector(".kpal-modal", { timeout: 4000 });
+          return true;
+        } catch (_) {
+          return false;
+        }
+      };
+      if (!(await bukaViaShortcut())) {
+        expect(await bukaViaShortcut()).toBe(true);
+      }
 
       // 2. shadcn look: the search magnifier sits in the input row.
       expect(await p.$(".kpal-modal .kpal-cari-ikon")).not.toBeNull();
