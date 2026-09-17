@@ -2309,6 +2309,19 @@ function Composer({
       // refresh reconcile. A genuinely empty config still parses to {} and clears.
       if (!data) return;
       const st = parse(resSt) || {};
+      // OPT-IN DIAGNOSTIC (localStorage.wolfspace_mcp_debug = "1"): if a
+      // connected server ever vanishes from the list, this shows exactly what
+      // /mcp returned and what the row set became, on the platform where it
+      // happens. Off by default; costs nothing.
+      try {
+        if (localStorage.getItem("wolfspace_mcp_debug"))
+          console.log(
+            "[mcp-dbg] composer load — config ids:",
+            Object.keys(data),
+            "status ids:",
+            Object.keys(st),
+          );
+      } catch (_) {}
       const arr = Object.entries<any>(data).map(([name, conf]) => {
         const s = st[name] || {};
         return {
