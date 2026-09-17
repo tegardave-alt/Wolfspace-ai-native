@@ -604,10 +604,9 @@ function _brBuat() {
   // stripping those two tokens is not a lie: it makes the view render what a
   // real browser renders, which is the whole point of a browser inside the app.
   // Set on the WebContents so it applies to the page and its subresources.
+  let uaBersih = "";
   try {
-    const uaBersih = wc
-      .getUserAgent()
-      .replace(/ (?:WOLFSPACE|Electron)\/[^ ]+/g, "");
+    uaBersih = wc.getUserAgent().replace(/ (?:WOLFSPACE|Electron)\/[^ ]+/g, "");
     wc.setUserAgent(uaBersih);
   } catch (_: any) {}
   // Every state change is sent back to the renderer, so the address bar and the
@@ -632,11 +631,58 @@ function _brBuat() {
   wc.on("did-navigate-in-page", (_e: any, url: any) =>
     kirim("pindah", { url }),
   );
-  // A link that opens a new window opens IN THIS PANEL rather than in the OS
-  // browser — that is what anyone expects from a browser inside an application.
-  wc.setWindowOpenHandler(({ url }: any) => {
-    wc.loadURL(url);
-    return { action: "deny" };
+  // ── window.open, as a real browser does it ──
+  //
+  // The old handler navigated THIS panel to the popup's URL and denied the
+  // window. For an ordinary link that is fine, but it BREAKS every sign-in:
+  // an OAuth flow (Google's included) does window.open("<provider>", …) and
+  // then postMessage's the result back to window.opener. Replacing the opener
+  // with the popup's page destroys that channel, so the sign-in could never
+  // complete -- which is why a login-gated app (Stitch) stayed blank while it
+  // worked in a real browser where the user was already signed in.
+  //
+  // So a genuine window.open (disposition new-window / other, i.e. a popup with
+  // features) now opens a REAL popup window that shares this view's session --
+  // exactly like a real browser -- keeping the opener link alive so the flow
+  // can post back. A plain tab-style open (target=_blank) still loads in the
+  // panel, which is what an in-app browser wants for ordinary navigation.
+  wc.setWindowOpenHandler(({ url, disposition }: any) => {
+    if (disposition === "foreground-tab" || disposition === "background-tab") {
+      wc.loadURL(url);
+      return { action: "deny" };
+    }
+    return {
+      action: "allow",
+      overrideBrowserWindowOptions: {
+        width: 520,
+        height: 640,
+        autoHideMenuBar: true,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: process.env.WOLFSPACE_BROWSER_SANDBOX === "1",
+        },
+      },
+    };
+  });
+  // The popup window Electron just opened is a real browser window: give it the
+  // same Chrome user agent (the provider's sign-in page checks it too), and let
+  // IT open further popups the same way, so a multi-step sign-in works.
+  wc.on("did-create-window", (child: any) => {
+    try {
+      const cwc = child.webContents;
+      if (uaBersih) cwc.setUserAgent(uaBersih);
+      cwc.setWindowOpenHandler(({ url, disposition }: any) => {
+        if (
+          disposition === "foreground-tab" ||
+          disposition === "background-tab"
+        ) {
+          cwc.loadURL(url);
+          return { action: "deny" };
+        }
+        return { action: "allow" };
+      });
+    } catch (_: any) {}
   });
   _br = { tampil, win };
   return _br;
