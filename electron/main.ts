@@ -1932,6 +1932,33 @@ if (
   app.commandLine.appendSwitch("disable-gpu-sandbox");
 }
 
+// ── Cross-origin iframes: the browser panel must render them like a real browser ──
+//
+// PROVEN, not guessed. The in-app browser (a WebContentsView) silently failed to
+// load ANY cross-origin sub-frame: an injected <iframe src="https://example.org">
+// inside example.com stayed at url "" with no error event, and Google Stitch --
+// whose whole UI lives in a cross-origin app-companion iframe -- was blank, while
+// a real Chromium rendered it fully. A cross-origin iframe is an out-of-process
+// frame (site isolation), so it needs its OWN renderer process, and Chromium
+// tries to spawn that process SANDBOXED. This machine cannot spawn a sandboxed
+// renderer (the same reason the windows already run sandbox:false, and the GPU
+// sandbox is disabled above) -- so the OOPIF process never starts and the frame
+// stays blank, silently.
+//
+// --no-sandbox lets those child processes start UNSANDBOXED, so cross-origin
+// iframes load. Measured: with it, the injected iframe and Stitch's companion
+// iframe both render (Stitch shows "Try now" and its prompt gallery, same as a
+// real browser); without it, both are blank. This only extends to the OOPIF
+// children the posture the app's own windows already take (sandbox:false).
+// WOLFSPACE_BROWSER_SANDBOX=1 opts back in on a machine whose sandbox works --
+// there the sandboxed OOPIF spawns and cross-origin iframes work that way instead.
+if (
+  process.env.WOLFSPACE_BROWSER_SANDBOX !== "1" &&
+  process.env.WOLFSPACE_BROWSER_SANDBOX !== "true"
+) {
+  app.commandLine.appendSwitch("no-sandbox");
+}
+
 // Force Node.js (main process V8) to GC periodically
 const _gcInterval = setInterval(() => {
   if (global.gc) {

@@ -15,6 +15,26 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const MAIN = fs.readFileSync(path.join(AKAR, "electron", "main.ts"), "utf8");
 
+describe("cross-origin iframes render (the browser view is a real browser)", () => {
+  // PROVEN in the launched app: the in-app browser silently failed to load ANY
+  // cross-origin sub-frame -- an injected <iframe src="https://example.org">
+  // inside example.com stayed at url "" with no error, and Google Stitch (whose
+  // UI lives in a cross-origin app-companion iframe) was blank while a real
+  // Chromium rendered it fully. A cross-origin iframe is out-of-process (site
+  // isolation) and needs its own renderer, which Chromium tries to spawn
+  // SANDBOXED; this class of machine cannot spawn a sandboxed renderer (the same
+  // reason the windows run sandbox:false), so the frame stayed blank. --no-sandbox
+  // lets the child process start, and both the injected iframe and Stitch then
+  // render (measured).
+  test("main.ts appends --no-sandbox unless the browser sandbox is opted back in", () => {
+    expect(MAIN).toMatch(/app\.commandLine\.appendSwitch\("no-sandbox"\)/);
+    // Gated by the same escape hatch as the view's sandbox option.
+    const i = MAIN.indexOf('appendSwitch("no-sandbox")');
+    const before = MAIN.slice(Math.max(0, i - 260), i);
+    expect(before).toMatch(/WOLFSPACE_BROWSER_SANDBOX !== "1"/);
+  });
+});
+
 describe("window.open opens a real popup (so sign-in / OAuth can complete)", () => {
   test("popups are allowed as real windows; only tab-style opens navigate the panel", () => {
     // A real browser opens window.open() in its own window. OAuth/sign-in
