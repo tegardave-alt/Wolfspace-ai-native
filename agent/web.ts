@@ -796,12 +796,12 @@ function _fetchWithHttp(urlStr) {
 
 // ── webExtract: take PART of a page, not all of its text ──
 //
-// WHY IT IS SEPARATE from webFetch. webFetch returns the whole page's innerText
+// WHY IT IS SEPARATE from webFetch. webFetch returns the whole page as Markdown
 // and then cuts it at 8000 characters. For reading an article that is fine; for
-// EXTRACTING DATA it fails in three ways at once:
+// EXTRACTING DATA it still falls short in three ways at once:
 //
-//   1. tables, lists and attributes (href, data-*) flatten into prose — the
-//      structure is lost exactly when the structure is what was wanted
+//   1. attributes (data-*, and any href past the 8KB cut) never survive, and a
+//      long table is truncated mid-page — the specific datum can be out of reach
 //   2. waitForTimeout(400) is a guess. A page that fills its content through JS
 //      after 400 ms reads as EMPTY, and that emptiness is indistinguishable
 //      from "there is genuinely no data"

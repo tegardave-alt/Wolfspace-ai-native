@@ -255,7 +255,10 @@ const SELF_TOOLS = [
     function: {
       name: "web_fetch",
       description:
-        "Fetch text from a URL using Microsoft Edge headless (bypasses bot detection). Returns clean text up to 8KB.",
+        "Fetch a URL as Markdown (Microsoft Edge headless, bypasses bot detection). " +
+        "Keeps the page's structure — headings, links, fenced code and tables — capped at 8KB. " +
+        "This is the cheapest way to read one whole page; for a specific element, structured " +
+        "rows/links/attributes, or content past the 8KB cut, use web_extract.",
       parameters: {
         type: "object",
         properties: {
@@ -317,8 +320,9 @@ const SELF_TOOLS = [
         "Pull a SPECIFIC PART out of a web page with a real browser (Playwright). " +
         "Use this — NOT web_fetch — when the data is loaded by JavaScript, sits inside a table or list, " +
         "needs an attribute such as href, or lives far down the page. " +
-        "web_fetch returns the whole page innerText and cuts it at 8KB, so structure is lost " +
-        "and anything loaded later reads as empty.",
+        "web_fetch returns the whole page as Markdown capped at 8KB; reach for web_extract " +
+        "instead when you need one specific element, structured rows/links/attributes, or " +
+        "content that sits past that cut or is added by JavaScript after load.",
       parameters: {
         type: "object",
         properties: {
