@@ -46,7 +46,13 @@ import * as path from "path";
 // Left empty, the panel falls back to asking the user for their own OAuth App.
 // That fallback is a safety net, not the intended path.
 const BAWAAN = {
-  clientId: "",
+  // The WOLFSPACE OAuth App's PUBLIC client ID. Safe to ship: it identifies the
+  // app, never a user, and grants nothing on its own — it appears in every
+  // authorize URL and the GitHub CLI keeps its own in open source. With Device
+  // Flow enabled on the app, this alone is enough for one-click "Sign in with
+  // GitHub" in every build; no client secret is shipped. The secret stays empty
+  // here on purpose — the nicer web flow is opt-in via github-app.local.json.
+  clientId: "Ov23lijzM6YITqN6Qrbm",
   clientSecret: "",
 };
 
