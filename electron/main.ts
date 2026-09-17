@@ -15,6 +15,12 @@
 //   imports  electron, child_process, http, fs, path, ./probe (startup timing)
 //   spawns   the backend host and the server
 //   bridge   electron/preload.ts exposes window.WOLFSPACE to the renderer
+// V8 COMPILE CACHE: cache compiled bytecode for the main process's modules so a
+// warm start skips re-compilation. Node 22.8+; no-op on older Node, and wrapped
+// so a cache-dir problem can never block the window from opening.
+try {
+  require("module").enableCompileCache?.();
+} catch (_) {}
 const { app, BrowserWindow, shell, ipcMain, protocol } = require("electron");
 const { spawn, execSync } = require("child_process");
 const http = require("http");

@@ -14,5 +14,14 @@
 // launcher is precisely what this project's language split reserves CommonJS
 // for. Re-exporting means `require("./server.cjs")` keeps returning the same
 // surface it always did.
+// V8 COMPILE CACHE. ts-register already caches its TRANSPILED output (text), but
+// V8 still parses and compiles that JS to bytecode on every launch. This caches
+// the bytecode too, so a warm start skips the compile. Node 22.8+; the optional
+// call is a no-op on older Node (CI still runs Node 20), and the try/catch keeps
+// a cache-dir problem from ever blocking boot — it is an optimisation, not a
+// dependency. Called BEFORE ts-register so the whole agent graph is covered.
+try {
+  require("module").enableCompileCache?.();
+} catch (_) {}
 require("./scripts/ts-register.cjs");
 module.exports = require("./server.ts");
