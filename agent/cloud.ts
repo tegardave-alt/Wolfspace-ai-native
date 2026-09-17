@@ -402,6 +402,92 @@ function _serapPakai(j: any, pakai: any) {
   }
 }
 
+// ── PROMPT CACHING ────────────────────────────────────────────────────────────
+//
+// A run makes ONE model call per step, and every call re-sends the same large
+// instruction block (base system prompt + principles + effort mode) at the very
+// FRONT of the request. Anthropic — and Claude models reached through an
+// OpenAI-compatible gateway (OpenRouter, OpenCode) — bill only ~10% for a prefix
+// they have already seen THIS session, but only if it is tagged with
+// `cache_control` and stays byte-identical between calls. OpenAI and DeepSeek do
+// the same automatically for any stable prefix and need no tag; Groq does not
+// cache at all.
+//
+// agent/self_agent.ts bakes PENANDA_CACHE into the system message at the boundary
+// between its stable HEAD (identical on every step of a run) and its volatile
+// TAIL (digest, attachments, findings, retained file content — all recomputed
+// each step). The helpers here split at that boundary, tag the head with
+// cache_control for providers that honour it, and ALWAYS strip the marker so the
+// model never sees it. Callers with no marker (a plain chat) are unaffected: the
+// whole prompt is treated as the head and simply passes through.
+const PENANDA_CACHE = " WOLFSPACE_CACHE_BREAK ";
+
+// Split a system prompt at the cache boundary into its stable head and volatile
+// tail. With no marker the whole string is the head and the tail is empty.
+function _belahSistemCache(sys) {
+  const s = sys || "";
+  const i = s.indexOf(PENANDA_CACHE);
+  if (i < 0) return { stabil: s, labil: "" };
+  return { stabil: s.slice(0, i), labil: s.slice(i + PENANDA_CACHE.length) };
+}
+
+// Remove every marker occurrence — used on the paths that do not cache
+// explicitly, so the sentinel can never reach a provider as visible text.
+function _stripPenanda(s) {
+  return String(s || "").split(PENANDA_CACHE).join("");
+}
+
+// Does this provider/model bill a discount for an explicitly-tagged cache prefix?
+// Native Anthropic always does. Claude models reached through an OpenAI-compatible
+// gateway accept the same Anthropic-style cache_control inside the message body.
+// Everyone else caches automatically (OpenAI, DeepSeek) or not at all (Groq) — for
+// them we only strip the marker and let a stable prefix earn its own discount.
+function _dukungCacheEksplisit(provider, model) {
+  if (provider === "anthropic") return true;
+  const m = String(model || "").toLowerCase();
+  const claude = /claude|opus|sonnet|haiku/.test(m);
+  return claude && (provider === "openrouter" || provider === "opencode");
+}
+
+// Build the native-Anthropic `system` field: the stable head as a cache_control
+// block, the volatile tail as a plain block after it. A single string (no marker)
+// becomes one cached block.
+function _sistemAnthropicCache(sys) {
+  const { stabil, labil } = _belahSistemCache(sys);
+  const blok: any[] = [];
+  if (stabil)
+    blok.push({
+      type: "text",
+      text: stabil,
+      cache_control: { type: "ephemeral" },
+    });
+  if (labil) blok.push({ type: "text", text: labil });
+  return blok.length ? blok : "";
+}
+
+// Transform an OpenAI-format message array (the shape the agent loop sends) so its
+// system message earns the cache discount. For Claude-via-gateway the stable head
+// becomes a cache_control content block; for everyone else the marker is simply
+// stripped and the string left intact (their caching, if any, is automatic).
+function _terapkanCacheOpenAI(messages, provider, model) {
+  if (!Array.isArray(messages) || messages.length === 0) return messages;
+  const sysMsg = messages[0];
+  if (!sysMsg || sysMsg.role !== "system" || typeof sysMsg.content !== "string")
+    return messages;
+  const { stabil, labil } = _belahSistemCache(sysMsg.content);
+  const out = messages.slice();
+  if (_dukungCacheEksplisit(provider, model) && stabil) {
+    const blok: any[] = [
+      { type: "text", text: stabil, cache_control: { type: "ephemeral" } },
+    ];
+    if (labil) blok.push({ type: "text", text: labil });
+    out[0] = { ...sysMsg, content: blok };
+  } else {
+    out[0] = { ...sysMsg, content: stabil + labil };
+  }
+  return out;
+}
+
 function _askCloudStreamOnce(cloud, work, onToken, reg, onPakai?: any) {
   return new Promise((resolve, reject) => {
     // One accumulator for the whole request: the counts arrive across several
@@ -466,7 +552,10 @@ function _askCloudStreamOnce(cloud, work, onToken, reg, onPakai?: any) {
         // Without this the stream never mentions tokens at all, and the usage
         // badge would have nothing honest to show.
         stream_options: { include_usage: true },
-        messages: [{ role: "system", content: sys || "" }, ...workMsgs],
+        messages: [
+          { role: "system", content: _stripPenanda(sys) },
+          ...workMsgs,
+        ],
       };
       // OPENCODE free models: do NOT send reasoning_effort (unsupported).
       const isFreeModel = model.includes("-free");
@@ -523,7 +612,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg, onPakai?: any) {
       body = JSON.stringify({
         model,
         max_tokens: effortTokens + 4096,
-        system: sys || "",
+        system: _sistemAnthropicCache(sys),
         stream: true,
         thinking: { type: "enabled", budget_tokens: effortTokens },
         messages: workMsgs.map((m) => ({ role: m.role, content: m.content })),
@@ -551,7 +640,7 @@ function _askCloudStreamOnce(cloud, work, onToken, reg, onPakai?: any) {
     } else if (provider === "gemini") {
       path = `/v1beta/models/${model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(cloud.key)}`;
       body = JSON.stringify({
-        systemInstruction: { parts: [{ text: sys || "" }] },
+        systemInstruction: { parts: [{ text: _stripPenanda(sys) }] },
         contents: workMsgs.map((m) => ({
           role: m.role === "assistant" ? "model" : "user",
           parts: [{ text: m.content }],
@@ -816,7 +905,14 @@ function _askCloudToolsOnce(cloud, messages, tools, onPakai?: any) {
       } catch (_) {}
     }
     const isReasoning = /deepseek|reason/i.test(model);
-    const sanitizedMessages = _sanitizeMessages(messages);
+    // Tag the stable system head with cache_control (Claude via gateway) or just
+    // strip the marker (everyone else); see PENANDA_CACHE above. This is the call
+    // the agent loop makes on every step, so it is where caching pays off.
+    const sanitizedMessages = _terapkanCacheOpenAI(
+      _sanitizeMessages(messages),
+      provider,
+      model,
+    );
     // Do NOT send `tools: []`. Some APIs validate this array's minimum length
     // (proven: qwen -> 400 "[] is too short - 'tools'"), so an EMPTY array gets
     // the whole request refused — when what was meant was "no tools", which is
@@ -1043,6 +1139,15 @@ module.exports = {
   askCloudStream,
   fillCloudKey,
   askCloudTools,
+  // Prompt-cache boundary marker (agent/self_agent.ts bakes it into the system
+  // message) plus its pure helpers, exported so tests can assert the request
+  // shape without a live model call.
+  PENANDA_CACHE,
+  _belahSistemCache,
+  _stripPenanda,
+  _dukungCacheEksplisit,
+  _sistemAnthropicCache,
+  _terapkanCacheOpenAI,
   // Test hook. Reaching _serapPakai through askCloudTools would mean a real
   // model call over the network for what is a pure function over one chunk.
   _serapPakai,
