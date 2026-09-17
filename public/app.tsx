@@ -4412,7 +4412,7 @@ function App() {
                   busy: false,
                   done: true,
                   summary:
-                    "Dijeda di batas langkah — rincian ada di panel di bawah. Tekan Lanjutkan untuk menyambung, atau Selesai untuk berhenti.",
+                    "Paused at the step limit — details are in the panel below. Continue to carry on, or Done to stop.",
                   editCount: j.edits,
                   backup: j.backup,
                 });

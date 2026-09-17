@@ -524,7 +524,15 @@ interface KonfigNormal {
 // revoked while the UI still reads "Connected". They are assigned by _catat()
 // after the handshake, so they are optional here rather than set in _startServer.
 interface ServerHidup {
-  proc: import("child_process").ChildProcessWithoutNullStreams;
+  // Absent for a remote (HTTP) server -- it has no child process.
+  proc?: import("child_process").ChildProcessWithoutNullStreams;
+  // Present only for a remote (HTTP) server: its endpoint, auth headers and the
+  // Mcp-Session-Id the server handed back on initialize.
+  http?: {
+    url: string;
+    headers: Record<string, string>;
+    sessionId: string | null;
+  };
   ready: boolean;
   lastCallAt?: number;
   lastCallOk?: boolean;
@@ -736,7 +744,7 @@ class MCPClient {
     if (ada && ada.ready && !gagalPanggilanTerakhir)
       return { ok: true, already: true };
     if (this._mulai[name]) return { ok: true, status: "starting" };
-    if (ada) this.stopServer(name); // setengah jalan (stdio atau remote) -> mulai bersih
+    if (ada) this.stopServer(name); // half-started (stdio or remote) -> start clean
     return this._mulaiServer(name, conf, opsi.tunggu === true);
   }
 
@@ -809,7 +817,7 @@ class MCPClient {
     return hasil;
   }
 
-  _startServer(name: string, conf: KonfigServer) {
+  _startServer(name: string, conf: KonfigNormal) {
     // Promise<void>: resolve() is called with no value, and without the type
     // this, TypeScript infers Promise<unknown> and then demands an argument.
     return new Promise<void>((resolve, reject) => {
@@ -827,7 +835,7 @@ class MCPClient {
       const cmd =
         process.platform === "win32" && conf.command === "npx"
           ? "npx.cmd"
-          : conf.command;
+          : conf.command || "";
       // cwd IS FORWARDED. It used to be silently ignored: the config was allowed
       // to state it, and spawn never used it.
       //
@@ -1087,7 +1095,7 @@ class MCPClient {
     } else if (srv.http) {
       // Remote: no process to kill. Best-effort tell the server to end the
       // session, then drop it.
-      dlog("mcp", "info", `Menghentikan MCP server (remote): ${name}`);
+      dlog("mcp", "info", `Stopping MCP server (remote): ${name}`);
       if (srv.http.sessionId) {
         try {
           fetch(srv.http.url, {
@@ -1173,7 +1181,7 @@ class MCPClient {
         reject(new Error("remote MCP server has no url"));
         return;
       }
-      dlog("mcp", "info", `Memulai server MCP (remote): ${name}`, {
+      dlog("mcp", "info", `Starting MCP server (remote): ${name}`, {
         url: nk.url,
       });
       this.servers[name] = {
