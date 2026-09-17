@@ -12,6 +12,7 @@
     "app:wsl": "node scripts/wsl-app.cjs",
     "dist": "node scripts/build-aclaunch.cjs && node scripts/build-preload.cjs && node scripts/build-main.cjs && node scripts/build-app.cjs && electron-builder --win && node scripts/periksa-paket.cjs",
     "test": "jest --verbose --detectOpenHandles --passWithNoTests",
+    "ci": "npm run build:app && npm run typecheck && npx jest --ci --maxWorkers=2 --forceExit",
     "stress": "node scripts/stress.cjs",
     "test:watch": "jest --watch --verbose",
     "prepare": "husky",
