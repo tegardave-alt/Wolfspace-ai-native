@@ -4708,8 +4708,65 @@ function App() {
         }
       : { order: _orderPembagi(sisi, nama), height: tinggiAtas + "%" };
 
+  // ── Command palette: the VIEW + CHAT commands this component owns ──
+  // Feature areas (terminal, MCP, git, web dev) register their own commands from
+  // their own components — see usePerintah in Screens.tsx / Components.tsx.
+  usePerintah(
+    () => [
+      {
+        id: "view.terminal",
+        kategori: "View",
+        judul: (terminalOpen ? "Hide" : "Show") + " Terminal",
+        jalankan: () => setTerminalOpen(!terminalOpen),
+      },
+      {
+        id: "view.webdev",
+        kategori: "View",
+        judul: (panelOpen ? "Hide" : "Show") + " Web Dev",
+        jalankan: () => setPanelOpen(!panelOpen),
+      },
+      {
+        id: "view.code",
+        kategori: "View",
+        judul: (logicOpen ? "Hide" : "Show") + " Code Editor",
+        jalankan: () => setLogicOpen(!logicOpen),
+      },
+      {
+        id: "view.explorer",
+        kategori: "View",
+        judul: (explorerSembunyi ? "Show" : "Hide") + " Explorer",
+        jalankan: () => putarExplorer(!explorerSembunyi),
+      },
+      {
+        id: "view.chat",
+        kategori: "View",
+        judul: (chatVisible ? "Hide" : "Show") + " Chat Panel",
+        jalankan: () => setChatVisible(!chatVisible),
+      },
+      {
+        id: "view.theme",
+        kategori: "View",
+        judul: "Toggle Theme (to " + (theme === "dark" ? "Light" : "Dark") + ")",
+        jalankan: () => setTheme(theme === "dark" ? "light" : "dark"),
+      },
+      {
+        id: "chat.new",
+        kategori: "Chat",
+        judul: "New Chat",
+        jalankan: () => {
+          saveChat();
+          reset();
+          setView("chat");
+          loadSavedChats();
+        },
+      },
+    ],
+    [terminalOpen, panelOpen, logicOpen, explorerSembunyi, chatVisible, theme],
+  );
+
   return (
     <>
+      <CommandPalette />
       <div className={"app has-sidebar sb-" + sbMode}>
         {!pickerDone && (
           <ProjectPickerScreen
