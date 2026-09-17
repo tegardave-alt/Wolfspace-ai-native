@@ -2479,6 +2479,15 @@ export class Repository {
 
 		if (rebase) {
 			args.push('-r');
+		} else {
+			// WOLFSPACE: force the merge strategy. A bare `git pull` FAILS on
+			// divergent branches when the user has no pull.rebase/pull.ff set —
+			// every fresh git install and clean CI runner hits
+			// "fatal: Need to specify how to reconcile divergent branches" (exit
+			// 128), which surfaced as sync() returning ok:false only on CI. This
+			// makes the reconcile explicit per invocation; a fast-forward or
+			// up-to-date pull is unaffected.
+			args.push('--no-rebase');
 		}
 
 		if (remote && branch) {
