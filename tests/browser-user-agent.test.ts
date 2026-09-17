@@ -15,6 +15,29 @@ const path = require("path");
 const AKAR = path.resolve(__dirname, "..");
 const MAIN = fs.readFileSync(path.join(AKAR, "electron", "main.ts"), "utf8");
 
+describe("window.open opens a real popup (so sign-in / OAuth can complete)", () => {
+  test("popups are allowed as real windows; only tab-style opens navigate the panel", () => {
+    // A real browser opens window.open() in its own window. OAuth/sign-in
+    // flows postMessage the result back to window.opener, so the opener must
+    // survive -- the old handler replaced the panel with the popup URL and
+    // broke every sign-in. Allow real popups; keep panel navigation only for
+    // plain foreground/background tabs.
+    expect(MAIN).toMatch(
+      /disposition === "foreground-tab" \|\| disposition === "background-tab"/,
+    );
+    expect(MAIN).toMatch(/return \{\s*action: "allow"/);
+  });
+
+  test("the popup window shares the session and the clean Chrome UA", () => {
+    // did-create-window: the popup is a real browser window; the provider's
+    // sign-in page checks the UA too, so it must be Chrome, not Electron.
+    expect(MAIN).toMatch(/wc\.on\("did-create-window"/);
+    expect(MAIN).toMatch(/if \(uaBersih\) cwc\.setUserAgent\(uaBersih\)/);
+    // And the popup can open further popups (multi-step sign-in).
+    expect(MAIN).toMatch(/cwc\.setWindowOpenHandler\(/);
+  });
+});
+
 describe("the browser view's user agent", () => {
   test("setUserAgent strips the Electron and WOLFSPACE tokens, on the view's webContents", () => {
     expect(MAIN).toMatch(
