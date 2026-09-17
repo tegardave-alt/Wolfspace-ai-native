@@ -42,7 +42,12 @@ describe("the wiring", () => {
       "const geserPembagi = (sumbu: any, set: any, nama?: any) =>",
     );
     expect(i).toBeGreaterThan(-1);
-    const b = APP.slice(i, i + 4000);
+    // Generous window: this only bounds the search to the geserPembagi function
+    // (there is exactly one classList.add("menyeret-pembagi") in the whole file,
+    // so a larger slice cannot false-match). 4000 was razor-thin — a couple of
+    // extra comment lines in the function pushed the add() to char 4030 and the
+    // assertion failed by 30 characters.
+    const b = APP.slice(i, i + 8000);
     expect(b).toMatch(
       /document\.querySelector\('\[data-panel="' \+ nama \+ '"\]'\)/,
     );

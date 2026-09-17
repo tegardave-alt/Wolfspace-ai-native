@@ -29,6 +29,12 @@ const fs = require("fs");
 const path = require("path");
 const { runSelfTool } = require("../agent/tools.ts");
 
+// Every case here calls runSelfTool, which spawns a real shell / AppContainer.
+// A cold spawn on a loaded or WSL-backed machine can pass 5s (the header notes
+// this failing ~1 in 8 runs with a timeout that never mentions WSL). The work is
+// not slow, the START is, so raise the ceiling rather than let it flake.
+jest.setTimeout(20000);
+
 const ROOT = path.join(__dirname, "..");
 const REL = "public/_gate_test_probe.jsx";
 const ABS = path.join(ROOT, REL);
