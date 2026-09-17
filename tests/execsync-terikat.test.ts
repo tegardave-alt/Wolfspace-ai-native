@@ -97,14 +97,18 @@ describe("execSync terikat sebelum dipakai", () => {
     expect(blok).toMatch(/_adaDiPath\(/);
     // Dan hasilnya di-cache: shell terpasang tak berubah di tengah sesi.
     expect(blok).toMatch(/_shellTerpilih/);
+    // _adaDiPath walks PATH and defers the per-entry check to _adaBerkas
+    // (existsSync, then accessSync/readdir so Windows Store app-execution
+    // aliases are seen too). Both helpers, no process spawned.
     const p = tanpaKomentar(
       SRV.slice(
-        SRV.indexOf("function _adaDiPath("),
+        SRV.indexOf("function _adaBerkas("),
         SRV.indexOf("function detectShell("),
       ),
     );
     expect(p).toMatch(/process\.env\.PATH/);
     expect(p).toMatch(/fs\.existsSync/);
+    expect(p).not.toMatch(/execSync|\bspawn\b/);
   });
   // The killPort() guard that used to live here is gone with the function itself.
   // killPort existed only to stop a model's llama-server, and its sole caller was
