@@ -56,7 +56,10 @@ jobs:
     # bukan menampung suite yang lebih berat, melainkan menyisakan margin
     # terhadap runner yang sesekali lambat 4x. Batas itu TIDAK dihapus -- ia
     # menjaga suite yang MENGGANTUNG agar tak menghabiskan menit build diam-diam.
-    timeout-minutes: 20
+    # 30, not 20: --maxWorkers=2 runs the browser/PTY suites less parallel, so the
+    # stable run is slower on purpose. The cap still guards a hung suite from
+    # burning build minutes silently — it just leaves margin for the trade above.
+    timeout-minutes: 30
     steps:
       - uses: actions/checkout@v7
       - uses: actions/setup-node@v7
@@ -125,12 +128,18 @@ jobs:
 
       - name: Jest
         shell: bash
+        # Invoke jest DIRECTLY, not `npm test`, to drop --detectOpenHandles: that
+        # flag is for debugging, it slows the run, and it makes jest WAIT on any
+        # lingering handle — the server.cjs children the browser/PTY/perf suites
+        # spawn kept it alive until the 20-min job timeout. --forceExit ends the
+        # process once every test has reported, so a stray handle costs seconds,
+        # not the whole build.
+        #
         # --maxWorkers=2: the "needs playwright" and git-network suites drive real
-        # browsers and PTYs, and over-parallelising them on the runner makes them
-        # flake — a DIFFERENT set times out each run (git-actions-menu,
-        # git-sinkron-vscode, terminal-bug…), all passing in isolation. Capping
-        # concurrency trades a little wall-clock for a stable run.
-        run: npm test -- --maxWorkers=2 2>&1 | tee /tmp/jest.log
+        # browsers and PTYs; over-parallelising them makes a DIFFERENT set flake
+        # each run (git-actions-menu, git-sinkron-vscode, terminal-bug…), all
+        # green in isolation. Two workers trade a little wall-clock for stability.
+        run: npx jest --ci --maxWorkers=2 --forceExit 2>&1 | tee /tmp/jest.log
 
       # Kegagalan hanya-CI harus bisa didiagnosis tanpa mengunduh log mentah:
       # log butuh autentikasi, anotasi tidak. Yang diangkat cuma nama suite yang
