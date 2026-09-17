@@ -87,6 +87,7 @@ const BERKAS_MIGRASI = [
   "packages/contracts/agent-events.ts",
   "public/app/AgentSteps.tsx",
   "public/app/CodeBlocks.tsx",
+  "public/app/CommandPalette.tsx",
   "public/app/Components.tsx",
   // app.tsx joined the list once the last seven half-finished translations
   // were completed — sentences that began in English and ended in Indonesian,
