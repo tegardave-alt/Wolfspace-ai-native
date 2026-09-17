@@ -1659,6 +1659,9 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
       lastOutBySig: {},
       noProgressBySig: {},
       failsByName: {},
+      // Reads per file path, cumulative across the run: the per-file read cap
+      // in runOne uses it to break the re-reading loop.
+      readsByPath: {},
     });
   }
   const sess = _sessionState.get(thread_id);
@@ -1668,6 +1671,7 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
     sess.noProgressBySig = {};
     sess.failsByName = {};
   }
+  if (!sess.readsByPath) sess.readsByPath = {};
   const callCounts = sess.callCounts;
   const callCountsByName = sess.callCountsByName;
   let editFailCount = sess.editFailCount || 0;
@@ -2347,6 +2351,84 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
               ok: true,
               ts: Date.now(),
             });
+          }
+
+          // ── Per-file read cap: the real brake on the re-reading loop ──
+          //
+          // WHAT WENT WRONG (measured). Given "convert code.html to React", the
+          // model read code.html and DESIGN.md in ~250 tiny overlapping ranges
+          // and never wrote anything, burning ~1M input tokens. The cause is a
+          // vicious cycle with the history compactor: every step the transcript
+          // crossed the 200 KB fold threshold, so the content it had just read
+          // was folded into a digest that keeps only "read x12, target:
+          // code.html" -- NOT the bytes. With the content gone from context the
+          // model read the file AGAIN (a slightly different range), which folded
+          // it away again. Nothing stopped it: the stagnation guard keys on the
+          // exact arguments (name + full range), so a different range is a
+          // different signature and never trips; readFileCount was advisory text
+          // and reset whenever the model alternated the two files.
+          //
+          // This is the deterministic brake. It counts reads PER PATH, across
+          // the whole run, and it does not reset when the model switches files.
+          // Past the soft cap the read is REFUSED without running -- so the file
+          // content is not re-sent, which is what stops the token bleed -- with a
+          // firm instruction to act on what was already read. Past the hard cap
+          // the step stops the run with a message rather than looping to the
+          // step ceiling.
+          const _namaBaca = tc.function.name;
+          if (_namaBaca === "read" || _namaBaca === "disk_read") {
+            const _p = String(args.path || "");
+            if (_p) {
+              if (!sess.readsByPath) sess.readsByPath = {};
+              sess.readsByPath[_p] = (sess.readsByPath[_p] || 0) + 1;
+              const _n = sess.readsByPath[_p];
+              const READ_CAP_LEMBUT = 5; // reads 1-5 run normally
+              const READ_CAP_KERAS = 9; // 10th read ends the run
+              if (_n > READ_CAP_KERAS) {
+                const out =
+                  "[SYSTEM: '" +
+                  _p +
+                  "' has now been read " +
+                  _n +
+                  " times in this run — far past what any task needs. Its content has not changed. Stopping to avoid a re-reading loop.]";
+                emit({
+                  t: "act",
+                  kind: _namaBaca,
+                  arg: _p,
+                  ok: false,
+                  output: out,
+                });
+                return {
+                  out,
+                  stop: true,
+                  reason: "read_loop",
+                  stopNote:
+                    "read «" +
+                    _p +
+                    "» " +
+                    _n +
+                    "x — a re-reading loop with no writing",
+                };
+              }
+              if (_n > READ_CAP_LEMBUT) {
+                // Refuse WITHOUT running the read: the point is to stop
+                // re-sending the file. Say plainly what to do instead.
+                const out =
+                  "[SYSTEM: '" +
+                  _p +
+                  "' was already read " +
+                  (_n - 1) +
+                  " time(s) earlier in this run and has not changed. NOT reading it again. Use what you already read: write the file / make the edit / give your answer now. If you truly need a specific part, it is in the transcript above.]";
+                emit({
+                  t: "act",
+                  kind: _namaBaca,
+                  arg: _p,
+                  ok: true,
+                  output: out,
+                });
+                return { out };
+              }
+            }
           }
 
           const sig = tc.function.name + "|" + (tc.function.arguments || "");
