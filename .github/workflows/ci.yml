@@ -97,48 +97,19 @@ jobs:
       - name: Typecheck
         run: npm run typecheck
 
-      # GAGAL DUA KALI, jadi bukan kedipan jaringan -- dan ulangan polos yang
-      # dipasang sebelumnya justru yang membuktikannya. Itu memang gunanya.
-      #
-      # Riwayatnya: empat run sukses 22-25 detik dengan langkah yang sama persis,
-      # lalu gagal 8 detik, lalu gagal lagi sesudah jeda 15 detik. Log GitHub
-      # menjawab 403 untuk permintaan anonim, jadi sebabnya tak bisa dibaca
-      # langsung; yang tersisa adalah bentuk kegagalannya.
-      #
-      # Bentuk itu cocok dengan kelas galat yang terdokumentasi di playwright:
-      # `--with-deps` menjalankan apt-get, dan metadata repositori di runner bisa
-      # basi -- "Repository ... changed its 'Label' value" mengembalikan exit 100
-      # seketika. Gagal cepat, berulang, dan tak ada hubungannya dengan unduhan
-      # browser. `playwright` sendiri sudah terdeklarasi dan ada di node_modules,
-      # jadi ini juga bukan npx yang menarik paket dari registry.
-      #
-      # Dua lapis, dan urutannya disengaja:
-      #   1. segarkan metadata apt dengan --allow-releaseinfo-change, yang persis
-      #      menyasar sebab di atas. Dibuat TOLERAN (|| true): kalau ia sendiri
-      #      gagal, itu bukan alasan menjatuhkan seluruh pemeriksaan.
-      #   2. kalau --with-deps masih menolak, pasang browsernya SAJA. Runner
-      #      ubuntu sudah membawa hampir semua pustaka yang dibutuhkan chromium,
-      #      jadi ini biasanya cukup -- dan kalau ternyata tidak, uji browser yang
-      #      merah akan mengatakannya dengan sebab yang benar, bukan seluruh suite
-      #      yang dilewati dengan sebab yang tak terbaca.
-      - name: Pasang browser Playwright
-        run: |
-          sudo apt-get update --allow-releaseinfo-change -y || true
-          npx playwright install --with-deps chromium || npx playwright install chromium
-
-      - name: Jest
+      # NO Playwright browser is installed in THIS job. The browser/e2e suites
+      # (those that drive a real Chromium — see tests/butuh.cjs) run in the
+      # separate `e2e` job below, which is advisory. That keeps this REQUIRED gate
+      # fast and deterministic: with no browser present, butuh.cjs skips those
+      # suites automatically, so a flaky UI test can never block a merge. The
+      # tests are internal verification, not part of the shipped app.
+      - name: Jest (unit — browser suites auto-skip)
         shell: bash
-        # Invoke jest DIRECTLY, not `npm test`, to drop --detectOpenHandles: that
-        # flag is for debugging, it slows the run, and it makes jest WAIT on any
-        # lingering handle — the server.cjs children the browser/PTY/perf suites
-        # spawn kept it alive until the 20-min job timeout. --forceExit ends the
-        # process once every test has reported, so a stray handle costs seconds,
-        # not the whole build.
-        #
-        # --maxWorkers=2: the "needs playwright" and git-network suites drive real
-        # browsers and PTYs; over-parallelising them makes a DIFFERENT set flake
-        # each run (git-actions-menu, git-sinkron-vscode, terminal-bug…), all
-        # green in isolation. Two workers trade a little wall-clock for stability.
+        # jest DIRECTLY, not `npm test`: that carries --detectOpenHandles, a debug
+        # flag that slows the run and makes jest wait on lingering handles until
+        # the job timeout. --forceExit ends the process once tests report;
+        # --maxWorkers=2 keeps the PTY/git-network suites from flaking under
+        # over-parallelisation.
         run: npx jest --ci --maxWorkers=2 --forceExit 2>&1 | tee /tmp/jest.log
 
       # Kegagalan hanya-CI harus bisa didiagnosis tanpa mengunduh log mentah:
@@ -155,6 +126,44 @@ jobs:
           grep -E '^(FAIL |  ● |Tests: |Test Suites: )|Expected|Received|Cannot find|not a function|ENOENT' /tmp/jest.log \
             | head -80 \
             | while IFS= read -r baris; do echo "::error::$baris"; done
+
+  # ── E2E (browser) — ADVISORY, not a gate ─────────────────────────────────────
+  #
+  # These suites drive a REAL Chromium (Monaco editor, the live preview, the
+  # terminal panel). They are internal UI checks, unrelated to the shipped app,
+  # and they are the slow, environment-sensitive part of the suite. Kept in their
+  # OWN job with continue-on-error so they still RUN — a UI regression is caught —
+  # but their weight and occasional flakiness never block a merge. The required
+  # `test` job above stays fast and deterministic.
+  e2e:
+    name: E2E browser (advisory)
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    continue-on-error: true
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 20
+          cache: npm
+      - run: npm ci
+      # The renderer must be prebuilt or tests/render-hidup loads the in-browser
+      # Babel fallback and measures the runner, not the app.
+      - name: Bangun renderer
+        run: npm run build:app
+      - name: Pasang browser Playwright
+        run: |
+          sudo apt-get update --allow-releaseinfo-change -y || true
+          npx playwright install --with-deps chromium || npx playwright install chromium
+      # Run ONLY the suites that need a browser — discovered, not hardcoded, so the
+      # list cannot drift: every file that reaches for punyaBrowser or launches
+      # Chromium. maxWorkers=2 + forceExit for the same reasons as the unit job.
+      - name: Jest (browser suites only)
+        shell: bash
+        run: |
+          FILES=$(grep -rlE 'punyaBrowser|chromium\.launch' tests/*.test.ts)
+          echo "e2e suites:"; echo "$FILES"
+          npx jest --ci --maxWorkers=2 --forceExit $FILES 2>&1 | tee /tmp/e2e.log
 
   build-electron:
     name: Build Electron (windows)
