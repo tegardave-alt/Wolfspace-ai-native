@@ -358,8 +358,12 @@ describe("aplikasi OAuth ikut dikirim, bukan diminta", () => {
       "utf8",
     );
     // The form is reached only when there is no usable app, or when the user
-    // asked for it. Anything else puts a form in front of signing in.
-    expect(ui).toMatch(/\{!keadaan\.bisaWeb \|\| pakaiAppSendiri \? \(/);
+    // asked for it. A client ID ALONE is a usable app (the secret-free device
+    // flow), so only the absence of BOTH flows falls through to the form.
+    // Anything else puts a form in front of signing in.
+    expect(ui).toMatch(
+      /\{\(!keadaan\.bisaWeb && !keadaan\.bisaMasuk\) \|\| pakaiAppSendiri \? \(/,
+    );
     expect(ui).toMatch(/Sign in with GitHub/);
   });
 
@@ -511,9 +515,11 @@ describe("ganti akun", () => {
 
   test("the click event is never mistaken for the switch flag", () => {
     // onClick={mulaiWeb} would pass a MouseEvent as `ganti`, which is truthy --
-    // every plain sign-in would then open the account picker.
+    // every plain sign-in would then open the account picker. The front-door
+    // button now picks the flow (web when a secret is present, else the
+    // secret-free device flow), but mulaiWeb must still be CALLED with no args.
     expect(UI).not.toMatch(/onClick=\{mulaiWeb\}/);
-    expect(UI).toMatch(/onClick=\{\(\) => mulaiWeb\(\)\}/);
+    expect(UI).toMatch(/keadaan\.bisaWeb \? mulaiWeb\(\) : mulaiMasuk\(\)/);
   });
 });
 

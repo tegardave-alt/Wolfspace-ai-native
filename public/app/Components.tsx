@@ -1393,9 +1393,11 @@ function GithubPanel({ onClose }: any) {
             {/* SETUP IS THE FALLBACK, NOT THE FRONT DOOR.
                 WOLFSPACE ships with its own registered OAuth App, so signing
                 in normally goes straight to GitHub. This form appears only
-                when there is no built-in app to sign in as, or when someone
-                deliberately chooses to use their own. */}
-            {!keadaan.bisaWeb || pakaiAppSendiri ? (
+                when NO flow is possible at all (no built-in client ID for even
+                the secret-free device flow), or when someone deliberately
+                chooses to use their own OAuth App. A client ID ALONE is enough
+                for the device flow, so bisaMasuk keeps us off this form. */}
+            {(!keadaan.bisaWeb && !keadaan.bisaMasuk) || pakaiAppSendiri ? (
               <>
                 <p className="gh-sub">
                   {pakaiAppSendiri
@@ -1460,13 +1462,20 @@ function GithubPanel({ onClose }: any) {
                 <button
                   className="btn btn-primary"
                   disabled={sibuk}
-                  onClick={() => mulaiWeb()}
+                  onClick={() => (keadaan.bisaWeb ? mulaiWeb() : mulaiMasuk())}
                 >
-                  {sibuk ? "Opening GitHub…" : "Sign in with GitHub"}
+                  {sibuk
+                    ? keadaan.bisaWeb
+                      ? "Opening GitHub…"
+                      : "Starting…"
+                    : "Sign in with GitHub"}
                 </button>
-                {/* The device code stays as a fallback, for the case where the
-                    browser cannot come back to this machine. */}
-                {keadaan.bisaMasuk ? (
+                {/* When the web flow is the front door, the device code stays as
+                    a fallback for the case where the browser cannot come back to
+                    this machine. When the device flow IS the front door (no
+                    secret shipped), the button above already starts it, so this
+                    redundant offer is hidden. */}
+                {keadaan.bisaWeb && keadaan.bisaMasuk ? (
                   !pakaiKode ? (
                     <button
                       className="gh-kembali"
