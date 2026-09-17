@@ -256,16 +256,34 @@ whenPossible("in the editor and the composer (needs playwright)", () => {
       await p.waitForSelector('[data-panel="logic"]', { timeout: 10000 });
       await p.waitForTimeout(800);
       await p.click('[data-panel="logic"] :text("index.html")');
-      await p.waitForSelector(
-        '[data-panel="logic"] .monaco-editor .view-line',
+      // Monaco renders view-lines asynchronously, virtualises them, and reuses
+      // the divs in NO particular DOM order — so a fixed wait + lines[2] was
+      // sometimes undefined (too few rendered) or present-but-not-laid-out
+      // (boundingBox() returned null). Wait until at least three lines have a
+      // real box, then take the third FROM THE TOP by geometry.
+      const cariBaris = `[data-panel="logic"] .monaco-editor .view-line`;
+      await p.waitForFunction(
+        (sel: string) =>
+          [...document.querySelectorAll(sel)].filter((e) => {
+            const r = e.getBoundingClientRect();
+            return r.width > 0 && r.height > 0;
+          }).length >= 4,
+        cariBaris,
         { timeout: 10000 },
       );
-      await p.waitForTimeout(800);
-
-      const lines = await p.$$(
-        '[data-panel="logic"] .monaco-editor .view-line',
-      );
-      const l3 = await lines[2].boundingBox();
+      const l3 = await p.evaluate((sel: string) => {
+        const r = [...document.querySelectorAll(sel)]
+          .map((e) => e.getBoundingClientRect())
+          .filter((x) => x.width > 0 && x.height > 0)
+          .sort((a, b) => a.top - b.top);
+        // Same shape as Playwright's boundingBox() — later asserts use height.
+        return {
+          x: r[2].left,
+          y: r[2].top,
+          width: r[2].width,
+          height: r[2].height,
+        };
+      }, cariBaris);
       await p.mouse.move(l3.x + 30, l3.y + 8);
       await p.waitForTimeout(200);
       const plus = await p.$('[data-panel="logic"] .komentar-plus');
@@ -314,7 +332,18 @@ whenPossible("in the editor and the composer (needs playwright)", () => {
 
       // The editor's own menu carries the new actions beside Cut/Copy/Paste.
       await p.keyboard.press("Escape");
-      const l4 = await lines[3].boundingBox();
+      const l4 = await p.evaluate((sel: string) => {
+        const r = [...document.querySelectorAll(sel)]
+          .map((e) => e.getBoundingClientRect())
+          .filter((x) => x.width > 0 && x.height > 0)
+          .sort((a, b) => a.top - b.top);
+        return {
+          x: r[3].left,
+          y: r[3].top,
+          width: r[3].width,
+          height: r[3].height,
+        };
+      }, cariBaris);
       await p.mouse.click(l4.x + 30, l4.y + 8);
       await p.mouse.click(l4.x + 30, l4.y + 8, { button: "right" });
       await p.waitForTimeout(400);
