@@ -320,8 +320,9 @@ describe("server MCP dinyalakan saat CONNECT, bukan saat aplikasi start", () => 
     expect(blok).toMatch(/ada && ada\.ready/);
     expect(blok).toMatch(/already: true/);
     // Server yang setengah jalan dibersihkan dulu, kalau tidak prosesnya jadi
-    // yatim dan tak tercatat di this.servers.
-    expect(blok).toMatch(/if \(ada && ada\.proc\) this\.stopServer\(name\)/);
+    // yatim dan tak tercatat di this.servers. (Kini `if (ada)` saja — server
+    // remote tak punya .proc tapi tetap perlu dibersihkan.)
+    expect(blok).toMatch(/if \(ada\) this\.stopServer\(name\)/);
   });
 
   test("toggle menyalakan lewat connectServer, bukan _startServer langsung", () => {
