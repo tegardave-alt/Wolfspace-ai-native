@@ -134,8 +134,9 @@ describe("HITL resume: the answer bubble holds the answer, not tool output", () 
     expect(i).toBeGreaterThan(-1);
     // Just the continuable branch: up to its own `return;`.
     const blok = app.slice(i, app.indexOf("return;", i) + 7);
-    // The bubble summary is the neutral note, not the accounting.
-    expect(blok).toMatch(/summary:\s*\n?\s*"Dijeda di batas langkah/);
+    // The bubble summary is the neutral note, not the accounting. (English UI
+    // string, per the teks-ui-inggris guard — a short pause note, never j.summary.)
+    expect(blok).toMatch(/summary:\s*\n?\s*"Paused at the step limit/);
     // The answer-bubble upd() in THIS branch does not carry j.summary.
     const updBlok = blok.slice(
       blok.indexOf("upd({"),

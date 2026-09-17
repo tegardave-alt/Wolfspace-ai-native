@@ -342,6 +342,16 @@ whenPossible("the panel (needs playwright)", () => {
       );
       expect((t1.match(/x/g) || []).length).toBeGreaterThanOrEqual(20000);
 
+      // The DEFAULT shell varies by machine — pwsh (PowerShell 7) where it is
+      // installed, powershell (Windows PowerShell 5.1) otherwise — so read the
+      // running row's own name instead of hardcoding one, or this fails on any
+      // box whose default differs from the author's.
+      const shellNama = (
+        await p.$$eval('[data-panel="terminal"] .term-row', (es: any[]) =>
+          es.map((e) => e.textContent.trim()),
+        )
+      )[0];
+
       // 2. Exit: announced, row marked, no 404 storm; Enter brings a shell back.
       await p.keyboard.type("exit");
       await p.keyboard.press("Enter");
@@ -353,14 +363,14 @@ whenPossible("the panel (needs playwright)", () => {
         await p.$$eval('[data-panel="terminal"] .term-row', (es: any[]) =>
           es.map((e) => e.textContent.trim()),
         ),
-      ).toEqual(["powershell (exited)"]);
+      ).toEqual([`${shellNama} (exited)`]);
       await p.keyboard.press("Enter");
       await p.waitForFunction(
-        () =>
+        (nama: string) =>
           [...document.querySelectorAll('[data-panel="terminal"] .term-row')]
             .map((e: any) => e.textContent.trim())
-            .join() === "powershell",
-        null,
+            .join() === nama,
+        shellNama,
         { timeout: 20000 },
       );
       await p.waitForTimeout(2500);
@@ -386,7 +396,7 @@ whenPossible("the panel (needs playwright)", () => {
         '[data-panel="terminal"] .term-row',
         (es: any[]) => es.map((e) => e.textContent.trim()),
       );
-      expect(baris).toEqual(["powershell", "pwsh (failed)"]);
+      expect(baris).toEqual([shellNama, "pwsh (failed)"]);
       expect(await isiBuffer()).toMatch(
         /Could not open pwsh\.exe: File not found/,
       );
