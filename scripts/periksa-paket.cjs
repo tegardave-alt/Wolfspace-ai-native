@@ -138,6 +138,58 @@ for (const f of milik) {
 }
 console.log("berkas dipindai pola  : " + milik.length);
 
+// 3b. THE SAME PATTERN SCAN, over app.asar.unpacked.
+//
+// asarUnpack pulls whole trees OUT of the archive: config.json (which has an
+// eraser.apiKey field), agent/**, and the public/** renderer bundle all live on
+// disk in <asar>.unpacked, not inside the .asar. asar.extractFile fails for them,
+// so the loop above skipped them silently — a key in config.json or baked into
+// the shipped bundle walked straight through. Walk the directory and scan it too.
+const fsu = require("fs");
+const UNPACKED = ASAR + ".unpacked";
+const berkasUnpacked = [];
+(function jelajah(dir) {
+  let entri;
+  try {
+    entri = fsu.readdirSync(dir, { withFileTypes: true });
+  } catch (_) {
+    return;
+  }
+  for (const e of entri) {
+    const p = path.join(dir, e.name);
+    if (e.isDirectory()) {
+      if (e.name === "node_modules") continue; // as above: fixtures, not our state
+      jelajah(p);
+    } else if (e.isFile()) {
+      berkasUnpacked.push(p);
+    }
+  }
+})(UNPACKED);
+for (const p of berkasUnpacked) {
+  let isi;
+  try {
+    isi = fsu.readFileSync(p).toString("latin1");
+  } catch (_) {
+    continue;
+  }
+  const rel = path.relative(UNPACKED, p).split(BS).join("/");
+  for (const [nama, pola] of POLA_RAHASIA) {
+    const m = isi.match(pola);
+    if (m) {
+      galat.push(
+        "unpacked/" +
+          rel +
+          " memuat sesuatu berbentuk " +
+          nama +
+          " (" +
+          m[0].slice(0, 6) +
+          "…)",
+      );
+    }
+  }
+}
+console.log("unpacked dipindai pola: " + berkasUnpacked.length);
+
 // 4. REAL CREDENTIAL VALUES, when this machine has any.
 //
 // It does nothing on a CI runner, because the file is never there — and that is
@@ -157,7 +209,13 @@ for (const kf of ["server/cloud-keys.json", ".wolfspace/cloud-keys.json"]) {
   } catch (e) {}
 }
 if (nilaiNyata.size) {
-  const mentah = fsx.readFileSync(ASAR).toString("latin1");
+  // The .asar bytes AND every unpacked file: a real key can hide in either.
+  let mentah = fsx.readFileSync(ASAR).toString("latin1");
+  for (const p of berkasUnpacked) {
+    try {
+      mentah += fsu.readFileSync(p).toString("latin1");
+    } catch (_) {}
+  }
   let cocok = 0;
   for (const v of nilaiNyata) if (mentah.includes(v)) cocok++;
   console.log(
