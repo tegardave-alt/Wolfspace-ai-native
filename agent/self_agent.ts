@@ -1955,10 +1955,19 @@ ${effortLevel === 0 ? "Fokus pada penyelesaian cepat dan hemat token. Jawab lang
         // so they are trimmed first), leaving the agent unaware it had read them.
         try {
           const _temuan = require("./temuan.ts");
-          const _blok = _temuan.blokPrompt(_temuan.kunciWs(_wsRoot));
-          if (_blok) {
+          const _wsKunci = _temuan.kunciWs(_wsRoot);
+          const _blok = _temuan.blokPrompt(_wsKunci);
+          // The recognizer list ("you read these") AND the actual CONTENT of
+          // those files (blokKonteks), so the model works from what it read
+          // instead of reading again. The content is one deduped copy per path,
+          // newest first, within a char budget -- the thing that turns "re-read
+          // 250x" into "read once". See temuan.ts.
+          const _blokIsi = _temuan.blokKonteks
+            ? _temuan.blokKonteks(_wsKunci)
+            : "";
+          if (_blok || _blokIsi) {
             const m = { ...activeMessages[0] };
-            m.content += _blok;
+            m.content += (_blok || "") + (_blokIsi || "");
             activeMessages[0] = m;
           }
         } catch (_) {
