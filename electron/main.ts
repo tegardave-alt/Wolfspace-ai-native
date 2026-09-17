@@ -66,6 +66,30 @@ app.setName("WOLFSPACE");
   }
 })();
 
+// KEYS LIVE IN userData, NEVER INSIDE THE INSTALLED PACKAGE.
+//
+// agent/keys-path.ts defaults cloud-keys.json to <project root>/.wolfspace/. In
+// DEV the "project root" is the real working tree, which is right. In a PACKAGED
+// app the same resolution (resolve(__dirname, "..")) points INSIDE the install
+// directory — resources/app.asar.unpacked/.wolfspace — so a saved API key would
+// sit in the program folder: readable by anyone with the folder, and carried
+// along if the install is copied, zipped, or re-packaged. Pin the keys dir to the
+// per-user (already per-project-isolated) userData instead. keys-path.ts honours
+// WOLFSPACE_KEYS_DIR and the backend fork inherits this process's env, so setting
+// it here is enough. Dev is untouched; an explicit override or the opt-in shared
+// drawer still wins.
+if (
+  app.isPackaged &&
+  !process.env.WOLFSPACE_KEYS_DIR &&
+  !process.env.WOLFSPACE_KEYS_PATH &&
+  process.env.WOLFSPACE_SHARE_KEYS !== "1" &&
+  process.env.WOLFSPACE_SHARE_KEYS !== "true"
+) {
+  try {
+    process.env.WOLFSPACE_KEYS_DIR = path.join(app.getPath("userData"), "keys");
+  } catch (_) {}
+}
+
 // Custom app:// scheme serves the UI + studio from disk (no HTTP needed to LOAD
 // the app). Must be declared privileged BEFORE app is ready.
 protocol.registerSchemesAsPrivileged([
