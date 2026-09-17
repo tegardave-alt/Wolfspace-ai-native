@@ -53,6 +53,13 @@ try {
   process.stderr.on("error", () => {});
 } catch (_) {}
 
+// V8 COMPILE CACHE: cache the bytecode of this host's module graph (core.js +
+// all of agent/** via ts-register) so a warm start skips re-compiling it. Node
+// 22.8+; no-op on older Node (CI runs Node 20), and never allowed to block boot.
+try {
+  require("module").enableCompileCache?.();
+} catch (_) {}
+
 // MUST come first: core.js reaches .ts modules transitively, and CI runs Node 20
 // which cannot load TypeScript at all.
 require("../scripts/ts-register.cjs");
