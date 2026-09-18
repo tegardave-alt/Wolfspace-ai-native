@@ -4784,6 +4784,7 @@ function App() {
     <>
       <CommandPalette />
       <AddMcpModal />
+      <LanguageCommands />
       <div className={"app has-sidebar sb-" + sbMode}>
         {!pickerDone && (
           <ProjectPickerScreen
