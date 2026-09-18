@@ -146,6 +146,24 @@ whenPossible("command palette (needs playwright)", () => {
       await p.keyboard.press("Escape");
       await p.waitForTimeout(150);
       expect(await p.$(".kpal-modal")).toBeNull();
+
+      // 8. Add MCP Server opens a real standalone modal (the old palette entry
+      // did nothing because it relied on a nested composer menu). It has the
+      // name + command/URL + token fields.
+      await p.evaluate(() =>
+        window.dispatchEvent(new CustomEvent("wolfspace_mcp_add")),
+      );
+      await p.waitForSelector(".gh-modal", { timeout: 10000 });
+      const judul = await p.$eval(
+        ".gh-modal .gh-judul",
+        (e: any) => e.textContent || "",
+      );
+      expect(judul.toLowerCase()).toContain("add mcp server");
+      const jmlInput = await p.$$eval(
+        ".gh-modal input",
+        (els: any[]) => els.length,
+      );
+      expect(jmlInput).toBeGreaterThanOrEqual(3);
     } finally {
       await b.close();
     }

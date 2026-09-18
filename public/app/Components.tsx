@@ -2132,6 +2132,152 @@ function LightboxModal({ item, onClose }: any) {
    still OWNS the list — the next todowrite overwrites all of it, manual ticks
    included. That is the correct behaviour (the agent knows the real state),
    and it is said here so nobody reads a self-changing tick as a bug. */
+// ── Add MCP Server (standalone modal) ────────────────────────────────────────
+//
+// Opened from the command palette ("MCP: Add Server", or Ctrl+Shift+M) via the
+// wolfspace_mcp_add event, so it does not depend on the composer's nested menu
+// being open (which is why the old palette entry did nothing). The flow mirrors
+// VS Code's "MCP: Add Server": a name, then a stdio command OR an HTTP URL, then
+// an optional token — resolved the same way the composer's inline add does
+// (mcpResolvePerintah / mcpResolveKredensial), so remote URLs go through the
+// bridge and stdio commands run directly.
+function AddMcpModal() {
+  const [buka, setBuka] = useState(false);
+  const [nama, setNama] = useState("");
+  const [perintah, setPerintah] = useState("");
+  const [token, setToken] = useState("");
+  const [galat, setGalat] = useState("");
+  const [sibuk, setSibuk] = useState(false);
+
+  useEffect(() => {
+    const on = () => {
+      setBuka(true);
+      setGalat("");
+      setSibuk(false);
+    };
+    window.addEventListener("wolfspace_mcp_add", on);
+    return () => window.removeEventListener("wolfspace_mcp_add", on);
+  }, []);
+  useEffect(() => {
+    if (!buka) return;
+    const esc = (e: any) => {
+      if (e.key === "Escape") setBuka(false);
+    };
+    window.addEventListener("keydown", esc);
+    return () => window.removeEventListener("keydown", esc);
+  }, [buka]);
+
+  if (!buka) return null;
+  const remote = /^https?:/i.test(perintah.trim());
+
+  const simpan = async () => {
+    const type = perintah.trim();
+    const namaBersih = nama.trim().replace(/[^a-zA-Z0-9._-]/g, "");
+    if (!namaBersih) return setGalat("Name is required.");
+    if (!type) return setGalat("Command or URL is required.");
+    setSibuk(true);
+    setGalat("");
+    const _r = mcpResolvePerintah(type);
+    const _k = mcpResolveKredensial(type, token.trim(), _r.args);
+    if (_k.perluNama) {
+      setSibuk(false);
+      return setGalat("Enter the token as NAME=value (e.g. API_KEY=abc) or JSON.");
+    }
+    const conf = { command: _r.command, args: _k.args, env: _k.env };
+    try {
+      let out: any = {};
+      if (window.WOLFSPACE && window.WOLFSPACE.invoke) {
+        const res = await window.WOLFSPACE.invoke("api", {
+          method: "POST",
+          path: "/mcp",
+          body: { name: namaBersih, conf },
+        });
+        out =
+          res && res.body
+            ? typeof res.body === "string"
+              ? JSON.parse(res.body)
+              : res.body
+            : {};
+      } else {
+        const res = await fetch("/mcp", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ name: namaBersih, conf }),
+        });
+        out = await res.json().catch(() => ({}));
+      }
+      if (!out.ok) {
+        setSibuk(false);
+        return setGalat(out.error || "Failed to add the MCP server.");
+      }
+      window.dispatchEvent(new CustomEvent("wolfspace_mcp_changed"));
+      setBuka(false);
+      setNama("");
+      setPerintah("");
+      setToken("");
+    } catch (e: any) {
+      setGalat((e && e.message) || "Failed to add the MCP server.");
+    } finally {
+      setSibuk(false);
+    }
+  };
+
+  return (
+    <div className="gh-overlay" onClick={() => setBuka(false)}>
+      <div className="gh-modal" onClick={(e: any) => e.stopPropagation()}>
+        <div className="gh-head">
+          <div>
+            <div className="gh-judul">Add MCP Server</div>
+            <div className="gh-sub">
+              A stdio command (e.g. npx …) or an HTTP URL, with an optional token.
+            </div>
+          </div>
+          <button className="gh-tutup" onClick={() => setBuka(false)} title="Close">
+            ×
+          </button>
+        </div>
+        {galat ? <div className="gh-galat">{galat}</div> : null}
+        <div className="gh-sambung">
+          <input
+            className="input"
+            placeholder="Name — e.g. playwright"
+            value={nama}
+            autoFocus
+            onChange={(e: any) => setNama(e.target.value)}
+          />
+          <input
+            className="input"
+            placeholder="Command or URL — npx -y @scope/server · https://host/mcp"
+            value={perintah}
+            onChange={(e: any) => setPerintah(e.target.value)}
+          />
+          <input
+            className="input"
+            type="password"
+            placeholder={
+              remote
+                ? "Token (Bearer) — optional"
+                : "Token — API_KEY=value or JSON, optional"
+            }
+            value={token}
+            onChange={(e: any) => setToken(e.target.value)}
+            onKeyDown={(e: any) => {
+              if (e.key === "Enter") simpan();
+            }}
+          />
+          <button
+            className="btn btn-primary"
+            disabled={sibuk || !nama.trim() || !perintah.trim()}
+            onClick={simpan}
+          >
+            {sibuk ? "Adding…" : "Add server"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 function TodoPanel({ todos, busy, onToggle, onClear }: any) {
   if (!Array.isArray(todos) || todos.length === 0) return null;
   const selesai = todos.filter(
@@ -2408,10 +2554,9 @@ function Composer({
         id: "mcp.add",
         kategori: "MCP",
         judul: "Add Server…",
-        jalankan: () => {
-          setShowMcpMenu(true);
-          setShowMcpInput(true);
-        },
+        kunci: "Ctrl+Shift+M",
+        jalankan: () =>
+          window.dispatchEvent(new CustomEvent("wolfspace_mcp_add")),
       },
     ];
     for (const srv of mcpServers) {
