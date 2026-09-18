@@ -2590,30 +2590,12 @@ function Composer({
   const [mcpInputError, setMcpInputError] = useState("");
   const [mcpInputSuccess, setMcpInputSuccess] = useState("");
 
-  // ── Command palette: MCP commands (dynamic, one per configured server) ──
-  // Registered from the Composer because this is where the server list and the
-  // connect/toggle logic live. Connect/toggle hits the same endpoints the menu
-  // uses, then broadcasts so every surface refreshes.
-  usePerintah(() => {
-    const kirimMcp = async (jalur: string, muatan: any) => {
-      try {
-        if (window.WOLFSPACE && window.WOLFSPACE.invoke)
-          await window.WOLFSPACE.invoke("api", {
-            method: "POST",
-            path: jalur,
-            body: muatan,
-          });
-        else
-          await fetch(jalur, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify(muatan),
-          });
-      } finally {
-        window.dispatchEvent(new CustomEvent("wolfspace_mcp_changed"));
-      }
-    };
-    const cmds: any[] = [
+  // ── Command palette: MCP ──
+  // Only "Add Server" is exposed. The per-server Connect/Disconnect entries were
+  // removed on request — connection management lives in the composer's MCP menu,
+  // not the palette.
+  usePerintah(
+    () => [
       {
         id: "mcp.add",
         kategori: "MCP",
@@ -2622,22 +2604,9 @@ function Composer({
         jalankan: () =>
           window.dispatchEvent(new CustomEvent("wolfspace_mcp_add")),
       },
-    ];
-    for (const srv of mcpServers) {
-      cmds.push({
-        id: "mcp.toggle." + srv.id,
-        kategori: "MCP",
-        judul: (srv.active ? "Disconnect " : "Connect ") + (srv.name || srv.id),
-        jalankan: () => {
-          const perluConnect =
-            !srv.active && !(srv.status && srv.status.disabled);
-          if (perluConnect) kirimMcp("/mcp/connect", { name: srv.id });
-          else kirimMcp("/mcp/toggle", { name: srv.id, enabled: !srv.active });
-        },
-      });
-    }
-    return cmds;
-  }, [mcpServers]);
+    ],
+    [],
+  );
 
   const handleMcpCodeConnect = async (e: any) => {
     if (e && e.stopPropagation) e.stopPropagation();

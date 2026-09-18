@@ -2063,25 +2063,6 @@ function Sidebar({
   const [openFolderMenuWs, setOpenFolderMenuWs] = useState<any>(null);
   const [wsRefreshKey, setWsRefreshKey] = useState(0);
 
-  // ── Command palette: Git ──
-  // Opens the selected workspace's Git/folder panel (where sync/push/pull run
-  // behind their approval flow). The palette does not perform the git operation
-  // itself on purpose — a network write must keep going through that panel.
-  usePerintah(
-    () =>
-      selectedProject
-        ? [
-            {
-              id: "git.panel",
-              kategori: "Git",
-              judul: "Open Git Panel",
-              kunci: "Ctrl+Shift+G",
-              jalankan: () => setOpenFolderMenuWs(selectedProject),
-            },
-          ]
-        : [],
-    [selectedProject],
-  );
   // ww folders from DISK (the truth) — not localStorage. Filled from GET /ww/list.
   const [wwLive, setWwLive] = useState<any>(null); // null = not loaded yet; {root, paths:[]}
   React.useEffect(() => {
