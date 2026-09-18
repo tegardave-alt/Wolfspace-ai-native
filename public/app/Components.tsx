@@ -9,163 +9,10 @@
 // matters.
 
 /* ----------------------------- Top bar ----------------------------- */
-// ── Menu tata letak (☰) ──
-//
-// Split into its own component when it moved from the top bar into the
-// sidebar. The reason is not tidiness: it is ~150 lines, and moving it by
-// copying would mean two copies that have to keep agreeing about panel
-// position, chat visibility and Code — the three things that change most.
-//
-// `arah` decides which way the panel opens. In the top bar it drops down; at
-// the FOOT of the sidebar, dropping down means going off screen, so it rises
-// and widens to the right instead. The sidebar can narrow to 60px, and a
-// panel trapped in that width would be unreadable.
-function MenuTataLetak({
-  posisi,
-  setPosisi,
-  chatVisible,
-  setChatVisible,
-  panelOpen,
-  terminalOpen,
-  logicOpen,
-  setLogicOpen,
-  arah = "bawah",
-}: any) {
-  const [menuOpen, setMenuOpen] = useState(false);
-  const menuRef = useRef<any>(null);
-  // ── Why the panel is position: fixed while in the sidebar ──
-  //
-  // `.sidebar.collapsed` uses `overflow: hidden` (to hide the labels during
-  // the width animation), and that CLIPS anything crossing its edge —
-  // including this menu panel. Measured: the panel was cut off at x=232,
-  // losing half of the "Right/Bottom" choice.
-  //
-  // `position: fixed` escapes that clipping. But it also escapes the button,
-  // so the coordinates are MEASURED when the menu opens rather than hardcoded.
-  // The sidebar can be resized AND collapsed, so any fixed number would be
-  // wrong in one of those states.
-  const [kotakMenu, setKotakMenu] = useState<any>(null);
-  React.useLayoutEffect(() => {
-    if (arah !== "atas" || !menuOpen || !menuRef.current)
-      return setKotakMenu(null);
-    const hitung = () => {
-      const el = menuRef.current;
-      if (!el) return;
-      const r = el.getBoundingClientRect();
-      setKotakMenu({
-        position: "fixed",
-        left: Math.round(r.right + 8) + "px",
-        bottom: Math.round(window.innerHeight - r.bottom) + "px",
-        top: "auto",
-        right: "auto",
-        maxHeight: "calc(100vh - 24px)",
-        overflowY: "auto",
-      });
-    };
-    hitung();
-    // The sidebar can be resized WHILE the menu is open.
-    window.addEventListener("resize", hitung);
-    return () => window.removeEventListener("resize", hitung);
-  }, [arah, menuOpen]);
-  useEffect(() => {
-    if (!menuOpen) return;
-    // Closed by an outside click AND by Escape. Only one of the two makes an
-    // open menu feel stuck — the user presses Escape and wonders why.
-    const klik = (e: any) => {
-      if (menuRef.current && !menuRef.current.contains(e.target))
-        setMenuOpen(false);
-    };
-    const tombol = (e: any) => e.key === "Escape" && setMenuOpen(false);
-    document.addEventListener("mousedown", klik);
-    document.addEventListener("keydown", tombol);
-    return () => {
-      document.removeEventListener("mousedown", klik);
-      document.removeEventListener("keydown", tombol);
-    };
-  }, [menuOpen]);
-
-  const pilihPosisi = (apa: any, ke: any) => {
-    if (setPosisi) setPosisi((p: any) => ({ ...p, [apa]: ke }));
-    setMenuOpen(false);
-  };
-  // The choices DIFFER per row rather than being "right/bottom" for all of
-  // them. A terminal on the left or right forces command output — which comes
-  // as long lines — to wrap constantly, so its pair is right/bottom. Preview
-  // and Code are a page and an editor: both need WIDTH, so their pair is
-  // left/right.
-  const _NAMA_SISI: Record<string, string> = {
-    kanan: "Right",
-    bawah: "Bottom",
-    kiri: "Left",
-  };
-  const barisPosisi = (apa: any, label: any, pilihan = ["kanan", "bawah"]) => (
-    <div className="tb-menu-grup" key={apa}>
-      <span className="tb-menu-judul">{label}</span>
-      <div className="tb-menu-pilihan">
-        {pilihan.map((ke) => (
-          <button
-            key={ke}
-            type="button"
-            className={
-              "tb-menu-opsi" + (posisi && posisi[apa] === ke ? " aktif" : "")
-            }
-            onClick={() => pilihPosisi(apa, ke)}
-          >
-            {_NAMA_SISI[ke] || ke}
-          </button>
-        ))}
-      </div>
-    </div>
-  );
-
-  return (
-    <div
-      className={"tb-menu-bungkus" + (arah === "atas" ? " ke-atas" : "")}
-      ref={menuRef}
-    >
-      <button
-        type="button"
-        className={"tb-menu-btn" + (menuOpen ? " buka" : "")}
-        onClick={() => setMenuOpen((b: any) => !b)}
-        title="Layout"
-        aria-label="Layout"
-        aria-expanded={menuOpen}
-      >
-        {/* Three horizontal lines. Previously three descending dots (⋮),
-              which in a top bar more commonly means "actions for this row";
-              three lines (☰) read as a main menu — and that is what this is.
-              Drawn with lines rather than the text "☰", so its weight and
-              spacing do not shift with whichever font happens to be
-              installed. */}
-        <svg
-          width="16"
-          height="16"
-          viewBox="0 0 24 24"
-          fill="none"
-          stroke="currentColor"
-          strokeWidth="2"
-          strokeLinecap="round"
-        >
-          <line x1="4" y1="7" x2="20" y2="7" />
-          <line x1="4" y1="12" x2="20" y2="12" />
-          <line x1="4" y1="17" x2="20" y2="17" />
-        </svg>
-      </button>
-      {menuOpen && posisi && setPosisi && (
-        <div className="tb-menu" role="menu" style={kotakMenu || undefined}>
-          <div className="tb-menu-kepala">Panel position</div>
-          {barisPosisi("preview", "Preview panel", ["kanan", "kiri"])}
-          {barisPosisi("terminal", "Terminal", ["kanan", "bawah"])}
-          {barisPosisi("logic", "Code", ["kanan", "kiri"])}
-          {barisPosisi("chat", "Chat", ["kanan", "kiri"])}
-          {/* Visibility (Show/Hide Chat, Open/Close Code) was removed here — it
-              now lives in the command palette (Ctrl+Shift+P: "Show/Hide …"), so
-              there is only one place for it. */}
-        </div>
-      )}
-    </div>
-  );
-}
+// The ☰ Layout menu (MenuTataLetak) was removed. Panel position was its last
+// remaining content, and it now lives in the command palette (kategori
+// "Layout": "Move Preview/Terminal/Code/Chat …", each a Ctrl+Shift toggle), so
+// there is one searchable home for layout instead of a bespoke dropdown.
 
 function TopBar({
   models,
@@ -184,18 +31,11 @@ function TopBar({
   logicOpen,
   setLogicOpen,
 }: any) {
-  // The ⋮ menu at the far left of the top bar.
-  //
-  // The layout options were once mounted as two SEPARATE buttons here, and
-  // that was too busy for something rarely touched: this bar is for everyday
-  // actions, while moving a panel is done once and then forgotten. The menu
-  // hides them without removing them.
+  // The top bar carries only everyday actions now. Layout (panel position)
+  // was once a ☰ dropdown here, then in the sidebar; it has since moved into
+  // the command palette entirely, so nothing layout-related lives on this bar.
   return (
     <header className="topbar">
-      {/* The ☰ menu MOVED to the sidebar (see MenuTataLetak used in
-            Sidebar.tsx). The top bar is for everyday actions; layout is set
-            once and then forgotten, so it belongs at the foot of the sidebar
-            with the other settings. */}
       <div className="tb-spacer" />
       <button
         className="panel-toggle-btn"
