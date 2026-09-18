@@ -110,12 +110,14 @@ whenPossible("command palette (needs playwright)", () => {
       await p.waitForTimeout(200);
       const atas = await p.$eval(".kpal-item", (e: any) => e.textContent || "");
       expect(atas.toLowerCase()).toContain("explorer");
-      // ...with its keybinding shown on the right (VS Code-style).
+      // ...with its keybinding shown on the right (VS Code-style)...
       const kunci = await p.$eval(
         ".kpal-item .kpal-kunci",
         (e: any) => e.textContent || "",
       );
       expect(kunci.replace(/\s/g, "").toLowerCase()).toContain("ctrl+b");
+      // ...and the matched characters are highlighted (bolded).
+      expect(await p.$(".kpal-item .kpal-sorot")).not.toBeNull();
 
       // 4. Enter runs it; the real handler flips explorer visibility (persisted).
       await p.keyboard.press("Enter");
@@ -129,6 +131,19 @@ whenPossible("command palette (needs playwright)", () => {
       await p.waitForTimeout(300);
       const sesudahKombo = await bacaExplorer();
       expect(sesudahKombo).not.toBe(sesudahJalankan);
+
+      // 5b. MRU: the command just run (via the palette) floats to the top on an
+      // empty query; "?" shows everything (help).
+      await p.keyboard.press("Control+Shift+P");
+      await p.waitForSelector(".kpal-modal", { timeout: 10000 });
+      const teratas = await p.$eval(".kpal-item", (e: any) => e.textContent || "");
+      expect(teratas.toLowerCase()).toContain("explorer");
+      await p.keyboard.type("?");
+      await p.waitForTimeout(150);
+      const jmlSemua = await p.$$eval(".kpal-item", (els: any[]) => els.length);
+      expect(jmlSemua).toBeGreaterThan(3);
+      await p.keyboard.press("Escape");
+      await p.waitForTimeout(120);
 
       // 6. Cross-component commands register: a Web Dev command (contributed by
       // App, not the view toggles) is findable by fuzzy search.

@@ -111,21 +111,86 @@ function _skor(teks: string, q: string): number | null {
   return skor - t.length * 0.05;
 }
 
-function _cocok(cmds: any[], q: string): any[] {
-  const dinilai = cmds
-    .filter((c) => !c.when || (() => {
-      try {
-        return c.when();
-      } catch (_) {
-        return true;
+// The matched character indices of q within teks (greedy subsequence), used to
+// bold the matched letters like VS Code. [] when q is empty or does not match.
+function _posisiCocok(teks: string, q: string): number[] {
+  if (!q) return [];
+  const t = teks.toLowerCase();
+  const query = q.toLowerCase();
+  const pos: number[] = [];
+  let ti = 0;
+  for (let qi = 0; qi < query.length; qi++) {
+    let found = -1;
+    for (let j = ti; j < t.length; j++)
+      if (t[j] === query[qi]) {
+        found = j;
+        break;
       }
-    })())
+    if (found === -1) return [];
+    pos.push(found);
+    ti = found + 1;
+  }
+  return pos;
+}
+
+// ── Most-recently-used, so a command you just ran floats to the top ──
+const _MRU_KEY = "wolfspace_palette_mru";
+function _mruBaca(): string[] {
+  try {
+    const a = JSON.parse(localStorage.getItem(_MRU_KEY) || "[]");
+    return Array.isArray(a) ? a : [];
+  } catch (_) {
+    return [];
+  }
+}
+function _mruTulis(id: string) {
+  try {
+    const a = _mruBaca().filter((x) => x !== id);
+    a.unshift(id);
+    localStorage.setItem(_MRU_KEY, JSON.stringify(a.slice(0, 20)));
+  } catch (_) {}
+}
+
+function _cocok(cmds: any[], qMentah: string): any[] {
+  // "?" is the help prefix (VS Code lists everything): treat it as empty.
+  const q = qMentah.trim() === "?" ? "" : qMentah;
+  const mru = _mruBaca();
+  const mruIdx = (id: string) => {
+    const i = mru.indexOf(id);
+    return i === -1 ? 9999 : i;
+  };
+  const usable = cmds.filter((c) => {
+    if (!c.when) return true;
+    try {
+      return c.when();
+    } catch (_) {
+      return true;
+    }
+  });
+  if (!q) {
+    // No query: most-recently-used first, then registration order.
+    const withIdx = usable.map((c, i) => ({ c, i, judulPos: [] as number[] }));
+    withIdx.sort(
+      (a, b) => mruIdx(a.c.id) - mruIdx(b.c.id) || a.i - b.i,
+    );
+    return withIdx;
+  }
+  const dinilai = usable
     .map((c) => {
       const label = (c.kategori ? c.kategori + ": " : "") + (c.judul || c.id);
-      return { c, label, skor: _skor(label, q) };
+      return {
+        c,
+        skor: _skor(label, q),
+        judulPos: _posisiCocok(c.judul || c.id, q),
+      };
     })
     .filter((x) => x.skor !== null);
-  dinilai.sort((a, b) => (b.skor as number) - (a.skor as number));
+  dinilai.sort((a, b) => {
+    // Score first; a recent command wins an otherwise-equal match (MRU tiebreak).
+    const d = (b.skor as number) - (a.skor as number);
+    if (Math.abs(d) > 0.001) return d;
+    return mruIdx(a.c.id) - mruIdx(b.c.id);
+  });
   return dinilai;
 }
 
@@ -148,6 +213,39 @@ function _cocokKombo(e: any, kunci: string): boolean {
     !!e.altKey === perluAlt &&
     String(e.key || "").toLowerCase() === key
   );
+}
+
+// Render text with the matched characters bolded (VS Code-style). Returns an
+// array of spans/marks; runs of matched/unmatched chars are coalesced.
+function _sorotTeks(teks: string, pos: number[]): any {
+  if (!pos || !pos.length) return teks;
+  const set = new Set(pos);
+  const out: any[] = [];
+  let buf = "";
+  let mark = false;
+  const dorong = (i: number) => {
+    if (!buf) return;
+    out.push(
+      mark ? (
+        <mark className="kpal-sorot" key={i + "m"}>
+          {buf}
+        </mark>
+      ) : (
+        <span key={i + "s"}>{buf}</span>
+      ),
+    );
+    buf = "";
+  };
+  for (let i = 0; i < teks.length; i++) {
+    const m = set.has(i);
+    if (m !== mark) {
+      dorong(i);
+      mark = m;
+    }
+    buf += teks[i];
+  }
+  dorong(teks.length);
+  return out;
 }
 
 // ── The palette component ─────────────────────────────────────────────────────
@@ -234,6 +332,7 @@ function CommandPalette() {
   const jalankan = (idx: number) => {
     const item = hasil[idx];
     if (!item) return;
+    _mruTulis(item.c.id);
     setBuka(false);
     // Defer so the palette is gone before the action (which may itself open UI).
     setTimeout(() => {
@@ -318,7 +417,9 @@ function CommandPalette() {
                 {x.c.kategori ? (
                   <span className="kpal-kategori">{x.c.kategori}</span>
                 ) : null}
-                <span className="kpal-judul">{x.c.judul || x.c.id}</span>
+                <span className="kpal-judul">
+                  {_sorotTeks(x.c.judul || x.c.id, x.judulPos)}
+                </span>
                 {x.c.petunjuk ? (
                   <span className="kpal-petunjuk">{x.c.petunjuk}</span>
                 ) : null}
@@ -326,6 +427,21 @@ function CommandPalette() {
               </div>
             ))
           )}
+        </div>
+        <div className="kpal-kaki">
+          <span>
+            <kbd>↑</kbd>
+            <kbd>↓</kbd> navigate
+          </span>
+          <span>
+            <kbd>↵</kbd> run
+          </span>
+          <span>
+            <kbd>esc</kbd> close
+          </span>
+          <span className="kpal-kaki-kanan">
+            <kbd>?</kbd> all commands
+          </span>
         </div>
       </div>
     </div>

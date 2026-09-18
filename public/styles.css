@@ -6797,3 +6797,32 @@ button.aal-row:focus-visible {
   letter-spacing: 0.1em;
   flex: 0 0 auto;
 }
+
+/* Command palette: matched-character highlight + footer legend */
+.kpal-sorot {
+  background: transparent; /* <mark> defaults to yellow — reset it */
+  color: #ffffff;
+  font-weight: 700;
+}
+.kpal-kaki {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  padding: 7px 14px;
+  border-top: 1px solid var(--line, #1f2733);
+  color: var(--text-muted, #8b949e);
+  font-size: 11px;
+}
+.kpal-kaki-kanan {
+  margin-left: auto;
+}
+.kpal-kaki kbd {
+  font-family: inherit;
+  font-size: 10px;
+  color: var(--text-muted, #8b949e);
+  background: var(--surface-1, #0f1318);
+  border: 1px solid var(--line, #1f2733);
+  border-radius: 4px;
+  padding: 1px 5px;
+  margin: 0 1px;
+}
