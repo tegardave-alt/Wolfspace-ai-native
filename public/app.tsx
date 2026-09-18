@@ -3608,6 +3608,20 @@ function App() {
     [debugAktif],
   );
 
+  // Run an arbitrary command in the terminal from anywhere (the command palette's
+  // Language install / version-check entries use this). Same path as the Run
+  // button: open the terminal if closed, then hand it the command.
+  useEffect(() => {
+    const on = (e: any) => {
+      const cmd = e && e.detail && e.detail.cmd;
+      if (!cmd) return;
+      setTerminalOpen(true);
+      setPerintahTerminal({ cmd, n: Date.now() });
+    };
+    window.addEventListener("wolfspace_run_in_terminal", on);
+    return () => window.removeEventListener("wolfspace_run_in_terminal", on);
+  }, []);
+
   // ── Panels can be moved, like "Move Panel" in VS Code ──
   //
   // Chat, terminal and preview used to be THREE PARALLEL COLUMNS in one flex

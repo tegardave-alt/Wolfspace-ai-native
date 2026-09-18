@@ -2306,22 +2306,79 @@ function LanguageCommands() {
       batal = true;
     };
   }, []);
-  usePerintah(
-    () =>
-      (rows || []).map((r: any) => ({
+  usePerintah(() => {
+    const cmds: any[] = [];
+    // Language servers: install (download) or check version — RUN in the terminal
+    // (VS Code's "Go: Install/Update Tools" spirit), not just copied. Install
+    // runs its install command; an installed one runs `<binary> --version`.
+    for (const r of rows || []) {
+      cmds.push({
         id: "lang." + r.id,
         kategori: "Language",
-        judul: r.available ? r.label + " — installed" : "Install " + r.label,
-        petunjuk: r.available ? "copy command" : "copy install command",
+        judul: r.available ? r.label + " — Check Version" : "Install " + r.label,
+        petunjuk: r.available ? "runs --version" : "runs install in terminal",
         jalankan: () => {
-          const teks = String((r.available ? r.command : r.install) || "");
+          const cmd = r.available
+            ? String(r.command || "").split(/\s+/)[0] + " --version"
+            : String(r.install || "");
+          if (cmd)
+            window.dispatchEvent(
+              new CustomEvent("wolfspace_run_in_terminal", { detail: { cmd } }),
+            );
+        },
+      });
+    }
+    // Change Language Mode of the focused editor (VS Code's Ctrl+K M), for a
+    // curated set of common languages. Hidden when no editor is open.
+    const modeAda = () => {
+      try {
+        const m: any = (window as any).monaco;
+        return !!(
+          m &&
+          m.editor &&
+          m.editor.getEditors &&
+          m.editor.getEditors().length
+        );
+      } catch (_) {
+        return false;
+      }
+    };
+    const BAHASA: [string, string][] = [
+      ["typescript", "TypeScript"],
+      ["javascript", "JavaScript"],
+      ["python", "Python"],
+      ["go", "Go"],
+      ["rust", "Rust"],
+      ["json", "JSON"],
+      ["html", "HTML"],
+      ["css", "CSS"],
+      ["markdown", "Markdown"],
+      ["shell", "Shell Script"],
+      ["yaml", "YAML"],
+      ["sql", "SQL"],
+      ["cpp", "C++"],
+      ["java", "Java"],
+    ];
+    for (const [id, label] of BAHASA) {
+      cmds.push({
+        id: "langmode." + id,
+        kategori: "Language",
+        judul: "Change Mode: " + label,
+        when: modeAda,
+        jalankan: () => {
           try {
-            navigator.clipboard.writeText(teks);
+            const m: any = (window as any).monaco;
+            const eds = m.editor.getEditors ? m.editor.getEditors() : [];
+            const ed =
+              eds.find((e: any) => e.hasTextFocus && e.hasTextFocus()) || eds[0];
+            const model = ed && ed.getModel && ed.getModel();
+            if (model) m.editor.setModelLanguage(model, id);
           } catch (_) {}
         },
-      })),
-    [rows],
-  );
+      });
+    }
+    return cmds;
+  }, [rows]);
   return null;
 }
 
