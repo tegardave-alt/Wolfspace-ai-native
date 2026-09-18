@@ -2465,6 +2465,48 @@ function VSCodeTerminal({
     }
   };
 
+  // ── Command palette: Terminal commands ──
+  // Registered from here because buatTerminal/pilihTerminal/tutupTerminal and the
+  // detected shell list live in this component. They are available while the
+  // terminal panel is open; when it is closed, "Show Terminal" (Ctrl+J) opens it.
+  usePerintah(() => {
+    const baru = async (shell?: any) => {
+      const k = await buatTerminal(shell);
+      if (k) pilihTerminal(k);
+    };
+    const cmds: any[] = [
+      {
+        id: "term.new",
+        kategori: "Terminal",
+        judul: "New Terminal",
+        jalankan: () => baru(),
+      },
+      {
+        id: "term.split",
+        kategori: "Terminal",
+        judul: "Split Terminal",
+        jalankan: () => pecahTerminal(),
+      },
+      {
+        id: "term.close",
+        kategori: "Terminal",
+        judul: "Close Active Terminal",
+        when: () => !!aktifKey,
+        jalankan: () => aktifKey && tutupTerminal(aktifKey),
+      },
+    ];
+    for (const s of daftarShell.length ? daftarShell : SHELL_PILIHAN) {
+      if (s.ada === false) continue;
+      cmds.push({
+        id: "term.shell." + s.nilai,
+        kategori: "Terminal",
+        judul: "New Terminal — " + s.nama,
+        jalankan: () => baru(s.nilai),
+      });
+    }
+    return cmds;
+  }, [daftarShell, aktifKey]);
+
   const pecahTerminal = async () => {
     const key = await buatTerminal();
     if (!key) return;

@@ -4756,8 +4756,27 @@ function App() {
           loadSavedChats();
         },
       },
+      {
+        id: "webdev.reload",
+        kategori: "Web Dev",
+        judul: "Reload Preview",
+        jalankan: () => {
+          setPanelOpen(true);
+          preview.refresh();
+        },
+      },
+      {
+        id: "webdev.external",
+        kategori: "Web Dev",
+        judul: "Open in Real Browser",
+        when: () => !!(preview.inputUrl || preview.url),
+        jalankan: () => {
+          const u = preview.inputUrl || preview.url;
+          if (u) window.open(u, "_blank");
+        },
+      },
     ],
-    [terminalOpen, panelOpen, logicOpen, explorerSembunyi, chatVisible],
+    [terminalOpen, panelOpen, logicOpen, explorerSembunyi, chatVisible, preview],
   );
 
   return (
