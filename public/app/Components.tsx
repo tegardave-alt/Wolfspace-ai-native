@@ -2278,56 +2278,16 @@ function AddMcpModal() {
   );
 }
 
-// ── Language support commands (LSP servers) ──────────────────────────────────
+// ── Change Language Mode commands ─────────────────────────────────────────────
 //
-// WOLFSPACE's "languages" are its LSP servers (core/lsp-session.ts). /lsp/status
-// reports which are installed on this machine and, for the missing ones, the
-// exact install command. This surfaces both in the palette — mirroring how VS
-// Code lists language servers and offers to install them: an installed language
-// is shown with its server command (to check/run), a missing one offers its
-// install (download) command. Running an entry copies the relevant line, the
-// same install UX the LanguageServerBar already uses (nothing auto-installs — see
-// the note in core/lsp-session.ts). No visible UI; it only registers commands.
+// VS Code's "Change Language Mode" (Ctrl+K M): set the focused Monaco editor's
+// language, for a curated set of common languages. The LSP install / check-version
+// commands were removed on purpose — that already lives in the LanguageServerBar
+// at the foot of the terminal/code panel, so it need not be duplicated here.
+// No visible UI; it only registers commands.
 function LanguageCommands() {
-  const [rows, setRows] = useState<any[]>([]);
-  useEffect(() => {
-    let batal = false;
-    (async () => {
-      try {
-        const w: any = window;
-        const akar = w.WOLFSPACE && w.WOLFSPACE.root ? w.WOLFSPACE.root : "";
-        const r = await wwApi("/lsp/status?root=" + encodeURIComponent(akar));
-        if (!batal) setRows(r && r.ok ? r.servers || [] : []);
-      } catch (_) {
-        if (!batal) setRows([]);
-      }
-    })();
-    return () => {
-      batal = true;
-    };
-  }, []);
   usePerintah(() => {
     const cmds: any[] = [];
-    // Language servers: install (download) or check version — RUN in the terminal
-    // (VS Code's "Go: Install/Update Tools" spirit), not just copied. Install
-    // runs its install command; an installed one runs `<binary> --version`.
-    for (const r of rows || []) {
-      cmds.push({
-        id: "lang." + r.id,
-        kategori: "Language",
-        judul: r.available ? r.label + " — Check Version" : "Install " + r.label,
-        petunjuk: r.available ? "runs --version" : "runs install in terminal",
-        jalankan: () => {
-          const cmd = r.available
-            ? String(r.command || "").split(/\s+/)[0] + " --version"
-            : String(r.install || "");
-          if (cmd)
-            window.dispatchEvent(
-              new CustomEvent("wolfspace_run_in_terminal", { detail: { cmd } }),
-            );
-        },
-      });
-    }
     // Change Language Mode of the focused editor (VS Code's Ctrl+K M), for a
     // curated set of common languages. Hidden when no editor is open.
     const modeAda = () => {
@@ -2378,7 +2338,7 @@ function LanguageCommands() {
       });
     }
     return cmds;
-  }, [rows]);
+  }, []);
   return null;
 }
 
