@@ -158,76 +158,9 @@ function MenuTataLetak({
           {barisPosisi("terminal", "Terminal", ["kanan", "bawah"])}
           {barisPosisi("logic", "Code", ["kanan", "kiri"])}
           {barisPosisi("chat", "Chat", ["kanan", "kiri"])}
-          <div className="tb-menu-pisah" />
-          <div className="tb-menu-kepala">Visibility</div>
-          <div className="tb-menu-grup">
-            <span className="tb-menu-judul">Chat</span>
-            <div className="tb-menu-pilihan">
-              {[
-                ["Show", true],
-                ["Hide", false],
-              ].map(([teks, nilai]) => {
-                // Hiding chat when no other panel is open leaves an EMPTY
-                // screen, and the user has no hint that the way back is in
-                // this menu. So the option is disabled — and the reason is
-                // stated, not just silently greyed out. Code counts too, now
-                // that it is a real panel: without that, hiding chat while
-                // ONLY Code is open would be refused even though the screen
-                // would not be empty.
-                const buntu =
-                  !nilai && !panelOpen && !terminalOpen && !logicOpen;
-                return (
-                  <button
-                    key={teks}
-                    type="button"
-                    disabled={buntu}
-                    className={
-                      "tb-menu-opsi" +
-                      (chatVisible === nilai ? " aktif" : "") +
-                      (buntu ? " mati" : "")
-                    }
-                    title={
-                      buntu
-                        ? "Open the preview, terminal, or Code panel first — hiding chat now would leave nothing on screen."
-                        : ""
-                    }
-                    onClick={() => {
-                      if (buntu) return;
-                      setChatVisible(nilai);
-                      setMenuOpen(false);
-                    }}
-                  >
-                    {teks}
-                  </button>
-                );
-              })}
-            </div>
-          </div>
-          {setLogicOpen && (
-            <div className="tb-menu-grup">
-              <span className="tb-menu-judul">Code</span>
-              <div className="tb-menu-pilihan">
-                {[
-                  ["Open", true],
-                  ["Close", false],
-                ].map(([teks, nilai]) => (
-                  <button
-                    key={teks}
-                    type="button"
-                    className={
-                      "tb-menu-opsi" + (!!logicOpen === nilai ? " aktif" : "")
-                    }
-                    onClick={() => {
-                      setLogicOpen(nilai);
-                      setMenuOpen(false);
-                    }}
-                  >
-                    {teks}
-                  </button>
-                ))}
-              </div>
-            </div>
-          )}
+          {/* Visibility (Show/Hide Chat, Open/Close Code) was removed here — it
+              now lives in the command palette (Ctrl+Shift+P: "Show/Hide …"), so
+              there is only one place for it. */}
         </div>
       )}
     </div>
