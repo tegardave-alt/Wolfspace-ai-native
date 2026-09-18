@@ -4742,6 +4742,7 @@ function App() {
         id: "view.chat",
         kategori: "View",
         judul: (chatVisible ? "Hide" : "Show") + " Chat Panel",
+        kunci: "Ctrl+Shift+C",
         jalankan: () => setChatVisible(!chatVisible),
       },
       {
@@ -4782,6 +4783,7 @@ function App() {
   return (
     <>
       <CommandPalette />
+      <AddMcpModal />
       <div className={"app has-sidebar sb-" + sbMode}>
         {!pickerDone && (
           <ProjectPickerScreen
