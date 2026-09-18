@@ -4757,6 +4757,59 @@ function App() {
           loadSavedChats();
         },
       },
+      // Panel position — moved out of the old ☰ Layout menu into the palette
+      // so every layout action lives in one searchable place. Each is a toggle
+      // between the panel's two allowed sides; the label names where it will go.
+      {
+        id: "layout.preview",
+        kategori: "Layout",
+        judul:
+          "Move Preview Panel to " +
+          (posisi.preview === "kanan" ? "Left" : "Right"),
+        kunci: "Ctrl+Shift+U",
+        jalankan: () =>
+          setPosisi((p: any) => ({
+            ...p,
+            preview: p.preview === "kanan" ? "kiri" : "kanan",
+          })),
+      },
+      {
+        id: "layout.terminal",
+        kategori: "Layout",
+        judul:
+          "Move Terminal to " +
+          (posisi.terminal === "bawah" ? "Right" : "Bottom"),
+        kunci: "Ctrl+Shift+Y",
+        jalankan: () =>
+          setPosisi((p: any) => ({
+            ...p,
+            terminal: p.terminal === "bawah" ? "kanan" : "bawah",
+          })),
+      },
+      {
+        id: "layout.code",
+        kategori: "Layout",
+        judul:
+          "Move Code Panel to " + (posisi.logic === "kanan" ? "Left" : "Right"),
+        kunci: "Ctrl+Shift+G",
+        jalankan: () =>
+          setPosisi((p: any) => ({
+            ...p,
+            logic: p.logic === "kanan" ? "kiri" : "kanan",
+          })),
+      },
+      {
+        id: "layout.chat",
+        kategori: "Layout",
+        judul:
+          "Move Chat Panel to " + (posisi.chat === "kanan" ? "Left" : "Right"),
+        kunci: "Ctrl+Shift+H",
+        jalankan: () =>
+          setPosisi((p: any) => ({
+            ...p,
+            chat: p.chat === "kanan" ? "kiri" : "kanan",
+          })),
+      },
       {
         id: "webdev.reload",
         kategori: "Web Dev",
@@ -4777,7 +4830,15 @@ function App() {
         },
       },
     ],
-    [terminalOpen, panelOpen, logicOpen, explorerSembunyi, chatVisible, preview],
+    [
+      terminalOpen,
+      panelOpen,
+      logicOpen,
+      explorerSembunyi,
+      chatVisible,
+      preview,
+      posisi,
+    ],
   );
 
   return (

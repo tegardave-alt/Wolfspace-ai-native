@@ -3007,25 +3007,9 @@ function Sidebar({
           />
         </div>
       )}
-      {/* ── Menu tata letak, di KAKI sidebar ──
-          `margin-top: auto` pushes it to the bottom whatever sits above it,
-          so its place stays the same whether the Conversation/View/Tools
-          sections are open or closed. It stays visible when the sidebar is
-          collapsed: collapsing hides the label, not the button. */}
-      <div className="sb-menu-kaki">
-        <MenuTataLetak
-          posisi={posisi}
-          setPosisi={setPosisi}
-          chatVisible={chatVisible}
-          setChatVisible={setChatVisible}
-          panelOpen={panelOpen}
-          terminalOpen={terminalOpen}
-          logicOpen={logicOpen}
-          setLogicOpen={setLogicOpen}
-          arah="atas"
-        />
-        {!collapsed && <span className="sb-menu-kaki-label">Layout</span>}
-      </div>
+      {/* The ☰ Layout menu was removed: panel position now lives entirely in
+          the command palette (kategori "Layout"), reachable by search or its
+          Ctrl+Shift keybindings. */}
     </aside>
   );
 }
