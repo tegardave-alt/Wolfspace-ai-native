@@ -130,9 +130,19 @@ whenPossible("command palette (needs playwright)", () => {
       const sesudahKombo = await bacaExplorer();
       expect(sesudahKombo).not.toBe(sesudahJalankan);
 
-      // 6. Esc closes without running anything.
+      // 6. Cross-component commands register: a Web Dev command (contributed by
+      // App, not the view toggles) is findable by fuzzy search.
       await p.keyboard.press("Control+Shift+P");
       await p.waitForSelector(".kpal-modal", { timeout: 10000 });
+      await p.keyboard.type("reload preview");
+      await p.waitForTimeout(200);
+      const webdev = await p.$eval(
+        ".kpal-item",
+        (e: any) => e.textContent || "",
+      );
+      expect(webdev.toLowerCase()).toContain("reload preview");
+
+      // 7. Esc closes without running anything.
       await p.keyboard.press("Escape");
       await p.waitForTimeout(150);
       expect(await p.$(".kpal-modal")).toBeNull();
