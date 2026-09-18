@@ -4766,6 +4766,7 @@ function App() {
         judul:
           "Move Preview Panel to " +
           (posisi.preview === "kanan" ? "Left" : "Right"),
+        posisiIkon: posisi.preview === "kanan" ? "kiri" : "kanan",
         kunci: "Ctrl+Shift+U",
         jalankan: () =>
           setPosisi((p: any) => ({
@@ -4779,6 +4780,7 @@ function App() {
         judul:
           "Move Terminal to " +
           (posisi.terminal === "bawah" ? "Right" : "Bottom"),
+        posisiIkon: posisi.terminal === "bawah" ? "kanan" : "bawah",
         kunci: "Ctrl+Shift+Y",
         jalankan: () =>
           setPosisi((p: any) => ({
@@ -4791,6 +4793,7 @@ function App() {
         kategori: "Layout",
         judul:
           "Move Code Panel to " + (posisi.logic === "kanan" ? "Left" : "Right"),
+        posisiIkon: posisi.logic === "kanan" ? "kiri" : "kanan",
         kunci: "Ctrl+Shift+G",
         jalankan: () =>
           setPosisi((p: any) => ({
@@ -4803,6 +4806,7 @@ function App() {
         kategori: "Layout",
         judul:
           "Move Chat Panel to " + (posisi.chat === "kanan" ? "Left" : "Right"),
+        posisiIkon: posisi.chat === "kanan" ? "kiri" : "kanan",
         kunci: "Ctrl+Shift+H",
         jalankan: () =>
           setPosisi((p: any) => ({

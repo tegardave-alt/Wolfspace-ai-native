@@ -6797,6 +6797,21 @@ button.aal-row:focus-visible {
   letter-spacing: 0.1em;
   flex: 0 0 auto;
 }
+/* Panel-position glyph: it opens the right-hand cluster (so it takes the
+   margin-left:auto) and the keybinding then follows it with a small gap. */
+.kpal-ikon {
+  margin-left: auto;
+  align-self: center;
+  display: inline-flex;
+  color: var(--text-muted, #8b949e);
+  flex: 0 0 auto;
+}
+.kpal-ikon + .kpal-kunci {
+  margin-left: 8px;
+}
+.kpal-item.kpal-aktif .kpal-ikon {
+  color: var(--text, #e6edf3);
+}
 
 /* Command palette: matched-character highlight + footer legend */
 .kpal-sorot {
