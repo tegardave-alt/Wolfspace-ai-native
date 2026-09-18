@@ -248,6 +248,38 @@ function _sorotTeks(teks: string, pos: number[]): any {
   return out;
 }
 
+// A tiny layout glyph for the Panel Position commands: the outer rectangle is
+// the workspace, the filled band is where the panel lands. It sits just left of
+// the Ctrl keybinding and its shape matches the command's target side, so the
+// row reads "… ▸ Ctrl+Shift+U" with the shortcut and a picture of the result.
+// `sisi` is one of the position values: "kanan" (right), "kiri" (left),
+// "bawah" (bottom).
+function _ikonPosisi(sisi: string): any {
+  const isi =
+    sisi === "kiri" ? (
+      <rect x="2.5" y="3.5" width="4.5" height="9" rx="1" fill="currentColor" />
+    ) : sisi === "bawah" ? (
+      <rect x="2.5" y="9" width="11" height="3.5" rx="1" fill="currentColor" />
+    ) : (
+      // "kanan" and any unknown value fall back to the right band.
+      <rect x="9" y="3.5" width="4.5" height="9" rx="1" fill="currentColor" />
+    );
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 16 16"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="1.2"
+      aria-hidden="true"
+    >
+      <rect x="1.75" y="2.75" width="12.5" height="10.5" rx="1.5" />
+      {isi}
+    </svg>
+  );
+}
+
 // ── The palette component ─────────────────────────────────────────────────────
 function CommandPalette() {
   const [buka, setBuka] = (React as any).useState(false);
@@ -422,6 +454,11 @@ function CommandPalette() {
                 </span>
                 {x.c.petunjuk ? (
                   <span className="kpal-petunjuk">{x.c.petunjuk}</span>
+                ) : null}
+                {x.c.posisiIkon ? (
+                  <span className="kpal-ikon" aria-hidden="true">
+                    {_ikonPosisi(x.c.posisiIkon)}
+                  </span>
                 ) : null}
                 {x.c.kunci ? <span className="kpal-kunci">{x.c.kunci}</span> : null}
               </div>
