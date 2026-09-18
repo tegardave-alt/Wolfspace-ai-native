@@ -2278,6 +2278,53 @@ function AddMcpModal() {
   );
 }
 
+// ── Language support commands (LSP servers) ──────────────────────────────────
+//
+// WOLFSPACE's "languages" are its LSP servers (core/lsp-session.ts). /lsp/status
+// reports which are installed on this machine and, for the missing ones, the
+// exact install command. This surfaces both in the palette — mirroring how VS
+// Code lists language servers and offers to install them: an installed language
+// is shown with its server command (to check/run), a missing one offers its
+// install (download) command. Running an entry copies the relevant line, the
+// same install UX the LanguageServerBar already uses (nothing auto-installs — see
+// the note in core/lsp-session.ts). No visible UI; it only registers commands.
+function LanguageCommands() {
+  const [rows, setRows] = useState<any[]>([]);
+  useEffect(() => {
+    let batal = false;
+    (async () => {
+      try {
+        const w: any = window;
+        const akar = w.WOLFSPACE && w.WOLFSPACE.root ? w.WOLFSPACE.root : "";
+        const r = await wwApi("/lsp/status?root=" + encodeURIComponent(akar));
+        if (!batal) setRows(r && r.ok ? r.servers || [] : []);
+      } catch (_) {
+        if (!batal) setRows([]);
+      }
+    })();
+    return () => {
+      batal = true;
+    };
+  }, []);
+  usePerintah(
+    () =>
+      (rows || []).map((r: any) => ({
+        id: "lang." + r.id,
+        kategori: "Language",
+        judul: r.available ? r.label + " — installed" : "Install " + r.label,
+        petunjuk: r.available ? "copy command" : "copy install command",
+        jalankan: () => {
+          const teks = String((r.available ? r.command : r.install) || "");
+          try {
+            navigator.clipboard.writeText(teks);
+          } catch (_) {}
+        },
+      })),
+    [rows],
+  );
+  return null;
+}
+
 function TodoPanel({ todos, busy, onToggle, onClear }: any) {
   if (!Array.isArray(todos) || todos.length === 0) return null;
   const selesai = todos.filter(
