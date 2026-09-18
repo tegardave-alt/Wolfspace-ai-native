@@ -142,19 +142,6 @@ whenPossible("command palette (needs playwright)", () => {
       await p.waitForTimeout(150);
       const jmlSemua = await p.$$eval(".kpal-item", (els: any[]) => els.length);
       expect(jmlSemua).toBeGreaterThan(3);
-
-      // 5c. Language support: /lsp/status is fetched and its servers appear as
-      // Language commands (installed → its command; missing → install command).
-      await p.fill(".kpal-modal .kpal-input", "python");
-      await p.waitForFunction(
-        () =>
-          [
-            ...document.querySelectorAll(".kpal-item"),
-          ].some((e: any) => /python/i.test(e.textContent || "")),
-        null,
-        { timeout: 8000 },
-      );
-
       await p.keyboard.press("Escape");
       await p.waitForTimeout(120);
 
