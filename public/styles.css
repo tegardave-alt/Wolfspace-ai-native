@@ -6770,8 +6770,9 @@ button.aal-row:focus-visible {
   font-size: 13px;
 }
 .kpal-item.kpal-aktif {
-  background: var(--accent-soft, rgba(59, 130, 246, 0.14));
-  box-shadow: inset 2px 0 0 var(--accent, #3b82f6);
+  /* Neutral selection, like VS Code / shadcn / Raycast — a raised surface, not
+     a blue tint. */
+  background: var(--surface-3, #1e232c);
 }
 .kpal-kategori {
   color: var(--text-muted, #8b949e);
