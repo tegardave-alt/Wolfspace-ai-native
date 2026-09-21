@@ -1340,6 +1340,7 @@ function MermaidBlock({ code, onInteractive, onOpen }: any) {
           m.initialize({
             startOnLoad: false,
             securityLevel: "loose",
+            suppressErrorRendering: true,
             theme: "base",
             themeVariables: {
               background: "#0d1117",
@@ -1367,7 +1368,10 @@ function MermaidBlock({ code, onInteractive, onOpen }: any) {
           window.__mermaidInit = true;
         }
         const id = "mmd-" + Math.random().toString(36).slice(2, 9);
-        Promise.resolve(m.render(id, code))
+        const aman = String(code || "")
+          .replace(/[\uFFFD]/g, "")
+          .replace(/<think>[\s\S]*?<\/think>/gi, "");
+        Promise.resolve(m.render(id, aman))
           .then(({ svg }: any) => {
             if (cancelled || !ref.current) return;
             ref.current.innerHTML = svg;

@@ -1916,6 +1916,15 @@ function LightboxModal({ item, onClose }: any) {
 // bridge and stdio commands run directly.
 function AddMcpModal() {
   const [buka, setBuka] = useState(false);
+  // Announce to the app: the browser panes step aside while a modal is up
+  // (see "wolfspace_overlay" in app.tsx), or the modal is drawn under them.
+  useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("wolfspace_overlay", {
+        detail: { nama: "mcp-modal", buka },
+      }),
+    );
+  }, [buka]);
   const [nama, setNama] = useState("");
   const [perintah, setPerintah] = useState("");
   const [token, setToken] = useState("");
@@ -1954,7 +1963,9 @@ function AddMcpModal() {
     const _k = mcpResolveKredensial(type, token.trim(), _r.args);
     if (_k.perluNama) {
       setSibuk(false);
-      return setGalat("Enter the token as NAME=value (e.g. API_KEY=abc) or JSON.");
+      return setGalat(
+        "Enter the token as NAME=value (e.g. API_KEY=abc) or JSON.",
+      );
     }
     const conf = { command: _r.command, args: _k.args, env: _k.env };
     try {
@@ -2002,10 +2013,15 @@ function AddMcpModal() {
           <div>
             <div className="gh-judul">Add MCP Server</div>
             <div className="gh-sub">
-              A stdio command (e.g. npx …) or an HTTP URL, with an optional token.
+              A stdio command (e.g. npx …) or an HTTP URL, with an optional
+              token.
             </div>
           </div>
-          <button className="gh-tutup" onClick={() => setBuka(false)} title="Close">
+          <button
+            className="gh-tutup"
+            onClick={() => setBuka(false)}
+            title="Close"
+          >
             ×
           </button>
         </div>
@@ -2103,7 +2119,8 @@ function LanguageCommands() {
             const m: any = (window as any).monaco;
             const eds = m.editor.getEditors ? m.editor.getEditors() : [];
             const ed =
-              eds.find((e: any) => e.hasTextFocus && e.hasTextFocus()) || eds[0];
+              eds.find((e: any) => e.hasTextFocus && e.hasTextFocus()) ||
+              eds[0];
             const model = ed && ed.getModel && ed.getModel();
             if (model) m.editor.setModelLanguage(model, id);
           } catch (_) {}
@@ -2328,10 +2345,11 @@ function Composer({
         return {
           id: name,
           name: name,
-          desc:
-            ((conf as any).command || "") +
-            " " +
-            ((conf as any).args ? (conf as any).args.join(" ") : ""),
+          desc: mcpTampilanKoneksi(
+            (conf as any).command,
+            (conf as any).args,
+            (conf as any).url,
+          ),
           // If the server is disabled in the backend, force active = false.
           // Without this, status polling overwrites the toggle's result and
           // the server appears to "come back to life" on its own.
@@ -2475,10 +2493,11 @@ function Composer({
     const entry = {
       id: name,
       name: name,
-      desc:
-        ((conf as any).command || "") +
-        " " +
-        ((conf as any).args ? (conf as any).args.join(" ") : ""),
+      desc: mcpTampilanKoneksi(
+        (conf as any).command,
+        (conf as any).args,
+        (conf as any).url,
+      ),
       active: true,
       conf,
     };

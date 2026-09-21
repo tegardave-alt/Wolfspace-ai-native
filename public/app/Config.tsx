@@ -109,6 +109,35 @@ interface EntriMcp {
   kredensial?: KredensialMcp;
 }
 
+// UI label only. Never render raw MCP args: they may contain API keys in flags
+// (for example --figma-api-key=...). The backend still receives the original
+// configuration; this formatter deliberately exposes only the transport type.
+function mcpTampilanKoneksi(
+  command?: string,
+  args?: string[],
+  url?: string,
+): string {
+  const cmd = String(command || "")
+    .trim()
+    .toLowerCase();
+  const argv = Array.isArray(args) ? args.map((a) => String(a)) : [];
+  if (
+    /^https?:/i.test(String(url || "")) ||
+    argv.some((a) => /^https?:/i.test(a))
+  )
+    return "http";
+  if (/(^|[\\/])npx(?:\.cmd)?$/.test(cmd) || cmd === "npx" || cmd === "npx.cmd")
+    return "npx";
+  if (
+    /(^|[\\/])node(?:\.exe)?$/.test(cmd) ||
+    cmd === "node" ||
+    cmd === "node.exe"
+  )
+    return "node";
+  if (cmd) return cmd.split(/[\\/]/).pop() || "MCP";
+  return "MCP";
+}
+
 const MCP_DIKENAL: Record<string, EntriMcp> = {
   notion: {
     command: "npx",

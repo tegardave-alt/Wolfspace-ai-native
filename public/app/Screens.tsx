@@ -299,8 +299,7 @@ function ProjectPickerScreen({
         return {
           id: name,
           name: name,
-          desc:
-            (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
+          desc: mcpTampilanKoneksi(conf.command, conf.args, conf.url),
           // If the server is disabled in the backend, force active = false.
           // Without this, status polling overwrites the toggle's result and
           // the server appears to "come back to life" on its own.
@@ -403,7 +402,7 @@ function ProjectPickerScreen({
     const entry = {
       id: name,
       name: name,
-      desc: (conf.command || "") + " " + (conf.args ? conf.args.join(" ") : ""),
+      desc: mcpTampilanKoneksi(conf.command, conf.args),
       active: true,
       conf,
     };
