@@ -164,7 +164,10 @@ describe("split editor bisa dibuka DAN ditutup", () => {
     const m = APP.match(/const tutupGrup = useCallback[\s\S]*?\n  \}, \[\]\);/);
     expect(m).toBeTruthy();
     expect(m![0]).toMatch(/tinggal\.tabs\.concat\(/);
-    expect(m![0]).toMatch(/setGrupFokus\(0\)/);
+    // fokuskanGrup, not setGrupFokus: focus moves through a wrapper that writes a
+    // ref in the same step, so split decisions read where focus IS rather than
+    // where the last render left it. A bare setGrupFokus here would be the bug back.
+    expect(m![0]).toMatch(/fokuskanGrup\(0\)/);
   });
 
   test("the lit state is styled, so it reads as a state not an action", () => {

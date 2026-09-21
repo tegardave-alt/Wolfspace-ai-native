@@ -1,110 +1,129 @@
-// A provider the app picked for you is not a provider you chose.
+// The model picker shows a model only when the user configured one.
 //
-// WHAT WENT WRONG. loadModels() in public/app.tsx asks /cloud-providers which
-// providers the SERVER holds keys for, picks one, and writes it to
-// localStorage so the rest of the app knows which one to use. The object it
-// wrote — provider, name, model, no key — is byte-for-byte what an explicit
-// choice looks like.
+// WHAT THIS FILE USED TO GUARD, AND WHY IT CHANGED.
 //
-// So a machine that had ever run WOLFSPACE showed a configured provider and a
-// model on a fresh install, with no key beside them and no way to tell it apart
-// from something typed in by hand. The user reported it as the installer
-// shipping a preset; it was not. The profile directory
-// (%APPDATA%\WOLFSPACE-<hash>) survives an uninstall, and the entry was still
-// in it.
+// loadModels() used to ask the server which providers it held keys for, pick
+// one, and write it into the stored cloud object marked `otomatis`. Earlier
+// work here made that entry *labelled* — "(server key)" in the picker, treated
+// as "not chosen" on the settings screen — because a fresh install otherwise
+// read as pre-configured.
 //
-// WHY IT IS STILL WRITTEN. Not writing was the obvious fix and it is wrong.
-// agent/cloud.ts resolves the provider as
+// Labelling was not enough. The settings screen showed no key and no model
+// while the picker showed a model running: one state, reported as 0 in one
+// place and 1 in the other. That is a contradiction a user cannot resolve by
+// reading more carefully, and it was reported as exactly that.
 //
-//     cloud.provider || (cloud.key ? detectProvider(cloud.key) : null)
+// WHY THE ENTRY COULD NOT SIMPLY BE DROPPED BEFORE. agent/cloud.ts resolved a
+// provider from `cloud.provider` or from a key, and with neither it gave up —
+// so removing the entry broke chat for anyone whose keys live in the keys file
+// rather than the browser. The picker was inventing a provider because nothing
+// else would.
 //
-// so with neither a provider nor a key it gives up. The client naming the
-// provider IS the mechanism by which a server-side key gets used; dropping the
-// write would break chat for everyone relying on one.
-//
-// The fix is the mark, not the removal.
+// THE FIX moves that question to where the keys are: _providerBawaan() in
+// agent/cloud.ts fills in a provider when a request names none. The UI then
+// stops claiming a configuration that does not exist, and chat still works.
 
 const fs = require("fs");
 const path = require("path");
 
 const AKAR = path.resolve(__dirname, "..");
-const baca = (rel) => fs.readFileSync(path.join(AKAR, rel), "utf8");
+const baca = (rel: string) => fs.readFileSync(path.join(AKAR, rel), "utf8");
 
-describe("hidrasi cloud otomatis dibedakan dari pilihan pengguna", () => {
-  test("app.tsx menandai entri hasil hidrasi dengan otomatis: true", () => {
+describe("pemilih model hanya menampilkan konfigurasi pemakai", () => {
+  test("app.tsx tidak lagi mengarang provider", () => {
     const src = baca("public/app.tsx");
-    const i = src.indexOf("const provs = await");
-    expect(i).toBeGreaterThan(-1);
-    // Sliced to the end of the enclosing callback rather than a fixed window:
-    // a fixed count of characters has already made a test in this repo red for
-    // no reason but a comment growing.
-    const j = src.indexOf("\n  }, [", i);
-    const blok = src.slice(i, j > i ? j : i + 2600);
-    expect(blok).toMatch(/setCloudLS\(cloud\)/);
-    expect(blok).toMatch(/otomatis:\s*true/);
+    // The whole hydrate-and-store block is gone, not merely relabelled.
+    expect(src).not.toMatch(/otomatis:\s*true/);
+    expect(src).not.toMatch(/server key/);
   });
 
-  test("layar setelan memperlakukan entri otomatis sebagai BELUM dipilih", () => {
-    const src = baca("public/app/Views.tsx");
-    // The stored value is filtered before it reaches the form state, so the
-    // provider select falls back to "auto" and the model box stays empty.
+  test("entri lama hasil perilaku sebelumnya dibersihkan", () => {
+    // Without this an install that already stored one keeps showing a model
+    // forever — the fix would not reach anybody who had run the old version.
+    const src = baca("public/app.tsx");
+    expect(src).toMatch(/if \(cloud && cloud\.otomatis\) \{/);
+    expect(src).toMatch(/setCloudLS\(null\)/);
+  });
+
+  test("sebuah model muncul hanya untuk kunci atau baseUrl milik pemakai", () => {
+    // A bare provider name is what the invented entry looked like, so it no
+    // longer counts as configuration.
+    const src = baca("public/app.tsx");
     expect(src).toMatch(
-      /tersimpan\s*&&\s*tersimpan\.otomatis\s*\?\s*null\s*:\s*tersimpan/,
+      /const hasCloud = cloud && \(cloud\.key \|\| cloud\.baseUrl\)/,
     );
-    expect(src).toMatch(
-      /useState\(\s*stored \? \(stored\.baseUrl \? "custom" : stored\.provider\) : "auto"/,
-    );
-  });
-
-  test("menyimpan secara eksplisit MENGHAPUS tandanya", () => {
-    // The save path writes a fresh object with no `otomatis` field, so picking a
-    // provider by hand clears the mark by construction rather than by an extra
-    // line someone has to remember.
-    const src = baca("public/app/Views.tsx");
-    const i = src.indexOf("setCloudLS({ key: k");
-    expect(i).toBeGreaterThan(-1);
-    const baris = src.slice(i, src.indexOf("\n", i));
-    expect(baris).not.toMatch(/otomatis/);
-  });
-
-  test("penggunanya diberi tahu asal pilihan itu, bukan dibiarkan menebak", () => {
-    // Hiding the automatic entry without saying anything would trade one
-    // confusion for another: the app would be talking to a provider the screen
-    // does not mention at all.
-    const src = baca("public/app/Views.tsx");
-    expect(src).toMatch(/from a key stored on the server/i);
-  });
-});
-
-describe("pemilih model ikut menghormati tanda otomatis", () => {
-  // Perbaikan pertama hanya setengah. Tanda `otomatis` dipasang, dan LAYAR
-  // SETELAN memakainya — tapi loadModels tak pernah melihatnya. Entri yang
-  // sama lalu terbaca sebagai "belum dipilih" di satu layar dan sebagai model
-  // pilihan pemakai di layar lain.
-  //
-  // Yang dilihat pemakai pada pemasangan baru: sebuah nama model terpampang
-  // tanpa satu pun kunci di belakangnya. Persis rupa "semuanya sudah
-  // terpasang".
-  test("label menyebut kuncinya milik server, bukan pilihan pemakai", () => {
-    const src = baca("public/app.tsx");
-    const i = src.indexOf('value: "cloud",');
-    expect(i).toBeGreaterThan(-1);
-    const blok = src.slice(i, i + 1400);
-    expect(blok).toMatch(/cloud\.otomatis/);
-    expect(blok).toMatch(/server key/);
-  });
-
-  test("entrinya TIDAK dibuang — kunci server itu nyata", () => {
-    // Menjatuhkannya akan mematahkan chat bagi siapa pun yang kuncinya memang
-    // di server: agent/cloud.ts butuh cloud.provider untuk menjangkaunya.
-    const src = baca("public/app.tsx");
-    expect(src).toMatch(
+    expect(src).not.toMatch(
       /const hasCloud = cloud && \(cloud\.key \|\| cloud\.provider\)/,
     );
   });
 
-  test("kunci milik pemakai sendiri tetap ditandai empat digit", () => {
+  test("tanpa konfigurasi, daftarnya kosong dan mengatakannya", () => {
     const src = baca("public/app.tsx");
-    expect(src).toMatch(/cloud\.key\.slice\(-4\)/);
+    expect(src).toMatch(/label: "No models yet"/);
+  });
+});
+
+describe("chat tetap jalan dengan kunci di berkas", () => {
+  test("backend menentukan providernya sendiri saat klien tak menyebut", () => {
+    // This is what makes the empty picker safe. Without it, dropping the
+    // invented entry leaves cloud.provider null, no key gets filled, and the
+    // request fails for everyone whose keys are server-side.
+    const src = baca("agent/cloud.ts");
+    expect(src).toMatch(/function _providerBawaan\(\)/);
+    expect(src).toMatch(/_providerBawaan\(\)/);
+  });
+
+  test("urutannya sama dengan yang dulu dipakai UI", () => {
+    // Kept deliberately: the same provider is chosen as before, so this change
+    // does not silently move anyone to a different model.
+    const src = baca("agent/cloud.ts");
+    expect(src).toMatch(
+      /URUTAN_BAWAAN = \["opencode", "nvidia", "gemini", "puter"\]/,
+    );
+  });
+
+  test("hanya provider yang benar-benar punya kunci yang dipilih", () => {
+    const src = baca("agent/cloud.ts");
+    const i = src.indexOf("function _providerBawaan()");
+    const blok = src.slice(i, src.indexOf("function fillCloudKey", i));
+    expect(blok).toMatch(/typeof e === "string" \? e : e\.key/);
+  });
+
+  test("PERILAKU: providernya benar-benar terisi dari berkas kunci", () => {
+    // The one assertion here that runs the code rather than reading it.
+    require(path.join(AKAR, "scripts", "ts-register.cjs"));
+    const cloud = require(path.join(AKAR, "agent", "cloud.ts"));
+    const kunciAda = Object.values(cloud.CLOUD_KEYS || {}).some(
+      (e: any) => e && (typeof e === "string" ? e : e.key),
+    );
+    const c: any = {};
+    cloud.fillCloudKey(c);
+    if (kunciAda) {
+      expect(typeof c.provider).toBe("string");
+      expect(c.provider.length).toBeGreaterThan(0);
+    } else {
+      // No keys configured on this machine: nothing to fall back to, and
+      // inventing one would be the very thing this change removed.
+      expect(c.provider == null).toBe(true);
+    }
+  });
+});
+
+describe("layar setelan", () => {
+  test("entri otomatis tetap tidak dianggap pilihan pemakai", () => {
+    // Defensive: a stored entry can still be read here before app.tsx clears
+    // it, and it must not present itself as something the user picked.
+    const src = baca("public/app/Views.tsx");
+    expect(src).toMatch(
+      /tersimpan\s*&&\s*tersimpan\.otomatis\s*\?\s*null\s*:\s*tersimpan/,
+    );
+    expect(src).toMatch(/const \[key, setKey\] = useState\(""\)/);
+  });
+
+  test("menyimpan secara eksplisit menulis objek tanpa tanda otomatis", () => {
+    const src = baca("public/app/Views.tsx");
+    expect(src).toMatch(
+      /setCloudLS\(\{ key: k, provider: prov, name, model: mdl, baseUrl: bu \}\)/,
+    );
   });
 });

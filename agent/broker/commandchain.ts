@@ -1,22 +1,25 @@
-// ── CommandChain — phase 1: genesis + admission ──
+// commandchain.ts — genesis + admission, the two rules layered on top of the
+// hash-chained ledger.
 //
-// A thin layer on top of the chained ledger (audit-log.ts). It adds the two
-// things that make the chain "smart-contract"-like:
+// ROLE IN THE SYSTEM. It decides whether a capability may run at all, before
+// anything executes:
 //
-//   1. GENESIS — a ruleset FROZEN when the session starts, whose hash is
-//      anchored as entry 0 of the chain. Nothing during the session can change
-//      it: not the model, not content injected through prompt injection, not an
-//      agent action. This is "make sure it is hardcoded" as an architectural
-//      guarantee rather than an instruction that can be talked around.
+//   GENESIS    a ruleset frozen at session start, its hash anchored as entry 0
+//              of the chain. Nothing during the session can loosen it — not the
+//              model, not injected content, not an agent action. "Hardcoded" as
+//              an architectural guarantee rather than an instruction that can be
+//              talked around.
+//   ADMISSION  a PURE (ruleset, capability) -> allow|deny, deny-by-default.
+//              Same input, same verdict, always. Anything outside the declared
+//              vocabulary is refused.
 //
-//   2. ADMISSION — a PURE function (ruleset, capability) -> allow|deny,
-//      deny-by-default. Deterministic: same input, same decision, always. An
-//      operation is refused when it is not a capability genesis declared.
+// HONEST LIMITS (docs/COMMANDCHAIN.md §2): "deterministic" covers this DECISION
+// only, not the execution; it is an allowlist, not a denylist; and the hash
+// chain is tamper-EVIDENT, not tamper-PROOF.
 //
-// HONEST LIMITS (docs/COMMANDCHAIN.md §2):
-//   - "deterministic" applies to this DECISION only, not to the execution.
-//   - allowlist, not denylist: what is not in the vocabulary cannot run.
-//   - the hash chain is tamper-EVIDENT, not tamper-PROOF.
+// CONNECTS TO
+//   imports  ./audit-log
+//   used by  agent/broker/host.ts, agent/tools/index.ts, agent/tools/git-tool.ts
 "use strict";
 
 import * as audit from "./audit-log";

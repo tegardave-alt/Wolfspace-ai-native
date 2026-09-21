@@ -118,6 +118,13 @@ static class AcLaunch
 
     [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
     static extern int DeriveAppContainerSidFromAppContainerName(string name, out IntPtr sid);
+    // Registering the profile, which deriving the SID does NOT do. Measured: with
+    // the SID derived and the workspace ACL granted but no registered profile,
+    // CreateProcessW fails with error 2 (ERROR_FILE_NOT_FOUND) and the container
+    // never starts. Same command against a registered profile prints "ready".
+    [DllImport("userenv.dll", CharSet = CharSet.Unicode)]
+    static extern int CreateAppContainerProfile(string name, string displayName, string description,
+        IntPtr capabilities, int capabilityCount, out IntPtr sid);
     [DllImport("advapi32.dll", EntryPoint = "ConvertSidToStringSidW", CharSet = CharSet.Unicode, SetLastError = true)]
     static extern bool ConvertSidToStringSidW(IntPtr sid, out IntPtr str);
     [DllImport("kernel32.dll", SetLastError = true)]
@@ -180,10 +187,38 @@ static class AcLaunch
             Console.Out.Write(Marshal.PtrToStringUni(str));
             return 0;
         }
+        // Profile mode: registers the container profile, then exits.
+        //
+        // WHY IT IS HERE AND NOT IN A SCRIPT. It used to exist only inside
+        // scripts/appcontainer/pasang.ps1, which nothing ever ran -- the file is
+        // named in three error messages and called by none of them, and it was
+        // not even shipped in the installer. So on any machine but the one that
+        // ran it by hand, the sandbox was simply off.
+        //
+        // Registration needs NO elevation, so the app can do it itself. Putting
+        // it in this binary rather than the script means no PowerShell start, no
+        // extra file to package, and one artefact for CI to verify instead of
+        // two.
+        if (args.Length == 2 && args[0] == "--buat-profil")
+        {
+            IntPtr s3;
+            int h3 = CreateAppContainerProfile(args[1], args[1], "WOLFSPACE agent jail",
+                IntPtr.Zero, 0, out s3);
+            if (h3 == 0) { Console.Out.Write("dibuat"); return 0; }
+            // 0x800700B7 is HRESULT_FROM_WIN32(ERROR_ALREADY_EXISTS), and it is a
+            // SUCCESS for this caller: the wanted state is "the profile exists",
+            // not "this call created it". That makes the mode idempotent, which
+            // is what lets it be called on every failed probe without a guard
+            // against having run before.
+            if (h3 == unchecked((int)0x800700B7)) { Console.Out.Write("ada"); return 0; }
+            Console.Error.WriteLine("profil tak bisa dibuat (0x" + h3.ToString("X") + ")");
+            return 4;
+        }
         if (args.Length < 3)
         {
             Console.Error.WriteLine("pakai: AcLaunch.exe <container> <cwd> <exe> [argumen...]");
             Console.Error.WriteLine("       AcLaunch.exe --sid <container>");
+            Console.Error.WriteLine("       AcLaunch.exe --buat-profil <container>");
             return 2;
         }
         string container = args[0], cwd = args[1], exe = args[2];

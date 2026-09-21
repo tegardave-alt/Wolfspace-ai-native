@@ -1,19 +1,17 @@
-// ── One vocabulary for the question "who enforces this boundary?" ──
+// penegakan.ts — one vocabulary for the question "who enforces this boundary?",
+// shared by every execution path.
 //
-// WHY IT EXISTS. Each execution path grew on its own and reported in different
-// words: bash said "namespace"/"regex", zones said "bwrap"/"unshare",
-// sandbox_run reported nothing at all. Three vocabularies for one question means
-// a caller has to know which path it is talking to — exactly what it should NOT
-// need to know.
+// ROLE IN THE SYSTEM. Each path grew its own words: bash said
+// "namespace"/"regex", zones said "bwrap"/"unshare", sandbox_run said nothing.
+// Three vocabularies for one question forces a caller to know which path it is
+// talking to — exactly what it should not need to know.
 //
-// Two things are separated here, and the separation is deliberate:
+// It keeps two things apart on purpose:
+//   enforcement : WHO refuses — this decides the strength
+//   mechanism   : WITH WHAT — this is what you inspect when something looks off
 //
-//   enforcement : WHO refuses. This is what determines the strength.
-//   mechanism   : WITH WHAT. This is what is useful for diagnosis.
-//
-// Collapsing them into one word always ends up misleading: "bwrap" does not
-// tell you it is a kernel boundary, and "kernel" does not tell you what to
-// inspect when something looks wrong.
+// One word for both always misleads: "bwrap" does not say it is a kernel
+// boundary, and "kernel" does not say what to go and look at.
 "use strict";
 
 /**

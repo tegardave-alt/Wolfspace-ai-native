@@ -1,10 +1,15 @@
-// ── Network diagnostics through WSL, with NO free shell ──
+// net-diag.ts — network diagnostics (reachability, route, open ports) without
+// giving the agent a shell to get them with.
 //
-// WHY THIS EXISTS. The agent had no way to inspect the network. `webExtract`
-// goes through the SSRF guard and only speaks HTTP; nothing answered "is this
-// host reachable", "where does the route go", or "is this port open?". The only
-// route available was `bash` — whose boundary on Windows is text scanning, and
-// that has already been shown to be defeatable.
+// ROLE IN THE SYSTEM. Nothing else answered "is this host up", "where does the
+// route go", "is this port open": webExtract goes through the SSRF guard and
+// speaks only HTTP, and the only other route was `bash`, whose Windows boundary
+// is text scanning and has been shown to be defeatable.
+//
+// CONNECTS TO
+//   runs through  WSL, so the tools are the Linux ones and no Windows shell is
+//                 involved
+//   used by       agent/tools/index.ts
 //
 // ITS SHAPE IS DELIBERATELY NOT "run a command". This tool accepts no command;
 // it accepts an OPERATION from a fixed list and BUILDS its own argv. The

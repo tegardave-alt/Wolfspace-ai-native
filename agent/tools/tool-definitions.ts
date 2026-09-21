@@ -1,13 +1,22 @@
-// Tool definitions (OpenAI function-calling format)
-// ── Tool definitions (OpenAI function-calling format) ──
-// NOTE: disk_* tools removed from defaults — only project-scoped tools exposed.
-// Disk tools are still implemented in tools/index.ts if needed dynamically.
-// `export {}` makes this a MODULE rather than a global script.
+// tool-definitions.ts — the JSON schema for every tool, in the OpenAI
+// function-calling format the models expect.
 //
-// A .ts file with no import or export shares one global scope with every
-// other such file, so two of them declaring the same top-level name collide
-// (TS2451) — which is how mcp-client.ts and dspy_tool.ts both declaring
-// `dlog` surfaced a problem that had been latent for several phases.
+// ROLE IN THE SYSTEM. This is what the MODEL sees; agent/tools/index.ts is what
+// actually runs. The two must stay in step — a tool defined here with no
+// implementation is a call that fails at run time, and one implemented but not
+// defined is invisible to the model.
+//
+// The disk_* tools are deliberately NOT in the defaults: only project-scoped
+// tools are offered. They remain implemented in index.ts for dynamic use.
+//
+// CONNECTS TO
+//   used by  agent/tools/index.ts
+//
+// `export {}` makes this a MODULE rather than a global script. A .ts file with
+// no import or export shares one global scope with every other such file, so
+// two declaring the same top-level name collide (TS2451) — which is how
+// mcp-client.ts and dspy_tool.ts both declaring `dlog` surfaced a problem that
+// had been latent for several phases.
 export {};
 
 const SELF_TOOLS = [
@@ -246,7 +255,10 @@ const SELF_TOOLS = [
     function: {
       name: "web_fetch",
       description:
-        "Fetch text from a URL using Microsoft Edge headless (bypasses bot detection). Returns clean text up to 8KB.",
+        "Fetch a URL as Markdown (Microsoft Edge headless, bypasses bot detection). " +
+        "Keeps the page's structure — headings, links, fenced code and tables — capped at 8KB. " +
+        "This is the cheapest way to read one whole page; for a specific element, structured " +
+        "rows/links/attributes, or content past the 8KB cut, use web_extract.",
       parameters: {
         type: "object",
         properties: {
@@ -259,13 +271,58 @@ const SELF_TOOLS = [
   {
     type: "function",
     function: {
+      name: "browser",
+      description:
+        "Drive a REAL browser window that stays open between steps. Use this when a task needs " +
+        "more than reading one page: signing in, clicking through a flow, filling a form, or " +
+        "checking what a site does after an interaction. The window is visible to the user. " +
+        "The page persists, so `open` once and then act on it step by step. " +
+        "For a single read of one page, prefer web_extract — it is much cheaper.",
+      parameters: {
+        type: "object",
+        properties: {
+          action: {
+            type: "string",
+            enum: [
+              "open",
+              "goto",
+              "click",
+              "type",
+              "read",
+              "screenshot",
+              "close",
+            ],
+            description:
+              "open/goto navigate; click and type act on `selector`; read returns text; close ends the session",
+          },
+          target: {
+            type: "string",
+            enum: ["luar", "dalam"],
+            description:
+              "luar (default) opens a separate browser window; dalam drives the browser panel inside WOLFSPACE, which the user is already looking at",
+          },
+          url: { type: "string", description: "for open and goto" },
+          selector: {
+            type: "string",
+            description: "CSS selector, for click, type and read",
+          },
+          text: { type: "string", description: "for type" },
+        },
+        required: ["action"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
       name: "web_extract",
       description:
         "Pull a SPECIFIC PART out of a web page with a real browser (Playwright). " +
         "Use this — NOT web_fetch — when the data is loaded by JavaScript, sits inside a table or list, " +
         "needs an attribute such as href, or lives far down the page. " +
-        "web_fetch returns the whole page innerText and cuts it at 8KB, so structure is lost " +
-        "and anything loaded later reads as empty.",
+        "web_fetch returns the whole page as Markdown capped at 8KB; reach for web_extract " +
+        "instead when you need one specific element, structured rows/links/attributes, or " +
+        "content that sits past that cut or is added by JavaScript after load.",
       parameters: {
         type: "object",
         properties: {
@@ -500,8 +557,98 @@ const SELF_TOOLS = [
             items: { type: "string" },
             description: "optional list of suggested answers",
           },
+          fields: {
+            type: "array",
+            description:
+              "optional STRUCTURED FORM, used instead of choices when several answers are needed at once. The app decides how it is drawn; only what is asked comes from here.",
+            items: {
+              type: "object",
+              properties: {
+                name: {
+                  type: "string",
+                  description: "key the answer is returned under",
+                },
+                label: { type: "string", description: "shown to the user" },
+                type: {
+                  type: "string",
+                  enum: ["text", "number", "select", "boolean"],
+                  description: "anything else is drawn as a text box",
+                },
+                options: {
+                  type: "array",
+                  items: { type: "string" },
+                  description: "for type 'select' only",
+                },
+                required: { type: "boolean" },
+                placeholder: { type: "string" },
+              },
+              required: ["name", "label"],
+            },
+          },
         },
         required: ["question"],
+      },
+    },
+  },
+  {
+    type: "function",
+    function: {
+      name: "ui_propose",
+      description:
+        "Propose a SMALL native panel for the user to adjust something visually, " +
+        "instead of guessing values in text. Use it when the request is about " +
+        "spacing, size, colour, or choosing between variants of ONE element or " +
+        "region — especially when the message carries a Visual Draw snippet " +
+        '(<div data-target="...">): anchor the panel to that data-target. The ' +
+        "user sees the effect live (preview) and presses Apply or Cancel; the " +
+        "result comes back as the next user message, e.g. " +
+        "'[a2ui:apply] {\"padX\":8}'. Only then edit the source. The panel is " +
+        "declarative: components from a fixed catalog (Card, Text, Slider, Select, " +
+        "Toggle, Actions, Button), no markup, no code. Always include a Button " +
+        'with action "cancel".',
+      parameters: {
+        type: "object",
+        properties: {
+          anchor: {
+            type: "string",
+            description:
+              "CSS selector the panel attaches to (the Visual Draw data-target)",
+          },
+          components: {
+            type: "array",
+            description:
+              "Flat list; a container names its children by id. Types: Card{title,description}, Text{text,muted}, Slider{label,min,max,step,unit}+bind, Select{label,options}+bind, Toggle{label}+bind, Actions{children}, Button{label,primary,danger}+action(apply|cancel|choose).",
+            items: {
+              type: "object",
+              properties: {
+                id: { type: "string" },
+                type: { type: "string" },
+                props: { type: "object" },
+                children: { type: "array", items: { type: "string" } },
+                bind: {
+                  type: "string",
+                  description: "dataModel key this input controls",
+                },
+                action: { type: "string", enum: ["apply", "cancel", "choose"] },
+              },
+              required: ["id", "type"],
+            },
+          },
+          dataModel: {
+            type: "object",
+            description: "initial values for every bind key",
+          },
+          preview: {
+            type: "object",
+            description:
+              "Live preview while adjusting: {selector, css:{prop: value with {key} placeholders}}. Applied inline in the preview only; removed on cancel.",
+            properties: {
+              selector: { type: "string" },
+              css: { type: "object" },
+            },
+          },
+        },
+        required: ["anchor", "components", "dataModel"],
       },
     },
   },
@@ -521,11 +668,15 @@ const SELF_TOOLS = [
         "parameters, every path must lie inside the workspace, and another repo " +
         "cannot be targeted. Use this for anything git: running git through bash " +
         "ALWAYS fails, because bash is confined by AppContainer and git cannot " +
-        "open /dev/null in there. There are NO network operations " +
-        "(push/pull/fetch/clone) — those are outside this tool. Read operations: " +
-        "status, diff, log, show, berkas, cabang, kepala, blame. Write operations " +
-        "(tambah, commit, pulihkan, cabang_baru, pindah) run the repo's own hooks, " +
-        "so they ask the user for approval and are recorded in the ledger.",
+        "open /dev/null in there. Read operations: status, diff, log, show, " +
+        "berkas, cabang, kepala, blame. Write operations (tambah, commit, " +
+        "pulihkan, cabang_baru, pindah) run the repo's own hooks, so they ask " +
+        "the user for approval and are recorded in the ledger. NETWORK " +
+        "operations — fetch, pull, push, sync (pull then push), publish (first " +
+        "push of a branch), clone (url + tujuan folder name, under the " +
+        "workspace) — use the GitHub account connected in the app and ALWAYS " +
+        "ask the user for approval before they run. Use them only when the " +
+        "user asks to fetch, pull, push, sync, publish or clone.",
       parameters: {
         type: "object",
         properties: {
@@ -545,7 +696,28 @@ const SELF_TOOLS = [
               "pulihkan",
               "cabang_baru",
               "pindah",
+              "fetch",
+              "pull",
+              "push",
+              "sync",
+              "publish",
+              "clone",
             ],
+          },
+          url: {
+            type: "string",
+            description:
+              "for clone: the repository URL (https://github.com/owner/repo.git)",
+          },
+          tujuan: {
+            type: "string",
+            description:
+              "for clone: the folder name to create under the workspace (default: the repo name)",
+          },
+          remote: {
+            type: "string",
+            description:
+              "for fetch/pull/push/publish: the remote name (default origin)",
           },
           berkas: {
             type: "array",
@@ -566,6 +738,47 @@ const SELF_TOOLS = [
           jumlah: {
             type: "number",
             description: "log: how many commits (1-200)",
+          },
+        },
+        required: ["operasi"],
+      },
+    },
+  },
+  // ── THE LINKED GITHUB REPOSITORY ──
+  //
+  // A SECOND PLACE TO LOOK, and the model has to be told it is a different one.
+  // Every other file tool in this list reads the local workspace; this one reads
+  // a repository on GitHub that the user linked in the panel, which may be an
+  // entirely different codebase. Without saying that, the model treats a missing
+  // file as proof it does not exist, when it was only looking in the other place.
+  {
+    type: "function",
+    function: {
+      name: "github_repo",
+      description:
+        "Read the GitHub repository the user LINKED in the GitHub panel. This " +
+        "is NOT the local workspace: read/grep/glob/list all look at the folder " +
+        "on this machine, while this looks at the linked repo and branch on " +
+        "github.com. Use it when the question is about that repository, or when " +
+        "a file the user refers to is not in the workspace. READ ONLY — nothing " +
+        "is cloned, nothing is written, and no existing repository is modified. " +
+        "Operations: pohon (list files), baca (read one file), cari (code " +
+        "search, which has a much smaller rate limit — try pohon first). If no " +
+        "repository is linked it says so; that is the user's action, not a " +
+        "failure to retry.",
+      parameters: {
+        type: "object",
+        properties: {
+          operasi: { type: "string", enum: ["pohon", "baca", "cari"] },
+          jalur: {
+            type: "string",
+            description:
+              "baca: the file to read. pohon: an optional path prefix to filter by.",
+          },
+          kueri: { type: "string", description: "cari: the search text" },
+          batas: {
+            type: "number",
+            description: "pohon/cari: how many results (default 400 / 30)",
           },
         },
         required: ["operasi"],

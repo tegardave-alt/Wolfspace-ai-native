@@ -1,5 +1,14 @@
-// System prompt auto-optimizer using DSpy
-// Caches optimized version to config/prompts.json to reduce token usage.
+// sysprompt_opt.ts — rewrites the system prompt into a shorter form that says
+// the same thing, and caches the result.
+//
+// ROLE IN THE SYSTEM. The system prompt is resent on every single turn, so its
+// length is a recurring cost rather than a one-off. The optimised version is
+// cached in config/prompts.json with a 30-day TTL, because the optimisation
+// itself costs a model call and the prompt rarely changes.
+//
+// CONNECTS TO
+//   imports  ./dspy_tool (the optimiser), fs, path
+//   used by  agent/self_agent.ts
 import * as fs from "fs";
 import * as path from "path";
 

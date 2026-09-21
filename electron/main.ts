@@ -1,6 +1,26 @@
-// WOLFSPACE desktop app (Electron): launches the backend + local models, then
-// opens a native window. Spawns the server as a SEPARATE process so the
-// executor's process.execPath stays a real JS runtime (bun/node), not electron.
+// main.ts — the Electron main process: WOLFSPACE's desktop entry point.
+//
+// ROLE IN THE SYSTEM. It owns the window, starts the backend and the local
+// models, and answers the renderer's IPC. Two placement decisions matter more
+// than anything else here:
+//
+//   the server runs as a SEPARATE process, so the agent's process.execPath
+//   stays a real JS runtime (node/bun) rather than electron;
+//
+//   the BACKEND is hosted off this thread by electron/backend-host.cjs,
+//   because this process draws the window and a 5000 ms block here is what
+//   Windows calls "Not Responding".
+//
+// CONNECTS TO
+//   imports  electron, child_process, http, fs, path, ./probe (startup timing)
+//   spawns   the backend host and the server
+//   bridge   electron/preload.ts exposes window.WOLFSPACE to the renderer
+// V8 COMPILE CACHE: cache compiled bytecode for the main process's modules so a
+// warm start skips re-compilation. Node 22.8+; no-op on older Node, and wrapped
+// so a cache-dir problem can never block the window from opening.
+try {
+  require("module").enableCompileCache?.();
+} catch (_) {}
 const { app, BrowserWindow, shell, ipcMain, protocol } = require("electron");
 const { spawn, execSync } = require("child_process");
 const http = require("http");
@@ -51,6 +71,30 @@ app.setName("WOLFSPACE");
     console.warn("[userData] isolation failed, using default:", e.message);
   }
 })();
+
+// KEYS LIVE IN userData, NEVER INSIDE THE INSTALLED PACKAGE.
+//
+// agent/keys-path.ts defaults cloud-keys.json to <project root>/.wolfspace/. In
+// DEV the "project root" is the real working tree, which is right. In a PACKAGED
+// app the same resolution (resolve(__dirname, "..")) points INSIDE the install
+// directory — resources/app.asar.unpacked/.wolfspace — so a saved API key would
+// sit in the program folder: readable by anyone with the folder, and carried
+// along if the install is copied, zipped, or re-packaged. Pin the keys dir to the
+// per-user (already per-project-isolated) userData instead. keys-path.ts honours
+// WOLFSPACE_KEYS_DIR and the backend fork inherits this process's env, so setting
+// it here is enough. Dev is untouched; an explicit override or the opt-in shared
+// drawer still wins.
+if (
+  app.isPackaged &&
+  !process.env.WOLFSPACE_KEYS_DIR &&
+  !process.env.WOLFSPACE_KEYS_PATH &&
+  process.env.WOLFSPACE_SHARE_KEYS !== "1" &&
+  process.env.WOLFSPACE_SHARE_KEYS !== "true"
+) {
+  try {
+    process.env.WOLFSPACE_KEYS_DIR = path.join(app.getPath("userData"), "keys");
+  } catch (_) {}
+}
 
 // Custom app:// scheme serves the UI + studio from disk (no HTTP needed to LOAD
 // the app). Must be declared privileged BEFORE app is ready.
@@ -532,12 +576,71 @@ function _pasangTandaSelesai(res: any) {
 // renderer (the panel bounds), and it MUST be hidden when the panel closes or a
 // dialog covers it — otherwise it sits on top of the UI. That is why the renderer
 // calls `sembunyi` explicitly instead of relying on CSS.
-let _br: any = null; // { tampil: WebContentsView, win }
+const _br = new Map<number, any>(); // pane id -> { tampil: WebContentsView, win }
+
+// ── Browser history ──
+//
+// Every main-frame navigation of every pane, newest first, one entry per
+// address (a revisit moves it to the top and refreshes its title). Kept in
+// userData so it survives restarts, like a browser's; capped so it never
+// grows without bound. Titles arrive after the navigation and are patched
+// in when they do. VS Code's integrated browser keeps the same kind of list
+// behind its "Show History" command.
+const _RIWAYAT_MAKS = 500;
+let _riwayat: any[] | null = null;
+let _riwayatSimpanJadwal: any = null;
+function _riwayatBerkas() {
+  return path.join(app.getPath("userData"), "browser-riwayat.json");
+}
+function _riwayatMuat(): any[] {
+  if (_riwayat) return _riwayat;
+  try {
+    const t = fs.readFileSync(_riwayatBerkas(), "utf8");
+    const d = JSON.parse(t);
+    _riwayat = Array.isArray(d) ? d : [];
+  } catch (_: any) {
+    _riwayat = [];
+  }
+  return _riwayat!;
+}
+function _riwayatSimpan() {
+  if (_riwayatSimpanJadwal) return;
+  _riwayatSimpanJadwal = setTimeout(() => {
+    _riwayatSimpanJadwal = null;
+    try {
+      fs.writeFileSync(_riwayatBerkas(), JSON.stringify(_riwayatMuat()));
+    } catch (e: any) {
+      _brLog("riwayat simpan FAILED", { pesan: e.message });
+    }
+  }, 800);
+}
+function _riwayatCatat(url: string, judul: string) {
+  if (!/^https?:\/\//i.test(url)) return;
+  const d = _riwayatMuat();
+  const i = d.findIndex((x) => x.url === url);
+  const lama = i >= 0 ? d.splice(i, 1)[0] : null;
+  d.unshift({
+    url,
+    judul: judul || (lama && lama.judul) || "",
+    waktu: Date.now(),
+    hitung: ((lama && lama.hitung) || 0) + 1,
+  });
+  if (d.length > _RIWAYAT_MAKS) d.length = _RIWAYAT_MAKS;
+  _riwayatSimpan();
+}
+function _riwayatJudul(url: string, judul: string) {
+  const d = _riwayatMuat();
+  const e = d.find((x) => x.url === url);
+  if (e && judul && e.judul !== judul) {
+    e.judul = judul;
+    _riwayatSimpan();
+  }
+}
 function _brWin() {
   return BrowserWindow.getAllWindows()[0] || null;
 }
-function _brBuat() {
-  if (_br) return _br;
+function _brBuat(paneId = 0) {
+  if (_br.has(paneId)) return _br.get(paneId);
   const win = _brWin();
   if (!win) return null;
   const { WebContentsView } = require("electron");
@@ -577,40 +680,327 @@ function _brBuat() {
       nodeIntegration: false,
       sandbox: process.env.WOLFSPACE_BROWSER_SANDBOX === "1",
       webSecurity: true,
+      // Hands the application its shortcuts back when the page has focus.
+      // See electron/preload-browser.ts for what is and is not forwarded.
+      preload: path.join(__dirname, "preload-browser.js"),
     },
   });
   const wc = tampil.webContents;
+  // ── Present as plain Chrome, not Electron ──
+  //
+  // WHY. The default user agent carries "Electron/<ver>" and the app name
+  // ("WOLFSPACE/<ver>"). Many web apps -- Google's especially (Stitch, and any
+  // page behind a Google sign-in) -- serve a blank or "unsupported browser"
+  // page to an Electron UA, and Google's OAuth explicitly rejects embedded /
+  // Electron user agents. The engine underneath IS Chrome (same Chromium), so
+  // stripping those two tokens is not a lie: it makes the view render what a
+  // real browser renders, which is the whole point of a browser inside the app.
+  // Set on the WebContents so it applies to the page and its subresources.
+  let uaBersih = "";
+  try {
+    uaBersih = wc.getUserAgent().replace(/ (?:WOLFSPACE|Electron)\/[^ ]+/g, "");
+    wc.setUserAgent(uaBersih);
+  } catch (_: any) {}
   // Every state change is sent back to the renderer, so the address bar and the
   // error message in the panel really do reflect what happened.
   const kirim = (t: any, d: any) => {
     try {
-      win.webContents.send("WOLFSPACE:browser", { t, ...d });
+      win.webContents.send("WOLFSPACE:browser", { t, paneId, ...d });
     } catch (_: any) {}
+  };
+  // Whether back/forward are possible travels with every navigation event,
+  // so the renderer's arrows can be enabled or greyed like a browser's.
+  const riwayat = () => {
+    try {
+      return {
+        bisaMundur: wc.navigationHistory.canGoBack(),
+        bisaMaju: wc.navigationHistory.canGoForward(),
+      };
+    } catch (_: any) {
+      return {};
+    }
   };
   wc.on("did-start-loading", () => kirim("muat", {}));
   wc.on("did-stop-loading", () =>
-    kirim("selesai", { url: wc.getURL(), judul: wc.getTitle() }),
+    kirim("selesai", {
+      url: wc.getURL(),
+      judul: wc.getTitle(),
+      ...riwayat(),
+    }),
   );
   wc.on(
     "did-fail-load",
     (_e: any, kode: any, desc: any, url: any, utama: any) => {
       if (!utama) return;
+      // -3 (ERR_ABORTED) means this navigation was superseded by another --
+      // a redirect, a second loadURL, a click while loading. Chrome shows no
+      // error page for it and neither does this panel: reporting it painted
+      // "Page failed to load" over pages that finished loading a moment later.
+      if (kode === -3) return;
       kirim("gagal", { kode, desc, url });
     },
   );
-  wc.on("did-navigate", (_e: any, url: any) => kirim("pindah", { url }));
-  wc.on("did-navigate-in-page", (_e: any, url: any) =>
-    kirim("pindah", { url }),
-  );
-  // A link that opens a new window opens IN THIS PANEL rather than in the OS
-  // browser — that is what anyone expects from a browser inside an application.
-  wc.setWindowOpenHandler(({ url }: any) => {
-    wc.loadURL(url);
-    return { action: "deny" };
+  // A crashed or killed renderer is a failed page too; without this the
+  // panel simply went blank with no word of why.
+  wc.on("render-process-gone", (_e: any, rincian: any) => {
+    kirim("gagal", {
+      kode: rincian && rincian.exitCode,
+      desc: "Page process gone: " + ((rincian && rincian.reason) || "unknown"),
+      url: wc.getURL(),
+    });
   });
-  _br = { tampil, win };
-  return _br;
+  // A page must not be able to hold the panel hostage with a beforeunload
+  // prompt; there is no dialog surface for it here.
+  wc.on("will-prevent-unload", (e: any) => e.preventDefault());
+  wc.on("did-navigate", (_e: any, url: any) => {
+    _riwayatCatat(url, wc.getTitle());
+    kirim("pindah", { url, ...riwayat() });
+  });
+  // Main frame only: an <iframe> inside the page navigating must not
+  // rewrite the address bar.
+  wc.on("did-navigate-in-page", (_e: any, url: any, utama: any) => {
+    if (!utama) return;
+    _riwayatCatat(url, wc.getTitle());
+    kirim("pindah", { url, ...riwayat() });
+  });
+  wc.on("page-title-updated", (_e: any, judul: any) =>
+    _riwayatJudul(wc.getURL(), String(judul || "")),
+  );
+  // ── The application's shortcuts, from inside the page ──
+  //
+  // preload-browser.ts forwards the key presses the page did not handle
+  // (see there for the rules). They travel to the renderer as a "tombol"
+  // event, which re-dispatches them on the window so the palette's and every
+  // other keydown listener see them exactly as if the app itself had focus.
+  const teruskanTombol = (k: any) => kirim("tombol", { ...k });
+  try {
+    wc.ipc.on("WOLFSPACE:browser-keydown", (_e: any, k: any) =>
+      teruskanTombol(k || {}),
+    );
+  } catch (_: any) {}
+  // When the page cannot run the preload -- hidden behind a snapshot, or
+  // crashed -- key presses would vanish. Same rule as the preload, applied
+  // here, before the input reaches the page.
+  wc.on("before-input-event", (e: any, input: any) => {
+    if (!input || input.type !== "keyDown") return;
+    const hidup = tampil.getVisible() && !wc.isCrashed();
+    if (hidup) return;
+    const kunciBukanKetik = input.key === "Escape" || /^F\d+$/.test(input.key);
+    if (!(input.control || input.alt || input.meta) && !kunciBukanKetik) return;
+    e.preventDefault();
+    teruskanTombol({
+      key: input.key,
+      code: input.code,
+      ctrlKey: !!input.control,
+      shiftKey: !!input.shift,
+      altKey: !!input.alt,
+      metaKey: !!input.meta,
+      repeat: !!input.isAutoRepeat,
+    });
+  });
+  // ── window.open, as a real browser does it ──
+  //
+  // The old handler navigated THIS panel to the popup's URL and denied the
+  // window. For an ordinary link that is fine, but it BREAKS every sign-in:
+  // an OAuth flow (Google's included) does window.open("<provider>", …) and
+  // then postMessage's the result back to window.opener. Replacing the opener
+  // with the popup's page destroys that channel, so the sign-in could never
+  // complete -- which is why a login-gated app (Stitch) stayed blank while it
+  // worked in a real browser where the user was already signed in.
+  //
+  // So a genuine window.open (disposition new-window / other, i.e. a popup with
+  // features) now opens a REAL popup window that shares this view's session --
+  // exactly like a real browser -- keeping the opener link alive so the flow
+  // can post back. A plain tab-style open (target=_blank) still loads in the
+  // panel, which is what an in-app browser wants for ordinary navigation.
+  wc.setWindowOpenHandler(({ url, disposition }: any) => {
+    if (disposition === "foreground-tab" || disposition === "background-tab") {
+      wc.loadURL(url);
+      return { action: "deny" };
+    }
+    return {
+      action: "allow",
+      overrideBrowserWindowOptions: {
+        width: 520,
+        height: 640,
+        autoHideMenuBar: true,
+        webPreferences: {
+          contextIsolation: true,
+          nodeIntegration: false,
+          sandbox: process.env.WOLFSPACE_BROWSER_SANDBOX === "1",
+        },
+      },
+    };
+  });
+  // The popup window Electron just opened is a real browser window: give it the
+  // same Chrome user agent (the provider's sign-in page checks it too), and let
+  // IT open further popups the same way, so a multi-step sign-in works.
+  wc.on("did-create-window", (child: any) => {
+    try {
+      const cwc = child.webContents;
+      if (uaBersih) cwc.setUserAgent(uaBersih);
+      cwc.setWindowOpenHandler(({ url, disposition }: any) => {
+        if (
+          disposition === "foreground-tab" ||
+          disposition === "background-tab"
+        ) {
+          cwc.loadURL(url);
+          return { action: "deny" };
+        }
+        return { action: "allow" };
+      });
+    } catch (_: any) {}
+  });
+  const state: any = { tampil, win, zum: ZUM_SATU, zumKunci: null };
+  _br.set(paneId, state);
+  // The pane's zoom is put back on every new document (the stylesheet that
+  // carries it belongs to the document, see _brTerapkanZum).
+  wc.on("dom-ready", () => {
+    state.zumKunci = null;
+    _brTerapkanZum(state);
+  });
+  // ── Right-click: a browser's context menu ──
+  //
+  // Native (Menu.popup), because it must float above the native view; the
+  // items are the ones a browser offers where the click landed: link,
+  // selection, editable field, and always Back/Forward/Reload and Inspect.
+  wc.on("context-menu", (_e: any, p: any) => {
+    try {
+      const { Menu, clipboard, shell } = require("electron");
+      const item: any[] = [];
+      item.push({
+        label: "Back",
+        enabled: wc.navigationHistory.canGoBack(),
+        click: () => wc.navigationHistory.goBack(),
+      });
+      item.push({
+        label: "Forward",
+        enabled: wc.navigationHistory.canGoForward(),
+        click: () => wc.navigationHistory.goForward(),
+      });
+      item.push({ label: "Reload", click: () => wc.reload() });
+      if (p.linkURL) {
+        item.push({ type: "separator" });
+        item.push({
+          label: "Open Link in System Browser",
+          click: () => shell.openExternal(p.linkURL),
+        });
+        item.push({
+          label: "Copy Link Address",
+          click: () => clipboard.writeText(p.linkURL),
+        });
+      }
+      if (p.srcURL && p.mediaType === "image") {
+        item.push({
+          label: "Copy Image Address",
+          click: () => clipboard.writeText(p.srcURL),
+        });
+      }
+      if (p.isEditable) {
+        item.push({ type: "separator" });
+        item.push({ label: "Cut", role: "cut", enabled: !!p.selectionText });
+        item.push({ label: "Copy", role: "copy", enabled: !!p.selectionText });
+        item.push({ label: "Paste", role: "paste" });
+        item.push({ label: "Select All", role: "selectAll" });
+      } else if (p.selectionText) {
+        item.push({ type: "separator" });
+        item.push({ label: "Copy", role: "copy" });
+      }
+      item.push({ type: "separator" });
+      item.push({
+        label: "Copy Page Address",
+        click: () => clipboard.writeText(wc.getURL()),
+      });
+      item.push({
+        label: "Inspect Element",
+        click: () => wc.inspectElement(p.x, p.y),
+      });
+      // p.x/p.y are page coordinates; the popup wants window coordinates.
+      const b = tampil.getBounds();
+      Menu.buildFromTemplate(item).popup({
+        window: win,
+        x: Math.round(b.x + p.x),
+        y: Math.round(b.y + p.y),
+      });
+    } catch (e: any) {
+      _brLog("context-menu FAILED", { pesan: e.message });
+    }
+  });
+  // Find in page: every result goes back to the pane's find bar.
+  wc.on("found-in-page", (_e: any, r: any) => {
+    kirim("cari", {
+      aktif: r.activeMatchOrdinal,
+      total: r.matches,
+      selesai: r.finalUpdate,
+    });
+  });
+  return state;
 }
+// Applies (or clears) the pane's device emulation against its current
+// bounds: the device's CSS size, scaled down to fit, never up.
+function _brEmulasi(b: any) {
+  const wc = b.tampil.webContents;
+  try {
+    if (!b.emulasi) {
+      wc.disableDeviceEmulation();
+      return;
+    }
+    const e = b.emulasi;
+    const kotak = b.tampil.getBounds();
+    const lebar = Math.max(50, Number(e.lebar) || 0);
+    const tinggi = Math.max(50, Number(e.tinggi) || 0);
+    const skala = Math.min(
+      1,
+      kotak.width > 0 ? kotak.width / lebar : 1,
+      kotak.height > 0 ? kotak.height / tinggi : 1,
+    );
+    wc.enableDeviceEmulation({
+      screenPosition: e.mobile ? "mobile" : "desktop",
+      screenSize: { width: lebar, height: tinggi },
+      viewPosition: { x: 0, y: 0 },
+      deviceScaleFactor: Number(e.dpr) || 0,
+      viewSize: { width: lebar, height: tinggi },
+      scale: skala,
+    });
+  } catch (err: any) {
+    _brLog("emulasi FAILED", { pesan: err.message });
+  }
+}
+// ── Zoom that belongs to the PANE, not to the site ──
+//
+// Chromium keeps browser zoom (setZoomFactor) PER ORIGIN, shared by every
+// WebContents in the session: zoom the left pane on bing.com and the right
+// pane on bing.com follows. Two panes side by side must not do that. So the
+// zoom is applied as a stylesheet on the document's root -- `html { zoom }`
+// -- which scales the page's CSS pixels exactly the way browser zoom lays
+// it out, but lives in THIS document only. It is re-inserted on every new
+// document (dom-ready), and the origin's own zoom is pinned at 100% so the
+// two never compound.
+function _brTerapkanZum(b: any) {
+  const wc = b.tampil.webContents;
+  const faktor = ZUM_LANGKAH[b.zum];
+  try {
+    if (wc.getZoomFactor() !== 1) wc.setZoomFactor(1);
+  } catch (_: any) {}
+  const lama = b.zumKunci;
+  b.zumKunci = null;
+  const pasang = () => {
+    if (faktor === 1) return Promise.resolve();
+    return wc
+      .insertCSS("html { zoom: " + faktor + " !important; }")
+      .then((kunci: string) => {
+        b.zumKunci = kunci;
+      });
+  };
+  (lama ? wc.removeInsertedCSS(lama).catch(() => {}) : Promise.resolve())
+    .then(pasang)
+    .catch((e: any) => _brLog("zum FAILED", { pesan: e.message }));
+}
+// The zoom ladder Chrome uses; index 5 is 100%.
+const ZUM_LANGKAH = [
+  0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3,
+];
+const ZUM_SATU = 5;
 // Electron is TWO engines: the renderer (web) and main (node). When the panel is
 // blank the first question is always "which one failed" — and with no record from
 // the main side, all that is visible is white, which could mean anything: the view
@@ -632,19 +1022,21 @@ function _brLog(pesan: any, data?: any) {
     );
   } catch (_: any) {}
 }
-function _brKeadaan() {
-  if (!_br) return { ada: false };
-  const wc = _br.tampil.webContents;
+function _brKeadaan(paneId = 0) {
+  const state = _br.get(paneId);
+  if (!state) return { ada: false, paneId };
+  const wc = state.tampil.webContents;
   let anak = -1;
   try {
-    anak = _br.win.contentView.children.length;
+    anak = state.win.contentView.children.length;
   } catch (_: any) {}
   let b = null;
   try {
-    b = _br.tampil.getBounds();
+    b = state.tampil.getBounds();
   } catch (_: any) {}
   return {
     ada: true,
+    paneId,
     url: wc.getURL(),
     judul: wc.getTitle(),
     memuat: wc.isLoading(),
@@ -655,36 +1047,182 @@ function _brKeadaan() {
 }
 function browserAksi(p: any) {
   const aksi = (p && p.aksi) || "";
+  const paneId = Number.isInteger(p && p.paneId) ? p.paneId : 0;
   if (aksi === "diagnosa") {
-    const k = _brKeadaan();
+    const k = _brKeadaan(paneId);
     _brLog("diagnosa", k);
     return { ok: true, ...k };
   }
+  if (aksi === "riwayat") {
+    const q = String((p && p.cari) || "").toLowerCase();
+    const d = _riwayatMuat();
+    const hasil = q
+      ? d.filter(
+          (x) =>
+            String(x.url).toLowerCase().includes(q) ||
+            String(x.judul || "")
+              .toLowerCase()
+              .includes(q),
+        )
+      : d;
+    return { ok: true, riwayat: hasil.slice(0, 200) };
+  }
+  if (aksi === "riwayat-hapus") {
+    _riwayat = [];
+    _riwayatSimpan();
+    return { ok: true };
+  }
+  if (aksi === "riwayat-hapus-satu") {
+    const d = _riwayatMuat();
+    const i = d.findIndex((x) => x.url === p.url);
+    if (i >= 0) {
+      d.splice(i, 1);
+      _riwayatSimpan();
+    }
+    return { ok: true };
+  }
+  // Right-click on a history entry. Native, and the answer waits for the
+  // menu to close, so the pane can reload the list right after.
+  if (aksi === "menu-riwayat") {
+    const win = _brWin();
+    if (!win || !p.url) return { ok: false };
+    const { Menu, clipboard, shell } = require("electron");
+    return new Promise((res) => {
+      let aksiDipilih = "";
+      const menu = Menu.buildFromTemplate([
+        {
+          label: "Open",
+          click: () => {
+            aksiDipilih = "buka";
+          },
+        },
+        {
+          label: "Open in System Browser",
+          click: () => shell.openExternal(p.url),
+        },
+        {
+          label: "Copy Address",
+          click: () => clipboard.writeText(p.url),
+        },
+        { type: "separator" },
+        {
+          label: "Clear",
+          click: () => {
+            const d = _riwayatMuat();
+            const i = d.findIndex((x) => x.url === p.url);
+            if (i >= 0) {
+              d.splice(i, 1);
+              _riwayatSimpan();
+            }
+            aksiDipilih = "hapus";
+          },
+        },
+      ]);
+      menu.popup({
+        window: win,
+        callback: () => res({ ok: true, aksi: aksiDipilih }),
+      });
+    });
+  }
+  // A local file is drawn by the window's own <iframe>, not by a view, so
+  // its DevTools are the window's: the frame appears in the Elements tree.
+  if (aksi === "devtools-jendela") {
+    const win = _brWin();
+    if (!win) return { ok: false, error: "no window" };
+    const wc = win.webContents;
+    if (wc.isDevToolsOpened()) wc.closeDevTools();
+    else wc.openDevTools({ mode: "detach" });
+    return { ok: true };
+  }
   if (aksi === "sembunyi") {
-    if (_br) {
+    const state = _br.get(paneId);
+    if (state) {
       try {
-        _br.win.contentView.removeChildView(_br.tampil);
+        if (state.tampil.webContents.isFocused()) state.win.webContents.focus();
+        state.win.contentView.removeChildView(state.tampil);
       } catch (e: any) {
         _brLog("removeChildView FAILED", { pesan: e.message });
       }
     }
     return { ok: true };
   }
-  if (aksi === "buang") {
-    if (_br) {
+  // ── The page stays on screen while a menu is open ──
+  //
+  // FIRST PRINCIPLE: the view is a native layer above ALL of the window's
+  // DOM. Nothing drawn by the renderer -- a menu, an overlay -- can appear
+  // on top of it. A browser's own menus are native popups for exactly this
+  // reason. Here the menu is DOM, so the only way for it to be seen is for
+  // the view to get out of the way -- and what the user must NOT see is the
+  // page vanishing, or flickering, behind the menu.
+  //
+  // Three steps, in this order, so that no frame is ever blank:
+  //   potret  photograph the page while it is still on screen; the renderer
+  //           paints the picture UNDER the view, pixel for pixel where the
+  //           page is, and waits until that paint has happened;
+  //   beku    only then make the view invisible -- setVisible(false), not
+  //           removeChildView: the view stays attached and keeps its
+  //           compositor surface, so showing it again does not start from
+  //           an empty frame the way a re-attached view does;
+  //   buka    (from the renderer, when the menu closes) makes it visible
+  //           again on top of the picture, and the picture is dropped after.
+  if (aksi === "potret") {
+    const state = _br.get(paneId);
+    if (!state) return { ok: true };
+    return state.tampil.webContents
+      .capturePage()
+      .then((img: any) => {
+        let potret = "";
+        try {
+          if (img && !img.isEmpty())
+            potret =
+              "data:image/jpeg;base64," + img.toJPEG(85).toString("base64");
+        } catch (e: any) {
+          _brLog("potret FAILED", { pesan: e.message });
+        }
+        return { ok: true, potret };
+      })
+      .catch((e: any) => {
+        _brLog("capturePage FAILED", { pesan: e.message });
+        return { ok: true };
+      });
+  }
+  if (aksi === "beku") {
+    const state = _br.get(paneId);
+    if (state) {
       try {
-        _br.win.contentView.removeChildView(_br.tampil);
-        _br.tampil.webContents.close();
+        // Focus goes back to the window with the view: keys typed into an
+        // invisible page would vanish.
+        if (state.tampil.webContents.isFocused()) state.win.webContents.focus();
+        state.tampil.setVisible(false);
+        state.beku = true;
       } catch (e: any) {
-        _brLog("dispose FAILED", { pesan: e.message });
+        _brLog("setVisible(false) FAILED", { pesan: e.message });
       }
-      _br = null;
     }
     return { ok: true };
   }
+  if (aksi === "buang") {
+    const state = _br.get(paneId);
+    if (state) {
+      try {
+        state.win.contentView.removeChildView(state.tampil);
+        state.tampil.webContents.close();
+      } catch (e: any) {
+        _brLog("dispose FAILED", { pesan: e.message });
+      }
+      _br.delete(paneId);
+    }
+    return { ok: true };
+  }
+  // Only "buka" may create a view. "tampil" is a heartbeat -- from a
+  // ResizeObserver and a 400ms interval -- and a late one arriving after
+  // "buang" (removing the observed slot from the DOM fires the observer too)
+  // used to rebuild the engine it had just disposed: a hidden WebContents that
+  // nothing referenced and nothing could close.
+  if (aksi !== "buka" && !_br.has(paneId)) return { ok: true, ada: false };
   let b;
   try {
-    b = _brBuat();
+    b = _brBuat(paneId);
   } catch (e: any) {
     _brLog("_brBuat MELEMPAR", { pesan: e.message });
     return { ok: false, error: "buat view: " + e.message };
@@ -709,6 +1247,7 @@ function browserAksi(p: any) {
       _brLog("bounds ZERO from renderer", kotak);
     try {
       b.tampil.setBounds(kotak);
+      if (b.emulasi) _brEmulasi(b);
     } catch (e: any) {
       _brLog("setBounds FAILED", { kotak, pesan: e.message });
       return { ok: false, error: "setBounds: " + e.message };
@@ -727,6 +1266,11 @@ function browserAksi(p: any) {
           anakSekarang: b.win.contentView.children.length,
         });
       }
+      // Frozen for a menu (see "beku"): visible again, surface intact.
+      if (b.beku) {
+        b.tampil.setVisible(true);
+        b.beku = false;
+      }
     } catch (e: any) {
       // This used to be swallowed by `catch (_) {}` — if mounting the layer was the
       // thing that failed, the symptom was "blank" with not one trace behind it.
@@ -737,21 +1281,94 @@ function browserAksi(p: any) {
 
   try {
     if (aksi === "buka" && p.url) {
-      _brLog("loadURL", { url: String(p.url).slice(0, 80) });
-      b.tampil.webContents.loadURL(p.url).catch((e: any) => {
-        _brLog("loadURL REFUSED", { pesan: e.message });
-      });
+      const wc = b.tampil.webContents;
+      const kunci = String(p.kunci === undefined ? "" : p.kunci);
+      const sama = b.diminta && b.diminta.url === p.url;
+      // The renderer effect re-runs on every dependency change -- leaving and
+      // returning to the chat page, closing and reopening the panel -- and
+      // each run sends "buka" again. Loading the address again on each of
+      // those threw away whatever the user had navigated to inside the page.
+      // Same address, same key: nothing to do, the view is mounted above.
+      // Same address, new key: the refresh button -- reload the CURRENT page.
+      // New address: navigate.
+      if (sama && b.diminta.kunci === kunci && wc.getURL()) {
+        _brLog("buka: sudah dimuat, dilewati", {
+          url: String(p.url).slice(0, 80),
+        });
+      } else if (sama && wc.getURL() && !wc.isCrashed()) {
+        _brLog("buka: alamat sama, muat ulang", {
+          url: String(p.url).slice(0, 80),
+        });
+        b.diminta = { url: p.url, kunci };
+        wc.reload();
+      } else {
+        _brLog("loadURL", { url: String(p.url).slice(0, 80) });
+        b.diminta = { url: p.url, kunci };
+        wc.loadURL(p.url).catch((e: any) => {
+          _brLog("loadURL REFUSED", { pesan: e.message });
+        });
+      }
     }
     if (aksi === "muat-ulang") b.tampil.webContents.reload();
+    // Find in page. `teks` empty stops the search and clears the highlight.
+    if (aksi === "cari") {
+      const wc = b.tampil.webContents;
+      const teks = String(p.teks || "");
+      _brLog("cari", { teks, lanjut: !!p.lanjut, mundur: !!p.mundur });
+      if (!teks) wc.stopFindInPage("clearSelection");
+      else {
+        // Electron's `findNext` means "begin a NEW session": true for the
+        // first request of a term, false for Enter/Shift+Enter follow-ups.
+        const id = wc.findInPage(teks, {
+          forward: p.mundur ? false : true,
+          findNext: !p.lanjut,
+        });
+        _brLog("cari: permintaan", { id });
+      }
+    }
+    // Page zoom: +1 / -1 a step on Chrome's ladder, 0 back to 100%.
+    if (aksi === "zum") {
+      const arah = Number(p.arah) || 0;
+      b.zum =
+        arah === 0
+          ? ZUM_SATU
+          : Math.max(0, Math.min(ZUM_LANGKAH.length - 1, b.zum + arah));
+      _brTerapkanZum(b);
+      return { ok: true, zum: ZUM_LANGKAH[b.zum] };
+    }
+    // ── Viewport size: device emulation, as VS Code's browser does it ──
+    //
+    // The page is rendered at the device's CSS size (and mobile UA/touch
+    // when asked) and SCALED to fit the pane, so a 393x852 phone sits
+    // inside a wide pane instead of being cropped. The scale follows the
+    // pane: every bounds update re-applies it (see _brEmulasi).
+    if (aksi === "emulasi") {
+      b.emulasi = p.perangkat ? { ...p.perangkat } : null;
+      _brEmulasi(b);
+      return { ok: true, emulasi: b.emulasi };
+    }
+    // The real Chromium DevTools for THIS page, as a browser's F12: its own
+    // window (mode: detach), because the view is a native layer and a docked
+    // panel would have nowhere to dock. Toggles, like F12 does.
+    if (aksi === "devtools") {
+      const wc = b.tampil.webContents;
+      if (wc.isDevToolsOpened()) wc.closeDevTools();
+      else wc.openDevTools({ mode: "detach" });
+    }
     if (aksi === "mundur" && b.tampil.webContents.navigationHistory.canGoBack())
       b.tampil.webContents.navigationHistory.goBack();
+    if (
+      aksi === "maju" &&
+      b.tampil.webContents.navigationHistory.canGoForward()
+    )
+      b.tampil.webContents.navigationHistory.goForward();
   } catch (e: any) {
     _brLog("navigation FAILED", { aksi, pesan: e.message });
     return { ok: false, error: "navigasi: " + e.message };
   }
 
-  if (aksi === "buka") _brLog("sesudah buka", _brKeadaan());
-  return { ok: true, ..._brKeadaan() };
+  if (aksi === "buka") _brLog("sesudah buka", _brKeadaan(paneId));
+  return { ok: true, ..._brKeadaan(paneId) };
 }
 
 /**
@@ -774,6 +1391,174 @@ function browserAksi(p: any) {
  * api routes at all; they are their own channels and stay in main untouched.
  */
 const _TETAP_DI_MAIN: string[] = [];
+/**
+ * The live browser: the <webview> the user is looking at, driven by the agent.
+ *
+ * PROVEN BEFORE IT WAS BUILT. A harness attached to a guest <webview>, read its
+ * content and wrote it back. Two things came out of that:
+ *
+ *   1. Playwright over a CDP PORT cannot see a guest at all. Connecting to
+ *      Electron with --remote-debugging-port lists exactly one target, the host
+ *      page; the guest is not published. The port would have been opened for
+ *      nothing.
+ *   2. Reaching the guest from HERE needs no port whatsoever. That removes the
+ *      whole exposure the port would have created -- there is nothing to bind
+ *      to localhost and nothing to randomise, because nothing listens.
+ *
+ * executeJavaScript rather than the debugger: it is the same Runtime.evaluate
+ * underneath, without an attach/detach lifecycle to leak. The debugger is only
+ * needed for what script cannot do, such as real input events.
+ */
+async function _browserDalam(args: any) {
+  const aksi = String((args && args.action) || "").toLowerCase();
+  const sel = String((args && args.selector) || "");
+
+  // THE HANDLE IS _br, not a search by type.
+  //
+  // The first version looked for a WebContents whose getType() is "webview",
+  // which found nothing and reported the panel as closed while it was open in
+  // front of the user. The panel has not been a <webview> tag for some time:
+  // it is a WebContentsView created HERE and floated above the window, and
+  // this module already holds it. Searching for what this file itself owns was
+  // the mistake.
+  const paneUtama = _br.get(0);
+  const tamu = paneUtama && paneUtama.tampil && paneUtama.tampil.webContents;
+  if (!tamu || tamu.isDestroyed()) {
+    // WHAT MAIN ACTUALLY SEES, not a flat claim.
+    //
+    // "The panel is not open" was reported to a user looking straight at an
+    // open panel, twice, and there was no way to tell from the message which
+    // assumption was wrong. _brKeadaan() is the diagnostic this file already
+    // keeps for exactly this; the answer names the state instead of asserting
+    // one.
+    //
+    // The likeliest cause is real and worth naming: the view is created only
+    // when the panel shows an EXTERNAL site. A local file preview renders in an
+    // <iframe> in the renderer, so there is no WebContentsView to drive at all.
+    let keadaan = "";
+    try {
+      keadaan = JSON.stringify(_brKeadaan());
+    } catch (_: any) {
+      keadaan = "(state unreadable)";
+    }
+    throw new Error(
+      "no live browser view to drive. Main reports: " +
+        keadaan +
+        ". The panel only creates one for an EXTERNAL site — a local file preview " +
+        "renders in an iframe and cannot be driven this way. Open a http(s) page in " +
+        "the panel, or use target 'luar' for a separate window.",
+    );
+  }
+  // Open but blank is a different state, and worth saying so rather than
+  // letting a read come back mysteriously empty.
+  const alamatKini = String(tamu.getURL() || "");
+  if (!alamatKini && aksi !== "goto" && aksi !== "open") {
+    throw new Error(
+      "the browser panel is open but has no page loaded — use action 'goto' with a url first",
+    );
+  }
+
+  // A selector is interpolated into script, so it is passed as DATA through
+  // JSON.stringify rather than pasted into the source. Anything else lets a
+  // selector close the string and become code.
+  const S = JSON.stringify(sel);
+
+  if (aksi === "goto" || aksi === "open") {
+    // The host has already put this through the destination guard.
+    await tamu.loadURL(String(args.url));
+  } else if (aksi === "click") {
+    const ok = await tamu.executeJavaScript(
+      "(() => { const e = document.querySelector(" +
+        S +
+        "); if (!e) return false; e.click(); return true; })()",
+    );
+    if (!ok) throw new Error("selector matched nothing: " + sel);
+  } else if (aksi === "type") {
+    const T = JSON.stringify(String((args && args.text) || ""));
+    const ok = await tamu.executeJavaScript(
+      "(() => { const e = document.querySelector(" +
+        S +
+        "); if (!e) return false; e.focus(); e.value = " +
+        T +
+        "; e.dispatchEvent(new Event('input', { bubbles: true }));" +
+        " e.dispatchEvent(new Event('change', { bubbles: true })); return true; })()",
+    );
+    if (!ok) throw new Error("selector matched nothing: " + sel);
+  } else if (aksi === "screenshot") {
+    const img = await tamu.capturePage();
+    const b = img.toPNG();
+    return (
+      "screenshot taken: " +
+      b.length +
+      " bytes, " +
+      tamu.getURL() +
+      " (not returned inline)"
+    );
+  } else if (aksi !== "read") {
+    throw new Error("unknown action: " + aksi);
+  }
+
+  const teks = await tamu.executeJavaScript(
+    sel
+      ? "(() => { const e = document.querySelector(" +
+          S +
+          "); return e ? e.innerText : null; })()"
+      : "document.body ? document.body.innerText : ''",
+  );
+  if (sel && teks === null) throw new Error("selector matched nothing: " + sel);
+  return (
+    "url: " +
+    tamu.getURL() +
+    " | title: " +
+    tamu.getTitle() +
+    " " +
+    String(teks || "").slice(0, 4000)
+  );
+}
+
+/**
+ * Opens GitHub's Authorize page in the user's real browser.
+ *
+ * DELIBERATELY NOT a general "open this URL" operation. shell.openExternal
+ * hands a string to the operating system's handler, which is the widest thing
+ * this process can do on request — so it accepts exactly the one origin and
+ * path the sign-in needs, and nothing else reaches the shell.
+ */
+function _bukaMasukGithub(args: any) {
+  const mentah = String((args && args.url) || "");
+  let u: any = null;
+  try {
+    u = new URL(mentah);
+  } catch (_e: any) {
+    throw new Error("not a URL");
+  }
+  if (
+    u.protocol !== "https:" ||
+    u.hostname !== "github.com" ||
+    u.pathname !== "/login/oauth/authorize"
+  ) {
+    throw new Error("only GitHub's authorize page can be opened this way");
+  }
+  shell.openExternal(u.toString());
+  return { ok: true };
+}
+
+/**
+ * The fixed set of things the host may ask this process to do.
+ *
+ * The return type is stated as `any` on purpose. The two branches genuinely
+ * differ — _browserDalam answers a Promise<string>, _bukaMasukGithub a plain
+ * { ok } — and without an annotation TypeScript narrows the caller's
+ * Promise.resolve().then() to the first branch's type and then rejects the
+ * second. The union is real, the caller passes whatever it gets straight back
+ * over IPC, and nothing downstream depends on which shape arrived.
+ */
+function _layaniMintaMain(apa: any, args: any): any {
+  if (apa === "browser-dalam") return _browserDalam(args);
+  if (apa === "buka-masuk-github") return _bukaMasukGithub(args);
+  throw new Error("unknown main request: " + apa);
+}
+
 function _jalurKeHost(payload: any) {
   const jalur = String((payload && payload.path) || "");
   if (!jalur.startsWith("/")) return false;
@@ -1010,6 +1795,37 @@ function backendHost(nama: string) {
       stdio: "inherit",
     });
     proc.on("message", (m: any) => {
+      // A REQUEST FROM THE HOST, not a reply to one of ours.
+      //
+      // The only direction that used to exist was main -> host. The live
+      // browser needs the other one: <webview> guests are WebContents, and
+      // WebContents exist only here. A utilityProcess has no handle to them at
+      // all.
+      //
+      // `apa` names one of a fixed set of operations, deliberately. A channel
+      // that ran arbitrary work on request would put the agent back on the
+      // window thread, which is what splitting these processes was for.
+      if (m && m.kind === "minta-main") {
+        Promise.resolve()
+          .then(() => _layaniMintaMain(m.apa, m.args))
+          .then(
+            (value) =>
+              proc.postMessage({
+                id: m.id,
+                kind: "jawab-main",
+                ok: true,
+                value,
+              }),
+            (err) =>
+              proc.postMessage({
+                id: m.id,
+                kind: "jawab-main",
+                ok: false,
+                error: (err && err.message) || String(err),
+              }),
+          );
+        return;
+      }
       // Streams answer many times, so they are routed before the one-shot map.
       if (m && (m.kind === "chunk" || m.kind === "end")) {
         const al = _aliranHost.get(m.id);
@@ -1061,17 +1877,65 @@ function backendHost(nama: string) {
 }
 
 /** Send to the host that owns this work. null means fall back to core(). */
+// THE `api` CHANNEL CARRIES WORK THAT LEGITIMATELY TAKES MINUTES.
+//
+// 30 seconds is the default for a message that should answer immediately. A
+// branch switch is not that: a cold `git checkout` of this repository was
+// MEASURED at 44.9 seconds, because 35 MB has to come out of the pack with an
+// empty OS cache -- the ordinary state after a build or a test run.
+//
+// The budget is not removed. A host that is GONE is already reported by the
+// exit handler, by name and immediately; this number only decides how long a
+// LIVE host is trusted to still be working. Larger than the git write budget in
+// scripts/ww.ts (90 s) on purpose, so git's own message wins the race and the
+// user is told what git said rather than that something timed out.
+const BATAS_API_MS = 120000;
+
 function backendInvoke(channel: string, payload: any, batasMs = 30000) {
   const nama = _hostUntuk(channel, payload);
   const h = backendHost(nama);
   if (!h) return null;
   const id = ++_backendId;
+  // NAME THE REQUEST, not just the host.
+  //
+  // The old message was "host backend tak menjawab dalam 30000 ms" and nothing
+  // else. A user hit it and the line could not be acted on: it does not say
+  // which route hung, how long it really waited, or whether anything was queued
+  // behind it. Two plausible causes were measured and BOTH were wrong --
+  // requiring core.js costs 1162 ms with the cache off, not 30 s, and
+  // startJedi() is async and spawns rather than blocks -- so the guessing was
+  // paid for in full before the gap in the message was noticed.
+  //
+  // `antre` is what separates the two shapes of this failure: one slow route
+  // reports 0 others waiting, a wedged host reports the pile behind it.
+  const rute =
+    channel === "api"
+      ? " [" +
+        String((payload && payload.method) || "GET") +
+        " " +
+        String((payload && payload.path) || "?") +
+        "]"
+      : " [" + channel + "]";
+  const t0 = Date.now();
   return new Promise<any>((resolve) => {
     const jam = setTimeout(() => {
       if (_backendMenunggu.delete(id)) {
+        let antre = 0;
+        for (const [, t] of _backendMenunggu) if (t.nama === nama) antre++;
         resolve({
           ok: false,
-          error: "host " + nama + " tak menjawab dalam " + batasMs + " ms",
+          error:
+            "host " +
+            nama +
+            " tak menjawab dalam " +
+            (Date.now() - t0) +
+            " ms (batas " +
+            batasMs +
+            ")" +
+            rute +
+            ", " +
+            antre +
+            " permintaan lain masih menunggu",
         });
       }
     }, batasMs);
@@ -1096,6 +1960,19 @@ function registerIpc() {
   ipcMain.on("WOLFSPACE:probe", (_e: any, d: any) => {
     if (d && d.t === "renderer-stop")
       probe.say("RENDERER-STOP ~" + Math.round(d.overshoot) + "ms");
+    // The same freeze, with the script that caused it. See
+    // _probeSiapaYangMembekukan in electron/preload.ts: the numeric probe above
+    // says a frame was lost, this says what was running inside it.
+    if (d && d.t === "renderer-stop-sebab")
+      probe.say(
+        "RENDERER-STOP sebab: " +
+          d.sumber +
+          " (frame " +
+          d.durasi +
+          "ms, memblokir " +
+          d.memblokir +
+          "ms)",
+      );
   });
   ipcMain.handle(
     "WOLFSPACE:invoke",
@@ -1200,11 +2077,78 @@ function registerIpc() {
         // The case a timeout exists for -- a host that is gone -- is already
         // covered, and covered better, by the exit handler above: it fails that
         // host's waiters immediately and by name. This budget only catches a
-        // host that is alive and silent, which has not been observed.
-        const lewatHost = await backendInvoke(channel, payload);
+        // host that is alive and silent.
+        //
+        // WHICH HAS NOW BEEN OBSERVED, and this comment used to end by saying it
+        // had not. From a user's log:
+        //
+        //   "[probe] backend-host gagal api: host backend tak menjawab dalam ..."
+        //
+        // The wording is itself the evidence: a host that had EXITED fails its
+        // waiters with "host backend berhenti" from the exit handler above, so
+        // reaching the timeout text at all means the process was alive and
+        // simply never answered. What the line could not say was WHICH route and
+        // for how long -- backendInvoke now says both.
+        //
+        // The claim above that a boot route "runs tsc" is also no longer true:
+        // no route invokes the compiler any more. It is kept as the reason the
+        // three-second budget was removed, which still stands.
+        const lewatHost = await backendInvoke(channel, payload, BATAS_API_MS);
         if (lewatHost && lewatHost.ok && lewatHost.value != null)
           return lewatHost.value;
-        if (lewatHost) probe.say("backend-host gagal api: " + lewatHost.error);
+        if (lewatHost) {
+          probe.say("backend-host gagal api: " + lewatHost.error);
+          // A WRITE IS NEVER RE-RUN, and this is where the lock came from.
+          //
+          // The fallback below re-runs the SAME request in this process. For a
+          // GET that is merely wasteful. For a POST it is a second write
+          // against a repository the first one is still writing to -- and that
+          // is a self-inflicted .git/index.lock, from the only writer that was
+          // ever observed taking one.
+          //
+          // TRACED FROM THE USER'S OWN LOG, and only after the timeout message
+          // was made to name its route:
+          //
+          //   POST /ww/branch/switch
+          //   "host backend tak menjawab dalam 30007 ms (batas 30000)"
+          //   "[POST /ww/branch/switch], 0 permintaan lain masih menunggu"
+          //
+          // "0 others waiting" is the part that settles it: the host was not
+          // wedged behind a queue, this one request simply needed longer than
+          // the budget. A cold checkout of this repository was MEASURED at
+          // 44.9 seconds -- 35 MB out of the pack with an empty OS cache.
+          //
+          // So the timeout fired at 30 s, main started a SECOND `git checkout`,
+          // and the two collided. Every lock hunted in this repository traces
+          // back to here; watching the live repository for 60 seconds while it
+          // was idle produced none.
+          //
+          // The honest answer for a write is the failure itself. The host is
+          // still working, and its result will land or its exit handler will
+          // report it -- neither needs a duplicate.
+          const metode = String(
+            (payload && (payload as any).method) || "GET",
+          ).toUpperCase();
+          if (metode !== "GET" && metode !== "HEAD")
+            // THE SHAPE MATTERS AS MUCH AS THE MESSAGE. Everything on this
+            // channel is an HTTP-like { status, headers, body }, and the
+            // renderer reads it as JSON.parse(r.body) -- so an object without a
+            // `body` parses to null and the panel shows a bare "failed" with
+            // the explanation thrown away. The first version of this return did
+            // exactly that: it replaced a useless message with no message.
+            return {
+              status: 504,
+              headers: { "content-type": "application/json" },
+              body: JSON.stringify({
+                ok: false,
+                err:
+                  "the backend is still working on this (" +
+                  lewatHost.error +
+                  "). It was NOT retried here, because a second write against " +
+                  "the same repository is what causes a lock.",
+              }),
+            };
+        }
       }
       if (channel === "api") return apiCall(payload); // generic in-process HTTP-handler proxy
       const c = core();
@@ -1225,7 +2169,9 @@ function registerIpc() {
           if (!session) return { ok: false, error: "session not found" };
           const out = session.outputBuffer || "";
           if (payload.clear) session.outputBuffer = "";
-          return { ok: true, output: out };
+          const exited = !!session.exited;
+          if (exited && payload.clear) c.terminalSessions.delete(payload.id);
+          return { ok: true, output: out, exited };
         }
         if (action === "resize") {
           c.resizeTerminal(payload.id, payload.cols, payload.rows);
@@ -1526,6 +2472,33 @@ if (
   process.env.WOLFSPACE_GPU_SANDBOX !== "true"
 ) {
   app.commandLine.appendSwitch("disable-gpu-sandbox");
+}
+
+// ── Cross-origin iframes: the browser panel must render them like a real browser ──
+//
+// PROVEN, not guessed. The in-app browser (a WebContentsView) silently failed to
+// load ANY cross-origin sub-frame: an injected <iframe src="https://example.org">
+// inside example.com stayed at url "" with no error event, and Google Stitch --
+// whose whole UI lives in a cross-origin app-companion iframe -- was blank, while
+// a real Chromium rendered it fully. A cross-origin iframe is an out-of-process
+// frame (site isolation), so it needs its OWN renderer process, and Chromium
+// tries to spawn that process SANDBOXED. This machine cannot spawn a sandboxed
+// renderer (the same reason the windows already run sandbox:false, and the GPU
+// sandbox is disabled above) -- so the OOPIF process never starts and the frame
+// stays blank, silently.
+//
+// --no-sandbox lets those child processes start UNSANDBOXED, so cross-origin
+// iframes load. Measured: with it, the injected iframe and Stitch's companion
+// iframe both render (Stitch shows "Try now" and its prompt gallery, same as a
+// real browser); without it, both are blank. This only extends to the OOPIF
+// children the posture the app's own windows already take (sandbox:false).
+// WOLFSPACE_BROWSER_SANDBOX=1 opts back in on a machine whose sandbox works --
+// there the sandboxed OOPIF spawns and cross-origin iframes work that way instead.
+if (
+  process.env.WOLFSPACE_BROWSER_SANDBOX !== "1" &&
+  process.env.WOLFSPACE_BROWSER_SANDBOX !== "true"
+) {
+  app.commandLine.appendSwitch("no-sandbox");
 }
 
 // Force Node.js (main process V8) to GC periodically

@@ -87,6 +87,7 @@ __pycache__/
 # fresh clone needs no build before `npm test`.
 electron/main.js
 electron/preload.js
+electron/preload-browser.js
 
 # The renderer, compiled ahead of time by scripts/build-app.cjs. Same reasoning
 # as the Electron artefacts above: built by CI before packaging, and index.html
@@ -116,3 +117,7 @@ public/app.build.js
 /vk_swiftshader_icd.json
 /LICENSE.electron.txt
 /LICENSES.chromium.html
+
+# The shipped OAuth App credentials: kept out of the repository, but shipped
+# in the installer (build.files includes agent/**).
+agent/github-app.local.json

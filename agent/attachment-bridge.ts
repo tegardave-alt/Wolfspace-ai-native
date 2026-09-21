@@ -1,34 +1,25 @@
-// The file handover bridge: the thing crosses over, its address does not.
+// attachment-bridge.ts — how an attached file reaches the agent: the contents
+// cross over, the address never does.
 //
-// THE PROBLEM IT CLOSES. Attach used to upload a file to
-// <WOLFSPACE>/public/uploads/ and then paste its PATH into the agent's message.
-// Once the agent was confined to one worktree that path fell outside the scope,
-// the broker refused it, and attachments were killed by containment working
-// correctly.
+// ROLE IN THE SYSTEM. Attach used to write the file to public/uploads/ and
+// paste its PATH into the message. Once the agent was confined to one worktree
+// that path was out of scope and the broker refused it — containment killing
+// attachments by working correctly. Widening the containment would have fixed
+// it by weakening it; this fixes it by changing what crosses.
 //
-// Granting the agent access to the uploads folder would "fix" it by loosening
-// the containment — adding a second root. This module goes the other way: the
-// containment is untouched, and what changes is WHAT crosses over.
+// THE RULE: serahkan() takes CONTENTS and a NAME. No path parameter exists, so
+// there is nothing to strip, sanitise or leak. A handle→path map would still be
+// a door, merely guarded. The consequence is deliberate: afterwards nothing in
+// the system knows where the file came from, so "fetch something else from that
+// directory" is not refused — it has no route.
 //
-// THE PRINCIPLE: the address is not removed — it NEVER ARRIVES.
+// STORAGE: the backend process's memory, never disk. Under Electron the backend
+// is the MAIN process, so attachments survive a renderer reload (frequent here:
+// auto-rollback, hot reload) and die with the app. Nothing to clean up.
 //
-// serahkan() accepts CONTENTS and a NAME. There is no path parameter, so there
-// is no path to strip, sanitise, or keep from leaking. Something that never
-// existed cannot leak through a bug, cannot end up in a log, and cannot be
-// guessed by any caller. That is the difference from keeping a handle->path map
-// and guarding it: that map is still a door, merely guarded.
-//
-// A DELIBERATE CONSEQUENCE. After a handover, nothing in the system knows where
-// the file came from. A request to "fetch me something else from that
-// directory" is therefore not REFUSED — it has no route: no stored path, no
-// known directory, no handle for a file the user has not handed over. The
-// refusal is an absence, not a decision.
-//
-// WHERE THE COPY LIVES: the backend process's memory. Under Electron the
-// backend lives in the MAIN process, so attachments SURVIVE a renderer reload —
-// and reloads happen often in WOLFSPACE (auto-rollback, hot reload). It dies
-// with the application. It never touches disk, so there is nothing to clean up
-// and no file left cluttering a project folder.
+// CONNECTS TO
+//   imports  crypto only
+//   used by  agent/self_agent.ts, agent/tools/index.ts, server.ts
 
 // @ts-check
 "use strict";

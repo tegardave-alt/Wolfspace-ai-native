@@ -21,6 +21,10 @@ const path = require("path");
 const ROOT = path.resolve(__dirname, "..");
 const SRC = path.join(ROOT, "electron", "preload.ts");
 const OUT = path.join(ROOT, "electron", "preload.js");
+// The second preload runs INSIDE the pages the Web Dev browser shows (see
+// electron/preload-browser.ts). Same build, same rules, its own output.
+const SRC_BROWSER = path.join(ROOT, "electron", "preload-browser.ts");
+const OUT_BROWSER = path.join(ROOT, "electron", "preload-browser.js");
 
 const HEADER = [
   "// GENERATED FILE — DO NOT EDIT.",
@@ -30,9 +34,9 @@ const HEADER = [
 ].join("\n");
 
 /** Returns the preload.js contents that the current preload.ts implies. */
-function bangun() {
+function bangun(src = SRC) {
   const hasil = esbuild.buildSync({
-    entryPoints: [SRC],
+    entryPoints: [src],
     bundle: true,
     // "electron" and Node built-ins are provided by the preload environment.
     // Bundling is still on so relative type-only imports resolve away cleanly.
@@ -46,12 +50,19 @@ function bangun() {
   return HEADER + hasil.outputFiles[0].text;
 }
 
-module.exports = { bangun, SRC, OUT };
+module.exports = { bangun, SRC, OUT, SRC_BROWSER, OUT_BROWSER };
 
 if (require.main === module) {
   const isi = bangun();
   fs.writeFileSync(OUT, isi);
   console.log(
     "[build-preload] electron/preload.js written (" + isi.length + " bytes)",
+  );
+  const isiBrowser = bangun(SRC_BROWSER);
+  fs.writeFileSync(OUT_BROWSER, isiBrowser);
+  console.log(
+    "[build-preload] electron/preload-browser.js written (" +
+      isiBrowser.length +
+      " bytes)",
   );
 }

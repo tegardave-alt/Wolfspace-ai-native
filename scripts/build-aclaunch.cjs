@@ -10,8 +10,8 @@
 // were read simply ignores them. The command then runs with no resource ceiling
 // and nothing anywhere says so.
 //
-// Absent fails loudly (appcontainer-jail reports "AcLaunch.exe belum
-// dikompilasi" and falls back). Stale fails silently. This closes the second
+// Absent fails loudly (appcontainer-jail reports that AcLaunch.exe has not been
+// compiled yet, and falls back). Stale fails SILENTLY. This closes the second
 // case, which is the dangerous one.
 //
 // STALENESS, NOT ALWAYS. csc takes ~0.8 s and `npm run app` already carries

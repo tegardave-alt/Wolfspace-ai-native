@@ -1,7 +1,16 @@
-// ── WOLFSPACE Safe-Edit Middleware ──
-// A safe replacement for fs.writeFile: snapshot -> sandbox test ->
-// apply/rollback. If the code crashes in the sandbox it is rolled back
-// automatically and quarantined.
+// safe-edit.ts — the guarded replacement for fs.writeFile: snapshot, test in
+// the sandbox, then apply or roll back.
+//
+// ROLE IN THE SYSTEM. A write that breaks the app is undone before the user
+// ever sees it: if the new code crashes under test it is rolled back
+// automatically and the rejected version is kept in .wolfspace/quarantine for
+// inspection. The code-quality gate runs on the same path, so a write that
+// would make a file structurally worse is refused before any of this starts.
+//
+// CONNECTS TO
+//   imports  ./snapshot (restore point), ./code-quality (the gate),
+//            ./pemantau-blokir (this path can block, so it is measured)
+//   used by  server.ts, on the edit route
 
 "use strict";
 

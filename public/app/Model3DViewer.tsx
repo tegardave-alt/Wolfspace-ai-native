@@ -1,11 +1,12 @@
-// Model3DViewer — extracted from app.tsx (an interactive GLB/STL 3D viewer).
-// Loaded via APP_MODULES in index.html: CONCATenated with app.tsx BEFORE Babel,
-// so it shares one global scope (React/hooks from app.tsx plus
-// window.WOLFSPACE3D). A function declaration, so it hoists and is safe to append.
-
-/* ----------------------------- Viewer 3D (GLB/STL) ----------------------------- */
-// An interactive three.js viewer (vendored offline via window.WOLFSPACE3D).
-// Orbit, zoom, and auto-frame to the model's bounding box. It disposes every
+// Model3DViewer.tsx — an interactive GLB/STL viewer: orbit, zoom, and auto-frame
+// to the model's bounding box.
+//
+// ROLE IN THE SYSTEM. It displays what agent/tools/gen3d-tools.ts produces, and
+// any GLB or STL the user opens. three.js is vendored offline and reached as
+// window.WOLFSPACE3D — not imported, because the renderer has no module graph
+// (see public/app.tsx).
+//
+// It disposes every
 // WebGL resource (renderer, geometry, material, RAF, ResizeObserver) on unmount —
 // without that, opening and closing a few models leaks WebGL contexts until the
 // browser refuses to create another ("Too many active WebGL contexts").

@@ -81,9 +81,17 @@ describe("planner tahan-gagal, tak lagi satu titik kegagalan untuk seluruh run",
       /const checklist = reply \? parseChecklist\(reply\.content\) : \[\]/,
     );
     expect(PLANNER).toMatch(
-      /if \(checklist\.length === 0\) checklist\.push\(RENCANA_FALLBACK\)/,
+      /if \(checklist\.length === 0\) checklist\.push\(fallbackUntuk\(permintaan\)\)/,
     );
-    expect(perencana.RENCANA_FALLBACK).toBe("Jalankan tugas user.");
+    // In the request's language: the checklist follows the user, and so
+    // does the line shown when no planner answered.
+    expect(perencana.RENCANA_FALLBACK).toBe("Do the user's task.");
+    expect(perencana.fallbackUntuk("buatkan halaman web")).toBe(
+      "Kerjakan tugas pengguna.",
+    );
+    expect(perencana.fallbackUntuk("make a web page")).toBe(
+      "Do the user's task.",
+    );
   });
 });
 describe("MCP getTools() tak lagi diam tanpa tanda selama sampai 60 detik", () => {
@@ -91,19 +99,25 @@ describe("MCP getTools() tak lagi diam tanpa tanda selama sampai 60 detik", () =
     .readFileSync(require.resolve("../agent/self_agent.ts"), "utf8")
     .replace(/\r\n/g, "\n");
 
+  // THE HEARTBEAT IS NO LONGER HAND-WRITTEN HERE. Three near-identical
+  // setInterval/clearInterval pairs lived in this file and were replaced by
+  // mulaiDetak() in agent/detak.ts, which owns the interval and hands back an
+  // idempotent stop. What these two tests guard is unchanged and is what
+  // matters: a beat starts BEFORE the await, and it is stopped whatever
+  // happens. Only the mechanism being named moved.
   test("detak dikirim SEBELUM dan SELAMA menunggu getTools()", () => {
     const i = SRC.indexOf("mcpClient.getTools()");
     const before = SRC.slice(Math.max(0, i - 500), i);
     expect(before).toMatch(
       /emit\(\{\s*t: "model_wait", m: "Preparing MCP connection…" \}\)/,
     );
-    expect(before).toMatch(/setInterval\(\(\) => \{/);
+    expect(before).toMatch(/const _mcpHb = mulaiDetak\(emit, "MCP setup"/);
   });
 
-  test("interval detak SELALU dibersihkan, sukses maupun gagal (finally)", () => {
+  test("detak SELALU dihentikan, sukses maupun gagal (finally)", () => {
     const i = SRC.indexOf("mcpClient.getTools()");
     const around = SRC.slice(Math.max(0, i - 300), i + 100);
-    expect(around).toMatch(/\} finally \{\s*\n\s*clearInterval\(_mcpHb\);/);
+    expect(around).toMatch(/\} finally \{\s*\n\s*_mcpHb\(\);/);
   });
 });
 

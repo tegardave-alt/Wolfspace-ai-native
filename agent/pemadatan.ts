@@ -1,37 +1,29 @@
 /**
- * Folds the middle of a long conversation into one digest, so a run can keep
- * going instead of walking into a provider's context limit.
+ * pemadatan.ts — folds the middle of a long conversation into one digest so a
+ * run can keep going instead of hitting a provider's context limit.
  *
- * THE GAP THIS CLOSES. Inside a single run the executor sends the whole array:
+ * CONNECTS TO
+ *   imports  ./anggaran (the PADAT_* thresholds)
+ *   used by  agent/self_agent.ts and agent/python-agent.ts, once per turn
  *
- *     const activeMessages = [...state.messages];     self_agent.ts:1471
+ * THE GAP IT CLOSES. Within a run the executor sends the whole array
+ * (`[...state.messages]`) with no trim, and `messages` is append-only on both
+ * sides of the graph. agent/cloud.ts has no handler for a context-length
+ * refusal, so a long run does not degrade — it dies on a 400.
  *
- * There is no trim there, and `messages` is an append-only channel on both
- * sides of the graph (`operator.add` in services/agent-python/models.py). So it
- * grows for the entire run. agent/cloud.ts has no handler for a context-length
- * refusal, so the run does not degrade — it dies on a 400, and the longest runs
- * are exactly the ones that reach it.
+ * STRUCTURAL, NOT A MODEL SUMMARY. Asking a model to summarise costs a round
+ * trip, can fail, can hallucinate and cannot be tested deterministically. It is
+ * also unnecessary: agent/temuan.ts already carries what the agent KNOWS and
+ * the checklist carries what it must DO. What only the middle still holds is
+ * the SHAPE of what happened — which tools ran, on what, and what failed. That
+ * is countable, so it is counted.
  *
- * WHY THE DIGEST IS STRUCTURAL AND NOT A MODEL SUMMARY. Asking a model to
- * summarise costs a round trip, can fail, can hallucinate, and cannot be tested
- * deterministically. It is also unnecessary here: agent/temuan.ts already
- * carries WHAT THE AGENT KNOWS across the same boundary, and the checklist
- * carries WHAT IT MUST DO. What the middle of the array still holds that those
- * two do not is the SHAPE of what happened — which tools ran, against what, and
- * what failed. That is countable, so it is counted.
- *
- * WHY IT MERGES INTO THE SYSTEM MESSAGE rather than inserting a new one. Two
- * consecutive messages of the same role, and a `tool` message with no matching
- * assistant, are both rejected by strict providers — self_agent.ts:2919 already
- * records deepseek doing exactly that. Appending to the system message adds no
- * message at all, so no sequence can break. It is also the pattern the checklist
- * and the findings journal already use in the same function.
- *
- * WHAT IT REFUSES TO DO. It never splits a tool-call group. An assistant message
- * carrying `tool_calls` whose `role:"tool"` answers were dropped, or a `tool`
- * message whose assistant was dropped, is an invalid sequence — so the tail
- * boundary is moved earlier until it is clean. Compaction that produced a 400
- * would be worse than the overflow it prevents.
+ * TWO RULES IT WILL NOT BREAK, both because strict providers reject the result:
+ *   - the digest MERGES into the system message rather than adding one, since
+ *     two same-role messages in a row are refused;
+ *   - it never splits a tool-call group, so the tail boundary moves earlier
+ *     until the sequence is valid. Compaction that caused a 400 would be worse
+ *     than the overflow it prevents.
  */
 
 "use strict";

@@ -154,6 +154,14 @@ describe("pemeriksa paket mencari rahasia, bukan cuma nama berkas", () => {
 
   test("node_modules dilewati untuk POLA, dan alasannya ditulis", () => {
     // Penjaga yang selalu merah adalah penjaga yang akan dimatikan orang.
-    expect(SKRIP).toMatch(/node_modules DILEWATI untuk pola/);
+    //
+    // Yang dijaga: node_modules disebut sebagai dilewati UNTUK POLA, dan
+    // alasannya ditulis. Bukan kalimatnya. Versi sebelumnya memakukan satu
+    // kalimat Indonesia dan patah saat komentarnya diterjemahkan.
+    expect(SKRIP).toMatch(
+      /node_modules (is SKIPPED for pattern|DILEWATI untuk pola)/i,
+    );
+    // Dan alasannya: penjaga yang selalu merah akan dimatikan orang.
+    expect(SKRIP).toMatch(/always red|selalu merah/i);
   });
 });

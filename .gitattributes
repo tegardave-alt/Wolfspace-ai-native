@@ -36,6 +36,7 @@ scripts/ikon-bahasa/** linguist-vendored
 # stays correct if anyone ever commits them.
 electron/main.js         linguist-generated
 electron/preload.js      linguist-generated
+electron/preload-browser.js linguist-generated
 public/app.build.js      linguist-generated
 # Emitted by scripts/ikon-bahasa/build.cjs from material-icon-theme; its own
 # first line says DO NOT EDIT BY HAND. 22 KB of icon data, not authored code.
@@ -44,3 +45,7 @@ public/app/IkonBahasa.jsx linguist-generated
 # -- Compressed assets: output of scripts/kompres-aset.cjs --
 *.br                   binary linguist-generated
 *.gz                   binary linguist-generated
+
+# Shell scripts are run by sh; a CR at the end of a line becomes part of the
+# command and the script fails with ": command not found". Always LF.
+*.sh text eol=lf

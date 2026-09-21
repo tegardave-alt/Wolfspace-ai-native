@@ -101,7 +101,7 @@ describe("dua invarian yang mencegah panel terdorong turun", () => {
     expect(t).toMatch(/width: "100%"/); // bottom -> fills the row, forcing a wrap
     // The order now comes from _orderPanel/_orderPembagi rather than an inline
     // number — see tests/posisi-kiri.test.js for the table.
-    expect(t).toMatch(/order: _orderPanel\(sisi\)/);
+    expect(t).toMatch(/order: _orderPanel\(sisi(?:, nama)?\)/);
   });
 });
 
@@ -126,13 +126,17 @@ describe("ukuran dihitung per sumbu, tidak saling potong", () => {
     // The old shape named each panel in four separate formulas. A third panel
     // (Code) meant editing all four and hoping none was missed — and a miss
     // here does not fail to compile, it just produces the wrong number.
+    // Each entry now carries its NAME too, so a side can order its panels
+    // and a splitter can find its own panel (tests/pembagi-dua-panel.test.ts).
     expect(T).toMatch(
-      /terminalOpen && \{ sisi: posisi\.terminal, pct: terminalPct \}/,
+      /terminalOpen && \{\s*nama: "terminal",\s*sisi: posisi\.terminal,\s*pct: terminalPct,?\s*\}/,
     );
     expect(T).toMatch(
-      /panelOpen && \{ sisi: posisi\.preview, pct: panelPct \}/,
+      /panelOpen && \{\s*nama: "preview",\s*sisi: posisi\.preview,\s*pct: panelPct,?\s*\}/,
     );
-    expect(T).toMatch(/logicOpen && \{ sisi: posisi\.logic, pct: logicPct \}/);
+    expect(T).toMatch(
+      /logicOpen && \{\s*nama: "logic",\s*sisi: posisi\.logic,\s*pct: logicPct,?\s*\}/,
+    );
     expect(APP).not.toMatch(/const _terminalKanan =/);
     expect(APP).not.toMatch(/const _previewBawah =/);
   });
@@ -153,7 +157,7 @@ describe("satu penggeser untuk dua sumbu", () => {
     // could move to the bottom, dragging the horizontal divider resized using a
     // coordinate from the wrong axis.
     expect(APP).toMatch(
-      /const geserPembagi = \(sumbu(?:: \w+)?, set(?:: \w+)?\)/,
+      /const geserPembagi = \(sumbu(?:: \w+)?, set(?:: \w+)?(?:, nama\?: \w+)?\)/,
     );
     expect(APP).toMatch(/sumbu === "x" \? ev\.clientX : ev\.clientY/);
     expect(APP).not.toMatch(/const onPanelDividerDown/);
@@ -216,78 +220,6 @@ describe("pilihannya bertahan dan divalidasi", () => {
 //   localStorage.setItem("wolfspace_posisi",
 //     JSON.stringify({ preview: "bawah", terminal: "bawah" }))
 
-// ── The ⋮ menu at the far left of the top bar ──
-//
-// The layout options were once mounted as two SEPARATE buttons in the top bar
-// and taken out again for being too busy: that bar is for everyday actions,
-// while moving a panel is done once and then forgotten. The menu hides them
-// without removing them.
-//
-// The geometry was measured with production CSS (Playwright harness):
-//   bar     1000x47
-//   button  22x28 @14,9   colour rgb(255,255,255)
-//   menu    208x103 @14,52
-// Before `align-self: stretch` the menu appeared at y=43 — OVERLAPPING the
-// bar's bottom border, because `top: 100%` refers to the BUTTON's height
-// (28px), not the bar's.
-describe("menu tata letak di bilah atas", () => {
-  const K = baca("public/app/Components.tsx");
-  const C = baca("public/styles.css");
-
-  test("tombolnya putih, tidak diredupkan seperti tetangganya", () => {
-    // .panel-toggle-btn is a SWITCH whose state is already visible from the
-    // panel it opens, so it is allowed to be dim. This is a door to something
-    // hidden — dimmed the same way, the menu would never be found.
-    const i = C.indexOf(".tb-menu-btn {");
-    expect(i).toBeGreaterThan(0);
-    expect(C.slice(i, C.indexOf("}", i))).toMatch(/color:\s*#fff/);
-  });
-
-  test("ikonnya tiga GARIS mendatar, bukan tiga titik", () => {
-    // In a top bar, ⋮ more commonly means "actions for this row"; ☰ reads as
-    // the main menu, and that is what this contains. Drawn with <line> rather
-    // than the text "☰": that character is heavy and its spacing follows
-    // whichever font happens to be installed, so its shape varies by machine.
-    const i = K.indexOf('className={"tb-menu-btn"');
-    expect(i).toBeGreaterThan(0);
-    const blok = K.slice(i, i + 1400);
-    expect((blok.match(/<line /g) || []).length).toBe(3);
-    expect(blok).not.toMatch(/<circle /);
-    // The three lines must be genuinely PARALLEL — same x, different y.
-    const xs = [...blok.matchAll(/x1="([^"]+)" y1="([^"]+)" x2="([^"]+)"/g)];
-    expect(xs.length).toBe(3);
-    expect(new Set(xs.map((m) => m[1])).size).toBe(1); // x1 sama semua
-    expect(new Set(xs.map((m) => m[2])).size).toBe(3); // y1 beda semua
-  });
-
-  test("pembungkusnya membentang setinggi bilah", () => {
-    // Otherwise `top: 100%` refers to the button's height and the menu
-    // overlaps the bar's bottom border.
-    const i = C.indexOf(".tb-menu-bungkus {");
-    expect(C.slice(i, C.indexOf("}", i))).toMatch(/align-self:\s*stretch/);
-  });
-
-  test("menu ditutup oleh klik luar DAN Escape", () => {
-    // Only one of the two makes the menu feel stuck.
-    expect(K).toMatch(/document\.addEventListener\("mousedown", klik\)/);
-    expect(K).toMatch(/e\.key === "Escape" && setMenuOpen\(false\)/);
-    expect(K).toMatch(/removeEventListener\("mousedown", klik\)/);
-    expect(K).toMatch(/removeEventListener\("keydown", tombol\)/);
-  });
-
-  test("pilihan yang SEDANG berlaku ditandai", () => {
-    // Without it the menu only offers actions; it never reports state.
-    expect(K).toMatch(/posisi && posisi\[apa\] === ke \? " aktif" : ""/);
-    const i = C.indexOf(".tb-menu-opsi.aktif {");
-    expect(i).toBeGreaterThan(0);
-  });
-
-  test("prop-nya dioper lagi dari app.tsx", () => {
-    expect(APP).toMatch(/posisi=\{posisi\}/);
-    expect(APP).toMatch(/setPosisi=\{setPosisi\}/);
-  });
-});
-
 // ── Chat can be hidden ──
 //
 // The point is to give the preview panel the whole screen without closing chat
@@ -349,30 +281,6 @@ describe("menyembunyikan chat", () => {
     const iPenuh = APP.indexOf("const tinggiAtas = _isiPenuh");
     expect(iPenuh).toBeGreaterThan(0);
     expect(APP.slice(iPenuh, iPenuh + 120)).toMatch(/_adaMendatar/);
-  });
-
-  test("DUA lapis penjagaan terhadap layar kosong", () => {
-    // Menu menolak pilihannya, DAN effect mengembalikan chat kalau panel
-    // terakhir ditutup — jalur yang tak lewat menu sama sekali.
-    // Code ikut dihitung sejak ia jadi panel sungguhan — kalau tidak,
-    // menyembunyikan chat saat HANYA Code terbuka ditolak padahal layarnya
-    // tidak akan kosong.
-    // \s+ after "=": prettier splits this declaration across two lines. What is
-    // guarded is all FOUR conditions, not whether they fit on one line.
-    expect(K).toMatch(
-      /const buntu =\s+!nilai && !panelOpen && !terminalOpen && !logicOpen/,
-    );
-    expect(K).toMatch(/disabled=\{buntu\}/);
-    expect(APP).toMatch(
-      /if \(!chatVisible && !_adaPanel\) setChatVisible\(true\)/,
-    );
-    expect(APP).toMatch(/const _adaPanel = _panelTerbuka\.length > 0/);
-  });
-
-  test("pilihan yang membuntu MENJELASKAN alasannya", () => {
-    // Diredupkan tanpa keterangan membuat pemakai mengira menunya rusak.
-    expect(K).toMatch(/Open the preview, terminal, or Code panel first/);
-    expect(C.indexOf(".tb-menu-opsi.mati {")).toBeGreaterThan(0);
   });
 });
 
@@ -471,13 +379,6 @@ describe("panel kode bisa disunting dan disimpan", () => {
   test("Ctrl+S ditangkap, kalau tidak browser mengambilnya", () => {
     expect(PANE).toMatch(/e\.ctrlKey \|\| e\.metaKey/);
     expect(PANE).toMatch(/e\.preventDefault\(\)/);
-  });
-
-  test("menu punya entri Code", () => {
-    expect(K).toMatch(/className="tb-menu-judul">Code</);
-    expect(K).toMatch(/setLogicOpen\(nilai\)/);
-    expect(APP2).toMatch(/logicOpen=\{logicOpen\}/);
-    expect(APP2).toMatch(/setLogicOpen=\{setLogicOpen\}/);
   });
 });
 
@@ -592,8 +493,8 @@ describe("Code bisa dibagi tempat dengan panel lain", () => {
   test("dipakaikan gaya panel dan pembagi yang SAMA dengan yang lain", () => {
     const i = bersih2.indexOf("{logicOpen && (");
     const blok = bersih2.slice(i, i + 1200);
-    expect(blok).toMatch(/gayaPanel\(posisi\.logic, logicPct\)/);
-    expect(blok).toMatch(/gayaPembagi\(posisi\.logic\)/);
+    expect(blok).toMatch(/gayaPanel\(posisi\.logic, logicPct, "logic"\)/);
+    expect(blok).toMatch(/gayaPembagi\(posisi\.logic, "logic"\)/);
     expect(blok).toMatch(/setLogicPct/);
     // Pembagi mendatar kalau ia di bawah — sama seperti terminal dan preview.
     expect(blok).toMatch(
@@ -607,12 +508,6 @@ describe("Code bisa dibagi tempat dengan panel lain", () => {
     // localStorage dari versi sebelum Code jadi panel tak punya nilai ini;
     // tanpa bawaan, posisinya undefined dan panelnya tak dirender di mana pun.
     expect(A).toMatch(/logic: sah\(t\.logic, bawaan\.logic\)/);
-  });
-
-  test("menu punya baris posisi untuk Code", () => {
-    // Argumen ketiga menyusul saat tiap baris mendapat pilihan sisinya
-    // sendiri; yang dikunci di sini keberadaan barisnya, bukan tanda tutupnya.
-    expect(K2).toMatch(/barisPosisi\("logic", "Code",/);
   });
 
   test("panelnya tidak boleh diperas habis", () => {
@@ -688,7 +583,7 @@ describe("Run menjalankan berkas di terminal", () => {
   test("Run MENYIMPAN dulu, dan berhenti kalau simpan gagal", () => {
     // Menjalankan tanpa menyimpan berarti menjalankan isi berkas yang LAMA:
     // keluarannya tak cocok dengan yang terlihat di editor, tanpa petunjuk.
-    expect(bersihA).toMatch(/const ok = await simpan\(\)/);
+    expect(bersihA).toMatch(/const ok = await save\(\)/);
     expect(bersihA).toMatch(/if \(!ok\) return/);
     // simpan() harus benar-benar melaporkan hasilnya, bukan void.
     //

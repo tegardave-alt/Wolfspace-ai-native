@@ -151,7 +151,7 @@ kalauBisa("aplikasi dirender tanpa galat (butuh playwright)", () => {
   // Jadi setiap kontrol di menu tata letak benar-benar diklik di sini. Tak ada
   // penjaga statis yang bisa menangkap kelas ini: kompilasi lulus, dan uji
   // berbasis teks sumber tak tahu prop mana yang dioper ke mana.
-  test("root, bilah atas, dan menu ada — tanpa ErrorBoundary", async () => {
+  test("root dan bilah atas ada — tanpa ErrorBoundary", async () => {
     const { chromium } = require("playwright");
     const b = await chromium.launch();
     try {
@@ -180,7 +180,6 @@ kalauBisa("aplikasi dirender tanpa galat (butuh playwright)", () => {
       const k = await p.evaluate(() => ({
         root: !!document.querySelector("#root, .app"),
         topbar: !!document.querySelector(".topbar"),
-        menu: !!document.querySelector(".tb-menu-btn"),
         jatuh: /ErrorBoundary|Runtime Error|Auto-Rollback/i.test(
           document.body.innerText || "",
         ),
@@ -188,33 +187,12 @@ kalauBisa("aplikasi dirender tanpa galat (butuh playwright)", () => {
       expect(k.jatuh).toBe(false);
       expect(k.root).toBe(true);
       expect(k.topbar).toBe(true);
-      expect(k.menu).toBe(true);
       expect(galat).toEqual([]);
 
-      // ── Tiap tombol di menu tata letak DITEKAN ──
-      //
-      // Di-query ULANG tiap putaran, bukan dikumpulkan sekali di depan: menu
-      // dirender ulang sesudah tiap pilihan, dan handle yang dipegang dari
-      // render sebelumnya jadi basi — klik berikutnya menunggu elemen yang
-      // sudah tak ada sampai kehabisan waktu.
-      const bukaMenu = async () => {
-        if (await p.$(".tb-menu")) return true;
-        const tombol = await p.$(".sb-menu-kaki .tb-menu-btn");
-        if (!tombol) return false;
-        await tombol.click().catch(() => {});
-        await p.waitForTimeout(250);
-        return !!(await p.$(".tb-menu"));
-      };
-      expect(await bukaMenu()).toBe(true);
-      const jumlahOpsi = (await p.$$(".tb-menu .tb-menu-opsi")).length;
-      expect(jumlahOpsi).toBeGreaterThanOrEqual(8); // 4 baris posisi + 2 grup
-      for (let i = 0; i < jumlahOpsi; i++) {
-        if (!(await bukaMenu())) break;
-        const semua = await p.$$(".tb-menu .tb-menu-opsi");
-        if (i >= semua.length) break;
-        await semua[i].click({ timeout: 4000 }).catch(() => {});
-        await p.waitForTimeout(200);
-      }
+      // The layout menu that used to be walked here moved into the command
+      // palette (65b1d2a); the palette has its own live test. What remains
+      // is the check that matters most: the app came up, and stays up after
+      // a keypress, without an ErrorBoundary.
       await p.keyboard.press("Escape");
       await p.waitForTimeout(300);
       const sesudah = await p.evaluate(() => ({

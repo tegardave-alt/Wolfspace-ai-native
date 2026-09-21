@@ -1,9 +1,14 @@
-// ── The host side of the Python LangGraph worker ──
+// python-worker.ts — the host end of the line protocol that agent/python-agent
+// speaks to the Python worker process.
 //
-// WHAT THIS IS. services/agent-python holds the agent's state machine; this file
-// is the other end of its line protocol. It owns the process, the framing, and
-// the routing — and nothing about what the agent decides. That split is the
-// whole point of Phase 10 and it is described in services/agent-python/README.md:
+// ROLE IN THE SYSTEM. It owns the child process, the message framing and the
+// routing, and decides NOTHING about the agent itself. The split (also in
+// services/agent-python/README.md):
+//
+// CONNECTS TO
+//   imports  ../ukur-blok (names this file's blocking stretches)
+//   spawns   services/agent-python, the LangGraph worker
+//   used by  agent/python-agent.ts, its only caller
 //
 //   Python                              TypeScript
 //   ------                              ----------
@@ -67,6 +72,15 @@ let _binCache: string | null = null;
 export function pythonBin(): string {
   if (_binCache) return _binCache;
 
+  // Python discovery is deliberately disabled. A caller must name the exact
+  // executable via WOLFSPACE_PYTHON; this worker never probes PATH or disk.
+  const configured = String(process.env.WOLFSPACE_PYTHON || "").trim();
+  if (!configured) return "";
+  _binCache = configured;
+  return _binCache;
+
+  /* Legacy discovery code intentionally disabled.
+
   const bundled =
     process.env.APPDATA &&
     path.join(
@@ -101,7 +115,7 @@ export function pythonBin(): string {
       _binCache = bin;
       return bin;
     } catch (_) {
-      /* try the next candidate */
+      // Try the next candidate.
     }
   }
 
@@ -110,6 +124,7 @@ export function pythonBin(): string {
   // missing — more useful than this module inventing "no python found".
   _binCache = candidates[0] || "python";
   return _binCache;
+  */
 }
 
 type Line = Record<string, any>;
@@ -160,6 +175,10 @@ export function ensureWorker(onStderr?: (text: string) => void): Promise<void> {
   _ready = new Promise<void>((resolve, reject) => {
     let settled = false;
     const bin = pythonBin();
+    if (!bin)
+      return reject(
+        new Error("python worker is disabled: set WOLFSPACE_PYTHON to an exact executable path"),
+      );
     let child: ChildProcessWithoutNullStreams;
     try {
       child = spawn(bin, [APP], {
@@ -168,6 +187,25 @@ export function ensureWorker(onStderr?: (text: string) => void): Promise<void> {
         windowsHide: true,
         env: { ...process.env, PYTHONUNBUFFERED: "1" },
       }) as ChildProcessWithoutNullStreams;
+      // A CHILD THAT DIES MID-WRITE MUST NOT KILL THIS PROCESS.
+      //
+      // REPRODUCED, not guessed: queue a large write into a child's stdin, let the
+      // child exit while that write is still in flight, and Node raises
+      //
+      //     Error: write EOF   errno -4095  syscall 'write'
+      //       at WriteWrap.onWriteComplete
+      //     Emitted 'error' event on Socket instance
+      //
+      // On Windows a stdio pipe IS a Socket, which is what that line names. With no
+      // 'error' listener it is an uncaught exception, and server.ts rethrows every one
+      // of those — so one dying child takes the whole backend down. It was seen exactly
+      // that way: the agent was running, and the process simply stopped.
+      //
+      // Writing after the child has ALREADY gone is harmless — the stream is destroyed
+      // and the write is dropped. The dangerous window is the write that gets accepted
+      // and then fails, which is why a listener is needed rather than a check.
+      //
+      // agent/mcp-client.ts has had this guard for a while; it was never applied here.      child.stdin.on("error", () => {});
     } catch (e: any) {
       return reject(
         new Error(`cannot start python worker (${bin}): ${e.message}`),

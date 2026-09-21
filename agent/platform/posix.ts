@@ -1,4 +1,12 @@
-// ── POSIX platform adapter (base for macOS & Linux) ──
+// posix.ts — the POSIX side of the platform contract.
+//
+// PosixAdapter holds what macOS and Linux share (process groups, signals, shell
+// choice); MacAdapter and LinuxAdapter extend it with what differs, chiefly
+// which containment each OS can actually enforce.
+//
+// CONNECTS TO
+//   imports  ./adapter (the contract), ../ukur-blok (block timing)
+//   used by  agent/platform/index.ts, which chooses between these and windows.ts
 "use strict";
 
 const { execSync } = require("child_process");

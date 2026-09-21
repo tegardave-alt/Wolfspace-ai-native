@@ -1,5 +1,23 @@
 "use strict";
-// DEBUG: capture full stack for Maximum call stack errors
+// server.ts — the WOLFSPACE application itself: the HTTP server, its routes,
+// and everything they hold open.
+//
+// ROLE IN THE SYSTEM. This is the backend, whatever launches it. `npm start`
+// reaches it through server.cjs (the launcher, which installs the .ts require
+// hook); the desktop app reaches the same code in-process through core.js and
+// electron/backend-host.cjs, with no port involved.
+//
+// CONNECTS TO
+//   routes    server/routes/* — cloud, dap, debug, github, lsp, reaktif,
+//             snapshots, terminal — mounted here and given their state via deps
+//   agent     agent/self_agent (the JS loop), agent/python-agent (the Python
+//             graph), agent/chat (plain chat), agent/tools, agent/mcp-client
+//   platform  core/terminal (PTY), agent/snapshot, agent/safe-edit
+//
+// The two blocks below run BEFORE anything else on purpose: they are what makes
+// a crash or an exit leave something to read.
+
+// Full stack for "Maximum call stack" errors, which otherwise truncate.
 process.on("uncaughtException", (err: any) => {
   try {
     require("fs").appendFileSync(
@@ -15,6 +33,39 @@ process.on("uncaughtException", (err: any) => {
   } catch (_) {}
   throw err;
 });
+
+// OUR OWN stdout IS A PIPE, AND A PIPE CAN BREAK UNDER US.
+//
+// The handler above rethrows, which is correct for a real bug and fatal for
+// this: an uncaughtException handler that throws makes Node exit with code 7,
+// "Internal Exception Handler Run-Time Failure". The user saw exactly that:
+//
+//     Error: write EOF ... at WriteWrap.onWriteComplete
+//     [probe] host backend keluar, kode 7
+//
+// This process writes to a pipe owned by electron/main.ts, not to a terminal.
+// When the reader goes away while a write is in flight, the stream raises --
+// EPIPE, or EOF on Windows, where the pipe is a Socket -- and with no listener
+// that is an uncaught exception, which the handler above then turns into a
+// hard exit.
+//
+// try/catch DOES NOT HELP, and _writeSafe below is the proof: it wraps every
+// console write in one and the crash still happened. REPRODUCED both ways --
+// a child writing 64 KB at a time with its writes inside try/catch, whose
+// reader is destroyed mid-write, dies with EPIPE at exit 1; the same child with
+// this one listener finishes at exit 0. The write is ACCEPTED and fails
+// afterwards, so there is nothing on the stack to catch by then.
+//
+// The stdin guards added earlier were the same failure in the other direction,
+// and their scanner did not find this one: it looked for writes to a CHILD's
+// stdin, and never asked what this process does with its own.
+//
+// Nothing is logged here. The one place a message could go is the pipe that
+// just broke.
+try {
+  process.stdout.on("error", () => {});
+  process.stderr.on("error", () => {});
+} catch (_) {}
 
 // ── A trace on EXIT, not only a trace on CRASH ──
 //
@@ -263,11 +314,31 @@ function dlog(cat: any, level: any, msg: any, data?: any) {
   if (VERBOSE && cat !== "console") {
     const prefix = `[WOLFSPACE:${cat}]`;
     if (level === "error")
+      // THE ERROR LEVEL USED TO THROW ITS OWN EVIDENCE AWAY.
+      //
+      // It printed `data.error` and nothing else, so every field with any other
+      // name was discarded -- at the one level where the payload is the whole
+      // point. Seen in a real report: two route failures logged side by side
+      // with their successful sibling,
+      //
+      //   "/ww/branch/create -> ok  {ms:514, cabang:hy}"
+      //   "/ww/commit        -> GAGAL"
+      //   "/ww/branch/switch -> GAGAL"
+      //
+      // The successes carried their data and the failures carried none, because
+      // the reason was under `err` rather than `error`. A user asking why the
+      // switch failed could not be answered from a log that had dropped the
+      // answer.
+      //
+      // Both are printed now: the whole object the way info does it, and
+      // data.error on top when it is there -- an Error object loses its stack
+      // through JSON.stringify, and the stack is usually the useful half.
       _writeSafe(
         _origError,
         console,
         prefix,
         msg,
+        ...(data ? [JSON.stringify(data, null, 0)] : []),
         ...(data && data.error ? [data.error] : []),
       );
     else
@@ -488,6 +559,10 @@ function readsStdin(lang: any, code: any) {
 // Ã¢â€ â‚¬Ã¢â€ â‚¬ Resolve real Python executable (skips Windows Store alias that errors) Ã¢â€ â‚¬Ã¢â€ â‚¬
 let _pyBinCache: any = null;
 async function findPythonAsync() {
+  // Python is opt-in: never probe PATH or common installation directories.
+  // Set WOLFSPACE_PYTHON to the exact executable for Python features.
+  const configured = String(process.env.WOLFSPACE_PYTHON || "").trim();
+  return configured || null;
   if (_pyBinCache) return _pyBinCache;
   const candidates = [
     process.env.WOLFSPACE_PYTHON || process.env.QUANTUM_PYTHON,
@@ -647,10 +722,31 @@ let jediProc: any = null,
 async function startJedi() {
   try {
     const pyBin = await findPythonAsync();
+    if (!pyBin) return;
     jediProc = spawn(pyBin, [path.join(__dirname, "jedi_worker.py")], {
       stdio: ["pipe", "pipe", "pipe"],
       windowsHide: true,
     });
+    // A CHILD THAT DIES MID-WRITE MUST NOT KILL THIS PROCESS.
+    //
+    // REPRODUCED, not guessed: queue a large write into a child's stdin, let the
+    // child exit while that write is still in flight, and Node raises
+    //
+    //     Error: write EOF   errno -4095  syscall 'write'
+    //       at WriteWrap.onWriteComplete
+    //     Emitted 'error' event on Socket instance
+    //
+    // On Windows a stdio pipe IS a Socket, which is what that line names. With no
+    // 'error' listener it is an uncaught exception, and server.ts rethrows every one
+    // of those — so one dying child takes the whole backend down. It was seen exactly
+    // that way: the agent was running, and the process simply stopped.
+    //
+    // Writing after the child has ALREADY gone is harmless — the stream is destroyed
+    // and the write is dropped. The dangerous window is the write that gets accepted
+    // and then fails, which is why a listener is needed rather than a check.
+    //
+    // agent/mcp-client.ts has had this guard for a while; it was never applied here.
+    jediProc.stdin.on("error", () => {});
     jediProc.stdout.on("data", (d: any) => {
       jediBuf += d.toString();
       let i;
@@ -1493,6 +1589,10 @@ function _pindaiInfo(akar: string): Promise<any> {
 
     try {
       const py = await findPythonAsync();
+      if (!py) {
+        catatan.push("python is not configured");
+        throw new Error("python is not configured");
+      }
       keluaran.push(
         await _jalankanPindai(
           py,
@@ -1501,7 +1601,8 @@ function _pindaiInfo(akar: string): Promise<any> {
         ),
       );
     } catch (_) {
-      catatan.push("python is not available");
+      if (!catatan.includes("python is not configured"))
+        catatan.push("python is not available");
     }
 
     const diagnostics: any[] = [];
@@ -1523,6 +1624,85 @@ function _pindaiInfo(akar: string): Promise<any> {
       _infoJalan.delete(akar);
     });
   return janji;
+}
+
+/**
+ * The routes served by the vendored VS Code git layer.
+ *
+ * Each maps one request onto one Repository method and returns the same
+ * { ok, ... } shape the ww.ts routes do, so the panel treats them alike.
+ * `path` is the workspace folder; the layer resolves .git from it the way VS
+ * Code does, so a subfolder of a repository works too.
+ */
+async function _gitVscode(url: any, b: any) {
+  // Every operation lives in core/git-remote.ts, shared with the agent's git
+  // tool and the GitHub panel's Clone, so the three cannot drift apart. This
+  // function only maps a URL and a body onto one call.
+  const gr = require("./core/git-remote.ts");
+  if (!b || !b.path) return { ok: false, err: "path is required" };
+  const dir = String(b.path);
+  const remote = b.remote || "origin";
+  switch (url) {
+    case "/ww/remotes":
+      return gr.remotes(dir);
+    case "/ww/remote/status":
+      return gr.status(dir);
+    case "/ww/remote/add":
+      return gr.addRemote(dir, b.url, !!b.github, remote);
+    case "/ww/remote/fetch":
+      return gr.fetch(dir, remote, !!b.prune);
+    case "/ww/remote/pull":
+      return gr.pull(dir, remote, b.branch || undefined, !!b.rebase);
+    case "/ww/remote/push":
+      return gr.push(dir, remote, b.branch || undefined, !!b.setUpstream);
+    case "/ww/remote/sync":
+      return gr.sync(dir, !!b.rebase);
+    case "/ww/remote/publish":
+      return gr.publish(dir, remote);
+    case "/ww/stash/list": {
+      const gv = require("./core/git-vscode.ts");
+      const r = await gv.repo(dir);
+      const daftar = await r.getStashes();
+      return {
+        ok: true,
+        stashes: daftar.map((s: any) => ({
+          index: s.index,
+          description: s.description,
+          branchName: s.branchName || null,
+        })),
+      };
+    }
+    case "/ww/stash/pop": {
+      const gv = require("./core/git-vscode.ts");
+      const r = await gv.repo(dir);
+      await r.popStash(typeof b.index === "number" ? b.index : 0);
+      return { ok: true };
+    }
+    case "/ww/stash/drop": {
+      const gv = require("./core/git-vscode.ts");
+      const r = await gv.repo(dir);
+      await r.dropStash(typeof b.index === "number" ? b.index : 0);
+      return { ok: true };
+    }
+    case "/ww/log": {
+      const gv = require("./core/git-vscode.ts");
+      const r = await gv.repo(dir);
+      const n = Math.max(1, Math.min(200, Number(b.maxEntries) || 30));
+      const log = await r.log({ maxEntries: n });
+      return {
+        ok: true,
+        commits: log.map((c: any) => ({
+          hash: c.hash,
+          message: c.message,
+          authorName: c.authorName,
+          authorDate: c.authorDate,
+          parents: c.parents,
+        })),
+      };
+    }
+    default:
+      return { ok: false, err: "unknown route " + url };
+  }
 }
 
 function _kurungDiAkar(root: any, p: any) {
@@ -2645,6 +2825,17 @@ const _terminalRoutes = require("./server/routes/terminal.ts");
 const _snapshotRoutes = require("./server/routes/snapshots.ts");
 const _cloudRoutes = require("./server/routes/cloud.ts");
 const _dapRoutes = require("./server/routes/dap.ts");
+const _githubRoutes = require("./server/routes/github.ts");
+const _reaktifRoutes = require("./server/routes/reaktif.ts");
+const _lspRoutes = require("./server/routes/lsp.ts");
+// A language server is a compiler-sized process, and it is not reaped for free:
+// on Windows a child outlives its parent. Synchronous on purpose — an `exit`
+// handler returns and the process is gone, so nothing asynchronous would run.
+process.on("exit", () => {
+  try {
+    require("./core/lsp-session.ts").killAll();
+  } catch (_) {}
+});
 
 // Recover tool calls that a model wrote as plain text instead of real tool_calls,
 // e.g. `<function=read={"path":"x"}>` or `<function=list>` (groq/llama quirk).
@@ -2674,7 +2865,16 @@ const { selfAgentStream } = require("./agent/self_agent.ts");
 // Each session is a background pseudo-terminal that keeps state (cd, env).
 // Designed for AI agents to run interactive commands without losing context.
 const terminalSessions = new Map(); // id â†’ { pty, shell, cwd, createdAt, listeners, outputBuffer }
-const TERM_OUTPUT_MAX = 4096; // max chars kept per session for late joiners
+// 1 MB, not 4 KB. The UI drains this buffer every 75 ms, so between two polls
+// it only has to hold what the shell produced in 75 ms -- and a `dir /s`, an
+// `npm install` or a 20 KB file through `type` produces far more than 4 KB
+// in that time. Measured: of 20,000 characters written in one go, 1,784
+// reached the screen; the rest were cut by the old cap, mid escape sequence.
+// The cap now only matters while the panel is closed and nobody reads.
+const TERM_OUTPUT_MAX = 1_000_000;
+// How long a session that has EXITED stays readable, so the poller can pick
+// up the exit message before the entry goes.
+const TERM_EXIT_LINGER_MS = 60_000;
 // The session manager here differs from core/terminal.ts (which the agent tools
 // use), but the way a PTY is KILLED is taken from there — one implementation only.
 // The reasoning is long and lives in closeTerminalSession() below.
@@ -2750,6 +2950,36 @@ function _pilihKompresi(req: any, berkasAsli: any) {
 //
 // What `where` actually does is walk PATH. fs.existsSync can do that: no process is
 // spawned, and it measures under 1 ms.
+// Does a file exist at this path? More than fs.existsSync, on purpose.
+//
+// A Windows Store app-execution alias -- the stub at
+// %LOCALAPPDATA%\Microsoft\WindowsApps\pwsh.exe that `winget install
+// Microsoft.PowerShell` from the Store leaves -- is a zero-byte REPARSE POINT
+// that statSync cannot read (EACCES). existsSync does a statSync and returns
+// false on ANY error, so it reports these aliases as MISSING even though they
+// are on PATH and spawn perfectly. That is exactly why pwsh read "not
+// installed" after the user had installed it. accessSync(F_OK) only checks the
+// directory entry, not the target's metadata, so it sees the alias; it is
+// tried when existsSync says no.
+function _adaBerkas(p: string) {
+  try {
+    if (fs.existsSync(p)) return true;
+  } catch (_) {}
+  try {
+    fs.accessSync(p, fs.constants.F_OK);
+    return true;
+  } catch (_) {}
+  // Last resort: the directory entry, read case-insensitively. Even where the
+  // alias stub refuses both stat and access, it still appears in its folder's
+  // listing.
+  try {
+    const nama = path.basename(p).toLowerCase();
+    return fs
+      .readdirSync(path.dirname(p))
+      .some((f: string) => f.toLowerCase() === nama);
+  } catch (_) {}
+  return false;
+}
 function _adaDiPath(nama: any) {
   const dirs = String(process.env.PATH || "").split(path.delimiter);
   // The bare name is tried FIRST, then each PATHEXT suffix. Without that, checking
@@ -2764,9 +2994,7 @@ function _adaDiPath(nama: any) {
   for (const d of dirs) {
     if (!d) continue;
     for (const a of akhiran) {
-      try {
-        if (fs.existsSync(path.join(d, nama + a))) return true;
-      } catch (_) {}
+      if (_adaBerkas(path.join(d, nama + a))) return true;
     }
   }
   return false;
@@ -2789,6 +3017,100 @@ function detectShell() {
     return (_shellTerpilih = "cmd.exe");
   }
   return (_shellTerpilih = process.env.SHELL || "/bin/bash");
+}
+
+// ── Which shells this machine actually has (like VS Code's profile detection) ──
+//
+// The picker used to offer a fixed list, so choosing pwsh on a machine with
+// only Windows PowerShell failed with "File not found". This answers what is
+// really here: PATH first (through _adaDiPath), then the standard install
+// homes for the two that commonly live off PATH -- PowerShell 7 and Git Bash.
+// `nilai` is the full path when found off PATH, so the PTY spawns the exact
+// binary; the bare name otherwise. Cached: installs do not change mid-session.
+let _shellsTersedia: any = null;
+function _cariBerkas(kandidat: string[]): string | null {
+  // _adaBerkas, not existsSync: the Store-installed pwsh alias lives here too.
+  for (const c of kandidat) if (_adaBerkas(c)) return c;
+  return null;
+}
+function shellsTersedia() {
+  if (_shellsTersedia) return _shellsTersedia;
+  const pf = process.env["ProgramFiles"] || "C:\\Program Files";
+  const pf86 = process.env["ProgramFiles(x86)"] || "C:\\Program Files (x86)";
+  let daftar: any[];
+  if (process.platform === "win32") {
+    daftar = [
+      {
+        nama: "PowerShell",
+        biner: "powershell.exe",
+        nilai: "powershell.exe",
+        ada: _adaDiPath("powershell.exe"),
+      },
+      (() => {
+        const la = process.env["LOCALAPPDATA"] || "";
+        const jalur =
+          (_adaDiPath("pwsh.exe") && "pwsh.exe") ||
+          _cariBerkas([
+            pf + "\\PowerShell\\7\\pwsh.exe",
+            pf + "\\PowerShell\\7-preview\\pwsh.exe",
+            // The Microsoft Store / winget-msstore install: an app-execution
+            // alias, spawnable by its bare name once found.
+            ...(la ? [la + "\\Microsoft\\WindowsApps\\pwsh.exe"] : []),
+          ]);
+        return {
+          nama: "PowerShell 7 (pwsh)",
+          biner: "pwsh.exe",
+          nilai: jalur || "pwsh.exe",
+          ada: !!jalur,
+          // What to do about it when it is missing.
+          pasang: jalur ? undefined : "winget install Microsoft.PowerShell",
+        };
+      })(),
+      {
+        nama: "Command Prompt",
+        biner: "cmd.exe",
+        nilai: "cmd.exe",
+        ada: _adaDiPath("cmd.exe"),
+      },
+      (() => {
+        const jalur =
+          (_adaDiPath("bash.exe") && "bash.exe") ||
+          _cariBerkas([
+            pf + "\\Git\\bin\\bash.exe",
+            pf86 + "\\Git\\bin\\bash.exe",
+          ]);
+        return {
+          nama: "Git Bash",
+          biner: "bash.exe",
+          nilai: jalur || "bash.exe",
+          ada: !!jalur,
+          pasang: jalur ? undefined : "https://git-scm.com/download/win",
+        };
+      })(),
+      {
+        nama: "WSL",
+        biner: "wsl.exe",
+        nilai: "wsl.exe",
+        ada: _adaDiPath("wsl.exe"),
+        pasang: _adaDiPath("wsl.exe") ? undefined : "wsl --install",
+      },
+    ];
+  } else {
+    const kand = [
+      { nama: "bash", biner: "bash" },
+      { nama: "zsh", biner: "zsh" },
+      { nama: "fish", biner: "fish" },
+      { nama: "sh", biner: "sh" },
+    ];
+    daftar = kand.map((k) => ({
+      nama: k.nama,
+      biner: k.biner,
+      nilai: k.biner,
+      ada: _adaDiPath(k.biner),
+    }));
+  }
+  _shellsTersedia = daftar;
+  return daftar;
 }
 
 // Open a new PTY session rooted at the workspace directory.
@@ -2821,13 +3143,14 @@ function openTerminalSession(customCwd: any, customShell: any) {
 
   const listeners = new Set<any>();
   let outputBuffer = "";
-  const session = {
+  const session: any = {
     pty: ptyProcess,
     shell,
     cwd,
     createdAt: Date.now(),
     listeners,
     outputBuffer,
+    exited: null as null | { code: any; at: number },
   };
   terminalSessions.set(id, session);
 
@@ -2843,20 +3166,44 @@ function openTerminalSession(customCwd: any, customShell: any) {
     }
   });
 
-  // Auto-cleanup on exit
-  ptyProcess.on("exit", () => {
-    terminalSessions.delete(id);
+  // On exit the session is NOT dropped at once. It used to be, and the UI's
+  // poll then met 404 forever: no message, a pane that looked alive and
+  // swallowed typing, thirteen 404s a second per dead terminal. Now the exit
+  // line goes into the buffer, the entry is marked, and it lingers long
+  // enough to be read; a write to it is refused with a reason.
+  ptyProcess.on("exit", (e: any) => {
+    const code = e && typeof e === "object" ? e.exitCode : e;
+    session.exited = { code: code == null ? null : code, at: Date.now() };
+    session.outputBuffer +=
+      "\r\n\x1b[90m[WOLFSPACE] Process exited" +
+      (code == null ? "" : " (code=" + code + ")") +
+      "\x1b[0m\r\n";
     dlog("terminal", "info", `session ${id} closed (process exited)`);
+    // The process is gone; its pipes are not closed by node-pty itself.
+    coreTerminal.lepasHandle(ptyProcess);
+    const jam = setTimeout(() => {
+      if (terminalSessions.get(id) === session) terminalSessions.delete(id);
+    }, TERM_EXIT_LINGER_MS);
+    if (jam && typeof (jam as any).unref === "function") (jam as any).unref();
   });
 
   dlog("terminal", "info", `session ${id} opened`, { shell, cwd });
-  return { id, shell, cwd };
+  // The Windows build number rides along: xterm.js keys its ConPTY
+  // workarounds (cursor placement after wraps, among others) on it, the
+  // way VS Code hands it over in terminalInstance.ts. Zero elsewhere.
+  let windowsBuild = 0;
+  if (process.platform === "win32") {
+    const m = /^\d+\.\d+\.(\d+)/.exec(os.release());
+    if (m) windowsBuild = Number(m[1]) || 0;
+  }
+  return { id, shell, cwd, windowsBuild };
 }
 
 // Write data to an open PTY session (stdin).
 function writeToTerminal(id: any, data: any) {
   const session = terminalSessions.get(id);
   if (!session) throw new Error("terminal session not found: " + id);
+  if (session.exited) throw new Error("terminal session has exited: " + id);
   session.pty.write(data);
 }
 
@@ -2864,6 +3211,7 @@ function writeToTerminal(id: any, data: any) {
 function resizeTerminal(id: any, cols: any, rows: any) {
   const session = terminalSessions.get(id);
   if (!session) throw new Error("terminal session not found: " + id);
+  if (session.exited) return;
   session.pty.resize(cols || 100, rows || 30);
 }
 
@@ -2896,6 +3244,7 @@ function closeTerminalSession(id: any) {
   const session = terminalSessions.get(id);
   if (!session) return;
   terminalSessions.delete(id);
+  if (session.exited) return; // already dead, pipes already closed
   coreTerminal.killPtyAsync(session.pty).catch((e: any) =>
     dlog("terminal", "warn", "failed to close PTY " + id, {
       galat: String((e && e.message) || e),
@@ -2958,6 +3307,9 @@ const server = http.createServer(async (req: any, res: any) => {
   // The confinement is DELEGATED, not copied: `program` comes from the renderer, and
   // two copies of the same security rule will certainly diverge.
   if (_dapRoutes.handle(req, res, { kurungDiAkar: _kurungDiAkar })) return;
+  // The SAME confinement, and for the same reason: a language server reads
+  // whatever it is pointed at, and `path` comes from the renderer.
+  if (_lspRoutes.handle(req, res, { kurungDiAkar: _kurungDiAkar })) return;
   if (
     _terminalRoutes.handle(req, res, {
       terminalSessions,
@@ -2965,10 +3317,37 @@ const server = http.createServer(async (req: any, res: any) => {
       writeToTerminal,
       resizeTerminal,
       closeTerminalSession,
+      shellsTersedia,
     })
   )
     return;
   if (_snapshotRoutes.handle(req, res, { listSnapshots, rollback })) return;
+  // ASYNC, unlike the handlers above: every GitHub route makes a network call,
+  // so it returns a promise. Awaiting it here would hold this dispatcher for
+  // the round trip; the handler answers the response itself, and this only
+  // needs to know whether the request was claimed.
+  if (String(req.url || "").startsWith("/github/")) {
+    _githubRoutes.ruteGithub(req, res).catch((e: any) => {
+      try {
+        res.writeHead(500, { "Content-Type": "application/json" });
+        res.end(JSON.stringify({ ok: false, error: e.message }));
+      } catch (_) {}
+    });
+    return;
+  }
+  // Same shape as /github/ above: async because enabling starts a watcher and
+  // the handler answers for itself.
+  if (String(req.url || "").startsWith("/reaktif/")) {
+    _reaktifRoutes
+      .ruteReaktif(req, res, { akarBawaan: QROOT })
+      .catch((e: any) => {
+        try {
+          res.writeHead(500, { "Content-Type": "application/json" });
+          res.end(JSON.stringify({ ok: false, error: e.message }));
+        } catch (_) {}
+      });
+    return;
+  }
   if (
     _cloudRoutes.handle(req, res, {
       CLOUD_KEYS,
@@ -4322,6 +4701,36 @@ const server = http.createServer(async (req: any, res: any) => {
     }
   }
 
+  // POST /ww/clone { url, parentPath, name? }: clone a repository, then
+  // register the folder as a workspace so it opens like any other. Named
+  // "clone" and not "fetch": fetch updates a repository you have, clone
+  // brings one you do not.
+  if (req.method === "POST" && req.url === "/ww/clone") {
+    let body = "";
+    req.on("data", (c: any) => (body += c));
+    req.on("end", async () => {
+      let b: any = {};
+      try {
+        b = JSON.parse(body || "{}");
+      } catch (_) {}
+      let out: any;
+      try {
+        const gr = require("./core/git-remote.ts");
+        out = await gr.clone(b.url, b.parentPath, b.name);
+        if (out.ok) {
+          const ww = require("./scripts/ww.ts");
+          const r = ww.initWorkspace(out.path, path.basename(out.path));
+          out = { ...out, name: r.name, path: r.dir, branch: r.branch };
+        }
+      } catch (e: any) {
+        out = { ok: false, err: e.message };
+      }
+      res.writeHead(200, { "Content-Type": "application/json" });
+      res.end(JSON.stringify(out));
+    });
+    return;
+  }
+
   // ww git actions and folder rename (all POST { path, ... }). One handler,
   // dispatched per URL; each operation calls a helper in scripts/ww.ts and reports
   // {ok|err}.
@@ -4332,7 +4741,23 @@ const server = http.createServer(async (req: any, res: any) => {
       req.url === "/ww/branch/rename" ||
       req.url === "/ww/branch/delete" ||
       req.url === "/ww/commit" ||
-      req.url === "/ww/rename")
+      req.url === "/ww/rename" ||
+      // The remote and stash operations WOLFSPACE never had, served by the
+      // VS Code git layer in vendor/vscode-git through core/git-vscode.ts.
+      // In THIS block on purpose: they change git state, so they need the
+      // same cache invalidation and the same outcome log as the rest.
+      req.url === "/ww/remotes" ||
+      req.url === "/ww/remote/add" ||
+      req.url === "/ww/remote/status" ||
+      req.url === "/ww/remote/sync" ||
+      req.url === "/ww/remote/publish" ||
+      req.url === "/ww/remote/push" ||
+      req.url === "/ww/remote/pull" ||
+      req.url === "/ww/remote/fetch" ||
+      req.url === "/ww/stash/list" ||
+      req.url === "/ww/stash/pop" ||
+      req.url === "/ww/stash/drop" ||
+      req.url === "/ww/log")
   ) {
     let body = "";
     req.on("data", (c: any) => (body += c));
@@ -4342,10 +4767,11 @@ const server = http.createServer(async (req: any, res: any) => {
         b = JSON.parse(body || "{}");
       } catch (_) {}
       const ww = require("./scripts/ww.ts");
+      const _mulaiWw = Date.now();
       let out;
       try {
         if (req.url === "/ww/branch/switch")
-          out = await ww.switchBranch(b.path, b.branch);
+          out = await ww.switchBranch(b.path, b.branch, { mode: b.mode });
         else if (req.url === "/ww/branch/create")
           out = await ww.createBranch(b.path, b.branch, b.from);
         else if (req.url === "/ww/branch/rename")
@@ -4356,8 +4782,16 @@ const server = http.createServer(async (req: any, res: any) => {
           out = await ww.commitAll(b.path, b.message);
         else if (req.url === "/ww/rename")
           out = ww.renameWorkspaceFolder(b.path, b.newName);
+        else out = await _gitVscode(req.url, b);
       } catch (e) {
-        out = { ok: false, err: e.message };
+        // The VS Code layer throws GitError with git's own stderr attached and
+        // a gitErrorCode it already classified. Both are kept: the code is
+        // what a caller can branch on, the stderr is what a person can read.
+        out = {
+          ok: false,
+          err: (e && e.stderr && String(e.stderr).trim()) || e.message,
+          kode: e && e.gitErrorCode,
+        };
       }
       // The /ww/git and /ww/branches caches are INVALIDATED here. Everything above
       // CHANGES git state, and without this the user commits and their panel still
@@ -4369,6 +4803,25 @@ const server = http.createServer(async (req: any, res: any) => {
       try {
         ww.lupakanGit(b.path);
         if (b.newName) ww.lupakanGit(b.newName);
+      } catch (_) {}
+      // THE OUTCOME IS LOGGED, not only the arrival.
+      //
+      // The debug log recorded "POST /ww/branch/switch" and then nothing at
+      // all: no result, no error, no duration. A user reporting "it stops and
+      // fails" could not be answered from it, because the log said only that
+      // the request had been received. Every layer below this one reports what
+      // it did; this one did not.
+      try {
+        dlog(
+          "ww",
+          out && out.ok ? "info" : "error",
+          req.url + " -> " + (out && out.ok ? "ok" : "GAGAL"),
+          {
+            ms: Date.now() - _mulaiWw,
+            err: out && out.ok ? undefined : (out && out.err) || "no-op",
+            cabang: b.branch || b.newName || undefined,
+          },
+        );
       } catch (_) {}
       res.writeHead(200, { "Content-Type": "application/json" });
       res.end(JSON.stringify(out || { ok: false, err: "no-op" }));
@@ -4461,6 +4914,7 @@ const server = http.createServer(async (req: any, res: any) => {
   }
 
   // Python autocomplete via Jedi (static analysis, no model)
+
   if (req.method === "POST" && req.url === "/pycomplete") {
     let body = "";
     req.on("data", (c: any) => (body += c));
@@ -4591,9 +5045,26 @@ const server = http.createServer(async (req: any, res: any) => {
       // never reached.
       if (ext === ".html" || ext === ".htm") {
         const dir = resolved.replace(/\\/g, "/").replace(/\/[^\/]*$/, "/");
-        const baseTag =
-          '<base href="/preview-file-assets/' + encodeURI(dir) + '">';
+        const prefix = "/preview-file-assets/" + encodeURI(dir); // ends with "/"
+        const baseTag = '<base href="' + prefix + '">';
         let html = fs.readFileSync(resolved, "utf8");
+        // ── Root-absolute asset URLs ──
+        //
+        // <base> only rewrites RELATIVE URLs. A root-absolute one -- src="/x",
+        // href="/x" -- ignores <base> and resolves against the ORIGIN, which in
+        // the preview is the WOLFSPACE server, not the previewed app. So a built
+        // SPA, whose bundle is emitted as <script src="/assets/index-*.js"> by
+        // Vite / CRA / webpack, loaded NOTHING and the page sat blank -- while a
+        // real browser served from the dist root loaded it fine. That is the
+        // "Web Dev is blank but the real browser works" mismatch. Rewrite those
+        // to the same assets endpoint (index.html's own folder is the app root
+        // for a build). Protocol-relative //host and the assets prefix itself
+        // are left alone. Runtime fetch("/api/…") is not rewritten -- that needs
+        // a real backend, and a real browser would not resolve it either.
+        html = html.replace(
+          /\b(src|href)\s*=\s*(["'])\/(?!\/|preview-file-assets\/)/gi,
+          (m: any, attr: string, q: string) => attr + "=" + q + prefix,
+        );
         html = /<head[^>]*>/i.test(html)
           ? html.replace(/<head[^>]*>/i, (m: any) => m + baseTag)
           : baseTag + html;
@@ -4861,7 +5332,36 @@ if (_dijalankanLangsung) {
       `\n  WOLFSPACE  ->  http://${HOST}:${PORT}\n  (serves chat, executes code, verifies by running)\n`,
     );
     startWwWatcher();
+    startReaktif();
   });
+}
+
+// ── THE REACTIVE REPORTER STARTS BY ITSELF ───────────────────────────────────
+//
+// A reactive agent you have to switch on is not reactive, it is a feature with
+// a setup step. It starts with the server, on the folder the app was opened
+// against, and says nothing at all until it has something to say.
+//
+// WHAT IT MAY DO IS NOT A MATTER OF TRUST. The run is handed a tool array with
+// no writing tools in it (see `hanyaBaca` in agent/self_agent.ts), so it cannot
+// edit, cannot run a command, cannot spawn anything — a tool that is absent
+// cannot be called. The limits that stop it becoming an expensive background
+// leak live in agent/reaktif.ts and are deliberately conservative.
+//
+// AFTER the listen callback, and inside its own try: a watcher that fails to
+// start must never be the reason the server does not come up.
+function startReaktif() {
+  try {
+    if (!(CONFIG.reaktif && CONFIG.reaktif.aktif)) return;
+    _reaktifRoutes.mulaiOtomatis(QROOT);
+    console.log(
+      "  [reaktif] watching " +
+        QROOT +
+        " — the agent may report on its own (reads only, max 12/hour)",
+    );
+  } catch (e: any) {
+    console.log("  [reaktif] did not start: " + e.message);
+  }
 }
 
 // ── ww auto-watcher ──
@@ -4926,6 +5426,7 @@ module.exports = {
   writeToTerminal,
   resizeTerminal,
   closeTerminalSession,
+  shellsTersedia,
 };
 
 // Marks this file as a MODULE rather than a global script. Left as `export {}`

@@ -67,11 +67,28 @@ describe("penyelidik AppContainer tidak memblokir event loop", () => {
     expect(AC).toMatch(/^\s*sidAsync,$/m);
   });
 
-  test("keduanya memakai execFile, bukan execFileSync", () => {
-    for (const nama of ["function tersediaAsync()", "function sidAsync()"]) {
-      const t = tubuh(AC, nama);
-      expect(t).toMatch(/\bexecFile\(/);
-      expect(t).not.toMatch(/execFileSync/);
+  test("jalur asinkron tak pernah menyentuh execFileSync", () => {
+    // DIPERLUAS SAAT PROBE MULAI MENDELEGASI. tersediaAsync() dulu memanggil
+    // execFile sendiri; sekarang ia memanggil _ujiSekaliAsync() dan, kalau
+    // probe pertama gagal, _pastikanProfilAsync() yang mendaftarkan profil
+    // AppContainer. Memeriksa badan tersediaAsync() SAJA akan lulus sementara
+    // panggilan pemblokirnya bersembunyi satu tingkat di bawah -- jadi setiap
+    // fungsi yang bisa dijangkau jalur ini disebut di sini.
+    for (const nama of [
+      "async function tersediaAsync()",
+      "function _ujiSekaliAsync()",
+      "function _pastikanProfilAsync()",
+      "function sidAsync()",
+    ]) {
+      expect(tubuh(AC, nama)).not.toContain("execFileSync");
+    }
+    // Dan yang benar-benar mengerjakan spawn memakai bentuk asinkronnya.
+    for (const nama of [
+      "function _ujiSekaliAsync()",
+      "function _pastikanProfilAsync()",
+      "function sidAsync()",
+    ]) {
+      expect(tubuh(AC, nama)).toContain("execFile(");
     }
   });
 
@@ -101,10 +118,23 @@ describe("penyelidik AppContainer tidak memblokir event loop", () => {
     // Tanpa ini keduanya bisa menyimpang: satu menyebut container siap, satu
     // lagi tidak, dan gejalanya bergantung pada siapa yang kebetulan jalan
     // duluan.
-    for (const nama of ["function tersedia()", "function tersediaAsync()"]) {
+    for (const nama of [
+      "function tersedia()",
+      "async function tersediaAsync()",
+    ]) {
+      expect(tubuh(AC, nama)).toContain("_tersediaMurah()");
+    }
+    // Penilaian hasilnya TURUN satu tingkat ketika probe dipisah supaya bisa
+    // dijalankan ULANG sesudah profil didaftarkan. Ia tetap kode yang sama --
+    // sekarang malah lebih terbagi -- jadi yang diperiksa pindah ke tempat ia
+    // berada sekarang, bukan asersinya yang dilonggarkan.
+    for (const nama of [
+      "function _ujiSekali()",
+      "function _ujiSekaliAsync()",
+    ]) {
       const t = tubuh(AC, nama);
-      expect(t).toMatch(/_tersediaMurah\(\)/);
-      expect(t).toMatch(/_nilaiUji\(/);
+      expect(t).toContain("_nilaiUji(");
+      expect(t).toContain("_nilaiGagal(");
     }
   });
 });

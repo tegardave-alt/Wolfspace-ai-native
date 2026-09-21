@@ -130,7 +130,13 @@ describe("aliran SSE yang ditahan terbuka tidak memacetkan antrean", () => {
     // Bentuk lama `await teruskanSSE(res)` tak boleh kembali.
     expect(SRC).not.toMatch(/await\s+teruskanSSE\(/);
     expect(SRC).toMatch(/teruskanSSE\(res\)\.catch\(/);
-    expect(SRC).toMatch(/JANGAN di-await/);
+    // Alasannya harus ADA, tapi kata-katanya bukan urusan uji ini: yang dijaga
+    // adalah "jangan di-await, dan sebabnya ditulis", bukan kalimat tertentu.
+    // Versi sebelumnya memakukan satu kalimat Indonesia dan patah begitu
+    // komentarnya diterjemahkan, padahal kodenya tak berubah sedikit pun.
+    // @penpot/mcp adalah bukti terukurnya, jadi namanya yang jadi jangkar.
+    expect(SRC).toMatch(/do not await this|JANGAN di-await/i);
+    expect(SRC).toMatch(/penpot/i);
   });
 });
 

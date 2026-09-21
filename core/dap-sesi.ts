@@ -1,10 +1,14 @@
 "use strict";
 /**
- * ── A DAP debug session, with state the renderer can read ──
+ * dap-sesi.ts — one debug session, and the state the renderer reads from it.
  *
- * core/dap.ts speaks the protocol. This file REMEMBERS: one session has state
- * (where it is stopped, what its variables hold, what has been printed), and the
- * renderer asks for it in a single request.
+ * ROLE IN THE SYSTEM. core/dap.ts speaks the protocol; this file REMEMBERS.
+ * A session knows where it is stopped, what its variables hold and what has
+ * been printed, and the renderer asks for all of that in a single request.
+ *
+ * CONNECTS TO
+ *   imports  ./dap (the protocol client)
+ *   used by  server/routes/dap.ts, which exposes it over HTTP
  *
  * WHY IT IS PULLED HERE RATHER THAN IN THE RENDERER. When a program stops at a
  * breakpoint, what is needed is not one answer but three requests in sequence:

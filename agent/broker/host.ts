@@ -1,9 +1,14 @@
-// ── Broker (trusted host) ──
-// The ONLY thing in the system with real fs/network access on behalf of a
-// capability zone. Code in the zone never touches fs/https directly — it sends
-// a request here, the Broker checks it against Policy, executes it itself if
-// allowed, and returns just the result. The zone never sees credentials, real
-// paths outside its grant, or raw sockets.
+// host.ts — the Broker: the ONLY thing in WOLFSPACE with real fs and network
+// access on behalf of a capability zone.
+//
+// ROLE IN THE SYSTEM. Zone code never touches fs or https itself. It sends a
+// request here; the Broker checks it against Policy, performs it, and returns
+// only the result. The zone never sees credentials, paths outside its grant, or
+// a raw socket.
+//
+// CONNECTS TO
+//   imports  fs, http, https, ./policy, and lazily ./audit-log, ./commandchain
+//   used by  agent/broker/index.ts, the public entry point
 "use strict";
 
 import * as fs from "fs";

@@ -1,7 +1,15 @@
-// Debug bus — a single event log wired through ALL of WOLFSPACE's logic.
-// Every meaningful step (model call, execution, retry, cloud request, error)
-// emits a structured event. Events live in a ring buffer, stream live to any
-// /debug viewer, and append to a log file. Toggle with config.debug = false.
+// debug.ts — the debug bus: one structured event log that every part of the
+// backend writes to.
+//
+// ROLE IN THE SYSTEM. Each meaningful step — model call, execution, retry,
+// cloud request, error — emits an event. Events go three places at once: a
+// ring buffer in memory, a live stream to any open /debug viewer, and a log
+// file. Off entirely with config.debug = false.
+//
+// CONNECTS TO
+//   imports  fs, os, path, config.json
+//   used by  almost everything in agent/: chat, cloud, dspy_tool, mcp-client,
+//            python-agent, sandbox, self_agent, tools/index
 
 import * as fs from "fs";
 import * as os from "os";

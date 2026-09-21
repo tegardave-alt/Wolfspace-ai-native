@@ -1,16 +1,17 @@
-// One safe way to put a NAME on a blocking stretch.
+// ukur-blok.ts — puts a NAME on a blocking stretch, safely, from anywhere.
 //
-// WHY IT EXISTS. agent/pemantau-blokir.ts measures how long the event loop is
-// held in one unbroken stretch, and in desktop mode that loop belongs to the
-// thread that draws the window — so a long stretch IS the "Not Responding"
-// state. But the monitor can only name what is labelled, and its own docstring
-// says so: an empty contributor list means the block came from somewhere with
-// no instrument on it.
+// ROLE IN THE SYSTEM. agent/pemantau-blokir.ts measures how LONG the event loop
+// was held; this is what tells it WHERE. The monitor can only name what is
+// labelled, so before this, a twenty-second freeze reported its size and never
+// its source: startup, snapshot, safe-edit and the transpile were labelled,
+// while the entire tool-execution path — where every synchronous child process
+// lives — was not.
 //
-// Everything that had a label was startup, snapshot, safe-edit and the
-// TypeScript transpile. The whole tool-execution path — where every synchronous
-// child process lives — had none. So a twenty-second freeze reported its size
-// and never its source, and there was nothing to do with the report but guess.
+// CONNECTS TO
+//   imports  ./pemantau-blokir, lazily and defensively (see below)
+//   used by  the paths that block: appcontainer-jail, bash-jail, wsl-jail,
+//            broker/zone-process, platform/posix, platform/windows,
+//            python-worker, server.ts
 //
 // WHY A WRAPPER AND NOT A DIRECT require(). Losing the instrument must never
 // cost the operation. These call sites run in the main process, in worker

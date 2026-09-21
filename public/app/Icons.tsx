@@ -1,10 +1,10 @@
-// Icons — extracted from app.tsx (see public/app.tsx for the App orchestrator).
-// Loaded via APP_MODULES in index.html: CONCATenated BEFORE app.tsx (prepended),
-// then run through Babel once into a single global scope. Function bodies
-// (hooks/React/SB) execute at render time.
-
-/* ----------------------------- Icons ----------------------------- */
-// Props are whatever the caller spreads onto the <svg>: width, height, style,
+// Icons.tsx — every inline SVG the UI draws, in one place.
+//
+// ROLE IN THE SYSTEM. Icons are inline rather than a package: the renderer has
+// no module graph, so an icon library cannot be imported (see public/app.tsx).
+// Each icon is a function returning an <svg>, so it costs nothing until it is
+// rendered.
+//
 // Props are whatever the caller spreads onto the <svg>: width, height, style,
 // className, and so on.
 //
@@ -15,6 +15,25 @@
 type PropsIkon = Record<string, unknown>;
 
 const Icon = {
+  /**
+   * The GitHub mark, as GitHub publishes it.
+   *
+   * FILLED, not stroked, unlike almost every other icon here. The shared `svg`
+   * helper in Components.tsx sets `fill="none"` with a stroke width, which
+   * turns this path into an unreadable tangle of outlines -- so it carries its
+   * own element rather than going through that helper.
+   */
+  githubMark: (p: PropsIkon) => (
+    <svg
+      viewBox="0 0 16 16"
+      width={(p && p.width) || 18}
+      height={(p && p.height) || 18}
+      fill="currentColor"
+      aria-hidden="true"
+    >
+      <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.012 8.012 0 0 0 16 8c0-4.42-3.58-8-8-8z" />
+    </svg>
+  ),
   // Traced (potrace) from the WOLFSPACE reference mark — a wolf head in profile.
   wolf: (p: PropsIkon) => (
     <svg viewBox="0 0 416 416" fill="none" {...p}>
@@ -159,9 +178,55 @@ l87 0 -54 56 c-115 118 -323 267 -483 346 -72 36 -218 98 -230 98 -5 0 -6 -15
       />
     </svg>
   ),
+  /**
+   * Play — OUTLINED, not filled.
+   *
+   * It used to be a solid triangle, and it was the odd one out: everything else
+   * in this table is drawn with a 2px stroke on the 24px grid, so a filled
+   * wedge sat heavier than its neighbours at the same size. In the editor
+   * toolbar, beside code, that weight is exactly what made the button shout.
+   *
+   * The one caller is the Run button, which asked for the quieter shape.
+   */
   play: (p: PropsIkon) => (
     <svg viewBox="0 0 24 24" fill="none" {...p}>
-      <path d="M7 5l12 7-12 7V5z" fill="currentColor" />
+      <path
+        d="M7 4.5l12 7.5-12 7.5V4.5z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinejoin="round"
+      />
+    </svg>
+  ),
+  /**
+   * Save — a floppy disk, drawn to the same grid as everything else here.
+   *
+   * 24×24, 2px stroke, round caps and joins: the conventions Lucide publishes
+   * for its set, which this table already follows. Written here rather than
+   * pulled in as a dependency, for the same reason `play` is — one more icon
+   * does not justify a package, and the toolbar had two hand-written copies of
+   * these shapes inline in app.tsx before this.
+   *
+   * Three parts, and each one is load-bearing to reading it as a disk: the body
+   * with its clipped corner, the shutter at the top, and the label at the
+   * bottom. Drop any of them and it becomes an unlabelled rounded square.
+   */
+  save: (p: PropsIkon) => (
+    <svg viewBox="0 0 24 24" fill="none" {...p}>
+      <path
+        d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2z"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
+      <path
+        d="M17 21v-8H7v8M7 3v5h8"
+        stroke="currentColor"
+        strokeWidth="2"
+        strokeLinecap="round"
+        strokeLinejoin="round"
+      />
     </svg>
   ),
   pencil: (p: PropsIkon) => (

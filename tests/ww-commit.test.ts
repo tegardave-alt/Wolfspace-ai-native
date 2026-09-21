@@ -105,14 +105,18 @@ describe("jalur HTTP dan UI terpasang", () => {
     expect(S).toMatch(/ww\.commitAll\(b\.path, b\.message\)/);
   });
 
-  test("tombol muncul HANYA saat ada perubahan", () => {
-    // Tombol commit pada working tree bersih tak melakukan apa pun kecuali
-    // memberi pesan gagal — lebih baik tak ditampilkan.
+  test("Commit cannot be started on a clean tree", () => {
+    // It used to be HIDDEN when clean (`{g.dirty && !committing &&`). Now it is
+    // a menu item that stays in place and is DISABLED instead, so the Git
+    // actions menu keeps one shape and the tooltip says why. Same rule, new
+    // form: a clean tree must never be able to open the commit form.
     const B = fs.readFileSync(
       require.resolve("../public/app/Sidebar.tsx"),
       "utf8",
     );
-    expect(B).toMatch(/\{g\.dirty && !committing &&/);
+    expect(B).not.toMatch(/\{g\.dirty && !committing &&/);
+    expect(B).toMatch(/disabled=\{busy \|\| !g\.dirty \|\| committing\}/);
+    expect(B).toMatch(/Nothing to commit/);
   });
 
   test("pesan kosong di UI = BATAL, bukan commit tanpa pesan", () => {
