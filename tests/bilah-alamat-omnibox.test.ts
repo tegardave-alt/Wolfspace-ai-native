@@ -237,7 +237,7 @@ describe("situs luar digambar WebContentsView, bukan iframe/webview", () => {
     // sandbox OS-nya sendiri terpaksa dilepas di mesin ini — alasannya diukur
     // dan dikunci di describe "kurungan view browser dilonggarkan seperlunya".
     // Yang TIDAK boleh ikut dilonggarkan adalah dua ini.
-    const t = MAIN.slice(MAIN.indexOf("function _brBuat()"));
+    const t = MAIN.slice(MAIN.indexOf("function _brBuat("));
     expect(t).toMatch(/nodeIntegration: false/);
     expect(t).toMatch(/contextIsolation: true/);
   });
@@ -352,7 +352,7 @@ describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
   });
 
   test("keadaan lengkap bisa diminta kapan saja", () => {
-    expect(MAIN2).toMatch(/function _brKeadaan\(\)/);
+    expect(MAIN2).toMatch(/function _brKeadaan\(/);
     expect(MAIN2).toMatch(/aksi === "diagnosa"/);
     // Yang membedakan kelima kemungkinan di atas.
     for (const medan of ["memuat", "rusak", "bounds", "anakDiJendela"])
@@ -394,7 +394,7 @@ describe("panel putih harus bisa dilacak ke mesin yang benar", () => {
 describe("kurungan view browser dilonggarkan seperlunya saja", () => {
   const M = bangunMain();
   const t = M.slice(
-    M.indexOf("function _brBuat()"),
+    M.indexOf("function _brBuat("),
     M.indexOf("function browserAksi("),
   );
   // The REASONING lives in electron/main.ts. main.js is built from it by
@@ -402,7 +402,7 @@ describe("kurungan view browser dilonggarkan seperlunya saja", () => {
   // explanation against the build output would only prove it is absent.
   const S = baca("electron/main.ts");
   const ts = S.slice(
-    S.indexOf("function _brBuat()"),
+    S.indexOf("function _brBuat("),
     S.indexOf("function browserAksi("),
   );
 

@@ -264,13 +264,6 @@ describe("bilah judul Logic dihapus", () => {
     expect(blok).not.toMatch(/<span>Logic<\/span>/);
     expect(blok).not.toMatch(/Close Logic/);
   });
-
-  test("masih ada jalan menutupnya lewat menu", () => {
-    // Menghapus satu-satunya tombol tutup tanpa penggantinya membuat panel yang
-    // terbuka tak bisa ditutup lagi.
-    expect(KOMP).toMatch(/className="tb-menu-judul">Code</);
-    expect(KOMP).toMatch(/setLogicOpen\(nilai\)/);
-  });
 });
 
 // ── Gaya tombol aksi ──

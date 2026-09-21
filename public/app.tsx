@@ -3052,13 +3052,112 @@ function App() {
   // usePreviewPanel needs it, and a const cannot be read above its own
   // declaration.
   const [view, setView] = useState("chat");
+  // The browser split is its OWN switch, not a shadow of the editor split.
+  // Splitting the code pane says nothing about wanting two web pages, and a
+  // browser that appears because a second file was opened is a surprise. It
+  // is toggled from the panel menu, like Edge's split screen: two engines,
+  // two address bars, each pane a real tab that navigates on its own.
+  const [browserSplit, setBrowserSplit] = useState(false);
+  // ── Anything drawn OVER the browser must freeze it ──
+  //
+  // The page is a native layer above all DOM (see bekukan in the hook). The
+  // pane menus already step it aside behind a snapshot; the command palette
+  // and modals sit over the same area and were being covered just the same.
+  // They announce themselves on "wolfspace_overlay" ({nama, buka}) rather
+  // than App knowing each one: a new overlay only has to dispatch the event.
+  const [overlayAktif, setOverlayAktif] = useState<string[]>([]);
+  useEffect(() => {
+    const h = (e: any) => {
+      const d = (e && e.detail) || {};
+      if (!d.nama) return;
+      const terbuka = !!d.buka;
+      setOverlayAktif((prev) => {
+        if (terbuka) return prev.includes(d.nama) ? prev : [...prev, d.nama];
+        return prev.filter((n) => n !== d.nama);
+      });
+    };
+    window.addEventListener("wolfspace_overlay", h);
+    return () => window.removeEventListener("wolfspace_overlay", h);
+  }, []);
+  // The agent's proposed panel (A2UI) floats over the preview too.
+  const adaOverlay = overlayAktif.length > 0 || !!a2ui;
+  // Where the divider between the two browser panes sits, as a percentage
+  // of the grid's width. 50 is the browser default; the range is capped so
+  // neither pane can be dragged into an unusable sliver.
+  const [browserSplitPct, setBrowserSplitPct] = useState(50);
+  const browserGridRef = useRef<HTMLDivElement | null>(null);
+  const geserPembagiBrowser = (e: any) => {
+    e.preventDefault();
+    const grid = browserGridRef.current;
+    if (!grid) return;
+    // Measured ONCE: the grid does not move during the drag, only its
+    // columns do, and re-reading it on every move would cost a layout.
+    const r = grid.getBoundingClientRect();
+    const move = (ev: any) => {
+      if (!r.width) return;
+      const pct = ((ev.clientX - r.left) / r.width) * 100;
+      setBrowserSplitPct(Math.min(80, Math.max(20, pct)));
+    };
+    const up = () => {
+      document.removeEventListener("mousemove", move);
+      document.removeEventListener("mouseup", up);
+      document.body.style.userSelect = "";
+      document.body.classList.remove("menyeret-pembagi");
+    };
+    document.body.style.userSelect = "none";
+    // Same trick as geserPembagi: iframes swallow mousemove, so they are
+    // made pointer-transparent for the duration of the drag.
+    document.body.classList.add("menyeret-pembagi");
+    document.addEventListener("mousemove", move);
+    document.addEventListener("mouseup", up);
+  };
   const preview = usePreviewPanel({
     selectedProject,
     onAutoOpen: () => setPanelOpen(true),
     // The Live Browser floats above the window and does not fade out with
-    // the chat page, so it has to be told when that page stops showing.
-    halamanTampil: view === "chat",
+    // the chat page, so it has to be told when that page stops showing —
+    // and when the panel itself is closed, for the same reason.
+    halamanTampil: view === "chat" && panelOpen,
+    // The pane menu is DOM and the page is a native layer above all DOM, so
+    // a menu opened over a loaded page was invisible. While the menu is open
+    // the view steps aside and a snapshot of the page stands in for it, so
+    // what the user sees is the page with the menu on top; closing the menu
+    // brings the live view back without a reload.
+    bekukan: panelMenuOpen || adaOverlay,
+    paneId: 0,
   });
+  const [menuKananOpen, setMenuKananOpen] = useState(false);
+  const previewRight = usePreviewPanel({
+    selectedProject,
+    halamanTampil: view === "chat" && panelOpen && browserSplit,
+    bekukan: menuKananOpen || adaOverlay,
+    paneId: 1,
+    autoPreview: false,
+  });
+  // Closing the split closes the right TAB, as a browser does: the page is
+  // gone, the engine is disposed, and the next split starts from an empty
+  // address bar. Hiding alone would keep a WebContents alive for nothing.
+  const tutupBrowserSplit = () => {
+    setBrowserSplit(false);
+    previewRight.closePane();
+  };
+  // Closing the panel CLOSES THE TABS, by whichever route it closes (the ×,
+  // the toolbar toggle, the palette's Hide Web Dev): the pages are disposed,
+  // the address bars emptied, the split undone, so reopening starts clean.
+  // The alternative -- keeping the pages alive but hidden, as a minimised
+  // browser window does -- was tried and rejected: a hidden page keeps its
+  // memory, and a hidden video keeps playing with nothing on screen to say
+  // where the sound comes from. Skipped on mount: nothing is open yet.
+  const panelPernahBuka = useRef(false);
+  useEffect(() => {
+    if (panelOpen) {
+      panelPernahBuka.current = true;
+      return;
+    }
+    if (!panelPernahBuka.current) return;
+    preview.closePane();
+    if (browserSplit) tutupBrowserSplit();
+  }, [panelOpen]);
   const getPreviewDoc = preview.getDoc;
 
   const [history, setHistory] = useState<any[]>([]);
@@ -5094,7 +5193,28 @@ function App() {
                       flexDirection: "column",
                     }}
                   >
-                    {/* 38px, matching the editor's tab strip (see the header at
+                    <div
+                      ref={browserGridRef}
+                      className={
+                        browserSplit
+                          ? "browser-pane-grid"
+                          : "browser-pane-grid browser-pane-grid-single"
+                      }
+                      style={
+                        browserSplit
+                          ? {
+                              gridTemplateColumns:
+                                "minmax(0, " +
+                                browserSplitPct +
+                                "fr) 6px minmax(0, " +
+                                (100 - browserSplitPct) +
+                                "fr)",
+                            }
+                          : undefined
+                      }
+                    >
+                      <div className="browser-pane">
+                        {/* 38px, matching the editor's tab strip (see the header at
                         the top of the editor column). The two columns sit side
                         by side, so their headers being different heights left
                         the content starting on two different lines — this bar
@@ -5104,501 +5224,582 @@ function App() {
                         is absolutely positioned at left 10px and is 18px wide,
                         so 36px is the clearance it needs, unrelated to height.
                         Its own 28px height still centres inside 38px. */}
-                    <div
-                      style={{
-                        height: "38px",
-                        borderBottom: "1px solid var(--line)",
-                        padding: "0 14px 0 36px",
-                        display: "flex",
-                        alignItems: "center",
-                        justifyContent: "space-between",
-                        gap: "10px",
-                        flexShrink: 0,
-                        position: "relative",
-                      }}
-                    >
-                      <div
-                        style={{
-                          position: "absolute",
-                          left: "10px",
-                          top: "50%",
-                          transform: "translateY(-50%)",
-                          width: "18px",
-                          height: "28px",
-                          display: "flex",
-                          alignItems: "center",
-                          justifyContent: "center",
-                          cursor: "pointer",
-                          color: "#ffffff",
-                          zIndex: 10,
-                        }}
-                        title="Panel menu"
-                        onClick={(e: any) => {
-                          e.stopPropagation();
-                          setPanelMenuOpen(!panelMenuOpen);
-                        }}
-                      >
-                        <svg
-                          width="10"
-                          height="20"
-                          viewBox="0 0 10 20"
-                          fill="none"
-                          xmlns="http://www.w3.org/2000/svg"
-                        >
-                          <circle cx="5" cy="4" r="1.6" fill="#ffffff"></circle>
-                          <circle
-                            cx="5"
-                            cy="10"
-                            r="1.6"
-                            fill="#ffffff"
-                          ></circle>
-                          <circle
-                            cx="5"
-                            cy="16"
-                            r="1.6"
-                            fill="#ffffff"
-                          ></circle>
-                        </svg>
-                      </div>
-                      {panelMenuOpen && (
                         <div
-                          onClick={(e: any) => e.stopPropagation()}
                           style={{
-                            position: "absolute",
-                            top: "38px",
-                            left: "8px",
-                            background: "#181c20",
-                            border: "1px solid #282e36",
-                            borderRadius: "6px",
-                            boxShadow: "0 12px 36px rgba(0,0,0,0.65)",
-                            padding: "6px 0",
-                            zIndex: 2000,
-                            minWidth: "235px",
+                            height: "38px",
+                            borderBottom: "1px solid var(--line)",
+                            padding: "0 14px 0 36px",
+                            display: "flex",
+                            alignItems: "center",
+                            justifyContent: "space-between",
+                            gap: "10px",
+                            flexShrink: 0,
+                            position: "relative",
                           }}
                         >
-                          {/* Visual Picker & Visual Draw moved here from the sidebar
+                          <div
+                            style={{
+                              position: "absolute",
+                              left: "10px",
+                              top: "50%",
+                              transform: "translateY(-50%)",
+                              width: "18px",
+                              height: "28px",
+                              display: "flex",
+                              alignItems: "center",
+                              justifyContent: "center",
+                              cursor: "pointer",
+                              color: "#ffffff",
+                              zIndex: 10,
+                            }}
+                            title="Panel menu"
+                            onClick={(e: any) => {
+                              e.stopPropagation();
+                              setPanelMenuOpen(!panelMenuOpen);
+                            }}
+                          >
+                            <svg
+                              width="10"
+                              height="20"
+                              viewBox="0 0 10 20"
+                              fill="none"
+                              xmlns="http://www.w3.org/2000/svg"
+                            >
+                              <circle
+                                cx="5"
+                                cy="4"
+                                r="1.6"
+                                fill="#ffffff"
+                              ></circle>
+                              <circle
+                                cx="5"
+                                cy="10"
+                                r="1.6"
+                                fill="#ffffff"
+                              ></circle>
+                              <circle
+                                cx="5"
+                                cy="16"
+                                r="1.6"
+                                fill="#ffffff"
+                              ></circle>
+                            </svg>
+                          </div>
+                          {panelMenuOpen && (
+                            <div
+                              className="browser-pane-menu"
+                              onClick={(e: any) => e.stopPropagation()}
+                              style={{
+                                position: "absolute",
+                                top: "38px",
+                                left: "8px",
+                                background: "#181c20",
+                                border: "1px solid #282e36",
+                                borderRadius: "6px",
+                                boxShadow: "0 12px 36px rgba(0,0,0,0.65)",
+                                padding: "6px 0",
+                                zIndex: 2000,
+                                minWidth: "235px",
+                              }}
+                            >
+                              {/* Back and Forward first, as in a browser's own menu; they
+                                  act on this pane's page. The right pane's menu has the
+                                  same two entries. */}
+                              <button
+                                className="btn-reset browser-pane-menu-item"
+                                disabled={!preview.bisaMundur}
+                                onClick={() => {
+                                  setPanelMenuOpen(false);
+                                  preview.mundur();
+                                }}
+                              >
+                                <IkonPanah arah="kiri" />
+                                <span>Back</span>
+                              </button>
+                              <button
+                                className="btn-reset browser-pane-menu-item"
+                                disabled={!preview.bisaMaju}
+                                onClick={() => {
+                                  setPanelMenuOpen(false);
+                                  preview.maju();
+                                }}
+                              >
+                                <IkonPanah arah="kanan" />
+                                <span>Forward</span>
+                              </button>
+                              {/* Split sits first: it changes the panel's shape, the
+                          rest act on what is inside it. The glyph is the
+                          sidebar/split-editor mark — a frame with a divider
+                          — so it reads as "two panes" without a label. */}
+                              <button
+                                className="btn-reset"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  width: "100%",
+                                  padding: "8px 16px",
+                                  color: "#e2e8f0",
+                                  fontSize: "13px",
+                                  fontFamily: "inherit",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e: any) =>
+                                  (e.currentTarget.style.background =
+                                    "rgba(255, 255, 255, 0.08)")
+                                }
+                                onMouseLeave={(e: any) =>
+                                  (e.currentTarget.style.background =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  setPanelMenuOpen(false);
+                                  if (browserSplit) tutupBrowserSplit();
+                                  else setBrowserSplit(true);
+                                }}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <rect
+                                    x="3"
+                                    y="4"
+                                    width="18"
+                                    height="16"
+                                    rx="2"
+                                  ></rect>
+                                  <line x1="12" y1="4" x2="12" y2="20"></line>
+                                </svg>
+                                <span>
+                                  {browserSplit ? "Unsplit" : "Split"}
+                                </span>
+                              </button>
+                              <button
+                                className="btn-reset browser-pane-menu-item"
+                                onClick={() => {
+                                  setPanelMenuOpen(false);
+                                  preview.bukaRiwayat();
+                                }}
+                              >
+                                <IkonRiwayat />
+                                <span>History</span>
+                              </button>
+                              <button
+                                className="btn-reset browser-pane-menu-item"
+                                onClick={() => {
+                                  setPanelMenuOpen(false);
+                                  preview.bukaUkuran();
+                                }}
+                              >
+                                <IkonUkuran />
+                                <span>Size &amp; Zoom</span>
+                              </button>
+                              {/* Visual Picker & Visual Draw moved here from the sidebar
                             — reachable directly from this panel's menu button,
                             no longer from the sidebar. */}
-                          <button
-                            className="btn-reset"
+                              <button
+                                className="btn-reset"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  width: "100%",
+                                  padding: "8px 16px",
+                                  color: "#e2e8f0",
+                                  fontSize: "13px",
+                                  fontFamily: "inherit",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e: any) =>
+                                  (e.currentTarget.style.background =
+                                    "rgba(255, 255, 255, 0.08)")
+                                }
+                                onMouseLeave={(e: any) =>
+                                  (e.currentTarget.style.background =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  // Buka overlay kanvas Logic (React Flow) di atas UI chat.
+                                  setPanelMenuOpen(false);
+                                  setLogicOpen(true);
+                                }}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <rect
+                                    x="3"
+                                    y="4"
+                                    width="6"
+                                    height="5"
+                                    rx="1"
+                                  ></rect>
+                                  <rect
+                                    x="15"
+                                    y="9"
+                                    width="6"
+                                    height="5"
+                                    rx="1"
+                                  ></rect>
+                                  <rect
+                                    x="9"
+                                    y="15"
+                                    width="6"
+                                    height="5"
+                                    rx="1"
+                                  ></rect>
+                                  <path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path>
+                                </svg>
+                                <span>Logic</span>
+                              </button>
+                              <button
+                                className="btn-reset"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  width: "100%",
+                                  padding: "8px 16px",
+                                  color: "#e2e8f0",
+                                  fontSize: "13px",
+                                  fontFamily: "inherit",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e: any) =>
+                                  (e.currentTarget.style.background =
+                                    "rgba(255, 255, 255, 0.08)")
+                                }
+                                onMouseLeave={(e: any) =>
+                                  (e.currentTarget.style.background =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  setPanelMenuOpen(false);
+                                  startPicker();
+                                }}
+                              >
+                                {SB.target({ width: 16, height: 16 })}
+                                <span>Visual Picker</span>
+                              </button>
+                              <button
+                                className="btn-reset"
+                                style={{
+                                  display: "flex",
+                                  alignItems: "center",
+                                  gap: "10px",
+                                  width: "100%",
+                                  padding: "8px 16px",
+                                  color: "#e2e8f0",
+                                  fontSize: "13px",
+                                  fontFamily: "inherit",
+                                  textAlign: "left",
+                                }}
+                                onMouseEnter={(e: any) =>
+                                  (e.currentTarget.style.background =
+                                    "rgba(255, 255, 255, 0.08)")
+                                }
+                                onMouseLeave={(e: any) =>
+                                  (e.currentTarget.style.background =
+                                    "transparent")
+                                }
+                                onClick={() => {
+                                  setPanelMenuOpen(false);
+                                  startVisualDraw();
+                                }}
+                              >
+                                <svg
+                                  width="16"
+                                  height="16"
+                                  viewBox="0 0 24 24"
+                                  fill="none"
+                                  stroke="currentColor"
+                                  strokeWidth="1.5"
+                                  strokeLinecap="round"
+                                  strokeLinejoin="round"
+                                >
+                                  <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path>
+                                  <path d="M13.5 6.5l4 4"></path>
+                                </svg>
+                                <span>Visual Draw</span>
+                              </button>
+                            </div>
+                          )}
+                          <div
                             style={{
+                              flex: 1,
                               display: "flex",
                               alignItems: "center",
-                              gap: "10px",
-                              width: "100%",
-                              padding: "8px 16px",
-                              color: "#e2e8f0",
-                              fontSize: "13px",
-                              fontFamily: "inherit",
-                              textAlign: "left",
-                            }}
-                            onMouseEnter={(e: any) =>
-                              (e.currentTarget.style.background =
-                                "rgba(255, 255, 255, 0.08)")
-                            }
-                            onMouseLeave={(e: any) =>
-                              (e.currentTarget.style.background = "transparent")
-                            }
-                            onClick={() => {
-                              // Buka overlay kanvas Logic (React Flow) di atas UI chat.
-                              setPanelMenuOpen(false);
-                              setLogicOpen(true);
+                              background: "rgba(255,255,255,0.06)",
+                              border: "1px solid rgba(255,255,255,0.12)",
+                              borderRadius: "6px",
+                              padding: "3px 10px",
+                              gap: "6px",
+                              // A floor, not zero: in a narrow split the
+                              // fixed buttons beside it would otherwise
+                              // squeeze the address to nothing.
+                              minWidth: "96px",
                             }}
                           >
                             <svg
-                              width="16"
-                              height="16"
+                              width="13"
+                              height="13"
                               viewBox="0 0 24 24"
                               fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                              stroke="#8b98a9"
+                              strokeWidth="2"
+                              style={{ flexShrink: 0 }}
                             >
-                              <rect
-                                x="3"
-                                y="4"
-                                width="6"
-                                height="5"
-                                rx="1"
-                              ></rect>
-                              <rect
-                                x="15"
-                                y="9"
-                                width="6"
-                                height="5"
-                                rx="1"
-                              ></rect>
-                              <rect
-                                x="9"
-                                y="15"
-                                width="6"
-                                height="5"
-                                rx="1"
-                              ></rect>
-                              <path d="M9 6.5h3a2 2 0 0 1 2 2v.5M9 17.5H6a2 2 0 0 1-2-2V9"></path>
+                              <circle cx="12" cy="12" r="10" />
+                              <circle cx="12" cy="12" r="4" />
+                              <line x1="21.17" y1="8" x2="12" y2="8" />
+                              <line x1="3.95" y1="6.06" x2="8.54" y2="14" />
+                              <line x1="10.88" y1="21.94" x2="15.46" y2="14" />
                             </svg>
-                            <span>Logic</span>
-                          </button>
-                          <button
-                            className="btn-reset"
+                            <input
+                              type="text"
+                              value={preview.inputUrl}
+                              onChange={(e: any) =>
+                                preview.setInputUrl(e.target.value)
+                              }
+                              onFocus={() => preview.mulaiEdit()}
+                              onBlur={() => preview.selesaiEdit()}
+                              onKeyDown={(e: any) => {
+                                if (e.key === "Enter")
+                                  preview.navigate(preview.inputUrl);
+                                else if (e.key === "Escape") {
+                                  preview.batalEdit();
+                                  e.currentTarget.blur();
+                                }
+                              }}
+                              placeholder="Search the web, or type a URL / file path"
+                              title={
+                                "This bar works like a browser address bar:\n" +
+                                "  • file path     C:\\...\\index.html\n" +
+                                "  • URL / domain  github.com, http://localhost:3000\n" +
+                                "  • anything else searches the web"
+                              }
+                              style={{
+                                flex: 1,
+                                background: "transparent",
+                                border: "none",
+                                color: "#e2e8f0",
+                                fontSize: "12px",
+                                outline: "none",
+                                fontFamily: "inherit",
+                                minWidth: 0,
+                              }}
+                            />
+                          </div>
+                          <div
                             style={{
                               display: "flex",
                               alignItems: "center",
-                              gap: "10px",
-                              width: "100%",
-                              padding: "8px 16px",
-                              color: "#e2e8f0",
-                              fontSize: "13px",
-                              fontFamily: "inherit",
-                              textAlign: "left",
-                            }}
-                            onMouseEnter={(e: any) =>
-                              (e.currentTarget.style.background =
-                                "rgba(255, 255, 255, 0.08)")
-                            }
-                            onMouseLeave={(e: any) =>
-                              (e.currentTarget.style.background = "transparent")
-                            }
-                            onClick={() => {
-                              setPanelMenuOpen(false);
-                              startPicker();
+                              gap: "2px",
+                              flexShrink: 0,
                             }}
                           >
-                            {SB.target({ width: 16, height: 16 })}
-                            <span>Visual Picker</span>
-                          </button>
-                          <button
-                            className="btn-reset"
-                            style={{
-                              display: "flex",
-                              alignItems: "center",
-                              gap: "10px",
-                              width: "100%",
-                              padding: "8px 16px",
-                              color: "#e2e8f0",
-                              fontSize: "13px",
-                              fontFamily: "inherit",
-                              textAlign: "left",
-                            }}
-                            onMouseEnter={(e: any) =>
-                              (e.currentTarget.style.background =
-                                "rgba(255, 255, 255, 0.08)")
-                            }
-                            onMouseLeave={(e: any) =>
-                              (e.currentTarget.style.background = "transparent")
-                            }
-                            onClick={() => {
-                              setPanelMenuOpen(false);
-                              startVisualDraw();
-                            }}
-                          >
-                            <svg
-                              width="16"
-                              height="16"
-                              viewBox="0 0 24 24"
-                              fill="none"
-                              stroke="currentColor"
-                              strokeWidth="1.5"
-                              strokeLinecap="round"
-                              strokeLinejoin="round"
+                            <PilZum preview={preview} />
+                            <button
+                              className="btn-reset"
+                              title="Reload / Refresh preview"
+                              onClick={() => preview.refresh()}
+                              style={{
+                                color: "#8b98a9",
+                                padding: "4px 6px",
+                                borderRadius: "4px",
+                                display: "flex",
+                                alignItems: "center",
+                              }}
+                              onMouseEnter={(e: any) =>
+                                (e.currentTarget.style.background =
+                                  "rgba(255,255,255,0.08)")
+                              }
+                              onMouseLeave={(e: any) =>
+                                (e.currentTarget.style.background =
+                                  "transparent")
+                              }
                             >
-                              <path d="M4 20h4l10.5 -10.5a2.828 2.828 0 1 0 -4 -4l-10.5 10.5v4"></path>
-                              <path d="M13.5 6.5l4 4"></path>
-                            </svg>
-                            <span>Visual Draw</span>
-                          </button>
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <polyline points="23 4 23 10 17 10" />
+                                <polyline points="1 20 1 14 7 14" />
+                                <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
+                              </svg>
+                            </button>
+                            <button
+                              className="btn-reset browser-pane-action-devtools"
+                              title="Developer Tools (F12)"
+                              disabled={!preview.url}
+                              onClick={() => preview.devtools()}
+                              style={{
+                                color: "#8b98a9",
+                                padding: "4px 6px",
+                                borderRadius: "4px",
+                                display: "flex",
+                                alignItems: "center",
+                                opacity: preview.url ? 1 : 0.35,
+                              }}
+                              onMouseEnter={(e: any) =>
+                                (e.currentTarget.style.background =
+                                  "rgba(255,255,255,0.08)")
+                              }
+                              onMouseLeave={(e: any) =>
+                                (e.currentTarget.style.background =
+                                  "transparent")
+                              }
+                            >
+                              <IkonDevTools />
+                            </button>
+                            <button
+                              className="btn-reset"
+                              title="Close panel"
+                              onClick={() => setPanelOpen(false)}
+                              style={{
+                                color: "#8b98a9",
+                                padding: "4px 6px",
+                                borderRadius: "4px",
+                                display: "flex",
+                                alignItems: "center",
+                              }}
+                              onMouseEnter={(e: any) => {
+                                e.currentTarget.style.background =
+                                  "rgba(248,81,73,0.15)";
+                                e.currentTarget.style.color = "#f85149";
+                              }}
+                              onMouseLeave={(e: any) => {
+                                e.currentTarget.style.background =
+                                  "transparent";
+                                e.currentTarget.style.color = "#8b98a9";
+                              }}
+                            >
+                              {/* An SVG X icon (not the text glyph '×') so its box and
+                            match the Reload and Open-external buttons beside it. */}
+                              <svg
+                                width="14"
+                                height="14"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="currentColor"
+                                strokeWidth="2"
+                                strokeLinecap="round"
+                                strokeLinejoin="round"
+                              >
+                                <line x1="18" y1="6" x2="6" y2="18" />
+                                <line x1="6" y1="6" x2="18" y2="18" />
+                              </svg>
+                            </button>
+                          </div>
                         </div>
-                      )}
-                      <div
-                        style={{
-                          flex: 1,
-                          display: "flex",
-                          alignItems: "center",
-                          background: "rgba(255,255,255,0.06)",
-                          border: "1px solid rgba(255,255,255,0.12)",
-                          borderRadius: "6px",
-                          padding: "3px 10px",
-                          gap: "6px",
-                          minWidth: 0,
-                        }}
-                      >
-                        <svg
-                          width="13"
-                          height="13"
-                          viewBox="0 0 24 24"
-                          fill="none"
-                          stroke="#8b98a9"
-                          strokeWidth="2"
-                          style={{ flexShrink: 0 }}
-                        >
-                          <circle cx="12" cy="12" r="10" />
-                          <circle cx="12" cy="12" r="4" />
-                          <line x1="21.17" y1="8" x2="12" y2="8" />
-                          <line x1="3.95" y1="6.06" x2="8.54" y2="14" />
-                          <line x1="10.88" y1="21.94" x2="15.46" y2="14" />
-                        </svg>
-                        <input
-                          type="text"
-                          value={preview.inputUrl}
-                          onChange={(e: any) =>
-                            preview.setInputUrl(e.target.value)
-                          }
-                          onKeyDown={(e: any) => {
-                            if (e.key === "Enter")
-                              preview.navigate(preview.inputUrl);
-                          }}
-                          placeholder="Search the web, or type a URL / file path"
-                          title={
-                            "This bar works like a browser address bar:\n" +
-                            "  • file path     C:\\...\\index.html\n" +
-                            "  • URL / domain  github.com, http://localhost:3000\n" +
-                            "  • anything else searches the web"
-                          }
+                        <PanelRiwayat preview={preview} />
+                        <PanelUkuran preview={preview} />
+                        <BilahCari preview={preview} />
+                        <div
                           style={{
                             flex: 1,
-                            background: "transparent",
-                            border: "none",
-                            color: "#e2e8f0",
-                            fontSize: "12px",
-                            outline: "none",
-                            fontFamily: "inherit",
-                            minWidth: 0,
-                          }}
-                        />
-                      </div>
-                      <div
-                        style={{
-                          display: "flex",
-                          alignItems: "center",
-                          gap: "2px",
-                          flexShrink: 0,
-                        }}
-                      >
-                        <button
-                          className="btn-reset"
-                          title="Reload / Refresh preview"
-                          onClick={() => preview.refresh()}
-                          style={{
-                            color: "#8b98a9",
-                            padding: "4px 6px",
-                            borderRadius: "4px",
                             display: "flex",
-                            alignItems: "center",
-                          }}
-                          onMouseEnter={(e: any) =>
-                            (e.currentTarget.style.background =
-                              "rgba(255,255,255,0.08)")
-                          }
-                          onMouseLeave={(e: any) =>
-                            (e.currentTarget.style.background = "transparent")
-                          }
-                        >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <polyline points="23 4 23 10 17 10" />
-                            <polyline points="1 20 1 14 7 14" />
-                            <path d="M3.51 9a9 9 0 0 1 14.85-3.36L23 10M1 14l4.64 4.36A9 9 0 0 0 20.49 15" />
-                          </svg>
-                        </button>
-                        <button
-                          title="Open in an external tab/browser"
-                          onClick={() => {
-                            if (!preview.url && !preview.inputUrl) return;
-                            const isHttp =
-                              preview.inputUrl.startsWith("http://") ||
-                              preview.inputUrl.startsWith("https://");
-                            if (isHttp) {
-                              window.open(preview.inputUrl, "_blank");
-                            } else if (
-                              window.WOLFSPACE &&
-                              window.WOLFSPACE.ipc
-                            ) {
-                              // Electron: there is no HTTP server on 8090 (app://
-                              // is protocol-only), so no external browser can
-                              // reach /preview-file. Open the REAL file from disk
-                              // over file:// — setWindowOpenHandler forwards it to
-                              // shell.openExternal, which launches the OS default
-                              // browser straight at that file.
-                              let p = String(preview.inputUrl).replace(
-                                /\\/g,
-                                "/",
-                              );
-                              if (!p.startsWith("/")) p = "/" + p;
-                              window.open("file://" + encodeURI(p), "_blank");
-                            } else {
-                              // Ordinary server/browser mode: /preview-file really
-                              // is served from the same origin, so a new tab on
-                              // that origin is enough.
-                              window.open(
-                                preview.url || preview.inputUrl,
-                                "_blank",
-                              );
-                            }
-                          }}
-                          style={{
-                            background: "transparent",
-                            border: "none",
-                            color: "#8b98a9",
-                            cursor: "pointer",
-                            padding: "4px 6px",
-                            borderRadius: "4px",
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                          onMouseEnter={(e: any) =>
-                            (e.currentTarget.style.background =
-                              "rgba(255,255,255,0.08)")
-                          }
-                          onMouseLeave={(e: any) =>
-                            (e.currentTarget.style.background = "transparent")
-                          }
-                        >
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <path d="M18 13v6a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2h6" />
-                            <polyline points="15 3 21 3 21 9" />
-                            <line x1="10" y1="14" x2="21" y2="3" />
-                          </svg>
-                        </button>
-                        <button
-                          className="btn-reset"
-                          title="Close panel"
-                          onClick={() => setPanelOpen(false)}
-                          style={{
-                            color: "#8b98a9",
-                            padding: "4px 6px",
-                            borderRadius: "4px",
-                            display: "flex",
-                            alignItems: "center",
-                          }}
-                          onMouseEnter={(e: any) => {
-                            e.currentTarget.style.background =
-                              "rgba(248,81,73,0.15)";
-                            e.currentTarget.style.color = "#f85149";
-                          }}
-                          onMouseLeave={(e: any) => {
-                            e.currentTarget.style.background = "transparent";
-                            e.currentTarget.style.color = "#8b98a9";
+                            flexDirection: "column",
+                            position: "relative",
+                            overflow: "hidden",
+                            background: "#ffffff",
                           }}
                         >
-                          {/* An SVG X icon (not the text glyph '×') so its box and
-                            match the Reload and Open-external buttons beside it. */}
-                          <svg
-                            width="14"
-                            height="14"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="currentColor"
-                            strokeWidth="2"
-                            strokeLinecap="round"
-                            strokeLinejoin="round"
-                          >
-                            <line x1="18" y1="6" x2="6" y2="18" />
-                            <line x1="6" y1="6" x2="18" y2="18" />
-                          </svg>
-                        </button>
-                      </div>
-                    </div>
-                    <div
-                      style={{
-                        flex: 1,
-                        display: "flex",
-                        flexDirection: "column",
-                        position: "relative",
-                        overflow: "hidden",
-                        background: "#ffffff",
-                      }}
-                    >
-                      {/* An external site that refuses to display in a frame does
+                          {/* An external site that refuses to display in a frame does
                           fire onerror — the iframe simply stays white. This
                           overlay replaces that silent white screen with a reason
                           and one way out that actually works. */}
-                      {preview.gagalLuar && (
-                        <div
-                          style={{
-                            position: "absolute",
-                            inset: 0,
-                            zIndex: 5,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            gap: "14px",
-                            padding: "32px",
-                            textAlign: "center",
-                            background: "#0f1318",
-                            color: "#8b98a9",
-                          }}
-                        >
-                          <div style={{ fontSize: "34px" }}>🚫</div>
-                          <h3 style={{ margin: 0, color: "#dce4f0" }}>
-                            Page failed to load
-                          </h3>
-                          {/* The reason comes from the did-fail-load event
+                          {preview.gagalLuar && (
+                            <div
+                              style={{
+                                position: "absolute",
+                                inset: 0,
+                                zIndex: 5,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                gap: "14px",
+                                padding: "32px",
+                                textAlign: "center",
+                                background: "#0f1318",
+                                color: "#8b98a9",
+                              }}
+                            >
+                              <div style={{ fontSize: "34px" }}>🚫</div>
+                              <h3 style={{ margin: 0, color: "#dce4f0" }}>
+                                Page failed to load
+                              </h3>
+                              {/* The reason comes from the did-fail-load event
                               webview rather than invented. An earlier version
                               guessed "the site refuses to be framed" — and when
                               tested against wikipedia.org that guess turned out
                               to blame a site that was perfectly fine. */}
-                          <p
-                            style={{
-                              margin: 0,
-                              fontSize: "13px",
-                              lineHeight: 1.6,
-                              maxWidth: "420px",
-                            }}
-                          >
-                            {preview.gagalLuar}
-                          </p>
-                          <button
-                            className="btn-reset"
-                            onClick={() => window.open(preview.url, "_blank")}
-                            style={{
-                              background: "#2f81f7",
-                              color: "#fff",
-                              border: "none",
-                              borderRadius: "6px",
-                              padding: "8px 16px",
-                              fontSize: "13px",
-                              fontFamily: "inherit",
-                              cursor: "pointer",
-                            }}
-                          >
-                            Open in system browser
-                          </button>
-                          <code
-                            style={{
-                              fontSize: "11px",
-                              background: "#131922",
-                              border: "1px solid #212a36",
-                              borderRadius: "4px",
-                              padding: "4px 8px",
-                              maxWidth: "420px",
-                              wordBreak: "break-all",
-                            }}
-                          >
-                            {preview.url}
-                          </code>
-                        </div>
-                      )}
-                      {preview.url && preview.luar ? (
-                        /* An EMPTY container — a position marker, not content.
+                              <p
+                                style={{
+                                  margin: 0,
+                                  fontSize: "13px",
+                                  lineHeight: 1.6,
+                                  maxWidth: "420px",
+                                }}
+                              >
+                                {preview.gagalLuar}
+                              </p>
+                              <button
+                                className="btn-reset"
+                                onClick={() =>
+                                  window.open(preview.url, "_blank")
+                                }
+                                style={{
+                                  background: "#2f81f7",
+                                  color: "#fff",
+                                  border: "none",
+                                  borderRadius: "6px",
+                                  padding: "8px 16px",
+                                  fontSize: "13px",
+                                  fontFamily: "inherit",
+                                  cursor: "pointer",
+                                }}
+                              >
+                                Open in system browser
+                              </button>
+                              <code
+                                style={{
+                                  fontSize: "11px",
+                                  background: "#131922",
+                                  border: "1px solid #212a36",
+                                  borderRadius: "4px",
+                                  padding: "4px 8px",
+                                  maxWidth: "420px",
+                                  wordBreak: "break-all",
+                                }}
+                              >
+                                {preview.url}
+                              </code>
+                            </div>
+                          )}
+                          {preview.url && preview.luar ? (
+                            /* An EMPTY container — a position marker, not content.
                            An external site is drawn by a WebContentsView in the
                            main process, FLOATING above the window. What is sent
                            to it is this container's rectangle.
@@ -5610,78 +5811,124 @@ function App() {
                            as wikipedia.org.
                            Why not a <webview>: Electron CRASHES with
                            FATAL:check.cc NOTREACHED. */
-                        <div
-                          ref={preview.slotRef}
-                          style={{ flex: 1, width: "100%", height: "100%" }}
-                        />
-                      ) : preview.url ? (
-                        <iframe
-                          ref={preview.iframeRef}
-                          key={preview.refreshKey}
-                          src={preview.url}
-                          style={{
-                            flex: 1,
-                            width: "100%",
-                            height: "100%",
-                            border: "none",
-                          }}
-                          title="Live Web Dev Preview"
-                          sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
-                        />
-                      ) : (
-                        <div
-                          style={{
-                            flex: 1,
-                            display: "flex",
-                            flexDirection: "column",
-                            alignItems: "center",
-                            justifyContent: "center",
-                            padding: "32px",
-                            textAlign: "center",
-                            color: "#8b98a9",
-                            background: "#0f1318",
-                          }}
-                        >
-                          <svg
-                            width="48"
-                            height="48"
-                            viewBox="0 0 24 24"
-                            fill="none"
-                            stroke="#b594f5"
-                            strokeWidth="1.5"
-                            style={{ marginBottom: "16px", opacity: 0.8 }}
-                          >
-                            <rect
-                              x="2"
-                              y="3"
-                              width="20"
-                              height="14"
-                              rx="2"
-                              ry="2"
-                            ></rect>
-                            <line x1="8" y1="21" x2="16" y2="21"></line>
-                            <line x1="12" y1="17" x2="12" y2="21"></line>
-                          </svg>
-                          <div
-                            style={{
-                              fontSize: "15px",
-                              fontWeight: 600,
-                              color: "#e2e8f0",
-                              marginBottom: "8px",
-                            }}
-                          >
-                            Web Dev Live Browser
-                          </div>
-                          <div
-                            style={{
-                              fontSize: "12px",
-                              maxWidth: "320px",
-                              lineHeight: "1.6",
-                            }}
-                          >
-                            LiveBrowser
-                          </div>
+                            <div
+                              ref={preview.slotRef}
+                              style={{
+                                flex: 1,
+                                width: "100%",
+                                height: "100%",
+                                // Seen whenever the view steps aside (a menu
+                                // is open, a load failed): the pane's own
+                                // dark surface, not the white the iframe
+                                // branch wants behind a local page.
+                                background: "#0f1318",
+                                position: "relative",
+                              }}
+                            >
+                              {/* The device box the view is drawn into
+                                  (the whole slot, or a centred device --
+                                  see kotakRef in the hook), holding the
+                                  page's picture while the view is away
+                                  for a menu (see bekukan). */}
+                              <div
+                                ref={preview.kotakRef}
+                                className="browser-pane-kotak"
+                              >
+                                <img
+                                  ref={preview.potretImgRef}
+                                  className="browser-pane-potret"
+                                  style={{ display: "none" }}
+                                  alt=""
+                                  draggable={false}
+                                />
+                              </div>
+                            </div>
+                          ) : preview.url ? (
+                            <iframe
+                              ref={preview.iframeRef}
+                              key={preview.refreshKey}
+                              src={preview.url}
+                              style={{
+                                flex: 1,
+                                width: "100%",
+                                height: "100%",
+                                border: "none",
+                              }}
+                              title="Live Web Dev Preview"
+                              sandbox="allow-scripts allow-same-origin allow-forms allow-popups allow-modals"
+                            />
+                          ) : (
+                            <div
+                              style={{
+                                flex: 1,
+                                display: "flex",
+                                flexDirection: "column",
+                                alignItems: "center",
+                                justifyContent: "center",
+                                padding: "32px",
+                                textAlign: "center",
+                                color: "#8b98a9",
+                                background: "#0f1318",
+                              }}
+                            >
+                              <svg
+                                width="48"
+                                height="48"
+                                viewBox="0 0 24 24"
+                                fill="none"
+                                stroke="#b594f5"
+                                strokeWidth="1.5"
+                                style={{ marginBottom: "16px", opacity: 0.8 }}
+                              >
+                                <rect
+                                  x="2"
+                                  y="3"
+                                  width="20"
+                                  height="14"
+                                  rx="2"
+                                  ry="2"
+                                ></rect>
+                                <line x1="8" y1="21" x2="16" y2="21"></line>
+                                <line x1="12" y1="17" x2="12" y2="21"></line>
+                              </svg>
+                              <div
+                                style={{
+                                  fontSize: "15px",
+                                  fontWeight: 600,
+                                  color: "#e2e8f0",
+                                  marginBottom: "8px",
+                                }}
+                              >
+                                Web Dev Live Browser
+                              </div>
+                              <div
+                                style={{
+                                  fontSize: "12px",
+                                  maxWidth: "320px",
+                                  lineHeight: "1.6",
+                                }}
+                              >
+                                LiveBrowser
+                              </div>
+                            </div>
+                          )}
                         </div>
+                      </div>
+                      {browserSplit && (
+                        <div
+                          className="split-divider browser-pane-divider"
+                          title="Drag to resize the panes"
+                          onMouseDown={geserPembagiBrowser}
+                        />
+                      )}
+                      {browserSplit && (
+                        <LivePreviewPane
+                          preview={previewRight}
+                          title="Live Web Dev Preview (right)"
+                          onClose={tutupBrowserSplit}
+                          menuOpen={menuKananOpen}
+                          onMenuOpen={setMenuKananOpen}
+                        />
                       )}
                     </div>
                   </div>

@@ -287,7 +287,9 @@ describe("jembatan host -> main", () => {
     // `_br`. Searching for what the module itself owns was the mistake.
     const i = MAIN.indexOf("async function _browserDalam");
     const blok = MAIN.slice(i, MAIN.indexOf("function _layaniMintaMain", i));
-    expect(blok).toMatch(/_br && _br\.tampil && _br\.tampil\.webContents/);
+    expect(blok).toMatch(
+      /const paneUtama = _br\.get\(0\)[\s\S]*paneUtama && paneUtama\.tampil && paneUtama\.tampil\.webContents/,
+    );
     expect(blok).not.toMatch(/getType\(\) === "webview"/);
   });
 

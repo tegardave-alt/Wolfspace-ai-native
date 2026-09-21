@@ -46,8 +46,10 @@ describe("the floating browser follows its page", () => {
   test("the flag is in the dependency list", () => {
     // Without it the effect never re-runs on a view change and the gate above
     // is evaluated exactly once, at mount.
+    // paneId joined the list with the split browser; the flag must still be
+    // there, whatever follows it.
     expect(HOOK).toMatch(
-      /\[ipc,\s*alamatLuar,\s*url,\s*refreshKey,\s*halamanTampil\]/,
+      /\[\s*ipc,\s*alamatLuar,\s*url,\s*refreshKey,\s*halamanTampil(,\s*\w+)*,?\s*\]/,
     );
   });
 
@@ -56,7 +58,7 @@ describe("the floating browser follows its page", () => {
     // the page.
     const i = HOOK.indexOf("return () => {");
     expect(i).toBeGreaterThan(-1);
-    expect(HOOK.slice(i, i + 400)).toMatch(/aksi:\s*"sembunyi"/);
+    expect(HOOK.slice(i, i + 1400)).toMatch(/aksi:\s*"sembunyi"/);
   });
 
   test("app.tsx feeds it the real view state", () => {

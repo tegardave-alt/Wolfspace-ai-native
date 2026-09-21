@@ -2153,6 +2153,443 @@ select {
   min-height: 0;
   display: flex;
 }
+.browser-pane-grid {
+  flex: 1;
+  min-width: 0;
+  min-height: 0;
+  display: grid;
+  /* Pane, 6px divider, pane. The fr values are overridden inline while
+     the divider is dragged (browserSplitPct in app.tsx); these are the
+     resting 50/50. */
+  grid-template-columns: minmax(0, 1fr) 6px minmax(0, 1fr);
+  /* One row, capped to the container: an auto row would grow with its
+     content and push the panes below the window edge. */
+  grid-template-rows: minmax(0, 1fr);
+  gap: 0;
+  background: var(--surface-1, #0f1318);
+}
+/* The divider is a grid item here, not a flex item: it needs no flex-basis,
+   only the column it is given, and a full-height hit area. */
+.browser-pane-divider {
+  min-height: 0;
+  align-self: stretch;
+  background: var(--surface-1, #0f1318);
+}
+.browser-pane-grid-single {
+  display: flex;
+  flex-direction: column;
+  gap: 0;
+  background: transparent;
+}
+.browser-pane {
+  /* Each pane is a size container, so its bar can shed buttons when the
+     split makes it narrow (see .browser-pane-action-devtools). */
+  container-type: inline-size;
+  /* flex: 1 matters in SINGLE mode, where the grid falls back to a flex
+     column: without it the pane is sized by its content (the 38px header),
+     the slot below collapses to 0px, and the WebContentsView is told to
+     draw into a 772x0 rectangle -- the log shows exactly that. In the
+     two-column grid the row already stretches, so this is a no-op there. */
+  flex: 1 1 0;
+  min-width: 0;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  background: var(--surface-1, #0f1318);
+}
+/* The right pane's bar, measured against the primary pane's inline-styled
+   bar in app.tsx: 38px tall, 36px left inset, 14px right, 10px gap. Same
+   numbers on both sides is what puts the two omniboxes on one line at the
+   same offset in split mode. The 36px inset on the left holds the ⋮ menu
+   button; here it is left empty on purpose so the pills line up. */
+.browser-pane-address {
+  position: relative;
+  height: 38px;
+  flex: 0 0 38px;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 0 14px 0 36px;
+  border-bottom: 1px solid var(--line, #1f2733);
+  color: #8b98a9;
+  min-width: 0;
+}
+.browser-pane-omnibox {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  /* A floor, not zero: in a narrow split the fixed buttons beside it
+     would otherwise squeeze the address to nothing. */
+  min-width: 96px;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 3px 10px;
+}
+.browser-pane-omnibox input {
+  flex: 1;
+  min-width: 0;
+  background: transparent;
+  border: none;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+/* The ⋮ button, at the left pane's coordinates: 18px wide at left 10px,
+   so the 10px glyph sits at x=14 -- the same spot in both panes. */
+.browser-pane-menu-btn {
+  position: absolute;
+  left: 10px;
+  top: 50%;
+  transform: translateY(-50%);
+  width: 18px;
+  height: 28px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: pointer;
+  color: #ffffff;
+  z-index: 10;
+}
+.browser-pane-menu {
+  position: absolute;
+  top: 38px;
+  left: 8px;
+  background: #181c20;
+  border: 1px solid #282e36;
+  border-radius: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+  padding: 6px 0;
+  z-index: 2000;
+  min-width: 235px;
+}
+/* One entry, the left menu's inline styling as a class so both menus match. */
+.browser-pane-menu-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  width: 100%;
+  padding: 8px 16px;
+  color: #e2e8f0;
+  font-size: 13px;
+  font-family: inherit;
+  text-align: left;
+}
+.browser-pane-menu-item:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.browser-pane-menu-item:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.browser-pane-menu-item:disabled:hover {
+  background: transparent;
+}
+/* In a narrow pane the DevTools button goes first (it has a keyboard
+   route, F12 via the menu); the address keeps its floor. */
+@container (max-width: 300px) {
+  .browser-pane-action-devtools {
+    display: none;
+  }
+}
+.browser-pane-actions {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  flex-shrink: 0;
+}
+.browser-pane-action {
+  color: #8b98a9;
+  padding: 4px 6px;
+  border-radius: 4px;
+  display: flex;
+  align-items: center;
+}
+.browser-pane-action:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.browser-pane-action:disabled {
+  opacity: 0.35;
+  cursor: default;
+}
+.browser-pane-action:disabled:hover {
+  background: transparent;
+}
+.browser-pane-action-close:hover {
+  background: rgba(248, 81, 73, 0.15);
+  color: #f85149;
+}
+/* The history dropdown: under the address bar, over the page (which
+   freezes beneath it -- see KELAS_OVERLAY). */
+.browser-riwayat {
+  position: absolute;
+  top: 38px;
+  left: 8px;
+  right: 8px;
+  max-height: min(60vh, 520px);
+  display: flex;
+  flex-direction: column;
+  background: #181c20;
+  border: 1px solid #282e36;
+  border-radius: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+  z-index: 2000;
+  overflow: hidden;
+}
+.browser-riwayat-kepala {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 10px;
+  border-bottom: 1px solid #282e36;
+}
+.browser-riwayat-kepala input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 5px 8px;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+.browser-riwayat-kepala .browser-pane-action {
+  font-size: 12px;
+  padding: 4px 8px;
+}
+.browser-riwayat-daftar {
+  overflow: auto;
+  padding: 4px 0;
+}
+.browser-riwayat-kosong {
+  padding: 18px 16px;
+  color: #8b98a9;
+  font-size: 12px;
+  text-align: center;
+}
+.browser-riwayat-butir {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) auto;
+  grid-template-areas:
+    "judul waktu"
+    "url waktu";
+  column-gap: 12px;
+  row-gap: 2px;
+  width: 100%;
+  padding: 7px 16px;
+  text-align: left;
+  color: #e2e8f0;
+  font-family: inherit;
+}
+.browser-riwayat-butir:hover {
+  background: rgba(255, 255, 255, 0.08);
+}
+.browser-riwayat-judul {
+  grid-area: judul;
+  font-size: 13px;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.browser-riwayat-url {
+  grid-area: url;
+  font-size: 11px;
+  color: #8b98a9;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+.browser-riwayat-waktu {
+  grid-area: waktu;
+  align-self: center;
+  font-size: 11px;
+  color: #6b7785;
+  white-space: nowrap;
+}
+/* The zoom pill beside the address: only when not 100%. */
+.browser-zum-pil {
+  color: #b594f5;
+  font-size: 11px;
+  padding: 3px 6px;
+  border-radius: 4px;
+  border: 1px solid rgba(181, 148, 245, 0.35);
+  font-variant-numeric: tabular-nums;
+}
+.browser-zum-pil:hover {
+  background: rgba(181, 148, 245, 0.12);
+}
+/* Size & Zoom dropdown: zoom ladder + device presets. */
+.browser-ukuran {
+  position: absolute;
+  top: 38px;
+  left: 8px;
+  width: 300px;
+  background: #181c20;
+  border: 1px solid #282e36;
+  border-radius: 6px;
+  box-shadow: 0 12px 36px rgba(0, 0, 0, 0.65);
+  padding: 6px 0;
+  z-index: 2000;
+}
+.browser-ukuran-judul {
+  padding: 6px 16px 4px;
+  font-size: 11px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: #6b7785;
+}
+.browser-ukuran-zum {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 16px 8px;
+}
+.browser-ukuran-zum .browser-pane-action {
+  min-width: 28px;
+  justify-content: center;
+  font-size: 14px;
+  border: 1px solid rgba(255, 255, 255, 0.12);
+}
+.browser-ukuran-angka {
+  min-width: 48px;
+  text-align: center;
+  font-size: 13px;
+  color: #e2e8f0;
+  font-variant-numeric: tabular-nums;
+}
+.browser-ukuran-butir {
+  display: grid;
+  grid-template-columns: 16px minmax(0, 1fr) auto;
+  gap: 8px;
+}
+.browser-ukuran-butir.aktif {
+  color: #b594f5;
+}
+.browser-ukuran-centang {
+  text-align: center;
+}
+.browser-ukuran-sub {
+  font-size: 11px;
+  color: #8b98a9;
+}
+/* The find bar: a row of its own under the address bar, never over the
+   page (which is a native view that would cover it). */
+.browser-cari {
+  flex: 0 0 34px;
+  height: 34px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 36px;
+  border-bottom: 1px solid var(--line, #1f2733);
+  background: var(--surface-1, #0f1318);
+}
+.browser-cari input {
+  flex: 1;
+  min-width: 0;
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 6px;
+  padding: 4px 8px;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+.browser-cari-hasil {
+  min-width: 42px;
+  text-align: right;
+  font-size: 11px;
+  color: #8b98a9;
+  font-variant-numeric: tabular-nums;
+}
+.browser-pane-content {
+  flex: 1;
+  min-height: 0;
+  display: flex;
+  flex-direction: column;
+  position: relative;
+  overflow: hidden;
+  background: #fff;
+}
+/* The slot shows whenever the view steps aside (a menu is open, a load
+   failed): the pane's own dark surface, not white. */
+.browser-pane-slot {
+  position: relative;
+  background: var(--surface-1, #0f1318);
+}
+/* The device box: the rectangle the view is drawn into. Full slot when
+   Responsive; a centred device (with a hairline frame) for a preset. */
+.browser-pane-kotak {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  transform: translate(-50%, -50%);
+  width: 100%;
+  height: 100%;
+  overflow: hidden;
+}
+.browser-pane-kotak.perangkat {
+  outline: 1px solid rgba(255, 255, 255, 0.14);
+  border-radius: 2px;
+  background: #fff;
+}
+/* The page's snapshot, painted exactly where the view was: same box, so
+   the swap between live view and picture is invisible. */
+.browser-pane-potret {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+  display: block;
+  pointer-events: none;
+  user-select: none;
+}
+.browser-pane-slot,
+.browser-pane-frame {
+  flex: 1;
+  width: 100%;
+  height: 100%;
+  min-height: 0;
+  border: none;
+}
+.browser-pane-error,
+.browser-pane-empty {
+  flex: 1;
+}
+/* An overlay, not a flex sibling: as a sibling it shared the column with the
+   (empty) slot, each taking half the pane. */
+.browser-pane-error {
+  position: absolute;
+  inset: 0;
+  z-index: 5;
+}
+.browser-pane-error,
+.browser-pane-empty {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+  color: #8b98a9;
+  background: #0f1318;
+}
+.browser-pane-error strong,
+.browser-pane-empty strong {
+  color: #e2e8f0;
+}
+.browser-pane-error span,
+.browser-pane-empty span {
+  font-size: 12px;
+  line-height: 1.5;
+}
 .canvas {
   flex: 1;
   display: flex;

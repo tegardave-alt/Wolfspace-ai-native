@@ -576,12 +576,71 @@ function _pasangTandaSelesai(res: any) {
 // renderer (the panel bounds), and it MUST be hidden when the panel closes or a
 // dialog covers it — otherwise it sits on top of the UI. That is why the renderer
 // calls `sembunyi` explicitly instead of relying on CSS.
-let _br: any = null; // { tampil: WebContentsView, win }
+const _br = new Map<number, any>(); // pane id -> { tampil: WebContentsView, win }
+
+// ── Browser history ──
+//
+// Every main-frame navigation of every pane, newest first, one entry per
+// address (a revisit moves it to the top and refreshes its title). Kept in
+// userData so it survives restarts, like a browser's; capped so it never
+// grows without bound. Titles arrive after the navigation and are patched
+// in when they do. VS Code's integrated browser keeps the same kind of list
+// behind its "Show History" command.
+const _RIWAYAT_MAKS = 500;
+let _riwayat: any[] | null = null;
+let _riwayatSimpanJadwal: any = null;
+function _riwayatBerkas() {
+  return path.join(app.getPath("userData"), "browser-riwayat.json");
+}
+function _riwayatMuat(): any[] {
+  if (_riwayat) return _riwayat;
+  try {
+    const t = fs.readFileSync(_riwayatBerkas(), "utf8");
+    const d = JSON.parse(t);
+    _riwayat = Array.isArray(d) ? d : [];
+  } catch (_: any) {
+    _riwayat = [];
+  }
+  return _riwayat!;
+}
+function _riwayatSimpan() {
+  if (_riwayatSimpanJadwal) return;
+  _riwayatSimpanJadwal = setTimeout(() => {
+    _riwayatSimpanJadwal = null;
+    try {
+      fs.writeFileSync(_riwayatBerkas(), JSON.stringify(_riwayatMuat()));
+    } catch (e: any) {
+      _brLog("riwayat simpan FAILED", { pesan: e.message });
+    }
+  }, 800);
+}
+function _riwayatCatat(url: string, judul: string) {
+  if (!/^https?:\/\//i.test(url)) return;
+  const d = _riwayatMuat();
+  const i = d.findIndex((x) => x.url === url);
+  const lama = i >= 0 ? d.splice(i, 1)[0] : null;
+  d.unshift({
+    url,
+    judul: judul || (lama && lama.judul) || "",
+    waktu: Date.now(),
+    hitung: ((lama && lama.hitung) || 0) + 1,
+  });
+  if (d.length > _RIWAYAT_MAKS) d.length = _RIWAYAT_MAKS;
+  _riwayatSimpan();
+}
+function _riwayatJudul(url: string, judul: string) {
+  const d = _riwayatMuat();
+  const e = d.find((x) => x.url === url);
+  if (e && judul && e.judul !== judul) {
+    e.judul = judul;
+    _riwayatSimpan();
+  }
+}
 function _brWin() {
   return BrowserWindow.getAllWindows()[0] || null;
 }
-function _brBuat() {
-  if (_br) return _br;
+function _brBuat(paneId = 0) {
+  if (_br.has(paneId)) return _br.get(paneId);
   const win = _brWin();
   if (!win) return null;
   const { WebContentsView } = require("electron");
@@ -621,6 +680,9 @@ function _brBuat() {
       nodeIntegration: false,
       sandbox: process.env.WOLFSPACE_BROWSER_SANDBOX === "1",
       webSecurity: true,
+      // Hands the application its shortcuts back when the page has focus.
+      // See electron/preload-browser.ts for what is and is not forwarded.
+      preload: path.join(__dirname, "preload-browser.js"),
     },
   });
   const wc = tampil.webContents;
@@ -643,24 +705,99 @@ function _brBuat() {
   // error message in the panel really do reflect what happened.
   const kirim = (t: any, d: any) => {
     try {
-      win.webContents.send("WOLFSPACE:browser", { t, ...d });
+      win.webContents.send("WOLFSPACE:browser", { t, paneId, ...d });
     } catch (_: any) {}
+  };
+  // Whether back/forward are possible travels with every navigation event,
+  // so the renderer's arrows can be enabled or greyed like a browser's.
+  const riwayat = () => {
+    try {
+      return {
+        bisaMundur: wc.navigationHistory.canGoBack(),
+        bisaMaju: wc.navigationHistory.canGoForward(),
+      };
+    } catch (_: any) {
+      return {};
+    }
   };
   wc.on("did-start-loading", () => kirim("muat", {}));
   wc.on("did-stop-loading", () =>
-    kirim("selesai", { url: wc.getURL(), judul: wc.getTitle() }),
+    kirim("selesai", {
+      url: wc.getURL(),
+      judul: wc.getTitle(),
+      ...riwayat(),
+    }),
   );
   wc.on(
     "did-fail-load",
     (_e: any, kode: any, desc: any, url: any, utama: any) => {
       if (!utama) return;
+      // -3 (ERR_ABORTED) means this navigation was superseded by another --
+      // a redirect, a second loadURL, a click while loading. Chrome shows no
+      // error page for it and neither does this panel: reporting it painted
+      // "Page failed to load" over pages that finished loading a moment later.
+      if (kode === -3) return;
       kirim("gagal", { kode, desc, url });
     },
   );
-  wc.on("did-navigate", (_e: any, url: any) => kirim("pindah", { url }));
-  wc.on("did-navigate-in-page", (_e: any, url: any) =>
-    kirim("pindah", { url }),
+  // A crashed or killed renderer is a failed page too; without this the
+  // panel simply went blank with no word of why.
+  wc.on("render-process-gone", (_e: any, rincian: any) => {
+    kirim("gagal", {
+      kode: rincian && rincian.exitCode,
+      desc: "Page process gone: " + ((rincian && rincian.reason) || "unknown"),
+      url: wc.getURL(),
+    });
+  });
+  // A page must not be able to hold the panel hostage with a beforeunload
+  // prompt; there is no dialog surface for it here.
+  wc.on("will-prevent-unload", (e: any) => e.preventDefault());
+  wc.on("did-navigate", (_e: any, url: any) => {
+    _riwayatCatat(url, wc.getTitle());
+    kirim("pindah", { url, ...riwayat() });
+  });
+  // Main frame only: an <iframe> inside the page navigating must not
+  // rewrite the address bar.
+  wc.on("did-navigate-in-page", (_e: any, url: any, utama: any) => {
+    if (!utama) return;
+    _riwayatCatat(url, wc.getTitle());
+    kirim("pindah", { url, ...riwayat() });
+  });
+  wc.on("page-title-updated", (_e: any, judul: any) =>
+    _riwayatJudul(wc.getURL(), String(judul || "")),
   );
+  // ── The application's shortcuts, from inside the page ──
+  //
+  // preload-browser.ts forwards the key presses the page did not handle
+  // (see there for the rules). They travel to the renderer as a "tombol"
+  // event, which re-dispatches them on the window so the palette's and every
+  // other keydown listener see them exactly as if the app itself had focus.
+  const teruskanTombol = (k: any) => kirim("tombol", { ...k });
+  try {
+    wc.ipc.on("WOLFSPACE:browser-keydown", (_e: any, k: any) =>
+      teruskanTombol(k || {}),
+    );
+  } catch (_: any) {}
+  // When the page cannot run the preload -- hidden behind a snapshot, or
+  // crashed -- key presses would vanish. Same rule as the preload, applied
+  // here, before the input reaches the page.
+  wc.on("before-input-event", (e: any, input: any) => {
+    if (!input || input.type !== "keyDown") return;
+    const hidup = tampil.getVisible() && !wc.isCrashed();
+    if (hidup) return;
+    const kunciBukanKetik = input.key === "Escape" || /^F\d+$/.test(input.key);
+    if (!(input.control || input.alt || input.meta) && !kunciBukanKetik) return;
+    e.preventDefault();
+    teruskanTombol({
+      key: input.key,
+      code: input.code,
+      ctrlKey: !!input.control,
+      shiftKey: !!input.shift,
+      altKey: !!input.alt,
+      metaKey: !!input.meta,
+      repeat: !!input.isAutoRepeat,
+    });
+  });
   // ── window.open, as a real browser does it ──
   //
   // The old handler navigated THIS panel to the popup's URL and denied the
@@ -714,9 +851,156 @@ function _brBuat() {
       });
     } catch (_: any) {}
   });
-  _br = { tampil, win };
-  return _br;
+  const state: any = { tampil, win, zum: ZUM_SATU, zumKunci: null };
+  _br.set(paneId, state);
+  // The pane's zoom is put back on every new document (the stylesheet that
+  // carries it belongs to the document, see _brTerapkanZum).
+  wc.on("dom-ready", () => {
+    state.zumKunci = null;
+    _brTerapkanZum(state);
+  });
+  // ── Right-click: a browser's context menu ──
+  //
+  // Native (Menu.popup), because it must float above the native view; the
+  // items are the ones a browser offers where the click landed: link,
+  // selection, editable field, and always Back/Forward/Reload and Inspect.
+  wc.on("context-menu", (_e: any, p: any) => {
+    try {
+      const { Menu, clipboard, shell } = require("electron");
+      const item: any[] = [];
+      item.push({
+        label: "Back",
+        enabled: wc.navigationHistory.canGoBack(),
+        click: () => wc.navigationHistory.goBack(),
+      });
+      item.push({
+        label: "Forward",
+        enabled: wc.navigationHistory.canGoForward(),
+        click: () => wc.navigationHistory.goForward(),
+      });
+      item.push({ label: "Reload", click: () => wc.reload() });
+      if (p.linkURL) {
+        item.push({ type: "separator" });
+        item.push({
+          label: "Open Link in System Browser",
+          click: () => shell.openExternal(p.linkURL),
+        });
+        item.push({
+          label: "Copy Link Address",
+          click: () => clipboard.writeText(p.linkURL),
+        });
+      }
+      if (p.srcURL && p.mediaType === "image") {
+        item.push({
+          label: "Copy Image Address",
+          click: () => clipboard.writeText(p.srcURL),
+        });
+      }
+      if (p.isEditable) {
+        item.push({ type: "separator" });
+        item.push({ label: "Cut", role: "cut", enabled: !!p.selectionText });
+        item.push({ label: "Copy", role: "copy", enabled: !!p.selectionText });
+        item.push({ label: "Paste", role: "paste" });
+        item.push({ label: "Select All", role: "selectAll" });
+      } else if (p.selectionText) {
+        item.push({ type: "separator" });
+        item.push({ label: "Copy", role: "copy" });
+      }
+      item.push({ type: "separator" });
+      item.push({
+        label: "Copy Page Address",
+        click: () => clipboard.writeText(wc.getURL()),
+      });
+      item.push({
+        label: "Inspect Element",
+        click: () => wc.inspectElement(p.x, p.y),
+      });
+      // p.x/p.y are page coordinates; the popup wants window coordinates.
+      const b = tampil.getBounds();
+      Menu.buildFromTemplate(item).popup({
+        window: win,
+        x: Math.round(b.x + p.x),
+        y: Math.round(b.y + p.y),
+      });
+    } catch (e: any) {
+      _brLog("context-menu FAILED", { pesan: e.message });
+    }
+  });
+  // Find in page: every result goes back to the pane's find bar.
+  wc.on("found-in-page", (_e: any, r: any) => {
+    kirim("cari", {
+      aktif: r.activeMatchOrdinal,
+      total: r.matches,
+      selesai: r.finalUpdate,
+    });
+  });
+  return state;
 }
+// Applies (or clears) the pane's device emulation against its current
+// bounds: the device's CSS size, scaled down to fit, never up.
+function _brEmulasi(b: any) {
+  const wc = b.tampil.webContents;
+  try {
+    if (!b.emulasi) {
+      wc.disableDeviceEmulation();
+      return;
+    }
+    const e = b.emulasi;
+    const kotak = b.tampil.getBounds();
+    const lebar = Math.max(50, Number(e.lebar) || 0);
+    const tinggi = Math.max(50, Number(e.tinggi) || 0);
+    const skala = Math.min(
+      1,
+      kotak.width > 0 ? kotak.width / lebar : 1,
+      kotak.height > 0 ? kotak.height / tinggi : 1,
+    );
+    wc.enableDeviceEmulation({
+      screenPosition: e.mobile ? "mobile" : "desktop",
+      screenSize: { width: lebar, height: tinggi },
+      viewPosition: { x: 0, y: 0 },
+      deviceScaleFactor: Number(e.dpr) || 0,
+      viewSize: { width: lebar, height: tinggi },
+      scale: skala,
+    });
+  } catch (err: any) {
+    _brLog("emulasi FAILED", { pesan: err.message });
+  }
+}
+// ── Zoom that belongs to the PANE, not to the site ──
+//
+// Chromium keeps browser zoom (setZoomFactor) PER ORIGIN, shared by every
+// WebContents in the session: zoom the left pane on bing.com and the right
+// pane on bing.com follows. Two panes side by side must not do that. So the
+// zoom is applied as a stylesheet on the document's root -- `html { zoom }`
+// -- which scales the page's CSS pixels exactly the way browser zoom lays
+// it out, but lives in THIS document only. It is re-inserted on every new
+// document (dom-ready), and the origin's own zoom is pinned at 100% so the
+// two never compound.
+function _brTerapkanZum(b: any) {
+  const wc = b.tampil.webContents;
+  const faktor = ZUM_LANGKAH[b.zum];
+  try {
+    if (wc.getZoomFactor() !== 1) wc.setZoomFactor(1);
+  } catch (_: any) {}
+  const lama = b.zumKunci;
+  b.zumKunci = null;
+  const pasang = () => {
+    if (faktor === 1) return Promise.resolve();
+    return wc
+      .insertCSS("html { zoom: " + faktor + " !important; }")
+      .then((kunci: string) => {
+        b.zumKunci = kunci;
+      });
+  };
+  (lama ? wc.removeInsertedCSS(lama).catch(() => {}) : Promise.resolve())
+    .then(pasang)
+    .catch((e: any) => _brLog("zum FAILED", { pesan: e.message }));
+}
+// The zoom ladder Chrome uses; index 5 is 100%.
+const ZUM_LANGKAH = [
+  0.5, 0.67, 0.75, 0.8, 0.9, 1, 1.1, 1.25, 1.5, 1.75, 2, 2.5, 3,
+];
+const ZUM_SATU = 5;
 // Electron is TWO engines: the renderer (web) and main (node). When the panel is
 // blank the first question is always "which one failed" — and with no record from
 // the main side, all that is visible is white, which could mean anything: the view
@@ -738,19 +1022,21 @@ function _brLog(pesan: any, data?: any) {
     );
   } catch (_: any) {}
 }
-function _brKeadaan() {
-  if (!_br) return { ada: false };
-  const wc = _br.tampil.webContents;
+function _brKeadaan(paneId = 0) {
+  const state = _br.get(paneId);
+  if (!state) return { ada: false, paneId };
+  const wc = state.tampil.webContents;
   let anak = -1;
   try {
-    anak = _br.win.contentView.children.length;
+    anak = state.win.contentView.children.length;
   } catch (_: any) {}
   let b = null;
   try {
-    b = _br.tampil.getBounds();
+    b = state.tampil.getBounds();
   } catch (_: any) {}
   return {
     ada: true,
+    paneId,
     url: wc.getURL(),
     judul: wc.getTitle(),
     memuat: wc.isLoading(),
@@ -761,36 +1047,182 @@ function _brKeadaan() {
 }
 function browserAksi(p: any) {
   const aksi = (p && p.aksi) || "";
+  const paneId = Number.isInteger(p && p.paneId) ? p.paneId : 0;
   if (aksi === "diagnosa") {
-    const k = _brKeadaan();
+    const k = _brKeadaan(paneId);
     _brLog("diagnosa", k);
     return { ok: true, ...k };
   }
+  if (aksi === "riwayat") {
+    const q = String((p && p.cari) || "").toLowerCase();
+    const d = _riwayatMuat();
+    const hasil = q
+      ? d.filter(
+          (x) =>
+            String(x.url).toLowerCase().includes(q) ||
+            String(x.judul || "")
+              .toLowerCase()
+              .includes(q),
+        )
+      : d;
+    return { ok: true, riwayat: hasil.slice(0, 200) };
+  }
+  if (aksi === "riwayat-hapus") {
+    _riwayat = [];
+    _riwayatSimpan();
+    return { ok: true };
+  }
+  if (aksi === "riwayat-hapus-satu") {
+    const d = _riwayatMuat();
+    const i = d.findIndex((x) => x.url === p.url);
+    if (i >= 0) {
+      d.splice(i, 1);
+      _riwayatSimpan();
+    }
+    return { ok: true };
+  }
+  // Right-click on a history entry. Native, and the answer waits for the
+  // menu to close, so the pane can reload the list right after.
+  if (aksi === "menu-riwayat") {
+    const win = _brWin();
+    if (!win || !p.url) return { ok: false };
+    const { Menu, clipboard, shell } = require("electron");
+    return new Promise((res) => {
+      let aksiDipilih = "";
+      const menu = Menu.buildFromTemplate([
+        {
+          label: "Open",
+          click: () => {
+            aksiDipilih = "buka";
+          },
+        },
+        {
+          label: "Open in System Browser",
+          click: () => shell.openExternal(p.url),
+        },
+        {
+          label: "Copy Address",
+          click: () => clipboard.writeText(p.url),
+        },
+        { type: "separator" },
+        {
+          label: "Clear",
+          click: () => {
+            const d = _riwayatMuat();
+            const i = d.findIndex((x) => x.url === p.url);
+            if (i >= 0) {
+              d.splice(i, 1);
+              _riwayatSimpan();
+            }
+            aksiDipilih = "hapus";
+          },
+        },
+      ]);
+      menu.popup({
+        window: win,
+        callback: () => res({ ok: true, aksi: aksiDipilih }),
+      });
+    });
+  }
+  // A local file is drawn by the window's own <iframe>, not by a view, so
+  // its DevTools are the window's: the frame appears in the Elements tree.
+  if (aksi === "devtools-jendela") {
+    const win = _brWin();
+    if (!win) return { ok: false, error: "no window" };
+    const wc = win.webContents;
+    if (wc.isDevToolsOpened()) wc.closeDevTools();
+    else wc.openDevTools({ mode: "detach" });
+    return { ok: true };
+  }
   if (aksi === "sembunyi") {
-    if (_br) {
+    const state = _br.get(paneId);
+    if (state) {
       try {
-        _br.win.contentView.removeChildView(_br.tampil);
+        if (state.tampil.webContents.isFocused()) state.win.webContents.focus();
+        state.win.contentView.removeChildView(state.tampil);
       } catch (e: any) {
         _brLog("removeChildView FAILED", { pesan: e.message });
       }
     }
     return { ok: true };
   }
-  if (aksi === "buang") {
-    if (_br) {
+  // ── The page stays on screen while a menu is open ──
+  //
+  // FIRST PRINCIPLE: the view is a native layer above ALL of the window's
+  // DOM. Nothing drawn by the renderer -- a menu, an overlay -- can appear
+  // on top of it. A browser's own menus are native popups for exactly this
+  // reason. Here the menu is DOM, so the only way for it to be seen is for
+  // the view to get out of the way -- and what the user must NOT see is the
+  // page vanishing, or flickering, behind the menu.
+  //
+  // Three steps, in this order, so that no frame is ever blank:
+  //   potret  photograph the page while it is still on screen; the renderer
+  //           paints the picture UNDER the view, pixel for pixel where the
+  //           page is, and waits until that paint has happened;
+  //   beku    only then make the view invisible -- setVisible(false), not
+  //           removeChildView: the view stays attached and keeps its
+  //           compositor surface, so showing it again does not start from
+  //           an empty frame the way a re-attached view does;
+  //   buka    (from the renderer, when the menu closes) makes it visible
+  //           again on top of the picture, and the picture is dropped after.
+  if (aksi === "potret") {
+    const state = _br.get(paneId);
+    if (!state) return { ok: true };
+    return state.tampil.webContents
+      .capturePage()
+      .then((img: any) => {
+        let potret = "";
+        try {
+          if (img && !img.isEmpty())
+            potret =
+              "data:image/jpeg;base64," + img.toJPEG(85).toString("base64");
+        } catch (e: any) {
+          _brLog("potret FAILED", { pesan: e.message });
+        }
+        return { ok: true, potret };
+      })
+      .catch((e: any) => {
+        _brLog("capturePage FAILED", { pesan: e.message });
+        return { ok: true };
+      });
+  }
+  if (aksi === "beku") {
+    const state = _br.get(paneId);
+    if (state) {
       try {
-        _br.win.contentView.removeChildView(_br.tampil);
-        _br.tampil.webContents.close();
+        // Focus goes back to the window with the view: keys typed into an
+        // invisible page would vanish.
+        if (state.tampil.webContents.isFocused()) state.win.webContents.focus();
+        state.tampil.setVisible(false);
+        state.beku = true;
       } catch (e: any) {
-        _brLog("dispose FAILED", { pesan: e.message });
+        _brLog("setVisible(false) FAILED", { pesan: e.message });
       }
-      _br = null;
     }
     return { ok: true };
   }
+  if (aksi === "buang") {
+    const state = _br.get(paneId);
+    if (state) {
+      try {
+        state.win.contentView.removeChildView(state.tampil);
+        state.tampil.webContents.close();
+      } catch (e: any) {
+        _brLog("dispose FAILED", { pesan: e.message });
+      }
+      _br.delete(paneId);
+    }
+    return { ok: true };
+  }
+  // Only "buka" may create a view. "tampil" is a heartbeat -- from a
+  // ResizeObserver and a 400ms interval -- and a late one arriving after
+  // "buang" (removing the observed slot from the DOM fires the observer too)
+  // used to rebuild the engine it had just disposed: a hidden WebContents that
+  // nothing referenced and nothing could close.
+  if (aksi !== "buka" && !_br.has(paneId)) return { ok: true, ada: false };
   let b;
   try {
-    b = _brBuat();
+    b = _brBuat(paneId);
   } catch (e: any) {
     _brLog("_brBuat MELEMPAR", { pesan: e.message });
     return { ok: false, error: "buat view: " + e.message };
@@ -815,6 +1247,7 @@ function browserAksi(p: any) {
       _brLog("bounds ZERO from renderer", kotak);
     try {
       b.tampil.setBounds(kotak);
+      if (b.emulasi) _brEmulasi(b);
     } catch (e: any) {
       _brLog("setBounds FAILED", { kotak, pesan: e.message });
       return { ok: false, error: "setBounds: " + e.message };
@@ -833,6 +1266,11 @@ function browserAksi(p: any) {
           anakSekarang: b.win.contentView.children.length,
         });
       }
+      // Frozen for a menu (see "beku"): visible again, surface intact.
+      if (b.beku) {
+        b.tampil.setVisible(true);
+        b.beku = false;
+      }
     } catch (e: any) {
       // This used to be swallowed by `catch (_) {}` — if mounting the layer was the
       // thing that failed, the symptom was "blank" with not one trace behind it.
@@ -843,21 +1281,94 @@ function browserAksi(p: any) {
 
   try {
     if (aksi === "buka" && p.url) {
-      _brLog("loadURL", { url: String(p.url).slice(0, 80) });
-      b.tampil.webContents.loadURL(p.url).catch((e: any) => {
-        _brLog("loadURL REFUSED", { pesan: e.message });
-      });
+      const wc = b.tampil.webContents;
+      const kunci = String(p.kunci === undefined ? "" : p.kunci);
+      const sama = b.diminta && b.diminta.url === p.url;
+      // The renderer effect re-runs on every dependency change -- leaving and
+      // returning to the chat page, closing and reopening the panel -- and
+      // each run sends "buka" again. Loading the address again on each of
+      // those threw away whatever the user had navigated to inside the page.
+      // Same address, same key: nothing to do, the view is mounted above.
+      // Same address, new key: the refresh button -- reload the CURRENT page.
+      // New address: navigate.
+      if (sama && b.diminta.kunci === kunci && wc.getURL()) {
+        _brLog("buka: sudah dimuat, dilewati", {
+          url: String(p.url).slice(0, 80),
+        });
+      } else if (sama && wc.getURL() && !wc.isCrashed()) {
+        _brLog("buka: alamat sama, muat ulang", {
+          url: String(p.url).slice(0, 80),
+        });
+        b.diminta = { url: p.url, kunci };
+        wc.reload();
+      } else {
+        _brLog("loadURL", { url: String(p.url).slice(0, 80) });
+        b.diminta = { url: p.url, kunci };
+        wc.loadURL(p.url).catch((e: any) => {
+          _brLog("loadURL REFUSED", { pesan: e.message });
+        });
+      }
     }
     if (aksi === "muat-ulang") b.tampil.webContents.reload();
+    // Find in page. `teks` empty stops the search and clears the highlight.
+    if (aksi === "cari") {
+      const wc = b.tampil.webContents;
+      const teks = String(p.teks || "");
+      _brLog("cari", { teks, lanjut: !!p.lanjut, mundur: !!p.mundur });
+      if (!teks) wc.stopFindInPage("clearSelection");
+      else {
+        // Electron's `findNext` means "begin a NEW session": true for the
+        // first request of a term, false for Enter/Shift+Enter follow-ups.
+        const id = wc.findInPage(teks, {
+          forward: p.mundur ? false : true,
+          findNext: !p.lanjut,
+        });
+        _brLog("cari: permintaan", { id });
+      }
+    }
+    // Page zoom: +1 / -1 a step on Chrome's ladder, 0 back to 100%.
+    if (aksi === "zum") {
+      const arah = Number(p.arah) || 0;
+      b.zum =
+        arah === 0
+          ? ZUM_SATU
+          : Math.max(0, Math.min(ZUM_LANGKAH.length - 1, b.zum + arah));
+      _brTerapkanZum(b);
+      return { ok: true, zum: ZUM_LANGKAH[b.zum] };
+    }
+    // ── Viewport size: device emulation, as VS Code's browser does it ──
+    //
+    // The page is rendered at the device's CSS size (and mobile UA/touch
+    // when asked) and SCALED to fit the pane, so a 393x852 phone sits
+    // inside a wide pane instead of being cropped. The scale follows the
+    // pane: every bounds update re-applies it (see _brEmulasi).
+    if (aksi === "emulasi") {
+      b.emulasi = p.perangkat ? { ...p.perangkat } : null;
+      _brEmulasi(b);
+      return { ok: true, emulasi: b.emulasi };
+    }
+    // The real Chromium DevTools for THIS page, as a browser's F12: its own
+    // window (mode: detach), because the view is a native layer and a docked
+    // panel would have nowhere to dock. Toggles, like F12 does.
+    if (aksi === "devtools") {
+      const wc = b.tampil.webContents;
+      if (wc.isDevToolsOpened()) wc.closeDevTools();
+      else wc.openDevTools({ mode: "detach" });
+    }
     if (aksi === "mundur" && b.tampil.webContents.navigationHistory.canGoBack())
       b.tampil.webContents.navigationHistory.goBack();
+    if (
+      aksi === "maju" &&
+      b.tampil.webContents.navigationHistory.canGoForward()
+    )
+      b.tampil.webContents.navigationHistory.goForward();
   } catch (e: any) {
     _brLog("navigation FAILED", { aksi, pesan: e.message });
     return { ok: false, error: "navigasi: " + e.message };
   }
 
-  if (aksi === "buka") _brLog("sesudah buka", _brKeadaan());
-  return { ok: true, ..._brKeadaan() };
+  if (aksi === "buka") _brLog("sesudah buka", _brKeadaan(paneId));
+  return { ok: true, ..._brKeadaan(paneId) };
 }
 
 /**
@@ -910,7 +1421,8 @@ async function _browserDalam(args: any) {
   // it is a WebContentsView created HERE and floated above the window, and
   // this module already holds it. Searching for what this file itself owns was
   // the mistake.
-  const tamu = _br && _br.tampil && _br.tampil.webContents;
+  const paneUtama = _br.get(0);
+  const tamu = paneUtama && paneUtama.tampil && paneUtama.tampil.webContents;
   if (!tamu || tamu.isDestroyed()) {
     // WHAT MAIN ACTUALLY SEES, not a flat claim.
     //

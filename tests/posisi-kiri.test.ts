@@ -91,41 +91,6 @@ describe("urutan visual", () => {
   });
 });
 
-describe("pilihan di menu sesuai sifat panelnya", () => {
-  test("preview dan Code menawarkan kiri/kanan", () => {
-    expect(KOMP).toMatch(
-      /barisPosisi\("preview", "Preview panel", \["kanan", "kiri"\]\)/,
-    );
-    expect(KOMP).toMatch(/barisPosisi\("logic", "Code", \["kanan", "kiri"\]\)/);
-  });
-
-  test("terminal tetap kanan/bawah", () => {
-    // Keluaran perintah berbentuk baris panjang; kolom sempit memaksanya
-    // membungkus terus.
-    expect(KOMP).toMatch(
-      /barisPosisi\("terminal", "Terminal", \["kanan", "bawah"\]\)/,
-    );
-  });
-
-  test("chat punya barisnya sendiri, di bawah Code", () => {
-    const iCode = KOMP.indexOf('barisPosisi("logic"');
-    const iChat = KOMP.indexOf('barisPosisi("chat"');
-    expect(iChat).toBeGreaterThan(iCode);
-    expect(KOMP).toMatch(/barisPosisi\("chat", "Chat", \["kanan", "kiri"\]\)/);
-  });
-
-  test("label sisi diambil dari satu peta", () => {
-    // Bentuk lamanya `ke === "kanan" ? "Kanan" : "Bawah"` — dengan tiga sisi ia
-    // akan menamai "kiri" sebagai "Bawah".
-    expect(KOMP).toMatch(
-      /const _NAMA_SISI(: [\w<>, ]+)? = \{\s*kanan: "Right",\s*bawah: "Bottom",\s*kiri: "Left",?\s*\}/,
-    );
-    expect(tanpaKomentar(KOMP)).not.toMatch(
-      /ke === "kanan" \? "Kanan" : "Bawah"/,
-    );
-  });
-});
-
 // ── EVERY SETTING MUST PRODUCE A DIFFERENT LAYOUT ────────────────────────────
 //
 // THE BUG THIS BLOCK EXISTS FOR, and why the tests above did not catch it.

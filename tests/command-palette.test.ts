@@ -53,7 +53,9 @@ whenPossible("command palette (needs playwright)", () => {
     const { chromium } = require("playwright");
     const b = await chromium.launch();
     try {
-      const ctx = await b.newContext({ viewport: { width: 1400, height: 800 } });
+      const ctx = await b.newContext({
+        viewport: { width: 1400, height: 800 },
+      });
       await ctx.addInitScript(() => {
         try {
           localStorage.setItem("wolfspace_migrated", "1");
@@ -136,7 +138,10 @@ whenPossible("command palette (needs playwright)", () => {
       // empty query; "?" shows everything (help).
       await p.keyboard.press("Control+Shift+P");
       await p.waitForSelector(".kpal-modal", { timeout: 10000 });
-      const teratas = await p.$eval(".kpal-item", (e: any) => e.textContent || "");
+      const teratas = await p.$eval(
+        ".kpal-item",
+        (e: any) => e.textContent || "",
+      );
       expect(teratas.toLowerCase()).toContain("explorer");
       await p.keyboard.type("?");
       await p.waitForTimeout(150);
@@ -149,6 +154,9 @@ whenPossible("command palette (needs playwright)", () => {
       // App, not the view toggles) is findable by fuzzy search.
       await p.keyboard.press("Control+Shift+P");
       await p.waitForSelector(".kpal-modal", { timeout: 10000 });
+      // Focus lands on the input a tick after the modal mounts; typing before
+      // that goes nowhere and the list stays unfiltered.
+      await p.focus(".kpal-input");
       await p.keyboard.type("reload preview");
       await p.waitForTimeout(200);
       const webdev = await p.$eval(

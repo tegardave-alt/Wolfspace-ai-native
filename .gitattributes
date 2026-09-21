@@ -36,6 +36,7 @@ scripts/ikon-bahasa/** linguist-vendored
 # stays correct if anyone ever commits them.
 electron/main.js         linguist-generated
 electron/preload.js      linguist-generated
+electron/preload-browser.js linguist-generated
 public/app.build.js      linguist-generated
 # Emitted by scripts/ikon-bahasa/build.cjs from material-icon-theme; its own
 # first line says DO NOT EDIT BY HAND. 22 KB of icon data, not authored code.

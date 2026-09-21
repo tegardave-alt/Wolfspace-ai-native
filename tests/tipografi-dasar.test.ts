@@ -103,11 +103,15 @@ describe("tak ada teks badan yang kembali membesar", () => {
     const semua = [
       ...CSS.matchAll(/([.#][\w-]+)[^{}]*\{[^}]*font-size: 15px/g),
     ].map((m) => m[1]);
+    // .kpal-input is the command palette's search box: one line of input
+    // the user reads while typing, sized like VS Code's own quick input,
+    // not running prose.
     expect(semua.sort()).toEqual([
       ".brand-name",
       ".gh-judul",
       ".hitl-title",
       ".info-rail-jml",
+      ".kpal-input",
     ]);
   });
 });

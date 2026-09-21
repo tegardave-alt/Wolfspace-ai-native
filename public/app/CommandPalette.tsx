@@ -170,9 +170,7 @@ function _cocok(cmds: any[], qMentah: string): any[] {
   if (!q) {
     // No query: most-recently-used first, then registration order.
     const withIdx = usable.map((c, i) => ({ c, i, judulPos: [] as number[] }));
-    withIdx.sort(
-      (a, b) => mruIdx(a.c.id) - mruIdx(b.c.id) || a.i - b.i,
-    );
+    withIdx.sort((a, b) => mruIdx(a.c.id) - mruIdx(b.c.id) || a.i - b.i);
     return withIdx;
   }
   const dinilai = usable
@@ -289,6 +287,17 @@ function CommandPalette() {
   const inputRef = (React as any).useRef(null);
   const daftarRef = (React as any).useRef(null);
 
+  // Tell the app when we are over it: the browser panes (a native layer
+  // above all DOM) step aside behind a snapshot while an overlay is open,
+  // or the palette would be drawn underneath the page.
+  (React as any).useEffect(() => {
+    window.dispatchEvent(
+      new CustomEvent("wolfspace_overlay", {
+        detail: { nama: "palette", buka },
+      }),
+    );
+  }, [buka]);
+
   // Re-render when the registry changes while we are open.
   (React as any).useEffect(() => {
     const fn = () => paksa();
@@ -354,8 +363,7 @@ function CommandPalette() {
   (React as any).useEffect(() => {
     // Keep the highlighted row in view as the arrow keys move it.
     const el =
-      daftarRef.current &&
-      daftarRef.current.querySelector('[data-sorot="1"]');
+      daftarRef.current && daftarRef.current.querySelector('[data-sorot="1"]');
     if (el && el.scrollIntoView) el.scrollIntoView({ block: "nearest" });
   }, [aman, q, buka]);
 
@@ -460,7 +468,9 @@ function CommandPalette() {
                     {_ikonPosisi(x.c.posisiIkon)}
                   </span>
                 ) : null}
-                {x.c.kunci ? <span className="kpal-kunci">{x.c.kunci}</span> : null}
+                {x.c.kunci ? (
+                  <span className="kpal-kunci">{x.c.kunci}</span>
+                ) : null}
               </div>
             ))
           )}
