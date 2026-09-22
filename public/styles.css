@@ -2477,6 +2477,58 @@ select {
   font-size: 11px;
   color: #8b98a9;
 }
+/* The device-mode toggle lights up while a device is in force. */
+.browser-pane-action-perangkat.aktif {
+  color: #b594f5;
+}
+/* The emulation row: under the address bar, never over the page. */
+.browser-emulasi {
+  flex: 0 0 32px;
+  height: 32px;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 0 10px 0 36px;
+  border-bottom: 1px solid var(--line, #1f2733);
+  background: var(--surface-1, #0f1318);
+  font-size: 12px;
+  color: #8b98a9;
+  overflow: hidden;
+}
+.browser-emulasi-pilih,
+.browser-emulasi-angka {
+  background: rgba(255, 255, 255, 0.06);
+  border: 1px solid rgba(255, 255, 255, 0.12);
+  border-radius: 5px;
+  padding: 3px 6px;
+  color: #e2e8f0;
+  font: inherit;
+  font-size: 12px;
+  outline: none;
+}
+.browser-emulasi-pilih {
+  max-width: 140px;
+}
+.browser-emulasi-angka {
+  width: 58px;
+  text-align: center;
+  -moz-appearance: textfield;
+  appearance: textfield;
+  font-variant-numeric: tabular-nums;
+}
+.browser-emulasi-angka::-webkit-outer-spin-button,
+.browser-emulasi-angka::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+}
+.browser-emulasi-kali {
+  color: #6b7785;
+}
+.browser-emulasi-info {
+  margin-left: auto;
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
 /* The find bar: a row of its own under the address bar, never over the
    page (which is a native view that would cover it). */
 .browser-cari {

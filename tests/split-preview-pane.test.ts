@@ -276,7 +276,7 @@ describe("web-dev split preview", () => {
     expect(main).toMatch(
       /b\.tampil\.setBounds\(kotak\);\s*if \(b\.emulasi\) _brEmulasi\(b\);/,
     );
-    expect(hook).toMatch(/const PERANGKAT: \{/);
+    expect(hook).toMatch(/const PERANGKAT: Perangkat\[\] = \[/);
     expect(hook).toMatch(/function PanelUkuran/);
     expect(hook).toMatch(/function PilZum/);
     for (const src of [app, hook]) {
@@ -329,6 +329,37 @@ describe("web-dev split preview", () => {
       /onContextMenu=\{\(e: any\) => \{\s*e\.preventDefault\(\);\s*preview\.menuRiwayat\(x\.url\);/,
     );
     expect(hook).toMatch(/muatRiwayat\(riwayatCariRef\.current\);/);
+  });
+
+  // Device mode as DevTools / VS Code present it: a toolbar toggle in both
+  // bars, an emulation row under the address bar while a device is in force
+  // (preset, W x H editable, rotate, fit scale, DPR, exit), and the device's
+  // user agent applied by main (page reloaded when it changed).
+  test("device mode: toolbar toggle, emulation row, rotate, custom size, UA", () => {
+    expect(hook).toMatch(/function BilahEmulasi/);
+    expect(hook).toMatch(/function IkonPerangkat/);
+    expect(hook).toMatch(/const toggleModePerangkat = useCallback/);
+    expect(hook).toMatch(/const putarPerangkat = useCallback/);
+    expect(hook).toMatch(/const ubahUkuranPerangkat = useCallback/);
+    expect(hook).toMatch(/ua: UA_IPHONE/);
+    expect(hook).toMatch(
+      /Auto \(\{Math\.round\(preview\.skalaEmulasi \* 100\)\}%\)/,
+    );
+    for (const src of [app, hook]) {
+      expect(src).toMatch(
+        /onClick=\{\(\) => preview\.toggleModePerangkat\(\)\}/,
+      );
+      expect(src).toMatch(/<BilahEmulasi preview=\{preview\} \/>/);
+    }
+    expect(main).toMatch(
+      /const uaBaru = \(b\.emulasi && b\.emulasi\.ua\) \|\| b\.uaBersih \|\| "";/,
+    );
+    expect(main).toMatch(/if \(uaBerubah && wc\.getURL\(\)\) wc\.reload\(\);/);
+    // Emulation is re-applied on every new document (a reload drops it).
+    expect(main).toMatch(
+      /wc\.on\("dom-ready", \(\) => \{\s*if \(state\.emulasi\) _brEmulasi\(state\);/,
+    );
+    expect(css).toMatch(/\.browser-emulasi \{/);
   });
 
   test("closing the panel closes the tabs, not just the panel", () => {

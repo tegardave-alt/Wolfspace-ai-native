@@ -20,7 +20,15 @@
 // Device presets, as VS Code's integrated browser offers them: CSS size,
 // mobile (touch + mobile screen), device pixel ratio. "Responsive" is the
 // pane itself. Applied through Electron's device emulation, scaled to fit.
-const PERANGKAT: {
+// The user agents VS Code's presets send, so UA-sniffing sites serve the
+// phone layout the way they do in DevTools' device mode.
+const UA_IPHONE =
+  "Mozilla/5.0 (iPhone; CPU iPhone OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+const UA_PIXEL =
+  "Mozilla/5.0 (Linux; Android 14; Pixel 8) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/124.0.0.0 Mobile Safari/537.36";
+const UA_IPAD =
+  "Mozilla/5.0 (iPad; CPU OS 17_0 like Mac OS X) AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.0 Mobile/15E148 Safari/604.1";
+type Perangkat = {
   id: string;
   nama: string;
   sub?: string;
@@ -28,7 +36,9 @@ const PERANGKAT: {
   tinggi?: number;
   mobile?: boolean;
   dpr?: number;
-}[] = [
+  ua?: string;
+};
+const PERANGKAT: Perangkat[] = [
   { id: "responsif", nama: "Responsive", sub: "fills the pane" },
   {
     id: "iphone-se",
@@ -37,6 +47,7 @@ const PERANGKAT: {
     tinggi: 667,
     mobile: true,
     dpr: 2,
+    ua: UA_IPHONE,
   },
   {
     id: "iphone-15",
@@ -45,6 +56,7 @@ const PERANGKAT: {
     tinggi: 852,
     mobile: true,
     dpr: 3,
+    ua: UA_IPHONE,
   },
   {
     id: "pixel-8",
@@ -53,6 +65,7 @@ const PERANGKAT: {
     tinggi: 915,
     mobile: true,
     dpr: 2.625,
+    ua: UA_PIXEL,
   },
   { id: "ipad", nama: "iPad", lebar: 768, tinggi: 1024, mobile: true, dpr: 2 },
   {
@@ -62,6 +75,7 @@ const PERANGKAT: {
     tinggi: 768,
     mobile: false,
     dpr: 1,
+    ua: UA_IPAD,
   },
 ];
 
@@ -131,8 +145,14 @@ function usePreviewPanel({
   }, []);
   // ── Size & zoom ──
   const [zum, setZum] = useState(1);
-  const [perangkat, setPerangkat] = useState("responsif");
+  // null = Responsive (the pane). Otherwise the device in force: a preset,
+  // a rotated preset, or a custom size typed into the emulation row.
+  const [perangkat, setPerangkat] = useState<Perangkat | null>(null);
+  const perangkatTerakhirRef = useRef<Perangkat>(PERANGKAT[1]!);
   const [ukuranBuka, setUkuranBuka] = useState(false);
+  // The fit scale the feeder is using, shown as "Auto (78%)" in the row.
+  const [skalaEmulasi, setSkalaEmulasi] = useState(1);
+  const skalaRef = useRef(1);
   // The device box inside the slot: the view is drawn INTO this box, not
   // the whole slot. Responsive: the box is the slot. A preset: the box is
   // the device's size scaled down to fit, centred, on the pane's dark
@@ -144,8 +164,7 @@ function usePreviewPanel({
   const kotakRef = useRef<HTMLDivElement | null>(null);
   const perangkatRef = useRef<any>(null);
   useEffect(() => {
-    const d = PERANGKAT.find((x) => x.id === perangkat);
-    perangkatRef.current = d && d.lebar ? d : null;
+    perangkatRef.current = perangkat && perangkat.lebar ? perangkat : null;
     // Nudge the feeder: it listens for resize and re-measures the box.
     try {
       window.dispatchEvent(new Event("resize"));
@@ -359,28 +378,68 @@ function usePreviewPanel({
     },
     [ipc, paneId],
   );
-  const pilihPerangkat = useCallback(
-    (id: string) => {
-      const d = PERANGKAT.find((x) => x.id === id) || PERANGKAT[0]!;
-      setPerangkat(d.id);
+  // The device in force is sent to main whole (size, mobile, DPR, UA); null
+  // is Responsive. Every route into device mode goes through here.
+  const terapkanPerangkat = useCallback(
+    (d: Perangkat | null) => {
+      setPerangkat(d);
+      if (d) perangkatTerakhirRef.current = d;
       if (!ipc) return;
       ipc
         .invoke("browser", {
           aksi: "emulasi",
           paneId,
-          perangkat:
-            d.id === "responsif"
-              ? null
-              : {
-                  lebar: d.lebar,
-                  tinggi: d.tinggi,
-                  mobile: !!d.mobile,
-                  dpr: d.dpr,
-                },
+          perangkat: d
+            ? {
+                lebar: d.lebar,
+                tinggi: d.tinggi,
+                mobile: !!d.mobile,
+                dpr: d.dpr,
+                ua: d.ua || "",
+              }
+            : null,
         })
         .catch(() => {});
     },
     [ipc, paneId],
+  );
+  const pilihPerangkat = useCallback(
+    (id: string) => {
+      const d = PERANGKAT.find((x) => x.id === id);
+      terapkanPerangkat(d && d.lebar ? d : null);
+    },
+    [terapkanPerangkat],
+  );
+  // The toolbar toggle: off -> the last device used (iPhone SE at first);
+  // on -> Responsive. The same switch DevTools' device-toolbar button is.
+  const toggleModePerangkat = useCallback(() => {
+    terapkanPerangkat(perangkat ? null : perangkatTerakhirRef.current);
+  }, [perangkat, terapkanPerangkat]);
+  const putarPerangkat = useCallback(() => {
+    if (!perangkat) return;
+    terapkanPerangkat({
+      ...perangkat,
+      lebar: perangkat.tinggi,
+      tinggi: perangkat.lebar,
+    });
+  }, [perangkat, terapkanPerangkat]);
+  // A size typed into the row: the device becomes "Custom", keeping the
+  // mobile flag, DPR and UA of whatever it was based on.
+  const ubahUkuranPerangkat = useCallback(
+    (lebar: number, tinggi: number) => {
+      const dasar = perangkat || perangkatTerakhirRef.current;
+      const l = Math.max(50, Math.min(4000, Math.round(lebar) || 0));
+      const t = Math.max(50, Math.min(4000, Math.round(tinggi) || 0));
+      if (!l || !t) return;
+      terapkanPerangkat({
+        ...dasar,
+        id: "kustom",
+        nama: "Custom",
+        lebar: l,
+        tinggi: t,
+      });
+    },
+    [perangkat, terapkanPerangkat],
   );
   const bukaUkuran = useCallback(() => setUkuranBuka(true), []);
   const tutupUkuran = useCallback(() => setUkuranBuka(false), []);
@@ -518,10 +577,18 @@ function usePreviewPanel({
           kotak.style.width = Math.round(d.lebar * skala) + "px";
           kotak.style.height = Math.round(d.tinggi * skala) + "px";
           kotak.classList.add("perangkat");
+          if (Math.abs(skala - skalaRef.current) > 0.004) {
+            skalaRef.current = skala;
+            setSkalaEmulasi(skala);
+          }
         } else {
           kotak.style.width = "100%";
           kotak.style.height = "100%";
           kotak.classList.remove("perangkat");
+          if (skalaRef.current !== 1) {
+            skalaRef.current = 1;
+            setSkalaEmulasi(1);
+          }
         }
       }
       const r = (kotak || el).getBoundingClientRect();
@@ -835,6 +902,10 @@ function usePreviewPanel({
     zumUbah,
     perangkat,
     pilihPerangkat,
+    toggleModePerangkat,
+    putarPerangkat,
+    ubahUkuranPerangkat,
+    skalaEmulasi,
     ukuranBuka,
     bukaUkuran,
     tutupUkuran,
@@ -1035,6 +1106,21 @@ function LivePreviewPane({
             </svg>
           </button>
           <button
+            className={
+              "btn-reset browser-pane-action browser-pane-action-perangkat" +
+              (preview.perangkat ? " aktif" : "")
+            }
+            title={
+              preview.perangkat
+                ? "Exit device mode"
+                : "Toggle device mode (phone / tablet viewport)"
+            }
+            disabled={!preview.url || !preview.luar}
+            onClick={() => preview.toggleModePerangkat()}
+          >
+            <IkonPerangkat />
+          </button>
+          <button
             className="btn-reset browser-pane-action browser-pane-action-devtools"
             title="Developer Tools (F12)"
             disabled={!preview.url}
@@ -1066,6 +1152,7 @@ function LivePreviewPane({
         </div>
       </div>
       <BilahCari preview={preview} />
+      <BilahEmulasi preview={preview} />
       <div className="browser-pane-content">
         {preview.gagalLuar && (
           <div className="browser-pane-error">
@@ -1349,12 +1436,16 @@ function PanelUkuran({ preview }: { preview: any }) {
           key={d.id}
           className={
             "btn-reset browser-pane-menu-item browser-ukuran-butir" +
-            (preview.perangkat === d.id ? " aktif" : "")
+            ((preview.perangkat ? preview.perangkat.id : "responsif") === d.id
+              ? " aktif"
+              : "")
           }
           onClick={() => preview.pilihPerangkat(d.id)}
         >
           <span className="browser-ukuran-centang" aria-hidden="true">
-            {preview.perangkat === d.id ? "✓" : ""}
+            {(preview.perangkat ? preview.perangkat.id : "responsif") === d.id
+              ? "✓"
+              : ""}
           </span>
           <span>{d.nama}</span>
           <span className="browser-ukuran-sub">
@@ -1365,6 +1456,145 @@ function PanelUkuran({ preview }: { preview: any }) {
         </button>
       ))}
     </div>
+  );
+}
+
+// The emulation row, shown while a device is in force: its own row under
+// the address bar (never over the page), as VS Code's emulation toolbar --
+// preset, W x H (editable), rotate, the fit scale, DPR, and exit.
+function BilahEmulasi({ preview }: { preview: any }) {
+  const d: Perangkat | null = preview.perangkat;
+  const [lebar, setLebar] = useState("");
+  const [tinggi, setTinggi] = useState("");
+  useEffect(() => {
+    if (d) {
+      setLebar(String(d.lebar));
+      setTinggi(String(d.tinggi));
+    }
+  }, [d && d.lebar, d && d.tinggi]);
+  if (!d || !preview.luar) return null;
+  const terapkan = () => {
+    const l = Number(lebar);
+    const t = Number(tinggi);
+    if (l && t && (l !== d.lebar || t !== d.tinggi))
+      preview.ubahUkuranPerangkat(l, t);
+    else {
+      setLebar(String(d.lebar));
+      setTinggi(String(d.tinggi));
+    }
+  };
+  const padaKunci = (e: any) => {
+    if (e.key === "Enter") terapkan();
+    else if (e.key === "Escape") {
+      setLebar(String(d.lebar));
+      setTinggi(String(d.tinggi));
+      e.currentTarget.blur();
+    }
+  };
+  return (
+    <div className="browser-emulasi">
+      <select
+        className="browser-emulasi-pilih"
+        value={d.id}
+        aria-label="Device preset"
+        onChange={(e: any) => preview.pilihPerangkat(e.target.value)}
+      >
+        {PERANGKAT.filter((x) => x.lebar).map((x) => (
+          <option key={x.id} value={x.id}>
+            {x.nama}
+          </option>
+        ))}
+        {d.id === "kustom" && <option value="kustom">Custom</option>}
+      </select>
+      <input
+        className="browser-emulasi-angka"
+        type="number"
+        min={50}
+        max={4000}
+        value={lebar}
+        aria-label="Viewport width"
+        onChange={(e: any) => setLebar(e.target.value)}
+        onBlur={terapkan}
+        onKeyDown={padaKunci}
+      />
+      <span className="browser-emulasi-kali" aria-hidden="true">
+        ×
+      </span>
+      <input
+        className="browser-emulasi-angka"
+        type="number"
+        min={50}
+        max={4000}
+        value={tinggi}
+        aria-label="Viewport height"
+        onChange={(e: any) => setTinggi(e.target.value)}
+        onBlur={terapkan}
+        onKeyDown={padaKunci}
+      />
+      <button
+        className="btn-reset browser-pane-action"
+        title="Rotate (swap width and height)"
+        onClick={() => preview.putarPerangkat()}
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <polyline points="1 4 1 10 7 10" />
+          <path d="M3.51 15a9 9 0 1 0 2.13-9.36L1 10" />
+        </svg>
+      </button>
+      <span className="browser-emulasi-info">
+        Auto ({Math.round(preview.skalaEmulasi * 100)}%)
+        {d.dpr ? " · DPR " + d.dpr : ""}
+        {d.mobile ? " · mobile" : ""}
+      </span>
+      <button
+        className="btn-reset browser-pane-action browser-pane-action-close"
+        title="Exit device mode (Responsive)"
+        onClick={() => preview.pilihPerangkat("responsif")}
+      >
+        <svg
+          width="14"
+          height="14"
+          viewBox="0 0 24 24"
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="2"
+          strokeLinecap="round"
+          strokeLinejoin="round"
+        >
+          <line x1="18" y1="6" x2="6" y2="18" />
+          <line x1="6" y1="6" x2="18" y2="18" />
+        </svg>
+      </button>
+    </div>
+  );
+}
+
+// The device-toolbar glyph: a phone beside a tablet, as Chrome draws it.
+function IkonPerangkat() {
+  return (
+    <svg
+      width="14"
+      height="14"
+      viewBox="0 0 24 24"
+      fill="none"
+      stroke="currentColor"
+      strokeWidth="2"
+      strokeLinecap="round"
+      strokeLinejoin="round"
+    >
+      <rect x="2" y="4" width="13" height="16" rx="2" />
+      <rect x="17" y="8" width="5" height="12" rx="1.5" />
+      <line x1="8.5" y1="17" x2="8.5" y2="17.01" />
+    </svg>
   );
 }
 

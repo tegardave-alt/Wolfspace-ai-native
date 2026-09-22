@@ -851,13 +851,30 @@ function _brBuat(paneId = 0) {
       });
     } catch (_: any) {}
   });
-  const state: any = { tampil, win, zum: ZUM_SATU, zumKunci: null };
+  const state: any = {
+    tampil,
+    win,
+    zum: ZUM_SATU,
+    zumKunci: null,
+    // The Chrome UA the view presents by default; a device preset swaps in
+    // the device's UA and Responsive puts this one back.
+    uaBersih,
+  };
   _br.set(paneId, state);
   // The pane's zoom is put back on every new document (the stylesheet that
   // carries it belongs to the document, see _brTerapkanZum).
   wc.on("dom-ready", () => {
     state.zumKunci = null;
     _brTerapkanZum(state);
+  });
+  // Device emulation is tied to the page's render widget: a reload (the UA
+  // swap does one) or a cross-site navigation can start a fresh widget
+  // without it. Put it back on every new document.
+  wc.on("did-navigate", () => {
+    if (state.emulasi) _brEmulasi(state);
+  });
+  wc.on("dom-ready", () => {
+    if (state.emulasi) _brEmulasi(state);
   });
   // ── Right-click: a browser's context menu ──
   //
@@ -1345,7 +1362,21 @@ function browserAksi(p: any) {
     if (aksi === "emulasi") {
       b.emulasi = p.perangkat ? { ...p.perangkat } : null;
       _brEmulasi(b);
-      return { ok: true, emulasi: b.emulasi };
+      // The device's user agent too: a site that picks its layout by UA
+      // (not by media query) must see the phone, as it does in DevTools'
+      // device mode. Applied on the next document, so the page is reloaded
+      // when the UA actually changed and something is loaded.
+      const wc = b.tampil.webContents;
+      const uaBaru = (b.emulasi && b.emulasi.ua) || b.uaBersih || "";
+      let uaBerubah = false;
+      try {
+        if (uaBaru && wc.getUserAgent() !== uaBaru) {
+          wc.setUserAgent(uaBaru);
+          uaBerubah = true;
+        }
+      } catch (_: any) {}
+      if (uaBerubah && wc.getURL()) wc.reload();
+      return { ok: true, emulasi: b.emulasi, uaBerubah };
     }
     // The real Chromium DevTools for THIS page, as a browser's F12: its own
     // window (mode: detach), because the view is a native layer and a docked

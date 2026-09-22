@@ -5649,6 +5649,39 @@ function App() {
                               </svg>
                             </button>
                             <button
+                              className={
+                                "btn-reset browser-pane-action-perangkat" +
+                                (preview.perangkat ? " aktif" : "")
+                              }
+                              title={
+                                preview.perangkat
+                                  ? "Exit device mode"
+                                  : "Toggle device mode (phone / tablet viewport)"
+                              }
+                              disabled={!preview.url || !preview.luar}
+                              onClick={() => preview.toggleModePerangkat()}
+                              style={{
+                                color: preview.perangkat
+                                  ? "#b594f5"
+                                  : "#8b98a9",
+                                padding: "4px 6px",
+                                borderRadius: "4px",
+                                display: "flex",
+                                alignItems: "center",
+                                opacity: preview.url && preview.luar ? 1 : 0.35,
+                              }}
+                              onMouseEnter={(e: any) =>
+                                (e.currentTarget.style.background =
+                                  "rgba(255,255,255,0.08)")
+                              }
+                              onMouseLeave={(e: any) =>
+                                (e.currentTarget.style.background =
+                                  "transparent")
+                              }
+                            >
+                              <IkonPerangkat />
+                            </button>
+                            <button
                               className="btn-reset browser-pane-action-devtools"
                               title="Developer Tools (F12)"
                               disabled={!preview.url}
@@ -5715,6 +5748,7 @@ function App() {
                         <PanelRiwayat preview={preview} />
                         <PanelUkuran preview={preview} />
                         <BilahCari preview={preview} />
+                        <BilahEmulasi preview={preview} />
                         <div
                           style={{
                             flex: 1,
